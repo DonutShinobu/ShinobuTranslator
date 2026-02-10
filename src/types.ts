@@ -1,0 +1,58 @@
+export type Rect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type QuadPoint = {
+  x: number;
+  y: number;
+};
+
+export type TextDirection = "h" | "v";
+
+export type TextRegion = {
+  id: string;
+  box: Rect;
+  quad?: [QuadPoint, QuadPoint, QuadPoint, QuadPoint];
+  direction?: TextDirection;
+  prob?: number;
+  fgColor?: [number, number, number];
+  bgColor?: [number, number, number];
+  sourceText: string;
+  translatedText: string;
+};
+
+export type PipelineConfig = {
+  sourceLang: string;
+  targetLang: string;
+  translator: "youdao" | "llm";
+  llmBaseUrl: string;
+  llmApiKey: string;
+  llmModel: string;
+};
+
+export type RuntimeStageStatus = {
+  model: "detector" | "ocr" | "inpaint";
+  enabled: boolean;
+  provider?: "webnn" | "webgpu" | "wasm";
+  webnnDeviceType?: "gpu" | "cpu" | "default";
+  detail: string;
+};
+
+export type PipelineArtifacts = {
+  original: HTMLImageElement;
+  detectedRegions: TextRegion[];
+  detectionCanvas: HTMLCanvasElement;
+  ocrCanvas: HTMLCanvasElement;
+  segmentationCanvas: HTMLCanvasElement | null;
+  cleanedCanvas: HTMLCanvasElement;
+  resultCanvas: HTMLCanvasElement;
+  runtimeStages: RuntimeStageStatus[];
+};
+
+export type PipelineProgress = {
+  stage: string;
+  detail: string;
+};

@@ -25,6 +25,10 @@ tmp/
 tmp_*/
 artifacts/
 
+# Local scratch files
+nul
+tmp-*.png
+
 # External repos (cloned for reference)
 gpuweb_repo/
 tmp_repos/

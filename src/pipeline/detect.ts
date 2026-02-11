@@ -3,6 +3,7 @@ import { PSM, createWorker } from "tesseract.js";
 import type { Rect, TextRegion } from "../types";
 import { getModelSession } from "../runtime/modelRegistry";
 import { isContextLostRuntimeError } from "../runtime/onnx";
+import type { RuntimeProvider } from "../runtime/onnx";
 
 type LetterboxResult = {
   input: Float32Array;
@@ -1222,12 +1223,41 @@ async function detectByOnnx(image: HTMLImageElement): Promise<DetectOutput> {
   try {
     outputs = await runWithHandle(primaryHandle);
   } catch (error) {
-    if (primaryHandle.provider !== "webnn" || !isContextLostRuntimeError(error)) {
+    const message = toErrorMessage(error);
+    const reason = isContextLostRuntimeError(error) ? "context lost" : "run failed";
+    if (primaryHandle.provider === "wasm") {
       throw error;
     }
-    console.warn(`[detector] WebNN context lost, 降级到 WASM: ${toErrorMessage(error)}`);
-    const wasmHandle = await getModelSession("detector", ["wasm"]);
-    outputs = await runWithHandle(wasmHandle);
+
+    const fallbackPlans: RuntimeProvider[][] = [];
+    if (primaryHandle.provider === "webgpu") {
+      fallbackPlans.push(["webnn", "wasm"]);
+    }
+    fallbackPlans.push(["wasm"]);
+
+    let recovered: ort.InferenceSession.ReturnType | null = null;
+    let lastFallbackError: unknown = null;
+    console.warn(`[detector] ${primaryHandle.provider} ${reason}, 尝试回退: ${message}`);
+
+    for (const preferred of fallbackPlans) {
+      try {
+        const handle = await getModelSession("detector", preferred);
+        recovered = await runWithHandle(handle);
+        if (handle.provider !== primaryHandle.provider) {
+          console.warn(`[detector] 已回退到 ${handle.provider}`);
+        }
+        break;
+      } catch (fallbackError) {
+        lastFallbackError = fallbackError;
+      }
+    }
+
+    if (!recovered) {
+      const fallbackMessage = lastFallbackError ? toErrorMessage(lastFallbackError) : "未知错误";
+      throw new Error(`检测推理失败且回退失败: ${message} | fallback: ${fallbackMessage}`);
+    }
+
+    outputs = recovered;
   }
 
   const detTensor = pickDetTensor(outputs);

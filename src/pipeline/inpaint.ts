@@ -1,6 +1,7 @@
 import * as ort from "onnxruntime-web/all";
 import { getModel, getModelSession } from "../runtime/modelRegistry";
 import { isContextLostRuntimeError } from "../runtime/onnx";
+import type { RuntimeProvider } from "../runtime/onnx";
 
 type InpaintInputNormalize = "zero_to_one" | "minus_one_to_one";
 type InpaintOutputNormalize = InpaintInputNormalize | "zero_to_255";
@@ -246,7 +247,7 @@ async function runInpaintByOnnx(
   refinedMaskCanvas: HTMLCanvasElement
 ): Promise<HTMLCanvasElement> {
   const model = await getModel("inpaint");
-  const primaryHandle = await getModelSession("inpaint");
+  const primaryHandle = await getModelSession("inpaint", ["webgpu", "webnn", "wasm"]);
   const size = model.input?.[0] ?? 512;
   const normalize = model.normalize ?? "zero_to_one";
   const outputNormalize = model.outputNormalize ?? normalize;
@@ -278,12 +279,41 @@ async function runInpaintByOnnx(
   try {
     outputs = await runWithHandle(primaryHandle);
   } catch (error) {
-    if (primaryHandle.provider !== "webnn" || !isContextLostRuntimeError(error)) {
+    const message = toErrorMessage(error);
+    const reason = isContextLostRuntimeError(error) ? "context lost" : "run failed";
+    if (primaryHandle.provider === "wasm") {
       throw error;
     }
-    console.warn(`[inpaint] WebNN context lost, 降级到 WASM: ${toErrorMessage(error)}`);
-    const wasmHandle = await getModelSession("inpaint", ["wasm"]);
-    outputs = await runWithHandle(wasmHandle);
+
+    const fallbackPlans: RuntimeProvider[][] = [];
+    if (primaryHandle.provider === "webgpu") {
+      fallbackPlans.push(["webnn", "wasm"]);
+    }
+    fallbackPlans.push(["wasm"]);
+
+    let recovered: ort.InferenceSession.ReturnType | null = null;
+    let lastFallbackError: unknown = null;
+    console.warn(`[inpaint] ${primaryHandle.provider} ${reason}, 尝试回退: ${message}`);
+
+    for (const preferred of fallbackPlans) {
+      try {
+        const handle = await getModelSession("inpaint", preferred);
+        recovered = await runWithHandle(handle);
+        if (handle.provider !== primaryHandle.provider) {
+          console.warn(`[inpaint] 已回退到 ${handle.provider}`);
+        }
+        break;
+      } catch (fallbackError) {
+        lastFallbackError = fallbackError;
+      }
+    }
+
+    if (!recovered) {
+      const fallbackMessage = lastFallbackError ? toErrorMessage(lastFallbackError) : "未知错误";
+      throw new Error(`去字推理失败且回退失败: ${message} | fallback: ${fallbackMessage}`);
+    }
+
+    outputs = recovered;
   }
 
   let inpaintedRgba = decodeOutputs(outputs);

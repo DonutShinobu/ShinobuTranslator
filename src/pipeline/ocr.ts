@@ -2,6 +2,7 @@ import * as ort from "onnxruntime-web/all";
 import type { TextRegion } from "../types";
 import { getModel, getModelSession } from "../runtime/modelRegistry";
 import { isContextLostRuntimeError } from "../runtime/onnx";
+import type { RuntimeProvider } from "../runtime/onnx";
 
 const OCR_AR_PAD = 0;
 const OCR_AR_START = 1;
@@ -1103,17 +1104,46 @@ async function runOcrByOnnxWithSession(
 
 async function runOcrByOnnx(image: HTMLImageElement, detectedRegions: TextRegion[]): Promise<TextRegion[]> {
   const model = await getModel("ocr");
-  const primaryHandle = await getModelSession("ocr");
+  const primaryHandle = await getModelSession("ocr", ["webgpu", "webnn", "wasm"]);
 
   try {
     return await runOcrByOnnxWithSession(image, detectedRegions, model, primaryHandle.session);
   } catch (error) {
-    if (!isContextLostRuntimeError(error)) {
+    const message = toErrorMessage(error);
+    const reason = isContextLostRuntimeError(error) ? "context lost" : "run failed";
+    if (primaryHandle.provider === "wasm") {
       throw error;
     }
-    console.warn(`[ocr] ${primaryHandle.provider} context lost, 降级到 WASM: ${toErrorMessage(error)}`);
-    const wasmHandle = await getModelSession("ocr", ["wasm"]);
-    return runOcrByOnnxWithSession(image, detectedRegions, model, wasmHandle.session);
+
+    const fallbackPlans: RuntimeProvider[][] = [];
+    if (primaryHandle.provider === "webgpu") {
+      fallbackPlans.push(["webnn", "wasm"]);
+    }
+    fallbackPlans.push(["wasm"]);
+
+    let recovered: TextRegion[] | null = null;
+    let lastFallbackError: unknown = null;
+    console.warn(`[ocr] ${primaryHandle.provider} ${reason}, 尝试回退: ${message}`);
+
+    for (const preferred of fallbackPlans) {
+      try {
+        const handle = await getModelSession("ocr", preferred);
+        recovered = await runOcrByOnnxWithSession(image, detectedRegions, model, handle.session);
+        if (handle.provider !== primaryHandle.provider) {
+          console.warn(`[ocr] 已回退到 ${handle.provider}`);
+        }
+        break;
+      } catch (fallbackError) {
+        lastFallbackError = fallbackError;
+      }
+    }
+
+    if (!recovered) {
+      const fallbackMessage = lastFallbackError ? toErrorMessage(lastFallbackError) : "未知错误";
+      throw new Error(`OCR 推理失败且回退失败: ${message} | fallback: ${fallbackMessage}`);
+    }
+
+    return recovered;
   }
 }
 

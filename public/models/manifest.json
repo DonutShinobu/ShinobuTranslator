@@ -7,14 +7,14 @@
       "task": "text-detection",
       "url": "/models/detector.onnx",
       "input": [1024, 1024],
-      "runtime": ["webnn", "wasm"]
+      "runtime": ["webgpu", "webnn", "wasm"]
     },
     "ocr": {
       "name": "ocr",
       "task": "japanese-ocr",
       "url": "/models/ocr.onnx",
       "input": [48, 320],
-      "runtime": ["webnn", "wasm"],
+      "runtime": ["webgpu", "webnn", "wasm"],
       "dictUrl": "/models/ocr_dict.txt",
       "normalize": "minus_one_to_one"
     },
@@ -23,7 +23,7 @@
       "task": "text-removal",
       "url": "/models/lama_fp32.onnx",
       "input": [512, 512],
-      "runtime": ["webnn", "wasm"],
+      "runtime": ["webgpu", "webnn", "wasm"],
       "normalize": "zero_to_one",
       "outputNormalize": "zero_to_255",
       "maskInputName": "mask"

@@ -152,6 +152,10 @@ export function ensureOrtEnv(): void {
   ortAll.env.wasm.numThreads = wasmThreads;
   ortAll.env.wasm.proxy = false;
 
+  if (ortAll.env.webgpu) {
+    ortAll.env.webgpu.powerPreference = "high-performance";
+  }
+
   if (!canUseWasmThreads && hwThreads > 1) {
     console.warn("[onnx] 当前非 crossOriginIsolated，WASM 线程数被限制为 1。可通过 COOP/COEP 启用多线程。");
   }

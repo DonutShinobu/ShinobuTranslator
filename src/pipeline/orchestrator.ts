@@ -60,14 +60,6 @@ async function probeRuntime(model: "detector" | "ocr" | "inpaint"): Promise<Runt
   }
 }
 
-function createPendingRuntimeStage(model: "detector" | "ocr" | "inpaint"): RuntimeStageStatus {
-  return {
-    model,
-    enabled: false,
-    detail: `${model} 模型尚未探测（按阶段懒加载）`
-  };
-}
-
 export async function runPipeline(
   file: File,
   config: PipelineConfig,
@@ -77,18 +69,7 @@ export async function runPipeline(
   const image = await fileToImage(file);
   const originalCanvas = imageToCanvas(image);
 
-  const runtimeStages: RuntimeStageStatus[] = [
-    createPendingRuntimeStage("detector"),
-    createPendingRuntimeStage("ocr"),
-    createPendingRuntimeStage("inpaint")
-  ];
-
-  const updateRuntimeStage = async (
-    model: "detector" | "ocr" | "inpaint",
-    index: 0 | 1 | 2
-  ): Promise<void> => {
-    runtimeStages[index] = await probeRuntime(model);
-  };
+  const runtimeStages: RuntimeStageStatus[] = [];
 
   let latestRegions: PipelineArtifacts["detectedRegions"] = [];
   let detectionCanvas: HTMLCanvasElement = originalCanvas;
@@ -112,10 +93,22 @@ export async function runPipeline(
     stageTimings
   });
 
+  // 并行预加载所有模型（下载 + 编译 ONNX session），后续各阶段命中缓存
+  report(onProgress, "preload", "并行加载模型");
+  const preloadT0 = performance.now();
+  const [detectorStatus, ocrStatus, inpaintStatus] = await Promise.all([
+    probeRuntime("detector"),
+    probeRuntime("ocr"),
+    probeRuntime("inpaint")
+  ]);
+  runtimeStages[0] = detectorStatus;
+  runtimeStages[1] = ocrStatus;
+  runtimeStages[2] = inpaintStatus;
+  stageTimings.push({ stage: "preload", label: "并行加载模型", durationMs: performance.now() - preloadT0 });
+
   report(onProgress, "detect", "文本检测");
   try {
     const t0 = performance.now();
-    await updateRuntimeStage("detector", 0);
     const detected = await detectTextRegionsWithMask(image);
     latestRegions = detected.regions;
     detectionMaskCanvas = detected.rawMaskCanvas;
@@ -144,7 +137,6 @@ export async function runPipeline(
   report(onProgress, "ocr", "OCR 日文识别");
   try {
     const t0 = performance.now();
-    await updateRuntimeStage("ocr", 1);
     const ocrResult = await runOcr(image, latestRegions);
     latestRegions = ocrResult.regions;
     ocrCanvas = drawRegions(originalCanvas, ocrResult.regions, "OCR 识别", (region) => region.sourceText);
@@ -209,7 +201,6 @@ export async function runPipeline(
   report(onProgress, "inpaint", "去字");
   try {
     const t0 = performance.now();
-    await updateRuntimeStage("inpaint", 2);
     if (!refinedMaskCanvas) {
       throw new Error("去字前缺少 refined mask，已禁用文本框遮罩回退");
     }

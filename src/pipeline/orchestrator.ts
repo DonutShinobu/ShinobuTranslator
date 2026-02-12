@@ -6,6 +6,7 @@ import { runTranslate } from "./translate";
 import { runInpaint } from "./inpaint";
 import { drawTypeset } from "./typeset";
 import { drawRegions } from "./visualize";
+import { mergeTextLines } from "./textlineMerge";
 import { refineTextMask } from "./maskRefinement";
 import type { RuntimeStageStatus } from "../types";
 import { getModelSession } from "../runtime/modelRegistry";
@@ -134,6 +135,13 @@ export async function runPipeline(
     resultCanvas = cleanedCanvas;
   } catch (error) {
     throw new PipelineStageError("OCR", toErrorDetail(error), buildArtifacts());
+  }
+
+  report(onProgress, "merge", "合并文本行");
+  try {
+    latestRegions = mergeTextLines(latestRegions, image.naturalWidth, image.naturalHeight);
+  } catch (error) {
+    throw new PipelineStageError("文本行合并", toErrorDetail(error), buildArtifacts());
   }
 
   report(onProgress, "translate", "翻译为中文");

@@ -869,6 +869,7 @@ function buildMergedRegion(group: MergedGroup, allQuads: InternalQuad[]): TextRe
     fontSize,
     fgColor,
     bgColor,
+    originalLineCount: txtlns.length,
     sourceText,
     translatedText: "",
   };

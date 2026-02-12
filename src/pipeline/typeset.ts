@@ -167,6 +167,162 @@ function resolveColors(
 }
 
 // ---------------------------------------------------------------------------
+// Text length counting (ported from manga-image-translator)
+// ---------------------------------------------------------------------------
+
+/**
+ * Small kana that count as half-width when measuring text length.
+ * Ported from manga-image-translator's count_text_length().
+ */
+const halfWidthKana = new Set(["っ", "ッ", "ぁ", "ぃ", "ぅ", "ぇ", "ぉ"]);
+
+/**
+ * Count text length where small kana characters count as 0.5 and all others
+ * count as 1.0. Used for comparing source vs translated text length.
+ */
+function countTextLength(text: string): number {
+  let length = 0;
+  for (const ch of text.trim()) {
+    length += halfWidthKana.has(ch) ? 0.5 : 1;
+  }
+  return length;
+}
+
+// ---------------------------------------------------------------------------
+// Region expansion geometry helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Scale a region along a single axis from its top-left corner origin.
+ * Clamps to canvas bounds.
+ */
+function scaleRegionSingleAxis(
+  region: TextRegion,
+  scale: number,
+  axis: "width" | "height",
+  maxW: number,
+  maxH: number,
+): void {
+  const box = region.box;
+  if (axis === "width") {
+    box.width = Math.min(box.width * scale, maxW - box.x);
+  } else {
+    box.height = Math.min(box.height * scale, maxH - box.y);
+  }
+  if (region.quad) {
+    rebuildQuadFromBox(region);
+  }
+}
+
+/**
+ * Scale a region uniformly from its center point.
+ * Clamps to canvas bounds.
+ */
+function scaleRegionUniform(
+  region: TextRegion,
+  scale: number,
+  maxW: number,
+  maxH: number,
+): void {
+  const box = region.box;
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  const newW = box.width * scale;
+  const newH = box.height * scale;
+  box.x = Math.max(0, cx - newW / 2);
+  box.y = Math.max(0, cy - newH / 2);
+  box.width = Math.min(newW, maxW - box.x);
+  box.height = Math.min(newH, maxH - box.y);
+  if (region.quad) {
+    rebuildQuadFromBox(region);
+  }
+}
+
+/**
+ * Rebuild quad as an axis-aligned rectangle matching the current box.
+ * Used after box geometry changes to keep quad in sync.
+ */
+function rebuildQuadFromBox(region: TextRegion): void {
+  const { x, y, width, height } = region.box;
+  region.quad = [
+    { x, y },
+    { x: x + width, y },
+    { x: x + width, y: y + height },
+    { x, y: y + height },
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// Region expansion for translated text
+// ---------------------------------------------------------------------------
+
+/**
+ * Expand a text region to accommodate longer translated text.
+ * Ported from manga-image-translator's resize_regions_to_font_size().
+ *
+ * Strategy A (preferred): Single-axis expansion based on layout simulation.
+ *   - For horizontal text: expand width if translation needs more rows.
+ *   - For vertical text: expand width if translation needs more columns.
+ *   - No upper limit (matching upstream).
+ *
+ * Strategy B (fallback): Uniform expansion based on character count ratio.
+ *   - Scale factor = 1 + (increase_percentage * 0.3), capped at 1.1.
+ */
+function resizeRegionForTranslation(
+  ctx: CanvasRenderingContext2D,
+  region: TextRegion,
+  canvasWidth: number,
+  canvasHeight: number,
+): void {
+  const text = region.translatedText || region.sourceText;
+  if (!text.trim()) return;
+
+  const fontSize = resolveInitialFontSize(region);
+  const isVertical = region.direction === "v";
+  const usedLines = region.originalLineCount ?? 1;
+
+  const boxPadding = 6;
+  const cw = Math.max(20, region.box.width - boxPadding * 2);
+  const ch = Math.max(20, region.box.height - boxPadding * 2);
+
+  // --- Strategy A: single-axis expansion ---
+  let expanded = false;
+  ctx.font = `${fontSize}px ${fontFamily}`;
+
+  if (isVertical) {
+    const columns = calcVertical(ctx, text, ch, fontSize);
+    const neededCols = columns.length;
+    if (neededCols > usedLines && usedLines > 0) {
+      const scale = 1 + (neededCols - usedLines) / usedLines;
+      scaleRegionSingleAxis(region, scale, "width", canvasWidth, canvasHeight);
+      expanded = true;
+    }
+  } else {
+    const lines = calcHorizontal(ctx, text, cw, fontSize);
+    const neededRows = lines.length;
+    if (neededRows > usedLines && usedLines > 0) {
+      const scale = 1 + (neededRows - usedLines) / usedLines;
+      scaleRegionSingleAxis(region, scale, "width", canvasWidth, canvasHeight);
+      expanded = true;
+    }
+  }
+
+  // --- Strategy B: uniform expansion (fallback) ---
+  if (!expanded) {
+    const srcLen = countTextLength(region.sourceText);
+    const tgtLen = countTextLength(text);
+    if (srcLen > 0 && tgtLen > srcLen) {
+      const increase = (tgtLen - srcLen) / srcLen;
+      const targetScale = Math.min(1 + increase * 0.3, 2);
+      const finalScale = Math.max(1, Math.min(targetScale, 1.1));
+      if (finalScale > 1.001) {
+        scaleRegionUniform(region, finalScale, canvasWidth, canvasHeight);
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Line / column layout types
 // ---------------------------------------------------------------------------
 
@@ -816,6 +972,9 @@ export async function drawTypeset(
   for (const region of regions) {
     const text = region.translatedText || region.sourceText;
     if (!text.trim()) continue;
+
+    // Expand region if translated text is longer than original
+    resizeRegionForTranslation(measureCtx, region, out.width, out.height);
 
     const boxPadding = 6;
     const contentWidth = Math.max(20, region.box.width - boxPadding * 2);

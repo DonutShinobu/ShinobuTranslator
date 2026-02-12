@@ -1,5 +1,8 @@
 import argparse
+import importlib
+import importlib.util
 import sys
+import types
 from pathlib import Path
 from typing import Any, Callable
 
@@ -25,6 +28,71 @@ def normalize_state_dict(raw: object) -> dict[str, torch.Tensor]:
         if all(isinstance(k, str) for k in raw):
             return raw  # plain state dict
     raise RuntimeError("Unsupported checkpoint format for OCR model")
+
+
+def load_ocr_module(repo_root: Path):
+    """Load only OCR and xpos modules without importing the full manga_translator package."""
+    ocr_dir = repo_root / "manga_translator" / "ocr"
+
+    # Stub cv2 and numpy since model_48px.py imports them at top level
+    # but they are only used by test/inference functions, not the model definition.
+    if "cv2" not in sys.modules:
+        sys.modules["cv2"] = types.ModuleType("cv2")
+
+    # Create minimal stub packages so that absolute imports inside model_48px.py resolve.
+    manga_translator_pkg = types.ModuleType("manga_translator")
+    manga_translator_pkg.__path__ = [str(repo_root / "manga_translator")]
+    manga_translator_pkg.__package__ = "manga_translator"
+    sys.modules["manga_translator"] = manga_translator_pkg
+
+    # Stub manga_translator.config with a dummy OcrConfig
+    config_mod = types.ModuleType("manga_translator.config")
+    config_mod.OcrConfig = type("OcrConfig", (), {})  # type: ignore[reportGeneralTypeIssues]
+    sys.modules["manga_translator.config"] = config_mod
+
+    # Stub manga_translator.utils (referenced by common.py and model_48px.py)
+    utils_mod = types.ModuleType("manga_translator.utils")
+    utils_mod.TextBlock = type("TextBlock", (), {})  # type: ignore
+    utils_mod.Quadrilateral = type("Quadrilateral", (), {})  # type: ignore
+    utils_mod.chunks = lambda lst, n: [lst[i:i+n] for i in range(0, len(lst), n)]
+    sys.modules["manga_translator.utils"] = utils_mod
+
+    utils_generic_mod = types.ModuleType("manga_translator.utils.generic")
+    utils_generic_mod.AvgMeter = type("AvgMeter", (), {})  # type: ignore
+    sys.modules["manga_translator.utils.generic"] = utils_generic_mod
+
+    utils_bubble_mod = types.ModuleType("manga_translator.utils.bubble")
+    utils_bubble_mod.is_ignore = lambda *a, **kw: False  # type: ignore
+    sys.modules["manga_translator.utils.bubble"] = utils_bubble_mod
+
+    # Stub manga_translator.ocr package
+    ocr_pkg = types.ModuleType("manga_translator.ocr")
+    ocr_pkg.__path__ = [str(ocr_dir)]
+    ocr_pkg.__package__ = "manga_translator.ocr"
+    sys.modules["manga_translator.ocr"] = ocr_pkg
+
+    # Stub manga_translator.ocr.common (OfflineOCR base class)
+    common_mod = types.ModuleType("manga_translator.ocr.common")
+    common_mod.OfflineOCR = type("OfflineOCR", (), {"model_dir": "/tmp"})  # type: ignore
+    sys.modules["manga_translator.ocr.common"] = common_mod
+
+    # Load xpos_relative_position
+    xpos_path = ocr_dir / "xpos_relative_position.py"
+    xpos_spec = importlib.util.spec_from_file_location("manga_translator.ocr.xpos_relative_position", xpos_path)
+    assert xpos_spec and xpos_spec.loader
+    xpos_mod = importlib.util.module_from_spec(xpos_spec)
+    sys.modules["manga_translator.ocr.xpos_relative_position"] = xpos_mod
+    xpos_spec.loader.exec_module(xpos_mod)
+
+    # Load model_48px
+    model_path = ocr_dir / "model_48px.py"
+    spec = importlib.util.spec_from_file_location("manga_translator.ocr.model_48px", model_path)
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["manga_translator.ocr.model_48px"] = mod
+    spec.loader.exec_module(mod)
+
+    return mod
 
 
 class OCRArExportWrapper(nn.Module):
@@ -111,8 +179,9 @@ def main() -> None:
     if not dict_path.exists():
         raise FileNotFoundError(f"dictionary not found: {dict_path}")
 
-    sys.path.insert(0, str(repo_root))
-    from manga_translator.ocr.model_48px import OCR, generate_square_subsequent_mask  # type: ignore[reportMissingImports]  # noqa: E402
+    ocr_mod = load_ocr_module(repo_root)
+    OCR = ocr_mod.OCR
+    generate_square_subsequent_mask = ocr_mod.generate_square_subsequent_mask
 
     dictionary = load_dictionary(dict_path)
     model = OCR(dictionary, 768)
@@ -123,18 +192,33 @@ def main() -> None:
     wrapper = OCRArExportWrapper(model, generate_square_subsequent_mask)
     wrapper.eval()
 
-    image = torch.randn(1, 3, args.height, args.width, dtype=torch.float32)
+    # Use batch=2 for tracing so the exporter can distinguish batch from
+    # other dimensions when dynamic_axes is specified.
+    trace_batch = 2
+    image = torch.randn(trace_batch, 3, args.height, args.width, dtype=torch.float32)
     with torch.no_grad():
         memory = model.backbone(image)
         encoder_len = int(memory.shape[-1])
 
-    char_idx = torch.zeros((1, args.seq_len), dtype=torch.int64)
-    char_idx[0, 0] = 1
-    decoder_mask = torch.ones((1, args.seq_len), dtype=torch.bool)
-    decoder_mask[0, 0] = False
-    encoder_mask = torch.zeros((1, encoder_len), dtype=torch.bool)
+    char_idx = torch.zeros((trace_batch, args.seq_len), dtype=torch.int64)
+    char_idx[:, 0] = 1
+    decoder_mask = torch.ones((trace_batch, args.seq_len), dtype=torch.bool)
+    decoder_mask[:, 0] = False
+    encoder_mask = torch.zeros((trace_batch, encoder_len), dtype=torch.bool)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    dynamic_axes = {
+        "image": {0: "batch"},
+        "char_idx": {0: "batch"},
+        "decoder_mask": {0: "batch"},
+        "encoder_mask": {0: "batch"},
+        "logits": {0: "batch"},
+        "fg": {0: "batch"},
+        "bg": {0: "batch"},
+        "fg_ind": {0: "batch"},
+        "bg_ind": {0: "batch"},
+    }
 
     torch.onnx.export(
         wrapper,
@@ -146,11 +230,14 @@ def main() -> None:
         external_data=False,
         do_constant_folding=True,
         opset_version=args.opset,
+        dynamic_axes=dynamic_axes,
+        dynamo=False,
     )
 
     print(f"Exported ONNX: {out_path}")
     print(f"Encoder length: {encoder_len}")
     print(f"Sequence length template: {args.seq_len}")
+    print(f"Dynamic axes: batch dimension is dynamic for all inputs/outputs")
 
 
 if __name__ == "__main__":

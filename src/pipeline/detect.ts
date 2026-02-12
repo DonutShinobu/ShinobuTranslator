@@ -3,7 +3,7 @@ import { PSM, createWorker } from "tesseract.js";
 import type { Rect, TextRegion } from "../types";
 import { getModelSession } from "../runtime/modelRegistry";
 import { isContextLostRuntimeError } from "../runtime/onnx";
-import type { RuntimeProvider } from "../runtime/onnx";
+import type { RuntimeProvider, WebNnDeviceType } from "../runtime/onnx";
 
 type LetterboxResult = {
   input: Float32Array;
@@ -45,6 +45,8 @@ type MaskComponent = {
 export type DetectOutput = {
   regions: TextRegion[];
   rawMaskCanvas: HTMLCanvasElement | null;
+  actualProvider?: RuntimeProvider;
+  actualWebnnDeviceType?: WebNnDeviceType;
 };
 
 function toErrorMessage(error: unknown): string {
@@ -1219,6 +1221,9 @@ async function detectByOnnx(image: HTMLImageElement): Promise<DetectOutput> {
     return handle.session.run(feeds);
   };
 
+  let actualProvider: RuntimeProvider = primaryHandle.provider;
+  let actualWebnnDeviceType = primaryHandle.webnnDeviceType;
+
   let outputs: ort.InferenceSession.ReturnType;
   try {
     outputs = await runWithHandle(primaryHandle);
@@ -1245,6 +1250,8 @@ async function detectByOnnx(image: HTMLImageElement): Promise<DetectOutput> {
         recovered = await runWithHandle(handle);
         if (handle.provider !== primaryHandle.provider) {
           console.warn(`[detector] 已回退到 ${handle.provider}`);
+          actualProvider = handle.provider;
+          actualWebnnDeviceType = handle.webnnDeviceType;
         }
         break;
       } catch (fallbackError) {
@@ -1276,12 +1283,14 @@ async function detectByOnnx(image: HTMLImageElement): Promise<DetectOutput> {
 
     const binaryMask = buildBinaryMaskFromTensor(maskTensor, prep.unpaddedWidth, prep.unpaddedHeight, 0.3, 0);
     if (!binaryMask) {
-      return { regions, rawMaskCanvas: null };
+      return { regions, rawMaskCanvas: null, actualProvider, actualWebnnDeviceType };
     }
 
     return {
       regions,
-      rawMaskCanvas: buildMaskCanvasFromBinary(binaryMask.mask, binaryMask.width, binaryMask.height, image)
+      rawMaskCanvas: buildMaskCanvasFromBinary(binaryMask.mask, binaryMask.width, binaryMask.height, image),
+      actualProvider,
+      actualWebnnDeviceType
     };
   }
 
@@ -1306,7 +1315,9 @@ async function detectByOnnx(image: HTMLImageElement): Promise<DetectOutput> {
         const regions = mapped.map(makeRegion);
         return {
           regions,
-          rawMaskCanvas: null
+          rawMaskCanvas: null,
+          actualProvider,
+          actualWebnnDeviceType
         };
       }
     }
@@ -1315,7 +1326,7 @@ async function detectByOnnx(image: HTMLImageElement): Promise<DetectOutput> {
   const segTensor = pickSegTensor(outputs);
   const binaryMask = buildBinaryMaskFromTensor(segTensor, prep.unpaddedWidth, prep.unpaddedHeight, 0.46, 0);
   if (!binaryMask) {
-    return { regions: [], rawMaskCanvas: null };
+    return { regions: [], rawMaskCanvas: null, actualProvider, actualWebnnDeviceType };
   }
   const { mask, width, height } = binaryMask;
 
@@ -1329,13 +1340,15 @@ async function detectByOnnx(image: HTMLImageElement): Promise<DetectOutput> {
     .sort((a, b) => a.y - b.y || a.x - b.x);
 
   if (merged.length === 0) {
-    return { regions: [], rawMaskCanvas: null };
+    return { regions: [], rawMaskCanvas: null, actualProvider, actualWebnnDeviceType };
   }
 
   const regions = merged.map(makeRegion);
   return {
     regions,
-    rawMaskCanvas: buildMaskCanvasFromBinary(mask, width, height, image)
+    rawMaskCanvas: buildMaskCanvasFromBinary(mask, width, height, image),
+    actualProvider,
+    actualWebnnDeviceType
   };
 }
 

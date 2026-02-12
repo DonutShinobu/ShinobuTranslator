@@ -280,3 +280,63 @@ button:disabled {
 .list-item p + p {
   margin-top: 8px;
 }
+
+.timing-box {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  background: #fffcf5;
+  display: grid;
+  gap: 8px;
+}
+
+.timing-box > strong {
+  font-size: 14px;
+}
+
+.timing-grid {
+  display: grid;
+  gap: 6px;
+}
+
+.timing-item {
+  display: grid;
+  grid-template-columns: 100px 1fr 80px;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.timing-label {
+  color: var(--subtle);
+  white-space: nowrap;
+}
+
+.timing-bar-wrap {
+  height: 14px;
+  background: #f0ece4;
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.timing-bar {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #0b6e4f, #68b28f);
+  border-radius: 7px;
+  min-width: 2px;
+  transition: width 0.3s ease;
+}
+
+.timing-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.timing-total {
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+  font-weight: 600;
+}

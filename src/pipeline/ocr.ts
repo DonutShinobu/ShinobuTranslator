@@ -2,12 +2,18 @@ import * as ort from "onnxruntime-web/all";
 import type { TextRegion } from "../types";
 import { getModel, getModelSession } from "../runtime/modelRegistry";
 import { isContextLostRuntimeError } from "../runtime/onnx";
-import type { RuntimeProvider } from "../runtime/onnx";
+import type { RuntimeProvider, WebNnDeviceType } from "../runtime/onnx";
+
+export type OcrResult = {
+  regions: TextRegion[];
+  actualProvider: RuntimeProvider;
+  actualWebnnDeviceType?: WebNnDeviceType;
+};
 
 const OCR_AR_PAD = 0;
 const OCR_AR_START = 1;
 const OCR_AR_END = 2;
-const OCR_BEAM_WIDTH = 5;
+const OCR_BEAM_WIDTH = 1;
 const OCR_MIN_FINISHED_BEAMS = 2;
 const OCR_CONFIDENCE_THRESHOLD = 0.2;
 
@@ -1102,12 +1108,16 @@ async function runOcrByOnnxWithSession(
   return next;
 }
 
-async function runOcrByOnnx(image: HTMLImageElement, detectedRegions: TextRegion[]): Promise<TextRegion[]> {
+async function runOcrByOnnx(image: HTMLImageElement, detectedRegions: TextRegion[]): Promise<OcrResult> {
   const model = await getModel("ocr");
   const primaryHandle = await getModelSession("ocr", ["webgpu", "webnn", "wasm"]);
 
+  let actualProvider: RuntimeProvider = primaryHandle.provider;
+  let actualWebnnDeviceType = primaryHandle.webnnDeviceType;
+
   try {
-    return await runOcrByOnnxWithSession(image, detectedRegions, model, primaryHandle.session);
+    const regions = await runOcrByOnnxWithSession(image, detectedRegions, model, primaryHandle.session);
+    return { regions, actualProvider, actualWebnnDeviceType };
   } catch (error) {
     const message = toErrorMessage(error);
     const reason = isContextLostRuntimeError(error) ? "context lost" : "run failed";
@@ -1131,6 +1141,8 @@ async function runOcrByOnnx(image: HTMLImageElement, detectedRegions: TextRegion
         recovered = await runOcrByOnnxWithSession(image, detectedRegions, model, handle.session);
         if (handle.provider !== primaryHandle.provider) {
           console.warn(`[ocr] 已回退到 ${handle.provider}`);
+          actualProvider = handle.provider;
+          actualWebnnDeviceType = handle.webnnDeviceType;
         }
         break;
       } catch (fallbackError) {
@@ -1143,13 +1155,13 @@ async function runOcrByOnnx(image: HTMLImageElement, detectedRegions: TextRegion
       throw new Error(`OCR 推理失败且回退失败: ${message} | fallback: ${fallbackMessage}`);
     }
 
-    return recovered;
+    return { regions: recovered, actualProvider, actualWebnnDeviceType };
   }
 }
 
-export async function runOcr(image: HTMLImageElement, detectedRegions: TextRegion[]): Promise<TextRegion[]> {
+export async function runOcr(image: HTMLImageElement, detectedRegions: TextRegion[]): Promise<OcrResult> {
   const onnxResult = await runOcrByOnnx(image, detectedRegions);
-  if (onnxResult.length > 0) {
+  if (onnxResult.regions.length > 0) {
     return onnxResult;
   }
   throw new Error("OCR ONNX 未返回有效识别结果");

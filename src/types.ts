@@ -18,6 +18,7 @@ export type TextRegion = {
   quad?: [QuadPoint, QuadPoint, QuadPoint, QuadPoint];
   direction?: TextDirection;
   prob?: number;
+  fontSize?: number;
   fgColor?: [number, number, number];
   bgColor?: [number, number, number];
   sourceText: string;

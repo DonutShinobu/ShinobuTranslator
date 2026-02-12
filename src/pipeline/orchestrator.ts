@@ -184,7 +184,7 @@ export async function runPipeline(
 
   report(onProgress, "typeset", "排版和嵌字");
   try {
-    resultCanvas = drawTypeset(cleanedCanvas, latestRegions);
+    resultCanvas = await drawTypeset(cleanedCanvas, latestRegions);
   } catch (error) {
     throw new PipelineStageError("排版", toErrorDetail(error), buildArtifacts());
   }

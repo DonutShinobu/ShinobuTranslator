@@ -806,6 +806,9 @@ function buildMergedRegion(group: MergedGroup, allQuads: InternalQuad[]): TextRe
   }
   const prob = totalArea > 0 ? Math.exp(totalLogProbs / totalArea) : 0;
 
+  // Average fontSize from component textlines
+  const fontSize = txtlns.reduce((s, q) => s + q.fontSize, 0) / txtlns.length;
+
   // Union bounding box
   let minX = Infinity;
   let minY = Infinity;
@@ -863,6 +866,7 @@ function buildMergedRegion(group: MergedGroup, allQuads: InternalQuad[]): TextRe
     quad,
     direction: majorityDir,
     prob,
+    fontSize,
     fgColor,
     bgColor,
     sourceText,

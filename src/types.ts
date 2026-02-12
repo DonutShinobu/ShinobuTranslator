@@ -21,6 +21,8 @@ export type TextRegion = {
   fontSize?: number;
   fgColor?: [number, number, number];
   bgColor?: [number, number, number];
+  /** Number of original text lines before merge (used for region expansion). */
+  originalLineCount?: number;
   sourceText: string;
   translatedText: string;
 };

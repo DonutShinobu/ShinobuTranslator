@@ -1,7 +1,13 @@
 import * as ort from "onnxruntime-web/all";
 import { getModel, getModelSession } from "../runtime/modelRegistry";
 import { isContextLostRuntimeError } from "../runtime/onnx";
-import type { RuntimeProvider } from "../runtime/onnx";
+import type { RuntimeProvider, WebNnDeviceType } from "../runtime/onnx";
+
+export type InpaintResult = {
+  canvas: HTMLCanvasElement;
+  actualProvider: RuntimeProvider;
+  actualWebnnDeviceType?: WebNnDeviceType;
+};
 
 type InpaintInputNormalize = "zero_to_one" | "minus_one_to_one";
 type InpaintOutputNormalize = InpaintInputNormalize | "zero_to_255";
@@ -245,7 +251,7 @@ function isLikelyInvalidInpaintResult(
 async function runInpaintByOnnx(
   originalCanvas: HTMLCanvasElement,
   refinedMaskCanvas: HTMLCanvasElement
-): Promise<HTMLCanvasElement> {
+): Promise<InpaintResult> {
   const model = await getModel("inpaint");
   const primaryHandle = await getModelSession("inpaint", ["webgpu", "webnn", "wasm"]);
   const size = model.input?.[0] ?? 512;
@@ -275,6 +281,8 @@ async function runInpaintByOnnx(
     return decodeInpaintTensor(outTensor, size, size, outputNormalize);
   };
 
+  let actualProvider: RuntimeProvider = primaryHandle.provider;
+  let actualWebnnDeviceType = primaryHandle.webnnDeviceType;
   let outputs: ort.InferenceSession.ReturnType;
   try {
     outputs = await runWithHandle(primaryHandle);
@@ -301,6 +309,8 @@ async function runInpaintByOnnx(
         recovered = await runWithHandle(handle);
         if (handle.provider !== primaryHandle.provider) {
           console.warn(`[inpaint] 已回退到 ${handle.provider}`);
+          actualProvider = handle.provider;
+          actualWebnnDeviceType = handle.webnnDeviceType;
         }
         break;
       } catch (fallbackError) {
@@ -319,12 +329,14 @@ async function runInpaintByOnnx(
   let inpaintedRgba = decodeOutputs(outputs);
 
   if (
-    primaryHandle.provider === "webnn" &&
+    actualProvider === "webnn" &&
     isLikelyInvalidInpaintResult(feeds.sourceRgba, inpaintedRgba, feeds.maskBinary)
   ) {
     const wasmHandle = await getModelSession("inpaint", ["wasm"]);
     const wasmOutputs = await runWithHandle(wasmHandle);
     inpaintedRgba = decodeOutputs(wasmOutputs);
+    actualProvider = "wasm";
+    actualWebnnDeviceType = undefined;
   }
 
   const outputWidth = originalCanvas.width;
@@ -333,18 +345,20 @@ async function runInpaintByOnnx(
   const originalMaskBinary = readMaskBinary(refinedMaskCanvas, outputWidth, outputHeight);
   const inpaintedRgbaAtOriginalSize = resizeRgba(inpaintedRgba, size, size, outputWidth, outputHeight);
 
-  return composeInpaintResult(
+  const canvas = composeInpaintResult(
     originalSourceRgba,
     inpaintedRgbaAtOriginalSize,
     originalMaskBinary,
     outputWidth,
     outputHeight
   );
+
+  return { canvas, actualProvider, actualWebnnDeviceType };
 }
 
 export async function runInpaint(
   originalCanvas: HTMLCanvasElement,
   refinedMaskCanvas: HTMLCanvasElement
-): Promise<HTMLCanvasElement> {
+): Promise<InpaintResult> {
   return runInpaintByOnnx(originalCanvas, refinedMaskCanvas);
 }

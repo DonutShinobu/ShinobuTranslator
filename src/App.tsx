@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { PipelineStageError, runPipeline } from "./pipeline/orchestrator";
 import { runRuntimeSelfCheck, type RuntimeSelfCheckReport } from "./runtime/selfCheck";
-import type { PipelineArtifacts, PipelineConfig, PipelineProgress } from "./types";
+import type { PipelineArtifacts, PipelineConfig, PipelineProgress, StageTiming } from "./types";
 
 const defaultConfig: PipelineConfig = {
   sourceLang: "ja",
@@ -11,6 +11,44 @@ const defaultConfig: PipelineConfig = {
   llmApiKey: "",
   llmModel: "gpt-4o-mini"
 };
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) {
+    return `${Math.round(ms)}ms`;
+  }
+  return `${(ms / 1000).toFixed(2)}s`;
+}
+
+function TimingPanel({ timings }: { timings: StageTiming[] }) {
+  if (timings.length === 0) {
+    return null;
+  }
+  const total = timings.reduce((sum, t) => sum + t.durationMs, 0);
+  return (
+    <div className="timing-box">
+      <strong>各阶段耗时</strong>
+      <div className="timing-grid">
+        {timings.map((t) => {
+          const pct = total > 0 ? (t.durationMs / total) * 100 : 0;
+          return (
+            <div key={t.stage} className="timing-item">
+              <span className="timing-label">{t.label}</span>
+              <span className="timing-bar-wrap">
+                <span className="timing-bar" style={{ width: `${pct}%` }} />
+              </span>
+              <span className="timing-value">{formatDuration(t.durationMs)}</span>
+            </div>
+          );
+        })}
+        <div className="timing-item timing-total">
+          <span className="timing-label">总计</span>
+          <span className="timing-bar-wrap" />
+          <span className="timing-value">{formatDuration(total)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function CanvasPreview({ canvas, title }: { canvas: HTMLCanvasElement | null; title: string }) {
   const dataUrl = useMemo(() => canvas?.toDataURL("image/png") ?? "", [canvas]);
@@ -267,6 +305,7 @@ export function App() {
           </div>
         ) : null}
         {error ? <div className="error">{error}</div> : null}
+        {result ? <TimingPanel timings={result.stageTimings} /> : null}
       </section>
 
       <section className="gallery">

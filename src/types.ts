@@ -53,6 +53,13 @@ export type PipelineArtifacts = {
   cleanedCanvas: HTMLCanvasElement;
   resultCanvas: HTMLCanvasElement;
   runtimeStages: RuntimeStageStatus[];
+  stageTimings: StageTiming[];
+};
+
+export type StageTiming = {
+  stage: string;
+  label: string;
+  durationMs: number;
 };
 
 export type PipelineProgress = {

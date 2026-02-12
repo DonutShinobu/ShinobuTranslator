@@ -12,7 +12,7 @@ export type SessionHandle = {
 };
 
 let envInitialized = false;
-let createSessionQueue: Promise<void> = Promise.resolve();
+const perModelLocks = new Map<string, Promise<void>>();
 const SESSION_CREATE_TIMEOUT_MS = 30000;
 
 function toErrorMessage(error: unknown): string {
@@ -121,12 +121,12 @@ async function createSessionWithTimeout(
   }
 }
 
-async function withCreateSessionLock<T>(task: () => Promise<T>): Promise<T> {
-  const previous = createSessionQueue;
+async function withPerModelLock<T>(modelUrl: string, task: () => Promise<T>): Promise<T> {
+  const previous = perModelLocks.get(modelUrl) ?? Promise.resolve();
   let release: () => void = () => undefined;
-  createSessionQueue = new Promise<void>((resolve) => {
+  perModelLocks.set(modelUrl, new Promise<void>((resolve) => {
     release = resolve;
-  });
+  }));
   await previous;
   try {
     return await task();
@@ -164,7 +164,7 @@ export function ensureOrtEnv(): void {
 }
 
 export async function createSession(modelUrl: string, preferred: RuntimeProvider[] = ["webnn", "wasm"]): Promise<SessionHandle> {
-  return withCreateSessionLock(async () => {
+  return withPerModelLock(modelUrl, async () => {
     ensureOrtEnv();
 
     const normalized = preferred.filter((item, idx) => preferred.indexOf(item) === idx);

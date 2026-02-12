@@ -22,13 +22,6 @@ const manifestUrl = "/models/manifest.json";
 let manifestCache: ManifestData | null = null;
 const sessionCache = new Map<string, SessionHandle>();
 
-function toCacheKey(name: "detector" | "ocr" | "inpaint", preferred?: RuntimeProvider[]): string {
-  if (!preferred || preferred.length === 0) {
-    return `${name}:manifest`;
-  }
-  return `${name}:${preferred.join(",")}`;
-}
-
 function normalizeRuntime(value: unknown): RuntimeProvider[] {
   if (!Array.isArray(value)) {
     return ["webnn", "wasm"];
@@ -76,13 +69,13 @@ export async function getModelSession(
   name: "detector" | "ocr" | "inpaint",
   preferred?: RuntimeProvider[]
 ): Promise<SessionHandle> {
-  const cacheKey = toCacheKey(name, preferred);
+  const model = await getModel(name);
+  const runtime = preferred && preferred.length > 0 ? preferred : model.runtime ?? ["wasm"];
+  const cacheKey = `${name}:${runtime.join(",")}`;
   const cached = sessionCache.get(cacheKey);
   if (cached) {
     return cached;
   }
-  const model = await getModel(name);
-  const runtime = preferred && preferred.length > 0 ? preferred : model.runtime;
   const handle = await createSession(model.url, runtime);
   sessionCache.set(cacheKey, handle);
   return handle;

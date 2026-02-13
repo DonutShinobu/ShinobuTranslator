@@ -28,6 +28,8 @@ artifacts/
 # Local scratch files
 nul
 tmp-*.png
+/plans/
+/cotrans.js
 
 # External repos (cloned for reference)
 gpuweb_repo/

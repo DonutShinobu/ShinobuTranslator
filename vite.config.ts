@@ -1,19 +1,21 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
+import { resolve } from 'node:path';
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  server: {
-    port: 5173,
-    headers: {
-      "Cross-Origin-Opener-Policy": "same-origin",
-      "Cross-Origin-Embedder-Policy": "require-corp"
-    }
+  build: {
+    rollupOptions: {
+      input: {
+        popup: resolve(__dirname, 'popup.html'),
+        background: resolve(__dirname, 'src/background/index.ts'),
+        content: resolve(__dirname, 'src/content/index.ts'),
+      },
+      output: {
+        entryFileNames: (chunkInfo) => `${chunkInfo.name}.js`,
+        chunkFileNames: 'chunks/[name].js',
+        assetFileNames: 'assets/[name][extname]',
+      },
+    },
   },
-  preview: {
-    headers: {
-      "Cross-Origin-Opener-Policy": "same-origin",
-      "Cross-Origin-Embedder-Policy": "require-corp"
-    }
-  }
 });

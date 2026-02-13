@@ -1,5 +1,6 @@
 import * as ortAll from "onnxruntime-web/all";
 import type { InferenceSession } from "onnxruntime-common";
+import { resolveAssetUrl } from "../shared/assetUrl";
 
 export type OrtxSession = InferenceSession;
 export type RuntimeProvider = "webnn" | "webgpu" | "wasm";
@@ -148,7 +149,7 @@ export function ensureOrtEnv(): void {
     typeof window !== "undefined" && window.isSecureContext && window.crossOriginIsolated;
   const wasmThreads = canUseWasmThreads ? Math.max(1, Math.min(8, hwThreads)) : 1;
 
-  ortAll.env.wasm.wasmPaths = "/node_modules/onnxruntime-web/dist/";
+  ortAll.env.wasm.wasmPaths = resolveAssetUrl("ort/");
   ortAll.env.wasm.numThreads = wasmThreads;
   ortAll.env.wasm.proxy = false;
 

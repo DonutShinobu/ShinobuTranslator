@@ -64,6 +64,7 @@ const styleId = 'mt-x-overlay-style';
 const imageDialogSelector = '[aria-labelledby="modal-header"][role="dialog"]';
 const originalSrcAttr = 'data-mt-original-src';
 const photoStateCacheLimit = 20;
+const routeChangeResyncDelayMs = 150;
 
 let runPipelineLoader: Promise<typeof import('../pipeline/orchestrator')> | null = null;
 
@@ -323,6 +324,10 @@ class XOverlayTranslator {
   private observedRoot: Element | null = null;
   private syncTimer: number | null = null;
   private syncDueTime = 0;
+  private routeResyncTimer: number | null = null;
+  private originalPushState: History['pushState'] | null = null;
+  private originalReplaceState: History['replaceState'] | null = null;
+  private historyPatched = false;
   private activeDialog: HTMLElement | null = null;
   private uiHost: HTMLElement | null = null;
   private button: HTMLButtonElement | null = null;
@@ -335,6 +340,7 @@ class XOverlayTranslator {
   start(): void {
     this.injectStyle();
     this.bindObserver();
+    this.installHistoryHooks();
     window.addEventListener('beforeunload', this.handleBeforeUnload);
     window.addEventListener('popstate', this.handleRouteChange);
     window.addEventListener('hashchange', this.handleRouteChange);
@@ -347,9 +353,14 @@ class XOverlayTranslator {
       this.syncTimer = null;
       this.syncDueTime = 0;
     }
+    if (this.routeResyncTimer !== null) {
+      window.clearTimeout(this.routeResyncTimer);
+      this.routeResyncTimer = null;
+    }
     this.observer?.disconnect();
     this.observer = null;
     this.observedRoot = null;
+    this.restoreHistoryHooks();
     window.removeEventListener('beforeunload', this.handleBeforeUnload);
     window.removeEventListener('popstate', this.handleRouteChange);
     window.removeEventListener('hashchange', this.handleRouteChange);
@@ -358,7 +369,49 @@ class XOverlayTranslator {
 
   private handleRouteChange = (): void => {
     this.scheduleSync(0);
+    if (this.routeResyncTimer !== null) {
+      window.clearTimeout(this.routeResyncTimer);
+    }
+    this.routeResyncTimer = window.setTimeout(() => {
+      this.routeResyncTimer = null;
+      this.scheduleSync(0);
+    }, routeChangeResyncDelayMs);
   };
+
+  private installHistoryHooks(): void {
+    if (this.historyPatched) {
+      return;
+    }
+    this.originalPushState = history.pushState;
+    this.originalReplaceState = history.replaceState;
+
+    history.pushState = ((data: unknown, unused: string, url?: string | URL | null): void => {
+      this.originalPushState?.call(history, data, unused, url);
+      this.handleRouteChange();
+    }) as History['pushState'];
+
+    history.replaceState = ((data: unknown, unused: string, url?: string | URL | null): void => {
+      this.originalReplaceState?.call(history, data, unused, url);
+      this.handleRouteChange();
+    }) as History['replaceState'];
+
+    this.historyPatched = true;
+  }
+
+  private restoreHistoryHooks(): void {
+    if (!this.historyPatched) {
+      return;
+    }
+    if (this.originalPushState) {
+      history.pushState = this.originalPushState;
+    }
+    if (this.originalReplaceState) {
+      history.replaceState = this.originalReplaceState;
+    }
+    this.originalPushState = null;
+    this.originalReplaceState = null;
+    this.historyPatched = false;
+  }
 
   private bindObserver(): void {
     const nextRoot = document.querySelector('#layers') ?? document.body;

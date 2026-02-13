@@ -1,4 +1,4 @@
-import type { PipelineConfig, PipelineProgress, RuntimeStageStatus } from '../types';
+import type { PipelineConfig, PipelineProgress, StageTiming } from '../types';
 
 type ExtensionSettings = {
   sourceLang: string;
@@ -7,6 +7,8 @@ type ExtensionSettings = {
   llmBaseUrl: string;
   llmApiKey: string;
   llmModel: string;
+  showElapsedTime: boolean;
+  showStageTimingDetails: boolean;
 };
 
 type RuntimeMessage =
@@ -41,7 +43,7 @@ type PhotoState = {
   originalUrl: string;
   translatedUrl?: string;
   stageText: string;
-  fallbackSummary: string;
+  elapsedText: string;
   errorText: string;
 };
 
@@ -49,18 +51,19 @@ const stageLabelMap: Record<string, string> = {
   load: '加载图片',
   preload: '加载模型',
   detect: '文本检测',
-  ocr: 'OCR 识别',
-  merge: '文本合并',
-  translate: '翻译',
-  mask_refine: '遮罩细化',
-  inpaint: '去字',
-  typeset: '排版嵌字',
+  ocr: '文字识别',
+  merge: '合并文本',
+  translate: '翻译文本',
+  mask_refine: '细化遮罩',
+  inpaint: '去除文字',
+  typeset: '文字排版',
   done: '完成',
 };
 
 const styleId = 'mt-x-overlay-style';
 const imageDialogSelector = '[aria-labelledby="modal-header"][role="dialog"]';
 const originalSrcAttr = 'data-mt-original-src';
+const photoStateCacheLimit = 20;
 
 let runPipelineLoader: Promise<typeof import('../pipeline/orchestrator')> | null = null;
 
@@ -122,19 +125,29 @@ function sendRuntimeMessage(message: RuntimeMessage): Promise<RuntimeResponse> {
   if (!chromeApi?.runtime?.sendMessage) {
     return Promise.reject(new Error('当前环境不支持 runtime.sendMessage'));
   }
-  return new Promise<RuntimeResponse>((resolve, reject) => {
-    chromeApi.runtime?.sendMessage?.(message, (response: unknown) => {
-      const lastError = chromeApi.runtime?.lastError;
-      if (lastError?.message) {
-        reject(new Error(lastError.message));
-        return;
-      }
-      if (!response || typeof response !== 'object') {
-        reject(new Error('扩展消息返回为空'));
-        return;
-      }
-      resolve(response as RuntimeResponse);
+
+  const sendOnce = () =>
+    new Promise<RuntimeResponse>((resolve, reject) => {
+      chromeApi.runtime?.sendMessage?.(message, (response: unknown) => {
+        const lastError = chromeApi.runtime?.lastError;
+        if (lastError?.message) {
+          reject(new Error(lastError.message));
+          return;
+        }
+        if (!response || typeof response !== 'object') {
+          reject(new Error('扩展消息响应为空'));
+          return;
+        }
+        resolve(response as RuntimeResponse);
+      });
     });
+
+  return sendOnce().catch(async (error: unknown) => {
+    if (!isNoReceivingEndError(error)) {
+      throw error;
+    }
+    await wait(120);
+    return sendOnce();
   });
 }
 
@@ -143,6 +156,17 @@ function toErrorMessage(error: unknown): string {
     return error.message;
   }
   return String(error);
+}
+
+function isNoReceivingEndError(error: unknown): boolean {
+  const message = toErrorMessage(error);
+  return message.includes('Could not establish connection') || message.includes('Receiving end does not exist');
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
 }
 
 function isVisibleElement(element: HTMLElement): boolean {
@@ -176,6 +200,28 @@ function normalizeImageKey(rawUrl: string): string {
   } catch {
     return rawUrl;
   }
+}
+
+function getTwitterMediaIdentity(rawUrl: string): string | null {
+  try {
+    const url = new URL(rawUrl);
+    if (url.hostname !== 'pbs.twimg.com' || !url.pathname.startsWith('/media/')) {
+      return null;
+    }
+    const format = url.searchParams.get('format');
+    return format ? `${url.pathname}?format=${format}` : url.pathname;
+  } catch {
+    return null;
+  }
+}
+
+function isSameTwitterMedia(leftUrl: string, rightUrl: string): boolean {
+  const left = getTwitterMediaIdentity(leftUrl);
+  const right = getTwitterMediaIdentity(rightUrl);
+  if (!left || !right) {
+    return false;
+  }
+  return left === right;
 }
 
 function updateImageCompanionBackground(image: HTMLImageElement, targetUrl: string): void {
@@ -231,14 +277,33 @@ function base64ToBlob(base64: string, contentType: string): Blob {
   return new Blob([bytes], { type: contentType || 'image/jpeg' });
 }
 
-function createFallbackSummary(runtimeStages: RuntimeStageStatus[]): string {
-  const fallbackStages = Array.from(
-    new Set(runtimeStages.filter((stage) => stage.provider === 'wasm').map((stage) => stage.model))
-  );
-  if (fallbackStages.length === 0) {
-    return 'WASM回退: 否';
+function formatDuration(durationMs: number): string {
+  if (!Number.isFinite(durationMs) || durationMs <= 0) {
+    return '0ms';
   }
-  return `WASM回退: 是（${fallbackStages.join(', ')}）`;
+  if (durationMs >= 1000) {
+    return `${(durationMs / 1000).toFixed(2)}s`;
+  }
+  return `${Math.round(durationMs)}ms`;
+}
+
+function formatElapsedText(totalDurationMs: number, stageTimings: StageTiming[], showStageDetails: boolean): string {
+  const totalLine = `总耗时：${formatDuration(totalDurationMs)}`;
+  if (!showStageDetails || stageTimings.length === 0) {
+    return totalLine;
+  }
+  const detailLines = stageTimings.map((timing) => {
+    const label = stageLabelMap[timing.stage] ?? timing.label ?? timing.stage;
+    return `${label}：${formatDuration(timing.durationMs)}`;
+  });
+  return [totalLine, ...detailLines].join('\n');
+}
+
+function appendStatusDetail(baseText: string, detailText: string): string {
+  if (!detailText) {
+    return baseText;
+  }
+  return `${baseText}\n${detailText}`;
 }
 
 function createInitialState(originalUrl: string): PhotoState {
@@ -248,7 +313,7 @@ function createInitialState(originalUrl: string): PhotoState {
     originalUrl,
     translatedUrl: undefined,
     stageText: '',
-    fallbackSummary: '',
+    elapsedText: '',
     errorText: '',
   };
 }
@@ -257,11 +322,12 @@ class XOverlayTranslator {
   private observer: MutationObserver | null = null;
   private observedRoot: Element | null = null;
   private syncTimer: number | null = null;
+  private syncDueTime = 0;
   private activeDialog: HTMLElement | null = null;
   private uiHost: HTMLElement | null = null;
   private button: HTMLButtonElement | null = null;
-  private stageLine: HTMLDivElement | null = null;
-  private fallbackLine: HTMLDivElement | null = null;
+  private statusLine: HTMLDivElement | null = null;
+  private statusSpinner: HTMLSpanElement | null = null;
   private currentImageKey: string | null = null;
   private states = new Map<string, PhotoState>();
   private hadDialog = false;
@@ -279,6 +345,7 @@ class XOverlayTranslator {
     if (this.syncTimer !== null) {
       window.clearTimeout(this.syncTimer);
       this.syncTimer = null;
+      this.syncDueTime = 0;
     }
     this.observer?.disconnect();
     this.observer = null;
@@ -301,21 +368,47 @@ class XOverlayTranslator {
     this.observer?.disconnect();
     this.observedRoot = nextRoot;
     this.observer = new MutationObserver((mutations) => {
-      if (mutations.some((mutation) => mutation.type === 'childList')) {
-        this.scheduleSync(180);
+      if (!mutations.some((mutation) => mutation.type === 'childList')) {
+        return;
       }
+      const delayMs = this.hasDialogNodeMutation(mutations) ? 0 : 180;
+      this.scheduleSync(delayMs);
     });
     this.observer.observe(nextRoot, { childList: true, subtree: true });
   }
 
-  private scheduleSync(delayMs: number): void {
-    if (this.syncTimer !== null) {
-      return;
+  private hasDialogNodeMutation(mutations: MutationRecord[]): boolean {
+    for (const mutation of mutations) {
+      const changedNodes = [...mutation.addedNodes, ...mutation.removedNodes];
+      for (const node of changedNodes) {
+        if (!(node instanceof HTMLElement)) {
+          continue;
+        }
+        if (node.matches(imageDialogSelector) || node.querySelector(imageDialogSelector)) {
+          return true;
+        }
+      }
     }
+    return false;
+  }
+
+  private scheduleSync(delayMs: number): void {
+    const now = performance.now();
+    const dueTime = now + Math.max(0, delayMs);
+    if (this.syncTimer !== null) {
+      if (dueTime >= this.syncDueTime) {
+        return;
+      }
+      window.clearTimeout(this.syncTimer);
+      this.syncTimer = null;
+    }
+    const timeoutMs = Math.max(0, Math.ceil(dueTime - now));
+    this.syncDueTime = now + timeoutMs;
     this.syncTimer = window.setTimeout(() => {
       this.syncTimer = null;
+      this.syncDueTime = 0;
       this.sync();
-    }, delayMs);
+    }, timeoutMs);
   }
 
   private injectStyle(): void {
@@ -355,21 +448,41 @@ class XOverlayTranslator {
         opacity: 0.62;
         cursor: default;
       }
-      .mt-x-info-wrap {
+      .mt-x-status {
         margin-top: 2px;
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
       }
-      .mt-x-info {
+      .mt-x-status-spinner {
+        width: 12px;
+        height: 12px;
+        margin-top: 2px;
+        border: 2px solid rgba(255, 255, 255, 0.9);
+        border-right-color: transparent;
+        border-bottom-color: transparent;
+        border-radius: 50%;
+        animation: mt-x-spin 0.8s linear infinite;
+        flex: 0 0 auto;
+      }
+      .mt-x-status-spinner[data-running='false'] {
+        display: none;
+      }
+      .mt-x-status-text {
         max-width: 260px;
         color: #ffffff;
         text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
         font-size: 12px;
         line-height: 1.35;
+        white-space: pre-line;
       }
-      .mt-x-info + .mt-x-info {
-        margin-top: 2px;
-      }
-      .mt-x-info[data-variant='error'] {
+      .mt-x-status-text[data-variant='error'] {
         color: #fecaca;
+      }
+      @keyframes mt-x-spin {
+        to {
+          transform: rotate(360deg);
+        }
       }
     `;
     document.documentElement.appendChild(style);
@@ -381,7 +494,6 @@ class XOverlayTranslator {
     if (!dialog) {
       if (this.hadDialog) {
         this.detachUi();
-        this.clearSessionCache();
       }
       this.hadDialog = false;
       return;
@@ -419,11 +531,17 @@ class XOverlayTranslator {
   }
 
   private readImageOriginalUrl(image: HTMLImageElement): string {
+    const src = image.currentSrc || image.src;
     const attrOriginal = image.getAttribute(originalSrcAttr);
     if (attrOriginal) {
-      return attrOriginal;
+      if (!src || src.startsWith('blob:')) {
+        return attrOriginal;
+      }
+      if (isSameTwitterMedia(attrOriginal, src)) {
+        return attrOriginal;
+      }
+      image.removeAttribute(originalSrcAttr);
     }
-    const src = image.currentSrc || image.src;
     if (!src || src.startsWith('blob:')) {
       return '';
     }
@@ -471,10 +589,12 @@ class XOverlayTranslator {
   private ensureState(key: string, originalUrl: string): PhotoState {
     const existing = this.states.get(key);
     if (existing) {
+      this.touchStateKey(key);
       return existing;
     }
     const created = createInitialState(originalUrl);
     this.states.set(key, created);
+    this.trimStateCache(this.currentImageKey ?? key);
     return created;
   }
 
@@ -491,15 +611,16 @@ class XOverlayTranslator {
     });
     root.appendChild(this.button);
 
-    const infoWrap = document.createElement('div');
-    infoWrap.className = 'mt-x-info-wrap';
-    this.stageLine = document.createElement('div');
-    this.stageLine.className = 'mt-x-info';
-    this.fallbackLine = document.createElement('div');
-    this.fallbackLine.className = 'mt-x-info';
-    infoWrap.appendChild(this.stageLine);
-    infoWrap.appendChild(this.fallbackLine);
-    root.appendChild(infoWrap);
+    const statusWrap = document.createElement('div');
+    statusWrap.className = 'mt-x-status';
+    this.statusSpinner = document.createElement('span');
+    this.statusSpinner.className = 'mt-x-status-spinner';
+    this.statusSpinner.dataset.running = 'false';
+    this.statusLine = document.createElement('div');
+    this.statusLine.className = 'mt-x-status-text';
+    statusWrap.appendChild(this.statusSpinner);
+    statusWrap.appendChild(this.statusLine);
+    root.appendChild(statusWrap);
 
     const host = document.createElement('div');
     host.className = 'mt-x-overlay-fallback';
@@ -515,71 +636,106 @@ class XOverlayTranslator {
     }
     this.uiHost = null;
     this.button = null;
-    this.stageLine = null;
-    this.fallbackLine = null;
+    this.statusLine = null;
+    this.statusSpinner = null;
     this.currentImageKey = null;
     this.activeDialog = null;
   }
 
   private clearSessionCache(): void {
     for (const state of this.states.values()) {
-      if (state.translatedUrl) {
-        URL.revokeObjectURL(state.translatedUrl);
-      }
+      this.disposeState(state);
     }
     this.states.clear();
   }
 
-  private render(state: PhotoState | null): void {
-    if (!this.button || !this.stageLine || !this.fallbackLine) {
+  private disposeState(state: PhotoState): void {
+    if (!state.translatedUrl) {
       return;
     }
+    URL.revokeObjectURL(state.translatedUrl);
+    state.translatedUrl = undefined;
+  }
+
+  private touchStateKey(key: string): void {
+    const state = this.states.get(key);
     if (!state) {
-      this.button.disabled = true;
-      this.button.textContent = '翻译';
-      this.stageLine.textContent = '';
-      this.stageLine.dataset.variant = 'normal';
-      this.fallbackLine.textContent = '';
+      return;
+    }
+    this.states.delete(key);
+    this.states.set(key, state);
+  }
+
+  private trimStateCache(protectedKey?: string): void {
+    while (this.states.size > photoStateCacheLimit) {
+      const oldestKey = this.states.keys().next().value as string | undefined;
+      if (!oldestKey) {
+        break;
+      }
+      if (protectedKey && oldestKey === protectedKey) {
+        const protectedState = this.states.get(oldestKey);
+        if (!protectedState) {
+          break;
+        }
+        this.states.delete(oldestKey);
+        this.states.set(oldestKey, protectedState);
+        continue;
+      }
+      const state = this.states.get(oldestKey);
+      if (state) {
+        this.disposeState(state);
+      }
+      this.states.delete(oldestKey);
+    }
+  }
+
+  private render(state: PhotoState | null): void {
+    if (!this.button || !this.statusLine || !this.statusSpinner) {
+      return;
+    }
+    const button = this.button;
+    const statusLine = this.statusLine;
+    const statusSpinner = this.statusSpinner;
+    const updateStatusLine = (text: string, variant: 'normal' | 'error', running: boolean): void => {
+      statusLine.textContent = text;
+      statusLine.dataset.variant = variant;
+      statusSpinner.dataset.running = running ? 'true' : 'false';
+    };
+
+    if (!state) {
+      button.disabled = true;
+      button.textContent = '翻译';
+      updateStatusLine('', 'normal', false);
       return;
     }
 
-    this.button.disabled = state.status === 'running';
+    button.disabled = state.status === 'running';
     if (state.status === 'running') {
-      this.button.textContent = state.stageText ? `翻译中: ${state.stageText}` : '翻译中...';
-      this.stageLine.textContent = state.stageText ? `阶段: ${state.stageText}` : '';
-      this.stageLine.dataset.variant = 'normal';
-      this.fallbackLine.textContent = '';
+      button.textContent = '翻译中';
+      updateStatusLine(`正在处理：${state.stageText || '准备中'}`, 'normal', true);
       return;
     }
 
     if (state.status === 'translated') {
-      this.button.textContent = '显示原图';
-      this.stageLine.textContent = '';
-      this.stageLine.dataset.variant = 'normal';
-      this.fallbackLine.textContent = state.fallbackSummary;
+      button.textContent = '显示原图';
+      updateStatusLine(appendStatusDetail('翻译完成', state.elapsedText), 'normal', false);
       return;
     }
 
     if (state.status === 'showingOriginal') {
-      this.button.textContent = '显示译图';
-      this.stageLine.textContent = '';
-      this.stageLine.dataset.variant = 'normal';
-      this.fallbackLine.textContent = state.fallbackSummary;
+      button.textContent = '显示译图';
+      updateStatusLine(appendStatusDetail('当前显示原图', state.elapsedText), 'normal', false);
       return;
     }
 
     if (state.status === 'error') {
-      this.button.textContent = '重试翻译';
-      this.stageLine.textContent = `错误: ${state.errorText}`;
-      this.stageLine.dataset.variant = 'error';
-      this.fallbackLine.textContent = state.fallbackSummary;
+      button.textContent = '重试';
+      updateStatusLine('翻译失败：' + state.errorText, 'error', false);
       return;
     }
 
-    this.button.textContent = '翻译';
-    this.stageLine.textContent = '';
-    this.stageLine.dataset.variant = 'normal';
-    this.fallbackLine.textContent = state.fallbackSummary;
+    button.textContent = '翻译';
+    updateStatusLine('', 'normal', false);
   }
 
   private applyImageFromState(image: HTMLImageElement, state: PhotoState): void {
@@ -608,7 +764,7 @@ class XOverlayTranslator {
 
   private getCurrentImageAndState(): { image: HTMLImageElement; key: string; state: PhotoState } {
     if (!this.activeDialog || !this.currentImageKey) {
-      throw new Error('当前未处于图片大图模式');
+      throw new Error('当前图片弹窗未激活');
     }
     const image = this.findCurrentImage(this.activeDialog);
     if (!image) {
@@ -616,7 +772,7 @@ class XOverlayTranslator {
     }
     const state = this.states.get(this.currentImageKey);
     if (!state) {
-      throw new Error('图片状态不存在');
+      throw new Error('未找到图片状态');
     }
     return {
       image,
@@ -632,6 +788,24 @@ class XOverlayTranslator {
     } catch {
       return;
     }
+    const liveOriginalUrl = this.readImageOriginalUrl(current.image);
+    if (liveOriginalUrl) {
+      const liveKey = normalizeImageKey(liveOriginalUrl);
+      if (liveKey !== current.key) {
+        const liveState = this.ensureState(liveKey, liveOriginalUrl);
+        if (!liveState.translatedUrl && liveState.status !== 'running') {
+          liveState.originalUrl = liveOriginalUrl;
+        }
+        this.currentImageKey = liveKey;
+        current = {
+          image: current.image,
+          key: liveKey,
+          state: liveState,
+        };
+        this.render(liveState);
+      }
+    }
+
     const { image, key, state } = current;
 
     if (state.status === 'running') {
@@ -646,6 +820,7 @@ class XOverlayTranslator {
         state.mode = 'translated';
         state.status = 'translated';
       }
+      this.touchStateKey(key);
       state.errorText = '';
       state.stageText = '';
       this.applyImageFromState(image, state);
@@ -656,7 +831,9 @@ class XOverlayTranslator {
     state.status = 'running';
     state.mode = 'original';
     state.errorText = '';
+    state.elapsedText = '';
     state.stageText = '准备下载图片';
+    const runStartAt = performance.now();
     const imageOriginal = this.readImageOriginalUrl(image);
     if (imageOriginal) {
       state.originalUrl = imageOriginal;
@@ -673,6 +850,9 @@ class XOverlayTranslator {
       if (validationError) {
         throw new Error(validationError);
       }
+      const showElapsedTime = settingsResponse.settings.showElapsedTime === true;
+      const showStageTimingDetails =
+        showElapsedTime && settingsResponse.settings.showStageTimingDetails === true;
 
       const downloadResponse = await sendRuntimeMessage({
         type: 'mt:download-image',
@@ -688,7 +868,7 @@ class XOverlayTranslator {
 
       const runPipeline = await getRunPipeline();
       const artifacts = await runPipeline(file, toPipelineConfig(settingsResponse.settings), (progress: PipelineProgress) => {
-        state.stageText = stageLabelMap[progress.stage] ?? progress.stage;
+        state.stageText = stageLabelMap[progress.stage] ?? progress.detail ?? progress.stage;
         this.render(state);
       });
 
@@ -699,12 +879,16 @@ class XOverlayTranslator {
       }
 
       state.translatedUrl = translatedUrl;
-      state.fallbackSummary = createFallbackSummary(artifacts.runtimeStages);
+      const totalDurationMs = performance.now() - runStartAt;
+      state.elapsedText = showElapsedTime
+        ? formatElapsedText(totalDurationMs, artifacts.stageTimings, showStageTimingDetails)
+        : '';
       state.stageText = '';
       state.errorText = '';
       state.mode = 'translated';
       state.status = 'translated';
-      this.states.set(key, state);
+      this.touchStateKey(key);
+      this.trimStateCache(key);
 
       this.applyImageFromState(image, state);
       this.render(state);
@@ -712,6 +896,7 @@ class XOverlayTranslator {
       state.status = 'error';
       state.errorText = toErrorMessage(error);
       state.stageText = '';
+      state.elapsedText = '';
       this.render(state);
     }
   }

@@ -152,13 +152,11 @@ async function handleMessage(message: RuntimeMessage): Promise<RuntimeResponse> 
   };
 }
 
-async function initializeBackground(): Promise<void> {
+function initializeBackground(): void {
   const chromeApi = getChromeApi();
   if (!chromeApi?.runtime?.onMessage?.addListener) {
     return;
   }
-
-  await storageSet(extensionSettingsStorageKey, await getSettings().catch(() => defaultExtensionSettings));
 
   chromeApi.runtime.onMessage.addListener((message: unknown, _sender: unknown, sendResponse: (response: unknown) => void) => {
     if (!isRuntimeMessage(message)) {
@@ -178,6 +176,11 @@ async function initializeBackground(): Promise<void> {
       });
     return true;
   });
+
+  void getSettings()
+    .catch(() => defaultExtensionSettings)
+    .then((settings) => storageSet(extensionSettingsStorageKey, settings))
+    .catch(() => undefined);
 }
 
 void initializeBackground();

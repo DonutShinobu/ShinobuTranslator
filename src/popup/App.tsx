@@ -45,6 +45,14 @@ export function App() {
     }));
   }
 
+  function updateElapsedTime(checked: boolean): void {
+    setSettings((prev) => ({
+      ...prev,
+      showElapsedTime: checked,
+      showStageTimingDetails: checked ? prev.showStageTimingDetails : false,
+    }));
+  }
+
   async function onSave(): Promise<void> {
     setStatus({ kind: 'idle', message: '' });
     const validationError = validateSettings(settings);
@@ -107,6 +115,26 @@ export function App() {
             disabled={loading || saving}
           />
         </label>
+        <label className="checkbox-row">
+          <input
+            type="checkbox"
+            checked={settings.showElapsedTime}
+            onChange={(event) => updateElapsedTime(event.target.checked)}
+            disabled={loading || saving}
+          />
+          <span className="checkbox-label">显示耗时</span>
+        </label>
+        {settings.showElapsedTime ? (
+          <label className="checkbox-row checkbox-row-sub">
+            <input
+              type="checkbox"
+              checked={settings.showStageTimingDetails}
+              onChange={(event) => updateField('showStageTimingDetails', event.target.checked)}
+              disabled={loading || saving}
+            />
+            <span className="checkbox-label">显示阶段明细</span>
+          </label>
+        ) : null}
       </section>
 
       {settings.translator === 'llm' ? (

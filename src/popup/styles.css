@@ -30,6 +30,10 @@
   margin-bottom: 0;
 }
 
+.panel .checkbox-row:last-child {
+  margin-bottom: 0;
+}
+
 .panel span {
   display: block;
   margin-bottom: 4px;
@@ -47,6 +51,32 @@
   font-size: 13px;
   background: #ffffff;
   color: #111827;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  margin-bottom: 0;
+}
+
+.checkbox-row input[type='checkbox'] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+
+.checkbox-row .checkbox-label {
+  margin: 0;
+  color: #111827;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.checkbox-row-sub {
+  margin-top: 6px;
+  padding-left: 18px;
 }
 
 .save-btn {

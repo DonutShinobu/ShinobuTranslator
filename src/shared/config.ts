@@ -9,6 +9,8 @@ export type ExtensionSettings = {
   llmBaseUrl: string;
   llmApiKey: string;
   llmModel: string;
+  showElapsedTime: boolean;
+  showStageTimingDetails: boolean;
 };
 
 export const defaultExtensionSettings: ExtensionSettings = {
@@ -18,6 +20,8 @@ export const defaultExtensionSettings: ExtensionSettings = {
   llmBaseUrl: 'https://api.openai.com/v1',
   llmApiKey: '',
   llmModel: 'gpt-4o-mini',
+  showElapsedTime: false,
+  showStageTimingDetails: false,
 };
 
 function sanitizeString(value: unknown, fallback: string): string {
@@ -28,12 +32,20 @@ function sanitizeString(value: unknown, fallback: string): string {
   return trimmed.length > 0 ? trimmed : fallback;
 }
 
+function sanitizeBoolean(value: unknown, fallback: boolean): boolean {
+  if (typeof value !== 'boolean') {
+    return fallback;
+  }
+  return value;
+}
+
 export function normalizeSettings(value: unknown): ExtensionSettings {
   if (!value || typeof value !== 'object') {
     return { ...defaultExtensionSettings };
   }
   const raw = value as Partial<Record<keyof ExtensionSettings, unknown>>;
   const translator = raw.translator === 'youdao' ? 'youdao' : 'llm';
+  const showElapsedTime = sanitizeBoolean(raw.showElapsedTime, defaultExtensionSettings.showElapsedTime);
   return {
     sourceLang: sanitizeString(raw.sourceLang, defaultExtensionSettings.sourceLang),
     targetLang: sanitizeString(raw.targetLang, defaultExtensionSettings.targetLang),
@@ -41,6 +53,10 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     llmBaseUrl: sanitizeString(raw.llmBaseUrl, defaultExtensionSettings.llmBaseUrl),
     llmApiKey: typeof raw.llmApiKey === 'string' ? raw.llmApiKey.trim() : defaultExtensionSettings.llmApiKey,
     llmModel: sanitizeString(raw.llmModel, defaultExtensionSettings.llmModel),
+    showElapsedTime,
+    showStageTimingDetails: showElapsedTime
+      ? sanitizeBoolean(raw.showStageTimingDetails, defaultExtensionSettings.showStageTimingDetails)
+      : false,
   };
 }
 

@@ -188,6 +188,35 @@ function countTextLength(text: string): number {
   return length;
 }
 
+/** Keep original vertical column count when translated text is within this ratio. */
+const verticalColumnLockRatio = 1.3;
+/** Stop shrinking vertical font below this ratio of initial size. */
+const verticalReadableMinRatio = 0.82;
+const isDevRuntime = (import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV === true;
+
+/**
+ * Determine whether a vertical region should lock its column count to
+ * originalLineCount, preferring smaller font size over creating new columns.
+ */
+function shouldLockVerticalColumns(region: TextRegion, text: string): boolean {
+  if (region.direction !== "v") {
+    return false;
+  }
+  if (!region.sourceText.trim() || !text.trim()) {
+    return false;
+  }
+  if (!region.originalLineCount || region.originalLineCount <= 0) {
+    return false;
+  }
+
+  const sourceLength = countTextLength(region.sourceText.replace(/\s+/g, ""));
+  if (sourceLength <= 0) {
+    return false;
+  }
+  const translatedLength = countTextLength(text.replace(/\s+/g, ""));
+  return translatedLength <= sourceLength * verticalColumnLockRatio;
+}
+
 // ---------------------------------------------------------------------------
 // Region expansion geometry helpers
 // ---------------------------------------------------------------------------
@@ -280,6 +309,7 @@ function resizeRegionForTranslation(
   const fontSize = resolveInitialFontSize(region);
   const isVertical = region.direction === "v";
   const usedLines = region.originalLineCount ?? 1;
+  const lockVerticalColumns = shouldLockVerticalColumns(region, text);
 
   const boxPadding = 6;
   const cw = Math.max(20, region.box.width - boxPadding * 2);
@@ -290,12 +320,17 @@ function resizeRegionForTranslation(
   ctx.font = `${fontSize}px ${fontFamily}`;
 
   if (isVertical) {
-    const columns = calcVertical(ctx, text, ch, fontSize);
-    const neededCols = columns.length;
-    if (neededCols > usedLines && usedLines > 0) {
-      const scale = 1 + (neededCols - usedLines) / usedLines;
-      scaleRegionSingleAxis(region, scale, "width", canvasWidth, canvasHeight);
-      expanded = true;
+    // When column lock is enabled, keep current region width and prefer shrinking font.
+    if (!lockVerticalColumns) {
+      const sw = strokeWidth(fontSize);
+      const metrics = resolveVerticalCellMetrics(ctx, text, fontSize, sw);
+      const columns = calcVertical(text, ch, metrics.advanceY);
+      const neededCols = columns.length;
+      if (neededCols > usedLines && usedLines > 0) {
+        const scale = 1 + (neededCols - usedLines) / usedLines;
+        scaleRegionSingleAxis(region, scale, "width", canvasWidth, canvasHeight);
+        expanded = true;
+      }
     }
   } else {
     const lines = calcHorizontal(ctx, text, cw, fontSize);
@@ -334,6 +369,25 @@ type HLine = {
 type VColumn = {
   chars: string[];
   height: number;
+};
+
+type VerticalCellMetrics = {
+  colWidth: number;
+  advanceY: number;
+  colSpacing: number;
+};
+
+type VerticalLayoutResult = {
+  columns: VColumn[];
+  metrics: VerticalCellMetrics;
+  requiredContentWidth: number;
+};
+
+type FitVerticalResult = {
+  fontSize: number;
+  columns: VColumn[];
+  metrics: VerticalCellMetrics;
+  requiredContentWidth: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -516,19 +570,77 @@ function calcHorizontalLatin(
 // ---------------------------------------------------------------------------
 
 /**
+ * Measure a single glyph's visual bounds.
+ * Prefer TextMetrics actual bounding boxes; fall back to width/fontSize.
+ */
+function measureGlyphBox(
+  ctx: CanvasRenderingContext2D,
+  ch: string,
+  fallbackFontSize: number,
+): { width: number; height: number } {
+  const metrics = ctx.measureText(ch);
+  const left = Number.isFinite(metrics.actualBoundingBoxLeft) ? Math.abs(metrics.actualBoundingBoxLeft) : 0;
+  const right = Number.isFinite(metrics.actualBoundingBoxRight) ? Math.abs(metrics.actualBoundingBoxRight) : 0;
+  const ascent = Number.isFinite(metrics.actualBoundingBoxAscent) ? Math.abs(metrics.actualBoundingBoxAscent) : 0;
+  const descent = Number.isFinite(metrics.actualBoundingBoxDescent) ? Math.abs(metrics.actualBoundingBoxDescent) : 0;
+
+  let width = left + right;
+  let height = ascent + descent;
+
+  if (width <= 0) {
+    width = metrics.width > 0 ? metrics.width : fallbackFontSize;
+  }
+  if (height <= 0) {
+    height = fallbackFontSize;
+  }
+
+  return { width, height };
+}
+
+/**
+ * Resolve per-cell metrics for vertical layout based on real glyph bounds.
+ */
+function resolveVerticalCellMetrics(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  fontSize: number,
+  sw: number,
+): VerticalCellMetrics {
+  const mappedChars = [...text.replace(/\s+/g, "")].map((raw) => CJK_H2V.get(raw) ?? raw);
+  const uniqueChars = Array.from(new Set(mappedChars));
+  let maxGlyphWidth = 0;
+  let maxGlyphHeight = 0;
+
+  for (const ch of uniqueChars) {
+    const box = measureGlyphBox(ctx, ch, fontSize);
+    maxGlyphWidth = Math.max(maxGlyphWidth, box.width);
+    maxGlyphHeight = Math.max(maxGlyphHeight, box.height);
+  }
+
+  const safetyPadding = Math.max(2, Math.ceil(sw * 0.8));
+  const colWidth = Math.ceil(Math.max(fontSize, maxGlyphWidth) + safetyPadding);
+  const advanceY = Math.ceil(Math.max(fontSize, maxGlyphHeight));
+  const colSpacing = Math.max(1, Math.round(fontSize * 0.2));
+
+  return { colWidth, advanceY, colSpacing };
+}
+
+function computeVerticalTotalWidth(columnCount: number, metrics: VerticalCellMetrics): number {
+  if (columnCount <= 0) {
+    return 0;
+  }
+  return columnCount * metrics.colWidth + Math.max(0, columnCount - 1) * metrics.colSpacing;
+}
+
+/**
  * Split text into columns for vertical rendering.
  * Characters flow top-to-bottom within a column; new columns start to the left.
- * Applies CJK_H2V punctuation substitution.
- *
- * Per-character advance is exactly `fontSize` (matching FreeType's vertAdvance
- * for CJK fonts). No extra inter-character spacing is added — matching the
- * reference manga-image-translator implementation.
+ * Applies CJK_H2V punctuation substitution and kinsoku rules.
  */
 function calcVertical(
-  _ctx: CanvasRenderingContext2D,
   text: string,
   maxHeight: number,
-  fontSize: number,
+  advanceY: number,
 ): VColumn[] {
   const chars = [...text.replace(/\s+/g, "")];
   if (chars.length === 0) return [];
@@ -541,11 +653,11 @@ function calcVertical(
     const raw = chars[i];
     const ch = CJK_H2V.get(raw) ?? raw;
 
-    if (colHeight + fontSize > maxHeight && col.length > 0) {
+    if (colHeight + advanceY > maxHeight && col.length > 0) {
       // Check kinsoku: next char can't start a column
       if (KINSOKU_NSTART.has(ch)) {
         col.push(ch);
-        colHeight += fontSize;
+        colHeight += advanceY;
         columns.push({ chars: col, height: colHeight });
         col = [];
         colHeight = 0;
@@ -556,9 +668,9 @@ function calcVertical(
       const lastInCol = col[col.length - 1];
       if (KINSOKU_NEND.has(lastInCol) && col.length > 1) {
         const carry = col.pop()!;
-        columns.push({ chars: col, height: colHeight - fontSize });
+        columns.push({ chars: col, height: colHeight - advanceY });
         col = [carry, ch];
-        colHeight = fontSize * 2;
+        colHeight = advanceY * 2;
         continue;
       }
 
@@ -568,7 +680,7 @@ function calcVertical(
     }
 
     col.push(ch);
-    colHeight += fontSize;
+    colHeight += advanceY;
   }
 
   if (col.length > 0) {
@@ -605,8 +717,8 @@ function renderHorizontal(
   const lineHeight = fontSize + Math.round(fontSize * 0.01);
   const padding = sw + 1;
 
-  const canvasW = contentWidth + padding * 2;
-  const canvasH = contentHeight + padding * 2;
+  const canvasW = Math.ceil(contentWidth + padding * 2);
+  const canvasH = Math.ceil(contentHeight + padding * 2);
 
   const off = document.createElement("canvas");
   off.width = canvasW;
@@ -667,9 +779,8 @@ function computeAlignX(
  * Render vertical text onto an offscreen canvas with two-layer stroke.
  * Columns flow right-to-left.
  *
- * Column width = fontSize (matches reference).
- * Column gap = fontSize * 0.2 (matches reference default line_spacing=0.2).
- * Per-char advance = fontSize (matches FreeType vertAdvance for CJK).
+ * Column width / per-char advance are derived from measured glyph bounds.
+ * Column gap keeps the same default ratio as reference (fontSize * 0.2).
  */
 function renderVertical(
   columns: VColumn[],
@@ -678,14 +789,14 @@ function renderVertical(
   contentHeight: number,
   colors: ResolvedColors,
   alignment: "left" | "center" | "right",
+  metrics: VerticalCellMetrics,
 ): HTMLCanvasElement {
   const sw = strokeWidth(fontSize);
-  const colWidth = fontSize;
-  const colSpacing = Math.round(fontSize * 0.2);
-  const padding = sw + 1;
+  const { colWidth, colSpacing, advanceY } = metrics;
+  const padding = sw + 2;
 
-  const canvasW = contentWidth + padding * 2;
-  const canvasH = contentHeight + padding * 2;
+  const canvasW = Math.ceil(contentWidth + padding * 2);
+  const canvasH = Math.ceil(contentHeight + padding * 2);
 
   const off = document.createElement("canvas");
   off.width = canvasW;
@@ -725,8 +836,8 @@ function renderVertical(
 
     let penY = startY;
     for (const ch of col.chars) {
-      ctx.strokeText(ch, cx, penY + fontSize / 2);
-      penY += fontSize;
+      ctx.strokeText(ch, cx, penY + advanceY / 2);
+      penY += advanceY;
     }
   }
 
@@ -747,8 +858,8 @@ function renderVertical(
 
     let penY = startY;
     for (const ch of col.chars) {
-      ctx.fillText(ch, cx, penY + fontSize / 2);
-      penY += fontSize;
+      ctx.fillText(ch, cx, penY + advanceY / 2);
+      penY += advanceY;
     }
   }
 
@@ -811,12 +922,14 @@ function compositeRegion(
   region: TextRegion,
   boxPadding: number,
   strokePadding: number,
+  contentOffsetX = 0,
+  contentOffsetY = 0,
 ): void {
   // Position where the offscreen canvas top-left should land on the main canvas.
-  // The content starts at strokePadding inside the offscreen canvas,
+  // The content starts at strokePadding (+ optional contentOffset) inside the offscreen canvas,
   // and should align with boxPadding inside the region box.
-  const drawX = region.box.x + boxPadding - strokePadding;
-  const drawY = region.box.y + boxPadding - strokePadding;
+  const drawX = region.box.x + boxPadding - strokePadding - contentOffsetX;
+  const drawY = region.box.y + boxPadding - strokePadding - contentOffsetY;
 
   const quad = region.quad;
   if (!quad) {
@@ -896,34 +1009,158 @@ function fitHorizontal(
 /**
  * Find the largest font size for vertical text that fits within content area.
  */
+function buildVerticalLayout(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  contentHeight: number,
+  fontSize: number,
+  forcedColSpacing?: number,
+): VerticalLayoutResult {
+  const sw = strokeWidth(fontSize);
+  const baseMetrics = resolveVerticalCellMetrics(ctx, text, fontSize, sw);
+  const metrics = forcedColSpacing === undefined
+    ? baseMetrics
+    : {
+        ...baseMetrics,
+        colSpacing: Math.max(0, forcedColSpacing),
+      };
+  const columns = calcVertical(text, contentHeight, metrics.advanceY);
+  const requiredContentWidth = computeVerticalTotalWidth(columns.length, metrics);
+  return { columns, metrics, requiredContentWidth };
+}
+
+function applyVerticalSpacingFallback(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  contentHeight: number,
+  fontSize: number,
+  contentWidth: number,
+  layout: VerticalLayoutResult,
+): VerticalLayoutResult {
+  if (layout.requiredContentWidth <= contentWidth || layout.metrics.colSpacing <= 0) {
+    return layout;
+  }
+  const spacingCollapsedLayout = buildVerticalLayout(ctx, text, contentHeight, fontSize, 0);
+  if (spacingCollapsedLayout.requiredContentWidth < layout.requiredContentWidth) {
+    return spacingCollapsedLayout;
+  }
+  return layout;
+}
+
+function rebalanceVerticalColumns(
+  columns: VColumn[],
+  targetColumns: number,
+  advanceY: number,
+): VColumn[] {
+  if (targetColumns <= 1 || columns.length === 0) {
+    return columns;
+  }
+
+  const flatChars: string[] = [];
+  for (const col of columns) {
+    flatChars.push(...col.chars);
+  }
+  if (flatChars.length <= 1) {
+    return columns;
+  }
+
+  const actualTarget = Math.min(targetColumns, flatChars.length);
+  if (actualTarget <= columns.length) {
+    return columns;
+  }
+
+  const rowsPerColumn = Math.ceil(flatChars.length / actualTarget);
+  const buckets: string[][] = [];
+  let cursor = 0;
+  for (let c = 0; c < actualTarget; c += 1) {
+    const next = flatChars.slice(cursor, cursor + rowsPerColumn);
+    if (next.length === 0) {
+      break;
+    }
+    buckets.push(next);
+    cursor += rowsPerColumn;
+  }
+
+  // Preserve basic kinsoku constraints at column boundaries.
+  for (let c = 1; c < buckets.length; c += 1) {
+    while (buckets[c].length > 0 && KINSOKU_NSTART.has(buckets[c][0]) && buckets[c - 1].length > 1) {
+      const moved = buckets[c - 1].pop();
+      if (!moved) {
+        break;
+      }
+      buckets[c].unshift(moved);
+    }
+    while (buckets[c - 1].length > 1 && KINSOKU_NEND.has(buckets[c - 1][buckets[c - 1].length - 1])) {
+      const moved = buckets[c - 1].pop();
+      if (!moved) {
+        break;
+      }
+      buckets[c].unshift(moved);
+    }
+  }
+
+  return buckets.map((chars) => ({
+    chars,
+    height: chars.length * advanceY,
+  }));
+}
+
 function fitVertical(
   ctx: CanvasRenderingContext2D,
   text: string,
   contentWidth: number,
   contentHeight: number,
   initial: number,
-): { fontSize: number; columns: VColumn[] } {
+  maxColumns?: number,
+): FitVerticalResult {
   const minSize = 10;
   let fontSize = initial;
-  let columns: VColumn[] = [];
+  const minReadableSize = Math.max(minSize, Math.floor(initial * verticalReadableMinRatio));
 
   while (fontSize >= minSize) {
     ctx.font = `${fontSize}px ${fontFamily}`;
-    columns = calcVertical(ctx, text, contentHeight, fontSize);
-    const colWidth = fontSize;
-    const colSpacing = Math.round(fontSize * 0.2);
-    const totalW = columns.length * colWidth + Math.max(0, columns.length - 1) * colSpacing;
-    if (totalW <= contentWidth) {
-      break;
+    let layout = buildVerticalLayout(ctx, text, contentHeight, fontSize);
+    const withinWidth = layout.requiredContentWidth <= contentWidth;
+    const withinColumnLimit = maxColumns === undefined || layout.columns.length <= maxColumns;
+
+    if (withinWidth && withinColumnLimit) {
+      return { fontSize, ...layout };
     }
+
+    // Readability-first: stop shrinking once we hit the minimum readable size.
+    if (fontSize <= minReadableSize) {
+      layout = applyVerticalSpacingFallback(ctx, text, contentHeight, fontSize, contentWidth, layout);
+      return { fontSize, ...layout };
+    }
+
     fontSize -= 1;
   }
 
   fontSize = Math.max(minSize, fontSize);
   ctx.font = `${fontSize}px ${fontFamily}`;
-  columns = calcVertical(ctx, text, contentHeight, fontSize);
+  let layout = buildVerticalLayout(ctx, text, contentHeight, fontSize);
+  layout = applyVerticalSpacingFallback(ctx, text, contentHeight, fontSize, contentWidth, layout);
 
-  return { fontSize, columns };
+  return { fontSize, ...layout };
+}
+
+function cloneQuad(
+  quad: [QuadPoint, QuadPoint, QuadPoint, QuadPoint],
+): [QuadPoint, QuadPoint, QuadPoint, QuadPoint] {
+  return [
+    { x: quad[0].x, y: quad[0].y },
+    { x: quad[1].x, y: quad[1].y },
+    { x: quad[2].x, y: quad[2].y },
+    { x: quad[3].x, y: quad[3].y },
+  ];
+}
+
+function cloneRegionForTypeset(region: TextRegion): TextRegion {
+  return {
+    ...region,
+    box: { ...region.box },
+    quad: region.quad ? cloneQuad(region.quad) : undefined,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -969,7 +1206,11 @@ export async function drawTypeset(
   measureCanvas.height = 1;
   const measureCtx = measureCanvas.getContext("2d")!;
 
-  for (const region of regions) {
+  const sortedRegions = regions
+    .map(cloneRegionForTypeset)
+    .sort((a, b) => b.box.width * b.box.height - a.box.width * a.box.height);
+
+  for (const region of sortedRegions) {
     const text = region.translatedText || region.sourceText;
     if (!text.trim()) continue;
 
@@ -984,34 +1225,70 @@ export async function drawTypeset(
     const initialFontSize = resolveInitialFontSize(region);
 
     let offCanvas: HTMLCanvasElement;
-    let sw: number;
+    let strokePadding: number;
+    let contentOffsetX = 0;
+    let contentOffsetY = 0;
 
     if (isVertical) {
       // Vertical text path
-      const { fontSize, columns } = fitVertical(
-        measureCtx, text, contentWidth, contentHeight, initialFontSize,
+      const lockVerticalColumns = shouldLockVerticalColumns(region, text);
+      const maxColumns = lockVerticalColumns
+        ? Math.max(1, region.originalLineCount ?? 1)
+        : undefined;
+      const { fontSize, columns, metrics, requiredContentWidth } = fitVertical(
+        measureCtx, text, contentWidth, contentHeight, initialFontSize, maxColumns,
       );
-      sw = strokeWidth(fontSize);
-      const alignment = resolveAlignment(region, columns.length);
+      let renderColumns = columns;
+      let renderRequiredContentWidth = requiredContentWidth;
+      if (lockVerticalColumns && maxColumns && columns.length < maxColumns) {
+        const balanced = rebalanceVerticalColumns(columns, maxColumns, metrics.advanceY);
+        if (balanced.length > columns.length) {
+          renderColumns = balanced;
+          renderRequiredContentWidth = computeVerticalTotalWidth(renderColumns.length, metrics);
+        }
+      }
+      const sw = strokeWidth(fontSize);
+      strokePadding = sw + 2;
+      if (isDevRuntime && renderRequiredContentWidth > contentWidth + 0.5) {
+        console.warn("[typeset] vertical content overflows region width", {
+          regionId: region.id,
+          contentWidth,
+          requiredContentWidth: renderRequiredContentWidth,
+          fontSize,
+          columns: renderColumns.length,
+        });
+      }
+      const alignment = resolveAlignment(region, renderColumns.length);
+      const renderContentWidth = Math.max(contentWidth, renderRequiredContentWidth);
+      contentOffsetX = Math.max(0, (renderContentWidth - contentWidth) / 2);
       offCanvas = renderVertical(
-        columns, fontSize, contentWidth, contentHeight, colors, alignment,
+        renderColumns, fontSize, renderContentWidth, contentHeight, colors, alignment, metrics,
       );
     } else {
       // Horizontal text path
       const { fontSize, lines } = fitHorizontal(
         measureCtx, text, contentWidth, contentHeight, initialFontSize,
       );
-      sw = strokeWidth(fontSize);
+      const sw = strokeWidth(fontSize);
+      strokePadding = sw + 1;
       const alignment = resolveAlignment(region, lines.length);
       offCanvas = renderHorizontal(
         lines, fontSize, contentWidth, contentHeight, colors, alignment,
       );
     }
 
-    const strokePadding = sw + 1;
     // Composite onto main canvas with rotation support
-    compositeRegion(ctx, offCanvas, region, boxPadding, strokePadding);
+    compositeRegion(
+      ctx,
+      offCanvas,
+      region,
+      boxPadding,
+      strokePadding,
+      contentOffsetX,
+      contentOffsetY,
+    );
   }
 
   return out;
 }
+

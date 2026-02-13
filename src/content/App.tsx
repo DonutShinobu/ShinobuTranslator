@@ -968,6 +968,12 @@ class XOverlayTranslator {
     }
 
     if (state.status === 'error') {
+      if (state.errorText.includes('\u672a\u627e\u5230\u6587\u672c')) {
+        button.textContent = '\u91cd\u8bd5';
+        updateStatusLine('\u672a\u627e\u5230\u6587\u672c', 'normal', false);
+        finalizeRender();
+        return;
+      }
       button.textContent = '重试';
       updateStatusLine(`翻译失败：${state.errorText}`, 'error', false);
       finalizeRender();
@@ -1148,4 +1154,3 @@ export function mountContentApp(): void {
   const app = new XOverlayTranslator();
   app.start();
 }
-

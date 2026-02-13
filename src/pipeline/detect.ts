@@ -1353,20 +1353,35 @@ async function detectByOnnx(image: HTMLImageElement): Promise<DetectOutput> {
 }
 
 export async function detectTextRegionsWithMask(image: HTMLImageElement): Promise<DetectOutput> {
-  const onnxResult = await detectByOnnx(image);
-  if (onnxResult.regions.length > 0) {
-    return onnxResult;
+  try {
+    const onnxResult = await detectByOnnx(image);
+    if (onnxResult.regions.length > 0) {
+      return onnxResult;
+    }
+    throw new Error("未找到文本");
+  } catch (error) {
+    if (error instanceof Error && error.message === "未找到文本") {
+      throw error;
+    }
+    console.warn(`[detect] onnx detector unavailable, fallback to tesseract/heuristic: ${toErrorMessage(error)}`);
   }
 
-  const tessRegions = await detectByTesseract(image);
-  if (tessRegions.length > 0) {
-    return {
-      regions: tessRegions,
-      rawMaskCanvas: null
-    };
+  try {
+    const tessRegions = await detectByTesseract(image);
+    if (tessRegions.length > 0) {
+      return {
+        regions: tessRegions,
+        rawMaskCanvas: null
+      };
+    }
+  } catch (error) {
+    console.warn(`[detect] tesseract fallback unavailable, switch to heuristic: ${toErrorMessage(error)}`);
   }
 
   const heuristicRegions = await detectByHeuristic(image);
+  if (heuristicRegions.length === 0) {
+    throw new Error("未找到文本");
+  }
   return {
     regions: heuristicRegions,
     rawMaskCanvas: null

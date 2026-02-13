@@ -1,4 +1,4 @@
-import type { PipelineConfig, PipelineProgress, StageTiming } from '../types';
+import type { PipelineConfig, PipelineProgress, RuntimeStageStatus, StageTiming } from '../types';
 
 type ExtensionSettings = {
   sourceLang: string;
@@ -307,16 +307,63 @@ function formatDuration(durationMs: number): string {
   return `${Math.round(durationMs)}ms`;
 }
 
-function formatElapsedText(totalDurationMs: number, stageTimings: StageTiming[], showStageDetails: boolean): string {
+function formatRuntimeProvider(stage: RuntimeStageStatus): string {
+  if (!stage.enabled) {
+    return 'disabled';
+  }
+  if (!stage.provider) {
+    return 'unknown';
+  }
+  if (stage.provider === 'wasm') {
+    return 'cpu(wasm)';
+  }
+  if (stage.provider === 'webnn') {
+    return `webnn/${stage.webnnDeviceType ?? 'default'}`;
+  }
+  return stage.provider;
+}
+
+function formatRuntimeStagesLine(runtimeStages: RuntimeStageStatus[]): string {
+  if (runtimeStages.length === 0) {
+    return '';
+  }
+  const orderedModels: RuntimeStageStatus['model'][] = ['detector', 'ocr', 'inpaint'];
+  const modelLabels: Record<RuntimeStageStatus['model'], string> = {
+    detector: '检测',
+    ocr: 'OCR',
+    inpaint: '去字',
+  };
+  const stageByModel = new Map(runtimeStages.map((stage) => [stage.model, stage]));
+  const parts: string[] = [];
+  for (const model of orderedModels) {
+    const stage = stageByModel.get(model);
+    if (!stage) {
+      continue;
+    }
+    parts.push(`${modelLabels[model]}=${formatRuntimeProvider(stage)}`);
+  }
+  if (parts.length === 0) {
+    return '';
+  }
+  return `运行时: ${parts.join(' / ')}`;
+}
+
+function formatElapsedText(
+  totalDurationMs: number,
+  stageTimings: StageTiming[],
+  runtimeStages: RuntimeStageStatus[],
+  showStageDetails: boolean
+): string {
   const totalLine = `总耗时：${formatDuration(totalDurationMs)}`;
+  const runtimeLine = formatRuntimeStagesLine(runtimeStages);
   if (!showStageDetails || stageTimings.length === 0) {
-    return totalLine;
+    return runtimeLine ? [totalLine, runtimeLine].join('\n') : totalLine;
   }
   const detailLines = stageTimings.map((timing) => {
     const label = stageLabelMap[timing.stage] ?? timing.label ?? timing.stage;
     return `${label}：${formatDuration(timing.durationMs)}`;
   });
-  return [totalLine, ...detailLines].join('\n');
+  return runtimeLine ? [totalLine, runtimeLine, ...detailLines].join('\n') : [totalLine, ...detailLines].join('\n');
 }
 
 function appendStatusDetail(baseText: string, detailText: string): string {
@@ -1076,7 +1123,7 @@ class XOverlayTranslator {
       state.translatedUrl = translatedUrl;
       const totalDurationMs = performance.now() - runStartAt;
       state.elapsedText = showElapsedTime
-        ? formatElapsedText(totalDurationMs, artifacts.stageTimings, showStageTimingDetails)
+        ? formatElapsedText(totalDurationMs, artifacts.stageTimings, artifacts.runtimeStages, showStageTimingDetails)
         : '';
       state.stageText = '';
       state.errorText = '';

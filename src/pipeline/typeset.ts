@@ -188,33 +188,6 @@ function countTextLength(text: string): number {
   return length;
 }
 
-/** Keep original vertical column count when translated text is within this ratio. */
-const verticalColumnLockRatio = 1.3;
-const isDevRuntime = (import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV === true;
-
-/**
- * Determine whether a vertical region should lock its column count to
- * originalLineCount, preferring smaller font size over creating new columns.
- */
-function shouldLockVerticalColumns(region: TextRegion, text: string): boolean {
-  if (region.direction !== "v") {
-    return false;
-  }
-  if (!region.sourceText.trim() || !text.trim()) {
-    return false;
-  }
-  if (!region.originalLineCount || region.originalLineCount <= 0) {
-    return false;
-  }
-
-  const sourceLength = countTextLength(region.sourceText.replace(/\s+/g, ""));
-  if (sourceLength <= 0) {
-    return false;
-  }
-  const translatedLength = countTextLength(text.replace(/\s+/g, ""));
-  return translatedLength <= sourceLength * verticalColumnLockRatio;
-}
-
 // ---------------------------------------------------------------------------
 // Line / column layout types
 // ---------------------------------------------------------------------------
@@ -224,14 +197,19 @@ type HLine = {
   width: number;
 };
 
+type VerticalGlyph = {
+  ch: string;
+  advanceY: number;
+};
+
 type VColumn = {
-  chars: string[];
+  glyphs: VerticalGlyph[];
   height: number;
 };
 
 type VerticalCellMetrics = {
   colWidth: number;
-  advanceY: number;
+  defaultAdvanceY: number;
   colSpacing: number;
 };
 
@@ -248,6 +226,8 @@ type FitVerticalResult = {
   requiredContentWidth: number;
 };
 
+type Quad = [QuadPoint, QuadPoint, QuadPoint, QuadPoint];
+
 // ---------------------------------------------------------------------------
 // Font size resolution
 // ---------------------------------------------------------------------------
@@ -255,7 +235,6 @@ type FitVerticalResult = {
 /**
  * Determine the initial font size for a region.
  * Prefers region.fontSize (from OCR/merge), falls back to box-based heuristic.
- * Applies translation length adjustment if translated text is longer.
  */
 function resolveInitialFontSize(region: TextRegion): number {
   let base: number;
@@ -265,17 +244,6 @@ function resolveInitialFontSize(region: TextRegion): number {
   } else {
     // Heuristic: ~1/3 of box height, clamped
     base = Math.min(48, Math.max(14, Math.floor(region.box.height / 3)));
-  }
-
-  // Translation length adjustment: if translated text is significantly longer,
-  // scale down font size proportionally (matching reference implementation).
-  if (region.translatedText && region.sourceText) {
-    const srcLen = [...region.sourceText.replace(/\s+/g, "")].length;
-    const tgtLen = [...region.translatedText.replace(/\s+/g, "")].length;
-    if (tgtLen > srcLen && srcLen > 0) {
-      const ratio = Math.max(0.7, srcLen / tgtLen);
-      base = Math.round(base * ratio);
-    }
   }
 
   // Clamp to reasonable range
@@ -455,6 +423,58 @@ function measureGlyphBox(
   return { width, height };
 }
 
+function metricAbs(value: number): number {
+  return Number.isFinite(value) ? Math.abs(value) : 0;
+}
+
+/**
+ * Estimate vertical advance from font metrics.
+ * In browsers we do not have FreeType's vertAdvance, so use font box / em box.
+ */
+function resolveFontVerticalAdvance(
+  ctx: CanvasRenderingContext2D,
+  fontSize: number,
+): number {
+  const metrics = ctx.measureText('国');
+  const fontBox = metricAbs(metrics.fontBoundingBoxAscent) + metricAbs(metrics.fontBoundingBoxDescent);
+  const emBox = metricAbs(metrics.emHeightAscent) + metricAbs(metrics.emHeightDescent);
+  const actualBox = metricAbs(metrics.actualBoundingBoxAscent) + metricAbs(metrics.actualBoundingBoxDescent);
+  const resolved = fontBox > 0
+    ? fontBox
+    : emBox > 0
+      ? emBox
+      : actualBox > 0
+        ? actualBox
+        : fontSize;
+  return Math.max(1, Math.ceil(Math.max(resolved, fontSize * 0.9)));
+}
+
+/**
+ * Estimate per-glyph vertical advance as an approximation of FreeType vertAdvance.
+ * Keeps spacing stable while allowing smaller visual glyphs to consume less height.
+ */
+function resolveGlyphVerticalAdvance(
+  ctx: CanvasRenderingContext2D,
+  ch: string,
+  fontSize: number,
+  defaultAdvanceY: number,
+): number {
+  const metrics = ctx.measureText(ch);
+  const fontBox = metricAbs(metrics.fontBoundingBoxAscent) + metricAbs(metrics.fontBoundingBoxDescent);
+  const emBox = metricAbs(metrics.emHeightAscent) + metricAbs(metrics.emHeightDescent);
+  const actualBox = metricAbs(metrics.actualBoundingBoxAscent) + metricAbs(metrics.actualBoundingBoxDescent);
+
+  const baseAdvance = fontBox > 0
+    ? fontBox
+    : emBox > 0
+      ? emBox
+      : defaultAdvanceY;
+  const minAdvance = Math.max(actualBox, defaultAdvanceY * 0.72);
+  const stabilizedAdvance = Math.max(baseAdvance, defaultAdvanceY * 0.85, fontSize * 0.8);
+
+  return Math.max(1, Math.ceil(Math.max(minAdvance, stabilizedAdvance)));
+}
+
 /**
  * Resolve per-cell metrics for vertical layout based on real glyph bounds.
  */
@@ -467,20 +487,18 @@ function resolveVerticalCellMetrics(
   const mappedChars = [...text.replace(/\s+/g, "")].map((raw) => CJK_H2V.get(raw) ?? raw);
   const uniqueChars = Array.from(new Set(mappedChars));
   let maxGlyphWidth = 0;
-  let maxGlyphHeight = 0;
 
   for (const ch of uniqueChars) {
     const box = measureGlyphBox(ctx, ch, fontSize);
     maxGlyphWidth = Math.max(maxGlyphWidth, box.width);
-    maxGlyphHeight = Math.max(maxGlyphHeight, box.height);
   }
 
+  const defaultAdvanceY = resolveFontVerticalAdvance(ctx, fontSize);
   const safetyPadding = Math.max(2, Math.ceil(sw * 0.8));
   const colWidth = Math.ceil(Math.max(fontSize, maxGlyphWidth) + safetyPadding);
-  const advanceY = Math.ceil(Math.max(fontSize, maxGlyphHeight));
   const colSpacing = Math.max(1, Math.round(fontSize * 0.2));
 
-  return { colWidth, advanceY, colSpacing };
+  return { colWidth, defaultAdvanceY, colSpacing };
 }
 
 function computeVerticalTotalWidth(columnCount: number, metrics: VerticalCellMetrics): number {
@@ -496,27 +514,41 @@ function computeVerticalTotalWidth(columnCount: number, metrics: VerticalCellMet
  * Applies CJK_H2V punctuation substitution and kinsoku rules.
  */
 function calcVertical(
+  ctx: CanvasRenderingContext2D,
   text: string,
   maxHeight: number,
-  advanceY: number,
+  fontSize: number,
+  defaultAdvanceY: number,
 ): VColumn[] {
   const chars = [...text.replace(/\s+/g, "")];
   if (chars.length === 0) return [];
 
+  const advanceCache = new Map<string, number>();
+  const getAdvance = (ch: string): number => {
+    const cached = advanceCache.get(ch);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const resolved = resolveGlyphVerticalAdvance(ctx, ch, fontSize, defaultAdvanceY);
+    advanceCache.set(ch, resolved);
+    return resolved;
+  };
+
   const columns: VColumn[] = [];
-  let col: string[] = [];
+  let col: VerticalGlyph[] = [];
   let colHeight = 0;
 
   for (let i = 0; i < chars.length; i++) {
     const raw = chars[i];
     const ch = CJK_H2V.get(raw) ?? raw;
+    const advanceY = getAdvance(ch);
 
     if (colHeight + advanceY > maxHeight && col.length > 0) {
       // Check kinsoku: next char can't start a column
       if (KINSOKU_NSTART.has(ch)) {
-        col.push(ch);
+        col.push({ ch, advanceY });
         colHeight += advanceY;
-        columns.push({ chars: col, height: colHeight });
+        columns.push({ glyphs: col, height: colHeight });
         col = [];
         colHeight = 0;
         continue;
@@ -524,25 +556,25 @@ function calcVertical(
 
       // Current col's last char can't end a column
       const lastInCol = col[col.length - 1];
-      if (KINSOKU_NEND.has(lastInCol) && col.length > 1) {
+      if (KINSOKU_NEND.has(lastInCol.ch) && col.length > 1) {
         const carry = col.pop()!;
-        columns.push({ chars: col, height: colHeight - advanceY });
-        col = [carry, ch];
-        colHeight = advanceY * 2;
+        columns.push({ glyphs: col, height: colHeight - carry.advanceY });
+        col = [carry, { ch, advanceY }];
+        colHeight = carry.advanceY + advanceY;
         continue;
       }
 
-      columns.push({ chars: col, height: colHeight });
+      columns.push({ glyphs: col, height: colHeight });
       col = [];
       colHeight = 0;
     }
 
-    col.push(ch);
+    col.push({ ch, advanceY });
     colHeight += advanceY;
   }
 
   if (col.length > 0) {
-    columns.push({ chars: col, height: colHeight });
+    columns.push({ glyphs: col, height: colHeight });
   }
   return columns;
 }
@@ -650,7 +682,7 @@ function renderVertical(
   metrics: VerticalCellMetrics,
 ): HTMLCanvasElement {
   const sw = strokeWidth(fontSize);
-  const { colWidth, colSpacing, advanceY } = metrics;
+  const { colWidth, colSpacing } = metrics;
   const padding = sw + 2;
 
   const canvasW = Math.ceil(contentWidth + padding * 2);
@@ -693,9 +725,9 @@ function renderVertical(
     }
 
     let penY = startY;
-    for (const ch of col.chars) {
-      ctx.strokeText(ch, cx, penY + advanceY / 2);
-      penY += advanceY;
+    for (const glyph of col.glyphs) {
+      ctx.strokeText(glyph.ch, cx, penY + glyph.advanceY / 2);
+      penY += glyph.advanceY;
     }
   }
 
@@ -715,9 +747,9 @@ function renderVertical(
     }
 
     let penY = startY;
-    for (const ch of col.chars) {
-      ctx.fillText(ch, cx, penY + advanceY / 2);
-      penY += advanceY;
+    for (const glyph of col.glyphs) {
+      ctx.fillText(glyph.ch, cx, penY + glyph.advanceY / 2);
+      penY += glyph.advanceY;
     }
   }
 
@@ -887,6 +919,7 @@ function buildVerticalLayout(
   fontSize: number,
   forcedColSpacing?: number,
 ): VerticalLayoutResult {
+  ctx.font = `${fontSize}px ${fontFamily}`;
   const sw = strokeWidth(fontSize);
   const baseMetrics = resolveVerticalCellMetrics(ctx, text, fontSize, sw);
   const metrics = forcedColSpacing === undefined
@@ -895,85 +928,9 @@ function buildVerticalLayout(
         ...baseMetrics,
         colSpacing: Math.max(0, forcedColSpacing),
       };
-  const columns = calcVertical(text, contentHeight, metrics.advanceY);
+  const columns = calcVertical(ctx, text, contentHeight, fontSize, metrics.defaultAdvanceY);
   const requiredContentWidth = computeVerticalTotalWidth(columns.length, metrics);
   return { columns, metrics, requiredContentWidth };
-}
-
-function applyVerticalSpacingFallback(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  contentHeight: number,
-  fontSize: number,
-  contentWidth: number,
-  layout: VerticalLayoutResult,
-): VerticalLayoutResult {
-  if (layout.requiredContentWidth <= contentWidth || layout.metrics.colSpacing <= 0) {
-    return layout;
-  }
-  const spacingCollapsedLayout = buildVerticalLayout(ctx, text, contentHeight, fontSize, 0);
-  if (spacingCollapsedLayout.requiredContentWidth < layout.requiredContentWidth) {
-    return spacingCollapsedLayout;
-  }
-  return layout;
-}
-
-function rebalanceVerticalColumns(
-  columns: VColumn[],
-  targetColumns: number,
-  advanceY: number,
-): VColumn[] {
-  if (targetColumns <= 1 || columns.length === 0) {
-    return columns;
-  }
-
-  const flatChars: string[] = [];
-  for (const col of columns) {
-    flatChars.push(...col.chars);
-  }
-  if (flatChars.length <= 1) {
-    return columns;
-  }
-
-  const actualTarget = Math.min(targetColumns, flatChars.length);
-  if (actualTarget <= columns.length) {
-    return columns;
-  }
-
-  const rowsPerColumn = Math.ceil(flatChars.length / actualTarget);
-  const buckets: string[][] = [];
-  let cursor = 0;
-  for (let c = 0; c < actualTarget; c += 1) {
-    const next = flatChars.slice(cursor, cursor + rowsPerColumn);
-    if (next.length === 0) {
-      break;
-    }
-    buckets.push(next);
-    cursor += rowsPerColumn;
-  }
-
-  // Preserve basic kinsoku constraints at column boundaries.
-  for (let c = 1; c < buckets.length; c += 1) {
-    while (buckets[c].length > 0 && KINSOKU_NSTART.has(buckets[c][0]) && buckets[c - 1].length > 1) {
-      const moved = buckets[c - 1].pop();
-      if (!moved) {
-        break;
-      }
-      buckets[c].unshift(moved);
-    }
-    while (buckets[c - 1].length > 1 && KINSOKU_NEND.has(buckets[c - 1][buckets[c - 1].length - 1])) {
-      const moved = buckets[c - 1].pop();
-      if (!moved) {
-        break;
-      }
-      buckets[c].unshift(moved);
-    }
-  }
-
-  return buckets.map((chars) => ({
-    chars,
-    height: chars.length * advanceY,
-  }));
 }
 
 function fitVertical(
@@ -982,7 +939,6 @@ function fitVertical(
   contentWidth: number,
   contentHeight: number,
   initial: number,
-  maxColumns?: number,
 ): FitVerticalResult {
   const absoluteMinSize = 8;
   let fontSize = Math.max(absoluteMinSize, initial);
@@ -990,10 +946,7 @@ function fitVertical(
   while (fontSize >= absoluteMinSize) {
     ctx.font = `${fontSize}px ${fontFamily}`;
     const layout = buildVerticalLayout(ctx, text, contentHeight, fontSize);
-    const withinWidth = layout.requiredContentWidth <= contentWidth;
-    const withinColumnLimit = maxColumns === undefined || layout.columns.length <= maxColumns;
-
-    if (withinWidth && withinColumnLimit) {
+    if (layout.requiredContentWidth <= contentWidth) {
       return { fontSize, ...layout };
     }
 
@@ -1002,8 +955,7 @@ function fitVertical(
 
   fontSize = absoluteMinSize;
   ctx.font = `${fontSize}px ${fontFamily}`;
-  let layout = buildVerticalLayout(ctx, text, contentHeight, fontSize);
-  layout = applyVerticalSpacingFallback(ctx, text, contentHeight, fontSize, contentWidth, layout);
+  const layout = buildVerticalLayout(ctx, text, contentHeight, fontSize);
 
   return { fontSize, ...layout };
 }
@@ -1025,6 +977,220 @@ function cloneRegionForTypeset(region: TextRegion): TextRegion {
     box: { ...region.box },
     quad: region.quad ? cloneQuad(region.quad) : undefined,
   };
+}
+
+function boxToQuad(region: TextRegion): Quad {
+  const x0 = region.box.x;
+  const y0 = region.box.y;
+  const x1 = region.box.x + region.box.width;
+  const y1 = region.box.y + region.box.height;
+  return [
+    { x: x0, y: y0 },
+    { x: x1, y: y0 },
+    { x: x1, y: y1 },
+    { x: x0, y: y1 },
+  ];
+}
+
+function getRegionQuad(region: TextRegion): Quad {
+  if (region.quad) {
+    return cloneQuad(region.quad);
+  }
+  return boxToQuad(region);
+}
+
+function quadCenter(quad: Quad): { x: number; y: number } {
+  return {
+    x: (quad[0].x + quad[1].x + quad[2].x + quad[3].x) / 4,
+    y: (quad[0].y + quad[1].y + quad[2].y + quad[3].y) / 4,
+  };
+}
+
+function rotatePoint(point: QuadPoint, cx: number, cy: number, angle: number): QuadPoint {
+  const dx = point.x - cx;
+  const dy = point.y - cy;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return {
+    x: cx + dx * cos - dy * sin,
+    y: cy + dx * sin + dy * cos,
+  };
+}
+
+function rotateQuad(quad: Quad, cx: number, cy: number, angle: number): Quad {
+  return [
+    rotatePoint(quad[0], cx, cy, angle),
+    rotatePoint(quad[1], cx, cy, angle),
+    rotatePoint(quad[2], cx, cy, angle),
+    rotatePoint(quad[3], cx, cy, angle),
+  ];
+}
+
+function quadBounds(quad: Quad): { minX: number; minY: number; maxX: number; maxY: number } {
+  const minX = Math.min(quad[0].x, quad[1].x, quad[2].x, quad[3].x);
+  const minY = Math.min(quad[0].y, quad[1].y, quad[2].y, quad[3].y);
+  const maxX = Math.max(quad[0].x, quad[1].x, quad[2].x, quad[3].x);
+  const maxY = Math.max(quad[0].y, quad[1].y, quad[2].y, quad[3].y);
+  return { minX, minY, maxX, maxY };
+}
+
+function scaleQuadFromOrigin(
+  quad: Quad,
+  xfact: number,
+  yfact: number,
+  originX: number,
+  originY: number,
+): Quad {
+  return [
+    {
+      x: originX + (quad[0].x - originX) * xfact,
+      y: originY + (quad[0].y - originY) * yfact,
+    },
+    {
+      x: originX + (quad[1].x - originX) * xfact,
+      y: originY + (quad[1].y - originY) * yfact,
+    },
+    {
+      x: originX + (quad[2].x - originX) * xfact,
+      y: originY + (quad[2].y - originY) * yfact,
+    },
+    {
+      x: originX + (quad[3].x - originX) * xfact,
+      y: originY + (quad[3].y - originY) * yfact,
+    },
+  ];
+}
+
+function updateRegionGeometryFromQuad(region: TextRegion, quad: Quad): void {
+  const bounds = quadBounds(quad);
+  const x = Math.floor(bounds.minX);
+  const y = Math.floor(bounds.minY);
+  const right = Math.ceil(bounds.maxX);
+  const bottom = Math.ceil(bounds.maxY);
+  region.quad = quad;
+  region.box = {
+    x,
+    y,
+    width: Math.max(1, right - x),
+    height: Math.max(1, bottom - y),
+  };
+}
+
+function countNeededRowsAtFontSize(
+  measureCtx: CanvasRenderingContext2D,
+  text: string,
+  contentWidth: number,
+  fontSize: number,
+): number {
+  const lines = calcHorizontal(measureCtx, text, contentWidth, fontSize);
+  return Math.max(1, lines.length);
+}
+
+function countNeededColumnsAtFontSize(
+  measureCtx: CanvasRenderingContext2D,
+  text: string,
+  contentHeight: number,
+  fontSize: number,
+): number {
+  const sw = strokeWidth(fontSize);
+  measureCtx.font = `${fontSize}px ${fontFamily}`;
+  const metrics = resolveVerticalCellMetrics(measureCtx, text, fontSize, sw);
+  const columns = calcVertical(measureCtx, text, contentHeight, fontSize, metrics.defaultAdvanceY);
+  return Math.max(1, columns.length);
+}
+
+function expandRegionBeforeRender(
+  region: TextRegion,
+  text: string,
+  measureCtx: CanvasRenderingContext2D,
+): TextRegion {
+  const expanded = cloneRegionForTypeset(region);
+  const initialFontSize = resolveInitialFontSize(expanded);
+  let targetFontSize = initialFontSize;
+  expanded.fontSize = targetFontSize;
+
+  const usedRowsOrCols = Math.max(1, expanded.originalLineCount ?? 1);
+  const contentWidth = Math.max(20, expanded.box.width - 12);
+  const contentHeight = Math.max(20, expanded.box.height - 12);
+
+  const quad = getRegionQuad(expanded);
+  const center = quadCenter(quad);
+  const angle = quadAngle(quad);
+  const unrotatedQuad = rotateQuad(quad, center.x, center.y, -angle);
+  const unrotatedBounds = quadBounds(unrotatedQuad);
+
+  let singleAxisExpanded = false;
+
+  if ((expanded.direction ?? "h") === "h") {
+    const neededRows = countNeededRowsAtFontSize(measureCtx, text, contentWidth, initialFontSize);
+    if (neededRows > usedRowsOrCols) {
+      // With top-edge-based unrotation, extra rows consume height (y-axis).
+      const yfact = ((neededRows - usedRowsOrCols) / usedRowsOrCols) + 1;
+      const scaledUnrotated = scaleQuadFromOrigin(
+        unrotatedQuad,
+        1,
+        yfact,
+        unrotatedBounds.minX,
+        unrotatedBounds.minY,
+      );
+      const scaled = rotateQuad(scaledUnrotated, center.x, center.y, angle);
+      updateRegionGeometryFromQuad(expanded, scaled);
+      singleAxisExpanded = true;
+    }
+  } else {
+    const neededCols = countNeededColumnsAtFontSize(measureCtx, text, contentHeight, initialFontSize);
+    if (neededCols > usedRowsOrCols) {
+      // Vertical columns grow along width (x-axis) in this coordinate frame.
+      const xfact = ((neededCols - usedRowsOrCols) / usedRowsOrCols) + 1;
+      const scaledUnrotated = scaleQuadFromOrigin(
+        unrotatedQuad,
+        xfact,
+        1,
+        unrotatedBounds.minX,
+        unrotatedBounds.minY,
+      );
+      const scaled = rotateQuad(scaledUnrotated, center.x, center.y, angle);
+      updateRegionGeometryFromQuad(expanded, scaled);
+      singleAxisExpanded = true;
+    }
+  }
+
+  if (!singleAxisExpanded) {
+    const sourceLength = countTextLength(expanded.sourceText);
+    const translatedLength = countTextLength(text.trim());
+    let targetScale = 1;
+
+    if (sourceLength > 0 && translatedLength > sourceLength) {
+      const increasePercentage = (translatedLength - sourceLength) / sourceLength;
+      const fontIncreaseRatio = Math.min(1.5, Math.max(1.0, 1 + increasePercentage * 0.3));
+      targetFontSize = Math.max(1, Math.round(targetFontSize * fontIncreaseRatio));
+      targetScale = Math.max(1, Math.min(1 + increasePercentage * 0.3, 2));
+    }
+
+    const fontSizeScale = initialFontSize > 0
+      ? (((targetFontSize - initialFontSize) / initialFontSize) * 0.4 + 1)
+      : 1;
+    let finalScale = Math.max(fontSizeScale, targetScale);
+    finalScale = Math.max(1, Math.min(finalScale, 1.1));
+
+    if (finalScale > 1.001) {
+      const bounds = quadBounds(unrotatedQuad);
+      const originX = (bounds.minX + bounds.maxX) / 2;
+      const originY = (bounds.minY + bounds.maxY) / 2;
+      const scaledUnrotated = scaleQuadFromOrigin(
+        unrotatedQuad,
+        finalScale,
+        finalScale,
+        originX,
+        originY,
+      );
+      const scaled = rotateQuad(scaledUnrotated, center.x, center.y, angle);
+      updateRegionGeometryFromQuad(expanded, scaled);
+    }
+  }
+
+  expanded.fontSize = Math.max(1, Math.round(targetFontSize));
+  return expanded;
 }
 
 // ---------------------------------------------------------------------------
@@ -1070,61 +1236,34 @@ export async function drawTypeset(
   measureCanvas.height = 1;
   const measureCtx = measureCanvas.getContext("2d")!;
 
-  const sortedRegions = regions
-    .map(cloneRegionForTypeset)
-    .sort((a, b) => b.box.width * b.box.height - a.box.width * a.box.height);
+  const renderRegions = regions.map(cloneRegionForTypeset);
 
-  for (const region of sortedRegions) {
-    const text = region.translatedText || region.sourceText;
+  for (const inputRegion of renderRegions) {
+    const text = inputRegion.translatedText || inputRegion.sourceText;
     if (!text.trim()) continue;
 
+    const region = expandRegionBeforeRender(inputRegion, text, measureCtx);
     const boxPadding = 6;
     const contentWidth = Math.max(20, region.box.width - boxPadding * 2);
     const contentHeight = Math.max(20, region.box.height - boxPadding * 2);
     const isVertical = region.direction === "v";
     const colors = resolveColors(region.fgColor, region.bgColor);
-    const initialFontSize = resolveInitialFontSize(region);
+    const initialFontSize = Math.max(8, Math.round(region.fontSize ?? resolveInitialFontSize(region)));
 
     let offCanvas: HTMLCanvasElement;
     let strokePadding: number;
-    let contentOffsetX = 0;
-    let contentOffsetY = 0;
 
     if (isVertical) {
-      // Vertical text path
-      const lockVerticalColumns = shouldLockVerticalColumns(region, text);
-      const maxColumns = lockVerticalColumns
-        ? Math.max(1, region.originalLineCount ?? 1)
-        : undefined;
-      const { fontSize, columns, metrics, requiredContentWidth } = fitVertical(
-        measureCtx, text, contentWidth, contentHeight, initialFontSize, maxColumns,
+      const { fontSize, columns, metrics } = fitVertical(
+        measureCtx, text, contentWidth, contentHeight, initialFontSize,
       );
-      let renderColumns = columns;
-      let renderRequiredContentWidth = requiredContentWidth;
-      if (lockVerticalColumns && maxColumns && columns.length < maxColumns) {
-        const balanced = rebalanceVerticalColumns(columns, maxColumns, metrics.advanceY);
-        if (balanced.length > columns.length) {
-          renderColumns = balanced;
-          renderRequiredContentWidth = computeVerticalTotalWidth(renderColumns.length, metrics);
-        }
-      }
       const sw = strokeWidth(fontSize);
       strokePadding = sw + 2;
-      if (isDevRuntime && renderRequiredContentWidth > contentWidth + 0.5) {
-        console.warn("[typeset] vertical content overflows region width", {
-          regionId: region.id,
-          contentWidth,
-          requiredContentWidth: renderRequiredContentWidth,
-          fontSize,
-          columns: renderColumns.length,
-        });
-      }
-      const alignment = resolveAlignment(region, renderColumns.length);
+      const alignment = resolveAlignment(region, columns.length);
       offCanvas = renderVertical(
-        renderColumns, fontSize, contentWidth, contentHeight, colors, alignment, metrics,
+        columns, fontSize, contentWidth, contentHeight, colors, alignment, metrics,
       );
     } else {
-      // Horizontal text path
       const { fontSize, lines } = fitHorizontal(
         measureCtx, text, contentWidth, contentHeight, initialFontSize,
       );
@@ -1136,15 +1275,12 @@ export async function drawTypeset(
       );
     }
 
-    // Composite onto main canvas with rotation support
     compositeRegion(
       ctx,
       offCanvas,
       region,
       boxPadding,
       strokePadding,
-      contentOffsetX,
-      contentOffsetY,
     );
   }
 

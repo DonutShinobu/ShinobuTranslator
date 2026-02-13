@@ -8,6 +8,7 @@ import { drawTypeset } from "./typeset";
 import { drawRegions } from "./visualize";
 import { mergeTextLines } from "./textlineMerge";
 import { refineTextMask } from "./maskRefinement";
+import { sortRegionsForRender } from "./readingOrder";
 import type { RuntimeStageStatus } from "../types";
 import { getModelSession } from "../runtime/modelRegistry";
 
@@ -168,7 +169,16 @@ export async function runPipeline(
     throw new PipelineStageError("文本行合并", toErrorDetail(error), buildArtifacts());
   }
 
-  const mergedRegions = latestRegions;
+  report(onProgress, "order", "文本顺序排序");
+  try {
+    const t0 = performance.now();
+    latestRegions = sortRegionsForRender(latestRegions, originalCanvas);
+    stageTimings.push({ stage: "order", label: "文本顺序排序", durationMs: performance.now() - t0 });
+  } catch (error) {
+    throw new PipelineStageError("顺序排序", toErrorDetail(error), buildArtifacts());
+  }
+
+  const orderedRegions = latestRegions;
 
   type ParallelTranslateStatus = "pending" | "running" | "done";
   type ParallelEraseStatus = "pending" | "mask_refine" | "inpaint" | "done";
@@ -231,7 +241,7 @@ export async function runPipeline(
     reportParallel();
     try {
       const t0 = performance.now();
-      const translatedRegions = await runTranslate(mergedRegions, config);
+      const translatedRegions = await runTranslate(orderedRegions, config);
       translateTiming = { stage: "translate", label: "\u7ffb\u8bd1\u4e3a\u4e2d\u6587", durationMs: performance.now() - t0 };
       parallelTranslateStatus = "done";
       reportParallel();
@@ -250,7 +260,7 @@ export async function runPipeline(
     reportParallel();
     try {
       const t0 = performance.now();
-      refinedMaskCanvas = refineTextMask(originalCanvas, mergedRegions, detectionMaskCanvas, {
+      refinedMaskCanvas = refineTextMask(originalCanvas, orderedRegions, detectionMaskCanvas, {
         method: "fit_text",
         dilationOffset: 20,
         kernelSize: 3

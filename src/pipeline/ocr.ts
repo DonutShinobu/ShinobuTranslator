@@ -13,10 +13,12 @@ export type OcrResult = {
 const OCR_AR_PAD = 0;
 const OCR_AR_START = 1;
 const OCR_AR_END = 2;
+const OCR_AR_PAD_BIGINT = BigInt(OCR_AR_PAD);
+const OCR_AR_START_BIGINT = BigInt(OCR_AR_START);
 const OCR_BEAM_WIDTH = 1;
 const OCR_MIN_FINISHED_BEAMS = 2;
 const OCR_CONFIDENCE_THRESHOLD = 0.2;
-const OCR_DECODE_BATCH_SIZE = 5;
+const OCR_DECODE_BATCH_SIZE = 16;
 
 type Direction = "h" | "v";
 
@@ -406,7 +408,7 @@ async function decodeAutoregressiveWithBeam(
 
       const charData = new BigInt64Array(seqLen);
       for (let i = 0; i < seqLen; i += 1) {
-        charData[i] = BigInt(OCR_AR_PAD);
+        charData[i] = OCR_AR_PAD_BIGINT;
       }
       for (let i = 0; i < hypothesis.tokenIds.length && i < seqLen; i += 1) {
         charData[i] = BigInt(hypothesis.tokenIds[i]);
@@ -513,7 +515,7 @@ type BatchDecodeOutput = {
 
 /**
  * Run greedy AR decode for multiple regions in lockstep.
- * At each step, all non-finished regions are batched into one session.run().
+ * Uses a fixed-size batch and reuses decode buffers across steps to reduce CPU churn.
  * Only works correctly when OCR_BEAM_WIDTH === 1 (greedy).
  */
 async function decodeBatchAutoregressive(
@@ -541,85 +543,51 @@ async function decodeBatchAutoregressive(
     return [];
   }
 
-  // Per-region state: current token sequence and whether it finished.
   const regionTokenIds: number[][] = items.map(() => [OCR_AR_START]);
   const regionTokenProbs: number[][] = items.map(() => []);
   const finished: boolean[] = items.map(() => false);
+  const batchImage = buildBatchImageTensor(items.map((item) => item.inputData), inputHeight, inputWidth);
+  const batchCharData = new BigInt64Array(N * seqLen);
+  batchCharData.fill(OCR_AR_PAD_BIGINT);
+  const batchDecoderMask = new Array<boolean>(N * seqLen).fill(true);
+  const batchEncoderMask = new Array<boolean>(N * encoderLen).fill(false);
 
-  // Pre-compute per-region encoder masks (these don't change across steps).
-  const encoderMasks: boolean[][] = items.map((item) => {
-    const mask = new Array<boolean>(encoderLen).fill(false);
-    for (let i = item.validEncoderLength; i < encoderLen; i += 1) {
-      mask[i] = true;
+  for (let n = 0; n < N; n += 1) {
+    const charOffset = n * seqLen;
+    batchCharData[charOffset] = OCR_AR_START_BIGINT;
+    batchDecoderMask[charOffset] = false;
+
+    const emOffset = n * encoderLen;
+    const validEncoderLength = items[n].validEncoderLength;
+    for (let i = validEncoderLength; i < encoderLen; i += 1) {
+      batchEncoderMask[emOffset + i] = true;
     }
-    return mask;
-  });
+  }
 
   for (let step = 0; step < maxSteps; step += 1) {
-    // Collect indices of regions still active.
-    const activeIndices: number[] = [];
+    let activeCount = 0;
     for (let i = 0; i < N; i += 1) {
       if (!finished[i]) {
-        activeIndices.push(i);
+        activeCount += 1;
       }
     }
-    if (activeIndices.length === 0) {
+    if (activeCount === 0) {
       break;
-    }
-
-    const batchN = activeIndices.length;
-
-    // Build batched tensors for active regions only.
-    const batchImage = buildBatchImageTensor(
-      activeIndices.map((idx) => items[idx].inputData),
-      inputHeight,
-      inputWidth
-    );
-
-    const batchCharData = new BigInt64Array(batchN * seqLen);
-    const batchDecoderMask = new Array<boolean>(batchN * seqLen);
-    const batchEncoderMask = new Array<boolean>(batchN * encoderLen);
-
-    for (let b = 0; b < batchN; b += 1) {
-      const idx = activeIndices[b];
-      const tokens = regionTokenIds[idx];
-
-      // char_idx
-      const charOffset = b * seqLen;
-      for (let i = 0; i < seqLen; i += 1) {
-        batchCharData[charOffset + i] = BigInt(OCR_AR_PAD);
-      }
-      for (let i = 0; i < tokens.length && i < seqLen; i += 1) {
-        batchCharData[charOffset + i] = BigInt(tokens[i]);
-      }
-
-      // decoder_mask
-      const dmOffset = b * seqLen;
-      for (let i = 0; i < seqLen; i += 1) {
-        batchDecoderMask[dmOffset + i] = i >= tokens.length;
-      }
-
-      // encoder_mask
-      const emOffset = b * encoderLen;
-      const eMask = encoderMasks[idx];
-      for (let i = 0; i < encoderLen; i += 1) {
-        batchEncoderMask[emOffset + i] = eMask[i];
-      }
     }
 
     const outputs = await session.run({
       [imageInput]: batchImage,
-      [charIdxInput]: new ort.Tensor("int64", batchCharData, [batchN, seqLen]),
-      [decoderMaskInput]: new ort.Tensor("bool", batchDecoderMask, [batchN, seqLen]),
-      [encoderMaskInput]: new ort.Tensor("bool", batchEncoderMask, [batchN, encoderLen])
+      [charIdxInput]: new ort.Tensor("int64", batchCharData, [N, seqLen]),
+      [decoderMaskInput]: new ort.Tensor("bool", batchDecoderMask, [N, seqLen]),
+      [encoderMaskInput]: new ort.Tensor("bool", batchEncoderMask, [N, encoderLen])
     });
 
-    // Find the logits output tensor.
-    const logitsTensor = pickBatchOcrLogits(outputs, batchN);
+    const logitsTensor = pickBatchOcrLogits(outputs, N);
     if (!logitsTensor) {
-      // Cannot parse output — mark all active as finished.
-      for (const idx of activeIndices) {
-        finished[idx] = true;
+      for (let i = 0; i < N; i += 1) {
+        if (!finished[i]) {
+          finished[i] = true;
+        }
       }
       break;
     }
@@ -630,14 +598,19 @@ async function decodeBatchAutoregressive(
     const classes = dims[2];
     const sampleStride = stepsPerSample * classes;
 
-    for (let b = 0; b < batchN; b += 1) {
-      const idx = activeIndices[b];
+    for (let idx = 0; idx < N; idx += 1) {
+      if (finished[idx]) {
+        continue;
+      }
       const tokens = regionTokenIds[idx];
+      if (tokens.length >= seqLen) {
+        finished[idx] = true;
+        continue;
+      }
       const decodeStep = Math.min(tokens.length - 1, Math.max(0, stepsPerSample - 1));
-      const sampleOffset = b * sampleStride;
+      const sampleOffset = idx * sampleStride;
       const stepOffset = sampleOffset + decodeStep * classes;
 
-      // Find best token (greedy).
       let bestToken = 0;
       let bestScore = Number.NEGATIVE_INFINITY;
       for (let c = 0; c < classes; c += 1) {
@@ -653,7 +626,6 @@ async function decodeBatchAutoregressive(
         continue;
       }
 
-      // Compute softmax probability for the chosen token.
       let maxLogit = Number.NEGATIVE_INFINITY;
       for (let c = 0; c < classes; c += 1) {
         const s = raw[stepOffset + c];
@@ -667,12 +639,15 @@ async function decodeBatchAutoregressive(
       }
       const prob = sumExp > 0 ? Math.exp(raw[stepOffset + bestToken] - maxLogit) / sumExp : 0;
 
-      regionTokenIds[idx].push(bestToken);
+      const nextPos = tokens.length;
+      const charOffset = idx * seqLen;
+      batchCharData[charOffset + nextPos] = BigInt(bestToken);
+      batchDecoderMask[charOffset + nextPos] = false;
+      tokens.push(bestToken);
       regionTokenProbs[idx].push(prob);
     }
   }
 
-  // Build results.
   const results: BatchDecodeOutput[] = [];
   for (let i = 0; i < N; i += 1) {
     const tokenIds = regionTokenIds[i].slice(1); // remove START token
@@ -796,8 +771,8 @@ async function decodeTokenColors(
     return null;
   }
   const charData = new BigInt64Array(seqLen);
-  charData.fill(BigInt(OCR_AR_PAD));
-  charData[0] = BigInt(OCR_AR_START);
+  charData.fill(OCR_AR_PAD_BIGINT);
+  charData[0] = OCR_AR_START_BIGINT;
   for (let i = 0; i < tokenIds.length && i + 1 < seqLen; i += 1) {
     charData[i + 1] = BigInt(tokenIds[i]);
   }
@@ -870,9 +845,9 @@ async function decodeTokenColorsBatch(
     const { validEncoderLength, tokenIds } = items[n];
     const charOffset = n * seqLen;
     for (let i = 0; i < seqLen; i += 1) {
-      batchCharData[charOffset + i] = BigInt(OCR_AR_PAD);
+      batchCharData[charOffset + i] = OCR_AR_PAD_BIGINT;
     }
-    batchCharData[charOffset] = BigInt(OCR_AR_START);
+    batchCharData[charOffset] = OCR_AR_START_BIGINT;
     for (let i = 0; i < tokenIds.length && i + 1 < seqLen; i += 1) {
       batchCharData[charOffset + i + 1] = BigInt(tokenIds[i]);
     }

@@ -6,6 +6,10 @@ import type { TextRegion, QuadPoint } from "../types";
 
 /** Font fallback chain for CJK text rendering. */
 const fontFamily = '"Noto Sans SC", "PingFang SC", "Source Han Sans SC", sans-serif';
+const horizontalLetterSpacingRatio = -0.05;
+const horizontalLineHeightRatio = 0.93;
+const verticalAdvanceTightenRatio = 0.9;
+const verticalColumnSpacingRatio = 0.14;
 
 /**
  * CJK horizontal-to-vertical punctuation substitution map.
@@ -263,6 +267,39 @@ function hasLatinWords(text: string): boolean {
   return /[a-zA-Z]{2,}/.test(text);
 }
 
+function resolveHorizontalLetterSpacing(fontSize: number): number {
+  return fontSize * horizontalLetterSpacingRatio;
+}
+
+function resolveHorizontalLineHeight(fontSize: number): number {
+  return Math.max(1, Math.round(fontSize * horizontalLineHeightRatio));
+}
+
+function measureHorizontalTextWidth(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  fontSize: number,
+): number {
+  const chars = [...text];
+  if (chars.length === 0) {
+    return 0;
+  }
+
+  if (chars.length === 1) {
+    return ctx.measureText(chars[0]).width;
+  }
+
+  const letterSpacing = resolveHorizontalLetterSpacing(fontSize);
+  let width = 0;
+  for (let i = 0; i < chars.length; i++) {
+    width += ctx.measureText(chars[i]).width;
+    if (i < chars.length - 1) {
+      width += letterSpacing;
+    }
+  }
+  return Math.max(0, width);
+}
+
 /**
  * Split text into wrapped lines for horizontal rendering.
  * - For CJK: character-level wrapping with kinsoku shori punctuation rules.
@@ -279,9 +316,9 @@ function calcHorizontal(
   if (!cleaned) return [];
 
   if (hasLatinWords(cleaned)) {
-    return calcHorizontalLatin(ctx, cleaned, maxWidth);
+    return calcHorizontalLatin(ctx, cleaned, maxWidth, fontSize);
   }
-  return calcHorizontalCjk(ctx, cleaned, maxWidth);
+  return calcHorizontalCjk(ctx, cleaned, maxWidth, fontSize);
 }
 
 /**
@@ -291,6 +328,7 @@ function calcHorizontalCjk(
   ctx: CanvasRenderingContext2D,
   text: string,
   maxWidth: number,
+  fontSize: number,
 ): HLine[] {
   const chars = [...text.replace(/\s+/g, "")];
   const lines: HLine[] = [];
@@ -299,7 +337,7 @@ function calcHorizontalCjk(
   for (let i = 0; i < chars.length; i++) {
     const ch = chars[i];
     const trial = line + ch;
-    const trialWidth = ctx.measureText(trial).width;
+    const trialWidth = measureHorizontalTextWidth(ctx, trial, fontSize);
 
     if (trialWidth <= maxWidth) {
       line = trial;
@@ -314,7 +352,7 @@ function calcHorizontalCjk(
       // If next char can't start a line, keep it on current line
       if (KINSOKU_NSTART.has(nextChar) && line.length > 0) {
         line += ch;
-        lines.push({ text: line, width: ctx.measureText(line).width });
+        lines.push({ text: line, width: measureHorizontalTextWidth(ctx, line, fontSize) });
         line = "";
         continue;
       }
@@ -323,18 +361,18 @@ function calcHorizontalCjk(
       if (KINSOKU_NEND.has(lastChar) && line.length > 1) {
         const carry = line[line.length - 1];
         line = line.slice(0, -1);
-        lines.push({ text: line, width: ctx.measureText(line).width });
+        lines.push({ text: line, width: measureHorizontalTextWidth(ctx, line, fontSize) });
         line = carry + ch;
         continue;
       }
 
-      lines.push({ text: line, width: ctx.measureText(line).width });
+      lines.push({ text: line, width: measureHorizontalTextWidth(ctx, line, fontSize) });
     }
     line = ch;
   }
 
   if (line) {
-    lines.push({ text: line, width: ctx.measureText(line).width });
+    lines.push({ text: line, width: measureHorizontalTextWidth(ctx, line, fontSize) });
   }
   return lines;
 }
@@ -346,6 +384,7 @@ function calcHorizontalLatin(
   ctx: CanvasRenderingContext2D,
   text: string,
   maxWidth: number,
+  fontSize: number,
 ): HLine[] {
   const words = text.split(/\s+/);
   const lines: HLine[] = [];
@@ -353,7 +392,7 @@ function calcHorizontalLatin(
 
   for (const word of words) {
     const trial = line ? line + " " + word : word;
-    const trialWidth = ctx.measureText(trial).width;
+    const trialWidth = measureHorizontalTextWidth(ctx, trial, fontSize);
 
     if (trialWidth <= maxWidth) {
       line = trial;
@@ -362,18 +401,18 @@ function calcHorizontalLatin(
 
     // If current line is non-empty, push it
     if (line) {
-      lines.push({ text: line, width: ctx.measureText(line).width });
+      lines.push({ text: line, width: measureHorizontalTextWidth(ctx, line, fontSize) });
       line = "";
     }
 
     // Check if the word itself exceeds maxWidth — character-break it
-    if (ctx.measureText(word).width > maxWidth) {
+    if (measureHorizontalTextWidth(ctx, word, fontSize) > maxWidth) {
       const chars = [...word];
       let frag = "";
       for (const ch of chars) {
         const fragTrial = frag + ch;
-        if (ctx.measureText(fragTrial).width > maxWidth && frag) {
-          lines.push({ text: frag, width: ctx.measureText(frag).width });
+        if (measureHorizontalTextWidth(ctx, fragTrial, fontSize) > maxWidth && frag) {
+          lines.push({ text: frag, width: measureHorizontalTextWidth(ctx, frag, fontSize) });
           frag = ch;
         } else {
           frag = fragTrial;
@@ -386,7 +425,7 @@ function calcHorizontalLatin(
   }
 
   if (line) {
-    lines.push({ text: line, width: ctx.measureText(line).width });
+    lines.push({ text: line, width: measureHorizontalTextWidth(ctx, line, fontSize) });
   }
   return lines;
 }
@@ -469,10 +508,11 @@ function resolveGlyphVerticalAdvance(
     : emBox > 0
       ? emBox
       : defaultAdvanceY;
-  const minAdvance = Math.max(actualBox, defaultAdvanceY * 0.72);
-  const stabilizedAdvance = Math.max(baseAdvance, defaultAdvanceY * 0.85, fontSize * 0.8);
+  const minAdvance = Math.max(actualBox, defaultAdvanceY * 0.68);
+  const stabilizedAdvance = Math.max(baseAdvance, defaultAdvanceY * 0.82, fontSize * 0.76);
+  const resolvedAdvance = Math.max(minAdvance, stabilizedAdvance) * verticalAdvanceTightenRatio;
 
-  return Math.max(1, Math.ceil(Math.max(minAdvance, stabilizedAdvance)));
+  return Math.max(1, Math.ceil(Math.max(actualBox, resolvedAdvance)));
 }
 
 /**
@@ -496,7 +536,7 @@ function resolveVerticalCellMetrics(
   const defaultAdvanceY = resolveFontVerticalAdvance(ctx, fontSize);
   const safetyPadding = Math.max(2, Math.ceil(sw * 0.8));
   const colWidth = Math.ceil(Math.max(fontSize, maxGlyphWidth) + safetyPadding);
-  const colSpacing = Math.max(1, Math.round(fontSize * 0.2));
+  const colSpacing = Math.max(1, Math.round(fontSize * verticalColumnSpacingRatio));
 
   return { colWidth, defaultAdvanceY, colSpacing };
 }
@@ -591,6 +631,34 @@ function strokeWidth(fontSize: number): number {
   return Math.max(1, Math.round(fontSize * 0.07));
 }
 
+function drawHorizontalTextLine(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  fontSize: number,
+  mode: "stroke" | "fill",
+): void {
+  const chars = [...text];
+  if (chars.length === 0) {
+    return;
+  }
+
+  const letterSpacing = resolveHorizontalLetterSpacing(fontSize);
+  let penX = x;
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
+    if (mode === "stroke") {
+      ctx.strokeText(ch, penX, y);
+    } else {
+      ctx.fillText(ch, penX, y);
+    }
+    if (i < chars.length - 1) {
+      penX += ctx.measureText(ch).width + letterSpacing;
+    }
+  }
+}
+
 /**
  * Render horizontal text onto an offscreen canvas with two-layer stroke.
  * Returns the offscreen canvas sized to fit the rendered text.
@@ -604,7 +672,7 @@ function renderHorizontal(
   alignment: "left" | "center" | "right",
 ): HTMLCanvasElement {
   const sw = strokeWidth(fontSize);
-  const lineHeight = fontSize + Math.round(fontSize * 0.01);
+  const lineHeight = resolveHorizontalLineHeight(fontSize);
   const padding = sw + 1;
 
   const canvasW = Math.ceil(contentWidth + padding * 2);
@@ -631,7 +699,7 @@ function renderHorizontal(
   for (let i = 0; i < lines.length; i++) {
     const x = computeAlignX(lines[i].width, contentWidth, padding, alignment);
     const y = offsetY + i * lineHeight;
-    ctx.strokeText(lines[i].text, x, y);
+    drawHorizontalTextLine(ctx, lines[i].text, x, y, fontSize, "stroke");
   }
 
   // Pass 2: fill (foreground color)
@@ -639,7 +707,7 @@ function renderHorizontal(
   for (let i = 0; i < lines.length; i++) {
     const x = computeAlignX(lines[i].width, contentWidth, padding, alignment);
     const y = offsetY + i * lineHeight;
-    ctx.fillText(lines[i].text, x, y);
+    drawHorizontalTextLine(ctx, lines[i].text, x, y, fontSize, "fill");
   }
 
   return off;
@@ -882,7 +950,7 @@ function fitHorizontal(
   while (fontSize >= preferredMinSize) {
     ctx.font = `${fontSize}px ${fontFamily}`;
     lines = calcHorizontal(ctx, text, contentWidth, fontSize);
-    const lineHeight = fontSize + Math.round(fontSize * 0.01);
+    const lineHeight = resolveHorizontalLineHeight(fontSize);
     if (lines.length * lineHeight <= contentHeight) {
       break;
     }
@@ -894,7 +962,7 @@ function fitHorizontal(
   lines = calcHorizontal(ctx, text, contentWidth, fontSize);
 
   while (fontSize > absoluteMinSize) {
-    const lineHeight = fontSize + Math.round(fontSize * 0.01);
+    const lineHeight = resolveHorizontalLineHeight(fontSize);
     const maxWidth = lines.reduce((max, line) => Math.max(max, line.width), 0);
     const withinHeight = lines.length * lineHeight <= contentHeight;
     const withinWidth = maxWidth <= contentWidth;
@@ -1141,12 +1209,14 @@ function expandRegionBeforeRender(
     const neededCols = countNeededColumnsAtFontSize(measureCtx, text, contentHeight, initialFontSize);
     if (neededCols > usedRowsOrCols) {
       // Vertical columns grow along width (x-axis) in this coordinate frame.
+      // Expand around center-x to avoid drifting the translated block to the right.
       const xfact = ((neededCols - usedRowsOrCols) / usedRowsOrCols) + 1;
+      const originX = (unrotatedBounds.minX + unrotatedBounds.maxX) / 2;
       const scaledUnrotated = scaleQuadFromOrigin(
         unrotatedQuad,
         xfact,
         1,
-        unrotatedBounds.minX,
+        originX,
         unrotatedBounds.minY,
       );
       const scaled = rotateQuad(scaledUnrotated, center.x, center.y, angle);

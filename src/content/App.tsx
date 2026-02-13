@@ -65,6 +65,10 @@ const imageDialogSelector = '[aria-labelledby="modal-header"][role="dialog"]';
 const originalSrcAttr = 'data-mt-original-src';
 const photoStateCacheLimit = 20;
 const routeChangeResyncDelayMs = 150;
+const referenceButtonSelector =
+  '#layers > div:nth-child(2) > div > div > div > div > div > div.css-175oi2r.r-1ny4l3l.r-18u37iz.r-1pi2tsx.r-1777fci.r-1xcajam.r-ipm5af.r-g6jmlv.r-1awozwy > div.css-175oi2r.r-1wbh5a2.r-htvplk.r-1udh08x.r-17gur6a.r-1pi2tsx.r-13qz1uu > div.css-175oi2r.r-18u37iz.r-1pi2tsx.r-11yh6sk.r-buy8e9.r-bnwqim.r-13qz1uu > div.css-175oi2r.r-16y2uox.r-1wbh5a2 > div.css-175oi2r.r-1awozwy.r-1loqt21.r-1777fci.r-xyw6el.r-u8s1d.r-ipm5af.r-zchlnj';
+const anchoredVerticalGapPx = 8;
+const fallbackHostInsetPx = 16;
 
 let runPipelineLoader: Promise<typeof import('../pipeline/orchestrator')> | null = null;
 
@@ -187,6 +191,20 @@ function isMediaImageSource(src: string): boolean {
     return true;
   }
   return src.includes('pbs.twimg.com/media/');
+}
+
+function isDialogMediaImage(image: HTMLImageElement): boolean {
+  if (!isVisibleElement(image)) {
+    return false;
+  }
+  const src = image.currentSrc || image.src;
+  if (!isMediaImageSource(src)) {
+    return false;
+  }
+  if (src.startsWith('blob:') && !image.hasAttribute(originalSrcAttr)) {
+    return false;
+  }
+  return true;
 }
 
 function normalizeImageKey(rawUrl: string): string {
@@ -324,10 +342,14 @@ class XOverlayTranslator {
   private observedRoot: Element | null = null;
   private syncTimer: number | null = null;
   private syncDueTime = 0;
+  private positionRafId: number | null = null;
+  private hasPendingRenderPositionSync = false;
   private routeResyncTimer: number | null = null;
   private originalPushState: History['pushState'] | null = null;
   private originalReplaceState: History['replaceState'] | null = null;
   private historyPatched = false;
+  private lastHostLeft: number | null = null;
+  private lastHostTop: number | null = null;
   private activeDialog: HTMLElement | null = null;
   private uiHost: HTMLElement | null = null;
   private button: HTMLButtonElement | null = null;
@@ -357,6 +379,7 @@ class XOverlayTranslator {
       window.clearTimeout(this.routeResyncTimer);
       this.routeResyncTimer = null;
     }
+    this.stopPositionTracking();
     this.observer?.disconnect();
     this.observer = null;
     this.observedRoot = null;
@@ -473,14 +496,15 @@ class XOverlayTranslator {
     style.textContent = `
       .mt-x-overlay-fallback {
         position: absolute;
-        right: 16px;
-        top: 16px;
+        right: ${fallbackHostInsetPx}px;
+        top: ${fallbackHostInsetPx}px;
         z-index: 1000;
       }
       .mt-x-overlay-inline {
         display: flex;
-        align-items: flex-start;
-        gap: 8px;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 6px;
       }
       .mt-x-control {
         display: inline-flex;
@@ -502,7 +526,6 @@ class XOverlayTranslator {
         cursor: default;
       }
       .mt-x-status {
-        margin-top: 2px;
         display: flex;
         align-items: flex-start;
         gap: 6px;
@@ -541,6 +564,104 @@ class XOverlayTranslator {
     document.documentElement.appendChild(style);
   }
 
+  private startPositionTracking(): void {
+    if (this.positionRafId !== null) {
+      return;
+    }
+    const tick = (): void => {
+      if (!this.activeDialog || !this.uiHost?.isConnected) {
+        this.positionRafId = null;
+        return;
+      }
+      this.positionUiHost(this.activeDialog);
+      this.positionRafId = window.requestAnimationFrame(tick);
+    };
+    this.positionRafId = window.requestAnimationFrame(tick);
+  }
+
+  private stopPositionTracking(): void {
+    if (this.positionRafId !== null) {
+      window.cancelAnimationFrame(this.positionRafId);
+      this.positionRafId = null;
+    }
+    this.hasPendingRenderPositionSync = false;
+  }
+
+  private queuePositionSyncAfterRender(): void {
+    if (this.hasPendingRenderPositionSync) {
+      return;
+    }
+    this.hasPendingRenderPositionSync = true;
+    queueMicrotask(() => {
+      this.hasPendingRenderPositionSync = false;
+      if (!this.activeDialog || !this.uiHost?.isConnected) {
+        return;
+      }
+      this.positionUiHost(this.activeDialog);
+    });
+  }
+
+  private findReferenceButton(): HTMLElement | null {
+    const element = document.querySelector(referenceButtonSelector);
+    return element instanceof HTMLElement ? element : null;
+  }
+
+  private applyFallbackPosition(host: HTMLElement): void {
+    const fallbackInset = `${fallbackHostInsetPx}px`;
+    if (host.style.left !== 'auto') {
+      host.style.left = 'auto';
+    }
+    if (host.style.right !== fallbackInset) {
+      host.style.right = fallbackInset;
+    }
+    if (host.style.top !== fallbackInset) {
+      host.style.top = fallbackInset;
+    }
+    this.lastHostLeft = null;
+    this.lastHostTop = null;
+  }
+
+  private applyAnchoredPosition(dialog: HTMLElement, host: HTMLElement, anchor: HTMLElement): void {
+    const anchorRect = anchor.getBoundingClientRect();
+    const dialogRect = dialog.getBoundingClientRect();
+    const hostWidth = host.offsetWidth;
+    const hostHeight = host.offsetHeight;
+
+    const unclampedLeft = anchorRect.right - dialogRect.left - hostWidth;
+    const unclampedTop = anchorRect.bottom - dialogRect.top + anchoredVerticalGapPx;
+    const maxLeft = Math.max(0, dialogRect.width - hostWidth);
+    const maxTop = Math.max(0, dialogRect.height - hostHeight);
+
+    const left = Math.min(maxLeft, Math.max(0, unclampedLeft));
+    const top = Math.min(maxTop, Math.max(0, unclampedTop));
+    const roundedLeft = Math.round(left);
+    const roundedTop = Math.round(top);
+
+    if (host.style.right !== 'auto') {
+      host.style.right = 'auto';
+    }
+    if (this.lastHostLeft !== roundedLeft) {
+      host.style.left = `${roundedLeft}px`;
+      this.lastHostLeft = roundedLeft;
+    }
+    if (this.lastHostTop !== roundedTop) {
+      host.style.top = `${roundedTop}px`;
+      this.lastHostTop = roundedTop;
+    }
+  }
+
+  private positionUiHost(dialog: HTMLElement): void {
+    if (!this.uiHost) {
+      return;
+    }
+    const anchor = this.findReferenceButton();
+    if (!anchor || !isVisibleElement(anchor) || !dialog.contains(anchor)) {
+      this.applyFallbackPosition(this.uiHost);
+      return;
+    }
+    this.applyAnchoredPosition(dialog, this.uiHost, anchor);
+  }
+
   private sync(): void {
     this.bindObserver();
     const dialog = this.findPhotoDialog();
@@ -558,6 +679,7 @@ class XOverlayTranslator {
       this.activeDialog = dialog;
       this.mountUi(dialog);
     }
+    this.positionUiHost(dialog);
 
     const currentImage = this.findCurrentImage(dialog);
     if (!currentImage) {
@@ -615,18 +737,22 @@ class XOverlayTranslator {
   }
 
   private findCurrentImage(dialog: HTMLElement): HTMLImageElement | null {
+    const centerElement = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2);
+    const centerImage =
+      centerElement instanceof HTMLImageElement
+        ? centerElement
+        : centerElement?.closest?.('img') instanceof HTMLImageElement
+          ? (centerElement.closest('img') as HTMLImageElement)
+          : null;
+    if (centerImage && dialog.contains(centerImage) && isDialogMediaImage(centerImage)) {
+      return centerImage;
+    }
+
     let best: HTMLImageElement | null = null;
     let bestArea = 0;
     const images = dialog.querySelectorAll<HTMLImageElement>('img');
     for (const image of images) {
-      if (!isVisibleElement(image)) {
-        continue;
-      }
-      const src = image.currentSrc || image.src;
-      if (!isMediaImageSource(src)) {
-        continue;
-      }
-      if (src.startsWith('blob:') && !image.hasAttribute(originalSrcAttr)) {
+      if (!isDialogMediaImage(image)) {
         continue;
       }
       const rect = image.getBoundingClientRect();
@@ -681,12 +807,17 @@ class XOverlayTranslator {
 
     dialog.appendChild(host);
     this.uiHost = host;
+    this.positionUiHost(dialog);
+    this.startPositionTracking();
   }
 
   private detachUi(): void {
+    this.stopPositionTracking();
     if (this.uiHost?.parentElement) {
       this.uiHost.parentElement.removeChild(this.uiHost);
     }
+    this.lastHostLeft = null;
+    this.lastHostTop = null;
     this.uiHost = null;
     this.button = null;
     this.statusLine = null;
@@ -749,6 +880,9 @@ class XOverlayTranslator {
     const button = this.button;
     const statusLine = this.statusLine;
     const statusSpinner = this.statusSpinner;
+    const finalizeRender = (): void => {
+      this.queuePositionSyncAfterRender();
+    };
     const updateStatusLine = (text: string, variant: 'normal' | 'error', running: boolean): void => {
       statusLine.textContent = text;
       statusLine.dataset.variant = variant;
@@ -759,36 +893,42 @@ class XOverlayTranslator {
       button.disabled = true;
       button.textContent = '翻译';
       updateStatusLine('', 'normal', false);
+      finalizeRender();
       return;
     }
 
     button.disabled = state.status === 'running';
     if (state.status === 'running') {
-      button.textContent = '翻译中';
+      button.textContent = '翻译中...';
       updateStatusLine(`正在处理：${state.stageText || '准备中'}`, 'normal', true);
+      finalizeRender();
       return;
     }
 
     if (state.status === 'translated') {
       button.textContent = '显示原图';
       updateStatusLine(appendStatusDetail('翻译完成', state.elapsedText), 'normal', false);
+      finalizeRender();
       return;
     }
 
     if (state.status === 'showingOriginal') {
       button.textContent = '显示译图';
       updateStatusLine(appendStatusDetail('当前显示原图', state.elapsedText), 'normal', false);
+      finalizeRender();
       return;
     }
 
     if (state.status === 'error') {
       button.textContent = '重试';
-      updateStatusLine('翻译失败：' + state.errorText, 'error', false);
+      updateStatusLine(`翻译失败：${state.errorText}`, 'error', false);
+      finalizeRender();
       return;
     }
 
     button.textContent = '翻译';
     updateStatusLine('', 'normal', false);
+    finalizeRender();
   }
 
   private applyImageFromState(image: HTMLImageElement, state: PhotoState): void {
@@ -959,3 +1099,4 @@ export function mountContentApp(): void {
   const app = new XOverlayTranslator();
   app.start();
 }
+

@@ -53,6 +53,7 @@ const stageLabelMap: Record<string, string> = {
   detect: '文本检测',
   ocr: '文字识别',
   merge: '合并文本',
+  parallel: '\u5e76\u884c\u5904\u7406',
   translate: '翻译文本',
   mask_refine: '细化遮罩',
   inpaint: '去除文字',
@@ -1061,7 +1062,8 @@ class XOverlayTranslator {
 
       const runPipeline = await getRunPipeline();
       const artifacts = await runPipeline(file, toPipelineConfig(settingsResponse.settings), (progress: PipelineProgress) => {
-        state.stageText = stageLabelMap[progress.stage] ?? progress.detail ?? progress.stage;
+        const stageLabel = stageLabelMap[progress.stage] ?? progress.stage;
+        state.stageText = progress.detail ? `${stageLabel}: ${progress.detail}` : stageLabel;
         this.render(state);
       });
 

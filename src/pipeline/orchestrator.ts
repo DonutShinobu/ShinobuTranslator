@@ -168,63 +168,147 @@ export async function runPipeline(
     throw new PipelineStageError("文本行合并", toErrorDetail(error), buildArtifacts());
   }
 
-  report(onProgress, "translate", "翻译为中文");
-  try {
-    const t0 = performance.now();
-    const translatedRegions = await runTranslate(latestRegions, config);
-    latestRegions = translatedRegions;
-    cleanedCanvas = ocrCanvas;
-    resultCanvas = cleanedCanvas;
-    stageTimings.push({ stage: "translate", label: "翻译为中文", durationMs: performance.now() - t0 });
-  } catch (error) {
-    throw new PipelineStageError("翻译", toErrorDetail(error), buildArtifacts());
-  }
+  const mergedRegions = latestRegions;
 
-  report(onProgress, "mask_refine", "细化去字遮罩");
-  try {
-    const t0 = performance.now();
+  type ParallelTranslateStatus = "pending" | "running" | "done";
+  type ParallelEraseStatus = "pending" | "mask_refine" | "inpaint" | "done";
+
+  let parallelTranslateStatus: ParallelTranslateStatus = "pending";
+  let parallelEraseStatus: ParallelEraseStatus = "pending";
+  let translateTiming: StageTiming | null = null;
+  let maskRefineTiming: StageTiming | null = null;
+  let inpaintTiming: StageTiming | null = null;
+  let parallelTimingsFlushed = false;
+
+  const flushParallelTimings = (): void => {
+    if (parallelTimingsFlushed) {
+      return;
+    }
+    if (translateTiming) {
+      stageTimings.push(translateTiming);
+    }
+    if (maskRefineTiming) {
+      stageTimings.push(maskRefineTiming);
+    }
+    if (inpaintTiming) {
+      stageTimings.push(inpaintTiming);
+    }
+    parallelTimingsFlushed = true;
+  };
+
+  const getTranslateDetail = (): string => {
+    if (parallelTranslateStatus === "running") {
+      return "\u7ffb\u8bd1\u4e2d";
+    }
+    if (parallelTranslateStatus === "done") {
+      return "\u7ffb\u8bd1\u5b8c\u6210";
+    }
+    return "\u7ffb\u8bd1\u5f85\u6267\u884c";
+  };
+
+  const getEraseDetail = (): string => {
+    if (parallelEraseStatus === "mask_refine") {
+      return "\u7ec6\u5316\u906e\u7f69\u4e2d";
+    }
+    if (parallelEraseStatus === "inpaint") {
+      return "\u53bb\u5b57\u4e2d";
+    }
+    if (parallelEraseStatus === "done") {
+      return "\u53bb\u5b57\u5b8c\u6210";
+    }
+    return "\u53bb\u5b57\u5f85\u6267\u884c";
+  };
+
+  const reportParallel = (): void => {
+    report(onProgress, "parallel", `${getTranslateDetail()} | ${getEraseDetail()}`);
+  };
+
+  reportParallel();
+  const parallelT0 = performance.now();
+
+  const translateTask = (async (): Promise<PipelineArtifacts["detectedRegions"]> => {
+    parallelTranslateStatus = "running";
+    reportParallel();
+    try {
+      const t0 = performance.now();
+      const translatedRegions = await runTranslate(mergedRegions, config);
+      translateTiming = { stage: "translate", label: "\u7ffb\u8bd1\u4e3a\u4e2d\u6587", durationMs: performance.now() - t0 };
+      parallelTranslateStatus = "done";
+      reportParallel();
+      return translatedRegions;
+    } catch (error) {
+      throw new PipelineStageError("\u7ffb\u8bd1", toErrorDetail(error), buildArtifacts());
+    }
+  })();
+
+  const eraseTask = (async (): Promise<HTMLCanvasElement> => {
     if (!detectionMaskCanvas) {
-      throw new Error("检测阶段未提供原始 mask，已禁用文本框遮罩回退");
+      throw new PipelineStageError("\u906e\u7f69\u7ec6\u5316", "\u68c0\u6d4b\u9636\u6bb5\u672a\u63d0\u4f9b\u539f\u59cb mask\uff0c\u5df2\u7981\u7528\u6587\u672c\u6846\u906e\u7f69\u56de\u9000", buildArtifacts());
     }
-    refinedMaskCanvas = refineTextMask(originalCanvas, latestRegions, detectionMaskCanvas, {
-      method: "fit_text",
-      dilationOffset: 20,
-      kernelSize: 3
-    });
-    cleanedCanvas = ocrCanvas;
-    resultCanvas = cleanedCanvas;
-    stageTimings.push({ stage: "mask_refine", label: "细化去字遮罩", durationMs: performance.now() - t0 });
-  } catch (error) {
-    throw new PipelineStageError("遮罩细化", toErrorDetail(error), buildArtifacts());
-  }
 
-  report(onProgress, "inpaint", "去字");
+    parallelEraseStatus = "mask_refine";
+    reportParallel();
+    try {
+      const t0 = performance.now();
+      refinedMaskCanvas = refineTextMask(originalCanvas, mergedRegions, detectionMaskCanvas, {
+        method: "fit_text",
+        dilationOffset: 20,
+        kernelSize: 3
+      });
+      maskRefineTiming = { stage: "mask_refine", label: "\u7ec6\u5316\u53bb\u5b57\u906e\u7f69", durationMs: performance.now() - t0 };
+    } catch (error) {
+      throw new PipelineStageError("\u906e\u7f69\u7ec6\u5316", toErrorDetail(error), buildArtifacts());
+    }
+
+    parallelEraseStatus = "inpaint";
+    reportParallel();
+    try {
+      const t0 = performance.now();
+      if (!refinedMaskCanvas) {
+        throw new Error("\u53bb\u5b57\u524d\u7f3a\u5c11 refined mask\uff0c\u5df2\u7981\u7528\u6587\u672c\u6846\u906e\u7f69\u56de\u9000");
+      }
+      const inpaintResult = await runInpaint(originalCanvas, refinedMaskCanvas);
+      inpaintTiming = { stage: "inpaint", label: "\u53bb\u5b57", durationMs: performance.now() - t0 };
+      if (inpaintResult.actualProvider !== runtimeStages[2].provider) {
+        const providerLabel = inpaintResult.actualProvider === "webnn"
+          ? `${inpaintResult.actualProvider}/${inpaintResult.actualWebnnDeviceType ?? "default"}`
+          : inpaintResult.actualProvider;
+        runtimeStages[2] = {
+          model: "inpaint",
+          enabled: true,
+          provider: inpaintResult.actualProvider,
+          webnnDeviceType: inpaintResult.actualWebnnDeviceType,
+          detail: `inpaint \u63a8\u7406\u5df2\u56de\u9000\u5230 (${providerLabel})`
+        };
+      }
+      parallelEraseStatus = "done";
+      reportParallel();
+      return inpaintResult.canvas;
+    } catch (error) {
+      throw new PipelineStageError("\u53bb\u5b57", toErrorDetail(error), buildArtifacts());
+    }
+  })();
+
   try {
-    const t0 = performance.now();
-    if (!refinedMaskCanvas) {
-      throw new Error("去字前缺少 refined mask，已禁用文本框遮罩回退");
-    }
-    const inpaintResult = await runInpaint(originalCanvas, refinedMaskCanvas);
-    cleanedCanvas = inpaintResult.canvas;
+    const [translatedRegions, inpaintedCanvas] = await Promise.all([translateTask, eraseTask]);
+    latestRegions = translatedRegions;
+    cleanedCanvas = inpaintedCanvas;
     resultCanvas = cleanedCanvas;
-    if (inpaintResult.actualProvider !== runtimeStages[2].provider) {
-      const providerLabel = inpaintResult.actualProvider === "webnn"
-        ? `${inpaintResult.actualProvider}/${inpaintResult.actualWebnnDeviceType ?? "default"}`
-        : inpaintResult.actualProvider;
-      runtimeStages[2] = {
-        model: "inpaint",
-        enabled: true,
-        provider: inpaintResult.actualProvider,
-        webnnDeviceType: inpaintResult.actualWebnnDeviceType,
-        detail: `inpaint 推理已回退到 (${providerLabel})`
-      };
-    }
-    stageTimings.push({ stage: "inpaint", label: "去字", durationMs: performance.now() - t0 });
+    flushParallelTimings();
+    stageTimings.push({
+      stage: "parallel",
+      label: "\u5e76\u884c\u5904\u7406(\u7ffb\u8bd1 + \u53bb\u5b57)",
+      durationMs: performance.now() - parallelT0
+    });
   } catch (error) {
-    throw new PipelineStageError("去字", toErrorDetail(error), buildArtifacts());
+    flushParallelTimings();
+    if (error instanceof PipelineStageError) {
+      throw error;
+    }
+    throw new PipelineStageError("\u5e76\u884c\u5904\u7406", toErrorDetail(error), buildArtifacts());
   }
 
-  report(onProgress, "typeset", "排版和嵌字");
+  report(onProgress, "typeset", "\u6392\u7248\u548c\u5d4c\u5b57");
   try {
     const t0 = performance.now();
     resultCanvas = await drawTypeset(cleanedCanvas, latestRegions);

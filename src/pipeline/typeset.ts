@@ -10,6 +10,8 @@ const horizontalLetterSpacingRatio = -0.05;
 const horizontalLineHeightRatio = 0.93;
 const verticalAdvanceTightenRatio = 0.9;
 const verticalColumnSpacingRatio = 0.14;
+const minVerticalAdvanceScale = 0.75;
+const minVerticalColSpacingScale = 0.6;
 
 /**
  * CJK horizontal-to-vertical punctuation substitution map.
@@ -228,6 +230,11 @@ type FitVerticalResult = {
   columns: VColumn[];
   metrics: VerticalCellMetrics;
   requiredContentWidth: number;
+};
+
+type VerticalFitOptions = {
+  targetColumnCount?: number;
+  preferredColumns?: string[];
 };
 
 type Quad = [QuadPoint, QuadPoint, QuadPoint, QuadPoint];
@@ -497,6 +504,7 @@ function resolveGlyphVerticalAdvance(
   ch: string,
   fontSize: number,
   defaultAdvanceY: number,
+  advanceScale = 1,
 ): number {
   const metrics = ctx.measureText(ch);
   const fontBox = metricAbs(metrics.fontBoundingBoxAscent) + metricAbs(metrics.fontBoundingBoxDescent);
@@ -510,7 +518,7 @@ function resolveGlyphVerticalAdvance(
       : defaultAdvanceY;
   const minAdvance = Math.max(actualBox, defaultAdvanceY * 0.68);
   const stabilizedAdvance = Math.max(baseAdvance, defaultAdvanceY * 0.82, fontSize * 0.76);
-  const resolvedAdvance = Math.max(minAdvance, stabilizedAdvance) * verticalAdvanceTightenRatio;
+  const resolvedAdvance = Math.max(minAdvance, stabilizedAdvance) * verticalAdvanceTightenRatio * advanceScale;
 
   return Math.max(1, Math.ceil(Math.max(actualBox, resolvedAdvance)));
 }
@@ -559,6 +567,7 @@ function calcVertical(
   maxHeight: number,
   fontSize: number,
   defaultAdvanceY: number,
+  advanceScale = 1,
 ): VColumn[] {
   const chars = [...text.replace(/\s+/g, "")];
   if (chars.length === 0) return [];
@@ -569,7 +578,7 @@ function calcVertical(
     if (cached !== undefined) {
       return cached;
     }
-    const resolved = resolveGlyphVerticalAdvance(ctx, ch, fontSize, defaultAdvanceY);
+    const resolved = resolveGlyphVerticalAdvance(ctx, ch, fontSize, defaultAdvanceY, advanceScale);
     advanceCache.set(ch, resolved);
     return resolved;
   };
@@ -615,6 +624,35 @@ function calcVertical(
 
   if (col.length > 0) {
     columns.push({ glyphs: col, height: colHeight });
+  }
+  return columns;
+}
+
+function calcVerticalFromColumns(
+  ctx: CanvasRenderingContext2D,
+  preferredColumns: string[],
+  maxHeight: number,
+  fontSize: number,
+  defaultAdvanceY: number,
+  advanceScale = 1,
+): VColumn[] {
+  const columns: VColumn[] = [];
+  for (const source of preferredColumns) {
+    const segment = source.trim();
+    if (!segment) {
+      continue;
+    }
+    const segmentColumns = calcVertical(
+      ctx,
+      segment,
+      maxHeight,
+      fontSize,
+      defaultAdvanceY,
+      advanceScale,
+    );
+    if (segmentColumns.length > 0) {
+      columns.push(...segmentColumns);
+    }
   }
   return columns;
 }
@@ -985,18 +1023,39 @@ function buildVerticalLayout(
   text: string,
   contentHeight: number,
   fontSize: number,
-  forcedColSpacing?: number,
+  options?: {
+    colSpacingScale?: number;
+    advanceScale?: number;
+    preferredColumns?: string[];
+  },
 ): VerticalLayoutResult {
   ctx.font = `${fontSize}px ${fontFamily}`;
   const sw = strokeWidth(fontSize);
   const baseMetrics = resolveVerticalCellMetrics(ctx, text, fontSize, sw);
-  const metrics = forcedColSpacing === undefined
-    ? baseMetrics
-    : {
-        ...baseMetrics,
-        colSpacing: Math.max(0, forcedColSpacing),
-      };
-  const columns = calcVertical(ctx, text, contentHeight, fontSize, metrics.defaultAdvanceY);
+  const colSpacingScale = options?.colSpacingScale ?? 1;
+  const advanceScale = options?.advanceScale ?? 1;
+  const metrics = {
+    ...baseMetrics,
+    colSpacing: Math.max(0, Math.round(baseMetrics.colSpacing * colSpacingScale)),
+  };
+
+  const columns = options?.preferredColumns && options.preferredColumns.length > 0
+    ? calcVerticalFromColumns(
+        ctx,
+        options.preferredColumns,
+        contentHeight,
+        fontSize,
+        metrics.defaultAdvanceY,
+        advanceScale,
+      )
+    : calcVertical(
+        ctx,
+        text,
+        contentHeight,
+        fontSize,
+        metrics.defaultAdvanceY,
+        advanceScale,
+      );
   const requiredContentWidth = computeVerticalTotalWidth(columns.length, metrics);
   return { columns, metrics, requiredContentWidth };
 }
@@ -1007,25 +1066,73 @@ function fitVertical(
   contentWidth: number,
   contentHeight: number,
   initial: number,
+  options?: VerticalFitOptions,
 ): FitVerticalResult {
   const absoluteMinSize = 8;
-  let fontSize = Math.max(absoluteMinSize, initial);
+  const initialFontSize = Math.max(absoluteMinSize, initial);
+  const targetColumnCount = Math.max(1, options?.targetColumnCount ?? 1);
 
-  while (fontSize >= absoluteMinSize) {
-    ctx.font = `${fontSize}px ${fontFamily}`;
-    const layout = buildVerticalLayout(ctx, text, contentHeight, fontSize);
-    if (layout.requiredContentWidth <= contentWidth) {
-      return { fontSize, ...layout };
+  const compressionProfiles = [
+    { advanceScale: 1, colSpacingScale: 1 },
+    { advanceScale: 0.95, colSpacingScale: 0.95 },
+    { advanceScale: 0.9, colSpacingScale: 0.9 },
+    { advanceScale: 0.85, colSpacingScale: 0.82 },
+    { advanceScale: 0.8, colSpacingScale: 0.72 },
+    { advanceScale: minVerticalAdvanceScale, colSpacingScale: minVerticalColSpacingScale },
+  ];
+
+  const scoreLayout = (layout: VerticalLayoutResult, preferredFontSize: number): number => {
+    const widthPenalty = layout.requiredContentWidth > contentWidth
+      ? (layout.requiredContentWidth - contentWidth) / Math.max(1, contentWidth)
+      : 0;
+    const columnPenalty = options?.preferredColumns && options.preferredColumns.length > 0
+      ? 0
+      : Math.abs(layout.columns.length - targetColumnCount) * 0.12;
+    const fontPenalty = (initialFontSize - preferredFontSize) * 0.02;
+    return widthPenalty + columnPenalty + fontPenalty;
+  };
+
+  let best: FitVerticalResult | null = null;
+  for (const profile of compressionProfiles) {
+    const layout = buildVerticalLayout(ctx, text, contentHeight, initialFontSize, {
+      colSpacingScale: profile.colSpacingScale,
+      advanceScale: profile.advanceScale,
+      preferredColumns: options?.preferredColumns,
+    });
+    const candidate: FitVerticalResult = { fontSize: initialFontSize, ...layout };
+    if (!best || scoreLayout(layout, initialFontSize) < scoreLayout(best, best.fontSize)) {
+      best = candidate;
     }
+    if (layout.requiredContentWidth <= contentWidth) {
+      return candidate;
+    }
+  }
 
+  let fontSize = initialFontSize - 1;
+  while (fontSize >= absoluteMinSize) {
+    for (const profile of compressionProfiles) {
+      const layout = buildVerticalLayout(ctx, text, contentHeight, fontSize, {
+        colSpacingScale: profile.colSpacingScale,
+        advanceScale: profile.advanceScale,
+        preferredColumns: options?.preferredColumns,
+      });
+      const candidate: FitVerticalResult = { fontSize, ...layout };
+      if (!best || scoreLayout(layout, fontSize) < scoreLayout(best, best.fontSize)) {
+        best = candidate;
+      }
+      if (layout.requiredContentWidth <= contentWidth) {
+        return candidate;
+      }
+    }
     fontSize -= 1;
   }
 
-  fontSize = absoluteMinSize;
-  ctx.font = `${fontSize}px ${fontFamily}`;
-  const layout = buildVerticalLayout(ctx, text, contentHeight, fontSize);
+  if (best) {
+    return best;
+  }
 
-  return { fontSize, ...layout };
+  const fallbackLayout = buildVerticalLayout(ctx, text, contentHeight, absoluteMinSize);
+  return { fontSize: absoluteMinSize, ...fallbackLayout };
 }
 
 function cloneQuad(
@@ -1159,11 +1266,17 @@ function countNeededColumnsAtFontSize(
   text: string,
   contentHeight: number,
   fontSize: number,
+  options?: VerticalFitOptions,
 ): number {
-  const sw = strokeWidth(fontSize);
-  measureCtx.font = `${fontSize}px ${fontFamily}`;
-  const metrics = resolveVerticalCellMetrics(measureCtx, text, fontSize, sw);
-  const columns = calcVertical(measureCtx, text, contentHeight, fontSize, metrics.defaultAdvanceY);
+  const layout = buildVerticalLayout(measureCtx, text, contentHeight, fontSize, {
+    advanceScale: minVerticalAdvanceScale,
+    colSpacingScale: minVerticalColSpacingScale,
+    preferredColumns: options?.preferredColumns,
+  });
+  if (options?.targetColumnCount) {
+    return Math.max(1, Math.max(layout.columns.length, options.targetColumnCount));
+  }
+  const columns = layout.columns;
   return Math.max(1, columns.length);
 }
 
@@ -1206,7 +1319,16 @@ function expandRegionBeforeRender(
       singleAxisExpanded = true;
     }
   } else {
-    const neededCols = countNeededColumnsAtFontSize(measureCtx, text, contentHeight, initialFontSize);
+    const neededCols = countNeededColumnsAtFontSize(
+      measureCtx,
+      text,
+      contentHeight,
+      initialFontSize,
+      {
+        targetColumnCount: Math.max(1, expanded.originalLineCount ?? 1),
+        preferredColumns: expanded.translatedColumns,
+      },
+    );
     if (neededCols > usedRowsOrCols) {
       // Vertical columns grow along width (x-axis) in this coordinate frame.
       // Expand around center-x to avoid drifting the translated block to the right.
@@ -1325,7 +1447,15 @@ export async function drawTypeset(
 
     if (isVertical) {
       const { fontSize, columns, metrics } = fitVertical(
-        measureCtx, text, contentWidth, contentHeight, initialFontSize,
+        measureCtx,
+        text,
+        contentWidth,
+        contentHeight,
+        initialFontSize,
+        {
+          targetColumnCount: Math.max(1, region.originalLineCount ?? 1),
+          preferredColumns: region.translatedColumns,
+        },
       );
       const sw = strokeWidth(fontSize);
       strokePadding = sw + 2;

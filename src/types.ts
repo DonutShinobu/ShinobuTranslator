@@ -25,6 +25,8 @@ export type TextRegion = {
   originalLineCount?: number;
   sourceText: string;
   translatedText: string;
+  /** Optional LLM-provided vertical columns, ordered right-to-left. */
+  translatedColumns?: string[];
 };
 
 export type PipelineConfig = {

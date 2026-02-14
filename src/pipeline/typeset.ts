@@ -830,6 +830,92 @@ function drawHorizontalTextLine(
   }
 }
 
+function resolveHorizontalRenderPadding(
+  ctx: CanvasRenderingContext2D,
+  lines: HLine[],
+  fontSize: number,
+): number {
+  if (lines.length === 0) {
+    return strokeWidth(fontSize) + 2;
+  }
+
+  ctx.font = `${fontSize}px ${fontFamily}`;
+  const letterSpacing = resolveHorizontalLetterSpacing(fontSize);
+  let maxOverflow = 0;
+
+  for (const line of lines) {
+    const chars = [...line.text];
+    if (chars.length === 0) {
+      continue;
+    }
+
+    let penX = 0;
+    let minX = 0;
+    let maxX = line.width;
+
+    for (let i = 0; i < chars.length; i++) {
+      const ch = chars[i];
+      const metrics = ctx.measureText(ch);
+      const left = metricAbs(metrics.actualBoundingBoxLeft);
+      const right = metricAbs(metrics.actualBoundingBoxRight);
+
+      minX = Math.min(minX, penX - left);
+      maxX = Math.max(maxX, penX + right);
+
+      if (i < chars.length - 1) {
+        penX += metrics.width + letterSpacing;
+      }
+    }
+
+    const leftOverflow = Math.max(0, -minX);
+    const rightOverflow = Math.max(0, maxX - line.width);
+    maxOverflow = Math.max(maxOverflow, leftOverflow, rightOverflow);
+  }
+
+  const sw = strokeWidth(fontSize);
+  const basePadding = sw + 2;
+  const fallbackPadding = Math.ceil(fontSize * 0.12);
+  const overflowPadding = Math.max(Math.ceil(maxOverflow), fallbackPadding);
+  return basePadding + overflowPadding;
+}
+
+function resolveVerticalRenderPadding(
+  ctx: CanvasRenderingContext2D,
+  columns: VColumn[],
+  fontSize: number,
+  metrics: VerticalCellMetrics,
+): number {
+  if (columns.length === 0) {
+    return strokeWidth(fontSize) + 2;
+  }
+
+  ctx.font = `${fontSize}px ${fontFamily}`;
+
+  let maxOverflow = 0;
+  const halfColWidth = metrics.colWidth / 2;
+
+  for (const col of columns) {
+    for (const glyph of col.glyphs) {
+      const measured = ctx.measureText(glyph.ch);
+      const left = metricAbs(measured.actualBoundingBoxLeft);
+      const right = metricAbs(measured.actualBoundingBoxRight);
+      const ascent = metricAbs(measured.actualBoundingBoxAscent);
+      const descent = metricAbs(measured.actualBoundingBoxDescent);
+
+      const xOverflow = Math.max(0, left - halfColWidth, right - halfColWidth);
+      const halfAdvance = glyph.advanceY / 2;
+      const yOverflow = Math.max(0, ascent - halfAdvance, descent - halfAdvance);
+      maxOverflow = Math.max(maxOverflow, xOverflow, yOverflow);
+    }
+  }
+
+  const sw = strokeWidth(fontSize);
+  const basePadding = sw + 2;
+  const fallbackPadding = Math.ceil(fontSize * 0.12);
+  const overflowPadding = Math.max(Math.ceil(maxOverflow), fallbackPadding);
+  return basePadding + overflowPadding;
+}
+
 /**
  * Render horizontal text onto an offscreen canvas with two-layer stroke.
  * Returns the offscreen canvas sized to fit the rendered text.
@@ -841,10 +927,10 @@ function renderHorizontal(
   contentHeight: number,
   colors: ResolvedColors,
   alignment: "left" | "center" | "right",
+  padding: number,
 ): HTMLCanvasElement {
   const sw = strokeWidth(fontSize);
   const lineHeight = resolveHorizontalLineHeight(fontSize);
-  const padding = sw + 1;
 
   const canvasW = Math.ceil(contentWidth + padding * 2);
   const canvasH = Math.ceil(contentHeight + padding * 2);
@@ -919,10 +1005,10 @@ function renderVertical(
   colors: ResolvedColors,
   alignment: "left" | "center" | "right",
   metrics: VerticalCellMetrics,
+  padding: number,
 ): HTMLCanvasElement {
   const sw = strokeWidth(fontSize);
   const { colWidth, colSpacing } = metrics;
-  const padding = sw + 2;
 
   const canvasW = Math.ceil(contentWidth + padding * 2);
   const canvasH = Math.ceil(contentHeight + padding * 2);
@@ -1680,21 +1766,32 @@ export async function drawTypeset(
           preferredProfile,
         },
       );
-      const sw = strokeWidth(fontSize);
-      strokePadding = sw + 2;
+      strokePadding = resolveVerticalRenderPadding(measureCtx, columns, fontSize, metrics);
       const alignment = resolveAlignment(region, columns.length);
       offCanvas = renderVertical(
-        columns, fontSize, contentWidth, contentHeight, colors, alignment, metrics,
+        columns,
+        fontSize,
+        contentWidth,
+        contentHeight,
+        colors,
+        alignment,
+        metrics,
+        strokePadding,
       );
     } else {
       const { fontSize, lines } = fitHorizontal(
         measureCtx, text, contentWidth, contentHeight, initialFontSize,
       );
-      const sw = strokeWidth(fontSize);
-      strokePadding = sw + 1;
+      strokePadding = resolveHorizontalRenderPadding(measureCtx, lines, fontSize);
       const alignment = resolveAlignment(region, lines.length);
       offCanvas = renderHorizontal(
-        lines, fontSize, contentWidth, contentHeight, colors, alignment,
+        lines,
+        fontSize,
+        contentWidth,
+        contentHeight,
+        colors,
+        alignment,
+        strokePadding,
       );
     }
 

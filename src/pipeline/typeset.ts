@@ -194,6 +194,128 @@ function countTextLength(text: string): number {
   return length;
 }
 
+function charLength(ch: string): number {
+  return halfWidthKana.has(ch) ? 0.5 : 1;
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function splitColumns(text: string): string[] {
+  return text
+    .split(/\n+/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+}
+
+function splitByTextLength(text: string, maxLength: number): { kept: string; overflow: string } {
+  const chars = [...text];
+  let consumed = 0;
+  let splitIndex = chars.length;
+
+  for (let i = 0; i < chars.length; i++) {
+    const next = consumed + charLength(chars[i]);
+    if (next > maxLength) {
+      splitIndex = i;
+      break;
+    }
+    consumed = next;
+  }
+
+  return {
+    kept: chars.slice(0, splitIndex).join(''),
+    overflow: chars.slice(splitIndex).join(''),
+  };
+}
+
+function resolveSourceColumns(region: TextRegion): string[] {
+  const fromText = splitColumns(region.sourceText);
+  if (fromText.length > 0) {
+    return fromText;
+  }
+  const fallback = region.sourceText.trim();
+  return fallback ? [fallback] : [];
+}
+
+function resolveTranslatedColumns(region: TextRegion, translatedText: string): string[] {
+  if (region.translatedColumns && region.translatedColumns.length > 0) {
+    return region.translatedColumns
+      .map((column) => column.trim())
+      .filter(Boolean);
+  }
+  const fromText = splitColumns(translatedText);
+  if (fromText.length > 0) {
+    return fromText;
+  }
+  const fallback = translatedText.trim();
+  return fallback ? [fallback] : [];
+}
+
+function rebalanceVerticalColumns(
+  sourceColumns: string[],
+  translatedColumns: string[],
+): string[] {
+  const sourceLengths = sourceColumns.map((column) => countTextLength(column));
+  const baselineLength = Math.max(1, ...sourceLengths);
+  const normalizedTranslated = translatedColumns
+    .map((column) => column.trim())
+    .filter(Boolean);
+
+  if (normalizedTranslated.length === 0) {
+    return [];
+  }
+
+  const targetColumns = Math.max(sourceLengths.length, normalizedTranslated.length, 1);
+  const output: string[] = [];
+  let carry = '';
+  let columnIndex = 0;
+
+  while (columnIndex < targetColumns || carry.trim()) {
+    const current = `${carry}${normalizedTranslated[columnIndex] ?? ''}`.trim();
+    carry = '';
+
+    if (!current) {
+      output.push('');
+      columnIndex += 1;
+      continue;
+    }
+
+    const sourceLength = sourceLengths[columnIndex]
+      ?? sourceLengths[sourceLengths.length - 1]
+      ?? baselineLength;
+    const currentLength = countTextLength(current);
+
+    if (currentLength <= sourceLength) {
+      output.push(current);
+      columnIndex += 1;
+      continue;
+    }
+
+    if (currentLength <= baselineLength) {
+      output.push(current);
+      columnIndex += 1;
+      continue;
+    }
+
+    const { kept, overflow } = splitByTextLength(current, baselineLength);
+    output.push(kept || current);
+    carry = overflow;
+    columnIndex += 1;
+  }
+
+  return output.filter((column) => column.trim().length > 0);
+}
+
+function resolveVerticalPreferredColumns(region: TextRegion, translatedText: string): string[] {
+  const sourceColumns = resolveSourceColumns(region);
+  const translatedColumns = resolveTranslatedColumns(region, translatedText);
+  if (translatedColumns.length === 0) {
+    return [];
+  }
+  return rebalanceVerticalColumns(sourceColumns, translatedColumns);
+}
+
 // ---------------------------------------------------------------------------
 // Line / column layout types
 // ---------------------------------------------------------------------------
@@ -235,6 +357,10 @@ type FitVerticalResult = {
 type VerticalFitOptions = {
   targetColumnCount?: number;
   preferredColumns?: string[];
+  preferredProfile?: {
+    advanceScale: number;
+    colSpacingScale: number;
+  };
 };
 
 type Quad = [QuadPoint, QuadPoint, QuadPoint, QuadPoint];
@@ -1060,6 +1186,50 @@ function buildVerticalLayout(
   return { columns, metrics, requiredContentWidth };
 }
 
+function estimateVerticalPreferredProfile(
+  ctx: CanvasRenderingContext2D,
+  region: TextRegion,
+  text: string,
+  contentWidth: number,
+  contentHeight: number,
+  fontSize: number,
+  preferredColumns?: string[],
+): { advanceScale: number; colSpacingScale: number } {
+  ctx.font = `${fontSize}px ${fontFamily}`;
+  const sw = strokeWidth(fontSize);
+  const metrics = resolveVerticalCellMetrics(ctx, text, fontSize, sw);
+  const sourceColumns = resolveSourceColumns(region);
+  const sourceLengths = sourceColumns.map((column) => countTextLength(column));
+  const baselineLength = Math.max(1, ...sourceLengths);
+
+  const targetAdvance = contentHeight / baselineLength;
+  const baseAdvance = Math.max(1, metrics.defaultAdvanceY * verticalAdvanceTightenRatio);
+  const advanceScale = clampNumber(
+    targetAdvance / baseAdvance,
+    minVerticalAdvanceScale,
+    1.1,
+  );
+
+  const targetColumnCount = Math.max(
+    1,
+    sourceColumns.length,
+    preferredColumns?.length ?? 0,
+    region.originalLineCount ?? 0,
+  );
+  let colSpacingScale = 1;
+  if (targetColumnCount > 1) {
+    const rawSpacing = (contentWidth - targetColumnCount * metrics.colWidth) / (targetColumnCount - 1);
+    const targetSpacing = Math.max(0, rawSpacing);
+    colSpacingScale = clampNumber(
+      targetSpacing / Math.max(1, metrics.colSpacing),
+      minVerticalColSpacingScale,
+      1.2,
+    );
+  }
+
+  return { advanceScale, colSpacingScale };
+}
+
 function fitVertical(
   ctx: CanvasRenderingContext2D,
   text: string,
@@ -1072,7 +1242,7 @@ function fitVertical(
   const initialFontSize = Math.max(absoluteMinSize, initial);
   const targetColumnCount = Math.max(1, options?.targetColumnCount ?? 1);
 
-  const compressionProfiles = [
+  const defaultProfiles = [
     { advanceScale: 1, colSpacingScale: 1 },
     { advanceScale: 0.95, colSpacingScale: 0.95 },
     { advanceScale: 0.9, colSpacingScale: 0.9 },
@@ -1080,6 +1250,20 @@ function fitVertical(
     { advanceScale: 0.8, colSpacingScale: 0.72 },
     { advanceScale: minVerticalAdvanceScale, colSpacingScale: minVerticalColSpacingScale },
   ];
+  const compressionProfiles: Array<{ advanceScale: number; colSpacingScale: number }> = [];
+  if (options?.preferredProfile) {
+    compressionProfiles.push(options.preferredProfile);
+  }
+  for (const profile of defaultProfiles) {
+    const exists = compressionProfiles.some(
+      (candidate) =>
+        Math.abs(candidate.advanceScale - profile.advanceScale) < 0.001 &&
+        Math.abs(candidate.colSpacingScale - profile.colSpacingScale) < 0.001,
+    );
+    if (!exists) {
+      compressionProfiles.push(profile);
+    }
+  }
 
   const scoreLayout = (layout: VerticalLayoutResult, preferredFontSize: number): number => {
     const widthPenalty = layout.requiredContentWidth > contentWidth
@@ -1439,7 +1623,18 @@ export async function drawTypeset(
   const renderRegions = regions.map(cloneRegionForTypeset);
 
   for (const inputRegion of renderRegions) {
-    const text = inputRegion.translatedText || inputRegion.sourceText;
+    const translated = inputRegion.translatedText || inputRegion.sourceText;
+    const isVerticalInput = inputRegion.direction === "v";
+    const preferredColumns = isVerticalInput
+      ? resolveVerticalPreferredColumns(inputRegion, translated)
+      : undefined;
+    if (preferredColumns && preferredColumns.length > 0) {
+      inputRegion.translatedColumns = preferredColumns;
+    }
+
+    const text = (preferredColumns && preferredColumns.length > 0)
+      ? preferredColumns.join("")
+      : translated;
     if (!text.trim()) continue;
 
     const region = expandRegionBeforeRender(inputRegion, text, measureCtx);
@@ -1454,6 +1649,15 @@ export async function drawTypeset(
     let strokePadding: number;
 
     if (isVertical) {
+      const preferredProfile = estimateVerticalPreferredProfile(
+        measureCtx,
+        region,
+        text,
+        contentWidth,
+        contentHeight,
+        initialFontSize,
+        region.translatedColumns,
+      );
       const { fontSize, columns, metrics } = fitVertical(
         measureCtx,
         text,
@@ -1463,6 +1667,7 @@ export async function drawTypeset(
         {
           targetColumnCount: Math.max(1, region.originalLineCount ?? 1),
           preferredColumns: region.translatedColumns,
+          preferredProfile,
         },
       );
       const sw = strokeWidth(fontSize);

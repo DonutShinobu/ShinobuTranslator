@@ -19,6 +19,10 @@ const verticalAdvanceTightenRatio = 0.9;
 const verticalColumnSpacingRatio = 0.14;
 const minVerticalAdvanceScale = 0.75;
 const minVerticalColSpacingScale = 0.6;
+const adaptiveFontScaleBaseline = 24;
+const adaptiveFontScaleSlope = 0.02;
+const minAdaptiveFontScale = 0.78;
+const maxAdaptiveFontScale = 1.22;
 
 /**
  * CJK horizontal-to-vertical punctuation substitution map.
@@ -390,8 +394,15 @@ function resolveInitialFontSize(region: TextRegion): number {
     base = Math.min(48, Math.max(14, Math.floor(region.box.height / 3)));
   }
 
+  const adaptiveScale = clampNumber(
+    1 + (adaptiveFontScaleBaseline - base) * adaptiveFontScaleSlope,
+    minAdaptiveFontScale,
+    maxAdaptiveFontScale,
+  );
+  const scaledBase = Math.max(1, Math.round(base * adaptiveScale));
+
   // Clamp to reasonable range
-  return Math.max(10, Math.min(base, Math.round(
+  return Math.max(10, Math.min(scaledBase, Math.round(
     Math.max(region.box.width, region.box.height) * 0.8,
   )));
 }

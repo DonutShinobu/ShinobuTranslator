@@ -1,15 +1,67 @@
-import type { PipelineConfig, PipelineProgress, RuntimeStageStatus, StageTiming } from '../types';
+import type { PipelineProgress, RuntimeStageStatus, StageTiming } from '../types';
 
 type ExtensionSettings = {
   sourceLang: string;
   targetLang: string;
-  translator: PipelineConfig['translator'];
-  llmBaseUrl: string;
+  translator: 'google_web' | 'llm';
+  llmProvider: 'deepseek' | 'glm' | 'kimi' | 'minimax' | 'custom';
+  llmModelPreset: string;
+  llmModelCustom: string;
+  llmCustomBaseUrl: string;
   llmApiKey: string;
-  llmModel: string;
   showElapsedTime: boolean;
   showStageTimingDetails: boolean;
 };
+
+const llmBaseUrlByProvider: Record<Exclude<ExtensionSettings['llmProvider'], 'custom'>, string> = {
+  deepseek: 'https://api.deepseek.com',
+  glm: 'https://api.z.ai/api/paas/v4',
+  kimi: 'https://api.moonshot.ai/v1',
+  minimax: 'https://api.minimax.io/v1',
+};
+
+function resolveLlmBaseUrl(settings: ExtensionSettings): string {
+  if (settings.llmProvider === 'custom') {
+    return settings.llmCustomBaseUrl.trim();
+  }
+  return llmBaseUrlByProvider[settings.llmProvider];
+}
+
+function resolveLlmModel(settings: ExtensionSettings): string {
+  const customModel = settings.llmModelCustom.trim();
+  if (customModel) {
+    return customModel;
+  }
+  return settings.llmModelPreset.trim();
+}
+
+function validateSettings(settings: ExtensionSettings): string | null {
+  if (settings.translator !== 'llm') {
+    return null;
+  }
+  if (!resolveLlmModel(settings)) {
+    return 'LLM 模型不能为空';
+  }
+  if (!settings.llmApiKey.trim()) {
+    return 'LLM API Key 不能为空';
+  }
+  if (settings.llmProvider === 'custom' && !settings.llmCustomBaseUrl.trim()) {
+    return '自定义提供商 Base URL 不能为空';
+  }
+  return null;
+}
+
+function toPipelineConfig(settings: ExtensionSettings) {
+  return {
+    sourceLang: settings.sourceLang,
+    targetLang: settings.targetLang,
+    translator: settings.translator,
+    llmProvider: settings.llmProvider,
+    llmBaseUrl: resolveLlmBaseUrl(settings),
+    llmApiKey: settings.llmApiKey,
+    llmModel: resolveLlmModel(settings),
+  };
+}
 
 type RuntimeMessage =
   | { type: 'mt:get-settings' }
@@ -96,33 +148,6 @@ function getChromeApi(): {
       sendMessage?: (message: unknown, callback?: (response: unknown) => void) => void;
       lastError?: { message?: string };
     };
-  };
-}
-
-function validateSettings(settings: ExtensionSettings): string | null {
-  if (settings.translator !== 'llm') {
-    return null;
-  }
-  if (!settings.llmBaseUrl.trim()) {
-    return 'LLM Base URL 不能为空';
-  }
-  if (!settings.llmModel.trim()) {
-    return 'LLM 模型不能为空';
-  }
-  if (!settings.llmApiKey.trim()) {
-    return 'LLM API Key 不能为空';
-  }
-  return null;
-}
-
-function toPipelineConfig(settings: ExtensionSettings): PipelineConfig {
-  return {
-    sourceLang: settings.sourceLang,
-    targetLang: settings.targetLang,
-    translator: settings.translator,
-    llmBaseUrl: settings.llmBaseUrl,
-    llmApiKey: settings.llmApiKey,
-    llmModel: settings.llmModel,
   };
 }
 

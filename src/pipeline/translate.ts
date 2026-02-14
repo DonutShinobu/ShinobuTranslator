@@ -1,18 +1,18 @@
-import type { PipelineConfig, TextRegion } from "../types";
-import { youdaoTranslate } from "../translators/youdao";
-import { llmTranslate } from "../translators/llm";
+import type { PipelineConfig, TextRegion } from '../types';
+import { llmTranslate } from '../translators/llm';
+import { googleWebTranslate } from '../translators/googleWeb';
 
 async function translateOne(text: string, config: PipelineConfig): Promise<string> {
   if (!text.trim()) {
-    return "";
+    return '';
   }
 
-  if (config.translator === "youdao") {
-    return youdaoTranslate(text, config.sourceLang, config.targetLang);
+  if (config.translator === 'google_web') {
+    return googleWebTranslate(text, config.sourceLang, config.targetLang);
   }
 
   if (!config.llmApiKey.trim()) {
-    throw new Error("LLM 模式需要填写 API Key");
+    throw new Error('LLM 模式需要填写 API Key');
   }
 
   return llmTranslate({
@@ -21,7 +21,7 @@ async function translateOne(text: string, config: PipelineConfig): Promise<strin
     model: config.llmModel,
     from: config.sourceLang,
     to: config.targetLang,
-    text
+    text,
   });
 }
 

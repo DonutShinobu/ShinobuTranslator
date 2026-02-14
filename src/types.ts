@@ -30,7 +30,8 @@ export type TextRegion = {
 export type PipelineConfig = {
   sourceLang: string;
   targetLang: string;
-  translator: "youdao" | "llm";
+  translator: 'google_web' | 'llm';
+  llmProvider: 'deepseek' | 'glm' | 'kimi' | 'minimax' | 'custom';
   llmBaseUrl: string;
   llmApiKey: string;
   llmModel: string;

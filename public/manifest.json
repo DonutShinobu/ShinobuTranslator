@@ -20,7 +20,12 @@
   "host_permissions": [
     "https://x.com/*",
     "https://twitter.com/*",
-    "https://pbs.twimg.com/*"
+    "https://pbs.twimg.com/*",
+    "https://translate.googleapis.com/*",
+    "https://api.deepseek.com/*",
+    "https://api.z.ai/*",
+    "https://api.moonshot.ai/*",
+    "https://api.minimax.io/*"
   ],
   "content_scripts": [
     {

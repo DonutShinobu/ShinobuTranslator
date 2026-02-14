@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
 import {
   defaultExtensionSettings,
+  llmBuiltInProviderDefinitions,
+  llmProviderOptions,
   normalizeSettings,
   validateSettings,
+  type LlmProvider,
   type ExtensionSettings,
 } from '../shared/config';
 import { sendRuntimeMessage } from '../shared/messages';
@@ -53,6 +56,31 @@ export function App() {
     }));
   }
 
+  function updateTranslator(translator: ExtensionSettings['translator']): void {
+    updateField('translator', translator);
+  }
+
+  function updateLlmProvider(provider: LlmProvider): void {
+    setSettings((prev) => {
+      const next: ExtensionSettings = {
+        ...prev,
+        llmProvider: provider,
+      };
+      if (provider !== 'custom') {
+        const models = llmBuiltInProviderDefinitions[provider].models;
+        if (!models.includes(next.llmModelPreset)) {
+          next.llmModelPreset = models[0] ?? '';
+        }
+      } else {
+        next.llmModelPreset = '';
+      }
+      return next;
+    });
+  }
+
+  const currentProviderModels =
+    settings.llmProvider === 'custom' ? [] : llmBuiltInProviderDefinitions[settings.llmProvider].models;
+
   async function onSave(): Promise<void> {
     setStatus({ kind: 'idle', message: '' });
     const validationError = validateSettings(settings);
@@ -92,11 +120,11 @@ export function App() {
           <span>翻译服务</span>
           <select
             value={settings.translator}
-            onChange={(event) => updateField('translator', event.target.value as ExtensionSettings['translator'])}
+            onChange={(event) => updateTranslator(event.target.value as ExtensionSettings['translator'])}
             disabled={loading || saving}
           >
-            <option value="llm">LLM</option>
-            <option value="youdao">youdao（占位）</option>
+            <option value="google_web">Google 翻译（免 Key）</option>
+            <option value="llm">大模型翻译</option>
           </select>
         </label>
         <label>
@@ -140,21 +168,73 @@ export function App() {
       {settings.translator === 'llm' ? (
         <section className="panel">
           <label>
-            <span>LLM Base URL</span>
-            <input
-              value={settings.llmBaseUrl}
-              onChange={(event) => updateField('llmBaseUrl', event.target.value)}
+            <span>LLM 提供商</span>
+            <select
+              value={settings.llmProvider}
+              onChange={(event) => updateLlmProvider(event.target.value as LlmProvider)}
               disabled={loading || saving}
-            />
+            >
+              {llmProviderOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </label>
-          <label>
-            <span>LLM Model</span>
-            <input
-              value={settings.llmModel}
-              onChange={(event) => updateField('llmModel', event.target.value)}
-              disabled={loading || saving}
-            />
-          </label>
+
+          {settings.llmProvider === 'custom' ? (
+            <>
+              <label>
+                <span>Base URL</span>
+                <input
+                  value={settings.llmCustomBaseUrl}
+                  onChange={(event) => updateField('llmCustomBaseUrl', event.target.value)}
+                  disabled={loading || saving}
+                  placeholder="https://api.example.com/v1"
+                />
+              </label>
+              <label>
+                <span>模型名</span>
+                <input
+                  value={settings.llmModelCustom}
+                  onChange={(event) => updateField('llmModelCustom', event.target.value)}
+                  disabled={loading || saving}
+                  placeholder="gpt-4o-mini"
+                />
+              </label>
+            </>
+          ) : (
+            <>
+              <label>
+                <span>Base URL（固定）</span>
+                <input value={llmBuiltInProviderDefinitions[settings.llmProvider].baseUrl} disabled className="readonly-input" />
+              </label>
+              <label>
+                <span>预设模型</span>
+                <select
+                  value={settings.llmModelPreset}
+                  onChange={(event) => updateField('llmModelPreset', event.target.value)}
+                  disabled={loading || saving}
+                >
+                  {currentProviderModels.map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>自定义模型名（可选，填写后优先）</span>
+                <input
+                  value={settings.llmModelCustom}
+                  onChange={(event) => updateField('llmModelCustom', event.target.value)}
+                  disabled={loading || saving}
+                  placeholder="留空则使用预设模型"
+                />
+              </label>
+            </>
+          )}
+
           <label>
             <span>LLM API Key</span>
             <input

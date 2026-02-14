@@ -1280,6 +1280,13 @@ function countNeededColumnsAtFontSize(
   return Math.max(1, columns.length);
 }
 
+function resolveBoxPadding(region: TextRegion): number {
+  const minSide = Math.max(1, Math.min(region.box.width, region.box.height));
+  // Smaller adaptive margin to improve readability in small bubbles.
+  const dynamicPadding = Math.round(minSide * 0.05);
+  return Math.max(2, Math.min(dynamicPadding, 6));
+}
+
 function expandRegionBeforeRender(
   region: TextRegion,
   text: string,
@@ -1291,8 +1298,9 @@ function expandRegionBeforeRender(
   expanded.fontSize = targetFontSize;
 
   const usedRowsOrCols = Math.max(1, expanded.originalLineCount ?? 1);
-  const contentWidth = Math.max(20, expanded.box.width - 12);
-  const contentHeight = Math.max(20, expanded.box.height - 12);
+  const boxPadding = resolveBoxPadding(expanded);
+  const contentWidth = Math.max(20, expanded.box.width - boxPadding * 2);
+  const contentHeight = Math.max(20, expanded.box.height - boxPadding * 2);
 
   const quad = getRegionQuad(expanded);
   const center = quadCenter(quad);
@@ -1435,7 +1443,7 @@ export async function drawTypeset(
     if (!text.trim()) continue;
 
     const region = expandRegionBeforeRender(inputRegion, text, measureCtx);
-    const boxPadding = 6;
+    const boxPadding = resolveBoxPadding(region);
     const contentWidth = Math.max(20, region.box.width - boxPadding * 2);
     const contentHeight = Math.max(20, region.box.height - boxPadding * 2);
     const isVertical = region.direction === "v";

@@ -637,7 +637,7 @@ class XOverlayTranslator {
         justify-content: center;
         min-width: 84px;
         height: 34px;
-        border: 0;
+        border: 1px solid rgba(255, 255, 255, 0.9);
         border-radius: 999px;
         padding: 0 12px;
         cursor: pointer;

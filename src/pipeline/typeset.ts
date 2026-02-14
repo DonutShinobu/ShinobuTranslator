@@ -365,6 +365,22 @@ type FitVerticalResult = {
   requiredContentWidth: number;
 };
 
+type DebugColumnBox = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+type RegionTypesetDebug = {
+  fittedFontSize: number;
+  columnBoxes: DebugColumnBox[];
+  offscreenWidth: number;
+  offscreenHeight: number;
+  boxPadding: number;
+  strokePadding: number;
+};
+
 type VerticalFitOptions = {
   targetColumnCount?: number;
   preferredColumns?: string[];
@@ -999,6 +1015,244 @@ function computeAlignX(
     default:
       return padding + (contentWidth - lineWidth) / 2;
   }
+}
+
+function resolveVerticalStartY(
+  contentHeight: number,
+  columnHeight: number,
+  alignment: "left" | "center" | "right",
+  padding: number,
+): number {
+  if (alignment === "center") {
+    return padding + (contentHeight - columnHeight) / 2;
+  }
+  if (alignment === "right") {
+    return padding + contentHeight - columnHeight;
+  }
+  return padding;
+}
+
+function buildVerticalDebugColumnBoxes(
+  columns: VColumn[],
+  contentWidth: number,
+  contentHeight: number,
+  metrics: VerticalCellMetrics,
+  alignment: "left" | "center" | "right",
+  padding: number,
+): DebugColumnBox[] {
+  if (columns.length === 0) {
+    return [];
+  }
+  const totalColW = columns.length * metrics.colWidth + Math.max(0, columns.length - 1) * metrics.colSpacing;
+  const offsetX = padding + Math.max(0, (contentWidth - totalColW) / 2);
+  const colStartX = offsetX + totalColW - metrics.colWidth / 2;
+
+  const boxes: DebugColumnBox[] = [];
+  for (let c = 0; c < columns.length; c += 1) {
+    const col = columns[c];
+    const cx = colStartX - c * (metrics.colWidth + metrics.colSpacing);
+    const startY = resolveVerticalStartY(contentHeight, col.height, alignment, padding);
+    boxes.push({
+      x: cx - metrics.colWidth / 2,
+      y: startY,
+      width: metrics.colWidth,
+      height: col.height,
+    });
+  }
+  return boxes;
+}
+
+function buildHorizontalDebugColumnBoxes(
+  lines: HLine[],
+  contentWidth: number,
+  contentHeight: number,
+  fontSize: number,
+  alignment: "left" | "center" | "right",
+  padding: number,
+): DebugColumnBox[] {
+  if (lines.length === 0) {
+    return [];
+  }
+  const lineHeight = resolveHorizontalLineHeight(fontSize);
+  const totalTextH = lines.length * lineHeight;
+  const offsetY = padding + Math.max(0, (contentHeight - totalTextH) / 2);
+  return lines.map((line, index) => ({
+    x: computeAlignX(line.width, contentWidth, padding, alignment),
+    y: offsetY + index * lineHeight,
+    width: line.width,
+    height: lineHeight,
+  }));
+}
+
+function traceRegionPath(ctx: CanvasRenderingContext2D, region: TextRegion): void {
+  if (region.quad && region.quad.length === 4) {
+    ctx.beginPath();
+    ctx.moveTo(region.quad[0].x, region.quad[0].y);
+    ctx.lineTo(region.quad[1].x, region.quad[1].y);
+    ctx.lineTo(region.quad[2].x, region.quad[2].y);
+    ctx.lineTo(region.quad[3].x, region.quad[3].y);
+    ctx.closePath();
+    return;
+  }
+  ctx.beginPath();
+  ctx.rect(region.box.x, region.box.y, region.box.width, region.box.height);
+}
+
+function drawQuadPath(ctx: CanvasRenderingContext2D, quad: QuadPoint[]): void {
+  if (quad.length !== 4) {
+    return;
+  }
+  ctx.beginPath();
+  ctx.moveTo(quad[0].x, quad[0].y);
+  ctx.lineTo(quad[1].x, quad[1].y);
+  ctx.lineTo(quad[2].x, quad[2].y);
+  ctx.lineTo(quad[3].x, quad[3].y);
+  ctx.closePath();
+}
+
+function mapOffscreenPointToCanvas(
+  region: TextRegion,
+  point: QuadPoint,
+  offscreenWidth: number,
+  offscreenHeight: number,
+  boxPadding: number,
+  strokePadding: number,
+): QuadPoint {
+  const drawX = region.box.x + boxPadding - strokePadding;
+  const drawY = region.box.y + boxPadding - strokePadding;
+  const quad = region.quad;
+  if (!quad) {
+    return { x: drawX + point.x, y: drawY + point.y };
+  }
+
+  const angle = quadAngle(quad);
+  const isRotated = Math.abs(angle) > 0.01;
+  if (!isRotated) {
+    return { x: drawX + point.x, y: drawY + point.y };
+  }
+
+  const { width: qw, height: qh } = quadDimensions(quad);
+  const cx = (quad[0].x + quad[1].x + quad[2].x + quad[3].x) / 4;
+  const cy = (quad[0].y + quad[1].y + quad[2].y + quad[3].y) / 4;
+  const sx = qw / Math.max(1, offscreenWidth);
+  const sy = qh / Math.max(1, offscreenHeight);
+  const localX = (point.x - offscreenWidth / 2) * sx;
+  const localY = (point.y - offscreenHeight / 2) * sy;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return {
+    x: cx + localX * cos - localY * sin,
+    y: cy + localX * sin + localY * cos,
+  };
+}
+
+function mapOffscreenRectToCanvasQuad(
+  region: TextRegion,
+  box: DebugColumnBox,
+  offscreenWidth: number,
+  offscreenHeight: number,
+  boxPadding: number,
+  strokePadding: number,
+): [QuadPoint, QuadPoint, QuadPoint, QuadPoint] {
+  const p0 = mapOffscreenPointToCanvas(
+    region,
+    { x: box.x, y: box.y },
+    offscreenWidth,
+    offscreenHeight,
+    boxPadding,
+    strokePadding,
+  );
+  const p1 = mapOffscreenPointToCanvas(
+    region,
+    { x: box.x + box.width, y: box.y },
+    offscreenWidth,
+    offscreenHeight,
+    boxPadding,
+    strokePadding,
+  );
+  const p2 = mapOffscreenPointToCanvas(
+    region,
+    { x: box.x + box.width, y: box.y + box.height },
+    offscreenWidth,
+    offscreenHeight,
+    boxPadding,
+    strokePadding,
+  );
+  const p3 = mapOffscreenPointToCanvas(
+    region,
+    { x: box.x, y: box.y + box.height },
+    offscreenWidth,
+    offscreenHeight,
+    boxPadding,
+    strokePadding,
+  );
+  return [p0, p1, p2, p3];
+}
+
+function drawTypesetDebugOverlay(
+  ctx: CanvasRenderingContext2D,
+  sourceRegion: TextRegion,
+  expandedRegion: TextRegion,
+  regionIndex: number,
+  initialFontSize: number,
+  debug: RegionTypesetDebug,
+): void {
+  ctx.save();
+
+  // source region (before expand)
+  traceRegionPath(ctx, sourceRegion);
+  ctx.strokeStyle = 'rgba(30, 136, 229, 0.95)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // expanded region (used for typeset)
+  traceRegionPath(ctx, expandedRegion);
+  ctx.strokeStyle = 'rgba(0, 184, 212, 0.95)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 3]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.font = '12px "MTX-SourceHanSans-CN", "Noto Sans CJK SC", sans-serif';
+  ctx.textBaseline = 'top';
+  const label = `#${regionIndex + 1} init:${initialFontSize}px fit:${debug.fittedFontSize}px cols:${debug.columnBoxes.length}`;
+  const labelX = Math.max(0, sourceRegion.box.x);
+  const labelY = Math.max(0, sourceRegion.box.y - 18);
+  const textWidth = ctx.measureText(label).width;
+  ctx.fillStyle = 'rgba(8, 15, 29, 0.86)';
+  ctx.fillRect(labelX, labelY, textWidth + 10, 16);
+  ctx.fillStyle = '#d6fbff';
+  ctx.fillText(label, labelX + 5, labelY + 2);
+
+  ctx.strokeStyle = 'rgba(255, 152, 0, 0.92)';
+  ctx.fillStyle = 'rgba(255, 152, 0, 0.14)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < debug.columnBoxes.length; i += 1) {
+    const boxQuad = mapOffscreenRectToCanvasQuad(
+      expandedRegion,
+      debug.columnBoxes[i],
+      debug.offscreenWidth,
+      debug.offscreenHeight,
+      debug.boxPadding,
+      debug.strokePadding,
+    );
+    drawQuadPath(ctx, boxQuad);
+    ctx.fill();
+    ctx.stroke();
+    const cx = Math.round((boxQuad[0].x + boxQuad[1].x + boxQuad[2].x + boxQuad[3].x) / 4);
+    const cy = Math.round((boxQuad[0].y + boxQuad[1].y + boxQuad[2].y + boxQuad[3].y) / 4);
+    const colLabel = `c${i + 1}(${cx},${cy})`;
+    const colLabelWidth = ctx.measureText(colLabel).width;
+    const colLabelX = boxQuad[0].x;
+    const colLabelY = Math.max(0, boxQuad[0].y - 14);
+    ctx.fillStyle = 'rgba(8, 15, 29, 0.86)';
+    ctx.fillRect(colLabelX, colLabelY, colLabelWidth + 8, 13);
+    ctx.fillStyle = '#ffd59a';
+    ctx.fillText(colLabel, colLabelX + 4, colLabelY + 1);
+    ctx.fillStyle = 'rgba(255, 152, 0, 0.14)';
+  }
+
+  ctx.restore();
 }
 
 /**
@@ -1700,11 +1954,19 @@ function expandRegionBeforeRender(
  * - Word-level wrapping for Latin text
  * - Auto-alignment (center for single-line, configurable for multi-line)
  */
+type DrawTypesetOptions = {
+  debugMode?: boolean;
+  renderText?: boolean;
+};
+
 export async function drawTypeset(
   canvas: HTMLCanvasElement,
   regions: TextRegion[],
   targetLang?: string,
+  options?: DrawTypesetOptions,
 ): Promise<HTMLCanvasElement> {
+  const debugMode = options?.debugMode === true;
+  const renderText = options?.renderText !== false;
   // Ensure fonts are loaded before measuring/rendering
   await document.fonts.ready;
 
@@ -1729,7 +1991,8 @@ export async function drawTypeset(
 
   const renderRegions = regions.map(cloneRegionForTypeset);
 
-  for (const inputRegion of renderRegions) {
+  for (let regionIndex = 0; regionIndex < renderRegions.length; regionIndex += 1) {
+    const inputRegion = renderRegions[regionIndex];
     const translated = inputRegion.translatedText || inputRegion.sourceText;
     const isVerticalInput = inputRegion.direction === "v";
     const preferredColumns = isVerticalInput
@@ -1744,6 +2007,7 @@ export async function drawTypeset(
       : translated;
     if (!text.trim()) continue;
 
+    const estimatedInitialFontSize = Math.max(8, Math.round(resolveInitialFontSize(inputRegion)));
     const region = expandRegionBeforeRender(inputRegion, text, measureCtx);
     const boxPadding = resolveBoxPadding(region);
     const contentWidth = Math.max(20, region.box.width - boxPadding * 2);
@@ -1751,8 +2015,16 @@ export async function drawTypeset(
     const isVertical = region.direction === "v";
     const colors = resolveColors(region.fgColor, region.bgColor);
     const initialFontSize = Math.max(8, Math.round(region.fontSize ?? resolveInitialFontSize(region)));
+    let debug: RegionTypesetDebug = {
+      fittedFontSize: initialFontSize,
+      columnBoxes: [],
+      offscreenWidth: 0,
+      offscreenHeight: 0,
+      boxPadding,
+      strokePadding: 0,
+    };
 
-    let offCanvas: HTMLCanvasElement;
+    let offCanvas: HTMLCanvasElement | null = null;
     let strokePadding: number;
 
     if (isVertical) {
@@ -1779,40 +2051,80 @@ export async function drawTypeset(
       );
       strokePadding = resolveVerticalRenderPadding(measureCtx, columns, fontSize, metrics);
       const alignment = resolveAlignment(region, columns.length);
-      offCanvas = renderVertical(
-        columns,
-        fontSize,
-        contentWidth,
-        contentHeight,
-        colors,
-        alignment,
-        metrics,
+      if (renderText) {
+        offCanvas = renderVertical(
+          columns,
+          fontSize,
+          contentWidth,
+          contentHeight,
+          colors,
+          alignment,
+          metrics,
+          strokePadding,
+        );
+      }
+      debug = {
+        fittedFontSize: fontSize,
+        columnBoxes: buildVerticalDebugColumnBoxes(
+          columns,
+          contentWidth,
+          contentHeight,
+          metrics,
+          alignment,
+          strokePadding,
+        ),
+        offscreenWidth: Math.ceil(contentWidth + strokePadding * 2),
+        offscreenHeight: Math.ceil(contentHeight + strokePadding * 2),
+        boxPadding,
         strokePadding,
-      );
+      };
     } else {
       const { fontSize, lines } = fitHorizontal(
         measureCtx, text, contentWidth, contentHeight, initialFontSize,
       );
       strokePadding = resolveHorizontalRenderPadding(measureCtx, lines, fontSize);
       const alignment = resolveAlignment(region, lines.length);
-      offCanvas = renderHorizontal(
-        lines,
-        fontSize,
-        contentWidth,
-        contentHeight,
-        colors,
-        alignment,
+      if (renderText) {
+        offCanvas = renderHorizontal(
+          lines,
+          fontSize,
+          contentWidth,
+          contentHeight,
+          colors,
+          alignment,
+          strokePadding,
+        );
+      }
+      debug = {
+        fittedFontSize: fontSize,
+        columnBoxes: buildHorizontalDebugColumnBoxes(
+          lines,
+          contentWidth,
+          contentHeight,
+          fontSize,
+          alignment,
+          strokePadding,
+        ),
+        offscreenWidth: Math.ceil(contentWidth + strokePadding * 2),
+        offscreenHeight: Math.ceil(contentHeight + strokePadding * 2),
+        boxPadding,
+        strokePadding,
+      };
+    }
+
+    if (offCanvas) {
+      compositeRegion(
+        ctx,
+        offCanvas,
+        region,
+        boxPadding,
         strokePadding,
       );
     }
 
-    compositeRegion(
-      ctx,
-      offCanvas,
-      region,
-      boxPadding,
-      strokePadding,
-    );
+    if (debugMode) {
+      drawTypesetDebugOverlay(ctx, inputRegion, region, regionIndex, estimatedInitialFontSize, debug);
+    }
   }
 
   return out;

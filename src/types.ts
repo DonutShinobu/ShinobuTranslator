@@ -37,6 +37,7 @@ export type PipelineConfig = {
   llmBaseUrl: string;
   llmApiKey: string;
   llmModel: string;
+  typesetDebug: boolean;
 };
 
 export type RuntimeStageStatus = {
@@ -55,6 +56,7 @@ export type PipelineArtifacts = {
   segmentationCanvas: HTMLCanvasElement | null;
   cleanedCanvas: HTMLCanvasElement;
   resultCanvas: HTMLCanvasElement;
+  debugOriginalCanvas: HTMLCanvasElement | null;
   runtimeStages: RuntimeStageStatus[];
   stageTimings: StageTiming[];
 };

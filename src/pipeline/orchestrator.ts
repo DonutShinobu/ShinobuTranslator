@@ -78,6 +78,7 @@ export async function runPipeline(
   let segmentationCanvas: HTMLCanvasElement | null = null;
   let cleanedCanvas: HTMLCanvasElement = originalCanvas;
   let resultCanvas: HTMLCanvasElement = originalCanvas;
+  let debugOriginalCanvas: HTMLCanvasElement | null = null;
   let detectionMaskCanvas: HTMLCanvasElement | null = null;
   let refinedMaskCanvas: HTMLCanvasElement | null = null;
   const stageTimings: StageTiming[] = [];
@@ -90,6 +91,7 @@ export async function runPipeline(
     segmentationCanvas,
     cleanedCanvas,
     resultCanvas,
+    debugOriginalCanvas,
     runtimeStages,
     stageTimings
   });
@@ -321,7 +323,18 @@ export async function runPipeline(
   report(onProgress, "typeset", "\u6392\u7248\u548c\u5d4c\u5b57");
   try {
     const t0 = performance.now();
-    resultCanvas = await drawTypeset(cleanedCanvas, latestRegions, config.targetLang);
+    resultCanvas = await drawTypeset(cleanedCanvas, latestRegions, config.targetLang, {
+      debugMode: config.typesetDebug,
+      renderText: true,
+    });
+    if (config.typesetDebug) {
+      debugOriginalCanvas = await drawTypeset(originalCanvas, latestRegions, config.targetLang, {
+        debugMode: true,
+        renderText: false,
+      });
+    } else {
+      debugOriginalCanvas = null;
+    }
     stageTimings.push({ stage: "typeset", label: "排版和嵌字", durationMs: performance.now() - t0 });
   } catch (error) {
     throw new PipelineStageError("排版", toErrorDetail(error), buildArtifacts());

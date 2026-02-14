@@ -171,6 +171,15 @@ export function App() {
             />
             <span className="checkbox-label">显示阶段明细</span>
           </label>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={settings.showTypesetDebug}
+              onChange={(event) => updateField('showTypesetDebug', event.target.checked)}
+              disabled={loading}
+            />
+            <span className="checkbox-label">排版调试模式</span>
+          </label>
         </div>
       </section>
 

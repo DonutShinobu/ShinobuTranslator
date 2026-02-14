@@ -51,6 +51,7 @@ function toPipelineConfig(settings: ExtensionSettings) {
     llmBaseUrl: resolveLlmBaseUrl(settings),
     llmApiKey: profile.apiKey,
     llmModel: resolveLlmModel(settings),
+    typesetDebug: settings.showTypesetDebug,
   };
 }
 
@@ -107,6 +108,8 @@ type PhotoState = {
   mode: PhotoDisplayMode;
   originalUrl: string;
   translatedUrl?: string;
+  debugOriginalUrl?: string;
+  showTypesetDebug: boolean;
   stageText: string;
   elapsedText: string;
   errorText: string;
@@ -425,6 +428,8 @@ function createInitialState(originalUrl: string): PhotoState {
     mode: 'original',
     originalUrl,
     translatedUrl: undefined,
+    debugOriginalUrl: undefined,
+    showTypesetDebug: false,
     stageText: '',
     elapsedText: '',
     errorText: '',
@@ -952,11 +957,14 @@ class XOverlayTranslator {
   }
 
   private disposeState(state: PhotoState): void {
-    if (!state.translatedUrl) {
-      return;
+    if (state.translatedUrl) {
+      URL.revokeObjectURL(state.translatedUrl);
+      state.translatedUrl = undefined;
     }
-    URL.revokeObjectURL(state.translatedUrl);
-    state.translatedUrl = undefined;
+    if (state.debugOriginalUrl) {
+      URL.revokeObjectURL(state.debugOriginalUrl);
+      state.debugOriginalUrl = undefined;
+    }
   }
 
   private touchStateKey(key: string): void {
@@ -1073,9 +1081,12 @@ class XOverlayTranslator {
       return;
     }
 
-    if (state.originalUrl && currentSrc !== state.originalUrl) {
-      image.src = state.originalUrl;
-      updateImageCompanionBackground(image, state.originalUrl);
+    const originalDisplayUrl = state.showTypesetDebug && state.debugOriginalUrl
+      ? state.debugOriginalUrl
+      : state.originalUrl;
+    if (originalDisplayUrl && currentSrc !== originalDisplayUrl) {
+      image.src = originalDisplayUrl;
+      updateImageCompanionBackground(image, originalDisplayUrl);
     }
   }
 
@@ -1171,6 +1182,8 @@ class XOverlayTranslator {
       const showStageTimingDetails =
         showElapsedTime && settingsResponse.settings.showStageTimingDetails === true;
       const showRuntimeStages = showStageTimingDetails;
+      const showTypesetDebug = settingsResponse.settings.showTypesetDebug === true;
+      state.showTypesetDebug = showTypesetDebug;
 
       const downloadResponse = await sendRuntimeMessage({
         type: 'mt:download-image',
@@ -1195,6 +1208,14 @@ class XOverlayTranslator {
       const translatedUrl = URL.createObjectURL(translatedBlob);
       if (state.translatedUrl) {
         URL.revokeObjectURL(state.translatedUrl);
+      }
+      if (state.debugOriginalUrl) {
+        URL.revokeObjectURL(state.debugOriginalUrl);
+        state.debugOriginalUrl = undefined;
+      }
+      if (showTypesetDebug && artifacts.debugOriginalCanvas) {
+        const debugOriginalBlob = await canvasToBlob(artifacts.debugOriginalCanvas);
+        state.debugOriginalUrl = URL.createObjectURL(debugOriginalBlob);
       }
 
       state.translatedUrl = translatedUrl;

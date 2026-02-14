@@ -1239,17 +1239,6 @@ function drawTypesetDebugOverlay(
     drawQuadPath(ctx, boxQuad);
     ctx.fill();
     ctx.stroke();
-    const cx = Math.round((boxQuad[0].x + boxQuad[1].x + boxQuad[2].x + boxQuad[3].x) / 4);
-    const cy = Math.round((boxQuad[0].y + boxQuad[1].y + boxQuad[2].y + boxQuad[3].y) / 4);
-    const colLabel = `c${i + 1}(${cx},${cy})`;
-    const colLabelWidth = ctx.measureText(colLabel).width;
-    const colLabelX = boxQuad[0].x;
-    const colLabelY = Math.max(0, boxQuad[0].y - 14);
-    ctx.fillStyle = 'rgba(8, 15, 29, 0.86)';
-    ctx.fillRect(colLabelX, colLabelY, colLabelWidth + 8, 13);
-    ctx.fillStyle = '#ffd59a';
-    ctx.fillText(colLabel, colLabelX + 4, colLabelY + 1);
-    ctx.fillStyle = 'rgba(255, 152, 0, 0.14)';
   }
 
   ctx.restore();

@@ -356,6 +356,7 @@ type VerticalCellMetrics = {
 type VerticalLayoutResult = {
   columns: VColumn[];
   columnBreakReasons: ColumnBreakReason[];
+  columnSegmentIds: number[];
   metrics: VerticalCellMetrics;
   requiredContentWidth: number;
 };
@@ -373,6 +374,7 @@ type RegionTypesetDebug = {
   fittedFontSize: number;
   columnBoxes: DebugColumnBox[];
   columnBreakReasons: ColumnBreakReason[];
+  columnSegmentIds: number[];
   offscreenWidth: number;
   offscreenHeight: number;
   boxPadding: number;
@@ -786,17 +788,20 @@ function calcVerticalFromColumns(
   fontSize: number,
   defaultAdvanceY: number,
   advanceScale = 1,
-): { columns: VColumn[]; columnBreakReasons: ColumnBreakReason[] } {
+): { columns: VColumn[]; columnBreakReasons: ColumnBreakReason[]; columnSegmentIds: number[] } {
   const columns: VColumn[] = [];
   const columnBreakReasons: ColumnBreakReason[] = [];
+  const columnSegmentIds: number[] = [];
   let hasOutput = false;
   let previousSegmentOverflowed = false;
+  let segmentIndex = 0;
 
   for (const source of preferredColumns) {
     const segment = source.trim();
     if (!segment) {
       continue;
     }
+    segmentIndex += 1;
     const segmentColumns = calcVertical(
       ctx,
       segment,
@@ -832,6 +837,7 @@ function calcVerticalFromColumns(
 
     for (let i = 0; i < segmentColumns.length; i += 1) {
       columns.push(segmentColumns[i]);
+      columnSegmentIds.push(segmentIndex);
       if (!hasOutput && i === 0) {
         columnBreakReasons.push('start');
         hasOutput = true;
@@ -847,7 +853,7 @@ function calcVerticalFromColumns(
 
     previousSegmentOverflowed = segmentColumns.length > 1;
   }
-  return { columns, columnBreakReasons };
+  return { columns, columnBreakReasons, columnSegmentIds };
 }
 
 // ---------------------------------------------------------------------------
@@ -1288,6 +1294,17 @@ function drawTypesetDebugOverlay(
     ctx.fillRect(reasonX, reasonY, reasonWidth + 8, 13);
     ctx.fillStyle = '#ffd59a';
     ctx.fillText(reasonLabel, reasonX + 4, reasonY + 1);
+
+    const segId = debug.columnSegmentIds[i] ?? 1;
+    const segLabel = `seg${segId}`;
+    const segX = reasonX;
+    const segY = Math.max(boxQuad[0].y, boxQuad[1].y, boxQuad[2].y, boxQuad[3].y) + 2;
+    const segWidth = ctx.measureText(segLabel).width;
+    ctx.fillStyle = 'rgba(8, 15, 29, 0.86)';
+    ctx.fillRect(segX, segY, segWidth + 8, 13);
+    ctx.fillStyle = '#9ad6ff';
+    ctx.fillText(segLabel, segX + 4, segY + 1);
+
     ctx.fillStyle = 'rgba(255, 152, 0, 0.14)';
   }
 
@@ -1517,6 +1534,7 @@ function buildVerticalLayout(
 
   let columns: VColumn[];
   let columnBreakReasons: ColumnBreakReason[];
+  let columnSegmentIds: number[];
   if (options?.preferredColumns && options.preferredColumns.length > 0) {
     const detailed = calcVerticalFromColumns(
       ctx,
@@ -1528,6 +1546,7 @@ function buildVerticalLayout(
     );
     columns = detailed.columns;
     columnBreakReasons = detailed.columnBreakReasons;
+    columnSegmentIds = detailed.columnSegmentIds;
   } else {
     columns = calcVertical(
       ctx,
@@ -1538,9 +1557,10 @@ function buildVerticalLayout(
       advanceScale,
     );
     columnBreakReasons = columns.map((_, index) => (index === 0 ? 'start' : 'wrap'));
+    columnSegmentIds = columns.map(() => 1);
   }
   const requiredContentWidth = computeVerticalTotalWidth(columns.length, metrics);
-  return { columns, columnBreakReasons, metrics, requiredContentWidth };
+  return { columns, columnBreakReasons, columnSegmentIds, metrics, requiredContentWidth };
 }
 
 function estimateVerticalPreferredProfile(
@@ -1951,6 +1971,7 @@ export async function drawTypeset(
       fittedFontSize: initialFontSize,
       columnBoxes: [],
       columnBreakReasons: [],
+      columnSegmentIds: [],
       offscreenWidth: 0,
       offscreenHeight: 0,
       boxPadding,
@@ -1980,10 +2001,11 @@ export async function drawTypeset(
           fontSize: initialFontSize,
           columns: layout.columns,
           columnBreakReasons: layout.columnBreakReasons,
+          columnSegmentIds: layout.columnSegmentIds,
           metrics: layout.metrics,
         };
       })();
-      const { fontSize, columns, columnBreakReasons, metrics } = verticalResult;
+      const { fontSize, columns, columnBreakReasons, columnSegmentIds, metrics } = verticalResult;
       strokePadding = resolveVerticalRenderPadding(measureCtx, columns, fontSize, metrics);
       const alignment = resolveAlignment(region, columns.length);
       if (renderText) {
@@ -2009,6 +2031,7 @@ export async function drawTypeset(
           strokePadding,
         ),
         columnBreakReasons,
+        columnSegmentIds,
         offscreenWidth: Math.ceil(contentWidth + strokePadding * 2),
         offscreenHeight: Math.ceil(verticalContentHeight + strokePadding * 2),
         boxPadding,
@@ -2045,6 +2068,7 @@ export async function drawTypeset(
           strokePadding,
         ),
         columnBreakReasons: lines.map((_, index) => (index === 0 ? 'start' : 'wrap')),
+        columnSegmentIds: lines.map(() => 1),
         offscreenWidth: Math.ceil(contentWidth + strokePadding * 2),
         offscreenHeight: Math.ceil(contentHeight + strokePadding * 2),
         boxPadding,

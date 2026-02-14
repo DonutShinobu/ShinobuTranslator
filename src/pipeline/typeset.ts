@@ -16,9 +16,14 @@ function resolveFontFamily(targetLang?: string): string {
 const horizontalLetterSpacingRatio = -0.05;
 const horizontalLineHeightRatio = 0.93;
 const verticalAdvanceTightenRatio = 0.9;
-const verticalColumnSpacingRatio = 0.14;
+const verticalColumnSpacingRatio = 0.1;
 const minVerticalAdvanceScale = 0.75;
-const minVerticalColSpacingScale = 0.6;
+const minVerticalColSpacingScale = 0.5;
+const verticalContentHeightExpandBaseRatio = 0.08;
+const verticalContentHeightExpandFontRatio = 0.003;
+const minVerticalContentHeightExpandPx = 6;
+const minOffscreenGuardPaddingPx = 8;
+const offscreenGuardPaddingByFontRatio = 0.35;
 
 /**
  * CJK horizontal-to-vertical punctuation substitution map.
@@ -350,6 +355,7 @@ type VerticalCellMetrics = {
 
 type VerticalLayoutResult = {
   columns: VColumn[];
+  columnBreakReasons: ColumnBreakReason[];
   metrics: VerticalCellMetrics;
   requiredContentWidth: number;
 };
@@ -357,9 +363,12 @@ type VerticalLayoutResult = {
 type FitVerticalResult = {
   fontSize: number;
   columns: VColumn[];
+  columnBreakReasons: ColumnBreakReason[];
   metrics: VerticalCellMetrics;
   requiredContentWidth: number;
 };
+
+type ColumnBreakReason = 'start' | 'model' | 'wrap' | 'both';
 
 type DebugColumnBox = {
   x: number;
@@ -371,6 +380,7 @@ type DebugColumnBox = {
 type RegionTypesetDebug = {
   fittedFontSize: number;
   columnBoxes: DebugColumnBox[];
+  columnBreakReasons: ColumnBreakReason[];
   offscreenWidth: number;
   offscreenHeight: number;
   boxPadding: number;
@@ -784,8 +794,12 @@ function calcVerticalFromColumns(
   fontSize: number,
   defaultAdvanceY: number,
   advanceScale = 1,
-): VColumn[] {
+): { columns: VColumn[]; columnBreakReasons: ColumnBreakReason[] } {
   const columns: VColumn[] = [];
+  const columnBreakReasons: ColumnBreakReason[] = [];
+  let hasOutput = false;
+  let previousSegmentOverflowed = false;
+
   for (const source of preferredColumns) {
     const segment = source.trim();
     if (!segment) {
@@ -799,11 +813,49 @@ function calcVerticalFromColumns(
       defaultAdvanceY,
       advanceScale,
     );
-    if (segmentColumns.length > 0) {
-      columns.push(...segmentColumns);
+    if (segmentColumns.length === 0) {
+      previousSegmentOverflowed = false;
+      continue;
     }
+
+    const canFollowPrevious = hasOutput && previousSegmentOverflowed && columns.length > 0;
+    if (canFollowPrevious) {
+      const lastColumn = columns[columns.length - 1];
+      const firstColumn = segmentColumns[0];
+      while (firstColumn.glyphs.length > 0) {
+        const glyph = firstColumn.glyphs[0];
+        if (lastColumn.height + glyph.advanceY > maxHeight) {
+          break;
+        }
+        firstColumn.glyphs.shift();
+        lastColumn.glyphs.push(glyph);
+        lastColumn.height += glyph.advanceY;
+      }
+      if (firstColumn.glyphs.length === 0) {
+        segmentColumns.shift();
+      } else {
+        firstColumn.height = firstColumn.glyphs.reduce((sum, glyph) => sum + glyph.advanceY, 0);
+      }
+    }
+
+    for (let i = 0; i < segmentColumns.length; i += 1) {
+      columns.push(segmentColumns[i]);
+      if (!hasOutput && i === 0) {
+        columnBreakReasons.push('start');
+        hasOutput = true;
+        continue;
+      }
+      if (i === 0) {
+        columnBreakReasons.push(canFollowPrevious ? 'both' : 'model');
+        hasOutput = true;
+        continue;
+      }
+      columnBreakReasons.push('wrap');
+    }
+
+    previousSegmentOverflowed = segmentColumns.length > 1;
   }
-  return columns;
+  return { columns, columnBreakReasons };
 }
 
 // ---------------------------------------------------------------------------
@@ -892,7 +944,7 @@ function resolveHorizontalRenderPadding(
   const basePadding = sw + 2;
   const fallbackPadding = Math.ceil(fontSize * 0.12);
   const overflowPadding = Math.max(Math.ceil(maxOverflow), fallbackPadding);
-  return basePadding + overflowPadding;
+  return basePadding + overflowPadding + resolveOffscreenGuardPadding(fontSize);
 }
 
 function resolveVerticalRenderPadding(
@@ -929,7 +981,7 @@ function resolveVerticalRenderPadding(
   const basePadding = sw + 2;
   const fallbackPadding = Math.ceil(fontSize * 0.12);
   const overflowPadding = Math.max(Math.ceil(maxOverflow), fallbackPadding);
-  return basePadding + overflowPadding;
+  return basePadding + overflowPadding + resolveOffscreenGuardPadding(fontSize);
 }
 
 /**
@@ -1228,6 +1280,23 @@ function drawTypesetDebugOverlay(
     drawQuadPath(ctx, boxQuad);
     ctx.fill();
     ctx.stroke();
+
+    const reason = debug.columnBreakReasons[i] ?? 'wrap';
+    const reasonLabel = reason === 'both'
+      ? '并'
+      : reason === 'model'
+      ? '模'
+      : reason === 'wrap'
+        ? '溢'
+        : '首';
+    const reasonX = Math.min(boxQuad[0].x, boxQuad[1].x, boxQuad[2].x, boxQuad[3].x);
+    const reasonY = Math.max(0, Math.min(boxQuad[0].y, boxQuad[1].y, boxQuad[2].y, boxQuad[3].y) - 14);
+    const reasonWidth = ctx.measureText(reasonLabel).width;
+    ctx.fillStyle = 'rgba(8, 15, 29, 0.86)';
+    ctx.fillRect(reasonX, reasonY, reasonWidth + 8, 13);
+    ctx.fillStyle = '#ffd59a';
+    ctx.fillText(reasonLabel, reasonX + 4, reasonY + 1);
+    ctx.fillStyle = 'rgba(255, 152, 0, 0.14)';
   }
 
   ctx.restore();
@@ -1501,25 +1570,32 @@ function buildVerticalLayout(
     colSpacing: Math.max(0, Math.round(baseMetrics.colSpacing * colSpacingScale)),
   };
 
-  const columns = options?.preferredColumns && options.preferredColumns.length > 0
-    ? calcVerticalFromColumns(
-        ctx,
-        options.preferredColumns,
-        contentHeight,
-        fontSize,
-        metrics.defaultAdvanceY,
-        advanceScale,
-      )
-    : calcVertical(
-        ctx,
-        text,
-        contentHeight,
-        fontSize,
-        metrics.defaultAdvanceY,
-        advanceScale,
-      );
+  let columns: VColumn[];
+  let columnBreakReasons: ColumnBreakReason[];
+  if (options?.preferredColumns && options.preferredColumns.length > 0) {
+    const detailed = calcVerticalFromColumns(
+      ctx,
+      options.preferredColumns,
+      contentHeight,
+      fontSize,
+      metrics.defaultAdvanceY,
+      advanceScale,
+    );
+    columns = detailed.columns;
+    columnBreakReasons = detailed.columnBreakReasons;
+  } else {
+    columns = calcVertical(
+      ctx,
+      text,
+      contentHeight,
+      fontSize,
+      metrics.defaultAdvanceY,
+      advanceScale,
+    );
+    columnBreakReasons = columns.map((_, index) => (index === 0 ? 'start' : 'wrap'));
+  }
   const requiredContentWidth = computeVerticalTotalWidth(columns.length, metrics);
-  return { columns, metrics, requiredContentWidth };
+  return { columns, columnBreakReasons, metrics, requiredContentWidth };
 }
 
 function estimateVerticalPreferredProfile(
@@ -1807,6 +1883,25 @@ function resolveBoxPadding(region: TextRegion): number {
   return Math.max(2, Math.min(dynamicPadding, 6));
 }
 
+function resolveOffscreenGuardPadding(fontSize: number): number {
+  return Math.max(minOffscreenGuardPaddingPx, Math.round(fontSize * offscreenGuardPaddingByFontRatio));
+}
+
+function resolveVerticalContentHeight(contentHeight: number, fontSize: number): number {
+  const dynamicRatio = clampNumber(
+    verticalContentHeightExpandBaseRatio + fontSize * verticalContentHeightExpandFontRatio,
+    0.08,
+    0.24,
+  );
+  const dynamicMax = Math.max(14, Math.round(fontSize * 1.6));
+  const extra = clampNumber(
+    Math.round(contentHeight * dynamicRatio),
+    minVerticalContentHeightExpandPx,
+    dynamicMax,
+  );
+  return contentHeight + extra;
+}
+
 function expandRegionBeforeRender(
   region: TextRegion,
   text: string,
@@ -1993,6 +2088,9 @@ export async function drawTypeset(
     const contentWidth = Math.max(20, region.box.width - boxPadding * 2);
     const contentHeight = Math.max(20, region.box.height - boxPadding * 2);
     const isVertical = region.direction === "v";
+    const verticalContentHeight = isVertical
+      ? resolveVerticalContentHeight(contentHeight, estimatedInitialFontSize)
+      : contentHeight;
     const colors = resolveColors(region.fgColor, region.bgColor);
     const initialFontSize = lockInitFontSize
       ? estimatedInitialFontSize
@@ -2000,6 +2098,7 @@ export async function drawTypeset(
     let debug: RegionTypesetDebug = {
       fittedFontSize: initialFontSize,
       columnBoxes: [],
+      columnBreakReasons: [],
       offscreenWidth: 0,
       offscreenHeight: 0,
       boxPadding,
@@ -2015,13 +2114,13 @@ export async function drawTypeset(
         region,
         text,
         contentWidth,
-        contentHeight,
+        verticalContentHeight,
         initialFontSize,
         region.translatedColumns,
       );
       const verticalResult = lockInitFontSize
         ? (() => {
-            const layout = buildVerticalLayout(measureCtx, text, contentHeight, initialFontSize, {
+            const layout = buildVerticalLayout(measureCtx, text, verticalContentHeight, initialFontSize, {
               colSpacingScale: preferredProfile.colSpacingScale,
               advanceScale: preferredProfile.advanceScale,
               preferredColumns: region.translatedColumns,
@@ -2029,6 +2128,7 @@ export async function drawTypeset(
             return {
               fontSize: initialFontSize,
               columns: layout.columns,
+              columnBreakReasons: layout.columnBreakReasons,
               metrics: layout.metrics,
             };
           })()
@@ -2036,7 +2136,7 @@ export async function drawTypeset(
             measureCtx,
             text,
             contentWidth,
-            contentHeight,
+            verticalContentHeight,
             initialFontSize,
             {
               targetColumnCount: Math.max(1, region.originalLineCount ?? 1),
@@ -2044,7 +2144,7 @@ export async function drawTypeset(
               preferredProfile,
             },
           );
-      const { fontSize, columns, metrics } = verticalResult;
+      const { fontSize, columns, columnBreakReasons, metrics } = verticalResult;
       strokePadding = resolveVerticalRenderPadding(measureCtx, columns, fontSize, metrics);
       const alignment = resolveAlignment(region, columns.length);
       if (renderText) {
@@ -2052,7 +2152,7 @@ export async function drawTypeset(
           columns,
           fontSize,
           contentWidth,
-          contentHeight,
+          verticalContentHeight,
           colors,
           alignment,
           metrics,
@@ -2064,13 +2164,14 @@ export async function drawTypeset(
         columnBoxes: buildVerticalDebugColumnBoxes(
           columns,
           contentWidth,
-          contentHeight,
+          verticalContentHeight,
           metrics,
           alignment,
           strokePadding,
         ),
+        columnBreakReasons,
         offscreenWidth: Math.ceil(contentWidth + strokePadding * 2),
-        offscreenHeight: Math.ceil(contentHeight + strokePadding * 2),
+        offscreenHeight: Math.ceil(verticalContentHeight + strokePadding * 2),
         boxPadding,
         strokePadding,
       };
@@ -2112,6 +2213,7 @@ export async function drawTypeset(
           alignment,
           strokePadding,
         ),
+        columnBreakReasons: lines.map((_, index) => (index === 0 ? 'start' : 'wrap')),
         offscreenWidth: Math.ceil(contentWidth + strokePadding * 2),
         offscreenHeight: Math.ceil(contentHeight + strokePadding * 2),
         boxPadding,

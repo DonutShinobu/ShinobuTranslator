@@ -4,6 +4,7 @@ import {
   llmBuiltInProviderDefinitions,
   llmProviderOptions,
   normalizeSettings,
+  type LlmProviderProfile,
   type LlmProvider,
   type ExtensionSettings,
 } from '../shared/config';
@@ -56,40 +57,35 @@ export function App() {
     }));
   }
 
+  function updateActiveLlmProfile(patch: Partial<LlmProviderProfile>): void {
+    setSettings((prev) => ({
+      ...prev,
+      llmProfiles: {
+        ...prev.llmProfiles,
+        [prev.llmProvider]: {
+          ...prev.llmProfiles[prev.llmProvider],
+          ...patch,
+        },
+      },
+    }));
+  }
+
   function updateTranslator(translator: ExtensionSettings['translator']): void {
     updateField('translator', translator);
   }
 
   function updateLlmProvider(provider: LlmProvider): void {
-    setSettings((prev) => {
-      const next: ExtensionSettings = {
-        ...prev,
-        llmProvider: provider,
-      };
-      if (provider !== 'custom') {
-        const models = llmBuiltInProviderDefinitions[provider].models;
-        if (!models.includes(next.llmModelPreset)) {
-          next.llmModelPreset = models[0] ?? '';
-        }
-        next.llmUseCustomModel = false;
-      } else {
-        next.llmModelPreset = '';
-        next.llmUseCustomModel = true;
-      }
-      return next;
-    });
+    updateField('llmProvider', provider);
   }
 
   function updateUseCustomModel(checked: boolean): void {
-    setSettings((prev) => ({
-      ...prev,
-      llmUseCustomModel: checked,
-    }));
+    updateActiveLlmProfile({ useCustomModel: checked });
   }
 
+  const currentProfile = settings.llmProfiles[settings.llmProvider];
   const currentProviderModels =
     settings.llmProvider === 'custom' ? [] : llmBuiltInProviderDefinitions[settings.llmProvider].models;
-  const builtInCustomModelPlaceholder = currentProviderModels[0] ?? '';
+  const builtInCustomModelPlaceholder = currentProviderModels[0] ?? currentProfile.modelPreset;
 
   async function persistSettings(nextSettings: ExtensionSettings): Promise<void> {
     const requestId = saveRequestIdRef.current + 1;
@@ -200,8 +196,8 @@ export function App() {
               <label>
                 <span>Base URL</span>
                 <input
-                  value={settings.llmCustomBaseUrl}
-                  onChange={(event) => updateField('llmCustomBaseUrl', event.target.value)}
+                  value={currentProfile.customBaseUrl}
+                  onChange={(event) => updateActiveLlmProfile({ customBaseUrl: event.target.value })}
                   disabled={loading}
                   placeholder="https://api.example.com/v1"
                 />
@@ -209,8 +205,8 @@ export function App() {
               <label>
                 <span>模型名称</span>
                 <input
-                  value={settings.llmModelCustom}
-                  onChange={(event) => updateField('llmModelCustom', event.target.value)}
+                  value={currentProfile.modelCustom}
+                  onChange={(event) => updateActiveLlmProfile({ modelCustom: event.target.value })}
                   disabled={loading}
                   placeholder="例如：your-model-name"
                 />
@@ -220,17 +216,17 @@ export function App() {
             <>
               <label>
                 <span>模型名称</span>
-                {settings.llmUseCustomModel ? (
+                {currentProfile.useCustomModel ? (
                   <input
-                    value={settings.llmModelCustom}
-                    onChange={(event) => updateField('llmModelCustom', event.target.value)}
+                    value={currentProfile.modelCustom}
+                    onChange={(event) => updateActiveLlmProfile({ modelCustom: event.target.value })}
                     disabled={loading}
                     placeholder={builtInCustomModelPlaceholder}
                   />
                 ) : (
                   <select
-                    value={settings.llmModelPreset}
-                    onChange={(event) => updateField('llmModelPreset', event.target.value)}
+                    value={currentProfile.modelPreset}
+                    onChange={(event) => updateActiveLlmProfile({ modelPreset: event.target.value })}
                     disabled={loading}
                   >
                     {currentProviderModels.map((model) => (
@@ -244,7 +240,7 @@ export function App() {
               <label className="checkbox-row">
                 <input
                   type="checkbox"
-                  checked={settings.llmUseCustomModel}
+                  checked={currentProfile.useCustomModel}
                   onChange={(event) => updateUseCustomModel(event.target.checked)}
                   disabled={loading}
                 />
@@ -257,8 +253,8 @@ export function App() {
             <span>LLM API Key</span>
             <input
               type="password"
-              value={settings.llmApiKey}
-              onChange={(event) => updateField('llmApiKey', event.target.value)}
+              value={currentProfile.apiKey}
+              onChange={(event) => updateActiveLlmProfile({ apiKey: event.target.value })}
               disabled={loading}
               placeholder="sk-..."
             />

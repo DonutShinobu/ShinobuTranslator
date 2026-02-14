@@ -4,6 +4,13 @@ export const extensionSettingsStorageKey = 'mangaTranslate.settings';
 
 export type LlmProvider = PipelineConfig['llmProvider'];
 export type BuiltInLlmProvider = Exclude<LlmProvider, 'custom'>;
+export type LlmProviderProfile = {
+  apiKey: string;
+  modelPreset: string;
+  modelCustom: string;
+  useCustomModel: boolean;
+  customBaseUrl: string;
+};
 
 type BuiltInProviderDefinition = {
   label: string;
@@ -20,7 +27,7 @@ export const llmBuiltInProviderDefinitions: Record<BuiltInLlmProvider, BuiltInPr
   glm: {
     label: 'GLM (Z.AI)',
     baseUrl: 'https://api.z.ai/api/paas/v4',
-    models: ['glm-4.7', 'glm-4.7-flash', 'glm-4.7-flashx', 'glm-4.6', 'glm-4.5-airx'],
+    models: ['glm5', 'glm-4.7', 'glm-4.7-flash', 'glm-4.7-flashx', 'glm-4.6', 'glm-4.5-airx'],
   },
   kimi: {
     label: 'Kimi (Moonshot)',
@@ -70,16 +77,41 @@ function getDefaultModelPreset(provider: BuiltInLlmProvider): string {
   return llmBuiltInProviderDefinitions[provider].models[0] ?? '';
 }
 
+function createDefaultProviderProfile(provider: LlmProvider): LlmProviderProfile {
+  if (isBuiltInProvider(provider)) {
+    return {
+      apiKey: '',
+      modelPreset: getDefaultModelPreset(provider),
+      modelCustom: '',
+      useCustomModel: false,
+      customBaseUrl: '',
+    };
+  }
+  return {
+    apiKey: '',
+    modelPreset: '',
+    modelCustom: '',
+    useCustomModel: true,
+    customBaseUrl: '',
+  };
+}
+
+function createDefaultLlmProfiles(): Record<LlmProvider, LlmProviderProfile> {
+  return {
+    deepseek: createDefaultProviderProfile('deepseek'),
+    glm: createDefaultProviderProfile('glm'),
+    kimi: createDefaultProviderProfile('kimi'),
+    minimax: createDefaultProviderProfile('minimax'),
+    custom: createDefaultProviderProfile('custom'),
+  };
+}
+
 export type ExtensionSettings = {
   sourceLang: string;
   targetLang: string;
   translator: PipelineConfig['translator'];
   llmProvider: LlmProvider;
-  llmModelPreset: string;
-  llmModelCustom: string;
-  llmUseCustomModel: boolean;
-  llmCustomBaseUrl: string;
-  llmApiKey: string;
+  llmProfiles: Record<LlmProvider, LlmProviderProfile>;
   showElapsedTime: boolean;
   showStageTimingDetails: boolean;
 };
@@ -89,11 +121,7 @@ export const defaultExtensionSettings: ExtensionSettings = {
   targetLang: 'zh-CHS',
   translator: 'google_web',
   llmProvider: 'deepseek',
-  llmModelPreset: getDefaultModelPreset('deepseek'),
-  llmModelCustom: '',
-  llmUseCustomModel: false,
-  llmCustomBaseUrl: '',
-  llmApiKey: '',
+  llmProfiles: createDefaultLlmProfiles(),
   showElapsedTime: false,
   showStageTimingDetails: false,
 };
@@ -119,6 +147,68 @@ function normalizeTargetLang(value: unknown): string {
   return defaultExtensionSettings.targetLang;
 }
 
+function normalizeProfileString(value: unknown, fallback: string): string {
+  if (typeof value !== 'string') {
+    return fallback;
+  }
+  return value.trim();
+}
+
+function normalizeProviderProfile(
+  provider: LlmProvider,
+  value: unknown,
+  legacy: {
+    modelFromLegacy: string;
+    modelPresetInput: string;
+    modelCustomInput: string;
+    modelToggleInput: boolean | null;
+    llmCustomBaseUrl: string;
+    llmApiKey: string;
+  } | null
+): LlmProviderProfile {
+  const defaults = createDefaultProviderProfile(provider);
+  const raw = value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
+  const apiKey = normalizeProfileString(raw?.apiKey, defaults.apiKey);
+  const modelPresetInput = normalizeProfileString(raw?.modelPreset, '');
+  const modelCustomInput = normalizeProfileString(raw?.modelCustom, '');
+  const useCustomModelInput = typeof raw?.useCustomModel === 'boolean' ? raw.useCustomModel : null;
+  const customBaseUrlInput = normalizeProfileString(raw?.customBaseUrl, '');
+
+  if (isBuiltInProvider(provider)) {
+    const modelSet = new Set(llmBuiltInProviderDefinitions[provider].models);
+    const candidatePreset = modelSet.has(modelPresetInput)
+      ? modelPresetInput
+      : legacy && modelSet.has(legacy.modelPresetInput)
+        ? legacy.modelPresetInput
+        : legacy && modelSet.has(legacy.modelFromLegacy)
+          ? legacy.modelFromLegacy
+          : defaults.modelPreset;
+
+    const useCustomModel =
+      useCustomModelInput === null ? (legacy?.modelToggleInput === true ? true : defaults.useCustomModel) : useCustomModelInput;
+    let modelCustom = modelCustomInput || (legacy?.modelCustomInput ?? '');
+    if (useCustomModel && !modelCustom && legacy?.modelFromLegacy && !modelSet.has(legacy.modelFromLegacy)) {
+      modelCustom = legacy.modelFromLegacy;
+    }
+
+    return {
+      apiKey: apiKey || (legacy?.llmApiKey ?? defaults.apiKey),
+      modelPreset: candidatePreset,
+      modelCustom,
+      useCustomModel,
+      customBaseUrl: '',
+    };
+  }
+
+  return {
+    apiKey: apiKey || (legacy?.llmApiKey ?? defaults.apiKey),
+    modelPreset: '',
+    modelCustom: modelCustomInput || (legacy?.modelCustomInput ?? legacy?.modelFromLegacy ?? defaults.modelCustom),
+    useCustomModel: true,
+    customBaseUrl: customBaseUrlInput || (legacy?.llmCustomBaseUrl ?? defaults.customBaseUrl),
+  };
+}
+
 export function normalizeSettings(value: unknown): ExtensionSettings {
   if (!value || typeof value !== 'object') {
     return { ...defaultExtensionSettings };
@@ -134,36 +224,23 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
       ? providerFromBaseUrl
       : defaultExtensionSettings.llmProvider;
 
-  const modelFromLegacy = typeof raw.llmModel === 'string' ? raw.llmModel.trim() : '';
-  const modelCustomInput = typeof raw.llmModelCustom === 'string' ? raw.llmModelCustom.trim() : '';
-  const modelPresetInput = typeof raw.llmModelPreset === 'string' ? raw.llmModelPreset.trim() : '';
-  const modelToggleInput = typeof raw.llmUseCustomModel === 'boolean' ? raw.llmUseCustomModel : null;
+  const legacy = {
+    modelFromLegacy: typeof raw.llmModel === 'string' ? raw.llmModel.trim() : '',
+    modelCustomInput: typeof raw.llmModelCustom === 'string' ? raw.llmModelCustom.trim() : '',
+    modelPresetInput: typeof raw.llmModelPreset === 'string' ? raw.llmModelPreset.trim() : '',
+    modelToggleInput: typeof raw.llmUseCustomModel === 'boolean' ? raw.llmUseCustomModel : null,
+    llmCustomBaseUrl: typeof raw.llmCustomBaseUrl === 'string' ? raw.llmCustomBaseUrl.trim() : '',
+    llmApiKey: typeof raw.llmApiKey === 'string' ? raw.llmApiKey.trim() : defaultExtensionSettings.llmProfiles[provider].apiKey,
+  };
+  const rawProfiles = raw.llmProfiles && typeof raw.llmProfiles === 'object' ? (raw.llmProfiles as Record<string, unknown>) : {};
 
-  let llmModelPreset = '';
-  let llmModelCustom = modelCustomInput;
-  let llmUseCustomModel = false;
-  if (isBuiltInProvider(provider)) {
-    const modelSet = new Set(llmBuiltInProviderDefinitions[provider].models);
-    if (modelSet.has(modelPresetInput)) {
-      llmModelPreset = modelPresetInput;
-    } else if (modelSet.has(modelFromLegacy)) {
-      llmModelPreset = modelFromLegacy;
-    } else {
-      llmModelPreset = getDefaultModelPreset(provider);
-    }
-    llmUseCustomModel = modelToggleInput === true;
-    if (llmUseCustomModel && !llmModelCustom && modelFromLegacy && !modelSet.has(modelFromLegacy)) {
-      llmModelCustom = modelFromLegacy;
-    }
-  } else {
-    llmModelPreset = '';
-    llmUseCustomModel = true;
-    if (!llmModelCustom && modelFromLegacy) {
-      llmModelCustom = modelFromLegacy;
-    }
-  }
-
-  const llmCustomBaseUrl = typeof raw.llmCustomBaseUrl === 'string' ? raw.llmCustomBaseUrl.trim() : '';
+  const llmProfiles: Record<LlmProvider, LlmProviderProfile> = {
+    deepseek: normalizeProviderProfile('deepseek', rawProfiles.deepseek, provider === 'deepseek' ? legacy : null),
+    glm: normalizeProviderProfile('glm', rawProfiles.glm, provider === 'glm' ? legacy : null),
+    kimi: normalizeProviderProfile('kimi', rawProfiles.kimi, provider === 'kimi' ? legacy : null),
+    minimax: normalizeProviderProfile('minimax', rawProfiles.minimax, provider === 'minimax' ? legacy : null),
+    custom: normalizeProviderProfile('custom', rawProfiles.custom, provider === 'custom' ? legacy : null),
+  };
   const showElapsedTime = sanitizeBoolean(raw.showElapsedTime, defaultExtensionSettings.showElapsedTime);
 
   return {
@@ -171,11 +248,7 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     targetLang: normalizeTargetLang(raw.targetLang),
     translator,
     llmProvider: provider,
-    llmModelPreset,
-    llmModelCustom,
-    llmUseCustomModel,
-    llmCustomBaseUrl: llmCustomBaseUrl || (provider === 'custom' ? legacyBaseUrl : ''),
-    llmApiKey: typeof raw.llmApiKey === 'string' ? raw.llmApiKey.trim() : defaultExtensionSettings.llmApiKey,
+    llmProfiles,
     showElapsedTime,
     showStageTimingDetails: showElapsedTime
       ? sanitizeBoolean(raw.showStageTimingDetails, defaultExtensionSettings.showStageTimingDetails)
@@ -184,20 +257,22 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
 }
 
 export function resolveLlmBaseUrl(settings: ExtensionSettings): string {
+  const profile = settings.llmProfiles[settings.llmProvider];
   if (settings.llmProvider === 'custom') {
-    return settings.llmCustomBaseUrl.trim();
+    return profile.customBaseUrl.trim();
   }
   return llmBuiltInProviderDefinitions[settings.llmProvider].baseUrl;
 }
 
 export function resolveLlmModel(settings: ExtensionSettings): string {
+  const profile = settings.llmProfiles[settings.llmProvider];
   if (settings.llmProvider === 'custom') {
-    return settings.llmModelCustom.trim();
+    return profile.modelCustom.trim();
   }
-  if (!settings.llmUseCustomModel) {
-    return settings.llmModelPreset.trim();
+  if (!profile.useCustomModel) {
+    return profile.modelPreset.trim();
   }
-  const customModel = settings.llmModelCustom.trim();
+  const customModel = profile.modelCustom.trim();
   return customModel;
 }
 
@@ -211,7 +286,8 @@ export function validateSettings(settings: ExtensionSettings): string | null {
     return 'LLM 模型不能为空';
   }
 
-  if (settings.llmProvider === 'custom' && !settings.llmCustomBaseUrl.trim()) {
+  const profile = settings.llmProfiles[settings.llmProvider];
+  if (settings.llmProvider === 'custom' && !profile.customBaseUrl.trim()) {
     return '自定义提供商 Base URL 不能为空';
   }
 
@@ -219,13 +295,14 @@ export function validateSettings(settings: ExtensionSettings): string | null {
 }
 
 export function toPipelineConfig(settings: ExtensionSettings): PipelineConfig {
+  const profile = settings.llmProfiles[settings.llmProvider];
   return {
     sourceLang: 'ja',
     targetLang: settings.targetLang,
     translator: settings.translator,
     llmProvider: settings.llmProvider,
     llmBaseUrl: resolveLlmBaseUrl(settings),
-    llmApiKey: settings.llmApiKey,
+    llmApiKey: profile.apiKey,
     llmModel: resolveLlmModel(settings),
   };
 }

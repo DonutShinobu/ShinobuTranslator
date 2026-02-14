@@ -1,57 +1,19 @@
 import type { PipelineProgress, RuntimeStageStatus, StageTiming } from '../types';
+import { toPipelineConfig, validateSettings, type ExtensionSettings } from '../shared/config';
 
-type ExtensionSettings = {
-  sourceLang: string;
-  targetLang: string;
-  translator: 'google_web' | 'llm';
-  llmProvider: 'deepseek' | 'glm' | 'kimi' | 'minimax' | 'custom';
-  llmModelPreset: string;
-  llmModelCustom: string;
-  llmUseCustomModel: boolean;
-  llmCustomBaseUrl: string;
-  llmApiKey: string;
-  showElapsedTime: boolean;
-  showStageTimingDetails: boolean;
-};
-
-const llmBaseUrlByProvider: Record<Exclude<ExtensionSettings['llmProvider'], 'custom'>, string> = {
-  deepseek: 'https://api.deepseek.com',
-  glm: 'https://api.z.ai/api/paas/v4',
-  kimi: 'https://api.moonshot.ai/v1',
-  minimax: 'https://api.minimax.io/v1',
-};
-
-function resolveLlmBaseUrl(settings: ExtensionSettings): string {
-  if (settings.llmProvider === 'custom') {
-    return settings.llmCustomBaseUrl.trim();
-  }
-  return llmBaseUrlByProvider[settings.llmProvider];
-}
-
-function resolveLlmModel(settings: ExtensionSettings): string {
-  if (settings.llmProvider === 'custom') {
-    return settings.llmModelCustom.trim();
-  }
-  if (!settings.llmUseCustomModel) {
-    return settings.llmModelPreset.trim();
-  }
-  const customModel = settings.llmModelCustom.trim();
-  return customModel;
-}
-
-function validateSettings(settings: ExtensionSettings): string | null {
+function validateActiveSettings(settings: ExtensionSettings): string | null {
   if (settings.translator !== 'llm') {
     return null;
   }
 
+  const baseValidation = validateSettings(settings);
+  if (baseValidation) {
+    return baseValidation;
+  }
+
   const missingFields: string[] = [];
-  if (settings.llmProvider === 'custom' && !settings.llmCustomBaseUrl.trim()) {
-    missingFields.push('自定义提供商 Base URL');
-  }
-  if (!resolveLlmModel(settings)) {
-    missingFields.push('LLM 模型');
-  }
-  if (!settings.llmApiKey.trim()) {
+  const profile = settings.llmProfiles[settings.llmProvider];
+  if (!profile.apiKey.trim()) {
     missingFields.push('API Key');
   }
   if (missingFields.length > 0) {
@@ -59,18 +21,6 @@ function validateSettings(settings: ExtensionSettings): string | null {
   }
 
   return null;
-}
-
-function toPipelineConfig(settings: ExtensionSettings) {
-  return {
-    sourceLang: 'ja',
-    targetLang: settings.targetLang,
-    translator: settings.translator,
-    llmProvider: settings.llmProvider,
-    llmBaseUrl: resolveLlmBaseUrl(settings),
-    llmApiKey: settings.llmApiKey,
-    llmModel: resolveLlmModel(settings),
-  };
 }
 
 type RuntimeMessage =
@@ -1129,7 +1079,7 @@ class XOverlayTranslator {
       if (!settingsResponse.ok || settingsResponse.type !== 'mt:get-settings') {
         throw new Error(settingsResponse.ok ? '读取配置失败' : settingsResponse.error);
       }
-      const validationError = validateSettings(settingsResponse.settings);
+      const validationError = validateActiveSettings(settingsResponse.settings);
       if (validationError) {
         throw new Error(validationError);
       }

@@ -22,6 +22,9 @@ const minVerticalColSpacingScale = 0.5;
 const verticalContentHeightExpandBaseRatio = 0.08;
 const verticalContentHeightExpandFontRatio = 0.003;
 const minVerticalContentHeightExpandPx = 6;
+const minFontSafetySize = 8;
+const minorOverflowMaxGlyphCount = 2;
+const minorOverflowShrinkMinScale = 0.8;
 const minOffscreenGuardPaddingPx = 8;
 const offscreenGuardPaddingByFontRatio = 0.35;
 
@@ -366,6 +369,13 @@ type VerticalCellMetrics = {
   colWidth: number;
   defaultAdvanceY: number;
   colSpacing: number;
+};
+
+type BuildVerticalLayoutOptions = {
+  colSpacingScale?: number;
+  advanceScale?: number;
+  preferredColumns?: string[];
+  preferredColumnSources?: ColumnSegmentSource[];
 };
 
 type VerticalLayoutResult = {
@@ -1582,12 +1592,7 @@ function buildVerticalLayout(
   text: string,
   contentHeight: number,
   fontSize: number,
-  options?: {
-    colSpacingScale?: number;
-    advanceScale?: number;
-    preferredColumns?: string[];
-    preferredColumnSources?: ColumnSegmentSource[];
-  },
+  options?: BuildVerticalLayoutOptions,
 ): VerticalLayoutResult {
   ctx.font = `${fontSize}px ${fontFamily}`;
   const sw = strokeWidth(fontSize);
@@ -1632,6 +1637,49 @@ function buildVerticalLayout(
   }
   const requiredContentWidth = computeVerticalTotalWidth(columns.length, metrics);
   return { columns, columnBreakReasons, columnSegmentIds, columnSegmentSources, metrics, requiredContentWidth };
+}
+
+function hasMinorOverflowWrap(layout: VerticalLayoutResult): boolean {
+  if (layout.columns.length < 2) {
+    return false;
+  }
+  const tailIndex = layout.columns.length - 1;
+  const tailReason = layout.columnBreakReasons[tailIndex] ?? 'wrap';
+  if (tailReason !== 'wrap' && tailReason !== 'both') {
+    return false;
+  }
+  const tailGlyphCount = layout.columns[tailIndex]?.glyphs.length ?? 0;
+  return tailGlyphCount >= 1 && tailGlyphCount <= minorOverflowMaxGlyphCount;
+}
+
+function tryShrinkVerticalForMinorOverflow(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  contentHeight: number,
+  initialFontSize: number,
+  options: BuildVerticalLayoutOptions,
+  baseLayout: VerticalLayoutResult,
+): { fontSize: number; layout: VerticalLayoutResult } {
+  if (!hasMinorOverflowWrap(baseLayout)) {
+    return { fontSize: initialFontSize, layout: baseLayout };
+  }
+
+  const minAllowedFontSize = Math.max(
+    minFontSafetySize,
+    Math.ceil(initialFontSize * minorOverflowShrinkMinScale),
+  );
+  if (initialFontSize <= minAllowedFontSize) {
+    return { fontSize: initialFontSize, layout: baseLayout };
+  }
+
+  for (let fontSize = initialFontSize - 1; fontSize >= minAllowedFontSize; fontSize -= 1) {
+    const candidate = buildVerticalLayout(ctx, text, contentHeight, fontSize, options);
+    if (candidate.columns.length < baseLayout.columns.length) {
+      return { fontSize, layout: candidate };
+    }
+  }
+
+  return { fontSize: initialFontSize, layout: baseLayout };
 }
 
 function estimateVerticalPreferredProfile(
@@ -2065,15 +2113,24 @@ export async function drawTypeset(
         initialFontSize,
         region.translatedColumns,
       );
+      const verticalLayoutOptions: BuildVerticalLayoutOptions = {
+        colSpacingScale: preferredProfile.colSpacingScale,
+        advanceScale: preferredProfile.advanceScale,
+        preferredColumns: region.translatedColumns,
+        preferredColumnSources,
+      };
       const verticalResult = (() => {
-        const layout = buildVerticalLayout(measureCtx, text, verticalContentHeight, initialFontSize, {
-          colSpacingScale: preferredProfile.colSpacingScale,
-          advanceScale: preferredProfile.advanceScale,
-          preferredColumns: region.translatedColumns,
-          preferredColumnSources,
-        });
+        const baseLayout = buildVerticalLayout(measureCtx, text, verticalContentHeight, initialFontSize, verticalLayoutOptions);
+        const { fontSize, layout } = tryShrinkVerticalForMinorOverflow(
+          measureCtx,
+          text,
+          verticalContentHeight,
+          initialFontSize,
+          verticalLayoutOptions,
+          baseLayout,
+        );
         return {
-          fontSize: initialFontSize,
+          fontSize,
           columns: layout.columns,
           columnBreakReasons: layout.columnBreakReasons,
           columnSegmentIds: layout.columnSegmentIds,

@@ -43,6 +43,7 @@
     {
       "resources": [
         "chunks/*",
+        "fonts/*",
         "models/*",
         "ort/*"
       ],

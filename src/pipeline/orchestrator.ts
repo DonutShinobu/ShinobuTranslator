@@ -321,7 +321,7 @@ export async function runPipeline(
   report(onProgress, "typeset", "\u6392\u7248\u548c\u5d4c\u5b57");
   try {
     const t0 = performance.now();
-    resultCanvas = await drawTypeset(cleanedCanvas, latestRegions);
+    resultCanvas = await drawTypeset(cleanedCanvas, latestRegions, config.targetLang);
     stageTimings.push({ stage: "typeset", label: "排版和嵌字", durationMs: performance.now() - t0 });
   } catch (error) {
     throw new PipelineStageError("排版", toErrorDetail(error), buildArtifacts());

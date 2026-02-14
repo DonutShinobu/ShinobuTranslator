@@ -4,8 +4,15 @@ import type { TextRegion, QuadPoint } from "../types";
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Font fallback chain for CJK text rendering. */
-const fontFamily = '"Noto Sans SC", "PingFang SC", "Source Han Sans SC", sans-serif';
+const defaultFontFamily = '"MTX-SourceHanSans-CN", "Noto Sans CJK SC", "PingFang SC", sans-serif';
+let fontFamily = defaultFontFamily;
+
+function resolveFontFamily(targetLang?: string): string {
+  if (targetLang === 'zh-CHT') {
+    return '"MTX-SourceHanSans-TW", "Noto Sans CJK TC", "PingFang TC", sans-serif';
+  }
+  return defaultFontFamily;
+}
 const horizontalLetterSpacingRatio = -0.05;
 const horizontalLineHeightRatio = 0.93;
 const verticalAdvanceTightenRatio = 0.9;
@@ -1599,9 +1606,12 @@ function expandRegionBeforeRender(
 export async function drawTypeset(
   canvas: HTMLCanvasElement,
   regions: TextRegion[],
+  targetLang?: string,
 ): Promise<HTMLCanvasElement> {
   // Ensure fonts are loaded before measuring/rendering
   await document.fonts.ready;
+
+  fontFamily = resolveFontFamily(targetLang);
 
   const out = document.createElement("canvas");
   out.width = canvas.width;

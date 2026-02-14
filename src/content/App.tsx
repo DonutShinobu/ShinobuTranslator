@@ -150,6 +150,7 @@ function getChromeApi(): {
   runtime?: {
     sendMessage?: (message: unknown, callback?: (response: unknown) => void) => void;
     lastError?: { message?: string };
+    getURL?: (path: string) => string;
   };
 } | null {
   const maybeChrome = (globalThis as typeof globalThis & { chrome?: unknown }).chrome;
@@ -160,8 +161,14 @@ function getChromeApi(): {
     runtime?: {
       sendMessage?: (message: unknown, callback?: (response: unknown) => void) => void;
       lastError?: { message?: string };
+      getURL?: (path: string) => string;
     };
   };
+}
+
+function resolveRuntimeAssetUrl(path: string): string | null {
+  const chromeApi = getChromeApi();
+  return chromeApi?.runtime?.getURL ? chromeApi.runtime.getURL(path) : null;
 }
 
 function sendRuntimeMessage(message: RuntimeMessage): Promise<RuntimeResponse> {
@@ -580,7 +587,31 @@ class XOverlayTranslator {
     }
     const style = document.createElement('style');
     style.id = styleId;
+    const fontCnUrl = resolveRuntimeAssetUrl('fonts/SourceHanSansCN-VF.ttf.woff2');
+    const fontTwUrl = resolveRuntimeAssetUrl('fonts/SourceHanSansTW-VF.ttf.woff2');
+    const fontFaces = [
+      fontCnUrl
+        ? `@font-face {
+            font-family: "MTX-SourceHanSans-CN";
+            src: url("${fontCnUrl}") format("woff2");
+            font-style: normal;
+            font-weight: 200 900;
+            font-display: swap;
+          }`
+        : '',
+      fontTwUrl
+        ? `@font-face {
+            font-family: "MTX-SourceHanSans-TW";
+            src: url("${fontTwUrl}") format("woff2");
+            font-style: normal;
+            font-weight: 200 900;
+            font-display: swap;
+          }`
+        : '',
+    ].filter(Boolean).join('\n');
+
     style.textContent = `
+      ${fontFaces}
       .mt-x-overlay-fallback {
         position: absolute;
         right: ${fallbackHostInsetPx}px;

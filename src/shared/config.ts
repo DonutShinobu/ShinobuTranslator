@@ -118,7 +118,6 @@ export type ExtensionSettings = {
   showElapsedTime: boolean;
   showStageTimingDetails: boolean;
   showTypesetDebug: boolean;
-  lockInitFontSize: boolean;
 };
 
 export const defaultExtensionSettings: ExtensionSettings = {
@@ -130,7 +129,6 @@ export const defaultExtensionSettings: ExtensionSettings = {
   showElapsedTime: false,
   showStageTimingDetails: false,
   showTypesetDebug: false,
-  lockInitFontSize: false,
 };
 
 function sanitizeBoolean(value: unknown, fallback: boolean): boolean {
@@ -260,8 +258,6 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
   };
   const showElapsedTime = sanitizeBoolean(raw.showElapsedTime, defaultExtensionSettings.showElapsedTime);
   const showTypesetDebug = sanitizeBoolean(raw.showTypesetDebug, defaultExtensionSettings.showTypesetDebug);
-  const lockInitFontSize = sanitizeBoolean(raw.lockInitFontSize, defaultExtensionSettings.lockInitFontSize);
-
   return {
     sourceLang: defaultExtensionSettings.sourceLang,
     targetLang: normalizeTargetLang(raw.targetLang),
@@ -273,7 +269,6 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
       ? sanitizeBoolean(raw.showStageTimingDetails, defaultExtensionSettings.showStageTimingDetails)
       : false,
     showTypesetDebug,
-    lockInitFontSize,
   };
 }
 
@@ -327,6 +322,5 @@ export function toPipelineConfig(settings: ExtensionSettings): PipelineConfig {
     llmModel: resolveLlmModel(settings),
     llmTemperature: profile.temperature,
     typesetDebug: settings.showTypesetDebug,
-    lockInitFontSize: settings.lockInitFontSize,
   };
 }

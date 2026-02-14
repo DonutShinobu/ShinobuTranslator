@@ -326,13 +326,11 @@ export async function runPipeline(
     resultCanvas = await drawTypeset(cleanedCanvas, latestRegions, config.targetLang, {
       debugMode: config.typesetDebug,
       renderText: true,
-      lockInitFontSize: config.lockInitFontSize,
     });
     if (config.typesetDebug) {
       debugOriginalCanvas = await drawTypeset(originalCanvas, latestRegions, config.targetLang, {
         debugMode: true,
         renderText: false,
-        lockInitFontSize: config.lockInitFontSize,
       });
     } else {
       debugOriginalCanvas = null;

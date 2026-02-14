@@ -39,7 +39,6 @@ export type PipelineConfig = {
   llmModel: string;
   llmTemperature: number;
   typesetDebug: boolean;
-  lockInitFontSize: boolean;
 };
 
 export type RuntimeStageStatus = {

@@ -189,15 +189,6 @@ export function App() {
             />
             <span className="checkbox-label">排版调试模式</span>
           </label>
-          <label className="checkbox-row">
-            <input
-              type="checkbox"
-              checked={settings.lockInitFontSize}
-              onChange={(event) => updateField('lockInitFontSize', event.target.checked)}
-              disabled={loading}
-            />
-            <span className="checkbox-label">锁定初始字号</span>
-          </label>
         </div>
       </section>
 

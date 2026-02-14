@@ -360,14 +360,6 @@ type VerticalLayoutResult = {
   requiredContentWidth: number;
 };
 
-type FitVerticalResult = {
-  fontSize: number;
-  columns: VColumn[];
-  columnBreakReasons: ColumnBreakReason[];
-  metrics: VerticalCellMetrics;
-  requiredContentWidth: number;
-};
-
 type ColumnBreakReason = 'start' | 'model' | 'wrap' | 'both';
 
 type DebugColumnBox = {
@@ -1500,53 +1492,6 @@ function compositeRegion(
 // ---------------------------------------------------------------------------
 
 /**
- * Find the largest font size (starting from `initial`) that fits text
- * within the content area. Decrements by 1px until it fits or hits minimum.
- * Returns the font size and the computed layout.
- */
-function fitHorizontal(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  contentWidth: number,
-  contentHeight: number,
-  initial: number,
-): { fontSize: number; lines: HLine[] } {
-  const preferredMinSize = 10;
-  const absoluteMinSize = 8;
-  let fontSize = Math.max(absoluteMinSize, initial);
-  let lines: HLine[] = [];
-
-  while (fontSize >= preferredMinSize) {
-    ctx.font = `${fontSize}px ${fontFamily}`;
-    lines = calcHorizontal(ctx, text, contentWidth, fontSize);
-    const lineHeight = resolveHorizontalLineHeight(fontSize);
-    if (lines.length * lineHeight <= contentHeight) {
-      break;
-    }
-    fontSize -= 1;
-  }
-
-  fontSize = Math.max(absoluteMinSize, fontSize);
-  ctx.font = `${fontSize}px ${fontFamily}`;
-  lines = calcHorizontal(ctx, text, contentWidth, fontSize);
-
-  while (fontSize > absoluteMinSize) {
-    const lineHeight = resolveHorizontalLineHeight(fontSize);
-    const maxWidth = lines.reduce((max, line) => Math.max(max, line.width), 0);
-    const withinHeight = lines.length * lineHeight <= contentHeight;
-    const withinWidth = maxWidth <= contentWidth;
-    if (withinHeight && withinWidth) {
-      break;
-    }
-    fontSize -= 1;
-    ctx.font = `${fontSize}px ${fontFamily}`;
-    lines = calcHorizontal(ctx, text, contentWidth, fontSize);
-  }
-
-  return { fontSize, lines };
-}
-
-/**
  * Find the largest font size for vertical text that fits within content area.
  */
 function buildVerticalLayout(
@@ -1640,95 +1585,6 @@ function estimateVerticalPreferredProfile(
   }
 
   return { advanceScale, colSpacingScale };
-}
-
-function fitVertical(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  contentWidth: number,
-  contentHeight: number,
-  initial: number,
-  options?: VerticalFitOptions,
-): FitVerticalResult {
-  const absoluteMinSize = 8;
-  const initialFontSize = Math.max(absoluteMinSize, initial);
-  const targetColumnCount = Math.max(1, options?.targetColumnCount ?? 1);
-
-  const defaultProfiles = [
-    { advanceScale: 1, colSpacingScale: 1 },
-    { advanceScale: 0.95, colSpacingScale: 0.95 },
-    { advanceScale: 0.9, colSpacingScale: 0.9 },
-    { advanceScale: 0.85, colSpacingScale: 0.82 },
-    { advanceScale: 0.8, colSpacingScale: 0.72 },
-    { advanceScale: minVerticalAdvanceScale, colSpacingScale: minVerticalColSpacingScale },
-  ];
-  const compressionProfiles: Array<{ advanceScale: number; colSpacingScale: number }> = [];
-  if (options?.preferredProfile) {
-    compressionProfiles.push(options.preferredProfile);
-  }
-  for (const profile of defaultProfiles) {
-    const exists = compressionProfiles.some(
-      (candidate) =>
-        Math.abs(candidate.advanceScale - profile.advanceScale) < 0.001 &&
-        Math.abs(candidate.colSpacingScale - profile.colSpacingScale) < 0.001,
-    );
-    if (!exists) {
-      compressionProfiles.push(profile);
-    }
-  }
-
-  const scoreLayout = (layout: VerticalLayoutResult, preferredFontSize: number): number => {
-    const widthPenalty = layout.requiredContentWidth > contentWidth
-      ? (layout.requiredContentWidth - contentWidth) / Math.max(1, contentWidth)
-      : 0;
-    const columnPenalty = options?.preferredColumns && options.preferredColumns.length > 0
-      ? 0
-      : Math.abs(layout.columns.length - targetColumnCount) * 0.12;
-    const fontPenalty = (initialFontSize - preferredFontSize) * 0.02;
-    return widthPenalty + columnPenalty + fontPenalty;
-  };
-
-  let best: FitVerticalResult | null = null;
-  for (const profile of compressionProfiles) {
-    const layout = buildVerticalLayout(ctx, text, contentHeight, initialFontSize, {
-      colSpacingScale: profile.colSpacingScale,
-      advanceScale: profile.advanceScale,
-      preferredColumns: options?.preferredColumns,
-    });
-    const candidate: FitVerticalResult = { fontSize: initialFontSize, ...layout };
-    if (!best || scoreLayout(layout, initialFontSize) < scoreLayout(best, best.fontSize)) {
-      best = candidate;
-    }
-    if (layout.requiredContentWidth <= contentWidth) {
-      return candidate;
-    }
-  }
-
-  let fontSize = initialFontSize - 1;
-  while (fontSize >= absoluteMinSize) {
-    for (const profile of compressionProfiles) {
-      const layout = buildVerticalLayout(ctx, text, contentHeight, fontSize, {
-        colSpacingScale: profile.colSpacingScale,
-        advanceScale: profile.advanceScale,
-        preferredColumns: options?.preferredColumns,
-      });
-      const candidate: FitVerticalResult = { fontSize, ...layout };
-      if (!best || scoreLayout(layout, fontSize) < scoreLayout(best, best.fontSize)) {
-        best = candidate;
-      }
-      if (layout.requiredContentWidth <= contentWidth) {
-        return candidate;
-      }
-    }
-    fontSize -= 1;
-  }
-
-  if (best) {
-    return best;
-  }
-
-  const fallbackLayout = buildVerticalLayout(ctx, text, contentHeight, absoluteMinSize);
-  return { fontSize: absoluteMinSize, ...fallbackLayout };
 }
 
 function cloneQuad(
@@ -2030,7 +1886,6 @@ function expandRegionBeforeRender(
 type DrawTypesetOptions = {
   debugMode?: boolean;
   renderText?: boolean;
-  lockInitFontSize?: boolean;
 };
 
 export async function drawTypeset(
@@ -2041,7 +1896,6 @@ export async function drawTypeset(
 ): Promise<HTMLCanvasElement> {
   const debugMode = options?.debugMode === true;
   const renderText = options?.renderText !== false;
-  const lockInitFontSize = options?.lockInitFontSize === true;
   // Ensure fonts are loaded before measuring/rendering
   await document.fonts.ready;
 
@@ -2092,9 +1946,7 @@ export async function drawTypeset(
       ? resolveVerticalContentHeight(contentHeight, estimatedInitialFontSize)
       : contentHeight;
     const colors = resolveColors(region.fgColor, region.bgColor);
-    const initialFontSize = lockInitFontSize
-      ? estimatedInitialFontSize
-      : Math.max(8, Math.round(region.fontSize ?? resolveInitialFontSize(region)));
+    const initialFontSize = estimatedInitialFontSize;
     let debug: RegionTypesetDebug = {
       fittedFontSize: initialFontSize,
       columnBoxes: [],
@@ -2118,32 +1970,19 @@ export async function drawTypeset(
         initialFontSize,
         region.translatedColumns,
       );
-      const verticalResult = lockInitFontSize
-        ? (() => {
-            const layout = buildVerticalLayout(measureCtx, text, verticalContentHeight, initialFontSize, {
-              colSpacingScale: preferredProfile.colSpacingScale,
-              advanceScale: preferredProfile.advanceScale,
-              preferredColumns: region.translatedColumns,
-            });
-            return {
-              fontSize: initialFontSize,
-              columns: layout.columns,
-              columnBreakReasons: layout.columnBreakReasons,
-              metrics: layout.metrics,
-            };
-          })()
-        : fitVertical(
-            measureCtx,
-            text,
-            contentWidth,
-            verticalContentHeight,
-            initialFontSize,
-            {
-              targetColumnCount: Math.max(1, region.originalLineCount ?? 1),
-              preferredColumns: region.translatedColumns,
-              preferredProfile,
-            },
-          );
+      const verticalResult = (() => {
+        const layout = buildVerticalLayout(measureCtx, text, verticalContentHeight, initialFontSize, {
+          colSpacingScale: preferredProfile.colSpacingScale,
+          advanceScale: preferredProfile.advanceScale,
+          preferredColumns: region.translatedColumns,
+        });
+        return {
+          fontSize: initialFontSize,
+          columns: layout.columns,
+          columnBreakReasons: layout.columnBreakReasons,
+          metrics: layout.metrics,
+        };
+      })();
       const { fontSize, columns, columnBreakReasons, metrics } = verticalResult;
       strokePadding = resolveVerticalRenderPadding(measureCtx, columns, fontSize, metrics);
       const alignment = resolveAlignment(region, columns.length);
@@ -2176,19 +2015,11 @@ export async function drawTypeset(
         strokePadding,
       };
     } else {
-      const horizontalResult = lockInitFontSize
-        ? (() => {
-            measureCtx.font = `${initialFontSize}px ${fontFamily}`;
-            const lines = calcHorizontal(measureCtx, text, contentWidth, initialFontSize);
-            return { fontSize: initialFontSize, lines };
-          })()
-        : fitHorizontal(
-            measureCtx,
-            text,
-            contentWidth,
-            contentHeight,
-            initialFontSize,
-          );
+      const horizontalResult = (() => {
+        measureCtx.font = `${initialFontSize}px ${fontFamily}`;
+        const lines = calcHorizontal(measureCtx, text, contentWidth, initialFontSize);
+        return { fontSize: initialFontSize, lines };
+      })();
       const { fontSize, lines } = horizontalResult;
       strokePadding = resolveHorizontalRenderPadding(measureCtx, lines, fontSize);
       const alignment = resolveAlignment(region, lines.length);

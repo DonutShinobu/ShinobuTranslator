@@ -19,10 +19,6 @@ const verticalAdvanceTightenRatio = 0.9;
 const verticalColumnSpacingRatio = 0.14;
 const minVerticalAdvanceScale = 0.75;
 const minVerticalColSpacingScale = 0.6;
-const adaptiveFontScaleBaseline = 24;
-const adaptiveFontScaleSlope = 0.02;
-const minAdaptiveFontScale = 0.78;
-const maxAdaptiveFontScale = 1.22;
 
 /**
  * CJK horizontal-to-vertical punctuation substitution map.
@@ -410,15 +406,8 @@ function resolveInitialFontSize(region: TextRegion): number {
     base = Math.min(48, Math.max(14, Math.floor(region.box.height / 3)));
   }
 
-  const adaptiveScale = clampNumber(
-    1 + (adaptiveFontScaleBaseline - base) * adaptiveFontScaleSlope,
-    minAdaptiveFontScale,
-    maxAdaptiveFontScale,
-  );
-  const scaledBase = Math.max(1, Math.round(base * adaptiveScale));
-
   // Clamp to reasonable range
-  return Math.max(10, Math.min(scaledBase, Math.round(
+  return Math.max(10, Math.min(base, Math.round(
     Math.max(region.box.width, region.box.height) * 0.8,
   )));
 }
@@ -1946,6 +1935,7 @@ function expandRegionBeforeRender(
 type DrawTypesetOptions = {
   debugMode?: boolean;
   renderText?: boolean;
+  lockInitFontSize?: boolean;
 };
 
 export async function drawTypeset(
@@ -1956,6 +1946,7 @@ export async function drawTypeset(
 ): Promise<HTMLCanvasElement> {
   const debugMode = options?.debugMode === true;
   const renderText = options?.renderText !== false;
+  const lockInitFontSize = options?.lockInitFontSize === true;
   // Ensure fonts are loaded before measuring/rendering
   await document.fonts.ready;
 
@@ -2003,7 +1994,9 @@ export async function drawTypeset(
     const contentHeight = Math.max(20, region.box.height - boxPadding * 2);
     const isVertical = region.direction === "v";
     const colors = resolveColors(region.fgColor, region.bgColor);
-    const initialFontSize = Math.max(8, Math.round(region.fontSize ?? resolveInitialFontSize(region)));
+    const initialFontSize = lockInitFontSize
+      ? estimatedInitialFontSize
+      : Math.max(8, Math.round(region.fontSize ?? resolveInitialFontSize(region)));
     let debug: RegionTypesetDebug = {
       fittedFontSize: initialFontSize,
       columnBoxes: [],
@@ -2026,18 +2019,32 @@ export async function drawTypeset(
         initialFontSize,
         region.translatedColumns,
       );
-      const { fontSize, columns, metrics } = fitVertical(
-        measureCtx,
-        text,
-        contentWidth,
-        contentHeight,
-        initialFontSize,
-        {
-          targetColumnCount: Math.max(1, region.originalLineCount ?? 1),
-          preferredColumns: region.translatedColumns,
-          preferredProfile,
-        },
-      );
+      const verticalResult = lockInitFontSize
+        ? (() => {
+            const layout = buildVerticalLayout(measureCtx, text, contentHeight, initialFontSize, {
+              colSpacingScale: preferredProfile.colSpacingScale,
+              advanceScale: preferredProfile.advanceScale,
+              preferredColumns: region.translatedColumns,
+            });
+            return {
+              fontSize: initialFontSize,
+              columns: layout.columns,
+              metrics: layout.metrics,
+            };
+          })()
+        : fitVertical(
+            measureCtx,
+            text,
+            contentWidth,
+            contentHeight,
+            initialFontSize,
+            {
+              targetColumnCount: Math.max(1, region.originalLineCount ?? 1),
+              preferredColumns: region.translatedColumns,
+              preferredProfile,
+            },
+          );
+      const { fontSize, columns, metrics } = verticalResult;
       strokePadding = resolveVerticalRenderPadding(measureCtx, columns, fontSize, metrics);
       const alignment = resolveAlignment(region, columns.length);
       if (renderText) {
@@ -2068,9 +2075,20 @@ export async function drawTypeset(
         strokePadding,
       };
     } else {
-      const { fontSize, lines } = fitHorizontal(
-        measureCtx, text, contentWidth, contentHeight, initialFontSize,
-      );
+      const horizontalResult = lockInitFontSize
+        ? (() => {
+            measureCtx.font = `${initialFontSize}px ${fontFamily}`;
+            const lines = calcHorizontal(measureCtx, text, contentWidth, initialFontSize);
+            return { fontSize: initialFontSize, lines };
+          })()
+        : fitHorizontal(
+            measureCtx,
+            text,
+            contentWidth,
+            contentHeight,
+            initialFontSize,
+          );
+      const { fontSize, lines } = horizontalResult;
       strokePadding = resolveHorizontalRenderPadding(measureCtx, lines, fontSize);
       const alignment = resolveAlignment(region, lines.length);
       if (renderText) {

@@ -38,6 +38,7 @@ export type PipelineConfig = {
   llmApiKey: string;
   llmModel: string;
   typesetDebug: boolean;
+  lockInitFontSize: boolean;
 };
 
 export type RuntimeStageStatus = {

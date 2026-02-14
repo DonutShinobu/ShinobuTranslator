@@ -52,6 +52,7 @@ function toPipelineConfig(settings: ExtensionSettings) {
     llmApiKey: profile.apiKey,
     llmModel: resolveLlmModel(settings),
     typesetDebug: settings.showTypesetDebug,
+    lockInitFontSize: settings.lockInitFontSize,
   };
 }
 

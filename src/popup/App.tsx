@@ -82,6 +82,15 @@ export function App() {
     updateActiveLlmProfile({ useCustomModel: checked });
   }
 
+  function updateTemperatureInput(value: string): void {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+      updateActiveLlmProfile({ temperature: 1 });
+      return;
+    }
+    updateActiveLlmProfile({ temperature: Math.max(0, Math.min(parsed, 2)) });
+  }
+
   const currentProfile = settings.llmProfiles[settings.llmProvider];
   const currentProviderModels =
     settings.llmProvider === 'custom' ? [] : llmBuiltInProviderDefinitions[settings.llmProvider].models;
@@ -275,6 +284,18 @@ export function App() {
               onChange={(event) => updateActiveLlmProfile({ apiKey: event.target.value })}
               disabled={loading}
               placeholder="sk-..."
+            />
+          </label>
+          <label>
+            <span>温度（Temperature）</span>
+            <input
+              type="number"
+              min={0}
+              max={2}
+              step={0.1}
+              value={currentProfile.temperature}
+              onChange={(event) => updateTemperatureInput(event.target.value)}
+              disabled={loading}
             />
           </label>
         </section>

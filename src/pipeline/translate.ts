@@ -19,6 +19,7 @@ async function translateOne(text: string, config: PipelineConfig): Promise<strin
     baseUrl: config.llmBaseUrl,
     apiKey: config.llmApiKey,
     model: config.llmModel,
+    temperature: config.llmTemperature,
     from: config.sourceLang,
     to: config.targetLang,
     text,
@@ -41,6 +42,7 @@ export async function runTranslate(regions: TextRegion[], config: PipelineConfig
         baseUrl: config.llmBaseUrl,
         apiKey: config.llmApiKey,
         model: config.llmModel,
+        temperature: config.llmTemperature,
         from: config.sourceLang,
         to: config.targetLang,
         regions: regions.map((region) => ({

@@ -10,6 +10,7 @@ export type LlmProviderProfile = {
   modelCustom: string;
   useCustomModel: boolean;
   customBaseUrl: string;
+  temperature: number;
 };
 
 type BuiltInProviderDefinition = {
@@ -85,6 +86,7 @@ function createDefaultProviderProfile(provider: LlmProvider): LlmProviderProfile
       modelCustom: '',
       useCustomModel: false,
       customBaseUrl: '',
+      temperature: 1,
     };
   }
   return {
@@ -93,6 +95,7 @@ function createDefaultProviderProfile(provider: LlmProvider): LlmProviderProfile
     modelCustom: '',
     useCustomModel: true,
     customBaseUrl: '',
+    temperature: 1,
   };
 }
 
@@ -158,6 +161,13 @@ function normalizeProfileString(value: unknown, fallback: string): string {
   return value.trim();
 }
 
+function normalizeTemperature(value: unknown, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(0, Math.min(value, 2));
+}
+
 function normalizeProviderProfile(
   provider: LlmProvider,
   value: unknown,
@@ -177,6 +187,7 @@ function normalizeProviderProfile(
   const modelCustomInput = normalizeProfileString(raw?.modelCustom, '');
   const useCustomModelInput = typeof raw?.useCustomModel === 'boolean' ? raw.useCustomModel : null;
   const customBaseUrlInput = normalizeProfileString(raw?.customBaseUrl, '');
+  const temperature = normalizeTemperature(raw?.temperature, defaults.temperature);
 
   if (isBuiltInProvider(provider)) {
     const modelSet = new Set(llmBuiltInProviderDefinitions[provider].models);
@@ -201,6 +212,7 @@ function normalizeProviderProfile(
       modelCustom,
       useCustomModel,
       customBaseUrl: '',
+      temperature,
     };
   }
 
@@ -210,6 +222,7 @@ function normalizeProviderProfile(
     modelCustom: modelCustomInput || (legacy?.modelCustomInput ?? legacy?.modelFromLegacy ?? defaults.modelCustom),
     useCustomModel: true,
     customBaseUrl: customBaseUrlInput || (legacy?.llmCustomBaseUrl ?? defaults.customBaseUrl),
+    temperature,
   };
 }
 
@@ -312,6 +325,7 @@ export function toPipelineConfig(settings: ExtensionSettings): PipelineConfig {
     llmBaseUrl: resolveLlmBaseUrl(settings),
     llmApiKey: profile.apiKey,
     llmModel: resolveLlmModel(settings),
+    llmTemperature: profile.temperature,
     typesetDebug: settings.showTypesetDebug,
     lockInitFontSize: settings.lockInitFontSize,
   };

@@ -1085,7 +1085,7 @@ function buildVerticalDebugColumnBoxes(
     return [];
   }
   const totalColW = columns.length * metrics.colWidth + Math.max(0, columns.length - 1) * metrics.colSpacing;
-  const offsetX = padding + Math.max(0, (contentWidth - totalColW) / 2);
+  const offsetX = padding + (contentWidth - totalColW) / 2;
   const colStartX = offsetX + totalColW - metrics.colWidth / 2;
 
   const boxes: DebugColumnBox[] = [];
@@ -1336,7 +1336,7 @@ function renderVertical(
 
   // Total width occupied by all columns + gaps
   const totalColW = columns.length * colWidth + Math.max(0, columns.length - 1) * colSpacing;
-  const offsetX = padding + Math.max(0, (contentWidth - totalColW) / 2);
+  const offsetX = padding + (contentWidth - totalColW) / 2;
 
   // Columns flow right-to-left: first column is rightmost
   const colStartX = offsetX + totalColW - colWidth / 2;

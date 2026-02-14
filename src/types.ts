@@ -37,6 +37,7 @@ export type PipelineConfig = {
   llmBaseUrl: string;
   llmApiKey: string;
   llmModel: string;
+  llmTemperature: number;
   typesetDebug: boolean;
   lockInitFontSize: boolean;
 };

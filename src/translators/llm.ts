@@ -2,6 +2,7 @@ type LlmTranslateOptions = {
   baseUrl: string;
   apiKey: string;
   model: string;
+  temperature: number;
   from: string;
   to: string;
   text: string;
@@ -18,6 +19,7 @@ type LlmTranslateRegionsOptions = {
   baseUrl: string;
   apiKey: string;
   model: string;
+  temperature: number;
   from: string;
   to: string;
   regions: LlmRegionInput[];
@@ -88,7 +90,7 @@ function parseColumnsPayload(content: string): Map<string, RegionTranslationResu
 }
 
 export async function llmTranslate(options: LlmTranslateOptions): Promise<string> {
-  const { baseUrl, apiKey, model, from, to, text } = options;
+  const { baseUrl, apiKey, model, temperature, from, to, text } = options;
   const endpoint = `${baseUrl.replace(/\/$/, "")}/chat/completions`;
 
   const res = await fetch(endpoint, {
@@ -99,7 +101,7 @@ export async function llmTranslate(options: LlmTranslateOptions): Promise<string
     },
     body: JSON.stringify({
       model,
-      temperature: 0.2,
+      temperature,
       messages: [
         {
           role: "system",
@@ -128,7 +130,7 @@ export async function llmTranslate(options: LlmTranslateOptions): Promise<string
 export async function llmTranslateRegions(
   options: LlmTranslateRegionsOptions,
 ): Promise<Map<string, RegionTranslationResult>> {
-  const { baseUrl, apiKey, model, from, to, regions } = options;
+  const { baseUrl, apiKey, model, temperature, from, to, regions } = options;
   const endpoint = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
   const payload = regions.map((region) => ({
     id: region.id,
@@ -145,7 +147,7 @@ export async function llmTranslateRegions(
     },
     body: JSON.stringify({
       model,
-      temperature: 0.2,
+      temperature,
       messages: [
         {
           role: 'system',

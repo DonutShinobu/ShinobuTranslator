@@ -1028,7 +1028,7 @@ class XOverlayTranslator {
     button.disabled = state.status === 'running';
     if (state.status === 'running') {
       button.textContent = '翻译中...';
-      updateStatusLine(`正在处理：${state.stageText || '准备中'}`, 'normal', true);
+      updateStatusLine(state.stageText || '准备中', 'normal', true);
       finalizeRender();
       return;
     }
@@ -1162,7 +1162,7 @@ class XOverlayTranslator {
     state.mode = 'original';
     state.errorText = '';
     state.elapsedText = '';
-    state.stageText = '准备下载图片';
+    state.stageText = '准备中';
     const runStartAt = performance.now();
     const imageOriginal = this.readImageOriginalUrl(image);
     if (imageOriginal) {
@@ -1202,7 +1202,13 @@ class XOverlayTranslator {
       const runPipeline = await getRunPipeline();
       const artifacts = await runPipeline(file, toPipelineConfig(settingsResponse.settings), (progress: PipelineProgress) => {
         const stageLabel = stageLabelMap[progress.stage] ?? progress.stage;
-        state.stageText = progress.detail ? `${stageLabel}: ${progress.detail}` : stageLabel;
+        if (progress.stage === 'parallel') {
+          state.stageText = progress.detail;
+        } else if (progress.stage === 'done') {
+          state.stageText = '完成';
+        } else {
+          state.stageText = `${stageLabel}中`;
+        }
         this.render(state);
       });
 

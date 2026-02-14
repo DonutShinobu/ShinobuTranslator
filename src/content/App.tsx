@@ -7,6 +7,7 @@ type ExtensionSettings = {
   llmProvider: 'deepseek' | 'glm' | 'kimi' | 'minimax' | 'custom';
   llmModelPreset: string;
   llmModelCustom: string;
+  llmUseCustomModel: boolean;
   llmCustomBaseUrl: string;
   llmApiKey: string;
   showElapsedTime: boolean;
@@ -28,11 +29,14 @@ function resolveLlmBaseUrl(settings: ExtensionSettings): string {
 }
 
 function resolveLlmModel(settings: ExtensionSettings): string {
-  const customModel = settings.llmModelCustom.trim();
-  if (customModel) {
-    return customModel;
+  if (settings.llmProvider === 'custom') {
+    return settings.llmModelCustom.trim();
   }
-  return settings.llmModelPreset.trim();
+  if (!settings.llmUseCustomModel) {
+    return settings.llmModelPreset.trim();
+  }
+  const customModel = settings.llmModelCustom.trim();
+  return customModel;
 }
 
 function validateSettings(settings: ExtensionSettings): string | null {
@@ -53,7 +57,7 @@ function validateSettings(settings: ExtensionSettings): string | null {
 
 function toPipelineConfig(settings: ExtensionSettings) {
   return {
-    sourceLang: settings.sourceLang,
+    sourceLang: 'ja',
     targetLang: settings.targetLang,
     translator: settings.translator,
     llmProvider: settings.llmProvider,
@@ -377,10 +381,11 @@ function formatElapsedText(
   totalDurationMs: number,
   stageTimings: StageTiming[],
   runtimeStages: RuntimeStageStatus[],
-  showStageDetails: boolean
+  showStageDetails: boolean,
+  showRuntimeStages: boolean
 ): string {
   const totalLine = `总耗时：${formatDuration(totalDurationMs)}`;
-  const runtimeLine = formatRuntimeStagesLine(runtimeStages);
+  const runtimeLine = showRuntimeStages ? formatRuntimeStagesLine(runtimeStages) : '';
   if (!showStageDetails || stageTimings.length === 0) {
     return runtimeLine ? [totalLine, runtimeLine].join('\n') : totalLine;
   }
@@ -1125,6 +1130,7 @@ class XOverlayTranslator {
       const showElapsedTime = settingsResponse.settings.showElapsedTime === true;
       const showStageTimingDetails =
         showElapsedTime && settingsResponse.settings.showStageTimingDetails === true;
+      const showRuntimeStages = showStageTimingDetails;
 
       const downloadResponse = await sendRuntimeMessage({
         type: 'mt:download-image',
@@ -1154,7 +1160,13 @@ class XOverlayTranslator {
       state.translatedUrl = translatedUrl;
       const totalDurationMs = performance.now() - runStartAt;
       state.elapsedText = showElapsedTime
-        ? formatElapsedText(totalDurationMs, artifacts.stageTimings, artifacts.runtimeStages, showStageTimingDetails)
+        ? formatElapsedText(
+            totalDurationMs,
+            artifacts.stageTimings,
+            artifacts.runtimeStages,
+            showStageTimingDetails,
+            showRuntimeStages
+          )
         : '';
       state.stageText = '';
       state.errorText = '';

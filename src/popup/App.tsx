@@ -71,15 +71,25 @@ export function App() {
         if (!models.includes(next.llmModelPreset)) {
           next.llmModelPreset = models[0] ?? '';
         }
+        next.llmUseCustomModel = false;
       } else {
         next.llmModelPreset = '';
+        next.llmUseCustomModel = true;
       }
       return next;
     });
   }
 
+  function updateUseCustomModel(checked: boolean): void {
+    setSettings((prev) => ({
+      ...prev,
+      llmUseCustomModel: checked,
+    }));
+  }
+
   const currentProviderModels =
     settings.llmProvider === 'custom' ? [] : llmBuiltInProviderDefinitions[settings.llmProvider].models;
+  const builtInCustomModelPlaceholder = currentProviderModels[0] ?? '';
 
   async function onSave(): Promise<void> {
     setStatus({ kind: 'idle', message: '' });
@@ -123,46 +133,41 @@ export function App() {
             onChange={(event) => updateTranslator(event.target.value as ExtensionSettings['translator'])}
             disabled={loading || saving}
           >
-            <option value="google_web">Google 翻译（免 Key）</option>
+            <option value="google_web">Google 翻译</option>
             <option value="llm">大模型翻译</option>
           </select>
         </label>
         <label>
-          <span>源语言</span>
-          <input
-            value={settings.sourceLang}
-            onChange={(event) => updateField('sourceLang', event.target.value)}
-            disabled={loading || saving}
-          />
-        </label>
-        <label>
           <span>目标语言</span>
-          <input
+          <select
             value={settings.targetLang}
             onChange={(event) => updateField('targetLang', event.target.value)}
             disabled={loading || saving}
-          />
+          >
+            <option value="zh-CHS">简体中文</option>
+            <option value="zh-CHT">繁体中文</option>
+          </select>
         </label>
-        <label className="checkbox-row">
-          <input
-            type="checkbox"
-            checked={settings.showElapsedTime}
-            onChange={(event) => updateElapsedTime(event.target.checked)}
-            disabled={loading || saving}
-          />
-          <span className="checkbox-label">显示耗时</span>
-        </label>
-        {settings.showElapsedTime ? (
-          <label className="checkbox-row checkbox-row-sub">
+        <div className="timing-options-row">
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={settings.showElapsedTime}
+              onChange={(event) => updateElapsedTime(event.target.checked)}
+              disabled={loading || saving}
+            />
+            <span className="checkbox-label">显示耗时</span>
+          </label>
+          <label className="checkbox-row">
             <input
               type="checkbox"
               checked={settings.showStageTimingDetails}
               onChange={(event) => updateField('showStageTimingDetails', event.target.checked)}
-              disabled={loading || saving}
+              disabled={loading || saving || !settings.showElapsedTime}
             />
             <span className="checkbox-label">显示阶段明细</span>
           </label>
-        ) : null}
+        </div>
       </section>
 
       {settings.translator === 'llm' ? (
@@ -194,43 +199,48 @@ export function App() {
                 />
               </label>
               <label>
-                <span>模型名</span>
+                <span>模型名称</span>
                 <input
                   value={settings.llmModelCustom}
                   onChange={(event) => updateField('llmModelCustom', event.target.value)}
                   disabled={loading || saving}
-                  placeholder="gpt-4o-mini"
+                  placeholder="例如：your-model-name"
                 />
               </label>
             </>
           ) : (
             <>
               <label>
-                <span>Base URL（固定）</span>
-                <input value={llmBuiltInProviderDefinitions[settings.llmProvider].baseUrl} disabled className="readonly-input" />
+                <span>模型名称</span>
+                {settings.llmUseCustomModel ? (
+                  <input
+                    value={settings.llmModelCustom}
+                    onChange={(event) => updateField('llmModelCustom', event.target.value)}
+                    disabled={loading || saving}
+                    placeholder={builtInCustomModelPlaceholder}
+                  />
+                ) : (
+                  <select
+                    value={settings.llmModelPreset}
+                    onChange={(event) => updateField('llmModelPreset', event.target.value)}
+                    disabled={loading || saving}
+                  >
+                    {currentProviderModels.map((model) => (
+                      <option key={model} value={model}>
+                        {model}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </label>
-              <label>
-                <span>预设模型</span>
-                <select
-                  value={settings.llmModelPreset}
-                  onChange={(event) => updateField('llmModelPreset', event.target.value)}
-                  disabled={loading || saving}
-                >
-                  {currentProviderModels.map((model) => (
-                    <option key={model} value={model}>
-                      {model}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                <span>自定义模型名（可选，填写后优先）</span>
+              <label className="checkbox-row">
                 <input
-                  value={settings.llmModelCustom}
-                  onChange={(event) => updateField('llmModelCustom', event.target.value)}
+                  type="checkbox"
+                  checked={settings.llmUseCustomModel}
+                  onChange={(event) => updateUseCustomModel(event.target.checked)}
                   disabled={loading || saving}
-                  placeholder="留空则使用预设模型"
                 />
+                <span className="checkbox-label">自定义模型</span>
               </label>
             </>
           )}

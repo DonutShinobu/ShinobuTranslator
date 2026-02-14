@@ -77,6 +77,7 @@ export type ExtensionSettings = {
   llmProvider: LlmProvider;
   llmModelPreset: string;
   llmModelCustom: string;
+  llmUseCustomModel: boolean;
   llmCustomBaseUrl: string;
   llmApiKey: string;
   showElapsedTime: boolean;
@@ -90,25 +91,32 @@ export const defaultExtensionSettings: ExtensionSettings = {
   llmProvider: 'deepseek',
   llmModelPreset: getDefaultModelPreset('deepseek'),
   llmModelCustom: '',
+  llmUseCustomModel: false,
   llmCustomBaseUrl: '',
   llmApiKey: '',
   showElapsedTime: false,
   showStageTimingDetails: false,
 };
 
-function sanitizeString(value: unknown, fallback: string): string {
-  if (typeof value !== 'string') {
-    return fallback;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : fallback;
-}
-
 function sanitizeBoolean(value: unknown, fallback: boolean): boolean {
   if (typeof value !== 'boolean') {
     return fallback;
   }
   return value;
+}
+
+function normalizeTargetLang(value: unknown): string {
+  if (typeof value !== 'string') {
+    return defaultExtensionSettings.targetLang;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'zh-cht' || normalized === 'zh_tw' || normalized === 'zh-tw' || normalized === 'zh-hant') {
+    return 'zh-CHT';
+  }
+  if (normalized === 'zh-chs' || normalized === 'zh_cn' || normalized === 'zh-cn' || normalized === 'zh' || normalized === 'zh-hans') {
+    return 'zh-CHS';
+  }
+  return defaultExtensionSettings.targetLang;
 }
 
 export function normalizeSettings(value: unknown): ExtensionSettings {
@@ -129,9 +137,11 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
   const modelFromLegacy = typeof raw.llmModel === 'string' ? raw.llmModel.trim() : '';
   const modelCustomInput = typeof raw.llmModelCustom === 'string' ? raw.llmModelCustom.trim() : '';
   const modelPresetInput = typeof raw.llmModelPreset === 'string' ? raw.llmModelPreset.trim() : '';
+  const modelToggleInput = typeof raw.llmUseCustomModel === 'boolean' ? raw.llmUseCustomModel : null;
 
   let llmModelPreset = '';
   let llmModelCustom = modelCustomInput;
+  let llmUseCustomModel = false;
   if (isBuiltInProvider(provider)) {
     const modelSet = new Set(llmBuiltInProviderDefinitions[provider].models);
     if (modelSet.has(modelPresetInput)) {
@@ -141,11 +151,13 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     } else {
       llmModelPreset = getDefaultModelPreset(provider);
     }
-    if (!llmModelCustom && modelFromLegacy && !modelSet.has(modelFromLegacy)) {
+    llmUseCustomModel = modelToggleInput === true;
+    if (llmUseCustomModel && !llmModelCustom && modelFromLegacy && !modelSet.has(modelFromLegacy)) {
       llmModelCustom = modelFromLegacy;
     }
   } else {
     llmModelPreset = '';
+    llmUseCustomModel = true;
     if (!llmModelCustom && modelFromLegacy) {
       llmModelCustom = modelFromLegacy;
     }
@@ -155,12 +167,13 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
   const showElapsedTime = sanitizeBoolean(raw.showElapsedTime, defaultExtensionSettings.showElapsedTime);
 
   return {
-    sourceLang: sanitizeString(raw.sourceLang, defaultExtensionSettings.sourceLang),
-    targetLang: sanitizeString(raw.targetLang, defaultExtensionSettings.targetLang),
+    sourceLang: defaultExtensionSettings.sourceLang,
+    targetLang: normalizeTargetLang(raw.targetLang),
     translator,
     llmProvider: provider,
     llmModelPreset,
     llmModelCustom,
+    llmUseCustomModel,
     llmCustomBaseUrl: llmCustomBaseUrl || (provider === 'custom' ? legacyBaseUrl : ''),
     llmApiKey: typeof raw.llmApiKey === 'string' ? raw.llmApiKey.trim() : defaultExtensionSettings.llmApiKey,
     showElapsedTime,
@@ -178,11 +191,14 @@ export function resolveLlmBaseUrl(settings: ExtensionSettings): string {
 }
 
 export function resolveLlmModel(settings: ExtensionSettings): string {
-  const customModel = settings.llmModelCustom.trim();
-  if (customModel) {
-    return customModel;
+  if (settings.llmProvider === 'custom') {
+    return settings.llmModelCustom.trim();
   }
-  return settings.llmModelPreset.trim();
+  if (!settings.llmUseCustomModel) {
+    return settings.llmModelPreset.trim();
+  }
+  const customModel = settings.llmModelCustom.trim();
+  return customModel;
 }
 
 export function validateSettings(settings: ExtensionSettings): string | null {
@@ -207,7 +223,7 @@ export function validateSettings(settings: ExtensionSettings): string | null {
 
 export function toPipelineConfig(settings: ExtensionSettings): PipelineConfig {
   return {
-    sourceLang: settings.sourceLang,
+    sourceLang: 'ja',
     targetLang: settings.targetLang,
     translator: settings.translator,
     llmProvider: settings.llmProvider,

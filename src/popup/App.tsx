@@ -1,25 +1,25 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   defaultExtensionSettings,
   llmBuiltInProviderDefinitions,
   llmProviderOptions,
   normalizeSettings,
-  validateSettings,
   type LlmProvider,
   type ExtensionSettings,
 } from '../shared/config';
 import { sendRuntimeMessage } from '../shared/messages';
 
 type SaveStatus = {
-  kind: 'idle' | 'success' | 'error';
+  kind: 'idle' | 'saving' | 'success' | 'error';
   message: string;
 };
 
 export function App() {
   const [settings, setSettings] = useState<ExtensionSettings>(defaultExtensionSettings);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<SaveStatus>({ kind: 'idle', message: '' });
+  const hasHydratedRef = useRef(false);
+  const saveRequestIdRef = useRef(0);
 
   useEffect(() => {
     async function loadSettings(): Promise<void> {
@@ -91,34 +91,42 @@ export function App() {
     settings.llmProvider === 'custom' ? [] : llmBuiltInProviderDefinitions[settings.llmProvider].models;
   const builtInCustomModelPlaceholder = currentProviderModels[0] ?? '';
 
-  async function onSave(): Promise<void> {
-    setStatus({ kind: 'idle', message: '' });
-    const validationError = validateSettings(settings);
-    if (validationError) {
-      setStatus({ kind: 'error', message: validationError });
-      return;
-    }
-
-    setSaving(true);
+  async function persistSettings(nextSettings: ExtensionSettings): Promise<void> {
+    const requestId = saveRequestIdRef.current + 1;
+    saveRequestIdRef.current = requestId;
+    setStatus({ kind: 'saving', message: '正在自动保存...' });
     try {
       const response = await sendRuntimeMessage({
         type: 'mt:set-settings',
-        settings,
+        settings: nextSettings,
       });
       if (!response.ok || response.type !== 'mt:set-settings') {
-        throw new Error(response.ok ? '保存配置失败' : response.error);
+        throw new Error(response.ok ? '自动保存失败' : response.error);
       }
-      setSettings(normalizeSettings(response.settings));
-      setStatus({ kind: 'success', message: '配置已保存' });
+      if (saveRequestIdRef.current === requestId) {
+        setStatus({ kind: 'success', message: '已自动保存' });
+      }
     } catch (error) {
-      setStatus({
-        kind: 'error',
-        message: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      setSaving(false);
+      if (saveRequestIdRef.current === requestId) {
+        setStatus({
+          kind: 'error',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
   }
+
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
+    if (!hasHydratedRef.current) {
+      hasHydratedRef.current = true;
+      return;
+    }
+
+    void persistSettings(settings);
+  }, [loading, settings]);
 
   return (
     <main className="popup">
@@ -131,7 +139,7 @@ export function App() {
           <select
             value={settings.translator}
             onChange={(event) => updateTranslator(event.target.value as ExtensionSettings['translator'])}
-            disabled={loading || saving}
+            disabled={loading}
           >
             <option value="google_web">Google 翻译</option>
             <option value="llm">大模型翻译</option>
@@ -142,7 +150,7 @@ export function App() {
           <select
             value={settings.targetLang}
             onChange={(event) => updateField('targetLang', event.target.value)}
-            disabled={loading || saving}
+            disabled={loading}
           >
             <option value="zh-CHS">简体中文</option>
             <option value="zh-CHT">繁体中文</option>
@@ -154,7 +162,7 @@ export function App() {
               type="checkbox"
               checked={settings.showElapsedTime}
               onChange={(event) => updateElapsedTime(event.target.checked)}
-              disabled={loading || saving}
+              disabled={loading}
             />
             <span className="checkbox-label">显示耗时</span>
           </label>
@@ -163,7 +171,7 @@ export function App() {
               type="checkbox"
               checked={settings.showStageTimingDetails}
               onChange={(event) => updateField('showStageTimingDetails', event.target.checked)}
-              disabled={loading || saving || !settings.showElapsedTime}
+              disabled={loading || !settings.showElapsedTime}
             />
             <span className="checkbox-label">显示阶段明细</span>
           </label>
@@ -177,7 +185,7 @@ export function App() {
             <select
               value={settings.llmProvider}
               onChange={(event) => updateLlmProvider(event.target.value as LlmProvider)}
-              disabled={loading || saving}
+              disabled={loading}
             >
               {llmProviderOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -194,7 +202,7 @@ export function App() {
                 <input
                   value={settings.llmCustomBaseUrl}
                   onChange={(event) => updateField('llmCustomBaseUrl', event.target.value)}
-                  disabled={loading || saving}
+                  disabled={loading}
                   placeholder="https://api.example.com/v1"
                 />
               </label>
@@ -203,7 +211,7 @@ export function App() {
                 <input
                   value={settings.llmModelCustom}
                   onChange={(event) => updateField('llmModelCustom', event.target.value)}
-                  disabled={loading || saving}
+                  disabled={loading}
                   placeholder="例如：your-model-name"
                 />
               </label>
@@ -216,14 +224,14 @@ export function App() {
                   <input
                     value={settings.llmModelCustom}
                     onChange={(event) => updateField('llmModelCustom', event.target.value)}
-                    disabled={loading || saving}
+                    disabled={loading}
                     placeholder={builtInCustomModelPlaceholder}
                   />
                 ) : (
                   <select
                     value={settings.llmModelPreset}
                     onChange={(event) => updateField('llmModelPreset', event.target.value)}
-                    disabled={loading || saving}
+                    disabled={loading}
                   >
                     {currentProviderModels.map((model) => (
                       <option key={model} value={model}>
@@ -238,7 +246,7 @@ export function App() {
                   type="checkbox"
                   checked={settings.llmUseCustomModel}
                   onChange={(event) => updateUseCustomModel(event.target.checked)}
-                  disabled={loading || saving}
+                  disabled={loading}
                 />
                 <span className="checkbox-label">自定义模型</span>
               </label>
@@ -251,16 +259,12 @@ export function App() {
               type="password"
               value={settings.llmApiKey}
               onChange={(event) => updateField('llmApiKey', event.target.value)}
-              disabled={loading || saving}
+              disabled={loading}
               placeholder="sk-..."
             />
           </label>
         </section>
       ) : null}
-
-      <button className="save-btn" onClick={() => void onSave()} disabled={loading || saving}>
-        {saving ? '保存中...' : '保存配置'}
-      </button>
 
       {status.message ? <p className={`status status-${status.kind}`}>{status.message}</p> : null}
     </main>

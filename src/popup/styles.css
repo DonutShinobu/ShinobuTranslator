@@ -91,29 +91,21 @@
   line-height: 1.2;
 }
 
-.save-btn {
-  width: 100%;
-  border: 0;
-  border-radius: 10px;
-  background: #2563eb;
-  color: #ffffff;
-  font-size: 13px;
-  padding: 10px;
-  cursor: pointer;
-}
-
-.save-btn:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
 .status {
   margin: 9px 0 0;
   font-size: 12px;
 }
 
+.status-saving {
+  color: #1d4ed8;
+}
+
 .status-success {
   color: #047857;
+}
+
+.status-warning {
+  color: #b45309;
 }
 
 .status-error {

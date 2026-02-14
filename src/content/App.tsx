@@ -43,15 +43,21 @@ function validateSettings(settings: ExtensionSettings): string | null {
   if (settings.translator !== 'llm') {
     return null;
   }
+
+  const missingFields: string[] = [];
+  if (settings.llmProvider === 'custom' && !settings.llmCustomBaseUrl.trim()) {
+    missingFields.push('自定义提供商 Base URL');
+  }
   if (!resolveLlmModel(settings)) {
-    return 'LLM 模型不能为空';
+    missingFields.push('LLM 模型');
   }
   if (!settings.llmApiKey.trim()) {
-    return 'LLM API Key 不能为空';
+    missingFields.push('API Key');
   }
-  if (settings.llmProvider === 'custom' && !settings.llmCustomBaseUrl.trim()) {
-    return '自定义提供商 Base URL 不能为空';
+  if (missingFields.length > 0) {
+    return `未填写${missingFields.join('、')}，服务暂不可用`;
   }
+
   return null;
 }
 

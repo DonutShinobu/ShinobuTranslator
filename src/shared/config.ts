@@ -210,9 +210,6 @@ export function validateSettings(settings: ExtensionSettings): string | null {
   if (!model) {
     return 'LLM 模型不能为空';
   }
-  if (!settings.llmApiKey.trim()) {
-    return 'LLM API Key 不能为空';
-  }
 
   if (settings.llmProvider === 'custom' && !settings.llmCustomBaseUrl.trim()) {
     return '自定义提供商 Base URL 不能为空';

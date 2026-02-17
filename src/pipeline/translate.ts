@@ -45,7 +45,10 @@ export async function runTranslate(regions: TextRegion[], config: PipelineConfig
     }
 
     let batched = new Map<string, { translatedText: string; translatedColumns?: string[] }>();
-    let translationDebug: TranslationDebugInfo | null = null;
+    const translationDebug: TranslationDebugInfo = {
+      llmBatchRequestedRegionCount: regions.length,
+      llmBatchFailed: false,
+    };
     try {
       const batchedResult = await llmTranslateRegions({
         baseUrl: config.llmBaseUrl,
@@ -62,23 +65,25 @@ export async function runTranslate(regions: TextRegion[], config: PipelineConfig
         })),
       });
       batched = batchedResult.byId;
-      translationDebug = {
-        llmBatchRawResponse: batchedResult.rawContent,
-      };
+      translationDebug.llmBatchRawResponse = batchedResult.rawContent;
     } catch (error) {
       batched = new Map();
+      translationDebug.llmBatchFailed = true;
+      translationDebug.llmBatchError = error instanceof Error ? error.message : String(error);
       if (error instanceof LlmColumnsParseError) {
-        translationDebug = {
-          llmBatchRawResponse: error.rawContent,
-          llmBatchParseError: error.message,
-        };
+        translationDebug.llmBatchRawResponse = error.rawContent;
+        translationDebug.llmBatchParseError = error.message;
       }
     }
 
     const next: TextRegion[] = [];
+    let llmBatchHitRegionCount = 0;
+    let llmFallbackRegionCount = 0;
+    let llmFallbackRequestCount = 0;
     for (const region of regions) {
       const result = batched.get(region.id);
       if (result?.translatedText) {
+        llmBatchHitRegionCount += 1;
         next.push({
           ...region,
           translatedText: result.translatedText,
@@ -87,9 +92,17 @@ export async function runTranslate(regions: TextRegion[], config: PipelineConfig
         continue;
       }
 
+      llmFallbackRegionCount += 1;
+      if (region.sourceText.trim()) {
+        llmFallbackRequestCount += 1;
+      }
       const translatedText = await translateOne(region.sourceText, config);
       next.push({ ...region, translatedText, translatedColumns: undefined });
     }
+    translationDebug.llmBatchHitRegionCount = llmBatchHitRegionCount;
+    translationDebug.llmFallbackRegionCount = llmFallbackRegionCount;
+    translationDebug.llmFallbackRequestCount = llmFallbackRequestCount;
+    translationDebug.llmFallbackUsed = llmFallbackRegionCount > 0;
     return {
       regions: next,
       translationDebug,

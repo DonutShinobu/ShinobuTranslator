@@ -97,6 +97,13 @@ export type PipelineTypesetDebugLog = {
 export type TranslationDebugInfo = {
   llmBatchRawResponse?: string;
   llmBatchParseError?: string;
+  llmBatchError?: string;
+  llmBatchFailed?: boolean;
+  llmBatchRequestedRegionCount?: number;
+  llmBatchHitRegionCount?: number;
+  llmFallbackUsed?: boolean;
+  llmFallbackRegionCount?: number;
+  llmFallbackRequestCount?: number;
 };
 
 export type OcrRunDebugStep = {

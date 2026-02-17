@@ -109,21 +109,31 @@ export async function runPipeline(
     stageTimings
   });
 
-  // 并行预加载所有模型（下载 + 编译 ONNX session），后续各阶段命中缓存
-  report(onProgress, "preload", "并行加载模型");
+  report(onProgress, "preload", "加载检测模型");
   const preloadT0 = performance.now();
-  const [detectorStatus, ocrStatus, inpaintStatus] = await Promise.all([
-    probeRuntime("detector"),
-    probeRuntime("ocr"),
-    probeRuntime("inpaint")
-  ]);
-  runtimeStages[0] = detectorStatus;
-  runtimeStages[1] = ocrStatus;
-  runtimeStages[2] = inpaintStatus;
-  stageTimings.push({ stage: "preload", label: "并行加载模型", durationMs: performance.now() - preloadT0 });
+  runtimeStages[0] = await probeRuntime("detector");
+  stageTimings.push({ stage: "preload", label: "加载检测模型", durationMs: performance.now() - preloadT0 });
+
+  let ocrRuntimeProbePromise: Promise<RuntimeStageStatus> | null = null;
+  let inpaintRuntimeProbePromise: Promise<RuntimeStageStatus> | null = null;
+
+  const startOcrRuntimeProbe = (): Promise<RuntimeStageStatus> => {
+    if (!ocrRuntimeProbePromise) {
+      ocrRuntimeProbePromise = probeRuntime("ocr");
+    }
+    return ocrRuntimeProbePromise;
+  };
+
+  const startInpaintRuntimeProbe = (): Promise<RuntimeStageStatus> => {
+    if (!inpaintRuntimeProbePromise) {
+      inpaintRuntimeProbePromise = probeRuntime("inpaint");
+    }
+    return inpaintRuntimeProbePromise;
+  };
 
   report(onProgress, "detect", "文本检测");
   try {
+    startOcrRuntimeProbe();
     const t0 = performance.now();
     const detected = await detectTextRegionsWithMask(image);
     latestRegions = detected.regions;
@@ -153,6 +163,8 @@ export async function runPipeline(
   report(onProgress, "ocr", "OCR 日文识别");
   try {
     const t0 = performance.now();
+    runtimeStages[1] = await startOcrRuntimeProbe();
+    startInpaintRuntimeProbe();
     const ocrResult = await runOcr(image, latestRegions);
     latestRegions = ocrResult.regions;
     ocrDebug = ocrResult.debug;
@@ -172,6 +184,7 @@ export async function runPipeline(
       };
     }
     stageTimings.push({ stage: "ocr", label: "OCR 日文识别", durationMs: performance.now() - t0 });
+    runtimeStages[2] = await startInpaintRuntimeProbe();
   } catch (error) {
     throw new PipelineStageError("OCR", toErrorDetail(error), buildArtifacts());
   }

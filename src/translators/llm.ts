@@ -15,6 +15,11 @@ type LlmRegionInput = {
   targetColumns?: number;
 };
 
+type LlmSourceTextPayload = {
+  plainText: string;
+  columns?: Array<Record<string, string>>;
+};
+
 type LlmTranslateRegionsOptions = {
   baseUrl: string;
   apiKey: string;
@@ -61,6 +66,22 @@ function extractJsonObject(text: string): string {
     return text.trim();
   }
   return text.slice(start, end + 1).trim();
+}
+
+function buildSourceTextPayload(text: string, direction: 'h' | 'v'): LlmSourceTextPayload {
+  const plainText = text.replace(/\n+/g, '').trim();
+  if (direction !== 'v') {
+    return { plainText };
+  }
+  const columns = text
+    .split(/\n+/)
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .map((segment, index) => ({ [`column${index + 1}`]: segment }));
+  return {
+    plainText,
+    columns,
+  };
 }
 
 function parseColumnsPayload(content: string): Map<string, RegionTranslationResult> {
@@ -151,7 +172,7 @@ export async function llmTranslateRegions(
     id: region.id,
     direction: region.direction,
     targetColumns: region.direction === 'v' ? Math.max(1, region.targetColumns ?? 1) : undefined,
-    sourceText: region.text,
+    sourceText: buildSourceTextPayload(region.text, region.direction),
   }));
 
   const res = await fetch(endpoint, {
@@ -177,13 +198,14 @@ export async function llmTranslateRegions(
           content: [
             `请把以下文本从${from}翻译成${to}，并基于整段上下文保持语气一致。`,
             '输入是多个文本框。对竖排框你会收到 targetColumns（期望列数）。',
-            '竖排框请把 sourceText 的换行视为输入 columns。',
+            'sourceText.plainText 是去掉换行后的完整原文。',
+            'sourceText.columns 是竖排拆列信息，格式类似 [{"column1":"..."},{"column2":"..."}]。',
             '返回格式必须是：',
             '{"regions":[{"id":"...","translation":"...","columns":["..."]}]}',
             '规则：',
             '1) regions 数组必须覆盖所有输入 id；',
             '2) translation 为完整译文；',
-            '3) direction=v 时，columns 必须严格按输入 columns 的顺序返回（不得反转），优先接近 targetColumns；',
+            '3) direction=v 时，columns 必须严格按 sourceText.columns 的顺序返回（不得反转），优先接近 targetColumns；',
             '4) direction=h 时，columns 省略；',
             '5) 除 JSON 外不要输出任何内容。',
             `输入数据：${JSON.stringify(payload)}`,

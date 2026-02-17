@@ -1,5 +1,5 @@
-import type { PipelineConfig, TextRegion } from '../types';
-import { llmTranslate, llmTranslateRegions } from '../translators/llm';
+import type { PipelineConfig, TextRegion, TranslationDebugInfo } from '../types';
+import { LlmColumnsParseError, llmTranslate, llmTranslateRegions } from '../translators/llm';
 import { googleWebTranslate } from '../translators/googleWeb';
 
 async function translateOne(text: string, config: PipelineConfig): Promise<string> {
@@ -26,9 +26,17 @@ async function translateOne(text: string, config: PipelineConfig): Promise<strin
   });
 }
 
-export async function runTranslate(regions: TextRegion[], config: PipelineConfig): Promise<TextRegion[]> {
+export type RunTranslateResult = {
+  regions: TextRegion[];
+  translationDebug: TranslationDebugInfo | null;
+};
+
+export async function runTranslate(regions: TextRegion[], config: PipelineConfig): Promise<RunTranslateResult> {
   if (regions.length === 0) {
-    return [];
+    return {
+      regions: [],
+      translationDebug: null,
+    };
   }
 
   if (config.translator === 'llm') {
@@ -37,8 +45,9 @@ export async function runTranslate(regions: TextRegion[], config: PipelineConfig
     }
 
     let batched = new Map<string, { translatedText: string; translatedColumns?: string[] }>();
+    let translationDebug: TranslationDebugInfo | null = null;
     try {
-      batched = await llmTranslateRegions({
+      const batchedResult = await llmTranslateRegions({
         baseUrl: config.llmBaseUrl,
         apiKey: config.llmApiKey,
         model: config.llmModel,
@@ -52,8 +61,18 @@ export async function runTranslate(regions: TextRegion[], config: PipelineConfig
           targetColumns: region.direction === 'v' ? Math.max(1, region.originalLineCount ?? 1) : undefined,
         })),
       });
-    } catch {
+      batched = batchedResult.byId;
+      translationDebug = {
+        llmBatchRawResponse: batchedResult.rawContent,
+      };
+    } catch (error) {
       batched = new Map();
+      if (error instanceof LlmColumnsParseError) {
+        translationDebug = {
+          llmBatchRawResponse: error.rawContent,
+          llmBatchParseError: error.message,
+        };
+      }
     }
 
     const next: TextRegion[] = [];
@@ -71,7 +90,10 @@ export async function runTranslate(regions: TextRegion[], config: PipelineConfig
       const translatedText = await translateOne(region.sourceText, config);
       next.push({ ...region, translatedText, translatedColumns: undefined });
     }
-    return next;
+    return {
+      regions: next,
+      translationDebug,
+    };
   }
 
   const next: TextRegion[] = [];
@@ -79,5 +101,8 @@ export async function runTranslate(regions: TextRegion[], config: PipelineConfig
     const translatedText = await translateOne(region.sourceText, config);
     next.push({ ...region, translatedText });
   }
-  return next;
+  return {
+    regions: next,
+    translationDebug: null,
+  };
 }

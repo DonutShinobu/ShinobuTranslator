@@ -1,4 +1,12 @@
-import type { PipelineProgress, RuntimeStageStatus, StageTiming } from '../types';
+import type {
+  PipelineArtifacts,
+  PipelineProgress,
+  PipelineTypesetDebugLog,
+  RuntimeStageStatus,
+  StageTiming,
+  TextRegion,
+  TranslationDebugInfo,
+} from '../types';
 import type { ExtensionSettings } from '../shared/config';
 
 const llmBaseUrlByProvider = {
@@ -110,10 +118,36 @@ type PhotoState = {
   originalUrl: string;
   translatedUrl?: string;
   debugOriginalUrl?: string;
+  debugLogData?: TypesetDebugDownloadData;
   showTypesetDebug: boolean;
   stageText: string;
   elapsedText: string;
   errorText: string;
+};
+
+type OcrRegionLogItem = {
+  regionId: string;
+  direction: TextRegion['direction'];
+  box: TextRegion['box'];
+  quad?: TextRegion['quad'];
+  sourceText: string;
+};
+
+type ModelRegionLogItem = {
+  regionId: string;
+  translatedTextRaw: string;
+  translatedColumnsRaw: string[];
+};
+
+type TypesetDebugDownloadData = {
+  exportedAt: string;
+  sourceImageUrl: string;
+  stageTimings: StageTiming[];
+  runtimeStages: RuntimeStageStatus[];
+  translationDebug: TranslationDebugInfo | null;
+  ocrRegions: OcrRegionLogItem[];
+  modelRegions: ModelRegionLogItem[];
+  typeset: PipelineTypesetDebugLog;
 };
 
 const stageLabelMap: Record<string, string> = {
@@ -423,6 +457,68 @@ function appendStatusDetail(baseText: string, detailText: string): string {
   return `${baseText}\n${detailText}`;
 }
 
+function cloneTextRegionBox(region: TextRegion): TextRegion['box'] {
+  return { ...region.box };
+}
+
+function cloneTextRegionQuad(region: TextRegion): TextRegion['quad'] {
+  if (!region.quad) {
+    return undefined;
+  }
+  return region.quad.map((point) => ({ x: point.x, y: point.y })) as TextRegion['quad'];
+}
+
+function toTypesetDebugDownloadData(
+  sourceImageUrl: string,
+  artifacts: PipelineArtifacts,
+): TypesetDebugDownloadData | undefined {
+  if (!artifacts.typesetDebugLog) {
+    return undefined;
+  }
+  const ocrRegions: OcrRegionLogItem[] = artifacts.detectedRegions.map((region) => ({
+    regionId: region.id,
+    direction: region.direction,
+    box: cloneTextRegionBox(region),
+    quad: cloneTextRegionQuad(region),
+    sourceText: region.sourceText,
+  }));
+  const modelRegions: ModelRegionLogItem[] = artifacts.detectedRegions.map((region) => ({
+    regionId: region.id,
+    translatedTextRaw: region.translatedText,
+    translatedColumnsRaw: region.translatedColumns ? [...region.translatedColumns] : [],
+  }));
+  return {
+    exportedAt: new Date().toISOString(),
+    sourceImageUrl,
+    stageTimings: artifacts.stageTimings.map((timing) => ({ ...timing })),
+    runtimeStages: artifacts.runtimeStages.map((stage) => ({ ...stage })),
+    translationDebug: artifacts.translationDebug
+      ? { ...artifacts.translationDebug }
+      : null,
+    ocrRegions,
+    modelRegions,
+    typeset: artifacts.typesetDebugLog,
+  };
+}
+
+function downloadJson(data: unknown, filenamePrefix: string): void {
+  const json = JSON.stringify(data, null, 2);
+  const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const filename = `${filenamePrefix}-${timestamp}.json`;
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.rel = 'noopener';
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  window.setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 1000);
+}
+
 function createInitialState(originalUrl: string): PhotoState {
   return {
     status: 'idle',
@@ -430,6 +526,7 @@ function createInitialState(originalUrl: string): PhotoState {
     originalUrl,
     translatedUrl: undefined,
     debugOriginalUrl: undefined,
+    debugLogData: undefined,
     showTypesetDebug: false,
     stageText: '',
     elapsedText: '',
@@ -453,6 +550,7 @@ class XOverlayTranslator {
   private activeDialog: HTMLElement | null = null;
   private uiHost: HTMLElement | null = null;
   private button: HTMLButtonElement | null = null;
+  private debugDownloadButton: HTMLButtonElement | null = null;
   private statusLine: HTMLDivElement | null = null;
   private statusSpinner: HTMLSpanElement | null = null;
   private currentImageKey: string | null = null;
@@ -630,6 +728,11 @@ class XOverlayTranslator {
         align-items: flex-end;
         gap: 6px;
       }
+      .mt-x-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
       .mt-x-control {
         display: inline-flex;
         align-items: center;
@@ -644,6 +747,10 @@ class XOverlayTranslator {
         color: #ffffff;
         font-size: 13px;
         line-height: 1;
+      }
+      .mt-x-control-secondary {
+        min-width: 92px;
+        background: rgba(15, 118, 110, 0.82);
       }
       .mt-x-control:disabled {
         opacity: 0.62;
@@ -905,6 +1012,9 @@ class XOverlayTranslator {
     const root = document.createElement('div');
     root.className = 'mt-x-overlay-inline';
 
+    const actions = document.createElement('div');
+    actions.className = 'mt-x-actions';
+
     this.button = document.createElement('button');
     this.button.className = 'mt-x-control';
     this.button.type = 'button';
@@ -912,7 +1022,18 @@ class XOverlayTranslator {
     this.button.addEventListener('click', () => {
       void this.handleButtonClick();
     });
-    root.appendChild(this.button);
+    actions.appendChild(this.button);
+
+    this.debugDownloadButton = document.createElement('button');
+    this.debugDownloadButton.className = 'mt-x-control mt-x-control-secondary';
+    this.debugDownloadButton.type = 'button';
+    this.debugDownloadButton.textContent = '下载日志';
+    this.debugDownloadButton.addEventListener('click', () => {
+      this.handleDownloadDebugLog();
+    });
+    actions.appendChild(this.debugDownloadButton);
+
+    root.appendChild(actions);
 
     const statusWrap = document.createElement('div');
     statusWrap.className = 'mt-x-status';
@@ -944,6 +1065,7 @@ class XOverlayTranslator {
     this.lastHostTop = null;
     this.uiHost = null;
     this.button = null;
+    this.debugDownloadButton = null;
     this.statusLine = null;
     this.statusSpinner = null;
     this.currentImageKey = null;
@@ -966,6 +1088,7 @@ class XOverlayTranslator {
       URL.revokeObjectURL(state.debugOriginalUrl);
       state.debugOriginalUrl = undefined;
     }
+    state.debugLogData = undefined;
   }
 
   private touchStateKey(key: string): void {
@@ -1001,10 +1124,11 @@ class XOverlayTranslator {
   }
 
   private render(state: PhotoState | null): void {
-    if (!this.button || !this.statusLine || !this.statusSpinner) {
+    if (!this.button || !this.debugDownloadButton || !this.statusLine || !this.statusSpinner) {
       return;
     }
     const button = this.button;
+    const debugDownloadButton = this.debugDownloadButton;
     const statusLine = this.statusLine;
     const statusSpinner = this.statusSpinner;
     const finalizeRender = (): void => {
@@ -1019,10 +1143,16 @@ class XOverlayTranslator {
     if (!state) {
       button.disabled = true;
       button.textContent = '翻译';
+      debugDownloadButton.style.display = 'none';
+      debugDownloadButton.disabled = true;
       updateStatusLine('', 'normal', false);
       finalizeRender();
       return;
     }
+
+    const canShowDebugDownload = state.showTypesetDebug && !!state.debugLogData;
+    debugDownloadButton.style.display = canShowDebugDownload ? 'inline-flex' : 'none';
+    debugDownloadButton.disabled = !canShowDebugDownload || state.status === 'running';
 
     button.disabled = state.status === 'running';
     if (state.status === 'running') {
@@ -1110,6 +1240,19 @@ class XOverlayTranslator {
     };
   }
 
+  private handleDownloadDebugLog(): void {
+    let current: { state: PhotoState };
+    try {
+      current = this.getCurrentImageAndState();
+    } catch {
+      return;
+    }
+    if (!current.state.debugLogData) {
+      return;
+    }
+    downloadJson(current.state.debugLogData, 'typeset-debug-log');
+  }
+
   private async handleButtonClick(): Promise<void> {
     let current: { image: HTMLImageElement; key: string; state: PhotoState };
     try {
@@ -1161,6 +1304,7 @@ class XOverlayTranslator {
     state.mode = 'original';
     state.errorText = '';
     state.elapsedText = '';
+    state.debugLogData = undefined;
     state.stageText = '准备中';
     const runStartAt = performance.now();
     const imageOriginal = this.readImageOriginalUrl(image);
@@ -1224,6 +1368,9 @@ class XOverlayTranslator {
         const debugOriginalBlob = await canvasToBlob(artifacts.debugOriginalCanvas);
         state.debugOriginalUrl = URL.createObjectURL(debugOriginalBlob);
       }
+      state.debugLogData = showTypesetDebug
+        ? toTypesetDebugDownloadData(state.originalUrl, artifacts)
+        : undefined;
 
       state.translatedUrl = translatedUrl;
       const totalDurationMs = performance.now() - runStartAt;
@@ -1250,6 +1397,7 @@ class XOverlayTranslator {
       state.errorText = toErrorMessage(error);
       state.stageText = '';
       state.elapsedText = '';
+      state.debugLogData = undefined;
       this.render(state);
     }
   }

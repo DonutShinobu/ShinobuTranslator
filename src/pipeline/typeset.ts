@@ -1,4 +1,4 @@
-import type { TextRegion, QuadPoint } from "../types";
+import type { PipelineTypesetDebugLog, TextDirection, TextRegion, QuadPoint, TypesetDebugRegionLog } from "../types";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -271,7 +271,11 @@ function resolveTranslatedColumns(region: TextRegion, translatedText: string): P
 function rebalanceVerticalColumns(
   sourceColumns: string[],
   translatedColumns: PreferredColumnSegment[],
-): PreferredColumnSegment[] {
+): {
+  columns: PreferredColumnSegment[];
+  sourceColumnLengths: number[];
+  singleColumnMaxLength: number | null;
+} {
   const sourceLengths = sourceColumns.map((column) => countTextLength(column));
   const baselineLength = Math.max(1, ...sourceLengths);
   const normalizedTranslated = translatedColumns
@@ -279,7 +283,11 @@ function rebalanceVerticalColumns(
     .filter((column) => column.text.length > 0);
 
   if (normalizedTranslated.length === 0) {
-    return [];
+    return {
+      columns: [],
+      sourceColumnLengths: sourceLengths,
+      singleColumnMaxLength: sourceLengths.length > 0 ? baselineLength : null,
+    };
   }
 
   const targetColumns = Math.max(sourceLengths.length, normalizedTranslated.length, 1);
@@ -334,16 +342,40 @@ function rebalanceVerticalColumns(
     columnIndex += 1;
   }
 
-  return output.filter((column) => column.text.trim().length > 0);
+  return {
+    columns: output.filter((column) => column.text.trim().length > 0),
+    sourceColumnLengths: sourceLengths,
+    singleColumnMaxLength: sourceLengths.length > 0 ? baselineLength : null,
+  };
 }
 
-function resolveVerticalPreferredColumns(region: TextRegion, translatedText: string): PreferredColumnSegment[] {
+type VerticalPreferredColumnsResult = {
+  columns: PreferredColumnSegment[];
+  sourceColumns: string[];
+  sourceColumnLengths: number[];
+  singleColumnMaxLength: number | null;
+};
+
+function resolveVerticalPreferredColumns(region: TextRegion, translatedText: string): VerticalPreferredColumnsResult {
   const sourceColumns = resolveSourceColumns(region);
   const translatedColumns = resolveTranslatedColumns(region, translatedText);
   if (translatedColumns.length === 0) {
-    return [];
+    return {
+      columns: [],
+      sourceColumns,
+      sourceColumnLengths: sourceColumns.map((column) => countTextLength(column)),
+      singleColumnMaxLength: sourceColumns.length > 0
+        ? Math.max(...sourceColumns.map((column) => countTextLength(column)))
+        : null,
+    };
   }
-  return rebalanceVerticalColumns(sourceColumns, translatedColumns);
+  const balanced = rebalanceVerticalColumns(sourceColumns, translatedColumns);
+  return {
+    columns: balanced.columns,
+    sourceColumns,
+    sourceColumnLengths: balanced.sourceColumnLengths,
+    singleColumnMaxLength: balanced.singleColumnMaxLength,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -2025,6 +2057,12 @@ function expandRegionBeforeRender(
 type DrawTypesetOptions = {
   debugMode?: boolean;
   renderText?: boolean;
+  collectDebugLog?: boolean;
+};
+
+type DrawTypesetResult = {
+  canvas: HTMLCanvasElement;
+  debugLog: PipelineTypesetDebugLog | null;
 };
 
 export async function drawTypeset(
@@ -2032,9 +2070,10 @@ export async function drawTypeset(
   regions: TextRegion[],
   targetLang?: string,
   options?: DrawTypesetOptions,
-): Promise<HTMLCanvasElement> {
+): Promise<DrawTypesetResult> {
   const debugMode = options?.debugMode === true;
   const renderText = options?.renderText !== false;
+  const collectDebugLog = options?.collectDebugLog === true;
   // Ensure fonts are loaded before measuring/rendering
   await document.fonts.ready;
 
@@ -2058,14 +2097,17 @@ export async function drawTypeset(
   const measureCtx = measureCanvas.getContext("2d")!;
 
   const renderRegions = regions.map(cloneRegionForTypeset);
+  const debugRegions: TypesetDebugRegionLog[] = [];
 
   for (let regionIndex = 0; regionIndex < renderRegions.length; regionIndex += 1) {
     const inputRegion = renderRegions[regionIndex];
-    const translated = inputRegion.translatedText || inputRegion.sourceText;
+    const translatedRaw = inputRegion.translatedText;
+    const translated = translatedRaw || inputRegion.sourceText;
     const isVerticalInput = inputRegion.direction === "v";
-    const preferredColumnSegments = isVerticalInput
+    const verticalPreferred = isVerticalInput
       ? resolveVerticalPreferredColumns(inputRegion, translated)
       : undefined;
+    const preferredColumnSegments = verticalPreferred?.columns;
     const preferredColumns = preferredColumnSegments?.map((segment) => segment.text);
     const preferredColumnSources = preferredColumnSegments?.map((segment) => segment.source);
     if (preferredColumns && preferredColumns.length > 0) {
@@ -2076,6 +2118,17 @@ export async function drawTypeset(
       ? preferredColumns.join("")
       : translated;
     if (!text.trim()) continue;
+
+    const sourceColumns = isVerticalInput
+      ? (verticalPreferred?.sourceColumns ?? resolveSourceColumns(inputRegion))
+      : resolveSourceColumns(inputRegion);
+    const sourceColumnLengths = isVerticalInput
+      ? (verticalPreferred?.sourceColumnLengths ?? sourceColumns.map((column) => countTextLength(column)))
+      : sourceColumns.map((column) => countTextLength(column));
+    const singleColumnMaxLength = isVerticalInput
+      ? (verticalPreferred?.singleColumnMaxLength
+        ?? (sourceColumnLengths.length > 0 ? Math.max(...sourceColumnLengths) : null))
+      : (sourceColumnLengths.length > 0 ? Math.max(...sourceColumnLengths) : null);
 
     const estimatedInitialFontSize = Math.max(8, Math.round(resolveInitialFontSize(inputRegion)));
     const region = expandRegionBeforeRender(inputRegion, text, measureCtx);
@@ -2224,7 +2277,59 @@ export async function drawTypeset(
     if (debugMode) {
       drawTypesetDebugOverlay(ctx, inputRegion, region, regionIndex, estimatedInitialFontSize, debug);
     }
+
+    if (collectDebugLog) {
+      const columnCanvasQuads = debug.columnBoxes.map((box) =>
+        mapOffscreenRectToCanvasQuad(
+          region,
+          box,
+          debug.offscreenWidth,
+          debug.offscreenHeight,
+          debug.boxPadding,
+          debug.strokePadding,
+        )
+      );
+      const direction: TextDirection = region.direction === "h" ? "h" : "v";
+      debugRegions.push({
+        regionId: inputRegion.id,
+        regionIndex,
+        direction,
+        sourceText: inputRegion.sourceText,
+        translatedTextRaw: translatedRaw,
+        translatedTextUsed: text,
+        translatedColumnsRaw: inputRegion.translatedColumns ? [...inputRegion.translatedColumns] : [],
+        preferredColumns: preferredColumns ? [...preferredColumns] : [],
+        sourceColumns,
+        sourceColumnLengths,
+        singleColumnMaxLength,
+        initialFontSize: estimatedInitialFontSize,
+        fittedFontSize: debug.fittedFontSize,
+        sourceBox: { ...inputRegion.box },
+        expandedBox: { ...region.box },
+        sourceQuad: inputRegion.quad ? cloneQuad(inputRegion.quad) : undefined,
+        expandedQuad: region.quad ? cloneQuad(region.quad) : undefined,
+        offscreenWidth: debug.offscreenWidth,
+        offscreenHeight: debug.offscreenHeight,
+        boxPadding: debug.boxPadding,
+        strokePadding: debug.strokePadding,
+        columnBreakReasons: [...debug.columnBreakReasons],
+        columnSegmentIds: [...debug.columnSegmentIds],
+        columnSegmentSources: [...debug.columnSegmentSources],
+        columnBoxes: debug.columnBoxes.map((box) => ({ ...box })),
+        columnCanvasQuads,
+      });
+    }
   }
 
-  return out;
+  const debugLog: PipelineTypesetDebugLog | null = collectDebugLog
+    ? {
+      generatedAt: new Date().toISOString(),
+      regions: debugRegions,
+    }
+    : null;
+
+  return {
+    canvas: out,
+    debugLog,
+  };
 }

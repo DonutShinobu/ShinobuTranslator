@@ -30,6 +30,21 @@ type RegionTranslationResult = {
   translatedColumns?: string[];
 };
 
+export type LlmRegionBatchResult = {
+  byId: Map<string, RegionTranslationResult>;
+  rawContent: string;
+};
+
+export class LlmColumnsParseError extends Error {
+  readonly rawContent: string;
+
+  constructor(message: string, rawContent: string) {
+    super(message);
+    this.name = 'LlmColumnsParseError';
+    this.rawContent = rawContent;
+  }
+}
+
 type ChatCompletionResponse = {
   choices?: Array<{ message?: { content?: string } }>;
 };
@@ -129,7 +144,7 @@ export async function llmTranslate(options: LlmTranslateOptions): Promise<string
 
 export async function llmTranslateRegions(
   options: LlmTranslateRegionsOptions,
-): Promise<Map<string, RegionTranslationResult>> {
+): Promise<LlmRegionBatchResult> {
   const { baseUrl, apiKey, model, temperature, from, to, regions } = options;
   const endpoint = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
   const payload = regions.map((region) => ({
@@ -191,5 +206,13 @@ export async function llmTranslateRegions(
     throw new Error('LLM 翻译响应为空');
   }
 
-  return parseColumnsPayload(content);
+  try {
+    return {
+      byId: parseColumnsPayload(content),
+      rawContent: content,
+    };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new LlmColumnsParseError(`LLM 列翻译响应解析失败: ${detail}`, content);
+  }
 }

@@ -49,6 +49,56 @@ export type RuntimeStageStatus = {
   detail: string;
 };
 
+export type TypesetDebugColumnBreakReason = 'start' | 'model' | 'wrap' | 'both';
+
+export type TypesetDebugColumnSegmentSource = 'model' | 'split';
+
+export type TypesetDebugColumnBox = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type TypesetDebugRegionLog = {
+  regionId: string;
+  regionIndex: number;
+  direction: TextDirection;
+  sourceText: string;
+  translatedTextRaw: string;
+  translatedTextUsed: string;
+  translatedColumnsRaw: string[];
+  preferredColumns: string[];
+  sourceColumns: string[];
+  sourceColumnLengths: number[];
+  singleColumnMaxLength: number | null;
+  initialFontSize: number;
+  fittedFontSize: number;
+  sourceBox: Rect;
+  expandedBox: Rect;
+  sourceQuad?: [QuadPoint, QuadPoint, QuadPoint, QuadPoint];
+  expandedQuad?: [QuadPoint, QuadPoint, QuadPoint, QuadPoint];
+  offscreenWidth: number;
+  offscreenHeight: number;
+  boxPadding: number;
+  strokePadding: number;
+  columnBreakReasons: TypesetDebugColumnBreakReason[];
+  columnSegmentIds: number[];
+  columnSegmentSources: TypesetDebugColumnSegmentSource[];
+  columnBoxes: TypesetDebugColumnBox[];
+  columnCanvasQuads: [QuadPoint, QuadPoint, QuadPoint, QuadPoint][];
+};
+
+export type PipelineTypesetDebugLog = {
+  generatedAt: string;
+  regions: TypesetDebugRegionLog[];
+};
+
+export type TranslationDebugInfo = {
+  llmBatchRawResponse?: string;
+  llmBatchParseError?: string;
+};
+
 export type PipelineArtifacts = {
   original: HTMLImageElement;
   detectedRegions: TextRegion[];
@@ -58,6 +108,8 @@ export type PipelineArtifacts = {
   cleanedCanvas: HTMLCanvasElement;
   resultCanvas: HTMLCanvasElement;
   debugOriginalCanvas: HTMLCanvasElement | null;
+  typesetDebugLog: PipelineTypesetDebugLog | null;
+  translationDebug: TranslationDebugInfo | null;
   runtimeStages: RuntimeStageStatus[];
   stageTimings: StageTiming[];
 };

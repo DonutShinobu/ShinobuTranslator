@@ -1,4 +1,5 @@
 import type {
+  OcrRunDebugInfo,
   PipelineArtifacts,
   PipelineProgress,
   PipelineTypesetDebugLog,
@@ -145,6 +146,7 @@ type TypesetDebugDownloadData = {
   stageTimings: StageTiming[];
   runtimeStages: RuntimeStageStatus[];
   translationDebug: TranslationDebugInfo | null;
+  ocrDebug: OcrRunDebugInfo | null;
   ocrRegions: OcrRegionLogItem[];
   modelRegions: ModelRegionLogItem[];
   typeset: PipelineTypesetDebugLog;
@@ -494,6 +496,19 @@ function toTypesetDebugDownloadData(
     runtimeStages: artifacts.runtimeStages.map((stage) => ({ ...stage })),
     translationDebug: artifacts.translationDebug
       ? { ...artifacts.translationDebug }
+      : null,
+    ocrDebug: artifacts.ocrDebug
+      ? {
+          ...artifacts.ocrDebug,
+          preprocessPerRegionMs: artifacts.ocrDebug.preprocessPerRegionMs.map((item) => ({ ...item })),
+          chunks: artifacts.ocrDebug.chunks.map((chunk) => ({
+            ...chunk,
+            regionIds: [...chunk.regionIds],
+            decodeSteps: chunk.decodeSteps.map((step) => ({ ...step })),
+            fallbackRegions: chunk.fallbackRegions.map((region) => ({ ...region })),
+          })),
+          colorFallbackRegions: artifacts.ocrDebug.colorFallbackRegions.map((region) => ({ ...region })),
+        }
       : null,
     ocrRegions,
     modelRegions,

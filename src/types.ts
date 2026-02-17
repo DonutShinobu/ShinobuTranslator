@@ -99,6 +99,52 @@ export type TranslationDebugInfo = {
   llmBatchParseError?: string;
 };
 
+export type OcrRunDebugStep = {
+  step: number;
+  activeCount: number;
+  durationMs: number;
+};
+
+export type OcrRunDebugRegionFallback = {
+  regionId: string;
+  durationMs: number;
+  accepted: boolean;
+  confidence?: number;
+  error?: string;
+};
+
+export type OcrRunDebugChunk = {
+  chunkIndex: number;
+  chunkSize: number;
+  regionIds: string[];
+  decodeMode: 'batch' | 'fallback';
+  decodeAccepted: number;
+  decodeConfidenceAvg?: number;
+  decodeSessionRunCount: number;
+  decodeSessionRunTotalMs: number;
+  decodeSteps: OcrRunDebugStep[];
+  fallbackRegions: OcrRunDebugRegionFallback[];
+};
+
+export type OcrRunDebugInfo = {
+  mode: 'autoregressive' | 'ctc';
+  candidateCount: number;
+  preparedCount: number;
+  preprocessTotalMs: number;
+  preprocessPerRegionMs: Array<{ regionId: string; durationMs: number }>;
+  chunkBatchSize: number;
+  chunks: OcrRunDebugChunk[];
+  colorDecodeMode: 'none' | 'batch' | 'fallback';
+  colorBatchSize: number;
+  colorSessionRunCount: number;
+  colorSessionRunTotalMs: number;
+  colorTotalMs: number;
+  colorFallbackRegions: OcrRunDebugRegionFallback[];
+  fallbackTriggerCount: number;
+  totalSessionRunCount: number;
+  totalSessionRunMs: number;
+};
+
 export type PipelineArtifacts = {
   original: HTMLImageElement;
   detectedRegions: TextRegion[];
@@ -110,6 +156,7 @@ export type PipelineArtifacts = {
   debugOriginalCanvas: HTMLCanvasElement | null;
   typesetDebugLog: PipelineTypesetDebugLog | null;
   translationDebug: TranslationDebugInfo | null;
+  ocrDebug: OcrRunDebugInfo | null;
   runtimeStages: RuntimeStageStatus[];
   stageTimings: StageTiming[];
 };

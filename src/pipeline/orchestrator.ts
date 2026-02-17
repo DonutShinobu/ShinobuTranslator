@@ -88,6 +88,7 @@ export async function runPipeline(
   let debugOriginalCanvas: HTMLCanvasElement | null = null;
   let typesetDebugLog: PipelineTypesetDebugLog | null = null;
   let translationDebug: TranslationDebugInfo | null = null;
+  let ocrDebug: PipelineArtifacts['ocrDebug'] = null;
   let detectionMaskCanvas: HTMLCanvasElement | null = null;
   let refinedMaskCanvas: HTMLCanvasElement | null = null;
   const stageTimings: StageTiming[] = [];
@@ -103,6 +104,7 @@ export async function runPipeline(
     debugOriginalCanvas,
     typesetDebugLog,
     translationDebug,
+    ocrDebug,
     runtimeStages,
     stageTimings
   });
@@ -153,6 +155,7 @@ export async function runPipeline(
     const t0 = performance.now();
     const ocrResult = await runOcr(image, latestRegions);
     latestRegions = ocrResult.regions;
+    ocrDebug = ocrResult.debug;
     ocrCanvas = drawRegions(originalCanvas, ocrResult.regions, "OCR 识别", (region) => region.sourceText);
     cleanedCanvas = ocrCanvas;
     resultCanvas = cleanedCanvas;

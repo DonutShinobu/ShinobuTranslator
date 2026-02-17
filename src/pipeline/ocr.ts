@@ -1,5 +1,5 @@
 import * as ort from "onnxruntime-web/all";
-import type { TextRegion } from "../types";
+import type { OcrRunDebugChunk, OcrRunDebugInfo, TextRegion } from "../types";
 import { getModel, getModelSession } from "../runtime/modelRegistry";
 import { isContextLostRuntimeError } from "../runtime/onnx";
 import type { RuntimeProvider, WebNnDeviceType } from "../runtime/onnx";
@@ -8,6 +8,7 @@ export type OcrResult = {
   regions: TextRegion[];
   actualProvider: RuntimeProvider;
   actualWebnnDeviceType?: WebNnDeviceType;
+  debug: OcrRunDebugInfo;
 };
 
 const OCR_AR_PAD = 0;
@@ -18,7 +19,7 @@ const OCR_AR_START_BIGINT = BigInt(OCR_AR_START);
 const OCR_BEAM_WIDTH = 1;
 const OCR_MIN_FINISHED_BEAMS = 2;
 const OCR_CONFIDENCE_THRESHOLD = 0.2;
-const OCR_DECODE_BATCH_SIZE = 16;
+const OCR_DECODE_BATCH_SIZE = 24;
 
 type Direction = "h" | "v";
 
@@ -48,6 +49,35 @@ function toErrorMessage(error: unknown): string {
     return error.message;
   }
   return String(error);
+}
+
+function createOcrDebugInfo(mode: 'autoregressive' | 'ctc'): OcrRunDebugInfo {
+  return {
+    mode,
+    candidateCount: 0,
+    preparedCount: 0,
+    preprocessTotalMs: 0,
+    preprocessPerRegionMs: [],
+    chunkBatchSize: OCR_DECODE_BATCH_SIZE,
+    chunks: [],
+    colorDecodeMode: 'none',
+    colorBatchSize: 0,
+    colorSessionRunCount: 0,
+    colorSessionRunTotalMs: 0,
+    colorTotalMs: 0,
+    colorFallbackRegions: [],
+    fallbackTriggerCount: 0,
+    totalSessionRunCount: 0,
+    totalSessionRunMs: 0
+  };
+}
+
+function finalizeOcrDebugInfo(debugInfo: OcrRunDebugInfo): OcrRunDebugInfo {
+  const decodeRunCount = debugInfo.chunks.reduce((acc, chunk) => acc + chunk.decodeSessionRunCount, 0);
+  const decodeRunMs = debugInfo.chunks.reduce((acc, chunk) => acc + chunk.decodeSessionRunTotalMs, 0);
+  debugInfo.totalSessionRunCount = decodeRunCount + debugInfo.colorSessionRunCount;
+  debugInfo.totalSessionRunMs = decodeRunMs + debugInfo.colorSessionRunTotalMs;
+  return debugInfo;
 }
 
 let charsetPromise: Promise<string[] | null> | null = null;
@@ -385,7 +415,8 @@ async function decodeAutoregressiveWithBeam(
     validEncoderLength: number;
     maxSteps: number;
     charset: string[] | null;
-  }
+  },
+  chunkDebug?: OcrRunDebugChunk
 ): Promise<OcrDecodeResult | null> {
   const { imageInput, imageTensor, charIdxInput, decoderMaskInput, encoderMaskInput } = inputs;
   const { seqLen, encoderLen, validEncoderLength, maxSteps, charset } = options;
@@ -419,12 +450,18 @@ async function decodeAutoregressiveWithBeam(
         decoderMask[i] = false;
       }
 
+      const runT0 = performance.now();
       const outputs = await session.run({
         [imageInput]: imageTensor,
         [charIdxInput]: new ort.Tensor("int64", charData, [1, seqLen]),
         [decoderMaskInput]: new ort.Tensor("bool", decoderMask, [1, seqLen]),
         [encoderMaskInput]: new ort.Tensor("bool", encoderMask, [1, encoderLen])
       });
+      const runDurationMs = performance.now() - runT0;
+      if (chunkDebug) {
+        chunkDebug.decodeSessionRunCount += 1;
+        chunkDebug.decodeSessionRunTotalMs += runDurationMs;
+      }
 
       const logitsTensor = pickOcrLogits(outputs);
       if (!logitsTensor) {
@@ -501,6 +538,7 @@ async function decodeAutoregressiveWithBeam(
 }
 
 type BatchDecodeInput = {
+  regionId: string;
   inputData: OcrInputData;
   validEncoderLength: number;
 };
@@ -534,7 +572,8 @@ async function decodeBatchAutoregressive(
     charset: string[] | null;
     inputHeight: number;
     inputWidth: number;
-  }
+  },
+  chunkDebug?: OcrRunDebugChunk
 ): Promise<BatchDecodeOutput[]> {
   const { imageInput, charIdxInput, decoderMaskInput, encoderMaskInput } = inputNames;
   const { seqLen, encoderLen, maxSteps, charset, inputHeight, inputWidth } = options;
@@ -575,12 +614,23 @@ async function decodeBatchAutoregressive(
       break;
     }
 
+    const runT0 = performance.now();
     const outputs = await session.run({
       [imageInput]: batchImage,
       [charIdxInput]: new ort.Tensor("int64", batchCharData, [N, seqLen]),
       [decoderMaskInput]: new ort.Tensor("bool", batchDecoderMask, [N, seqLen]),
       [encoderMaskInput]: new ort.Tensor("bool", batchEncoderMask, [N, encoderLen])
     });
+    const runDurationMs = performance.now() - runT0;
+    if (chunkDebug) {
+      chunkDebug.decodeSessionRunCount += 1;
+      chunkDebug.decodeSessionRunTotalMs += runDurationMs;
+      chunkDebug.decodeSteps.push({
+        step,
+        activeCount,
+        durationMs: runDurationMs
+      });
+    }
 
     const logitsTensor = pickBatchOcrLogits(outputs, N);
     if (!logitsTensor) {
@@ -687,6 +737,11 @@ type OcrColorResult = {
   bgColor: [number, number, number];
 };
 
+type OcrSessionRunCounter = {
+  sessionRunCount: number;
+  sessionRunTotalMs: number;
+};
+
 function extractColorsFromOutputs(
   fg: Float32Array,
   bg: Float32Array,
@@ -763,7 +818,8 @@ async function decodeTokenColors(
     encoderLen: number;
     validEncoderLength: number;
     tokenIds: number[];
-  }
+  },
+  runCounter?: OcrSessionRunCounter
 ): Promise<OcrColorResult | null> {
   const { imageInput, imageTensor, charIdxInput, decoderMaskInput, encoderMaskInput } = inputs;
   const { seqLen, encoderLen, validEncoderLength, tokenIds } = options;
@@ -787,12 +843,18 @@ async function decodeTokenColors(
     encoderMask[i] = true;
   }
 
+  const runT0 = performance.now();
   const outputs = await session.run({
     [imageInput]: imageTensor,
     [charIdxInput]: new ort.Tensor("int64", charData, [1, seqLen]),
     [decoderMaskInput]: new ort.Tensor("bool", decoderMask, [1, seqLen]),
     [encoderMaskInput]: new ort.Tensor("bool", encoderMask, [1, encoderLen])
   });
+  const runDurationMs = performance.now() - runT0;
+  if (runCounter) {
+    runCounter.sessionRunCount += 1;
+    runCounter.sessionRunTotalMs += runDurationMs;
+  }
 
   const fg = getOutputByName(outputs, "fg", 3);
   const bg = getOutputByName(outputs, "bg", 3);
@@ -827,7 +889,8 @@ async function decodeTokenColorsBatch(
   seqLen: number,
   encoderLen: number,
   inputHeight: number,
-  inputWidth: number
+  inputWidth: number,
+  runCounter?: OcrSessionRunCounter
 ): Promise<(OcrColorResult | null)[]> {
   const N = items.length;
   if (N === 0) {
@@ -863,12 +926,18 @@ async function decodeTokenColorsBatch(
     }
   }
 
+  const runT0 = performance.now();
   const outputs = await session.run({
     [imageInput]: batchImage,
     [charIdxInput]: new ort.Tensor("int64", batchCharData, [N, seqLen]),
     [decoderMaskInput]: new ort.Tensor("bool", batchDecoderMask, [N, seqLen]),
     [encoderMaskInput]: new ort.Tensor("bool", batchEncoderMask, [N, encoderLen])
   });
+  const runDurationMs = performance.now() - runT0;
+  if (runCounter) {
+    runCounter.sessionRunCount += 1;
+    runCounter.sessionRunTotalMs += runDurationMs;
+  }
 
   const fg = getOutputByName(outputs, "fg", 3);
   const bg = getOutputByName(outputs, "bg", 3);
@@ -1263,25 +1332,28 @@ async function runOcrByOnnxWithSession(
   detectedRegions: TextRegion[],
   model: Awaited<ReturnType<typeof getModel>>,
   session: ort.InferenceSession
-): Promise<TextRegion[]> {
+): Promise<{ regions: TextRegion[]; debug: OcrRunDebugInfo }> {
   const charset = await loadCharset(model.dictUrl);
   const inputHeight = model.input?.[0] ?? 48;
   const inputWidth = model.input?.[1] ?? 320;
   const normalize = model.normalize ?? "minus_one_to_one";
   const imageInput = session.inputNames[0];
+  const debugInfo = createOcrDebugInfo("ctc");
   if (!imageInput) {
-    return [];
+    return { regions: [], debug: finalizeOcrDebugInfo(debugInfo) };
   }
 
   const charIdxInput = findInputName(session.inputNames, "char_idx");
   const decoderMaskInput = findInputName(session.inputNames, "decoder_mask");
   const encoderMaskInput = findInputName(session.inputNames, "encoder_mask");
   if (charIdxInput && decoderMaskInput && encoderMaskInput) {
+    debugInfo.mode = "autoregressive";
     const seqLen = getInputDim(session, charIdxInput, 1, 64);
     const encoderLen = getInputDim(session, encoderMaskInput, 1, 80);
     const maxSteps = Math.max(1, seqLen - 1);
 
     const candidates = generateTextDirection(detectedRegions);
+    debugInfo.candidateCount = candidates.length;
 
     // Phase 1: preprocess all images, then run batched greedy AR decoding.
     type DecodedCandidate = {
@@ -1303,23 +1375,44 @@ async function runOcrByOnnxWithSession(
       validEncoderLength: number;
     };
     const prepared: PreparedCandidate[] = [];
+    const preprocessT0 = performance.now();
     for (const item of candidates) {
       const { region, direction } = item;
+      const regionPreprocessT0 = performance.now();
       try {
         const inputData = buildOcrInput(image, region, direction, inputHeight, inputWidth, normalize);
         const validEncoderLength = Math.min(encoderLen, Math.floor((inputData.resizedWidth + 3) / 4) + 2);
         prepared.push({ region, direction, inputData, validEncoderLength });
       } catch {
         // Skip regions that fail preprocessing.
-        continue;
       }
+      debugInfo.preprocessPerRegionMs.push({
+        regionId: region.id,
+        durationMs: performance.now() - regionPreprocessT0
+      });
     }
+    debugInfo.preprocessTotalMs = performance.now() - preprocessT0;
+    debugInfo.preparedCount = prepared.length;
 
     // Process in batches of OCR_DECODE_BATCH_SIZE.
     for (let chunkStart = 0; chunkStart < prepared.length; chunkStart += OCR_DECODE_BATCH_SIZE) {
       const chunk = prepared.slice(chunkStart, chunkStart + OCR_DECODE_BATCH_SIZE);
+      const chunkDebug: OcrRunDebugChunk = {
+        chunkIndex: Math.floor(chunkStart / OCR_DECODE_BATCH_SIZE),
+        chunkSize: chunk.length,
+        regionIds: chunk.map((c) => c.region.id),
+        decodeMode: 'batch',
+        decodeAccepted: 0,
+        decodeSessionRunCount: 0,
+        decodeSessionRunTotalMs: 0,
+        decodeSteps: [],
+        fallbackRegions: []
+      };
+      debugInfo.chunks.push(chunkDebug);
+      let chunkConfidenceSum = 0;
       try {
         const batchItems: BatchDecodeInput[] = chunk.map((c) => ({
+          regionId: c.region.id,
           inputData: c.inputData,
           validEncoderLength: c.validEncoderLength
         }));
@@ -1327,12 +1420,15 @@ async function runOcrByOnnxWithSession(
           session,
           { imageInput, charIdxInput, decoderMaskInput, encoderMaskInput },
           batchItems,
-          { seqLen, encoderLen, maxSteps, charset, inputHeight, inputWidth }
+          { seqLen, encoderLen, maxSteps, charset, inputHeight, inputWidth },
+          chunkDebug
         );
         for (let i = 0; i < batchResults.length; i += 1) {
           const result = batchResults[i];
           const candidate = chunk[i];
           if (result.text.length > 0 && result.confidence >= OCR_CONFIDENCE_THRESHOLD) {
+            chunkDebug.decodeAccepted += 1;
+            chunkConfidenceSum += result.confidence;
             decoded.push({
               region: candidate.region,
               direction: candidate.direction,
@@ -1344,12 +1440,18 @@ async function runOcrByOnnxWithSession(
             });
           }
         }
+        if (chunkDebug.decodeAccepted > 0) {
+          chunkDebug.decodeConfidenceAvg = chunkConfidenceSum / chunkDebug.decodeAccepted;
+        }
       } catch (error) {
         if (isContextLostRuntimeError(error)) {
           throw error;
         }
         // Fallback: decode this chunk one-by-one.
+        debugInfo.fallbackTriggerCount += 1;
+        chunkDebug.decodeMode = 'fallback';
         for (const candidate of chunk) {
+          const fallbackT0 = performance.now();
           try {
             const result = await decodeAutoregressiveWithBeam(
               session,
@@ -1360,9 +1462,20 @@ async function runOcrByOnnxWithSession(
                 decoderMaskInput,
                 encoderMaskInput
               },
-              { seqLen, encoderLen, validEncoderLength: candidate.validEncoderLength, maxSteps, charset }
+              { seqLen, encoderLen, validEncoderLength: candidate.validEncoderLength, maxSteps, charset },
+              chunkDebug
             );
+            const fallbackDurationMs = performance.now() - fallbackT0;
+            const accepted = !!(result && result.text.length > 0 && result.confidence >= OCR_CONFIDENCE_THRESHOLD);
+            chunkDebug.fallbackRegions.push({
+              regionId: candidate.region.id,
+              durationMs: fallbackDurationMs,
+              accepted,
+              confidence: result?.confidence
+            });
             if (result && result.text.length > 0 && result.confidence >= OCR_CONFIDENCE_THRESHOLD) {
+              chunkDebug.decodeAccepted += 1;
+              chunkConfidenceSum += result.confidence;
               decoded.push({
                 region: candidate.region,
                 direction: candidate.direction,
@@ -1377,14 +1490,23 @@ async function runOcrByOnnxWithSession(
             if (isContextLostRuntimeError(innerError)) {
               throw innerError;
             }
+            chunkDebug.fallbackRegions.push({
+              regionId: candidate.region.id,
+              durationMs: performance.now() - fallbackT0,
+              accepted: false,
+              error: toErrorMessage(innerError)
+            });
             continue;
           }
+        }
+        if (chunkDebug.decodeAccepted > 0) {
+          chunkDebug.decodeConfidenceAvg = chunkConfidenceSum / chunkDebug.decodeAccepted;
         }
       }
     }
 
     if (decoded.length === 0) {
-      return [];
+      return { regions: [], debug: finalizeOcrDebugInfo(debugInfo) };
     }
 
     // Phase 2: batch color decoding for all successfully decoded regions.
@@ -1395,7 +1517,11 @@ async function runOcrByOnnxWithSession(
     }));
 
     let batchColors: (OcrColorResult | null)[];
+    const colorCounter: OcrSessionRunCounter = { sessionRunCount: 0, sessionRunTotalMs: 0 };
+    const colorT0 = performance.now();
+    debugInfo.colorBatchSize = colorItems.length;
     try {
+      debugInfo.colorDecodeMode = 'batch';
       batchColors = await decodeTokenColorsBatch(
         session,
         { imageInput, charIdxInput, decoderMaskInput, encoderMaskInput },
@@ -1403,27 +1529,45 @@ async function runOcrByOnnxWithSession(
         seqLen,
         encoderLen,
         inputHeight,
-        inputWidth
+        inputWidth,
+        colorCounter
       );
     } catch (error) {
       if (isContextLostRuntimeError(error)) {
         throw error;
       }
       // Fall back to per-region color decode on batch failure.
+      debugInfo.fallbackTriggerCount += 1;
+      debugInfo.colorDecodeMode = 'fallback';
       batchColors = [];
       for (const d of decoded) {
+        const fallbackT0 = performance.now();
         try {
           const colors = await decodeTokenColors(
             session,
             { imageInput, imageTensor: d.inputData.tensor, charIdxInput, decoderMaskInput, encoderMaskInput },
-            { seqLen, encoderLen, validEncoderLength: d.validEncoderLength, tokenIds: d.tokenIds }
+            { seqLen, encoderLen, validEncoderLength: d.validEncoderLength, tokenIds: d.tokenIds },
+            colorCounter
           );
           batchColors.push(colors);
+          debugInfo.colorFallbackRegions.push({
+            regionId: d.region.id,
+            durationMs: performance.now() - fallbackT0,
+            accepted: colors !== null
+          });
         } catch {
           batchColors.push(null);
+          debugInfo.colorFallbackRegions.push({
+            regionId: d.region.id,
+            durationMs: performance.now() - fallbackT0,
+            accepted: false
+          });
         }
       }
     }
+    debugInfo.colorSessionRunCount = colorCounter.sessionRunCount;
+    debugInfo.colorSessionRunTotalMs = colorCounter.sessionRunTotalMs;
+    debugInfo.colorTotalMs = performance.now() - colorT0;
 
     const next: TextRegion[] = [];
     for (let i = 0; i < decoded.length; i += 1) {
@@ -1440,19 +1584,41 @@ async function runOcrByOnnxWithSession(
       });
     }
 
-    return next;
+    return { regions: next, debug: finalizeOcrDebugInfo(debugInfo) };
   }
 
   const next: TextRegion[] = [];
   const candidates = generateTextDirection(detectedRegions);
+  debugInfo.candidateCount = candidates.length;
+  const preprocessT0 = performance.now();
   for (const item of candidates) {
     const { region, direction } = item;
     let bestText = "";
     let bestLength = 0;
+    const regionPreprocessT0 = performance.now();
     const { tensor } = buildOcrInput(image, region, direction, inputHeight, inputWidth, normalize);
+    debugInfo.preprocessPerRegionMs.push({
+      regionId: region.id,
+      durationMs: performance.now() - regionPreprocessT0
+    });
+    debugInfo.preparedCount += 1;
     let outputs: ort.InferenceSession.ReturnType;
     try {
+      const runT0 = performance.now();
       outputs = await session.run({ [imageInput]: tensor });
+      const runDurationMs = performance.now() - runT0;
+      const chunkDebug: OcrRunDebugChunk = {
+        chunkIndex: debugInfo.chunks.length,
+        chunkSize: 1,
+        regionIds: [region.id],
+        decodeMode: 'batch',
+        decodeAccepted: 0,
+        decodeSessionRunCount: 1,
+        decodeSessionRunTotalMs: runDurationMs,
+        decodeSteps: [{ step: 0, activeCount: 1, durationMs: runDurationMs }],
+        fallbackRegions: []
+      };
+      debugInfo.chunks.push(chunkDebug);
     } catch (error) {
       if (isContextLostRuntimeError(error)) {
         throw error;
@@ -1495,6 +1661,10 @@ async function runOcrByOnnxWithSession(
     }
 
     if (bestText.length > 0) {
+      const chunk = debugInfo.chunks[debugInfo.chunks.length - 1];
+      if (chunk) {
+        chunk.decodeAccepted = 1;
+      }
       next.push({
         ...region,
         direction,
@@ -1503,7 +1673,8 @@ async function runOcrByOnnxWithSession(
       });
     }
   }
-  return next;
+  debugInfo.preprocessTotalMs = performance.now() - preprocessT0;
+  return { regions: next, debug: finalizeOcrDebugInfo(debugInfo) };
 }
 
 async function runOcrByOnnx(image: HTMLImageElement, detectedRegions: TextRegion[]): Promise<OcrResult> {
@@ -1512,10 +1683,11 @@ async function runOcrByOnnx(image: HTMLImageElement, detectedRegions: TextRegion
 
   let actualProvider: RuntimeProvider = primaryHandle.provider;
   let actualWebnnDeviceType = primaryHandle.webnnDeviceType;
+  let debug: OcrRunDebugInfo = createOcrDebugInfo('ctc');
 
   try {
-    const regions = await runOcrByOnnxWithSession(image, detectedRegions, model, primaryHandle.session);
-    return { regions, actualProvider, actualWebnnDeviceType };
+    const result = await runOcrByOnnxWithSession(image, detectedRegions, model, primaryHandle.session);
+    return { regions: result.regions, actualProvider, actualWebnnDeviceType, debug: result.debug };
   } catch (error) {
     const message = toErrorMessage(error);
     const reason = isContextLostRuntimeError(error) ? "context lost" : "run failed";
@@ -1536,7 +1708,9 @@ async function runOcrByOnnx(image: HTMLImageElement, detectedRegions: TextRegion
     for (const preferred of fallbackPlans) {
       try {
         const handle = await getModelSession("ocr", preferred);
-        recovered = await runOcrByOnnxWithSession(image, detectedRegions, model, handle.session);
+        const result = await runOcrByOnnxWithSession(image, detectedRegions, model, handle.session);
+        recovered = result.regions;
+        debug = result.debug;
         if (handle.provider !== primaryHandle.provider) {
           console.warn(`[ocr] 已回退到 ${handle.provider}`);
           actualProvider = handle.provider;
@@ -1553,7 +1727,7 @@ async function runOcrByOnnx(image: HTMLImageElement, detectedRegions: TextRegion
       throw new Error(`OCR 推理失败且回退失败: ${message} | fallback: ${fallbackMessage}`);
     }
 
-    return { regions: recovered, actualProvider, actualWebnnDeviceType };
+    return { regions: recovered, actualProvider, actualWebnnDeviceType, debug };
   }
 }
 

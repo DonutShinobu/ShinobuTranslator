@@ -1,33 +1,39 @@
-# Manga Translate Web
+# ShinobuTranslator
 
-前端版漫画翻译原型：输入日文漫画图，输出中文漫画图。
+ShinobuTranslator 是一个运行在浏览器中的漫画翻译扩展，主要用于 X/Twitter 图片大图场景。
 
-## 已实现流程
-- 文本检测（前端执行，ONNX 运行时优先 WebNN）
-- OCR（前端执行）
-- 文本翻译（有道或 OpenAI 兼容 LLM API）
-- 去字（前端执行，ONNX 运行时优先 WebNN，失败回退 WASM）
-- 排版与嵌字（Canvas 自动换行）
-- 中间结果可视化（检测框 / OCR / 翻译框 / 去字 / 最终图）
+它会在本地完成完整流程：文本检测、OCR、翻译、去字与排版，支持在原图与译图之间切换。
 
-## 运行
+## 功能简介
+
+- 在 X/Twitter 图片查看器中一键触发翻译
+- 前端本地执行 ONNX 推理（按环境在 WebNN / WebGPU / WASM 之间回退）
+- 支持 Google Web 翻译与 OpenAI 兼容 LLM
+- Popup 中可配置目标语言、LLM 提供商与模型参数
+
+## 本地开发
+
 ```bash
 npm install
 npm run dev
 ```
 
-## 模型接入（来自 manga-image-translator）
-1. 从 `https://github.com/zyddnys/manga-image-translator` 获取模型并转换为浏览器可运行的 ONNX。
-2. 放到 `public/models`。
-3. 更新 `public/models/manifest.json`。
+构建与预览：
 
-## 翻译说明
-- 有道：走公开 Demo 端点，可能受频率限制。
-- LLM：浏览器直连时 API Key 暴露风险高，仅建议本地测试使用。
+```bash
+npm run build
+npm run preview
+```
 
-## 调试
-- 可使用浏览器开发工具或 Browser MCP 检查网络请求、Canvas 输出和错误日志。
+仅类型检查：
 
-## 迁移分析文档
-- 详见 `docs/flow-migration-analysis.md`
-- 完整流程参考 `docs/full-pipeline-reference.md`
+```bash
+npx tsc --noEmit
+```
+
+## 使用方式（Chrome/Edge）
+
+1. 执行 `npm run build`
+2. 打开浏览器扩展管理页并启用开发者模式
+3. 选择“加载已解压的扩展程序”，目录指向项目下的 `dist`
+4. 打开 X/Twitter 图片大图页面，使用扩展按钮开始翻译

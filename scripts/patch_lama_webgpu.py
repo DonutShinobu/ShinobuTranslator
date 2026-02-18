@@ -38,7 +38,7 @@ Pad is a no-op.
 
 Usage
 -----
-    py -3 patch_lama_webgpu.py [--input path] [--output path]
+    py -3 scripts/patch_lama_webgpu.py [--input path] [--output path]
 
 Defaults read ``public/models/lama_fp32.onnx`` and write
 ``public/models/lama_fp32.onnx`` (in-place).

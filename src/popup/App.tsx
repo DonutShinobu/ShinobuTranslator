@@ -135,7 +135,7 @@ export function App() {
 
   return (
     <main className="popup">
-      <h1>Manga Translate X</h1>
+      <h1>ShinobuTranslator</h1>
       {loading ? <p className="status">正在读取配置...</p> : null}
 
       <section className="panel">

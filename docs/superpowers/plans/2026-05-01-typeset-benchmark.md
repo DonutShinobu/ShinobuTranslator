@@ -837,6 +837,7 @@ In `src/content/App.tsx` (or a new file `src/content/bakeEntry.ts` imported by `
 - Takes an image as base64 data URL
 - Runs `runPipeline` with a config that skips translation (sets `translatedText = sourceText` for each region)
 - Returns the full `typesetDebugLog` + `detectedRegions`
+- **Critically:** for each region, returns `detectedColumns` — the column geometry from the detector/OCR stage (before typesetting). This is the ground truth. Also returns `typesetDebug` (排版后) separately for the snapshot.
 
 The exact implementation depends on how `runPipeline` is structured — the key interface is:
 
@@ -859,6 +860,17 @@ type BakeResult = {
     bgColor?: [number, number, number];
     originalLineCount?: number;
     translatedColumns?: string[];
+    // 检测器/OCR 输出的原始列几何（排版前），用作 ground truth
+    detectedColumns: Array<{
+      centerX: number;
+      topY: number;
+      bottomY: number;
+      width: number;
+      height: number;
+      text: string;
+      charCount: number;
+    }>;
+    // 排版引擎输出的列几何（排版后），仅用于 currentTypeset 快照
     typesetDebug: {
       fittedFontSize: number;
       columnBoxes: Array<{ x: number; y: number; width: number; height: number }>;
@@ -905,12 +917,46 @@ function imageToDataUrl(path: string): string {
   return `data:${mime};base64,${buf.toString("base64")}`;
 }
 
+// 从检测器/OCR 输出构建 ground truth 列（排版前的原图列几何）
 function buildGroundTruthColumns(
   regionData: any,
 ): GroundTruthColumn[] {
-  // Extract column geometry from typesetDebug.columnBoxes
-  // Each columnBox = { x, y, width, height }
-  // Ground truth columns come from the original text run through typeset
+  const detected: Array<{
+    centerX: number; topY: number; bottomY: number;
+    width: number; height: number; text: string; charCount: number;
+  }> = regionData.detectedColumns ?? [];
+
+  if (detected.length === 0) return [];
+
+  return detected.map((col, i) => {
+    const chars = [...col.text];
+    const charCenters: { y: number }[] = [];
+    if (chars.length > 0) {
+      const step = col.height / chars.length;
+      for (let j = 0; j < chars.length; j++) {
+        charCenters.push({ y: col.topY + step * j + step / 2 });
+      }
+    }
+
+    return {
+      index: i,
+      text: col.text,
+      charCount: col.charCount,
+      centerX: col.centerX,
+      topY: col.topY,
+      bottomY: col.bottomY,
+      width: col.width,
+      height: col.height,
+      estimatedFontSize: Math.min(col.width, chars.length > 0 ? col.height / chars.length : 24),
+      charCenters,
+    };
+  });
+}
+
+// 从排版输出构建 currentTypeset 快照列（仅供参考，不作为 ground truth）
+function buildTypesetSnapshotColumns(
+  regionData: any,
+): GroundTruthColumn[] {
   const boxes: Array<{ x: number; y: number; width: number; height: number }> =
     regionData.typesetDebug?.columnBoxes ?? [];
   const sourceText = regionData.sourceText ?? "";
@@ -919,7 +965,6 @@ function buildGroundTruthColumns(
 
   if (boxes.length === 0) return [];
 
-  // Distribute chars across columns proportionally by height
   const totalHeight = boxes.reduce((s, b) => s + b.height, 0);
   const columns: GroundTruthColumn[] = [];
   let charIdx = 0;
@@ -1019,7 +1064,7 @@ async function main(): Promise<void> {
       },
       currentTypeset: {
         fittedFontSize: r.typesetDebug?.fittedFontSize ?? 0,
-        columns: buildGroundTruthColumns(r),
+        columns: buildTypesetSnapshotColumns(r),
       },
     }));
 

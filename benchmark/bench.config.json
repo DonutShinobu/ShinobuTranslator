@@ -1,0 +1,13 @@
+{
+  "fixturesDir": "benchmark/fixtures",
+  "imagesDir": "benchmark/images",
+  "reportsDir": "benchmark/reports",
+  "scoreWeights": {
+    "columnCountMatch": 0.2,
+    "columnIouMean": 0.3,
+    "fontSizeError": 0.2,
+    "columnDxNorm": 0.15,
+    "charDyNorm": 0.15
+  },
+  "regressionThreshold": 0.05
+}

@@ -59,6 +59,12 @@ Thumbs.db
 donut.png
 result_verify.png
 
+# Benchmark
+benchmark/images/*
+!benchmark/images/.gitkeep
+benchmark/reports/
+benchmark/fonts/
+
 # Claude skills
 .claude/
 .playwright/

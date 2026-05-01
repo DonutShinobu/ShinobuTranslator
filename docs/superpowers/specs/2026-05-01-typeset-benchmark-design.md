@@ -197,8 +197,10 @@ score = w1 * columnCountMatch
 ## 5. 实施切片（粗略）
 
 1. **抽离 typeset 几何为纯函数**
-   - 在 `src/pipeline/typeset.ts` 中识别"输入 region+原文+图像尺寸 → 输出 columns / fittedFontSize / charCenters"的子流程，迁出到新文件 `src/pipeline/typesetGeometry.ts`，不依赖 DOM/Canvas/`Image`。
-   - 字体度量在 Node 侧用近似（字宽=fontSize，字距按现有规则），确保与浏览器侧产生**相同的几何决策**——绘制差异不在 benchmark 范围内。
+   - 在 `src/pipeline/typeset.ts` 中识别"输入 region+原文+图像尺寸 → 输出 columns / fittedFontSize / charCenters"的子流程，迁出到新文件 `src/pipeline/typesetGeometry.ts`。
+   - **该函数仍然接受一个 `CanvasRenderingContext2D` 参数**用于 `measureText` 字体度量；不接触 DOM、`Image`、绘制 API 之外的浏览器对象。
+   - Node 侧使用 npm `canvas` 包（`node-canvas`，原生构建，调 Cairo）创建 ctx，把扩展打包用的字体（`public/fonts/`）通过 `registerFont` 注册进去后传给 `computeVerticalGeometry`。
+   - node-canvas 的字体度量与浏览器存在毫秒级差异，但同一字体下的相对趋势一致，足以反映 typeset 几何决策的改动。指标的"字号偏差"等指标都用归一化/比例形式，对绝对度量误差不敏感。
    - 现有 `drawTypeset` 改为先调 `computeVerticalGeometry`，再绘制；行为不变。
 
 2. **Fixture 烘焙脚本**：`scripts/benchmark/bake-fixtures.ts`

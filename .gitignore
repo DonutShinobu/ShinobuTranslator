@@ -3,7 +3,8 @@ node_modules/
 
 # Build output
 dist/
-docs/
+docs/*
+!docs/superpowers/
 
 # Python
 __pycache__/
@@ -57,3 +58,7 @@ Thumbs.db
 正确结果.png
 donut.png
 result_verify.png
+
+# Claude skills
+.claude/
+.playwright/

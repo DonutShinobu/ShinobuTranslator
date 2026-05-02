@@ -80,6 +80,30 @@ function toDetectedColumn(region: TextRegion): DetectedColumn {
   };
 }
 
+export async function shinobuRender(dataUrl: string): Promise<string> {
+  const image = await loadImage(dataUrl);
+  const canvas = imageToCanvas(image);
+  const w = image.naturalWidth;
+  const h = image.naturalHeight;
+
+  const detected = await detectTextRegionsWithMask(image);
+  const ocrResult = await runOcr(image, detected.regions);
+
+  let regions = mergeTextLines(ocrResult.regions, w, h);
+  regions = sortRegionsForRender(regions, canvas);
+
+  for (const r of regions) {
+    r.translatedText = r.sourceText;
+    r.fgColor = [0, 80, 255];
+  }
+
+  const typesetResult = await drawTypeset(canvas, regions, "ja", {
+    renderText: true,
+  });
+
+  return typesetResult.canvas.toDataURL("image/png");
+}
+
 export async function shinobuBake(dataUrl: string): Promise<BakeResult> {
   const image = await loadImage(dataUrl);
   const canvas = imageToCanvas(image);

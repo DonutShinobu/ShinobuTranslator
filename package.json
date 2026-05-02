@@ -10,6 +10,7 @@
     "test": "vitest run",
     "bench:bake": "tsx scripts/benchmark/bake-fixtures.ts",
     "bench": "tsx scripts/benchmark/run-bench.ts",
+    "bench:render": "tsx scripts/benchmark/render-result.ts",
     "bench:baseline": "tsx scripts/benchmark/diff-baseline.ts --update-baseline",
     "bench:diff": "tsx scripts/benchmark/diff-baseline.ts"
   },

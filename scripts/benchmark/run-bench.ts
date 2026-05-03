@@ -11,7 +11,7 @@ import type {
   ImageMetrics,
   RegionMetrics,
 } from "./types";
-import { computeVerticalGeometry } from "../../src/pipeline/typesetGeometry";
+import { computeFullVerticalTypeset } from "../../src/pipeline/typesetGeometry";
 import type { TextRegion } from "../../src/types";
 
 const ROOT = resolve(import.meta.dirname, "../..");
@@ -43,31 +43,6 @@ function registerFonts(): void {
   }
 }
 
-function buildPredColumns(
-  geomResult: ReturnType<typeof computeVerticalGeometry>,
-): GroundTruthColumn[] {
-  return geomResult.columns.map((col, i) => {
-    const box = geomResult.debugColumnBoxes[i];
-    const charCenters: { y: number }[] = [];
-    let penY = box ? box.y : 0;
-    for (const glyph of col.glyphs) {
-      charCenters.push({ y: penY + glyph.advanceY / 2 });
-      penY += glyph.advanceY;
-    }
-    return {
-      index: i,
-      text: col.glyphs.map((g) => g.ch).join(""),
-      charCount: col.glyphs.length,
-      centerX: box ? box.x + box.width / 2 : 0,
-      topY: box ? box.y : 0,
-      bottomY: box ? box.y + box.height : 0,
-      width: box ? box.width : 0,
-      height: box ? box.height : 0,
-      estimatedFontSize: geomResult.fittedFontSize,
-      charCenters,
-    };
-  });
-}
 
 function formatCsv(images: ImageMetrics[]): string {
   const header = [
@@ -211,19 +186,39 @@ function main(): void {
         translatedColumns: region.translatedColumns,
       };
 
-      const geomResult = computeVerticalGeometry(ctx as unknown as CanvasRenderingContext2D, {
+      const vResult = computeFullVerticalTypeset({
         region: textRegion,
-        text: region.sourceText,
-        contentWidth: region.box.width,
-        contentHeight: region.box.height,
         fontFamily,
+        measureCtx: ctx as unknown as CanvasRenderingContext2D,
       });
 
-      const predColumns = buildPredColumns(geomResult);
+      const predColumns: GroundTruthColumn[] = vResult.columns.map((col, i) => {
+        const box = vResult.debugColumnBoxes[i];
+        const ox = vResult.expandedRegion.box.x + vResult.boxPadding - vResult.strokePadding;
+        const oy = vResult.expandedRegion.box.y + vResult.boxPadding - vResult.strokePadding;
+        const charCenters: { y: number }[] = [];
+        let penY = box ? box.y + oy : 0;
+        for (const glyph of col.glyphs) {
+          charCenters.push({ y: penY + glyph.advanceY / 2 });
+          penY += glyph.advanceY;
+        }
+        return {
+          index: i,
+          text: col.glyphs.map((g) => g.ch).join(""),
+          charCount: col.glyphs.length,
+          centerX: box ? box.x + box.width / 2 + ox : 0,
+          topY: box ? box.y + oy : 0,
+          bottomY: box ? box.y + box.height + oy : 0,
+          width: box ? box.width : 0,
+          height: box ? box.height : 0,
+          estimatedFontSize: vResult.fittedFontSize,
+          charCenters,
+        };
+      });
       const metrics = computeRegionMetrics(
         region.groundTruth.columns,
         predColumns,
-        geomResult.fittedFontSize,
+        vResult.fittedFontSize,
         config.scoreWeights,
       );
 

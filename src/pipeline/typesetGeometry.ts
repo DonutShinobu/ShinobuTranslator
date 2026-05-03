@@ -519,8 +519,6 @@ export function resolveFontVerticalAdvance(
 ): number {
   const metrics = ctx.measureText('国');
   const fontBox = metricAbs(metrics.fontBoundingBoxAscent) + metricAbs(metrics.fontBoundingBoxDescent);
-  const emBox = metricAbs(metrics.emHeightAscent) + metricAbs(metrics.emHeightDescent);
-  const actualBox = metricAbs(metrics.actualBoundingBoxAscent) + metricAbs(metrics.actualBoundingBoxDescent);
   const resolved = fontBox > 0
     ? fontBox
     : fontSize;
@@ -540,9 +538,7 @@ export function resolveGlyphVerticalAdvance(
 ): number {
   const metrics = ctx.measureText(ch);
   const fontBox = metricAbs(metrics.fontBoundingBoxAscent) + metricAbs(metrics.fontBoundingBoxDescent);
-  const emBox = metricAbs(metrics.emHeightAscent) + metricAbs(metrics.emHeightDescent);
   const actualBox = metricAbs(metrics.actualBoundingBoxAscent) + metricAbs(metrics.actualBoundingBoxDescent);
-
   const baseAdvance = fontBox > 0
     ? fontBox
     : defaultAdvanceY;
@@ -1313,7 +1309,7 @@ export function countNeededColumnsAtFontSize(
   return Math.max(1, columns.length);
 }
 
-export function resolveBoxPadding(region: TextRegion): number {
+export function resolveBoxPadding(_region: TextRegion): number {
   return 0;
 }
 

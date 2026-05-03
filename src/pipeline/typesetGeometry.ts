@@ -1440,53 +1440,87 @@ export function expandRegionBeforeRender(
 }
 
 // ---------------------------------------------------------------------------
-// computeVerticalGeometry wrapper
+// computeFullVerticalTypeset — shared by typeset.ts and benchmark
 // ---------------------------------------------------------------------------
 
-export type VerticalGeometryInput = {
+export type FullVerticalTypesetInput = {
   region: TextRegion;
-  text: string;
-  contentWidth: number;
-  contentHeight: number;
   fontFamily: string;
+  measureCtx: CanvasRenderingContext2D;
 };
 
-export type VerticalGeometryResult = {
+export type FullVerticalTypesetResult = {
+  expandedRegion: TextRegion;
+  text: string;
+  preferredColumns?: string[];
+  preferredColumnSources?: ColumnSegmentSource[];
+  sourceColumns: string[];
+  sourceColumnLengths: number[];
+  singleColumnMaxLength: number | null;
+  initialFontSize: number;
   fittedFontSize: number;
   columns: VColumn[];
   columnBreakReasons: ColumnBreakReason[];
   columnSegmentIds: number[];
   columnSegmentSources: ColumnSegmentSource[];
   metrics: VerticalCellMetrics;
+  debugColumnBoxes: DebugColumnBox[];
   offscreenWidth: number;
   offscreenHeight: number;
   boxPadding: number;
   strokePadding: number;
-  debugColumnBoxes: DebugColumnBox[];
+  contentWidth: number;
+  verticalContentHeight: number;
+  alignment: "left" | "center" | "right";
 };
 
-export function computeVerticalGeometry(
-  ctx: CanvasRenderingContext2D,
-  input: VerticalGeometryInput,
-): VerticalGeometryResult {
-  const { region, text, contentWidth, contentHeight, fontFamily: ff } = input;
+export function computeFullVerticalTypeset(
+  input: FullVerticalTypesetInput,
+): FullVerticalTypesetResult {
+  const { region: inputRegion, fontFamily: ff, measureCtx } = input;
 
-  const initialFontSize = Math.max(8, Math.round(resolveInitialFontSize(region)));
+  const translatedRaw = inputRegion.translatedText;
+  const translated = translatedRaw || inputRegion.sourceText;
+
+  const verticalPreferred = resolveVerticalPreferredColumns(inputRegion, translated);
+  const preferredColumnSegments = verticalPreferred?.columns;
+  const preferredColumns = preferredColumnSegments?.map((segment) => segment.text);
+  const preferredColumnSources = preferredColumnSegments?.map((segment) => segment.source);
+
+  const cloned = cloneRegionForTypeset(inputRegion);
+  if (preferredColumns && preferredColumns.length > 0) {
+    cloned.translatedColumns = preferredColumns;
+  }
+
+  const text = (preferredColumns && preferredColumns.length > 0)
+    ? preferredColumns.join("")
+    : translated;
+
+  const sourceColumns = verticalPreferred?.sourceColumns ?? resolveSourceColumns(inputRegion);
+  const sourceColumnLengths = verticalPreferred?.sourceColumnLengths ?? sourceColumns.map((column) => countTextLength(column));
+  const singleColumnMaxLength = verticalPreferred?.singleColumnMaxLength
+    ?? (sourceColumnLengths.length > 0 ? Math.max(...sourceColumnLengths) : null);
+
+  const estimatedInitialFontSize = Math.max(8, Math.round(resolveInitialFontSize(cloned)));
+
+  const noopHLineCount = () => 1;
+  const region = expandRegionBeforeRender(cloned, text, measureCtx, ff, noopHLineCount);
+
   const boxPadding = resolveBoxPadding(region);
-  const verticalContentHeight = resolveVerticalContentHeight(contentHeight, initialFontSize);
+  const contentWidth = Math.max(20, region.box.width - boxPadding * 2);
+  const contentHeight = Math.max(20, region.box.height - boxPadding * 2);
+  const verticalContentHeight = resolveVerticalContentHeight(contentHeight, estimatedInitialFontSize);
 
   const preferredProfile = estimateVerticalPreferredProfile(
-    ctx,
+    measureCtx,
     region,
     text,
     contentWidth,
     verticalContentHeight,
-    initialFontSize,
+    estimatedInitialFontSize,
     ff,
     region.translatedColumns,
   );
-
-  const preferredColumnSources = region.translatedColumns?.map(() => 'model' as ColumnSegmentSource);
 
   const verticalLayoutOptions: BuildVerticalLayoutOptions = {
     colSpacingScale: preferredProfile.colSpacingScale,
@@ -1495,19 +1529,19 @@ export function computeVerticalGeometry(
     preferredColumnSources,
   };
 
-  const baseLayout = buildVerticalLayout(ctx, text, verticalContentHeight, initialFontSize, ff, verticalLayoutOptions);
+  const baseLayout = buildVerticalLayout(measureCtx, text, verticalContentHeight, estimatedInitialFontSize, ff, verticalLayoutOptions);
   const { fontSize, layout } = tryShrinkVerticalForMinorOverflow(
-    ctx,
+    measureCtx,
     text,
     verticalContentHeight,
-    initialFontSize,
+    estimatedInitialFontSize,
     verticalLayoutOptions,
     baseLayout,
     ff,
   );
 
   const { columns, columnBreakReasons, columnSegmentIds, columnSegmentSources, metrics } = layout;
-  const strokePadding = resolveVerticalRenderPadding(ctx, columns, fontSize, metrics, ff);
+  const strokePadding = resolveVerticalRenderPadding(measureCtx, columns, fontSize, metrics, ff);
   const alignment = resolveAlignment(region, columns.length);
 
   const debugColumnBoxes = buildVerticalDebugColumnBoxes(
@@ -1520,16 +1554,27 @@ export function computeVerticalGeometry(
   );
 
   return {
+    expandedRegion: region,
+    text,
+    preferredColumns: preferredColumns && preferredColumns.length > 0 ? preferredColumns : undefined,
+    preferredColumnSources,
+    sourceColumns,
+    sourceColumnLengths,
+    singleColumnMaxLength,
+    initialFontSize: estimatedInitialFontSize,
     fittedFontSize: fontSize,
     columns,
     columnBreakReasons,
     columnSegmentIds,
     columnSegmentSources,
     metrics,
+    debugColumnBoxes,
     offscreenWidth: Math.ceil(contentWidth + strokePadding * 2),
     offscreenHeight: Math.ceil(verticalContentHeight + strokePadding * 2),
     boxPadding,
     strokePadding,
-    debugColumnBoxes,
+    contentWidth,
+    verticalContentHeight,
+    alignment,
   };
 }

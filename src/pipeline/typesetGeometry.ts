@@ -4,13 +4,13 @@ import type { TextRegion, QuadPoint } from "../types";
 // Constants
 // ---------------------------------------------------------------------------
 
-export const verticalAdvanceTightenRatio = 0.9;
+export const verticalAdvanceTightenRatio = 1.0;
 export const verticalColumnSpacingRatio = 0.1;
 export const minVerticalAdvanceScale = 0.75;
 export const minVerticalColSpacingScale = 0.5;
-export const verticalContentHeightExpandBaseRatio = 0.08;
-export const verticalContentHeightExpandFontRatio = 0.003;
-export const minVerticalContentHeightExpandPx = 6;
+export const verticalContentHeightExpandBaseRatio = 0.007;
+export const verticalContentHeightExpandFontRatio = 0.0;
+export const minVerticalContentHeightExpandPx = 0;
 export const minFontSafetySize = 8;
 export const minorOverflowMaxGlyphCount = 2;
 export const minorOverflowShrinkMinScale = 0.8;
@@ -523,12 +523,8 @@ export function resolveFontVerticalAdvance(
   const actualBox = metricAbs(metrics.actualBoundingBoxAscent) + metricAbs(metrics.actualBoundingBoxDescent);
   const resolved = fontBox > 0
     ? fontBox
-    : emBox > 0
-      ? emBox
-      : actualBox > 0
-        ? actualBox
-        : fontSize;
-  return Math.max(1, Math.ceil(Math.max(resolved, fontSize * 0.9)));
+    : fontSize;
+  return Math.max(1, Math.ceil(Math.max(resolved, fontSize)));
 }
 
 /**
@@ -549,14 +545,12 @@ export function resolveGlyphVerticalAdvance(
 
   const baseAdvance = fontBox > 0
     ? fontBox
-    : emBox > 0
-      ? emBox
-      : defaultAdvanceY;
-  const minAdvance = Math.max(actualBox, defaultAdvanceY * 0.68);
-  const stabilizedAdvance = Math.max(baseAdvance, defaultAdvanceY * 0.82, fontSize * 0.76);
-  const resolvedAdvance = Math.max(minAdvance, stabilizedAdvance) * verticalAdvanceTightenRatio * advanceScale;
+    : defaultAdvanceY;
+  const stabilizedAdvance = Math.max(baseAdvance, fontSize * 0.9);
+  const resolvedAdvance = stabilizedAdvance * verticalAdvanceTightenRatio * advanceScale;
 
-  return Math.max(1, Math.ceil(Math.max(actualBox, resolvedAdvance)));
+  const scaledActualBox = actualBox * Math.max(advanceScale, minVerticalAdvanceScale);
+  return Math.max(1, Math.round(Math.max(scaledActualBox, resolvedAdvance)));
 }
 
 /**
@@ -578,8 +572,8 @@ export function resolveVerticalCellMetrics(
   }
 
   const defaultAdvanceY = resolveFontVerticalAdvance(ctx, fontSize);
-  const safetyPadding = Math.max(2, Math.ceil(sw * 0.8));
-  const colWidth = Math.ceil(Math.max(fontSize, maxGlyphWidth) + safetyPadding);
+  const safetyPadding = Math.max(1, Math.ceil(sw * 0.5));
+  const colWidth = Math.ceil(Math.max(fontSize * 1.1, maxGlyphWidth + safetyPadding));
   const colSpacing = Math.max(1, Math.round(fontSize * verticalColumnSpacingRatio));
 
   return { colWidth, defaultAdvanceY, colSpacing };
@@ -865,6 +859,8 @@ export function buildVerticalDebugColumnBoxes(
   metrics: VerticalCellMetrics,
   alignment: "left" | "center" | "right",
   padding: number,
+  ctx?: CanvasRenderingContext2D,
+  fontSize?: number,
 ): DebugColumnBox[] {
   if (columns.length === 0) {
     return [];
@@ -878,10 +874,19 @@ export function buildVerticalDebugColumnBoxes(
     const col = columns[c];
     const cx = colStartX - c * (metrics.colWidth + metrics.colSpacing);
     const startY = resolveVerticalStartY(contentHeight, col.height, alignment, padding);
+    let boxWidth = metrics.colWidth;
+    if (ctx && fontSize) {
+      let maxW = 0;
+      for (const g of col.glyphs) {
+        const box = measureGlyphBox(ctx, g.ch, fontSize);
+        maxW = Math.max(maxW, box.width);
+      }
+      boxWidth = Math.ceil(Math.max(fontSize * 1.1, maxW));
+    }
     boxes.push({
-      x: cx - metrics.colWidth / 2,
+      x: cx - boxWidth / 2,
       y: startY,
-      width: metrics.colWidth,
+      width: boxWidth,
       height: col.height,
     });
   }
@@ -1151,7 +1156,7 @@ export function estimateVerticalPreferredProfile(
     colSpacingScale = clampNumber(
       targetSpacing / Math.max(1, metrics.colSpacing),
       minVerticalColSpacingScale,
-      1.2,
+      2.5,
     );
   }
 
@@ -1309,16 +1314,13 @@ export function countNeededColumnsAtFontSize(
 }
 
 export function resolveBoxPadding(region: TextRegion): number {
-  const minSide = Math.max(1, Math.min(region.box.width, region.box.height));
-  // Smaller adaptive margin to improve readability in small bubbles.
-  const dynamicPadding = Math.round(minSide * 0.05);
-  return Math.max(2, Math.min(dynamicPadding, 6));
+  return 0;
 }
 
 export function resolveVerticalContentHeight(contentHeight: number, fontSize: number): number {
   const dynamicRatio = clampNumber(
     verticalContentHeightExpandBaseRatio + fontSize * verticalContentHeightExpandFontRatio,
-    0.08,
+    0.0,
     0.24,
   );
   const dynamicMax = Math.max(14, Math.round(fontSize * 1.6));
@@ -1501,7 +1503,31 @@ export function computeFullVerticalTypeset(
   const singleColumnMaxLength = verticalPreferred?.singleColumnMaxLength
     ?? (sourceColumnLengths.length > 0 ? Math.max(...sourceColumnLengths) : null);
 
-  const estimatedInitialFontSize = Math.max(8, Math.round(resolveInitialFontSize(cloned)));
+  let estimatedInitialFontSize = Math.max(8, Math.round(resolveInitialFontSize(cloned)));
+
+  if (singleColumnMaxLength && singleColumnMaxLength > 0) {
+    const boxPaddingEst = resolveBoxPadding(cloned);
+    const availableHeight = Math.max(20, cloned.box.height - boxPaddingEst * 2);
+    const maxFontByHeight = Math.round(availableHeight / singleColumnMaxLength);
+    if (maxFontByHeight > 0 && maxFontByHeight < estimatedInitialFontSize) {
+      estimatedInitialFontSize = Math.max(8, maxFontByHeight);
+    }
+  }
+
+  const estColumnCount = Math.max(
+    1,
+    sourceColumns.length,
+    preferredColumns?.length ?? 0,
+    cloned.originalLineCount ?? 0,
+  );
+  if (estColumnCount > 1) {
+    const boxPaddingEst = resolveBoxPadding(cloned);
+    const availableWidth = Math.max(20, cloned.box.width - boxPaddingEst * 2);
+    const maxFontByWidth = Math.floor(availableWidth / (estColumnCount * 1.05));
+    if (maxFontByWidth > 0 && maxFontByWidth < estimatedInitialFontSize) {
+      estimatedInitialFontSize = Math.max(8, maxFontByWidth);
+    }
+  }
 
   const noopHLineCount = () => 1;
   const region = expandRegionBeforeRender(cloned, text, measureCtx, ff, noopHLineCount);
@@ -1529,8 +1555,15 @@ export function computeFullVerticalTypeset(
     preferredColumnSources,
   };
 
+  const targetColumnCount = Math.max(
+    1,
+    sourceColumns.length,
+    preferredColumns?.length ?? 0,
+    inputRegion.originalLineCount ?? 0,
+  );
+
   const baseLayout = buildVerticalLayout(measureCtx, text, verticalContentHeight, estimatedInitialFontSize, ff, verticalLayoutOptions);
-  const { fontSize, layout } = tryShrinkVerticalForMinorOverflow(
+  let { fontSize, layout } = tryShrinkVerticalForMinorOverflow(
     measureCtx,
     text,
     verticalContentHeight,
@@ -1540,10 +1573,42 @@ export function computeFullVerticalTypeset(
     ff,
   );
 
+  if (layout.columns.length > targetColumnCount && fontSize > minFontSafetySize) {
+    const minAllowed = Math.max(minFontSafetySize, Math.ceil(estimatedInitialFontSize * 0.3));
+    let lo = minAllowed;
+    let hi = fontSize - 1;
+    let bestFs = fontSize;
+    let bestLayout = layout;
+    while (lo <= hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      const profile = estimateVerticalPreferredProfile(
+        measureCtx, region, text, contentWidth, verticalContentHeight, mid, ff, region.translatedColumns,
+      );
+      const opts: BuildVerticalLayoutOptions = {
+        ...verticalLayoutOptions,
+        colSpacingScale: profile.colSpacingScale,
+        advanceScale: profile.advanceScale,
+      };
+      const candidate = buildVerticalLayout(measureCtx, text, verticalContentHeight, mid, ff, opts);
+      if (candidate.columns.length <= targetColumnCount) {
+        bestFs = mid;
+        bestLayout = candidate;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    if (bestFs !== fontSize) {
+      fontSize = bestFs;
+      layout = bestLayout;
+    }
+  }
+
   const { columns, columnBreakReasons, columnSegmentIds, columnSegmentSources, metrics } = layout;
   const strokePadding = resolveVerticalRenderPadding(measureCtx, columns, fontSize, metrics, ff);
   const alignment = resolveAlignment(region, columns.length);
 
+  measureCtx.font = `${fontSize}px ${ff}`;
   const debugColumnBoxes = buildVerticalDebugColumnBoxes(
     columns,
     contentWidth,
@@ -1551,6 +1616,8 @@ export function computeFullVerticalTypeset(
     metrics,
     alignment,
     strokePadding,
+    measureCtx,
+    fontSize,
   );
 
   return {

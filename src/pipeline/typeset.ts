@@ -1,19 +1,12 @@
 import type { PipelineTypesetDebugLog, TextDirection, TextRegion, QuadPoint, TypesetDebugRegionLog } from "../types";
 import {
-  resolveVerticalPreferredColumns,
   resolveSourceColumns,
   countTextLength,
   resolveInitialFontSize,
   expandRegionBeforeRender,
   resolveBoxPadding,
-  resolveVerticalContentHeight,
   resolveColors,
-  estimateVerticalPreferredProfile,
-  buildVerticalLayout,
-  tryShrinkVerticalForMinorOverflow,
-  resolveVerticalRenderPadding,
   resolveAlignment,
-  buildVerticalDebugColumnBoxes,
   mapOffscreenRectToCanvasQuad,
   cloneQuad,
   cloneRegionForTypeset,
@@ -22,13 +15,13 @@ import {
   quadAngle,
   quadDimensions,
   resolveOffscreenGuardPadding,
+  computeFullVerticalTypeset,
   KINSOKU_NSTART,
   KINSOKU_NEND,
 } from "./typesetGeometry";
 import type {
   VColumn,
   VerticalCellMetrics,
-  BuildVerticalLayoutOptions,
   DebugColumnBox,
   RegionTypesetDebug,
   ResolvedColors,
@@ -711,12 +704,6 @@ export async function drawTypeset(
   measureCanvas.height = 1;
   const measureCtx = measureCanvas.getContext("2d")!;
 
-  // Callback for expandRegionBeforeRender to count horizontal lines
-  const calcHorizontalLineCount = (mCtx: CanvasRenderingContext2D, text: string, maxWidth: number, fontSize: number): number => {
-    const lines = calcHorizontal(mCtx, text, maxWidth, fontSize);
-    return lines.length;
-  };
-
   const renderRegions = regions.map(cloneRegionForTypeset);
   const debugRegions: TypesetDebugRegionLog[] = [];
 
@@ -725,136 +712,84 @@ export async function drawTypeset(
     const translatedRaw = inputRegion.translatedText;
     const translated = translatedRaw || inputRegion.sourceText;
     const isVerticalInput = inputRegion.direction === "v";
-    const verticalPreferred = isVerticalInput
-      ? resolveVerticalPreferredColumns(inputRegion, translated)
-      : undefined;
-    const preferredColumnSegments = verticalPreferred?.columns;
-    const preferredColumns = preferredColumnSegments?.map((segment) => segment.text);
-    const preferredColumnSources = preferredColumnSegments?.map((segment) => segment.source);
-    if (preferredColumns && preferredColumns.length > 0) {
-      inputRegion.translatedColumns = preferredColumns;
-    }
-
-    const text = (preferredColumns && preferredColumns.length > 0)
-      ? preferredColumns.join("")
-      : translated;
-    if (!text.trim()) continue;
-
-    const sourceColumns = isVerticalInput
-      ? (verticalPreferred?.sourceColumns ?? resolveSourceColumns(inputRegion))
-      : resolveSourceColumns(inputRegion);
-    const sourceColumnLengths = isVerticalInput
-      ? (verticalPreferred?.sourceColumnLengths ?? sourceColumns.map((column) => countTextLength(column)))
-      : sourceColumns.map((column) => countTextLength(column));
-    const singleColumnMaxLength = isVerticalInput
-      ? (verticalPreferred?.singleColumnMaxLength
-        ?? (sourceColumnLengths.length > 0 ? Math.max(...sourceColumnLengths) : null))
-      : (sourceColumnLengths.length > 0 ? Math.max(...sourceColumnLengths) : null);
-
-    const estimatedInitialFontSize = Math.max(8, Math.round(resolveInitialFontSize(inputRegion)));
-    const region = expandRegionBeforeRender(inputRegion, text, measureCtx, fontFamily, calcHorizontalLineCount);
-    const boxPadding = resolveBoxPadding(region);
-    const contentWidth = Math.max(20, region.box.width - boxPadding * 2);
-    const contentHeight = Math.max(20, region.box.height - boxPadding * 2);
-    const isVertical = region.direction === "v";
-    const verticalContentHeight = isVertical
-      ? resolveVerticalContentHeight(contentHeight, estimatedInitialFontSize)
-      : contentHeight;
-    const colors = resolveColors(region.fgColor, region.bgColor);
-    const initialFontSize = estimatedInitialFontSize;
-    let debug: RegionTypesetDebug = {
-      fittedFontSize: initialFontSize,
-      columnBoxes: [],
-      columnBreakReasons: [],
-      columnSegmentIds: [],
-      columnSegmentSources: [],
-      offscreenWidth: 0,
-      offscreenHeight: 0,
-      boxPadding,
-      strokePadding: 0,
-    };
 
     let offCanvas: HTMLCanvasElement | null = null;
-    let strokePadding: number;
+    let debug: RegionTypesetDebug;
+    let region: TextRegion;
+    let estimatedInitialFontSize: number;
+    let text: string;
+    let preferredColumns: string[] | undefined;
+    let sourceColumns: string[];
+    let sourceColumnLengths: number[];
+    let singleColumnMaxLength: number | null;
 
-    if (isVertical) {
-      const preferredProfile = estimateVerticalPreferredProfile(
-        measureCtx,
-        region,
-        text,
-        contentWidth,
-        verticalContentHeight,
-        initialFontSize,
+    if (isVerticalInput) {
+      const vResult = computeFullVerticalTypeset({
+        region: inputRegion,
         fontFamily,
-        region.translatedColumns,
-      );
-      const verticalLayoutOptions: BuildVerticalLayoutOptions = {
-        colSpacingScale: preferredProfile.colSpacingScale,
-        advanceScale: preferredProfile.advanceScale,
-        preferredColumns: region.translatedColumns,
-        preferredColumnSources,
-      };
-      const verticalResult = (() => {
-        const baseLayout = buildVerticalLayout(measureCtx, text, verticalContentHeight, initialFontSize, fontFamily, verticalLayoutOptions);
-        const { fontSize, layout } = tryShrinkVerticalForMinorOverflow(
-          measureCtx,
-          text,
-          verticalContentHeight,
-          initialFontSize,
-          verticalLayoutOptions,
-          baseLayout,
-          fontFamily,
-        );
-        return {
-          fontSize,
-          columns: layout.columns,
-          columnBreakReasons: layout.columnBreakReasons,
-          columnSegmentIds: layout.columnSegmentIds,
-          columnSegmentSources: layout.columnSegmentSources,
-          metrics: layout.metrics,
-        };
-      })();
-      const { fontSize, columns, columnBreakReasons, columnSegmentIds, columnSegmentSources, metrics } = verticalResult;
-      strokePadding = resolveVerticalRenderPadding(measureCtx, columns, fontSize, metrics, fontFamily);
-      const alignment = resolveAlignment(region, columns.length);
+        measureCtx,
+      });
+
+      region = vResult.expandedRegion;
+      estimatedInitialFontSize = vResult.initialFontSize;
+      text = vResult.text;
+      preferredColumns = vResult.preferredColumns;
+      sourceColumns = vResult.sourceColumns;
+      sourceColumnLengths = vResult.sourceColumnLengths;
+      singleColumnMaxLength = vResult.singleColumnMaxLength;
+
+      if (!text.trim()) continue;
+
+      const colors = resolveColors(region.fgColor, region.bgColor);
       if (renderText) {
         offCanvas = renderVertical(
-          columns,
-          fontSize,
-          contentWidth,
-          verticalContentHeight,
+          vResult.columns,
+          vResult.fittedFontSize,
+          vResult.contentWidth,
+          vResult.verticalContentHeight,
           colors,
-          alignment,
-          metrics,
-          strokePadding,
+          vResult.alignment,
+          vResult.metrics,
+          vResult.strokePadding,
         );
       }
       debug = {
-        fittedFontSize: fontSize,
-        columnBoxes: buildVerticalDebugColumnBoxes(
-          columns,
-          contentWidth,
-          verticalContentHeight,
-          metrics,
-          alignment,
-          strokePadding,
-        ),
-        columnBreakReasons,
-        columnSegmentIds,
-        columnSegmentSources,
-        offscreenWidth: Math.ceil(contentWidth + strokePadding * 2),
-        offscreenHeight: Math.ceil(verticalContentHeight + strokePadding * 2),
-        boxPadding,
-        strokePadding,
+        fittedFontSize: vResult.fittedFontSize,
+        columnBoxes: vResult.debugColumnBoxes,
+        columnBreakReasons: vResult.columnBreakReasons,
+        columnSegmentIds: vResult.columnSegmentIds,
+        columnSegmentSources: vResult.columnSegmentSources,
+        offscreenWidth: vResult.offscreenWidth,
+        offscreenHeight: vResult.offscreenHeight,
+        boxPadding: vResult.boxPadding,
+        strokePadding: vResult.strokePadding,
       };
     } else {
-      const horizontalResult = (() => {
-        measureCtx.font = `${initialFontSize}px ${fontFamily}`;
-        const lines = calcHorizontal(measureCtx, text, contentWidth, initialFontSize);
-        return { fontSize: initialFontSize, lines };
-      })();
-      const { fontSize, lines } = horizontalResult;
-      strokePadding = resolveHorizontalRenderPadding(measureCtx, lines, fontSize);
+      // Horizontal path — unchanged
+      sourceColumns = resolveSourceColumns(inputRegion);
+      sourceColumnLengths = sourceColumns.map((column) => countTextLength(column));
+      singleColumnMaxLength = sourceColumnLengths.length > 0 ? Math.max(...sourceColumnLengths) : null;
+      preferredColumns = undefined;
+
+      text = translated;
+      if (!text.trim()) continue;
+
+      estimatedInitialFontSize = Math.max(8, Math.round(resolveInitialFontSize(inputRegion)));
+      const calcHorizontalLineCountFn = (mCtx: CanvasRenderingContext2D, t: string, maxWidth: number, fontSize: number): number => {
+        const lines = calcHorizontal(mCtx, t, maxWidth, fontSize);
+        return lines.length;
+      };
+      region = expandRegionBeforeRender(inputRegion, text, measureCtx, fontFamily, calcHorizontalLineCountFn);
+      const boxPadding = resolveBoxPadding(region);
+      const contentWidth = Math.max(20, region.box.width - boxPadding * 2);
+      const contentHeight = Math.max(20, region.box.height - boxPadding * 2);
+      const colors = resolveColors(region.fgColor, region.bgColor);
+      const initialFontSize = estimatedInitialFontSize;
+
+      measureCtx.font = `${initialFontSize}px ${fontFamily}`;
+      const lines = calcHorizontal(measureCtx, text, contentWidth, initialFontSize);
+      const fontSize = initialFontSize;
+      const strokePadding = resolveHorizontalRenderPadding(measureCtx, lines, fontSize);
       const alignment = resolveAlignment(region, lines.length);
       if (renderText) {
         offCanvas = renderHorizontal(
@@ -892,8 +827,8 @@ export async function drawTypeset(
         ctx,
         offCanvas,
         region,
-        boxPadding,
-        strokePadding,
+        debug.boxPadding,
+        debug.strokePadding,
       );
     }
 

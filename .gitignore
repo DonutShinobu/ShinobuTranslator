@@ -64,7 +64,9 @@ benchmark/images/*
 !benchmark/images/.gitkeep
 benchmark/reports/
 benchmark/fonts/
+benchmark/fixtures/
 
 # Claude skills
 .claude/
-.playwright/.worktrees/
+.playwright/
+.worktrees/

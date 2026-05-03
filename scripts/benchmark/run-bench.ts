@@ -1,4 +1,4 @@
-import { createCanvas, registerFont } from "canvas";
+import { createCanvas, loadImage, registerFont } from "canvas";
 import { createHash } from "crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "fs";
 import { basename, join, resolve } from "path";
@@ -119,7 +119,115 @@ function formatSummaryMd(summary: BenchmarkSummary): string {
   return lines.join("\n") + "\n";
 }
 
-function main(): void {
+async function renderVisualization(
+  fixturesDir: string,
+  imagesDir: string,
+  fontFamily: string,
+  measureCtx: CanvasRenderingContext2D,
+): Promise<{ name: string; buffer: Buffer }[]> {
+  const fixtureFiles = readdirSync(fixturesDir).filter((f) => f.endsWith(".fixture.json"));
+  const results: { name: string; buffer: Buffer }[] = [];
+
+  for (const ff of fixtureFiles) {
+    const fixture: Fixture = JSON.parse(readFileSync(join(fixturesDir, ff), "utf-8"));
+    let imgPath = join(imagesDir, basename(fixture.image.file));
+    if (!existsSync(imgPath)) {
+      const candidates = readdirSync(imagesDir).filter((f) => /\.(png|jpe?g)$/i.test(f));
+      const match = candidates.find((c) =>
+        createHash("sha256").update(readFileSync(join(imagesDir, c))).digest("hex") === fixture.image.sha256,
+      );
+      if (match) imgPath = join(imagesDir, match);
+      else continue;
+    }
+
+    const img = await loadImage(imgPath);
+    const vizCanvas = createCanvas(img.width, img.height);
+    const ctx = vizCanvas.getContext("2d");
+    ctx.drawImage(img, 0, 0);
+
+    for (const region of fixture.regions) {
+      if (region.direction !== "v") continue;
+      const gt: GroundTruthColumn[] = region.groundTruth.columns;
+      const box = region.box;
+
+      ctx.strokeStyle = "rgba(255, 255, 0, 0.6)";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(box.x, box.y, box.width, box.height);
+
+      const textRegion: TextRegion = {
+        id: region.id,
+        box: region.box,
+        quad: region.quad,
+        direction: region.direction,
+        fontSize: region.fontSize,
+        fgColor: region.fgColor,
+        bgColor: region.bgColor,
+        originalLineCount: region.originalLineCount,
+        sourceText: region.sourceText,
+        translatedText: region.sourceText,
+        translatedColumns: region.translatedColumns,
+      };
+
+      const vResult = computeFullVerticalTypeset({
+        region: textRegion,
+        fontFamily,
+        measureCtx,
+      });
+
+      const ox = vResult.expandedRegion.box.x + vResult.boxPadding - vResult.strokePadding;
+      const oy = vResult.expandedRegion.box.y + vResult.boxPadding - vResult.strokePadding;
+
+      for (const col of gt) {
+        const left = col.centerX - col.width / 2;
+        ctx.strokeStyle = "rgba(0, 255, 0, 0.8)";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(left, col.topY, col.width, col.height);
+        for (const cc of col.charCenters) {
+          ctx.fillStyle = "rgba(0, 255, 0, 0.6)";
+          ctx.beginPath();
+          ctx.arc(col.centerX, cc.y, 5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      for (let i = 0; i < vResult.columns.length; i++) {
+        const col = vResult.columns[i];
+        const dbox = vResult.debugColumnBoxes[i];
+        if (!dbox) continue;
+
+        const px = dbox.x + ox;
+        const py = dbox.y + oy;
+        ctx.strokeStyle = "rgba(255, 50, 50, 0.8)";
+        ctx.lineWidth = 3;
+        ctx.setLineDash([8, 6]);
+        ctx.strokeRect(px, py, dbox.width, dbox.height);
+        ctx.setLineDash([]);
+
+        let penY = dbox.y + oy;
+        for (const glyph of col.glyphs) {
+          ctx.fillStyle = "rgba(255, 50, 50, 0.6)";
+          ctx.beginPath();
+          ctx.arc(px + dbox.width / 2, penY + glyph.advanceY / 2, 5, 0, Math.PI * 2);
+          ctx.fill();
+          penY += glyph.advanceY;
+        }
+      }
+
+      ctx.font = "bold 28px sans-serif";
+      ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+      ctx.fillRect(box.x, box.y - 34, 240, 34);
+      ctx.fillStyle = "#fff";
+      ctx.fillText(`GT:${gt.length} Pred:${vResult.columns.length}`, box.x + 4, box.y - 8);
+    }
+
+    const stem = basename(imgPath).replace(/\.[^.]+$/, "");
+    results.push({ name: `visualize-${stem}.png`, buffer: vizCanvas.toBuffer("image/png") });
+  }
+
+  return results;
+}
+
+async function main(): Promise<void> {
   registerFonts();
   const config = loadConfig();
   const fixturesDir = join(ROOT, config.fixturesDir);
@@ -284,6 +392,13 @@ function main(): void {
   writeFileSync(join(reportDir, "summary.json"), JSON.stringify(summary, null, 2));
   writeFileSync(join(reportDir, "summary.md"), formatSummaryMd(summary));
   writeFileSync(join(reportDir, "per-region.csv"), formatCsv(imageMetrics));
+
+  const vizResults = await renderVisualization(
+    fixturesDir, imagesDir, fontFamily, ctx as unknown as CanvasRenderingContext2D,
+  );
+  for (const { name, buffer } of vizResults) {
+    writeFileSync(join(reportDir, name), buffer);
+  }
 
   console.log(`Benchmark complete. Report: ${reportDir}`);
   console.log(`  Composite score: ${summary.avgCompositeScore.toFixed(4)}`);

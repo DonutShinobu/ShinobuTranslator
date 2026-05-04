@@ -13,8 +13,6 @@ export function drawRegions(
     throw new Error(`${title} 阶段无法创建预览画布`);
   }
 
-  ctx.strokeStyle = "#ff3b30";
-  ctx.fillStyle = "rgba(255,59,48,0.14)";
   ctx.lineWidth = 2;
   ctx.font = '14px "Source Han Sans SC", "Noto Sans SC", sans-serif';
   ctx.textBaseline = "top";
@@ -22,6 +20,14 @@ export function drawRegions(
   for (let i = 0; i < regions.length; i += 1) {
     const region = regions[i];
     const { x, y, width, height } = region.box;
+    const hasBubble = !!region.bubbleBox;
+    if (!hasBubble) {
+      ctx.strokeStyle = "#ff9500";
+      ctx.fillStyle = "rgba(255,149,0,0.18)";
+    } else {
+      ctx.strokeStyle = "#ff3b30";
+      ctx.fillStyle = "rgba(255,59,48,0.14)";
+    }
     if (region.quad && region.quad.length === 4) {
       ctx.beginPath();
       ctx.moveTo(region.quad[0].x, region.quad[0].y);
@@ -50,7 +56,7 @@ export function drawRegions(
     ctx.fillRect(labelX, labelY, labelWidth, 18);
     ctx.fillStyle = "#ffffff";
     ctx.fillText(label, labelX + 5, labelY + 2);
-    ctx.fillStyle = "rgba(255,59,48,0.14)";
+    ctx.fillStyle = hasBubble ? "rgba(255,59,48,0.14)" : "rgba(255,149,0,0.18)";
   }
 
   return canvas;

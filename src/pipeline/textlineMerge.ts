@@ -9,6 +9,7 @@
  */
 
 import type { TextRegion, TextDirection, QuadPoint, Rect } from "../types";
+import { minAreaRect } from "./geometry";
 
 // ---------------------------------------------------------------------------
 // Internal types
@@ -829,28 +830,16 @@ function buildMergedRegion(group: MergedGroup, allQuads: InternalQuad[]): TextRe
     height: Math.round(maxY - minY),
   };
 
-  // Convex hull quad — take convex hull of all quad points, then pick 4 representative corners
+  // Use minAreaRect to preserve rotation angle from detected text lines
   const allPoints: Point2D[] = [];
   for (const q of txtlns) {
     allPoints.push(...q.pts);
   }
-  const hull = convexHull(allPoints);
 
-  // Approximate the hull as a 4-point quad (minimum bounding quad)
-  // Use the extremes of the hull
   let quad: [QuadPoint, QuadPoint, QuadPoint, QuadPoint];
-  if (hull.length >= 4) {
-    // Use sort_pnts equivalent on the hull bounding corners
-    const hullMinX = Math.min(...hull.map((p) => p.x));
-    const hullMinY = Math.min(...hull.map((p) => p.y));
-    const hullMaxX = Math.max(...hull.map((p) => p.x));
-    const hullMaxY = Math.max(...hull.map((p) => p.y));
-    quad = [
-      { x: hullMinX, y: hullMinY },
-      { x: hullMaxX, y: hullMinY },
-      { x: hullMaxX, y: hullMaxY },
-      { x: hullMinX, y: hullMaxY },
-    ];
+  const mar = minAreaRect(allPoints);
+  if (mar) {
+    quad = mar.box;
   } else {
     quad = [
       { x: box.x, y: box.y },

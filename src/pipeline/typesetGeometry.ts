@@ -1382,9 +1382,6 @@ export function expandRegionBeforeRender(
   calcHorizontalLineCount: (ctx: CanvasRenderingContext2D, text: string, maxWidth: number, fontSize: number) => number,
 ): TextRegion {
   const expanded = cloneRegionForTypeset(region);
-  if (expanded.bubbleBox) {
-    expanded.box = { ...expanded.bubbleBox };
-  }
   const initialFontSize = resolveInitialFontSize(expanded);
   let targetFontSize = initialFontSize;
   expanded.fontSize = targetFontSize;

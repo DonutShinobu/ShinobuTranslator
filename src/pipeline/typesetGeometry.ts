@@ -1535,9 +1535,6 @@ export function computeFullVerticalTypeset(
   const preferredColumnSources = preferredColumnSegments?.map((segment) => segment.source);
 
   const cloned = cloneRegionForTypeset(inputRegion);
-  if (cloned.bubbleBox) {
-    cloned.box = { ...cloned.bubbleBox };
-  }
   if (preferredColumns && preferredColumns.length > 0) {
     cloned.translatedColumns = preferredColumns;
   }
@@ -1583,7 +1580,7 @@ export function computeFullVerticalTypeset(
   const boxPadding = resolveBoxPadding(region);
   const contentWidth = Math.max(20, region.box.width - boxPadding * 2);
   const contentHeight = Math.max(20, region.box.height - boxPadding * 2);
-  const verticalContentHeight = resolveVerticalContentHeight(contentHeight, estimatedInitialFontSize);
+  let verticalContentHeight = resolveVerticalContentHeight(contentHeight, estimatedInitialFontSize);
 
   const preferredProfile = estimateVerticalPreferredProfile(
     measureCtx,
@@ -1621,6 +1618,54 @@ export function computeFullVerticalTypeset(
     ff,
   );
 
+  let effectiveContentHeight = verticalContentHeight;
+  let perColumnMaxHeight: ((columnIndex: number) => number) | undefined;
+
+  if (layout.columns.length > targetColumnCount && inputRegion.bubbleMask) {
+    const mask = inputRegion.bubbleMask;
+    const boxTop = region.box.y + boxPadding;
+    const boxLeft = region.box.x + boxPadding;
+
+    const totalColW = layout.columns.length * layout.metrics.colWidth
+      + Math.max(0, layout.columns.length - 1) * layout.metrics.colSpacing;
+    const offsetX = (contentWidth - totalColW) / 2;
+    const colStartX = offsetX + totalColW - layout.metrics.colWidth / 2;
+
+    const perColMaxHeights: number[] = [];
+    for (let c = 0; c < layout.columns.length; c++) {
+      const localCx = colStartX - c * (layout.metrics.colWidth + layout.metrics.colSpacing);
+      const colHalfW = layout.metrics.colWidth / 2;
+      const imageXStart = boxLeft + localCx - colHalfW;
+      const imageXEnd = boxLeft + localCx + colHalfW;
+      const maskMaxY = queryMaskMaxY(mask, imageXStart, imageXEnd, boxTop);
+      perColMaxHeights.push(Math.max(verticalContentHeight, maskMaxY - boxTop));
+    }
+
+    effectiveContentHeight = Math.max(verticalContentHeight, ...perColMaxHeights);
+    perColumnMaxHeight = (ci: number) => perColMaxHeights[ci] ?? verticalContentHeight;
+
+    const extendedProfile = estimateVerticalPreferredProfile(
+      measureCtx, region, text, contentWidth, effectiveContentHeight,
+      estimatedInitialFontSize, ff, region.translatedColumns,
+    );
+    const extendedOptions: BuildVerticalLayoutOptions = {
+      ...verticalLayoutOptions,
+      colSpacingScale: extendedProfile.colSpacingScale,
+      advanceScale: extendedProfile.advanceScale,
+      perColumnMaxHeight,
+    };
+    const extendedLayout = buildVerticalLayout(
+      measureCtx, text, effectiveContentHeight, estimatedInitialFontSize, ff, extendedOptions,
+    );
+    const shrunk = tryShrinkVerticalForMinorOverflow(
+      measureCtx, text, effectiveContentHeight, estimatedInitialFontSize,
+      extendedOptions, extendedLayout, ff,
+    );
+    fontSize = shrunk.fontSize;
+    layout = shrunk.layout;
+    verticalLayoutOptions.perColumnMaxHeight = perColumnMaxHeight;
+  }
+
   if (layout.columns.length > targetColumnCount && fontSize > minFontSafetySize) {
     const minAllowed = Math.max(minFontSafetySize, Math.ceil(estimatedInitialFontSize * 0.3));
     let lo = minAllowed;
@@ -1630,14 +1675,15 @@ export function computeFullVerticalTypeset(
     while (lo <= hi) {
       const mid = Math.floor((lo + hi) / 2);
       const profile = estimateVerticalPreferredProfile(
-        measureCtx, region, text, contentWidth, verticalContentHeight, mid, ff, region.translatedColumns,
+        measureCtx, region, text, contentWidth, effectiveContentHeight, mid, ff, region.translatedColumns,
       );
       const opts: BuildVerticalLayoutOptions = {
         ...verticalLayoutOptions,
         colSpacingScale: profile.colSpacingScale,
         advanceScale: profile.advanceScale,
+        perColumnMaxHeight,
       };
-      const candidate = buildVerticalLayout(measureCtx, text, verticalContentHeight, mid, ff, opts);
+      const candidate = buildVerticalLayout(measureCtx, text, effectiveContentHeight, mid, ff, opts);
       if (candidate.columns.length <= targetColumnCount) {
         bestFs = mid;
         bestLayout = candidate;
@@ -1660,7 +1706,7 @@ export function computeFullVerticalTypeset(
   const debugColumnBoxes = buildVerticalDebugColumnBoxes(
     columns,
     contentWidth,
-    verticalContentHeight,
+    effectiveContentHeight,
     metrics,
     alignment,
     strokePadding,
@@ -1685,11 +1731,11 @@ export function computeFullVerticalTypeset(
     metrics,
     debugColumnBoxes,
     offscreenWidth: Math.ceil(contentWidth + strokePadding * 2),
-    offscreenHeight: Math.ceil(verticalContentHeight + strokePadding * 2),
+    offscreenHeight: Math.ceil(effectiveContentHeight + strokePadding * 2),
     boxPadding,
     strokePadding,
     contentWidth,
-    verticalContentHeight,
+    verticalContentHeight: effectiveContentHeight,
     alignment,
   };
 }

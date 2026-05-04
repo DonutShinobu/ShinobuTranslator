@@ -47,7 +47,17 @@ function queryMaskMaxY(
 
 从 `yStart` 逐行向下扫描，检查 `[xStart, xEnd]` 范围内所有像素的 alpha 是否 > 0。当整行全部不在 mask 内时，返回上一行的 y 坐标。如果扫描到 mask 底部都在内，返回 `mask.height - 1`。
 
-### 4. 排版逻辑变更
+### 4. 排版接口变更
+
+`buildVerticalLayout` / `calcVertical` 增加可选参数，支持逐列不同高度上限：
+
+```typescript
+perColumnMaxHeight?: (columnIndex: number) => number
+```
+
+排版时每列的换行判断从 `colHeight + advanceY > maxHeight` 改为使用该列对应的高度上限。不传时退回统一的 `maxHeight`。
+
+### 5. 排版逻辑变更
 
 **在 `computeFullVerticalTypeset` 中：**
 
@@ -56,18 +66,18 @@ function queryMaskMaxY(
 1. 用原始 `box` 计算 `contentHeight`，用原始字号排版
 2. 如果列数 ≤ 目标列数 → 完成，无需任何调整
 3. 如果溢出，且有 `bubbleMask`：
-   a. 对每一列，根据该列的实际 x 范围（含 padding 和列间距）和 box 顶部 y，调用 `queryMaskMaxY` 获取该列可用的最大 y
-   b. 每列的可扩展高度 = `maxY - (box.y + boxPadding)`
-   c. 取所有列中最小的可扩展高度作为 `extendedContentHeight`
-   d. 用 `extendedContentHeight` + 原始字号重新排版
-4. 如果扩展后还溢出 → 在 `extendedContentHeight` 范围内二分缩小字号
+   a. 对每一列，根据该列在图上的实际 x 范围和 box 顶部 y，调用 `queryMaskMaxY` 获取该列可用的最大 y
+   b. 每列各自的可扩展高度 = `maxY - (box.y + boxPadding)`
+   c. 通过 `perColumnMaxHeight` 将每列各自的高度上限传入排版
+   d. 用各列独立高度 + 原始字号重新排版
+4. 如果扩展后还溢出 → 在各列独立高度范围内二分缩小字号
 5. 没有 `bubbleMask` 时退回现有逻辑（不做 box 替换，保持原有行为）
 
 **在 `expandRegionBeforeRender` 中：**
 
 移除 `expanded.box = bubbleBox` 的替换逻辑。
 
-### 5. 对齐保持
+### 6. 对齐保持
 
 - box 的 x、y、width 始终不变
 - 扩展只影响 contentHeight（向下延伸）

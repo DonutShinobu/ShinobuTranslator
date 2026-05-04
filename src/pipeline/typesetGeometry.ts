@@ -1129,7 +1129,9 @@ export function estimateVerticalPreferredProfile(
   const metrics = resolveVerticalCellMetrics(ctx, text, fontSize, sw);
   const sourceColumns = resolveSourceColumns(region);
   const sourceLengths = sourceColumns.map((column) => countTextLength(column));
-  const baselineLength = Math.max(1, ...sourceLengths);
+  const translatedColumnTexts = preferredColumns ?? [text];
+  const translatedLengths = translatedColumnTexts.map((c) => countTextLength(c));
+  const baselineLength = Math.max(1, ...sourceLengths, ...translatedLengths);
 
   const targetAdvance = contentHeight / baselineLength;
   const baseAdvance = Math.max(1, metrics.defaultAdvanceY * verticalAdvanceTightenRatio);

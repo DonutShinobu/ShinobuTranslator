@@ -327,6 +327,7 @@ export function matchRegionsToBubbles(
 
     if (bestBubble) {
       region.bubbleBox = { ...bestBubble.box };
+      region.bubbleMask = bestBubble.mask;
     } else {
       unmatchedRegionIds.push(region.id);
     }

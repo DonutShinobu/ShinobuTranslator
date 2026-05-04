@@ -71,7 +71,7 @@ export async function loadManifest(): Promise<ManifestData> {
   return data;
 }
 
-export async function getModel(name: 'detector' | 'ocr' | 'inpaint'): Promise<ManifestModel> {
+export async function getModel(name: 'detector' | 'ocr' | 'inpaint' | 'bubble'): Promise<ManifestModel> {
   const manifest = await loadManifest();
   const model = manifest.models?.[name];
   if (!model) {
@@ -86,7 +86,7 @@ export async function getModel(name: 'detector' | 'ocr' | 'inpaint'): Promise<Ma
 }
 
 export async function getModelSession(
-  name: 'detector' | 'ocr' | 'inpaint',
+  name: 'detector' | 'ocr' | 'inpaint' | 'bubble',
   preferred?: RuntimeProvider[]
 ): Promise<SessionHandle> {
   const model = await getModel(name);

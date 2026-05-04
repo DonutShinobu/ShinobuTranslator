@@ -27,6 +27,13 @@
       "normalize": "zero_to_one",
       "outputNormalize": "zero_to_255",
       "maskInputName": "mask"
+    },
+    "bubble": {
+      "name": "bubble",
+      "task": "bubble-segmentation",
+      "url": "/models/bubble.onnx",
+      "input": [640, 640],
+      "runtime": ["webgpu", "webnn", "wasm"]
     }
   }
 }

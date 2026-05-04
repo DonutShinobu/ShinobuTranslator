@@ -16,6 +16,7 @@ import { drawRegions } from "./visualize";
 import { mergeTextLines } from "./textlineMerge";
 import { refineTextMask } from "./maskRefinement";
 import { sortRegionsForRender } from "./readingOrder";
+import { detectBubbles, matchRegionsToBubbles } from "./bubbleDetect";
 import type { RuntimeStageStatus } from "../types";
 import { getModelSession } from "../runtime/modelRegistry";
 
@@ -158,6 +159,22 @@ export async function runPipeline(
     stageTimings.push({ stage: "detect", label: "文本检测", durationMs: performance.now() - t0 });
   } catch (error) {
     throw new PipelineStageError("文本检测", toErrorDetail(error), buildArtifacts());
+  }
+
+  report(onProgress, "bubble", "气泡检测");
+  try {
+    const t0 = performance.now();
+    const bubbleResult = await detectBubbles(image);
+    const matchResult = matchRegionsToBubbles(latestRegions, bubbleResult.bubbles);
+    if (matchResult.unmatchedCount > 0) {
+      console.warn(
+        `[bubble] ${matchResult.unmatchedCount} 个文字区域未匹配到气泡:`,
+        matchResult.unmatchedRegionIds,
+      );
+    }
+    stageTimings.push({ stage: "bubble", label: "气泡检测", durationMs: performance.now() - t0 });
+  } catch (error) {
+    throw new PipelineStageError("气泡检测", toErrorDetail(error), buildArtifacts());
   }
 
   report(onProgress, "ocr", "OCR 日文识别");

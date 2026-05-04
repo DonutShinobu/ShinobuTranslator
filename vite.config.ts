@@ -64,7 +64,7 @@ function chromeExtensionContentScriptPlugin(): Plugin {
         // Also replace any import.meta.url in chunks
         chunk.code = chunk.code.replace(
           /\bimport\.meta\.url\b/g,
-          '(typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.getURL ? chrome.runtime.getURL(fileName.replace(/^chunks\//, "")) : self.location.href)',
+          `(typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.getURL ? chrome.runtime.getURL("${fileName}") : self.location.href)`,
         );
       }
     },

@@ -16,7 +16,7 @@ import { drawRegions } from "./visualize";
 import { mergeTextLines } from "./textlineMerge";
 import { refineTextMask } from "./maskRefinement";
 import { sortRegionsForRender } from "./readingOrder";
-import { detectBubbles, matchRegionsToBubbles } from "./bubbleDetect";
+import { detectBubbles, matchRegionsToBubbles, type BubbleDetection } from "./bubbleDetect";
 import type { RuntimeStageStatus } from "../types";
 import { getModelSession } from "../runtime/modelRegistry";
 
@@ -161,17 +161,12 @@ export async function runPipeline(
     throw new PipelineStageError("文本检测", toErrorDetail(error), buildArtifacts());
   }
 
+  let detectedBubbles: BubbleDetection[] = [];
   report(onProgress, "bubble", "气泡检测");
   try {
     const t0 = performance.now();
     const bubbleResult = await detectBubbles(image);
-    const matchResult = matchRegionsToBubbles(latestRegions, bubbleResult.bubbles);
-    if (matchResult.unmatchedCount > 0) {
-      console.warn(
-        `[bubble] ${matchResult.unmatchedCount} 个文字区域未匹配到气泡:`,
-        matchResult.unmatchedRegionIds,
-      );
-    }
+    detectedBubbles = bubbleResult.bubbles;
     stageTimings.push({ stage: "bubble", label: "气泡检测", durationMs: performance.now() - t0 });
   } catch (error) {
     throw new PipelineStageError("气泡检测", toErrorDetail(error), buildArtifacts());
@@ -213,6 +208,16 @@ export async function runPipeline(
     stageTimings.push({ stage: "merge", label: "合并文本行", durationMs: performance.now() - t0 });
   } catch (error) {
     throw new PipelineStageError("文本行合并", toErrorDetail(error), buildArtifacts());
+  }
+
+  if (detectedBubbles.length > 0) {
+    const matchResult = matchRegionsToBubbles(latestRegions, detectedBubbles);
+    if (matchResult.unmatchedCount > 0) {
+      console.warn(
+        `[bubble] ${matchResult.unmatchedCount} 个文字区域未匹配到气泡:`,
+        matchResult.unmatchedRegionIds,
+      );
+    }
   }
 
   report(onProgress, "order", "文本顺序排序");

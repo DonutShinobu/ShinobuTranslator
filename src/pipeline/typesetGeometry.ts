@@ -1311,6 +1311,38 @@ export function countNeededColumnsAtFontSize(
   return Math.max(1, columns.length);
 }
 
+export function queryMaskMaxY(
+  mask: ImageData,
+  xStart: number,
+  xEnd: number,
+  yStart: number,
+): number {
+  const clampedXStart = Math.max(0, Math.round(xStart));
+  const clampedXEnd = Math.min(mask.width - 1, Math.round(xEnd));
+  const maxY = mask.height - 1;
+
+  if (clampedXStart > clampedXEnd || yStart > maxY) {
+    return Math.round(yStart);
+  }
+
+  let lastValidY = Math.round(yStart);
+  for (let y = Math.round(yStart); y <= maxY; y++) {
+    let allOutside = true;
+    for (let x = clampedXStart; x <= clampedXEnd; x++) {
+      const idx = (y * mask.width + x) * 4;
+      if (mask.data[idx + 3] > 0) {
+        allOutside = false;
+        break;
+      }
+    }
+    if (allOutside) {
+      return lastValidY;
+    }
+    lastValidY = y;
+  }
+  return lastValidY;
+}
+
 export function resolveBoxPadding(_region: TextRegion): number {
   return 0;
 }

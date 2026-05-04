@@ -628,7 +628,7 @@ function compositeRegion(
   }
 
   const angle = quadAngle(quad);
-  const isRotated = Math.abs(angle) > 0.01;
+  const isRotated = Math.abs(angle) > 0.052;
 
   if (!isRotated) {
     mainCtx.drawImage(offCanvas, drawX, drawY);

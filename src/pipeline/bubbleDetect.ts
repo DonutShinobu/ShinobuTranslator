@@ -147,6 +147,10 @@ function decodeDetections(
   imgW: number,
   imgH: number,
 ): RawDetection[] {
+  // 4(box) + 1(score) + 32(mask coefficients) = 37 for single-class YOLOv8-seg
+  if (shape[1] !== 37) {
+    throw new Error(`气泡检测模型 output0 通道数异常: 期望 37, 实际 ${shape[1]}`);
+  }
   const numCandidates = shape[2];
 
   const detections: ScoredBox[] = [];
@@ -323,7 +327,6 @@ export function matchRegionsToBubbles(
 
     if (bestBubble) {
       region.bubbleBox = { ...bestBubble.box };
-      region.bubbleMask = bestBubble.mask;
     } else {
       unmatchedRegionIds.push(region.id);
     }

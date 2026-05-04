@@ -1622,6 +1622,8 @@ export function computeFullVerticalTypeset(
     const mask = inputRegion.bubbleMask;
     const boxTop = region.box.y + boxPadding;
     const boxLeft = region.box.x + boxPadding;
+    const sw = strokeWidth(estimatedInitialFontSize);
+    const safetyMargin = sw + 2;
 
     const totalColW = layout.columns.length * layout.metrics.colWidth
       + Math.max(0, layout.columns.length - 1) * layout.metrics.colSpacing;
@@ -1631,11 +1633,11 @@ export function computeFullVerticalTypeset(
     const perColMaxHeights: number[] = [];
     for (let c = 0; c < layout.columns.length; c++) {
       const localCx = colStartX - c * (layout.metrics.colWidth + layout.metrics.colSpacing);
-      const colHalfW = layout.metrics.colWidth / 2;
+      const colHalfW = layout.metrics.colWidth / 2 + sw;
       const imageXStart = boxLeft + localCx - colHalfW;
       const imageXEnd = boxLeft + localCx + colHalfW;
       const maskMaxY = queryMaskMaxY(mask, imageXStart, imageXEnd, boxTop);
-      perColMaxHeights.push(Math.max(verticalContentHeight, maskMaxY - boxTop));
+      perColMaxHeights.push(Math.max(verticalContentHeight, maskMaxY - boxTop - safetyMargin));
     }
 
     effectiveContentHeight = Math.max(verticalContentHeight, ...perColMaxHeights);

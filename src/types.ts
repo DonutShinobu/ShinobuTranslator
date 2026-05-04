@@ -28,6 +28,7 @@ export type TextRegion = {
   /** Optional LLM-provided vertical columns, ordered right-to-left. */
   translatedColumns?: string[];
   bubbleBox?: Rect;
+  bubbleMask?: ImageData;
 };
 
 export type PipelineConfig = {

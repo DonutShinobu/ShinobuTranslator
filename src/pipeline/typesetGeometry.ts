@@ -400,6 +400,7 @@ export type BuildVerticalLayoutOptions = {
   advanceScale?: number;
   preferredColumns?: string[];
   preferredColumnSources?: ColumnSegmentSource[];
+  perColumnMaxHeight?: (columnIndex: number) => number;
 };
 
 export type VerticalLayoutResult = {
@@ -598,6 +599,7 @@ export function calcVertical(
   fontSize: number,
   defaultAdvanceY: number,
   advanceScale = 1,
+  perColumnMaxHeight?: (columnIndex: number) => number,
 ): VColumn[] {
   const chars = [...text.replace(/\s+/g, "")];
   if (chars.length === 0) return [];
@@ -616,13 +618,15 @@ export function calcVertical(
   const columns: VColumn[] = [];
   let col: VerticalGlyph[] = [];
   let colHeight = 0;
+  let colIndex = 0;
 
   for (let i = 0; i < chars.length; i++) {
     const raw = chars[i];
     const ch = CJK_H2V.get(raw) ?? raw;
     const advanceY = getAdvance(ch);
 
-    if (colHeight + advanceY > maxHeight && col.length > 0) {
+    const currentMaxHeight = perColumnMaxHeight ? perColumnMaxHeight(colIndex) : maxHeight;
+    if (colHeight + advanceY > currentMaxHeight && col.length > 0) {
       // Check kinsoku: next char can't start a column
       if (KINSOKU_NSTART.has(ch)) {
         col.push({ ch, advanceY });
@@ -630,6 +634,7 @@ export function calcVertical(
         columns.push({ glyphs: col, height: colHeight });
         col = [];
         colHeight = 0;
+        colIndex++;
         continue;
       }
 
@@ -640,12 +645,14 @@ export function calcVertical(
         columns.push({ glyphs: col, height: colHeight - carry.advanceY });
         col = [carry, { ch, advanceY }];
         colHeight = carry.advanceY + advanceY;
+        colIndex++;
         continue;
       }
 
       columns.push({ glyphs: col, height: colHeight });
       col = [];
       colHeight = 0;
+      colIndex++;
     }
 
     col.push({ ch, advanceY });
@@ -666,6 +673,7 @@ export function calcVerticalFromColumns(
   fontSize: number,
   defaultAdvanceY: number,
   advanceScale = 1,
+  perColumnMaxHeight?: (columnIndex: number) => number,
 ): {
   columns: VColumn[];
   columnBreakReasons: ColumnBreakReason[];
@@ -722,6 +730,7 @@ export function calcVerticalFromColumns(
       fontSize,
       defaultAdvanceY,
       advanceScale,
+      perColumnMaxHeight ? (ci) => perColumnMaxHeight(columns.length + ci) : undefined,
     );
     const segmentMaxGlyphCount = Math.max(1, ...segmentColumns.map((column) => column.glyphs.length));
     if (segmentColumns.length === 0) {
@@ -737,7 +746,8 @@ export function calcVerticalFromColumns(
       const firstColumn = segmentColumns[0];
       while (firstColumn.glyphs.length > 0) {
         const glyph = firstColumn.glyphs[0];
-        if (lastColumn.height + glyph.advanceY > maxHeight) {
+        const currentColMaxHeight = perColumnMaxHeight ? perColumnMaxHeight(columns.length - 1) : maxHeight;
+        if (lastColumn.height + glyph.advanceY > currentColMaxHeight) {
           break;
         }
         firstColumn.glyphs.shift();
@@ -1048,6 +1058,7 @@ export function buildVerticalLayout(
       fontSize,
       metrics.defaultAdvanceY,
       advanceScale,
+      options.perColumnMaxHeight,
     );
     columns = detailed.columns;
     columnBreakReasons = detailed.columnBreakReasons;
@@ -1061,6 +1072,7 @@ export function buildVerticalLayout(
       fontSize,
       metrics.defaultAdvanceY,
       advanceScale,
+      options?.perColumnMaxHeight,
     );
     columnBreakReasons = columns.map((_, index) => (index === 0 ? 'start' : 'wrap'));
     columnSegmentIds = columns.map(() => 1);

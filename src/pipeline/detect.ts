@@ -1,6 +1,7 @@
 import * as ort from "onnxruntime-web/all";
 import { PSM, createWorker } from "tesseract.js";
-import type { Rect, TextRegion } from "../types";
+import type { Rect, TextRegion, QuadPoint } from "../types";
+import { convexHull, minAreaRect, type Quad } from "./geometry";
 import { getModelSession } from "../runtime/modelRegistry";
 import { isContextLostRuntimeError } from "../runtime/onnx";
 import type { RuntimeProvider, WebNnDeviceType } from "../runtime/onnx";
@@ -31,15 +32,8 @@ type BBoxScore = {
   score: number;
 };
 
-type Point = {
-  x: number;
-  y: number;
-};
-
-type Quad = [Point, Point, Point, Point];
-
 type MaskComponent = {
-  boundary: Point[];
+  boundary: QuadPoint[];
 };
 
 export type DetectOutput = {
@@ -72,11 +66,11 @@ function roundHalfToEven(value: number): number {
   return base % 2 === 0 ? base : base + 1;
 }
 
-function distance(a: Point, b: Point): number {
+function distance(a: QuadPoint, b: QuadPoint): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-function polygonArea(points: Point[]): number {
+function polygonArea(points: QuadPoint[]): number {
   if (points.length < 3) {
     return 0;
   }
@@ -89,7 +83,7 @@ function polygonArea(points: Point[]): number {
   return Math.abs(acc) * 0.5;
 }
 
-function polygonPerimeter(points: Point[]): number {
+function polygonPerimeter(points: QuadPoint[]): number {
   if (points.length < 2) {
     return 0;
   }
@@ -100,7 +94,7 @@ function polygonPerimeter(points: Point[]): number {
   return acc;
 }
 
-function pointInPolygon(x: number, y: number, polygon: Point[]): boolean {
+function pointInPolygon(x: number, y: number, polygon: QuadPoint[]): boolean {
   let inside = false;
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
     const xi = polygon[i].x;
@@ -115,7 +109,7 @@ function pointInPolygon(x: number, y: number, polygon: Point[]): boolean {
   return inside;
 }
 
-function polygonScoreFast(scoreMap: Float32Array, width: number, height: number, polygon: Point[]): number {
+function polygonScoreFast(scoreMap: Float32Array, width: number, height: number, polygon: QuadPoint[]): number {
   if (polygon.length < 3) {
     return 0;
   }
@@ -139,150 +133,6 @@ function polygonScoreFast(scoreMap: Float32Array, width: number, height: number,
     return 0;
   }
   return sum / count;
-}
-
-function sortMiniBoxPoints(points: Point[]): Quad {
-  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
-  let index1 = 0;
-  let index2 = 1;
-  let index3 = 2;
-  let index4 = 3;
-
-  if (sorted[1].y > sorted[0].y) {
-    index1 = 0;
-    index4 = 1;
-  } else {
-    index1 = 1;
-    index4 = 0;
-  }
-  if (sorted[3].y > sorted[2].y) {
-    index2 = 2;
-    index3 = 3;
-  } else {
-    index2 = 3;
-    index3 = 2;
-  }
-
-  return [
-    { x: sorted[index1].x, y: sorted[index1].y },
-    { x: sorted[index2].x, y: sorted[index2].y },
-    { x: sorted[index3].x, y: sorted[index3].y },
-    { x: sorted[index4].x, y: sorted[index4].y }
-  ];
-}
-
-function convexHull(points: Point[]): Point[] {
-  if (points.length <= 1) {
-    return points.map((point) => ({ ...point }));
-  }
-  const unique = [...new Map(points.map((point) => [`${point.x},${point.y}`, point])).values()].sort(
-    (a, b) => a.x - b.x || a.y - b.y
-  );
-  if (unique.length <= 2) {
-    return unique;
-  }
-
-  const cross = (o: Point, a: Point, b: Point): number => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
-  const lower: Point[] = [];
-  for (const point of unique) {
-    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], point) <= 0) {
-      lower.pop();
-    }
-    lower.push(point);
-  }
-  const upper: Point[] = [];
-  for (let i = unique.length - 1; i >= 0; i -= 1) {
-    const point = unique[i];
-    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], point) <= 0) {
-      upper.pop();
-    }
-    upper.push(point);
-  }
-
-  lower.pop();
-  upper.pop();
-  return [...lower, ...upper];
-}
-
-function minAreaRect(points: Point[]): { box: Quad; shortSide: number } | null {
-  if (points.length === 0) {
-    return null;
-  }
-
-  const hull = convexHull(points);
-  if (hull.length === 0) {
-    return null;
-  }
-  if (hull.length === 1) {
-    const p = hull[0];
-    const box: Quad = [
-      { x: p.x, y: p.y },
-      { x: p.x + 1, y: p.y },
-      { x: p.x + 1, y: p.y + 1 },
-      { x: p.x, y: p.y + 1 }
-    ];
-    return { box, shortSide: 1 };
-  }
-
-  let bestArea = Number.POSITIVE_INFINITY;
-  let bestWidth = 0;
-  let bestHeight = 0;
-  let bestBox: Quad | null = null;
-
-  for (let i = 0; i < hull.length; i += 1) {
-    const a = hull[i];
-    const b = hull[(i + 1) % hull.length];
-    const edgeX = b.x - a.x;
-    const edgeY = b.y - a.y;
-    const edgeNorm = Math.hypot(edgeX, edgeY);
-    if (edgeNorm <= 1e-6) {
-      continue;
-    }
-
-    const ux = edgeX / edgeNorm;
-    const uy = edgeY / edgeNorm;
-    const vx = -uy;
-    const vy = ux;
-
-    let minU = Number.POSITIVE_INFINITY;
-    let maxU = Number.NEGATIVE_INFINITY;
-    let minV = Number.POSITIVE_INFINITY;
-    let maxV = Number.NEGATIVE_INFINITY;
-
-    for (const point of hull) {
-      const pu = point.x * ux + point.y * uy;
-      const pv = point.x * vx + point.y * vy;
-      minU = Math.min(minU, pu);
-      maxU = Math.max(maxU, pu);
-      minV = Math.min(minV, pv);
-      maxV = Math.max(maxV, pv);
-    }
-
-    const width = maxU - minU;
-    const height = maxV - minV;
-    const area = width * height;
-    if (area >= bestArea) {
-      continue;
-    }
-
-    bestArea = area;
-    bestWidth = width;
-    bestHeight = height;
-    bestBox = sortMiniBoxPoints([
-      { x: ux * minU + vx * minV, y: uy * minU + vy * minV },
-      { x: ux * maxU + vx * minV, y: uy * maxU + vy * minV },
-      { x: ux * maxU + vx * maxV, y: uy * maxU + vy * maxV },
-      { x: ux * minU + vx * maxV, y: uy * minU + vy * maxV }
-    ]);
-  }
-
-  if (!bestBox) {
-    return null;
-  }
-  return {
-    box: bestBox,
-    shortSide: Math.min(bestWidth, bestHeight)
-  };
 }
 
 function unclipBox(box: Quad, unclipRatio: number): Quad {
@@ -947,7 +797,7 @@ function extractMaskComponents(mask: Uint8Array, width: number, height: number):
       continue;
     }
 
-    const boundary: Point[] = [];
+    const boundary: QuadPoint[] = [];
     for (const pixel of pixels) {
       const x = pixel % width;
       const y = Math.floor(pixel / width);

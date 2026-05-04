@@ -5,6 +5,7 @@ import { runOcr } from "./ocr";
 import { mergeTextLines } from "./textlineMerge";
 import { sortRegionsForRender } from "./readingOrder";
 import { drawTypeset } from "./typeset";
+import { detectBubbles, matchRegionsToBubbles } from "./bubbleDetect";
 
 type DetectedColumn = {
   centerX: number;
@@ -92,6 +93,11 @@ export async function shinobuRender(dataUrl: string): Promise<string> {
   let regions = mergeTextLines(ocrResult.regions, w, h);
   regions = sortRegionsForRender(regions, canvas);
 
+  const bubbleResult = await detectBubbles(image);
+  if (bubbleResult.bubbles.length > 0) {
+    matchRegionsToBubbles(regions, bubbleResult.bubbles);
+  }
+
   for (const r of regions) {
     r.translatedText = r.sourceText;
     r.fgColor = [0, 80, 255];
@@ -118,6 +124,11 @@ export async function shinobuBake(dataUrl: string): Promise<BakeResult> {
 
   let regions = mergeTextLines(ocrResult.regions, w, h);
   regions = sortRegionsForRender(regions, canvas);
+
+  const bubbleResultBake = await detectBubbles(image);
+  if (bubbleResultBake.bubbles.length > 0) {
+    matchRegionsToBubbles(regions, bubbleResultBake.bubbles);
+  }
 
   for (const r of regions) {
     r.translatedText = r.sourceText;

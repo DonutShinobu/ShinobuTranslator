@@ -47,7 +47,7 @@ detect → bubbleDetect → OCR → merge → translate/erase → typeset
 1. 计算文字 region 中心点
 2. 遍历所有气泡，检查中心点是否在气泡 mask 内（像素级）
 3. 多个气泡包含该中心点时，选面积最小的
-4. 无匹配 → 该 region 不设 bubbleBox，排版走现有逻辑
+4. 无匹配 → 该 region 不设 bubbleBox，排版走现有逻辑；在日志中记录该 region 未匹配气泡，日志可视化中也要有对应反馈（如高亮未匹配的 region）
 
 ## 排版改动
 
@@ -60,8 +60,5 @@ detect → bubbleDetect → OCR → merge → translate/erase → typeset
 
 - 模型加载失败 → 报错，中断流程
 - 推理失败 → 报错，中断流程
-- 某个 region 无匹配气泡 → 静默回退到现有逻辑（不设 bubbleBox）
+- 某个 region 无匹配气泡 → 回退到现有逻辑，日志和日志可视化中反馈未匹配信息
 
-## 用户可控
-
-设置中加一个开关，默认开启。用户可关闭气泡检测以节省时间/资源。

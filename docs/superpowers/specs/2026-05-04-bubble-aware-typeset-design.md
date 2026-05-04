@@ -2,65 +2,24 @@
 
 ## 问题
 
-当前竖排排版的字号决策只考虑"源文本每列有几个字"，不考虑 bubble 的实际空间。虽然 `computeFullVerticalTypeset` 已经将 `region.box` 替换为 `bubbleBox`（第1492行），但后续两层约束仍基于源文本字符数：
+当前竖排排版中，`estimateVerticalPreferredProfile` 的 `baselineLength` 只基于源文本字符数。当译文字数多于源文本时，`advanceScale`（字符间纵向间距缩放）被过度拉大，导致：
 
-1. **初始字号约束**（第1510-1517行）：`maxFontByHeight = availableHeight / singleColumnMaxLength`，其中 `singleColumnMaxLength` 是源文本最长列的字符数。这让初始字号被源文本字数固定住——bubble 再大也不会给出更大的字号。
-2. **列数约束 + 二分搜索**（第1578-1607行）：`targetColumnCount` 基于源文本列数。译文字多排出更多列时，二分搜索会疯狂压缩字号来强制塞回源文本的列数。
-3. **间距约束**（`estimateVerticalPreferredProfile` 第1134行）：`baselineLength` 基于源文本字符数，当源文本字少时 `targetAdvance` 过大，字间距被拉开。
+1. 用初始字号排版时，每个字符占用的纵向空间过大（间距按源文本少量字数分配）
+2. 译文溢出到多列
+3. 二分搜索将字号极度压缩以强制保持源文本的列数
+4. 最终结果：字号极小、字间距过大
 
-结果：字号极小、字间距过大，即使 bubble 空间完全足够放下更大的字。
+以 #6「急に何!?」→「突然说什么!?」为例：init:67px, fit:28px。`baselineLength=5`（源文本字数）使得 `targetAdvance = contentHeight / 5` 过大，6个译文字符在大间距下无法塞进一列，二分搜索把字号从67px压到28px。
 
 ## 设计思路
 
-核心原则：**当有 bubbleBox 时，每列能放多少字应该由 bubble 高度和字号决定，而非由源文本字符数预设**。
+核心修复：**`baselineLength` 应取源文本和译文字符数的较大值**。这样译文字多时，间距不会被过度拉大，同样字号下一列能放更多字，减少不必要的溢出和字号压缩。
 
-当前 `singleColumnMaxLength` 的作用是估算初始字号上限，但 `resolveInitialFontSize` 已经基于 box 尺寸（替换后即 bubble 尺寸）给出了合理的初始值。`singleColumnMaxLength` 约束是多余的——它用源文本字数来二次限制字号，反而阻止了字号利用 bubble 的额外空间。
+`singleColumnMaxLength`（第1510行的初始字号约束）**不需要修改**——从实际 case 推演，该约束在 bubble 较大时不生效（`maxFontByHeight >= initialFontSize`），且跳过它反而可能让初始字号更大、溢出更严重。
 
 ## 修改点
 
-### 1. `computeFullVerticalTypeset` — 跳过基于源文本字符数的字号压制
-
-**文件**：`src/pipeline/typesetGeometry.ts`，约第1510行
-
-**现状**：无论是否有 bubbleBox，都用 `singleColumnMaxLength`（源文本字符数）压低初始字号。
-
-**改为**：当 region 有 bubbleBox 时，跳过 `singleColumnMaxLength` 对初始字号的约束。`resolveInitialFontSize` 已经基于 bubble 大小的 box 给出合理值，排版引擎会根据字号和 bubble 高度自然决定每列放多少字。
-
-```typescript
-if (singleColumnMaxLength && singleColumnMaxLength > 0 && !cloned.bubbleBox) {
-  // 仅在没有 bubble 时才用源文本字符数限制字号
-  const boxPaddingEst = resolveBoxPadding(cloned);
-  const availableHeight = Math.max(20, cloned.box.height - boxPaddingEst * 2);
-  const maxFontByHeight = Math.round(availableHeight / singleColumnMaxLength);
-  if (maxFontByHeight > 0 && maxFontByHeight < estimatedInitialFontSize) {
-    estimatedInitialFontSize = Math.max(8, maxFontByHeight);
-  }
-}
-```
-
-### 2. `computeFullVerticalTypeset` — 放宽列数约束
-
-**文件**：`src/pipeline/typesetGeometry.ts`，约第1578行
-
-**现状**：当排版列数 > `targetColumnCount`（源文本列数）时，二分搜索缩小字号。
-
-**改为**：当有 bubbleBox 时，放宽 `targetColumnCount`。如果排版引擎用合理字号排出的列数能在 bubble 宽度内放下，就接受多出的列数，而不是缩小字号。
-
-```typescript
-let effectiveTargetColumnCount = targetColumnCount;
-if (inputRegion.bubbleBox && layout.columns.length > targetColumnCount) {
-  const totalNeeded = computeVerticalTotalWidth(layout.columns.length, layout.metrics);
-  if (totalNeeded <= contentWidth) {
-    effectiveTargetColumnCount = layout.columns.length;
-  }
-}
-
-if (layout.columns.length > effectiveTargetColumnCount && fontSize > minFontSafetySize) {
-  // ... 二分搜索逻辑不变，但用 effectiveTargetColumnCount
-}
-```
-
-### 3. `estimateVerticalPreferredProfile` — 基于 bubble 高度计算间距
+### 1. `estimateVerticalPreferredProfile` — 修正 baselineLength
 
 **文件**：`src/pipeline/typesetGeometry.ts`，约第1132行
 
@@ -74,7 +33,7 @@ const translatedLengths = translatedColumnTexts.map(c => countTextLength(c));
 const baselineLength = Math.max(1, ...sourceLengths, ...translatedLengths);
 ```
 
-### 4. 调试模式 bubbleBox 可视化
+### 2. 调试模式 bubbleBox 可视化
 
 **文件**：`src/pipeline/typeset.ts`，`drawTypesetDebugOverlay` 函数
 
@@ -93,7 +52,7 @@ if (sourceRegion.bubbleBox) {
 
 ## 预期效果
 
-- 有 bubble 时，初始字号由 bubble 大小决定，不被源文本字符数压低
-- 译文字多时，允许利用 bubble 宽度自然增加列数，而非压缩字号
 - 字间距基于实际需排列的字符数（含译文），不再因源文本字少而被拉大
+- 同样字号下一列能容纳更多译文字符，减少不必要的列溢出
+- 二分搜索触发频率降低，字号压缩幅度减小
 - 调试模式下可看到 bubble 边界（绿色虚线），便于诊断排版问题

@@ -642,14 +642,18 @@ function compositeRegion(
   const cx = (quad[0].x + quad[1].x + quad[2].x + quad[3].x) / 4;
   const cy = (quad[0].y + quad[1].y + quad[2].y + quad[3].y) / 4;
 
-  // Scale from offscreen canvas to quad dimensions
+  // Uniform scale to preserve character aspect ratio.
+  // strokePadding adds equal absolute pixels to both axes, but for narrow
+  // vertical regions this is a larger fraction of width than height,
+  // causing non-uniform sx/sy that distorts glyphs ("瘦长").
   const sx = qw / offCanvas.width;
   const sy = qh / offCanvas.height;
+  const s = Math.min(sx, sy);
 
   mainCtx.save();
   mainCtx.translate(cx, cy);
   mainCtx.rotate(angle);
-  mainCtx.scale(sx, sy);
+  mainCtx.scale(s, s);
   mainCtx.drawImage(
     offCanvas,
     -offCanvas.width / 2,

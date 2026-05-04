@@ -967,8 +967,9 @@ export function mapOffscreenPointToCanvas(
   const cy = (quad[0].y + quad[1].y + quad[2].y + quad[3].y) / 4;
   const sx = qw / Math.max(1, offscreenWidth);
   const sy = qh / Math.max(1, offscreenHeight);
-  const localX = (point.x - offscreenWidth / 2) * sx;
-  const localY = (point.y - offscreenHeight / 2) * sy;
+  const s = Math.min(sx, sy);
+  const localX = (point.x - offscreenWidth / 2) * s;
+  const localY = (point.y - offscreenHeight / 2) * s;
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
   return {
@@ -1547,9 +1548,16 @@ export function computeFullVerticalTypeset(
 
   let estimatedInitialFontSize = Math.max(8, Math.round(resolveInitialFontSize(cloned)));
 
+  // Use quad's real dimensions (edge lengths) instead of AABB so that
+  // the layout space matches the actual rendering target.  When the quad
+  // is tilted its AABB is larger than the true width/height, which would
+  // cause the offscreen canvas to be oversized and then get scaled down
+  // during compositing, shrinking the rendered text.
+  const clonedQuadDims = quadDimensions(getRegionQuad(cloned));
+
   if (singleColumnMaxLength && singleColumnMaxLength > 0) {
     const boxPaddingEst = resolveBoxPadding(cloned);
-    const availableHeight = Math.max(20, cloned.box.height - boxPaddingEst * 2);
+    const availableHeight = Math.max(20, clonedQuadDims.height - boxPaddingEst * 2);
     const maxFontByHeight = Math.round(availableHeight / singleColumnMaxLength);
     if (maxFontByHeight > 0 && maxFontByHeight < estimatedInitialFontSize) {
       estimatedInitialFontSize = Math.max(8, maxFontByHeight);
@@ -1564,7 +1572,7 @@ export function computeFullVerticalTypeset(
   );
   if (estColumnCount > 1) {
     const boxPaddingEst = resolveBoxPadding(cloned);
-    const availableWidth = Math.max(20, cloned.box.width - boxPaddingEst * 2);
+    const availableWidth = Math.max(20, clonedQuadDims.width - boxPaddingEst * 2);
     const maxFontByWidth = Math.floor(availableWidth / (estColumnCount * 1.05));
     if (maxFontByWidth > 0 && maxFontByWidth < estimatedInitialFontSize) {
       estimatedInitialFontSize = Math.max(8, maxFontByWidth);
@@ -1575,8 +1583,9 @@ export function computeFullVerticalTypeset(
   const region = expandRegionBeforeRender(cloned, text, measureCtx, ff, noopHLineCount);
 
   const boxPadding = resolveBoxPadding(region);
-  const contentWidth = Math.max(20, region.box.width - boxPadding * 2);
-  const contentHeight = Math.max(20, region.box.height - boxPadding * 2);
+  const regionQuadDims = quadDimensions(getRegionQuad(region));
+  const contentWidth = Math.max(20, regionQuadDims.width - boxPadding * 2);
+  const contentHeight = Math.max(20, regionQuadDims.height - boxPadding * 2);
   let verticalContentHeight = resolveVerticalContentHeight(contentHeight, estimatedInitialFontSize);
 
   const preferredProfile = estimateVerticalPreferredProfile(

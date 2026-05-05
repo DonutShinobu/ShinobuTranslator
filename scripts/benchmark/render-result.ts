@@ -1,4 +1,4 @@
-import { chromium } from "playwright";
+import { launchWindowsChrome } from "./chrome-cdp";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "fs";
 import { extname, join, resolve } from "path";
 import { execSync } from "child_process";
@@ -68,17 +68,12 @@ async function main(): Promise<void> {
   const outputDir = reportDir ?? join(REPORTS_DIR, new Date().toISOString().replace(/[:.]/g, "-"));
   mkdirSync(outputDir, { recursive: true });
 
-  const browser = await chromium.launchPersistentContext("", {
-    headless: false,
-    args: [
-      `--disable-extensions-except=${DIST_DIR}`,
-      `--load-extension=${DIST_DIR}`,
-    ],
-  });
+  const { browser, close: closeBrowser } = await launchWindowsChrome(DIST_DIR);
+  const context = browser.contexts()[0];
 
-  const sws = browser.serviceWorkers();
+  const sws = context.serviceWorkers();
   if (sws.length === 0) {
-    await browser.waitForEvent("serviceworker", { timeout: 10_000 }).catch(() => null);
+    await context.waitForEvent("serviceworker", { timeout: 10_000 }).catch(() => null);
   }
 
   for (const imgFile of imageFiles) {
@@ -86,7 +81,7 @@ async function main(): Promise<void> {
     const imgPath = join(IMAGES_DIR, imgFile);
     const dataUrl = imageToDataUrl(imgPath);
 
-    const page = await browser.newPage();
+    const page = await context.newPage();
     page.on("console", (msg) => console.log(`  [browser ${msg.type()}] ${msg.text()}`));
     page.on("pageerror", (err) => console.log(`  [pageerror] ${err.message}`));
 
@@ -125,7 +120,7 @@ async function main(): Promise<void> {
     await page.close();
   }
 
-  await browser.close();
+  await closeBrowser();
   server.close();
   console.log(`Render complete. Output: ${outputDir}`);
 }

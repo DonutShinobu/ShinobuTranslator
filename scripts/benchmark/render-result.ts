@@ -52,7 +52,7 @@ async function main(): Promise<void> {
     res.writeHead(200, { "Content-Type": "text/html" });
     res.end("<html><body></body></html>");
   });
-  await new Promise<void>((resolve) => server.listen(0, resolve));
+  await new Promise<void>((resolve) => server.listen(0, "0.0.0.0", resolve));
   const port = (server.address() as any).port;
   const localUrl = `http://localhost:${port}/`;
 
@@ -70,11 +70,6 @@ async function main(): Promise<void> {
 
   const { browser, close: closeBrowser } = await launchWindowsChrome(DIST_DIR);
   const context = browser.contexts()[0];
-
-  const sws = context.serviceWorkers();
-  if (sws.length === 0) {
-    await context.waitForEvent("serviceworker", { timeout: 10_000 }).catch(() => null);
-  }
 
   for (const imgFile of imageFiles) {
     console.log(`Rendering: ${imgFile}`);

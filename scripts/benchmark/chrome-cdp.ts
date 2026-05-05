@@ -1,19 +1,18 @@
 import { execSync } from "child_process";
-import { mkdtempSync, rmSync } from "fs";
-import { join } from "path";
-import { tmpdir } from "os";
 import { chromium, type Browser } from "playwright";
 
 const CHROME_PATH_WIN = "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe";
+const POWERSHELL = "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe";
+const CMD = "/mnt/c/Windows/System32/cmd.exe";
+const TASKKILL = "/mnt/c/Windows/System32/taskkill.exe";
 const CDP_PORT = 9222;
+
+const EXT_DIR_WIN = "D:\\Downloads\\ShinobuTranslator";
+const USER_DATA_DIR_WIN = "D:\\Downloads\\shinobu-bench-profile";
 
 export interface ChromeCDP {
   browser: Browser;
   close(): Promise<void>;
-}
-
-function toWindowsPath(wslPath: string): string {
-  return execSync(`wslpath -w "${wslPath}"`, { encoding: "utf-8" }).trim();
 }
 
 async function waitForCDP(port: number, timeoutMs = 15000): Promise<void> {
@@ -29,20 +28,18 @@ async function waitForCDP(port: number, timeoutMs = 15000): Promise<void> {
 }
 
 export async function launchWindowsChrome(distDir: string): Promise<ChromeCDP> {
-  const distWin = toWindowsPath(distDir);
-  const userDataDir = mkdtempSync(join(tmpdir(), "shinobu-bench-"));
-  const userDataDirWin = toWindowsPath(userDataDir);
+  // Sync build output to the fixed extension directory
+  const extDirWsl = execSync(`wslpath -u "${EXT_DIR_WIN}"`, { encoding: "utf-8" }).trim();
+  execSync(`rsync -a --delete "${distDir}/" "${extDirWsl}/"`);
 
   const pidOutput = execSync(
-    `powershell.exe -Command "` +
-      `$p = Start-Process -FilePath '${CHROME_PATH_WIN}' -PassThru -ArgumentList ` +
+    `${POWERSHELL} -Command "` +
+      `\\$p = Start-Process -FilePath '${CHROME_PATH_WIN}' -PassThru -ArgumentList ` +
       `'--remote-debugging-port=${CDP_PORT}',` +
-      `'--user-data-dir=${userDataDirWin}',` +
-      `'--disable-extensions-except=${distWin}',` +
-      `'--load-extension=${distWin}',` +
+      `'--user-data-dir=${USER_DATA_DIR_WIN}',` +
       `'--no-first-run',` +
       `'--no-default-browser-check'; ` +
-      `$p.Id"`,
+      `\\$p.Id"`,
     { encoding: "utf-8" },
   ).trim();
   const pid = parseInt(pidOutput, 10);
@@ -58,10 +55,7 @@ export async function launchWindowsChrome(distDir: string): Promise<ChromeCDP> {
     async close() {
       await browser.close();
       try {
-        execSync(`taskkill.exe /PID ${pid} /T /F`, { stdio: "ignore" });
-      } catch {}
-      try {
-        rmSync(userDataDir, { recursive: true, force: true });
+        execSync(`${TASKKILL} /PID ${pid} /T /F`, { stdio: "ignore" });
       } catch {}
     },
   };

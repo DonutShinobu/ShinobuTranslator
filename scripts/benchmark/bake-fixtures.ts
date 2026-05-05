@@ -138,7 +138,7 @@ async function main(): Promise<void> {
     res.writeHead(200, { "Content-Type": "text/html" });
     res.end("<html><body></body></html>");
   });
-  await new Promise<void>((resolve) => server.listen(0, resolve));
+  await new Promise<void>((resolve) => server.listen(0, "0.0.0.0", resolve));
   const port = (server.address() as any).port;
   const localUrl = `http://localhost:${port}/`;
 
@@ -155,16 +155,6 @@ async function main(): Promise<void> {
   const { browser, close: closeBrowser } = await launchWindowsChrome(DIST_DIR);
   const context = browser.contexts()[0];
 
-  const sws = context.serviceWorkers();
-  console.log(`Service workers: ${sws.length}`);
-  if (sws.length === 0) {
-    const sw = await context.waitForEvent("serviceworker", { timeout: 10_000 }).catch(() => null);
-    console.log(`Waited for SW: ${sw ? "found" : "none"}`);
-  }
-  for (const sw of context.serviceWorkers()) {
-    console.log(`  SW URL: ${sw.url()}`);
-  }
-
   const bakeInfo: BakeInfo = {
     gitCommit: gitCommit(),
     detectorModel: "detector.onnx",
@@ -180,7 +170,6 @@ async function main(): Promise<void> {
     page.on("console", (msg) => console.log(`  [browser ${msg.type()}] ${msg.text()}`));
     page.on("pageerror", (err) => console.log(`  [pageerror] ${err.message}`));
 
-    // Set up message listener BEFORE navigating so we catch the ready signal
     await page.addInitScript(`
       window.__shinobu_bridge_ready__ = false;
       window.addEventListener("message", (e) => {
@@ -190,7 +179,9 @@ async function main(): Promise<void> {
       });
     `);
 
+    // Navigate then reload to ensure addInitScript is active when content script injects
     await page.goto(localUrl, { waitUntil: "load" });
+    await page.reload({ waitUntil: "load" });
 
     // Wait for content script bridge
     await page.waitForFunction('window.__shinobu_bridge_ready__ === true', { timeout: 15_000 })

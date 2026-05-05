@@ -1,4 +1,4 @@
-import { chromium } from "playwright";
+import { launchWindowsChrome } from "./chrome-cdp";
 import { createHash } from "crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "fs";
 import { extname, join, resolve } from "path";
@@ -152,22 +152,16 @@ async function main(): Promise<void> {
 
   mkdirSync(FIXTURES_DIR, { recursive: true });
 
-  const browser = await chromium.launchPersistentContext("", {
-    headless: false,
-    args: [
-      `--disable-extensions-except=${DIST_DIR}`,
-      `--load-extension=${DIST_DIR}`,
-    ],
-  });
+  const { browser, close: closeBrowser } = await launchWindowsChrome(DIST_DIR);
+  const context = browser.contexts()[0];
 
-  // Check if extension loaded
-  const sws = browser.serviceWorkers();
+  const sws = context.serviceWorkers();
   console.log(`Service workers: ${sws.length}`);
   if (sws.length === 0) {
-    const sw = await browser.waitForEvent("serviceworker", { timeout: 10_000 }).catch(() => null);
+    const sw = await context.waitForEvent("serviceworker", { timeout: 10_000 }).catch(() => null);
     console.log(`Waited for SW: ${sw ? "found" : "none"}`);
   }
-  for (const sw of browser.serviceWorkers()) {
+  for (const sw of context.serviceWorkers()) {
     console.log(`  SW URL: ${sw.url()}`);
   }
 
@@ -182,7 +176,7 @@ async function main(): Promise<void> {
     const imgPath = join(IMAGES_DIR, imgFile);
     const dataUrl = imageToDataUrl(imgPath);
 
-    const page = await browser.newPage();
+    const page = await context.newPage();
     page.on("console", (msg) => console.log(`  [browser ${msg.type()}] ${msg.text()}`));
     page.on("pageerror", (err) => console.log(`  [pageerror] ${err.message}`));
 
@@ -266,7 +260,7 @@ async function main(): Promise<void> {
     await page.close();
   }
 
-  await browser.close();
+  await closeBrowser();
   server.close();
   console.log("Bake complete.");
 }

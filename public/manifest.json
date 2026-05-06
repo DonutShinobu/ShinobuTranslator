@@ -27,12 +27,15 @@
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
   },
   "permissions": [
-    "storage"
+    "storage",
+    "declarativeNetRequest"
   ],
   "host_permissions": [
     "https://x.com/*",
     "https://twitter.com/*",
     "https://pbs.twimg.com/*",
+    "https://www.pixiv.net/*",
+    "https://i.pximg.net/*",
     "https://translate.googleapis.com/*",
     "https://api.deepseek.com/*",
     "https://api.z.ai/*",
@@ -44,7 +47,8 @@
     {
       "matches": [
         "https://x.com/*",
-        "https://twitter.com/*"
+        "https://twitter.com/*",
+        "https://www.pixiv.net/*"
       ],
       "js": [
         "content.js"
@@ -62,7 +66,8 @@
       ],
       "matches": [
         "https://x.com/*",
-        "https://twitter.com/*"
+        "https://twitter.com/*",
+        "https://www.pixiv.net/*"
       ]
     }
   ]

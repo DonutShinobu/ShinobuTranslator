@@ -44,6 +44,25 @@ function chromeExtensionContentScriptPlugin(): Plugin {
             `window.__shinobu_shared={${pairs.join(',')}};`,
           );
         }
+
+        // Convert static imports from chunks into dynamic imports via chrome.runtime.getURL.
+        // Must run after export handling since IIFE wrapping changes the string end.
+        const staticImportRe = /import\s*\{([^}]+)\}\s*from\s*"\.\/([^"]+)"\s*;?/g;
+        const staticImports: Array<{ full: string; bindings: string; path: string }> = [];
+        let m: RegExpExecArray | null;
+        while ((m = staticImportRe.exec(chunk.code)) !== null) {
+          staticImports.push({ full: m[0], bindings: m[1], path: m[2] });
+        }
+        if (staticImports.length > 0) {
+          for (const si of staticImports) {
+            const destructured = si.bindings.replace(/\bas\b/g, ':');
+            chunk.code = chunk.code.replace(
+              si.full,
+              `const {${destructured.trim()}}=await import(chrome.runtime.getURL("${si.path}"));`,
+            );
+          }
+          chunk.code = `(async()=>{${chunk.code}})();`;
+        }
       }
 
       // Phase 2: Process chunks — replace static import from "../content.js" with global lookup

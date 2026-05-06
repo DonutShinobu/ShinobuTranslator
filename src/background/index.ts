@@ -75,6 +75,18 @@ function buildOriginalCandidates(imageUrl: string): string[] {
   return Array.from(new Set(urls));
 }
 
+function getRefererForUrl(url: string): string | undefined {
+  try {
+    const hostname = new URL(url).hostname;
+    if (hostname === 'i.pximg.net' || hostname.endsWith('.pximg.net')) {
+      return 'https://www.pixiv.net/';
+    }
+  } catch {
+    // ignore
+  }
+  return undefined;
+}
+
 async function downloadImage(imageUrl: string): Promise<{
   base64: string;
   contentType: string;
@@ -84,7 +96,10 @@ async function downloadImage(imageUrl: string): Promise<{
   const errors: string[] = [];
   for (const url of candidates) {
     try {
-      const response = await fetch(url, { method: 'GET', cache: 'no-store' });
+      const headers: Record<string, string> = {};
+      const referer = getRefererForUrl(url);
+      if (referer) headers['Referer'] = referer;
+      const response = await fetch(url, { method: 'GET', cache: 'no-store', headers });
       if (!response.ok) {
         errors.push(`${url}: HTTP ${response.status}`);
         continue;

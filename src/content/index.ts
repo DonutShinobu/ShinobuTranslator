@@ -1,5 +1,7 @@
-import { mountContentApp } from './App';
 import { shinobuBake, shinobuRender } from '../pipeline/bake';
+import { twitterAdapter } from './adapters/twitter';
+import { pixivAdapter } from './adapters/pixiv';
+import { TranslatorCore } from './core/TranslatorCore';
 
 (window as any).__shinobu_bake__ = shinobuBake;
 
@@ -24,4 +26,9 @@ window.addEventListener("message", async (event) => {
 // Signal that the bake bridge is ready
 window.postMessage({ type: "__shinobu_bake_ready__" }, "*");
 
-mountContentApp();
+const adapters = [twitterAdapter, pixivAdapter];
+const adapter = adapters.find(a => a.match());
+if (adapter) {
+  const core = new TranslatorCore(adapter);
+  core.start();
+}

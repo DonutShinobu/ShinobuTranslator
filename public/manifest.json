@@ -33,6 +33,8 @@
     "https://x.com/*",
     "https://twitter.com/*",
     "https://pbs.twimg.com/*",
+    "https://www.pixiv.net/*",
+    "https://i.pximg.net/*",
     "https://translate.googleapis.com/*",
     "https://api.deepseek.com/*",
     "https://api.z.ai/*",
@@ -43,7 +45,8 @@
     {
       "matches": [
         "https://x.com/*",
-        "https://twitter.com/*"
+        "https://twitter.com/*",
+        "https://www.pixiv.net/*"
       ],
       "js": [
         "content.js"
@@ -61,7 +64,8 @@
       ],
       "matches": [
         "https://x.com/*",
-        "https://twitter.com/*"
+        "https://twitter.com/*",
+        "https://www.pixiv.net/*"
       ]
     }
   ]

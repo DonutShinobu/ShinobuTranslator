@@ -35,7 +35,7 @@ export type PipelineConfig = {
   sourceLang: string;
   targetLang: string;
   translator: 'google_web' | 'llm';
-  llmProvider: 'deepseek' | 'glm' | 'kimi' | 'minimax' | 'custom';
+  llmProvider: 'deepseek' | 'glm' | 'kimi' | 'minimax' | 'mimo' | 'custom';
   llmBaseUrl: string;
   llmApiKey: string;
   llmModel: string;

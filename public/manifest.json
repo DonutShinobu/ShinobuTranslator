@@ -37,7 +37,8 @@
     "https://api.deepseek.com/*",
     "https://api.z.ai/*",
     "https://api.moonshot.ai/*",
-    "https://api.minimax.io/*"
+    "https://api.minimax.io/*",
+    "https://api.mimo-v2.com/*"
   ],
   "content_scripts": [
     {

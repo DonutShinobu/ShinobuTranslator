@@ -15,6 +15,7 @@ const llmBaseUrlByProvider = {
   glm: 'https://api.z.ai/api/paas/v4',
   kimi: 'https://api.moonshot.ai/v1',
   minimax: 'https://api.minimax.io/v1',
+  mimo: 'https://api.mimo-v2.com/v1',
 } as const;
 
 function resolveLlmBaseUrl(settings: ExtensionSettings): string {

@@ -40,6 +40,11 @@ export const llmBuiltInProviderDefinitions: Record<BuiltInLlmProvider, BuiltInPr
     baseUrl: 'https://api.minimax.io/v1',
     models: ['MiniMax-M2.7', 'MiniMax-M2.7-highspeed', 'MiniMax-M2.5', 'MiniMax-M2.5-highspeed'],
   },
+  mimo: {
+    label: 'MiMo (小米)',
+    baseUrl: 'https://api.mimo-v2.com/v1',
+    models: ['MiMo-V2.5-Pro', 'MiMo-V2.5'],
+  },
 };
 
 export const llmProviderOptions: Array<{ value: LlmProvider; label: string }> = [
@@ -47,13 +52,14 @@ export const llmProviderOptions: Array<{ value: LlmProvider; label: string }> = 
   { value: 'glm', label: 'GLM (Z.AI)' },
   { value: 'kimi', label: 'Kimi (Moonshot)' },
   { value: 'minimax', label: 'MiniMax' },
+  { value: 'mimo', label: 'MiMo (小米)' },
   { value: 'custom', label: '自定义提供商' },
 ];
 
 const builtInProviders = Object.keys(llmBuiltInProviderDefinitions) as BuiltInLlmProvider[];
 
 function isLlmProvider(value: unknown): value is LlmProvider {
-  return value === 'deepseek' || value === 'glm' || value === 'kimi' || value === 'minimax' || value === 'custom';
+  return value === 'deepseek' || value === 'glm' || value === 'kimi' || value === 'minimax' || value === 'mimo' || value === 'custom';
 }
 
 function isBuiltInProvider(provider: LlmProvider): provider is BuiltInLlmProvider {
@@ -105,6 +111,7 @@ function createDefaultLlmProfiles(): Record<LlmProvider, LlmProviderProfile> {
     glm: createDefaultProviderProfile('glm'),
     kimi: createDefaultProviderProfile('kimi'),
     minimax: createDefaultProviderProfile('minimax'),
+    mimo: createDefaultProviderProfile('mimo'),
     custom: createDefaultProviderProfile('custom'),
   };
 }
@@ -254,6 +261,7 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     glm: normalizeProviderProfile('glm', rawProfiles.glm, provider === 'glm' ? legacy : null),
     kimi: normalizeProviderProfile('kimi', rawProfiles.kimi, provider === 'kimi' ? legacy : null),
     minimax: normalizeProviderProfile('minimax', rawProfiles.minimax, provider === 'minimax' ? legacy : null),
+    mimo: normalizeProviderProfile('mimo', rawProfiles.mimo, provider === 'mimo' ? legacy : null),
     custom: normalizeProviderProfile('custom', rawProfiles.custom, provider === 'custom' ? legacy : null),
   };
   const showElapsedTime = sanitizeBoolean(raw.showElapsedTime, defaultExtensionSettings.showElapsedTime);

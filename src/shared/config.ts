@@ -28,17 +28,17 @@ export const llmBuiltInProviderDefinitions: Record<BuiltInLlmProvider, BuiltInPr
   glm: {
     label: 'GLM (Z.AI)',
     baseUrl: 'https://api.z.ai/api/paas/v4',
-    models: ['glm5', 'glm-4.7', 'glm-4.7-flash', 'glm-4.7-flashx', 'glm-4.6', 'glm-4.5-airx'],
+    models: ['glm-5.1', 'glm-5', 'glm-5-turbo', 'glm-4.7', 'glm-4.7-flash', 'glm-4.7-flashx'],
   },
   kimi: {
     label: 'Kimi (Moonshot)',
     baseUrl: 'https://api.moonshot.ai/v1',
-    models: ['kimi-k2-0711-preview', 'kimi-k2-turbo-preview', 'kimi-k2.5'],
+    models: ['kimi-k2.6', 'kimi-k2.5'],
   },
   minimax: {
     label: 'MiniMax',
     baseUrl: 'https://api.minimax.io/v1',
-    models: ['MiniMax-M2.5', 'MiniMax-M2.5-highspeed', 'MiniMax-M2.1', 'MiniMax-M2'],
+    models: ['MiniMax-M2.7', 'MiniMax-M2.7-highspeed', 'MiniMax-M2.5', 'MiniMax-M2.5-highspeed'],
   },
 };
 

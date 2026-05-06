@@ -109,6 +109,27 @@ const referenceButtonSelector =
 const anchoredVerticalGapPx = 8;
 const fallbackHostInsetPx = 16;
 
+function repositionAnchor(anchor: HTMLElement, dialog: HTMLElement | null): void {
+  if (!dialog) return;
+  const refButton = document.querySelector(referenceButtonSelector) as HTMLElement | null;
+  if (!refButton || !isVisibleElement(refButton) || !dialog.contains(refButton)) {
+    anchor.style.left = 'auto';
+    anchor.style.right = `${fallbackHostInsetPx}px`;
+    anchor.style.top = `${fallbackHostInsetPx}px`;
+    return;
+  }
+  const refTarget = refButton.querySelector(':scope > button > div') ?? refButton;
+  const refRect = refTarget.getBoundingClientRect();
+  const dialogRect = dialog.getBoundingClientRect();
+
+  const right = Math.max(0, Math.round(dialogRect.right - refRect.right));
+  const top = Math.max(0, Math.round(refRect.bottom - dialogRect.top + anchoredVerticalGapPx));
+
+  anchor.style.left = 'auto';
+  anchor.style.right = `${right}px`;
+  anchor.style.top = `${top}px`;
+}
+
 export const twitterAdapter: SiteAdapter = {
   match() {
     const host = location.hostname;
@@ -132,20 +153,17 @@ export const twitterAdapter: SiteAdapter = {
     const anchor = document.createElement('div');
     anchor.style.cssText = `position:absolute; right:${fallbackHostInsetPx}px; top:${fallbackHostInsetPx}px; z-index:1000;`;
 
-    const refButton = document.querySelector(referenceButtonSelector) as HTMLElement | null;
-    if (dialog && refButton && isVisibleElement(refButton) && dialog.contains(refButton)) {
-      const anchorRect = refButton.getBoundingClientRect();
-      const dialogRect = dialog.getBoundingClientRect();
-      const left = anchorRect.right - dialogRect.left - 200;
-      const top = anchorRect.bottom - dialogRect.top + anchoredVerticalGapPx;
-      anchor.style.cssText = `position:absolute; left:${Math.max(0, Math.round(left))}px; top:${Math.max(0, Math.round(top))}px; z-index:1000;`;
-    }
-
     if (dialog) {
       dialog.appendChild(anchor);
     } else {
       document.body.appendChild(anchor);
     }
+
+    // Reposition after host is mounted and has layout dimensions
+    requestAnimationFrame(() => {
+      repositionAnchor(anchor, dialog);
+    });
+
     return anchor;
   },
 

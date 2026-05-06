@@ -34,10 +34,12 @@ const stageLabelMap: Record<string, string> = {
   detect: '文本检测',
   ocr: '文字识别',
   merge: '合并文本',
+  order: '文本排序',
   parallel: '并行处理',
   translate: '翻译文本',
   mask_refine: '细化遮罩',
   inpaint: '去除文字',
+  bubble: '气泡检测',
   typeset: '文字排版',
   done: '完成',
 };
@@ -47,6 +49,7 @@ const llmBaseUrlByProvider = {
   glm: 'https://api.z.ai/api/paas/v4',
   kimi: 'https://api.moonshot.ai/v1',
   minimax: 'https://api.minimax.io/v1',
+  mimo: 'https://api.mimo-v2.com/v1',
 } as const;
 
 function resolveLlmBaseUrl(settings: ExtensionSettings): string {

@@ -84,6 +84,8 @@ export function formatElapsedText(
     translate: '翻译文本',
     mask_refine: '细化遮罩',
     inpaint: '去除文字',
+    bubble: '气泡检测',
+    order: '文本排序',
     typeset: '文字排版',
     done: '完成',
   };

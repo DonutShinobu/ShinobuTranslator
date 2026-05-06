@@ -23,7 +23,7 @@ export const llmBuiltInProviderDefinitions: Record<BuiltInLlmProvider, BuiltInPr
   deepseek: {
     label: 'DeepSeek',
     baseUrl: 'https://api.deepseek.com',
-    models: ['deepseek-chat', 'deepseek-reasoner'],
+    models: ['deepseek-v4-flash', 'deepseek-v4-pro'],
   },
   glm: {
     label: 'GLM (Z.AI)',

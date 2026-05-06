@@ -163,6 +163,7 @@ const stageLabelMap: Record<string, string> = {
   mask_refine: '细化遮罩',
   inpaint: '去除文字',
   typeset: '文字排版',
+  bubble: '气泡检测',
   done: '完成',
 };
 

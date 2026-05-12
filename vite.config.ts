@@ -1,7 +1,39 @@
 import { resolve } from 'node:path';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import type { Plugin } from 'vite';
+
+const REPO = 'DonutShinobu/ShinobuTranslator';
+
+// Replaces model URLs in dist/models/manifest.json with GitHub Release URLs
+// when MODEL_RELEASE_TAG is set (e.g. MODEL_RELEASE_TAG=v0.1.0).
+function modelReleaseUrlPlugin(): Plugin {
+  return {
+    name: 'model-release-url',
+    apply: 'build',
+    closeBundle() {
+      const tag = process.env.MODEL_RELEASE_TAG;
+      if (!tag) return;
+      const manifestPath = resolve(__dirname, 'dist/models/manifest.json');
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+      const baseUrl = `https://github.com/${REPO}/releases/download/${tag}`;
+      // Manifest paths like "/models/detector.onnx" become "detector.onnx" in Release assets
+      // (gh release upload uses bare filenames, no directory structure)
+      const toReleaseUrl = (path: string) =>
+        `${baseUrl}/${path.replace(/^\/models\//, '')}`;
+      for (const model of Object.values(manifest.models) as Array<{ url?: string; dictUrl?: string }>) {
+        if (model.url && model.url.startsWith('/')) {
+          model.url = toReleaseUrl(model.url);
+        }
+        if (model.dictUrl && model.dictUrl.startsWith('/')) {
+          model.dictUrl = toReleaseUrl(model.dictUrl);
+        }
+      }
+      writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+    },
+  };
+}
 
 // Chrome extension compat: content scripts are classic scripts (no import/export).
 // This plugin bridges the gap between Vite's ES module output and Chrome's classic script injection:
@@ -91,7 +123,7 @@ function chromeExtensionContentScriptPlugin(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), chromeExtensionContentScriptPlugin()],
+  plugins: [react(), chromeExtensionContentScriptPlugin(), modelReleaseUrlPlugin()],
   build: {
     rollupOptions: {
       input: {

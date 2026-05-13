@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "验证修改符合质量标准，无 forbidden patterns"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "验证新增类型定义符合项目类型安全规范"}

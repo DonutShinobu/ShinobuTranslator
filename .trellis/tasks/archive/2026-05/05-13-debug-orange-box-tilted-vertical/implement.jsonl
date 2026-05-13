@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "确保修改符合项目代码质量标准（类型安全、禁止模式等）"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "新增 CompositeTransform 类型需遵循项目类型规范"}

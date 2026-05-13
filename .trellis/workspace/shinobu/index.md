@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 1
-- **Last Active**: 2026-05-12
+- **Total Sessions**: 2
+- **Last Active**: 2026-05-13
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~40 | Active |
+| `journal-1.md` | ~73 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 2 | 2026-05-13 | pipeline架构重构：消除重复代码与拆分巨型文件 | `8a85b09` | `master` |
 | 1 | 2026-05-12 | 初始化 Trellis 项目管理框架与开发规范文档 | `bbec7b9` | `master` |
 <!-- @@@/auto:session-history -->
 

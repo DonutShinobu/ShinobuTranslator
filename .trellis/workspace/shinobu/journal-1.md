@@ -38,3 +38,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: pipeline架构重构：消除重复代码与拆分巨型文件
+
+**Date**: 2026-05-13
+**Task**: pipeline架构重构：消除重复代码与拆分巨型文件
+**Branch**: `master`
+
+### Summary
+
+将5个700+行巨型文件(detect/ocr/typesetGeometry/textlineMerge/maskRefinement)按职责拆分为子目录模块，提取15+个跨文件重复函数到shared/utils.ts和pipeline/utils.ts，清理TranslatorCore与config.ts重复逻辑。纯内部重构，TypeScript零错误，34测试全通过，构建成功。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8a85b09` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

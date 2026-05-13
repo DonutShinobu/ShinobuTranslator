@@ -643,11 +643,16 @@ function compositeRegion(
   const cy = (quad[0].y + quad[1].y + quad[2].y + quad[3].y) / 4;
 
   // Uniform scale to preserve character aspect ratio.
-  // strokePadding adds equal absolute pixels to both axes, but for narrow
-  // vertical regions this is a larger fraction of width than height,
-  // causing non-uniform sx/sy that distorts glyphs ("瘦长").
-  const sx = qw / offCanvas.width;
-  const sy = qh / offCanvas.height;
+  // Use content-area dimensions (offCanvas minus padding) as the scaling
+  // denominator so that the rendered text maps 1:1 to the quad, not the
+  // padded offscreen canvas.  The old formula (qw / offCanvas.width)
+  // included strokePadding in the denominator but not in qw, causing
+  // s < 1 and shrinking text — especially for narrow vertical columns
+  // where strokePadding is a large fraction of quad width.
+  const contentW = offCanvas.width - boxPadding * 2 - strokePadding * 2;
+  const contentH = offCanvas.height - boxPadding * 2 - strokePadding * 2;
+  const sx = qw / Math.max(1, contentW);
+  const sy = qh / Math.max(1, contentH);
   const s = Math.min(sx, sy);
 
   mainCtx.save();

@@ -13,6 +13,7 @@ import {
   cloneRegionForTypeset,
   getRegionQuad,
   quadCenter,
+  quadDimensions,
   rotateQuad,
   quadBounds,
   scaleQuadFromOrigin,
@@ -829,8 +830,11 @@ export function expandRegionBeforeRender(
 
   const usedRowsOrCols = Math.max(1, expanded.originalLineCount ?? 1);
   const boxPadding = resolveBoxPadding(expanded);
-  const contentWidth = Math.max(20, expanded.box.width - boxPadding * 2);
-  const contentHeight = Math.max(20, expanded.box.height - boxPadding * 2);
+  // Use quad real dimensions (edge lengths) instead of AABB (box.width/height).
+  // For tilted quads the AABB is inflated, causing incorrect layout decisions.
+  const expandedQuadDims = quadDimensions(getRegionQuad(expanded));
+  const contentWidth = Math.max(20, expandedQuadDims.width - boxPadding * 2);
+  const contentHeight = Math.max(20, expandedQuadDims.height - boxPadding * 2);
 
   const quad = getRegionQuad(expanded);
   const center = quadCenter(quad);

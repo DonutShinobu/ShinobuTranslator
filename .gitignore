@@ -58,6 +58,7 @@ Thumbs.db
 正确结果.png
 donut.png
 result_verify.png
+.trellis/workspace/*/debug-img/
 
 # Benchmark
 benchmark/images/*

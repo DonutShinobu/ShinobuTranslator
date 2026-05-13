@@ -137,3 +137,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 5: 修复调试橙色列框倾斜竖排缩放偏差
+
+**Date**: 2026-05-13
+**Task**: 修复调试橙色列框倾斜竖排缩放偏差
+**Branch**: `master`
+
+### Summary
+
+compositeRegion 返回 CompositeTransform，debug overlay 复用而非独立重算缩放系数，消除公式分叉风险
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ba2038c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -6,7 +6,7 @@
 
 ## Overview
 
-Testing is minimal (2 test files). Linting relies on TypeScript strict mode. No ESLint or Prettier configuration exists. Quality is enforced through TypeScript compiler checks and manual review.
+Testing is minimal (3 test files). Linting relies on TypeScript strict mode. No ESLint or Prettier configuration exists. Quality is enforced through TypeScript compiler checks and manual review.
 
 ---
 
@@ -37,6 +37,8 @@ Testing is minimal (2 test files). Linting relies on TypeScript strict mode. No 
 9. **`async/await` over `.then()` chains** — Use async/await for asynchronous code. `.then()` is acceptable only for Chrome API callbacks where async/await is impractical.
 10. **Function declarations for exports** — Prefer `export function foo()` over `export const foo = ()`. Function declarations are hoisted and easier to trace.
 11. **Chinese for user-facing messages** — Status text, labels, and error messages shown to users must be in Chinese.
+12. **Shared utilities over duplication** — If a function is used in 2+ files, extract to `src/shared/utils.ts` (global) or `src/pipeline/utils.ts` (pipeline-specific). Never copy-paste utility functions across modules.
+13. **Sub-directory for 500+ line modules** — When a pipeline module exceeds ~500 lines, split into a sub-directory with `index.ts` as the public API entry point.
 
 ---
 
@@ -47,8 +49,8 @@ Testing is minimal (2 test files). Linting relies on TypeScript strict mode. No 
 - Test files colocated with source: `*.test.ts` suffix
 
 ### Current test coverage
-- `src/pipeline/geometry.test.ts` — Geometry utility functions
-- `src/pipeline/typesetGeometry.test.ts` — Typeset geometry calculations
+- `src/pipeline/geometry.test.ts` — Geometry utility functions (convexHull, sortMiniBoxPoints, minAreaRect — now imports from `./typeset/geometry`)
+- `src/pipeline/typesetGeometry.test.ts` — Typeset geometry calculations (queryMaskMaxY — now imports from `./typeset/index`)
 - `scripts/benchmark/metrics.test.ts` — Benchmark metrics
 
 ### Test patterns

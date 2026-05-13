@@ -46,6 +46,8 @@ grep -r "keyword" .
 
 **Good**: Extract to shared utilities, import where needed
 
+**Project convention**: Put globally shared functions in `src/shared/utils.ts`, pipeline-specific functions in `src/pipeline/utils.ts`. See [Directory Structure](../spec/frontend/directory-structure.md) for the full convention.
+
 ### Pattern 2: Similar Components
 
 **Bad**: Creating a new component that's 80% similar to existing
@@ -57,6 +59,14 @@ grep -r "keyword" .
 **Bad**: Defining the same constant in multiple files
 
 **Good**: Single source of truth, import everywhere
+
+### Pattern 4: Semantic Aliases (Gotcha)
+
+**Problem**: Two functions with the same name but different behavior (e.g., `normalizeText` that strips newlines vs. one that only trims). Merging them silently changes behavior.
+
+**Solution**: Give them distinct names (`normalizeTextDeep` vs. `normalizeTextLight`) that make the semantic difference explicit.
+
+**Example in this project**: `connectedComponents` has 3 variants with different return types and filtering. They were NOT unified because each serves a different pipeline stage.
 
 ---
 

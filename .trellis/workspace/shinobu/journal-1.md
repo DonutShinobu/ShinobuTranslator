@@ -104,3 +104,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 4: 修复倾斜竖排文本字号异常缩小
+
+**Date**: 2026-05-13
+**Task**: 修复倾斜竖排文本字号异常缩小
+**Branch**: `fix/tilted-vertical-font-shrink`
+
+### Summary
+
+修复 compositeRegion 缩放基准和 expandRegionBeforeRender AABB 问题，构建产物已部署到 C:\code\manga-translate\dist
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0e5a0cc` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

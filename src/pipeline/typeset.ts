@@ -25,6 +25,7 @@ import type {
   DebugColumnBox,
   RegionTypesetDebug,
   ResolvedColors,
+  CompositeTransform,
 } from "./typeset/index";
 
 // ---------------------------------------------------------------------------
@@ -436,6 +437,7 @@ function drawTypesetDebugOverlay(
   regionIndex: number,
   initialFontSize: number,
   debug: RegionTypesetDebug,
+  transform: CompositeTransform | null,
 ): void {
   ctx.save();
 
@@ -475,6 +477,7 @@ function drawTypesetDebugOverlay(
       debug.offscreenHeight,
       debug.boxPadding,
       debug.strokePadding,
+      transform,
     );
     drawQuadPath(ctx, boxQuad);
     ctx.fill();
@@ -617,14 +620,14 @@ function compositeRegion(
   strokePadding: number,
   contentOffsetX = 0,
   contentOffsetY = 0,
-): void {
+): CompositeTransform | null {
   const drawX = region.box.x + boxPadding - strokePadding - contentOffsetX;
   const drawY = region.box.y + boxPadding - strokePadding - contentOffsetY;
 
   const quad = region.quad;
   if (!quad) {
     mainCtx.drawImage(offCanvas, drawX, drawY);
-    return;
+    return null;
   }
 
   const angle = quadAngle(quad);
@@ -632,7 +635,7 @@ function compositeRegion(
 
   if (!isRotated) {
     mainCtx.drawImage(offCanvas, drawX, drawY);
-    return;
+    return null;
   }
 
   // Rotated quad — affine transform
@@ -665,6 +668,8 @@ function compositeRegion(
     -offCanvas.height / 2,
   );
   mainCtx.restore();
+
+  return { s, cx, cy, angle };
 }
 
 // ---------------------------------------------------------------------------
@@ -831,8 +836,9 @@ export async function drawTypeset(
       };
     }
 
+    let transform: CompositeTransform | null = null;
     if (offCanvas) {
-      compositeRegion(
+      transform = compositeRegion(
         ctx,
         offCanvas,
         region,
@@ -842,7 +848,7 @@ export async function drawTypeset(
     }
 
     if (debugMode) {
-      drawTypesetDebugOverlay(ctx, inputRegion, region, regionIndex, estimatedInitialFontSize, debug);
+      drawTypesetDebugOverlay(ctx, inputRegion, region, regionIndex, estimatedInitialFontSize, debug, transform);
     }
 
     if (collectDebugLog) {
@@ -854,6 +860,7 @@ export async function drawTypeset(
           debug.offscreenHeight,
           debug.boxPadding,
           debug.strokePadding,
+          transform,
         )
       );
       const direction: TextDirection = region.direction === "h" ? "h" : "v";

@@ -7,6 +7,16 @@ import { convexHull as convexHullImpl } from "../utils";
 
 export type Quad = [QuadPoint, QuadPoint, QuadPoint, QuadPoint];
 
+// Transform parameters returned by compositeRegion for rotated quads.
+// Debug overlay reuses these so the debug box scale always matches the
+// actual rendered text — no independent scale computation that can drift.
+export type CompositeTransform = {
+  s: number;
+  cx: number;
+  cy: number;
+  angle: number;
+};
+
 // ---------------------------------------------------------------------------
 // Convex hull re-export
 // ---------------------------------------------------------------------------
@@ -280,6 +290,7 @@ export function mapOffscreenPointToCanvas(
   offscreenHeight: number,
   boxPadding: number,
   strokePadding: number,
+  transform: CompositeTransform | null = null,
 ): QuadPoint {
   const drawX = region.box.x + boxPadding - strokePadding;
   const drawY = region.box.y + boxPadding - strokePadding;
@@ -288,18 +299,14 @@ export function mapOffscreenPointToCanvas(
     return { x: drawX + point.x, y: drawY + point.y };
   }
 
-  const angle = quadAngle(quad);
-  const isRotated = Math.abs(angle) > 0.01;
-  if (!isRotated) {
+  if (!transform) {
+    // Non-rotated or below threshold — direct pixel mapping
     return { x: drawX + point.x, y: drawY + point.y };
   }
 
-  const { width: qw, height: qh } = quadDimensions(quad);
-  const cx = (quad[0].x + quad[1].x + quad[2].x + quad[3].x) / 4;
-  const cy = (quad[0].y + quad[1].y + quad[2].y + quad[3].y) / 4;
-  const sx = qw / Math.max(1, offscreenWidth);
-  const sy = qh / Math.max(1, offscreenHeight);
-  const s = Math.min(sx, sy);
+  // Use the transform computed by compositeRegion so debug boxes
+  // always match the actual rendered text scale and position.
+  const { s, cx, cy, angle } = transform;
   const localX = (point.x - offscreenWidth / 2) * s;
   const localY = (point.y - offscreenHeight / 2) * s;
   const cos = Math.cos(angle);
@@ -317,6 +324,7 @@ export function mapOffscreenRectToCanvasQuad(
   offscreenHeight: number,
   boxPadding: number,
   strokePadding: number,
+  transform: CompositeTransform | null = null,
 ): [QuadPoint, QuadPoint, QuadPoint, QuadPoint] {
   const p0 = mapOffscreenPointToCanvas(
     region,
@@ -325,6 +333,7 @@ export function mapOffscreenRectToCanvasQuad(
     offscreenHeight,
     boxPadding,
     strokePadding,
+    transform,
   );
   const p1 = mapOffscreenPointToCanvas(
     region,
@@ -333,6 +342,7 @@ export function mapOffscreenRectToCanvasQuad(
     offscreenHeight,
     boxPadding,
     strokePadding,
+    transform,
   );
   const p2 = mapOffscreenPointToCanvas(
     region,
@@ -341,6 +351,7 @@ export function mapOffscreenRectToCanvasQuad(
     offscreenHeight,
     boxPadding,
     strokePadding,
+    transform,
   );
   const p3 = mapOffscreenPointToCanvas(
     region,
@@ -349,6 +360,7 @@ export function mapOffscreenRectToCanvasQuad(
     offscreenHeight,
     boxPadding,
     strokePadding,
+    transform,
   );
   return [p0, p1, p2, p3];
 }

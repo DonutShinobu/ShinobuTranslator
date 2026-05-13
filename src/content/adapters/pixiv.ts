@@ -33,6 +33,7 @@ export const pixivAdapter: SiteAdapter = {
     }
     const anchor = document.createElement('div');
     anchor.setAttribute('data-mt-pixiv-anchor', '');
+    anchor.dataset.theme = 'light';
     anchor.style.cssText = 'position:absolute; right:12px; top:12px; z-index:10;';
     (wrapper || target.element.parentElement!).appendChild(anchor);
     return anchor;

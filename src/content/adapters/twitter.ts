@@ -151,6 +151,7 @@ export const twitterAdapter: SiteAdapter = {
   createUiAnchor(target) {
     const dialog = target.element.closest(imageDialogSelector) as HTMLElement | null;
     const anchor = document.createElement('div');
+    anchor.dataset.theme = 'dark';
     anchor.style.cssText = `position:absolute; right:${fallbackHostInsetPx}px; top:${fallbackHostInsetPx}px; z-index:1000;`;
 
     if (dialog) {

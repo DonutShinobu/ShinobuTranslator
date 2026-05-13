@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { queryMaskMaxY, calcVertical } from "./typeset/index";
+import { queryMaskMaxY, calcVertical } from "../../../src/pipeline/typeset/index";
 
 function createMask(width: number, height: number, fillFn: (x: number, y: number) => boolean): ImageData {
   const data = new Uint8ClampedArray(width * height * 4);

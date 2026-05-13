@@ -2,6 +2,8 @@ import * as ort from "onnxruntime-web/all";
 import { getModel, getModelSession } from "../runtime/modelRegistry";
 import { isContextLostRuntimeError } from "../runtime/onnx";
 import type { RuntimeProvider, WebNnDeviceType } from "../runtime/onnx";
+import { toErrorMessage } from "../shared/utils";
+import { clamp } from "./utils";
 
 export type InpaintResult = {
   canvas: HTMLCanvasElement;
@@ -11,17 +13,6 @@ export type InpaintResult = {
 
 type InpaintInputNormalize = "zero_to_one" | "minus_one_to_one";
 type InpaintOutputNormalize = InpaintInputNormalize | "zero_to_255";
-
-function toErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
 
 function pickInpaintTensor(outputs: ort.InferenceSession.ReturnType): ort.Tensor | null {
   for (const value of Object.values(outputs)) {

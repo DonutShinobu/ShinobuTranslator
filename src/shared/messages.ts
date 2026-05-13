@@ -1,5 +1,6 @@
 import type { ExtensionSettings } from './config';
 import { requireChromeApi } from './chrome';
+import { toErrorMessage } from './utils';
 
 export type GetSettingsMessage = {
   type: 'mt:get-settings';
@@ -50,13 +51,6 @@ export function isRuntimeMessage(value: unknown): value is RuntimeMessage {
   }
   const type = (value as { type?: unknown }).type;
   return type === 'mt:get-settings' || type === 'mt:set-settings' || type === 'mt:download-image';
-}
-
-function toErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
 }
 
 export function sendRuntimeMessage(message: RuntimeMessage): Promise<RuntimeResponse> {

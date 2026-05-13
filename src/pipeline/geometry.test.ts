@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { convexHull, sortMiniBoxPoints, minAreaRect } from "./geometry";
+import { convexHull, sortMiniBoxPoints, minAreaRect } from "./typeset/geometry";
 import type { QuadPoint } from "../types";
 
 describe("convexHull", () => {

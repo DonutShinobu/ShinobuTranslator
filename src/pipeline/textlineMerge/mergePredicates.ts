@@ -1,23 +1,18 @@
 /**
- * Textline merge module — groups individual OCR text lines into logical text blocks.
- *
- * Algorithm fully aligned with zyddnys/manga-image-translator textline_merge:
- * 1. Build a graph where nodes are text lines, edges connect mergeable pairs.
- * 2. Find connected components as initial region candidates.
- * 3. Recursively split over-connected regions using MST edge analysis.
- * 4. Post-process: majority-vote direction, sort lines, average colors, merge text.
+ * Merge predicates, MST splitting, internal quad types, direction voting,
+ * and all predicate/matching functions for textline merge.
  */
 
-import type { TextRegion, TextDirection, QuadPoint, Rect } from "../types";
-import { minAreaRect } from "./geometry";
+import type { TextRegion, TextDirection } from "../../types";
+import { polygonArea, convexHullArea, UnionFind } from "../utils";
 
 // ---------------------------------------------------------------------------
 // Internal types
 // ---------------------------------------------------------------------------
 
-type Point2D = { x: number; y: number };
+export type Point2D = { x: number; y: number };
 
-type InternalQuad = {
+export type InternalQuad = {
   /** Sorted quad points: TL, TR, BR, BL */
   pts: [Point2D, Point2D, Point2D, Point2D];
   direction: TextDirection;
@@ -40,6 +35,14 @@ type InternalQuad = {
   /** Original region index — bookkeeping only */
   originalIndex: number;
 };
+
+export type MergedGroup = {
+  quads: InternalQuad[];
+  fgColor: [number, number, number];
+  bgColor: [number, number, number];
+};
+
+type WeightedEdge = { u: number; v: number; weight: number };
 
 // ---------------------------------------------------------------------------
 // Geometry utilities
@@ -122,67 +125,6 @@ function sortPoints(pts: Point2D[]): { sorted: [Point2D, Point2D, Point2D, Point
   }
 }
 
-/** Shoelace formula — signed area of a simple polygon (positive = CCW). */
-function polygonSignedArea(pts: Point2D[]): number {
-  let area = 0;
-  const n = pts.length;
-  for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n;
-    area += pts[i].x * pts[j].y;
-    area -= pts[j].x * pts[i].y;
-  }
-  return area / 2;
-}
-
-function polygonArea(pts: Point2D[]): number {
-  return Math.abs(polygonSignedArea(pts));
-}
-
-/** Andrew's monotone chain convex hull. Returns hull points in CCW order. */
-function convexHull(points: Point2D[]): Point2D[] {
-  const pts = points.map((p) => ({ x: p.x, y: p.y }));
-  pts.sort((a, b) => (a.x !== b.x ? a.x - b.x : a.y - b.y));
-
-  if (pts.length <= 1) {
-    return pts;
-  }
-
-  const cross = (o: Point2D, a: Point2D, b: Point2D): number =>
-    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
-
-  // Lower hull
-  const lower: Point2D[] = [];
-  for (const p of pts) {
-    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) {
-      lower.pop();
-    }
-    lower.push(p);
-  }
-
-  // Upper hull
-  const upper: Point2D[] = [];
-  for (let i = pts.length - 1; i >= 0; i--) {
-    const p = pts[i];
-    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) {
-      upper.pop();
-    }
-    upper.push(p);
-  }
-
-  // Remove last point of each half because it's repeated
-  lower.pop();
-  upper.pop();
-
-  return lower.concat(upper);
-}
-
-function convexHullArea(points: Point2D[]): number {
-  if (points.length < 3) {
-    return 0;
-  }
-  return polygonArea(convexHull(points));
-}
-
 /** Distance from point p to line segment (a, b). */
 function pointToSegmentDist(p: Point2D, a: Point2D, b: Point2D): number {
   const abx = b.x - a.x;
@@ -241,7 +183,7 @@ function quadBbox(pts: [Point2D, Point2D, Point2D, Point2D]): { x: number; y: nu
   return { x: minX, y: minY, w: Math.max(...xs) - minX, h: Math.max(...ys) - minY };
 }
 
-function buildInternalQuad(region: TextRegion, index: number): InternalQuad {
+export function buildInternalQuad(region: TextRegion, index: number): InternalQuad {
   // Get quad points from region
   const rawPts: Point2D[] = region.quad
     ? region.quad.map((p) => ({ x: p.x, y: p.y }))
@@ -389,7 +331,7 @@ function quadDirectionalDistance(a: InternalQuad, b: InternalQuad, rho: number =
 // Merge predicate — aligned with quadrilateral_can_merge_region()
 // ---------------------------------------------------------------------------
 
-function canMergeRegion(
+export function canMergeRegion(
   a: InternalQuad,
   b: InternalQuad,
   opts: {
@@ -487,41 +429,6 @@ function canMergeRegion(
 // Graph utilities — replaces NetworkX
 // ---------------------------------------------------------------------------
 
-class UnionFind {
-  parent: number[];
-  rank: number[];
-
-  constructor(n: number) {
-    this.parent = Array.from({ length: n }, (_, i) => i);
-    this.rank = new Array(n).fill(0);
-  }
-
-  find(x: number): number {
-    while (this.parent[x] !== x) {
-      this.parent[x] = this.parent[this.parent[x]]; // path compression
-      x = this.parent[x];
-    }
-    return x;
-  }
-
-  union(a: number, b: number): boolean {
-    const ra = this.find(a);
-    const rb = this.find(b);
-    if (ra === rb) {
-      return false;
-    }
-    if (this.rank[ra] < this.rank[rb]) {
-      this.parent[ra] = rb;
-    } else if (this.rank[ra] > this.rank[rb]) {
-      this.parent[rb] = ra;
-    } else {
-      this.parent[rb] = ra;
-      this.rank[ra]++;
-    }
-    return true;
-  }
-}
-
 function findConnectedComponents(n: number, edges: [number, number][]): Set<number>[] {
   const uf = new UnionFind(n);
   for (const [u, v] of edges) {
@@ -537,8 +444,6 @@ function findConnectedComponents(n: number, edges: [number, number][]): Set<numb
   }
   return Array.from(groups.values());
 }
-
-type WeightedEdge = { u: number; v: number; weight: number };
 
 /**
  * Kruskal MST on a subset of nodes. Returns edges sorted by weight ascending.
@@ -576,7 +481,7 @@ function kruskalMST(nodeIndices: number[], weightFn: (u: number, v: number) => n
 // splitTextRegion — aligned with split_text_region()
 // ---------------------------------------------------------------------------
 
-function splitTextRegion(
+export function splitTextRegion(
   quads: InternalQuad[],
   regionIndices: number[],
   _width: number,
@@ -655,13 +560,7 @@ function splitTextRegion(
 // mergeTextRegions — aligned with merge_bboxes_text_region()
 // ---------------------------------------------------------------------------
 
-type MergedGroup = {
-  quads: InternalQuad[];
-  fgColor: [number, number, number];
-  bgColor: [number, number, number];
-};
-
-function mergeTextRegions(quads: InternalQuad[], width: number, height: number): MergedGroup[] {
+export function mergeTextRegions(quads: InternalQuad[], width: number, height: number): MergedGroup[] {
   const n = quads.length;
   if (n === 0) {
     return [];
@@ -759,133 +658,4 @@ function mergeTextRegions(quads: InternalQuad[], width: number, height: number):
   }
 
   return results;
-}
-
-// ---------------------------------------------------------------------------
-// Build merged TextRegion from a group of InternalQuads
-// ---------------------------------------------------------------------------
-
-function buildMergedRegion(group: MergedGroup, allQuads: InternalQuad[]): TextRegion {
-  const { quads: txtlns, fgColor, bgColor } = group;
-
-  // Concatenate texts in reading order
-  const sourceText = txtlns.map((q) => q.text).join("\n");
-
-  // Direction: majority already computed
-  let hCount = 0;
-  let vCount = 0;
-  for (const q of txtlns) {
-    if (q.direction === "h") {
-      hCount++;
-    } else {
-      vCount++;
-    }
-  }
-  let majorityDir: TextDirection;
-  if (hCount !== vCount) {
-    majorityDir = hCount > vCount ? "h" : "v";
-  } else {
-    let maxAR = -Infinity;
-    majorityDir = "h";
-    for (const q of txtlns) {
-      if (q.aspectRatio > maxAR) {
-        maxAR = q.aspectRatio;
-        majorityDir = q.direction;
-      }
-      if (1 / q.aspectRatio > maxAR) {
-        maxAR = 1 / q.aspectRatio;
-        majorityDir = q.direction;
-      }
-    }
-  }
-
-  // Compute weighted log-probability
-  const totalArea = allQuads.reduce((s, q) => s + q.area, 0);
-  let totalLogProbs = 0;
-  for (const q of txtlns) {
-    totalLogProbs += Math.log(Math.max(1e-10, q.prob)) * q.area;
-  }
-  const prob = totalArea > 0 ? Math.exp(totalLogProbs / totalArea) : 0;
-
-  // Average fontSize from component textlines
-  const fontSize = txtlns.reduce((s, q) => s + q.fontSize, 0) / txtlns.length;
-
-  // Union bounding box
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const q of txtlns) {
-    for (const p of q.pts) {
-      minX = Math.min(minX, p.x);
-      minY = Math.min(minY, p.y);
-      maxX = Math.max(maxX, p.x);
-      maxY = Math.max(maxY, p.y);
-    }
-  }
-  const box: Rect = {
-    x: Math.round(minX),
-    y: Math.round(minY),
-    width: Math.round(maxX - minX),
-    height: Math.round(maxY - minY),
-  };
-
-  // Use minAreaRect to preserve rotation angle from detected text lines
-  const allPoints: Point2D[] = [];
-  for (const q of txtlns) {
-    allPoints.push(...q.pts);
-  }
-
-  let quad: [QuadPoint, QuadPoint, QuadPoint, QuadPoint];
-  const mar = minAreaRect(allPoints);
-  if (mar) {
-    quad = mar.box;
-  } else {
-    quad = [
-      { x: box.x, y: box.y },
-      { x: box.x + box.width, y: box.y },
-      { x: box.x + box.width, y: box.y + box.height },
-      { x: box.x, y: box.y + box.height },
-    ];
-  }
-
-  return {
-    id: crypto.randomUUID(),
-    box,
-    quad,
-    direction: majorityDir,
-    prob,
-    fontSize,
-    fgColor,
-    bgColor,
-    originalLineCount: txtlns.length,
-    sourceText,
-    translatedText: "",
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Public API — aligned with dispatch()
-// ---------------------------------------------------------------------------
-
-/**
- * Merge individual OCR text lines into logical text blocks.
- *
- * Insert this stage between OCR and Translation in the pipeline.
- * Input: per-line TextRegion[] (from OCR).
- * Output: merged TextRegion[] (fewer items, concatenated sourceText).
- */
-export function mergeTextLines(regions: TextRegion[], width: number, height: number): TextRegion[] {
-  if (regions.length === 0) {
-    return [];
-  }
-
-  // Convert TextRegion[] to InternalQuad[]
-  const quads = regions.map((r, i) => buildInternalQuad(r, i));
-
-  // Run merge
-  const groups = mergeTextRegions(quads, width, height);
-
-  // Build output TextRegion[]
-  return groups.map((group) => buildMergedRegion(group, quads));
 }

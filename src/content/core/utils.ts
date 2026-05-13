@@ -1,5 +1,7 @@
 import type { RuntimeStageStatus, StageTiming } from './types';
 
+export { toErrorMessage } from '../../shared/utils';
+
 export function base64ToBlob(base64: string, contentType: string): Blob {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
@@ -101,11 +103,6 @@ export function formatElapsedText(
   return runtimeLine
     ? [totalLine, runtimeLine, ...detailLines].join('\n')
     : [totalLine, ...detailLines].join('\n');
-}
-
-export function toErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
 }
 
 export function wait(ms: number): Promise<void> {

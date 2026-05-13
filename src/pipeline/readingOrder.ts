@@ -1,4 +1,5 @@
 import type { Rect, TextRegion } from "../types";
+import { clamp } from "./utils";
 
 type Panel = Rect;
 
@@ -18,10 +19,6 @@ const panelMaxCount = 80;
 const panelCoverageMin = 0.08;
 const panelCoverageMax = 4.0;
 const defaultRtl = true;
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
 
 function toGrayscale(data: Uint8ClampedArray): Uint8Array {
   const total = data.length / 4;

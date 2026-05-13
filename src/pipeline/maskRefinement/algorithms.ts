@@ -1,52 +1,49 @@
-import type { Rect, TextRegion } from "../types";
+import type { Rect, TextRegion } from "../../types";
+import { clamp, polygonArea } from "../utils";
 
-type Point = {
+export type Point = {
   x: number;
   y: number;
 };
 
-type MaskRefinementMethod = "fit_text";
+export type MaskRefinementMethod = "fit_text";
 
-type MaskRefinementOptions = {
+export type MaskRefinementOptions = {
   method?: MaskRefinementMethod;
   dilationOffset?: number;
   kernelSize?: number;
   keepThreshold?: number;
 };
 
-type RegionMaskInfo = {
+export type RegionMaskInfo = {
   box: Rect;
   polygon: Point[];
   area: number;
   textSize: number;
 };
 
-type Component = {
+export type Component = {
   pixels: Int32Array;
   rect: Rect;
   area: number;
   center: Point;
 };
 
-type AssignedExtent = {
+export type AssignedExtent = {
   minX: number;
   minY: number;
   maxX: number;
   maxY: number;
 };
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function makeCanvas(width: number, height: number): HTMLCanvasElement {
+export function makeCanvas(width: number, height: number): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   return canvas;
 }
 
-function readBinaryMask(canvas: HTMLCanvasElement, width: number, height: number): Uint8Array {
+export function readBinaryMask(canvas: HTMLCanvasElement, width: number, height: number): Uint8Array {
   const resized = makeCanvas(width, height);
   const ctx = resized.getContext("2d", { willReadFrequently: true });
   if (!ctx) {
@@ -62,7 +59,7 @@ function readBinaryMask(canvas: HTMLCanvasElement, width: number, height: number
   return out;
 }
 
-function readGrayImage(canvas: HTMLCanvasElement, width: number, height: number): Uint8Array {
+export function readGrayImage(canvas: HTMLCanvasElement, width: number, height: number): Uint8Array {
   const resized = makeCanvas(width, height);
   const ctx = resized.getContext("2d", { willReadFrequently: true });
   if (!ctx) {
@@ -78,7 +75,7 @@ function readGrayImage(canvas: HTMLCanvasElement, width: number, height: number)
   return out;
 }
 
-function drawRectOutline(mask: Uint8Array, width: number, height: number, rect: Rect): void {
+export function drawRectOutline(mask: Uint8Array, width: number, height: number, rect: Rect): void {
   const x0 = clamp(Math.floor(rect.x), 0, width - 1);
   const y0 = clamp(Math.floor(rect.y), 0, height - 1);
   const x1 = clamp(Math.floor(rect.x + rect.width), x0, width - 1);
@@ -94,20 +91,7 @@ function drawRectOutline(mask: Uint8Array, width: number, height: number, rect: 
   }
 }
 
-function polygonArea(points: Point[]): number {
-  if (points.length < 3) {
-    return 0;
-  }
-  let area = 0;
-  for (let i = 0; i < points.length; i += 1) {
-    const p = points[i];
-    const q = points[(i + 1) % points.length];
-    area += p.x * q.y - p.y * q.x;
-  }
-  return Math.abs(area) * 0.5;
-}
-
-function pointInPolygon(point: Point, polygon: Point[]): boolean {
+export function pointInPolygon(point: Point, polygon: Point[]): boolean {
   let inside = false;
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
     const pi = polygon[i];
@@ -137,7 +121,7 @@ function distancePointToSegment(p: Point, a: Point, b: Point): number {
   return Math.hypot(p.x - cx, p.y - cy);
 }
 
-function polygonDistanceToPoint(polygon: Point[], point: Point): number {
+export function polygonDistanceToPoint(polygon: Point[], point: Point): number {
   if (polygon.length < 2) {
     return Number.POSITIVE_INFINITY;
   }
@@ -179,7 +163,7 @@ function clipEdge(
   return out;
 }
 
-function clipPolygonToRect(polygon: Point[], rect: Rect): Point[] {
+export function clipPolygonToRect(polygon: Point[], rect: Rect): Point[] {
   const xMin = rect.x;
   const yMin = rect.y;
   const xMax = rect.x + rect.width;
@@ -221,12 +205,12 @@ function clipPolygonToRect(polygon: Point[], rect: Rect): Point[] {
   return clipped;
 }
 
-function polygonRectIntersectionArea(polygon: Point[], rect: Rect): number {
+export function polygonRectIntersectionArea(polygon: Point[], rect: Rect): number {
   const clipped = clipPolygonToRect(polygon, rect);
   return polygonArea(clipped);
 }
 
-function scaleRegionPolygon(region: TextRegion, scale: number): Point[] {
+export function scaleRegionPolygon(region: TextRegion, scale: number): Point[] {
   if (region.quad && region.quad.length === 4) {
     return region.quad.map((p) => ({ x: p.x * scale, y: p.y * scale }));
   }
@@ -242,7 +226,7 @@ function scaleRegionPolygon(region: TextRegion, scale: number): Point[] {
   ];
 }
 
-function polygonToBox(points: Point[], maxW: number, maxH: number): Rect {
+export function polygonToBox(points: Point[], maxW: number, maxH: number): Rect {
   const minX = clamp(Math.floor(Math.min(...points.map((p) => p.x))), 0, maxW - 1);
   const minY = clamp(Math.floor(Math.min(...points.map((p) => p.y))), 0, maxH - 1);
   const maxX = clamp(Math.ceil(Math.max(...points.map((p) => p.x))), minX + 1, maxW);
@@ -255,7 +239,7 @@ function polygonToBox(points: Point[], maxW: number, maxH: number): Rect {
   };
 }
 
-function scaleRegions(regions: TextRegion[], scale: number, maxW: number, maxH: number): RegionMaskInfo[] {
+export function scaleRegions(regions: TextRegion[], scale: number, maxW: number, maxH: number): RegionMaskInfo[] {
   return regions.map((region) => {
     const scaledPolygon = scaleRegionPolygon(region, scale).map((p) => ({
       x: clamp(p.x, 0, maxW),
@@ -273,7 +257,7 @@ function scaleRegions(regions: TextRegion[], scale: number, maxW: number, maxH: 
   });
 }
 
-function connectedComponents(mask: Uint8Array, width: number, height: number): Component[] {
+export function connectedComponents(mask: Uint8Array, width: number, height: number): Component[] {
   const total = width * height;
   const visited = new Uint8Array(total);
   const queue = new Int32Array(total);
@@ -368,7 +352,7 @@ function ellipseOffsets(size: number): Array<{ dx: number; dy: number }> {
   return out;
 }
 
-function dilate(mask: Uint8Array, width: number, height: number, kernelSize: number): Uint8Array {
+export function dilate(mask: Uint8Array, width: number, height: number, kernelSize: number): Uint8Array {
   if (kernelSize <= 1) {
     return mask.slice();
   }
@@ -393,14 +377,14 @@ function dilate(mask: Uint8Array, width: number, height: number, kernelSize: num
   return out;
 }
 
-function computeScaleFactor(rawMaskHeight: number, imageHeight: number): number {
+export function computeScaleFactor(rawMaskHeight: number, imageHeight: number): number {
   if (rawMaskHeight <= 0 || imageHeight <= 0) {
     return 1;
   }
   return Math.max(Math.min((rawMaskHeight - imageHeight / 3) / rawMaskHeight, 1), 0.5);
 }
 
-function toMaskCanvas(mask: Uint8Array, width: number, height: number, outW: number, outH: number): HTMLCanvasElement {
+export function toMaskCanvas(mask: Uint8Array, width: number, height: number, outW: number, outH: number): HTMLCanvasElement {
   const src = makeCanvas(width, height);
   const srcCtx = src.getContext("2d");
   if (!srcCtx) {
@@ -435,7 +419,7 @@ function toMaskCanvas(mask: Uint8Array, width: number, height: number, outW: num
   return out;
 }
 
-function hasForeground(mask: Uint8Array): boolean {
+export function hasForeground(mask: Uint8Array): boolean {
   for (let i = 0; i < mask.length; i += 1) {
     if (mask[i] > 0) {
       return true;
@@ -444,7 +428,7 @@ function hasForeground(mask: Uint8Array): boolean {
   return false;
 }
 
-function extractSubMask(mask: Uint8Array, width: number, rect: Rect): Uint8Array {
+export function extractSubMask(mask: Uint8Array, width: number, rect: Rect): Uint8Array {
   const out = new Uint8Array(rect.width * rect.height);
   for (let y = 0; y < rect.height; y += 1) {
     const srcRow = (rect.y + y) * width + rect.x;
@@ -454,7 +438,7 @@ function extractSubMask(mask: Uint8Array, width: number, rect: Rect): Uint8Array
   return out;
 }
 
-function replaceSubMask(mask: Uint8Array, width: number, rect: Rect, sub: Uint8Array): void {
+export function replaceSubMask(mask: Uint8Array, width: number, rect: Rect, sub: Uint8Array): void {
   for (let y = 0; y < rect.height; y += 1) {
     const dstRow = (rect.y + y) * width + rect.x;
     const srcRow = y * rect.width;
@@ -462,7 +446,7 @@ function replaceSubMask(mask: Uint8Array, width: number, rect: Rect, sub: Uint8A
   }
 }
 
-function orSubMask(mask: Uint8Array, width: number, rect: Rect, sub: Uint8Array): void {
+export function orSubMask(mask: Uint8Array, width: number, rect: Rect, sub: Uint8Array): void {
   for (let y = 0; y < rect.height; y += 1) {
     const dstRow = (rect.y + y) * width + rect.x;
     const srcRow = y * rect.width;
@@ -474,7 +458,7 @@ function orSubMask(mask: Uint8Array, width: number, rect: Rect, sub: Uint8Array)
   }
 }
 
-function extractSubGray(gray: Uint8Array, width: number, rect: Rect): Uint8Array {
+export function extractSubGray(gray: Uint8Array, width: number, rect: Rect): Uint8Array {
   const out = new Uint8Array(rect.width * rect.height);
   for (let y = 0; y < rect.height; y += 1) {
     const srcRow = (rect.y + y) * width + rect.x;
@@ -484,7 +468,7 @@ function extractSubGray(gray: Uint8Array, width: number, rect: Rect): Uint8Array
   return out;
 }
 
-function otsuThreshold(gray: Uint8Array): number {
+export function otsuThreshold(gray: Uint8Array): number {
   const hist = new Uint32Array(256);
   for (let i = 0; i < gray.length; i += 1) {
     hist[gray[i]] += 1;
@@ -520,7 +504,7 @@ function otsuThreshold(gray: Uint8Array): number {
   return threshold;
 }
 
-function xorCost(a: Uint8Array, b: Uint8Array): number {
+export function xorCost(a: Uint8Array, b: Uint8Array): number {
   let cost = 0;
   for (let i = 0; i < a.length; i += 1) {
     if ((a[i] > 0) !== (b[i] > 0)) {
@@ -530,7 +514,7 @@ function xorCost(a: Uint8Array, b: Uint8Array): number {
   return cost;
 }
 
-function refineRegionMask(gray: Uint8Array, seedMask: Uint8Array): Uint8Array {
+export function refineRegionMask(gray: Uint8Array, seedMask: Uint8Array): Uint8Array {
   if (!hasForeground(seedMask)) {
     return seedMask.slice();
   }
@@ -551,7 +535,7 @@ function refineRegionMask(gray: Uint8Array, seedMask: Uint8Array): Uint8Array {
   return chosen;
 }
 
-function extendRect(rect: Rect, maxX: number, maxY: number, extendSize: number): Rect {
+export function extendRect(rect: Rect, maxX: number, maxY: number, extendSize: number): Rect {
   const x = Math.max(Math.floor(rect.x - extendSize), 0);
   const y = Math.max(Math.floor(rect.y - extendSize), 0);
   const width = Math.min(Math.floor(rect.width + extendSize * 2), maxX - x - 1);
@@ -563,156 +547,3 @@ function extendRect(rect: Rect, maxX: number, maxY: number, extendSize: number):
     height: Math.max(1, height)
   };
 }
-
-export function refineTextMask(
-  originalCanvas: HTMLCanvasElement,
-  regions: TextRegion[],
-  rawMaskCanvas: HTMLCanvasElement,
-  options: MaskRefinementOptions = {}
-): HTMLCanvasElement {
-  const method = options.method ?? "fit_text";
-  if (method !== "fit_text") {
-    throw new Error(`Mask refinement 不支持的 method: ${method}`);
-  }
-
-  const width = originalCanvas.width;
-  const height = originalCanvas.height;
-  if (width <= 0 || height <= 0 || regions.length === 0) {
-    return makeCanvas(width, height);
-  }
-  if (rawMaskCanvas.width <= 0 || rawMaskCanvas.height <= 0) {
-    throw new Error("Mask refinement 缺少检测原始 mask，已禁用文本框遮罩回退");
-  }
-
-  const dilationOffset = options.dilationOffset ?? 20;
-  const kernelSize = options.kernelSize ?? 3;
-  const keepThreshold = options.keepThreshold ?? 1e-2;
-
-  const scaleFactor = computeScaleFactor(rawMaskCanvas.height, height);
-  const scaledWidth = Math.max(1, Math.round(width * scaleFactor));
-  const scaledHeight = Math.max(1, Math.round(height * scaleFactor));
-
-  const scaledMask = readBinaryMask(rawMaskCanvas, scaledWidth, scaledHeight);
-  const scaledGray = readGrayImage(originalCanvas, scaledWidth, scaledHeight);
-  const scaledRegions = scaleRegions(regions, scaleFactor, scaledWidth, scaledHeight);
-
-  const ccInput = scaledMask.slice();
-  for (const region of scaledRegions) {
-    drawRectOutline(ccInput, scaledWidth, scaledHeight, region.box);
-  }
-  const components = connectedComponents(ccInput, scaledWidth, scaledHeight);
-
-  const assigned: Component[][] = new Array(scaledRegions.length).fill(null).map(() => []);
-  const extents: Array<AssignedExtent | null> = new Array(scaledRegions.length).fill(null);
-  let valid = false;
-
-  for (const component of components) {
-    let bestRatio = -1;
-    let bestIndex = -1;
-    let nearestDistance = Number.POSITIVE_INFINITY;
-    let nearestIndex = -1;
-
-    for (let i = 0; i < scaledRegions.length; i += 1) {
-      const region = scaledRegions[i];
-      const overlap = polygonRectIntersectionArea(region.polygon, component.rect);
-      const ratio = overlap / Math.max(1, Math.min(component.area, region.area));
-      const distance = polygonDistanceToPoint(region.polygon, component.center);
-
-      if (ratio > bestRatio) {
-        bestRatio = ratio;
-        bestIndex = i;
-      }
-      if (distance < nearestDistance) {
-        nearestDistance = distance;
-        nearestIndex = i;
-      }
-    }
-
-    if (bestIndex < 0) {
-      continue;
-    }
-
-    const bestRegion = scaledRegions[bestIndex];
-    if (component.area >= bestRegion.area) {
-      continue;
-    }
-
-    let targetIndex = bestIndex;
-    if (bestRatio <= keepThreshold) {
-      if (nearestIndex < 0) {
-        continue;
-      }
-      const region = scaledRegions[nearestIndex];
-      const unit = Math.max(Math.min(region.textSize, component.rect.width, component.rect.height), 10);
-      if (nearestDistance >= 0.5 * unit) {
-        continue;
-      }
-      targetIndex = nearestIndex;
-    }
-
-    assigned[targetIndex].push(component);
-    const rect = component.rect;
-    const current = extents[targetIndex];
-    const x0 = rect.x;
-    const y0 = rect.y;
-    const x1 = rect.x + rect.width;
-    const y1 = rect.y + rect.height;
-    if (!current) {
-      extents[targetIndex] = { minX: x0, minY: y0, maxX: x1, maxY: y1 };
-    } else {
-      current.minX = Math.min(current.minX, x0);
-      current.minY = Math.min(current.minY, y0);
-      current.maxX = Math.max(current.maxX, x1);
-      current.maxY = Math.max(current.maxY, y1);
-    }
-    valid = true;
-  }
-
-  if (!valid) {
-    throw new Error("Mask refinement 未分配到有效连通域，已禁用文本框遮罩回退");
-  }
-
-  const finalMask = new Uint8Array(scaledWidth * scaledHeight);
-
-  for (let i = 0; i < scaledRegions.length; i += 1) {
-    const regionComponents = assigned[i];
-    const extent = extents[i];
-    if (!extent || regionComponents.length === 0) {
-      continue;
-    }
-
-    const baseRect: Rect = {
-      x: extent.minX,
-      y: extent.minY,
-      width: Math.max(1, extent.maxX - extent.minX),
-      height: Math.max(1, extent.maxY - extent.minY)
-    };
-    const regionTextSize = Math.max(1, Math.min(baseRect.width, baseRect.height, scaledRegions[i].textSize));
-
-    const regionMask = new Uint8Array(scaledWidth * scaledHeight);
-    for (const component of regionComponents) {
-      for (const pixel of component.pixels) {
-        regionMask[pixel] = 1;
-      }
-    }
-
-    const rect1 = extendRect(baseRect, scaledWidth, scaledHeight, Math.floor(regionTextSize * 0.1));
-    const ccRegion = extractSubMask(regionMask, scaledWidth, rect1);
-    if (!hasForeground(ccRegion)) {
-      continue;
-    }
-    const grayRegion = extractSubGray(scaledGray, scaledWidth, rect1);
-    const refined = refineRegionMask(grayRegion, ccRegion);
-    replaceSubMask(regionMask, scaledWidth, rect1, refined);
-
-    const dilateSize = Math.max(Math.floor(Math.floor((regionTextSize + dilationOffset) * 0.3) / 2) * 2 + 1, 3);
-    const rect2 = extendRect(baseRect, scaledWidth, scaledHeight, Math.ceil(dilateSize / 2));
-    const ccRegion2 = extractSubMask(regionMask, scaledWidth, rect2);
-    const dilated = dilate(ccRegion2, rect2.width, rect2.height, dilateSize);
-    orSubMask(finalMask, scaledWidth, rect2, dilated);
-  }
-
-  const finalDilated = dilate(finalMask, scaledWidth, scaledHeight, Math.max(1, kernelSize));
-  return toMaskCanvas(finalDilated, scaledWidth, scaledHeight, width, height);
-}
-

@@ -1,4 +1,8 @@
-import type { ExtensionSettings } from '../../shared/config';
+import {
+  validateSettings,
+  toPipelineConfig,
+  type ExtensionSettings,
+} from '../../shared/config';
 import type {
   ImageTarget,
   PhotoState,
@@ -44,51 +48,12 @@ const stageLabelMap: Record<string, string> = {
   done: '完成',
 };
 
-const llmBaseUrlByProvider = {
-  deepseek: 'https://api.deepseek.com',
-  glm: 'https://api.z.ai/api/paas/v4',
-  kimi: 'https://api.moonshot.ai/v1',
-  minimax: 'https://api.minimax.io/v1',
-  mimo: 'https://api.mimo-v2.com/v1',
-} as const;
-
-function resolveLlmBaseUrl(settings: ExtensionSettings): string {
-  const profile = settings.llmProfiles[settings.llmProvider];
-  if (settings.llmProvider === 'custom') return profile.customBaseUrl.trim();
-  return llmBaseUrlByProvider[settings.llmProvider];
-}
-
-function resolveLlmModel(settings: ExtensionSettings): string {
-  const profile = settings.llmProfiles[settings.llmProvider];
-  if (settings.llmProvider === 'custom') return profile.modelCustom.trim();
-  if (!profile.useCustomModel) return profile.modelPreset.trim();
-  return profile.modelCustom.trim();
-}
-
 function validateActiveSettings(settings: ExtensionSettings): string | null {
-  if (settings.translator !== 'llm') return null;
-  if (!resolveLlmModel(settings)) return 'LLM 模型不能为空';
+  const baseError = validateSettings(settings);
+  if (baseError) return baseError;
   const profile = settings.llmProfiles[settings.llmProvider];
-  if (settings.llmProvider === 'custom' && !profile.customBaseUrl.trim()) {
-    return '自定义提供商 Base URL 不能为空';
-  }
   if (!profile.apiKey.trim()) return '未填写API Key，服务暂不可用';
   return null;
-}
-
-function toPipelineConfig(settings: ExtensionSettings) {
-  const profile = settings.llmProfiles[settings.llmProvider];
-  return {
-    sourceLang: 'ja',
-    targetLang: settings.targetLang,
-    translator: settings.translator,
-    llmProvider: settings.llmProvider,
-    llmBaseUrl: resolveLlmBaseUrl(settings),
-    llmApiKey: profile.apiKey,
-    llmModel: resolveLlmModel(settings),
-    llmTemperature: profile.temperature,
-    typesetDebug: settings.showTypesetDebug,
-  };
 }
 
 function createInitialState(originalUrl: string): PhotoState {

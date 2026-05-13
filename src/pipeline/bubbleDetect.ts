@@ -1,6 +1,7 @@
 import * as ort from "onnxruntime-web";
 import { getModelSession } from "../runtime/modelRegistry";
 import type { Rect, TextRegion } from "../types";
+import { nmsBoxes, type ScoredBox } from "./utils";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -96,38 +97,6 @@ async function runBubbleInference(image: HTMLImageElement): Promise<{
 }
 
 // ---------------------------------------------------------------------------
-// NMS
-// ---------------------------------------------------------------------------
-
-function rectIou(a: Rect, b: Rect): number {
-  const x1 = Math.max(a.x, b.x);
-  const y1 = Math.max(a.y, b.y);
-  const x2 = Math.min(a.x + a.width, b.x + b.width);
-  const y2 = Math.min(a.y + a.height, b.y + b.height);
-  const inter = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
-  const union = a.width * a.height + b.width * b.height - inter;
-  return union > 0 ? inter / union : 0;
-}
-
-type ScoredBox = { box: Rect; score: number; index: number };
-
-function nmsBoxes(items: ScoredBox[], iouThreshold: number): ScoredBox[] {
-  const sorted = [...items].sort((a, b) => b.score - a.score);
-  const kept: ScoredBox[] = [];
-  for (const current of sorted) {
-    let suppressed = false;
-    for (const prev of kept) {
-      if (rectIou(current.box, prev.box) > iouThreshold) {
-        suppressed = true;
-        break;
-      }
-    }
-    if (!suppressed) kept.push(current);
-  }
-  return kept;
-}
-
-// ---------------------------------------------------------------------------
 // Decode output0 → boxes + scores + mask coefficients
 // ---------------------------------------------------------------------------
 
@@ -192,7 +161,7 @@ function decodeDetections(
   return kept.map((d) => ({
     box: d.box,
     score: d.score,
-    maskCoeffs: coeffsMap.get(d.index)!,
+    maskCoeffs: coeffsMap.get(d.index!)!,
   }));
 }
 

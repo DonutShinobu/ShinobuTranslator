@@ -1,5 +1,6 @@
 import * as ortAll from "onnxruntime-web/all";
 import { ensureOrtEnv } from "./onnx";
+import { toErrorMessage as errText } from "../shared/utils";
 
 type CheckStatus = "pass" | "warn" | "fail" | "running" | "skip";
 
@@ -32,13 +33,6 @@ export type RuntimeSelfCheckReport = {
 type NavigatorWithMl = Navigator & {
   ml?: unknown;
 };
-
-function errText(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-}
 
 async function createSessionWithTimeout(
   modelUrl: string,

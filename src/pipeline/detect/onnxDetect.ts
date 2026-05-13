@@ -1,10 +1,11 @@
 import * as ort from "onnxruntime-web/all";
-import { PSM, createWorker } from "tesseract.js";
-import type { Rect, TextRegion, QuadPoint } from "../types";
-import { convexHull, minAreaRect, type Quad } from "./geometry";
-import { getModelSession } from "../runtime/modelRegistry";
-import { isContextLostRuntimeError } from "../runtime/onnx";
-import type { RuntimeProvider, WebNnDeviceType } from "../runtime/onnx";
+import type { Rect, TextRegion, QuadPoint } from "../../types";
+import { minAreaRect, type Quad } from "../typeset/geometry";
+import { getModelSession } from "../../runtime/modelRegistry";
+import { isContextLostRuntimeError } from "../../runtime/onnx";
+import type { RuntimeProvider, WebNnDeviceType } from "../../runtime/onnx";
+import { toErrorMessage } from "../../shared/utils";
+import { clamp, polygonArea, nmsBoxes, convexHull, type ScoredBox } from "../utils";
 
 type LetterboxResult = {
   input: Float32Array;
@@ -12,24 +13,6 @@ type LetterboxResult = {
   ratio: number;
   unpaddedWidth: number;
   unpaddedHeight: number;
-};
-
-type TessBbox = {
-  x0: number;
-  y0: number;
-  x1: number;
-  y1: number;
-};
-
-type TessUnit = {
-  text: string;
-  confidence: number;
-  bbox: TessBbox;
-};
-
-type BBoxScore = {
-  box: Rect;
-  score: number;
 };
 
 type MaskComponent = {
@@ -43,16 +26,74 @@ export type DetectOutput = {
   actualWebnnDeviceType?: WebNnDeviceType;
 };
 
-function toErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
+// --- Shared helpers (used by both ONNX and heuristic paths) ---
+
+export function rectToQuad(box: Rect): [
+  { x: number; y: number },
+  { x: number; y: number },
+  { x: number; y: number },
+  { x: number; y: number }
+] {
+  const x0 = box.x;
+  const y0 = box.y;
+  const x1 = box.x + box.width;
+  const y1 = box.y + box.height;
+  return [
+    { x: x0, y: y0 },
+    { x: x1, y: y0 },
+    { x: x1, y: y1 },
+    { x: x0, y: y1 }
+  ];
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
+export function inferDirection(box: Rect): "h" | "v" {
+  return box.height > box.width ? "v" : "h";
 }
+
+export function makeRegion(box: Rect): TextRegion {
+  return {
+    id: crypto.randomUUID(),
+    box,
+    quad: rectToQuad(box),
+    direction: inferDirection(box),
+    sourceText: "",
+    translatedText: ""
+  };
+}
+
+export function intersectsOrNear(a: Rect, b: Rect, gap: number): boolean {
+  return !(
+    a.x + a.width + gap < b.x ||
+    b.x + b.width + gap < a.x ||
+    a.y + a.height + gap < b.y ||
+    b.y + b.height + gap < a.y
+  );
+}
+
+export function mergeRects(rects: Rect[], gap: number): Rect[] {
+  const merged: Rect[] = [];
+  for (const rect of rects) {
+    let mergedCurrent = false;
+    for (let i = 0; i < merged.length; i += 1) {
+      if (!intersectsOrNear(rect, merged[i], gap)) {
+        continue;
+      }
+      const left = Math.min(rect.x, merged[i].x);
+      const top = Math.min(rect.y, merged[i].y);
+      const right = Math.max(rect.x + rect.width, merged[i].x + merged[i].width);
+      const bottom = Math.max(rect.y + rect.height, merged[i].y + merged[i].height);
+      merged[i] = { x: left, y: top, width: right - left, height: bottom - top };
+      mergedCurrent = true;
+      break;
+    }
+    if (!mergedCurrent) {
+      merged.push({ ...rect });
+    }
+  }
+  return merged;
+}
+
+// --- ONNX-specific quad/geometry helpers (private) ---
 
 function roundHalfToEven(value: number): number {
   const base = Math.floor(value);
@@ -68,19 +109,6 @@ function roundHalfToEven(value: number): number {
 
 function distance(a: QuadPoint, b: QuadPoint): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-function polygonArea(points: QuadPoint[]): number {
-  if (points.length < 3) {
-    return 0;
-  }
-  let acc = 0;
-  for (let i = 0; i < points.length; i += 1) {
-    const p = points[i];
-    const q = points[(i + 1) % points.length];
-    acc += p.x * q.y - p.y * q.x;
-  }
-  return Math.abs(acc) * 0.5;
 }
 
 function polygonPerimeter(points: QuadPoint[]): number {
@@ -200,39 +228,6 @@ function makeRegionFromQuad(quad: Quad, imageWidth: number, imageHeight: number,
   };
 }
 
-function rectToQuad(box: Rect): [
-  { x: number; y: number },
-  { x: number; y: number },
-  { x: number; y: number },
-  { x: number; y: number }
-] {
-  const x0 = box.x;
-  const y0 = box.y;
-  const x1 = box.x + box.width;
-  const y1 = box.y + box.height;
-  return [
-    { x: x0, y: y0 },
-    { x: x1, y: y0 },
-    { x: x1, y: y1 },
-    { x: x0, y: y1 }
-  ];
-}
-
-function inferDirection(box: Rect): "h" | "v" {
-  return box.height > box.width ? "v" : "h";
-}
-
-function makeRegion(box: Rect): TextRegion {
-  return {
-    id: crypto.randomUUID(),
-    box,
-    quad: rectToQuad(box),
-    direction: inferDirection(box),
-    sourceText: "",
-    translatedText: ""
-  };
-}
-
 function binaryMaskToCanvas(mask: Uint8Array, width: number, height: number): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
   canvas.width = width;
@@ -280,408 +275,9 @@ function buildMaskCanvasFromBinary(mask: Uint8Array, width: number, height: numb
   return scaleMaskToOriginal(binaryMaskToCanvas(mask, width, height), image);
 }
 
-function intersectsOrNear(a: Rect, b: Rect, gap: number): boolean {
-  return !(
-    a.x + a.width + gap < b.x ||
-    b.x + b.width + gap < a.x ||
-    a.y + a.height + gap < b.y ||
-    b.y + b.height + gap < a.y
-  );
-}
+// --- connectedComponents (shared with heuristic path) ---
 
-function mergeRects(rects: Rect[], gap: number): Rect[] {
-  const merged: Rect[] = [];
-  for (const rect of rects) {
-    let mergedCurrent = false;
-    for (let i = 0; i < merged.length; i += 1) {
-      if (!intersectsOrNear(rect, merged[i], gap)) {
-        continue;
-      }
-      const left = Math.min(rect.x, merged[i].x);
-      const top = Math.min(rect.y, merged[i].y);
-      const right = Math.max(rect.x + rect.width, merged[i].x + merged[i].width);
-      const bottom = Math.max(rect.y + rect.height, merged[i].y + merged[i].height);
-      merged[i] = { x: left, y: top, width: right - left, height: bottom - top };
-      mergedCurrent = true;
-      break;
-    }
-    if (!mergedCurrent) {
-      merged.push({ ...rect });
-    }
-  }
-  return merged;
-}
-
-function rectIou(a: Rect, b: Rect): number {
-  const x1 = Math.max(a.x, b.x);
-  const y1 = Math.max(a.y, b.y);
-  const x2 = Math.min(a.x + a.width, b.x + b.width);
-  const y2 = Math.min(a.y + a.height, b.y + b.height);
-  if (x2 <= x1 || y2 <= y1) {
-    return 0;
-  }
-  const inter = (x2 - x1) * (y2 - y1);
-  const union = a.width * a.height + b.width * b.height - inter;
-  return union <= 0 ? 0 : inter / union;
-}
-
-function nmsBoxes(items: BBoxScore[], iouThreshold: number): BBoxScore[] {
-  const sorted = [...items].sort((a, b) => b.score - a.score);
-  const kept: BBoxScore[] = [];
-  for (const current of sorted) {
-    let suppressed = false;
-    for (const prev of kept) {
-      if (rectIou(current.box, prev.box) > iouThreshold) {
-        suppressed = true;
-        break;
-      }
-    }
-    if (!suppressed) {
-      kept.push(current);
-    }
-  }
-  return kept;
-}
-
-function pickBlkTensor(outputs: ort.InferenceSession.ReturnType): ort.Tensor | null {
-  const byName = outputs.blk;
-  if (byName && byName.dims.length === 3 && byName.dims[2] >= 6) {
-    return byName;
-  }
-  for (const value of Object.values(outputs)) {
-    if (value.dims.length === 3 && value.dims[2] >= 6) {
-      return value;
-    }
-  }
-  return null;
-}
-
-function pickDetTensor(outputs: ort.InferenceSession.ReturnType): ort.Tensor | null {
-  const byName = outputs.det;
-  if (byName && byName.dims.length === 4 && byName.dims[1] >= 1) {
-    return byName;
-  }
-  for (const value of Object.values(outputs)) {
-    if (value.dims.length === 4 && value.dims[1] >= 1 && value.dims[2] >= 64 && value.dims[3] >= 64) {
-      return value;
-    }
-  }
-  return null;
-}
-
-function boxesFromBlk(
-  tensor: ort.Tensor,
-  inputSize: number,
-  unpaddedWidth: number,
-  unpaddedHeight: number
-): BBoxScore[] {
-  if (!(tensor.data instanceof Float32Array)) {
-    return [];
-  }
-  const data = tensor.data;
-  const rows = tensor.dims[1] ?? 0;
-  const cols = tensor.dims[2] ?? 0;
-  if (rows <= 0 || cols < 6) {
-    return [];
-  }
-
-  const candidates: BBoxScore[] = [];
-  const confThreshold = 0.35;
-  for (let i = 0; i < rows; i += 1) {
-    const base = i * cols;
-    const cx = data[base];
-    const cy = data[base + 1];
-    const w = data[base + 2];
-    const h = data[base + 3];
-    const obj = data[base + 4];
-    if (!Number.isFinite(cx + cy + w + h + obj)) {
-      continue;
-    }
-    let cls = 1;
-    for (let k = 5; k < cols; k += 1) {
-      cls = Math.max(cls, data[base + k]);
-    }
-    const score = obj * cls;
-    if (score < confThreshold) {
-      continue;
-    }
-
-    const x = cx - w / 2;
-    const y = cy - h / 2;
-    const left = clamp(Math.floor(x), 0, inputSize - 1);
-    const top = clamp(Math.floor(y), 0, inputSize - 1);
-    const right = clamp(Math.ceil(x + w), left + 1, inputSize);
-    const bottom = clamp(Math.ceil(y + h), top + 1, inputSize);
-    if (left >= unpaddedWidth || top >= unpaddedHeight) {
-      continue;
-    }
-
-    const clippedRight = Math.min(right, unpaddedWidth);
-    const clippedBottom = Math.min(bottom, unpaddedHeight);
-    const boxWidth = clippedRight - left;
-    const boxHeight = clippedBottom - top;
-    if (boxWidth < 6 || boxHeight < 6) {
-      continue;
-    }
-
-    const ratio = (boxWidth * boxHeight) / (unpaddedWidth * unpaddedHeight);
-    if (ratio < 0.00004 || ratio > 0.1) {
-      continue;
-    }
-
-    candidates.push({
-      box: { x: left, y: top, width: boxWidth, height: boxHeight },
-      score
-    });
-  }
-
-  const picked = nmsBoxes(candidates, 0.35).slice(0, 96);
-  return picked;
-}
-
-function normalizeText(text: string): string {
-  return text.replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
-}
-
-function hasJapanese(text: string): boolean {
-  return /[ぁ-んァ-ン一-龯々ー]/.test(text);
-}
-
-function coreTextLength(text: string): number {
-  return text.replace(/[\s\-–—>\/|.,。・…:：;；!?！？()（）\[\]【】「」『』]/g, "").length;
-}
-
-function isBbox(value: unknown): value is TessBbox {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-  const record = value as Record<string, unknown>;
-  return (
-    typeof record.x0 === "number" &&
-    typeof record.y0 === "number" &&
-    typeof record.x1 === "number" &&
-    typeof record.y1 === "number"
-  );
-}
-
-function extractUnits(raw: unknown): TessUnit[] {
-  if (!Array.isArray(raw)) {
-    return [];
-  }
-  const out: TessUnit[] = [];
-  for (const item of raw) {
-    if (typeof item !== "object" || item === null) {
-      continue;
-    }
-    const record = item as Record<string, unknown>;
-    if (typeof record.text !== "string" || typeof record.confidence !== "number" || !isBbox(record.bbox)) {
-      continue;
-    }
-    out.push({
-      text: record.text,
-      confidence: record.confidence,
-      bbox: record.bbox
-    });
-  }
-  return out;
-}
-
-function toRect(bbox: TessBbox, scale: number, imageWidth: number, imageHeight: number, padding: number): Rect {
-  const x = clamp(Math.floor(bbox.x0 / scale) - padding, 0, imageWidth - 1);
-  const y = clamp(Math.floor(bbox.y0 / scale) - padding, 0, imageHeight - 1);
-  const right = clamp(Math.ceil(bbox.x1 / scale) + padding, x + 1, imageWidth);
-  const bottom = clamp(Math.ceil(bbox.y1 / scale) + padding, y + 1, imageHeight);
-  return {
-    x,
-    y,
-    width: right - x,
-    height: bottom - y
-  };
-}
-
-function preprocessForTesseract(image: HTMLImageElement): { canvas: HTMLCanvasElement; scale: number } {
-  const maxSide = 2200;
-  const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
-  const width = Math.max(1, Math.round(image.naturalWidth * scale));
-  const height = Math.max(1, Math.round(image.naturalHeight * scale));
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) {
-    throw new Error("Tesseract 检测预处理阶段无法创建画布上下文");
-  }
-  ctx.drawImage(image, 0, 0, width, height);
-  const imageData = ctx.getImageData(0, 0, width, height);
-  const data = imageData.data;
-  for (let i = 0; i < data.length; i += 4) {
-    const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-    const boosted = clamp((gray - 128) * 1.4 + 128, 0, 255);
-    data[i] = boosted;
-    data[i + 1] = boosted;
-    data[i + 2] = boosted;
-  }
-  ctx.putImageData(imageData, 0, 0);
-  return { canvas, scale };
-}
-
-function buildRegionsFromUnits(
-  units: TessUnit[],
-  scale: number,
-  imageWidth: number,
-  imageHeight: number,
-  minConfidence: number
-): TextRegion[] {
-  const imageArea = imageWidth * imageHeight;
-  const padding = Math.max(4, Math.round(Math.min(imageWidth, imageHeight) * 0.008));
-  const rects: Rect[] = [];
-
-  for (const unit of units) {
-    const text = normalizeText(unit.text);
-    if (!text) {
-      continue;
-    }
-    if (!hasJapanese(text) && coreTextLength(text) < 2) {
-      continue;
-    }
-    if (unit.confidence < minConfidence) {
-      continue;
-    }
-    const rect = toRect(unit.bbox, scale, imageWidth, imageHeight, padding);
-    const area = rect.width * rect.height;
-    const ratio = area / imageArea;
-    const aspect = rect.width / Math.max(1, rect.height);
-    if (ratio < 0.00005 || ratio > 0.04) {
-      continue;
-    }
-    if (aspect > 2.2) {
-      continue;
-    }
-    if (rect.width > imageWidth * 0.35 || rect.height > imageHeight * 0.45) {
-      continue;
-    }
-    rects.push(rect);
-  }
-
-  if (rects.length === 0) {
-    return [];
-  }
-
-  const scored = rects.map((box) => ({ box, score: box.width * box.height }));
-  const merged = nmsBoxes(scored, 0.2)
-    .map((item) => item.box)
-    .sort((a, b) => b.width * b.height - a.width * a.height)
-    .slice(0, 72)
-    .sort((a, b) => a.y - b.y || a.x - b.x);
-
-  return merged.map(makeRegion);
-}
-
-async function buildWorker() {
-  try {
-    return await createWorker("jpn_vert+jpn");
-  } catch {
-    return createWorker("jpn");
-  }
-}
-
-function preprocessLetterbox(image: HTMLImageElement, size: number): LetterboxResult {
-  const width = image.naturalWidth;
-  const height = image.naturalHeight;
-  const ratio = Math.min(size / height, size / width);
-  const unpaddedWidth = Math.max(1, Math.round(width * ratio));
-  const unpaddedHeight = Math.max(1, Math.round(height * ratio));
-
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) {
-    throw new Error("ONNX 检测预处理失败：无法创建画布");
-  }
-  ctx.fillStyle = "black";
-  ctx.fillRect(0, 0, size, size);
-  ctx.drawImage(image, 0, 0, unpaddedWidth, unpaddedHeight);
-
-  const data = ctx.getImageData(0, 0, size, size).data;
-  const input = new Float32Array(1 * 3 * size * size);
-  const hw = size * size;
-  for (let i = 0, p = 0; i < hw; i += 1, p += 4) {
-    input[i] = data[p] / 255;
-    input[hw + i] = data[p + 1] / 255;
-    input[2 * hw + i] = data[p + 2] / 255;
-  }
-
-  return {
-    input,
-    size,
-    ratio,
-    unpaddedWidth,
-    unpaddedHeight
-  };
-}
-
-function pickSegTensor(outputs: ort.InferenceSession.ReturnType): ort.Tensor {
-  const byName = outputs.seg;
-  if (byName) {
-    return byName;
-  }
-
-  for (const value of Object.values(outputs)) {
-    if (value.dims.length === 4 && value.dims[1] === 1) {
-      return value;
-    }
-  }
-  throw new Error("ONNX 检测结果中未找到 seg 输出");
-}
-
-function buildBinaryMaskFromTensor(
-  tensor: ort.Tensor,
-  unpaddedWidth: number,
-  unpaddedHeight: number,
-  threshold: number,
-  channelIndex = 0
-): { mask: Uint8Array; width: number; height: number } | null {
-  if (!(tensor.data instanceof Float32Array)) {
-    return null;
-  }
-  const dims = tensor.dims;
-  if (dims.length !== 4) {
-    return null;
-  }
-
-  const channels = dims[1] ?? 0;
-  const rawHeight = dims[2] ?? 0;
-  const rawWidth = dims[3] ?? 0;
-  if (channels <= 0 || rawWidth <= 0 || rawHeight <= 0) {
-    return null;
-  }
-
-  const width = Math.min(unpaddedWidth, rawWidth);
-  const height = Math.min(unpaddedHeight, rawHeight);
-  if (width <= 0 || height <= 0) {
-    return null;
-  }
-
-  const source = tensor.data;
-  const channelStride = rawWidth * rawHeight;
-  const channel = clamp(Math.floor(channelIndex), 0, channels - 1);
-  const channelOffset = channel * channelStride;
-  const mask = new Uint8Array(width * height);
-
-  for (let y = 0; y < height; y += 1) {
-    const sourceRow = channelOffset + y * rawWidth;
-    const destRow = y * width;
-    for (let x = 0; x < width; x += 1) {
-      const idx = destRow + x;
-      mask[idx] = source[sourceRow + x] > threshold ? 1 : 0;
-    }
-  }
-
-  return { mask, width, height };
-}
-
-function connectedComponents(mask: Uint8Array, width: number, height: number): Rect[] {
+export function connectedComponents(mask: Uint8Array, width: number, height: number): Rect[] {
   const total = width * height;
   const visited = new Uint8Array(total);
   const queue = new Int32Array(total);
@@ -745,6 +341,200 @@ function connectedComponents(mask: Uint8Array, width: number, height: number): R
     out.push({ x: minX, y: minY, width: boxWidth, height: boxHeight });
   }
   return out;
+}
+
+// --- ONNX tensor processing (private) ---
+
+function pickBlkTensor(outputs: ort.InferenceSession.ReturnType): ort.Tensor | null {
+  const byName = outputs.blk;
+  if (byName && byName.dims.length === 3 && byName.dims[2] >= 6) {
+    return byName;
+  }
+  for (const value of Object.values(outputs)) {
+    if (value.dims.length === 3 && value.dims[2] >= 6) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function pickDetTensor(outputs: ort.InferenceSession.ReturnType): ort.Tensor | null {
+  const byName = outputs.det;
+  if (byName && byName.dims.length === 4 && byName.dims[1] >= 1) {
+    return byName;
+  }
+  for (const value of Object.values(outputs)) {
+    if (value.dims.length === 4 && value.dims[1] >= 1 && value.dims[2] >= 64 && value.dims[3] >= 64) {
+      return value;
+    }
+  }
+  return null;
+}
+
+function pickSegTensor(outputs: ort.InferenceSession.ReturnType): ort.Tensor {
+  const byName = outputs.seg;
+  if (byName) {
+    return byName;
+  }
+
+  for (const value of Object.values(outputs)) {
+    if (value.dims.length === 4 && value.dims[1] === 1) {
+      return value;
+    }
+  }
+  throw new Error("ONNX 检测结果中未找到 seg 输出");
+}
+
+function boxesFromBlk(
+  tensor: ort.Tensor,
+  inputSize: number,
+  unpaddedWidth: number,
+  unpaddedHeight: number
+): ScoredBox[] {
+  if (!(tensor.data instanceof Float32Array)) {
+    return [];
+  }
+  const data = tensor.data;
+  const rows = tensor.dims[1] ?? 0;
+  const cols = tensor.dims[2] ?? 0;
+  if (rows <= 0 || cols < 6) {
+    return [];
+  }
+
+  const candidates: ScoredBox[] = [];
+  const confThreshold = 0.35;
+  for (let i = 0; i < rows; i += 1) {
+    const base = i * cols;
+    const cx = data[base];
+    const cy = data[base + 1];
+    const w = data[base + 2];
+    const h = data[base + 3];
+    const obj = data[base + 4];
+    if (!Number.isFinite(cx + cy + w + h + obj)) {
+      continue;
+    }
+    let cls = 1;
+    for (let k = 5; k < cols; k += 1) {
+      cls = Math.max(cls, data[base + k]);
+    }
+    const score = obj * cls;
+    if (score < confThreshold) {
+      continue;
+    }
+
+    const x = cx - w / 2;
+    const y = cy - h / 2;
+    const left = clamp(Math.floor(x), 0, inputSize - 1);
+    const top = clamp(Math.floor(y), 0, inputSize - 1);
+    const right = clamp(Math.ceil(x + w), left + 1, inputSize);
+    const bottom = clamp(Math.ceil(y + h), top + 1, inputSize);
+    if (left >= unpaddedWidth || top >= unpaddedHeight) {
+      continue;
+    }
+
+    const clippedRight = Math.min(right, unpaddedWidth);
+    const clippedBottom = Math.min(bottom, unpaddedHeight);
+    const boxWidth = clippedRight - left;
+    const boxHeight = clippedBottom - top;
+    if (boxWidth < 6 || boxHeight < 6) {
+      continue;
+    }
+
+    const ratio = (boxWidth * boxHeight) / (unpaddedWidth * unpaddedHeight);
+    if (ratio < 0.00004 || ratio > 0.1) {
+      continue;
+    }
+
+    candidates.push({
+      box: { x: left, y: top, width: boxWidth, height: boxHeight },
+      score
+    });
+  }
+
+  const picked = nmsBoxes(candidates, 0.35).slice(0, 96);
+  return picked;
+}
+
+function preprocessLetterbox(image: HTMLImageElement, size: number): LetterboxResult {
+  const width = image.naturalWidth;
+  const height = image.naturalHeight;
+  const ratio = Math.min(size / height, size / width);
+  const unpaddedWidth = Math.max(1, Math.round(width * ratio));
+  const unpaddedHeight = Math.max(1, Math.round(height * ratio));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) {
+    throw new Error("ONNX 检测预处理失败：无法创建画布");
+  }
+  ctx.fillStyle = "black";
+  ctx.fillRect(0, 0, size, size);
+  ctx.drawImage(image, 0, 0, unpaddedWidth, unpaddedHeight);
+
+  const data = ctx.getImageData(0, 0, size, size).data;
+  const input = new Float32Array(1 * 3 * size * size);
+  const hw = size * size;
+  for (let i = 0, p = 0; i < hw; i += 1, p += 4) {
+    input[i] = data[p] / 255;
+    input[hw + i] = data[p + 1] / 255;
+    input[2 * hw + i] = data[p + 2] / 255;
+  }
+
+  return {
+    input,
+    size,
+    ratio,
+    unpaddedWidth,
+    unpaddedHeight
+  };
+}
+
+function buildBinaryMaskFromTensor(
+  tensor: ort.Tensor,
+  unpaddedWidth: number,
+  unpaddedHeight: number,
+  threshold: number,
+  channelIndex = 0
+): { mask: Uint8Array; width: number; height: number } | null {
+  if (!(tensor.data instanceof Float32Array)) {
+    return null;
+  }
+  const dims = tensor.dims;
+  if (dims.length !== 4) {
+    return null;
+  }
+
+  const channels = dims[1] ?? 0;
+  const rawHeight = dims[2] ?? 0;
+  const rawWidth = dims[3] ?? 0;
+  if (channels <= 0 || rawWidth <= 0 || rawHeight <= 0) {
+    return null;
+  }
+
+  const width = Math.min(unpaddedWidth, rawWidth);
+  const height = Math.min(unpaddedHeight, rawHeight);
+  if (width <= 0 || height <= 0) {
+    return null;
+  }
+
+  const source = tensor.data;
+  const channelStride = rawWidth * rawHeight;
+  const channel = clamp(Math.floor(channelIndex), 0, channels - 1);
+  const channelOffset = channel * channelStride;
+  const mask = new Uint8Array(width * height);
+
+  for (let y = 0; y < height; y += 1) {
+    const sourceRow = channelOffset + y * rawWidth;
+    const destRow = y * width;
+    for (let x = 0; x < width; x += 1) {
+      const idx = destRow + x;
+      mask[idx] = source[sourceRow + x] > threshold ? 1 : 0;
+    }
+  }
+
+  return { mask, width, height };
 }
 
 function extractMaskComponents(mask: Uint8Array, width: number, height: number): MaskComponent[] {
@@ -961,105 +751,9 @@ function mapBoxesToOriginal(
   return mapped;
 }
 
-function estimateThreshold(grays: Uint8ClampedArray): number {
-  let sum = 0;
-  let sq = 0;
-  for (let i = 0; i < grays.length; i += 1) {
-    const v = grays[i];
-    sum += v;
-    sq += v * v;
-  }
-  const mean = sum / grays.length;
-  const variance = Math.max(0, sq / grays.length - mean * mean);
-  const stdev = Math.sqrt(variance);
-  return clamp(Math.round(mean - stdev * 0.35), 70, 170);
-}
+// --- Main ONNX detection function (exported) ---
 
-async function detectByHeuristic(image: HTMLImageElement): Promise<TextRegion[]> {
-  const maxSide = 1280;
-  const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
-  const width = Math.max(1, Math.round(image.naturalWidth * scale));
-  const height = Math.max(1, Math.round(image.naturalHeight * scale));
-
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) {
-    throw new Error("文本检测阶段无法创建画布上下文");
-  }
-  ctx.drawImage(image, 0, 0, width, height);
-  const imageData = ctx.getImageData(0, 0, width, height);
-  const pixels = imageData.data;
-  const totalPixels = width * height;
-  const grays = new Uint8ClampedArray(totalPixels);
-
-  for (let i = 0, p = 0; i < totalPixels; i += 1, p += 4) {
-    grays[i] = Math.round(pixels[p] * 0.299 + pixels[p + 1] * 0.587 + pixels[p + 2] * 0.114);
-  }
-  const threshold = estimateThreshold(grays);
-  const dark = new Uint8Array(totalPixels);
-  for (let i = 0; i < totalPixels; i += 1) {
-    dark[i] = grays[i] < threshold ? 1 : 0;
-  }
-
-  const mapped = connectedComponents(dark, width, height);
-  const scaleX = image.naturalWidth / width;
-  const scaleY = image.naturalHeight / height;
-  const pad = Math.max(4, Math.round(Math.min(scaleX, scaleY) * 6));
-  const imageArea = image.naturalWidth * image.naturalHeight;
-  const projected = mapped
-    .map((rect) => {
-      const x = clamp(Math.floor(rect.x * scaleX) - pad, 0, image.naturalWidth - 1);
-      const y = clamp(Math.floor(rect.y * scaleY) - pad, 0, image.naturalHeight - 1);
-      const right = clamp(Math.ceil((rect.x + rect.width) * scaleX) + pad, x + 1, image.naturalWidth);
-      const bottom = clamp(Math.ceil((rect.y + rect.height) * scaleY) + pad, y + 1, image.naturalHeight);
-      return { x, y, width: right - x, height: bottom - y };
-    })
-    .filter((rect) => {
-      const ratio = (rect.width * rect.height) / imageArea;
-      return ratio >= 0.00005 && ratio <= 0.18;
-    });
-
-  const merged = mergeRects(projected, Math.max(6, Math.round(Math.min(scaleX, scaleY) * 12)));
-  const sorted = merged
-    .sort((a, b) => b.width * b.height - a.width * a.height)
-    .slice(0, 40)
-    .sort((a, b) => a.y - b.y || a.x - b.x);
-
-  return sorted.map(makeRegion);
-}
-
-async function detectByTesseract(image: HTMLImageElement): Promise<TextRegion[]> {
-  const worker = await buildWorker();
-  try {
-    await worker.setParameters({
-      tessedit_pageseg_mode: PSM.SPARSE_TEXT,
-      preserve_interword_spaces: "1"
-    });
-    const preprocessed = preprocessForTesseract(image);
-    const result = await worker.recognize(preprocessed.canvas);
-
-    const lineUnits = extractUnits(result.data.lines);
-    const lineRegions = buildRegionsFromUnits(
-      lineUnits,
-      preprocessed.scale,
-      image.naturalWidth,
-      image.naturalHeight,
-      35
-    );
-    if (lineRegions.length > 0) {
-      return lineRegions;
-    }
-
-    const wordUnits = extractUnits(result.data.words);
-    return buildRegionsFromUnits(wordUnits, preprocessed.scale, image.naturalWidth, image.naturalHeight, 45);
-  } finally {
-    await worker.terminate();
-  }
-}
-
-async function detectByOnnx(image: HTMLImageElement): Promise<DetectOutput> {
+export async function detectByOnnx(image: HTMLImageElement): Promise<DetectOutput> {
   const primaryHandle = await getModelSession("detector");
   const inputSize = 1024;
   const prep = preprocessLetterbox(image, inputSize);
@@ -1200,45 +894,4 @@ async function detectByOnnx(image: HTMLImageElement): Promise<DetectOutput> {
     actualProvider,
     actualWebnnDeviceType
   };
-}
-
-export async function detectTextRegionsWithMask(image: HTMLImageElement): Promise<DetectOutput> {
-  try {
-    const onnxResult = await detectByOnnx(image);
-    if (onnxResult.regions.length > 0) {
-      return onnxResult;
-    }
-    throw new Error("未找到文本");
-  } catch (error) {
-    if (error instanceof Error && error.message === "未找到文本") {
-      throw error;
-    }
-    console.warn(`[detect] onnx detector unavailable, fallback to tesseract/heuristic: ${toErrorMessage(error)}`);
-  }
-
-  try {
-    const tessRegions = await detectByTesseract(image);
-    if (tessRegions.length > 0) {
-      return {
-        regions: tessRegions,
-        rawMaskCanvas: null
-      };
-    }
-  } catch (error) {
-    console.warn(`[detect] tesseract fallback unavailable, switch to heuristic: ${toErrorMessage(error)}`);
-  }
-
-  const heuristicRegions = await detectByHeuristic(image);
-  if (heuristicRegions.length === 0) {
-    throw new Error("未找到文本");
-  }
-  return {
-    regions: heuristicRegions,
-    rawMaskCanvas: null
-  };
-}
-
-export async function detectTextRegions(image: HTMLImageElement): Promise<TextRegion[]> {
-  const result = await detectTextRegionsWithMask(image);
-  return result.regions;
 }

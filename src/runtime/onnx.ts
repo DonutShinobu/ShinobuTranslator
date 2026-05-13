@@ -1,6 +1,7 @@
 import * as ortAll from "onnxruntime-web/all";
 import type { InferenceSession } from "onnxruntime-common";
 import { resolveAssetUrl } from "../shared/assetUrl";
+import { toErrorMessage } from "../shared/utils";
 
 export type OrtxSession = InferenceSession;
 export type RuntimeProvider = "webnn" | "webgpu" | "wasm";
@@ -16,12 +17,6 @@ let envInitialized = false;
 const perModelLocks = new Map<string, Promise<void>>();
 const SESSION_CREATE_TIMEOUT_MS = 30000;
 
-function toErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-}
 
 async function probeWebGpuAvailability(): Promise<{ available: boolean; reason?: string }> {
   const nav = typeof navigator === "undefined" ? null : (navigator as Navigator & {

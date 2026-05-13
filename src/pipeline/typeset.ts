@@ -18,14 +18,14 @@ import {
   computeFullVerticalTypeset,
   KINSOKU_NSTART,
   KINSOKU_NEND,
-} from "./typesetGeometry";
+} from "./typeset/index";
 import type {
   VColumn,
   VerticalCellMetrics,
   DebugColumnBox,
   RegionTypesetDebug,
   ResolvedColors,
-} from "./typesetGeometry";
+} from "./typeset/index";
 
 // ---------------------------------------------------------------------------
 // Constants (horizontal-only)

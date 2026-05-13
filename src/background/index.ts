@@ -6,13 +6,7 @@ import {
 } from '../shared/config';
 import { getChromeApi } from '../shared/chrome';
 import { isRuntimeMessage, type RuntimeMessage, type RuntimeResponse } from '../shared/messages';
-
-function toErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-}
+import { toErrorMessage } from '../shared/utils';
 
 function storageGet(key: string): Promise<unknown> {
   const chromeApi = getChromeApi();

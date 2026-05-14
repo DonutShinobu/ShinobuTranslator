@@ -21,6 +21,7 @@ Testing is minimal (3 test files). Linting relies on TypeScript strict mode. No 
 7. **CSS-in-JS / Tailwind** — Use plain CSS files or injected `<style>` elements. No styled-components, no Tailwind.
 8. **Adding runtime validation for internal types** — Trust TypeScript for internal code. Only validate at system boundaries.
 9. **Long `.then()` chains** — Use async/await instead. `.then()` only for unavoidable Chrome API callback patterns.
+10. **`Comlink.transfer()` on input data** — Never transfer input tensors/data to a Worker via `Comlink.transfer()`. Transfer detaches the ArrayBuffer on the sender side, making fallback paths and subsequent uses (e.g., OCR color decode after batch decode) send corrupted/empty data. Use structured clone (comlink default) for inputs; only use `Comlink.transfer()` for outputs where the sender doesn't need the data afterward.
 
 ---
 
@@ -39,6 +40,7 @@ Testing is minimal (3 test files). Linting relies on TypeScript strict mode. No 
 11. **Chinese for user-facing messages** — Status text, labels, and error messages shown to users must be in Chinese.
 12. **Shared utilities over duplication** — If a function is used in 2+ files, extract to `src/shared/utils.ts` (global) or `src/pipeline/utils.ts` (pipeline-specific). Never copy-paste utility functions across modules.
 13. **Sub-directory for 500+ line modules** — When a pipeline module exceeds ~500 lines, split into a sub-directory with `index.ts` as the public API entry point.
+14. **Domain-independent extraction for Worker separation** — When moving heavy computation (e.g., ONNX inference) into a Worker, extract domain-independent constants, types, and utility functions into a separate file (e.g., `ocrShared.ts`). This prevents Vite from bundling the heavy library (e.g., onnxruntime-web) into the main thread's shared chunk via transitive imports. The extraction file must NOT import the heavy library.
 
 ---
 
@@ -79,4 +81,6 @@ Testing is minimal (3 test files). Linting relies on TypeScript strict mode. No 
 - [ ] String unions for status types, not enums
 - [ ] Background doesn't hold in-memory state that should persist
 - [ ] Pipeline imports are lazy-loaded in content script
+- [ ] No `Comlink.transfer()` on input data to Workers (only on outputs)
+- [ ] Worker-extracted shared files don't import heavy libraries (e.g., onnxruntime-web)
 - [ ] Memory cleanup: `trimStateCache()` / `URL.revokeObjectURL()` called where needed

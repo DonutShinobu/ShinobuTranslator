@@ -64,6 +64,8 @@ src/
 │   ├── App.tsx                 # React popup component (settings UI)
 │   ├── main.tsx                # React entry point
 │   └── styles.css              # Plain CSS for popup
+├── workers/
+│   └── onnx-worker.ts       # ONNX inference Worker entry (comlink + onnxruntime-web)
 ├── runtime/
 │   ├── onnx.ts                 # ONNX Runtime session management (WebNN/WebGPU/WASM)
 │   ├── modelRegistry.ts        # Model manifest loading + session caching
@@ -95,6 +97,9 @@ scripts/
 
 ## Module Organization
 
+### Adding a new Worker entry point
+Create `src/workers/<name>-worker.ts`, import comlink + domain-specific libraries, define an API class with methods, call `Comlink.expose(apiInstance)` at the end. Add the entry to `vite.config.ts` `rollupOptions.input` as `'<name>Worker': resolve(__dirname, 'src/workers/<name>-worker.ts')`. Add `'<name>Worker.js'` to `web_accessible_resources` in `public/manifest.json`. On the main thread, create the Worker via `new Worker(chrome.runtime.getURL('<name>Worker.js'))` and wrap with `Comlink.wrap<ApiType>(worker)`.
+
 ### Adding a new site adapter
 Create `src/content/adapters/<site>.ts`, implement the `SiteAdapter` interface (`match`, `findImages`, `createUiAnchor`, `applyImage`, `observe`), export as named const, and register in `src/content/index.ts`.
 
@@ -122,7 +127,8 @@ Add the field to `ExtensionSettings` in `src/shared/config.ts`, set a default in
 - **Files**: camelCase for multi-word modules. Single-word files use lowercase (`detect/`, `ocr/`, `image.ts`).
 - **Sub-directories**: Named by pipeline stage (`detect/`, `ocr/`, `typeset/`). Entry point is always `index.ts`.
 - **Test files**: Colocated with source, `.test.ts` suffix (`geometry.test.ts`, `typesetGeometry.test.ts`).
-- **Entry points**: Always `index.ts` (background, content, popup, and pipeline sub-directories all use this pattern).
+- **Entry points**: Always `index.ts` (background, content, popup, and pipeline sub-directories all use this pattern). Workers use `<name>-worker.ts`.
+- **Worker files**: Named `<name>-worker.ts` in `src/workers/`, with corresponding `<name>Worker.ts` bridge and `<name>WorkerTypes.ts` transport types in `src/runtime/`.
 - **Types files**: `types.ts` at top-level and sub-level (`src/types.ts`, `src/content/core/types.ts`).
 - **Adapters**: Named by site (`twitter.ts`, `pixiv.ts`), exported as `const <site>Adapter: SiteAdapter`.
 - **CSS classes in content script**: `mt-x-` prefix (`mt-x-overlay-inline`, `mt-x-control`, `mt-x-status`).

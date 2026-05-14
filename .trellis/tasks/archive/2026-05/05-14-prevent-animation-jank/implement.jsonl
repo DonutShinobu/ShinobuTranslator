@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Architecture overview — entry points, Vite plugin, runtime contexts"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Module organization conventions, how to add new entry points and Worker files"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Forbidden/required patterns, type conventions, naming prefixes (mt:, mt-x-)"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Type patterns for Worker API contracts and discriminated unions"}
+{"file": ".trellis/tasks/05-14-prevent-animation-jank/research/worker-architecture.md", "reason": "Worker creation constraints in Chrome extension content script, ORT proxy incompatibility, build config changes, data transfer strategy"}

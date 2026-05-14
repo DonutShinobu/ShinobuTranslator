@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Architecture overview for cross-layer consistency check"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Verify new Worker entry follows naming and organization conventions"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Verify no forbidden patterns, proper prefixes, type conventions"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Verify Worker API types follow discriminated union and import type patterns"}
+{"file": ".trellis/tasks/05-14-prevent-animation-jank/research/worker-architecture.md", "reason": "Verify Worker creation approach is correct for Chrome extension content script context"}

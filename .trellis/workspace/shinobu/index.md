@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 6
-- **Last Active**: 2026-05-13
+- **Total Sessions**: 7
+- **Last Active**: 2026-05-15
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~205 | Active |
+| `journal-1.md` | ~239 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 7 | 2026-05-15 | ONNX 推理移入自建 Worker，消除动画卡顿 | `202714a`, `82af7c2` | `master` |
 | 6 | 2026-05-13 | 补充纯函数单元测试体系 | `59f4ae9` | `master` |
 | 5 | 2026-05-13 | 修复调试橙色列框倾斜竖排缩放偏差 | `ba2038c` | `master` |
 | 4 | 2026-05-13 | 修复倾斜竖排文本字号异常缩小 | `0e5a0cc` | `fix/tilted-vertical-font-shrink` |

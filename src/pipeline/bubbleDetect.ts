@@ -1,7 +1,8 @@
-import * as ort from "onnxruntime-web";
-import { getModelSession } from "../runtime/modelRegistry";
 import type { Rect, TextRegion } from "../types";
 import { nmsBoxes, type ScoredBox } from "./utils";
+import { getModelSession } from "../runtime/modelRegistry";
+import { runInference } from "../runtime/onnxWorkerBridge";
+import type { TensorTransport } from "../runtime/onnxWorkerTypes";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -74,15 +75,15 @@ async function runBubbleInference(image: HTMLImageElement): Promise<{
   const size = 640;
   const prep = preprocessLetterbox(image, size);
 
-  const inputName = handle.session.inputNames[0] ?? "images";
-  const feeds: Record<string, ort.Tensor> = {
-    [inputName]: new ort.Tensor("float32", prep.input, [1, 3, size, size]),
+  const inputName = handle.inputNames[0] ?? "images";
+  const feeds: Record<string, TensorTransport> = {
+    [inputName]: { data: prep.input, dims: [1, 3, size, size], type: "float32" }
   };
-  const outputs = await handle.session.run(feeds);
+  const result = await runInference(handle.sessionId, feeds);
 
-  const outputNames = handle.session.outputNames;
-  const out0 = outputs[outputNames[0]];
-  const out1 = outputs[outputNames[1]];
+  const outputNames = handle.outputNames;
+  const out0 = result.outputs[outputNames[0]];
+  const out1 = result.outputs[outputNames[1]];
   if (!out0 || !out1) {
     throw new Error("气泡检测模型输出张量缺失");
   }

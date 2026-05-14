@@ -1,8 +1,21 @@
 import * as ort from "onnxruntime-web/all";
-import { OCR_AR_PAD_BIGINT, OCR_AR_START_BIGINT } from "./decodeAutoregressive";
+import { OCR_AR_PAD_BIGINT, OCR_AR_START_BIGINT } from "./ocrShared";
 import { getOutputByName } from "./decodeAutoregressive";
-import { buildBatchImageTensor } from "./preprocess";
 import type { OcrInputData } from "./preprocess";
+
+function buildBatchImageTensor(
+  inputs: OcrInputData[],
+  inputHeight: number,
+  inputWidth: number
+): ort.Tensor {
+  const N = inputs.length;
+  const pixelsPerImage = 3 * inputHeight * inputWidth;
+  const batchData = new Float32Array(N * pixelsPerImage);
+  for (let i = 0; i < N; i += 1) {
+    batchData.set(inputs[i].data, i * pixelsPerImage);
+  }
+  return new ort.Tensor("float32", batchData, [N, 3, inputHeight, inputWidth]);
+}
 
 export type OcrColorResult = {
   fgColor: [number, number, number];

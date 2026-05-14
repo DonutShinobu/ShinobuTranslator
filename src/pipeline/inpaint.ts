@@ -1,7 +1,8 @@
-import * as ort from "onnxruntime-web/all";
 import { getModel, getModelSession } from "../runtime/modelRegistry";
-import { isContextLostRuntimeError } from "../runtime/onnx";
-import type { RuntimeProvider, WebNnDeviceType } from "../runtime/onnx";
+import { isContextLostRuntimeError } from "../runtime/onnxTypes";
+import type { RuntimeProvider, WebNnDeviceType } from "../runtime/onnxTypes";
+import { runInference } from "../runtime/onnxWorkerBridge";
+import type { WorkerSessionHandle, TensorTransport } from "../runtime/onnxWorkerTypes";
 import { toErrorMessage } from "../shared/utils";
 import { clamp } from "./utils";
 
@@ -14,7 +15,7 @@ export type InpaintResult = {
 type InpaintInputNormalize = "zero_to_one" | "minus_one_to_one";
 type InpaintOutputNormalize = InpaintInputNormalize | "zero_to_255";
 
-function pickInpaintTensor(outputs: ort.InferenceSession.ReturnType): ort.Tensor | null {
+function pickInpaintTensor(outputs: Record<string, TensorTransport>): TensorTransport | null {
   for (const value of Object.values(outputs)) {
     if (value.dims.length === 4 && value.dims[0] === 1 && value.dims[1] === 3) {
       return value;
@@ -29,8 +30,8 @@ function preprocessInpaintImage(
   size: number,
   normalize: InpaintInputNormalize
 ): {
-  image: ort.Tensor;
-  mask: ort.Tensor;
+  image: TensorTransport;
+  mask: TensorTransport;
   sourceRgba: Uint8ClampedArray;
   maskBinary: Float32Array;
 } {
@@ -78,8 +79,8 @@ function preprocessInpaintImage(
     }
   }
   return {
-    image: new ort.Tensor("float32", imageOut, [1, 3, size, size]),
-    mask: new ort.Tensor("float32", maskOut, [1, 1, size, size]),
+    image: { data: imageOut, dims: [1, 3, size, size], type: "float32" },
+    mask: { data: maskOut, dims: [1, 1, size, size], type: "float32" },
     sourceRgba,
     maskBinary: maskOut
   };
@@ -144,7 +145,7 @@ function resizeRgba(
 }
 
 function decodeInpaintTensor(
-  tensor: ort.Tensor,
+  tensor: TensorTransport,
   width: number,
   height: number,
   normalize: InpaintOutputNormalize
@@ -252,19 +253,20 @@ async function runInpaintByOnnx(
     throw new Error("去字 ONNX 缺少有效 refined mask，已禁用文本框遮罩回退");
   }
   const feeds = preprocessInpaintImage(originalCanvas, refinedMaskCanvas, size, normalize);
-  const runWithHandle = async (handle: { session: ort.InferenceSession }): Promise<ort.InferenceSession.ReturnType> => {
-    const imageName = handle.session.inputNames[0];
-    const maskName = model.maskInputName ?? handle.session.inputNames[1];
+  const runWithHandle = async (handle: WorkerSessionHandle): Promise<Record<string, TensorTransport>> => {
+    const imageName = handle.inputNames[0];
+    const maskName = model.maskInputName ?? handle.inputNames[1];
     if (!imageName || !maskName) {
       throw new Error("去字 ONNX 模型输入定义不完整");
     }
-    return handle.session.run({
+    const result = await runInference(handle.sessionId, {
       [imageName]: feeds.image,
       [maskName]: feeds.mask
     });
+    return result.outputs;
   };
 
-  const decodeOutputs = (outputs: ort.InferenceSession.ReturnType): Uint8ClampedArray => {
+  const decodeOutputs = (outputs: Record<string, TensorTransport>): Uint8ClampedArray => {
     const outTensor = pickInpaintTensor(outputs);
     if (!outTensor) {
       throw new Error("去字 ONNX 模型输出未匹配到图像张量");
@@ -274,9 +276,9 @@ async function runInpaintByOnnx(
 
   let actualProvider: RuntimeProvider = primaryHandle.provider;
   let actualWebnnDeviceType = primaryHandle.webnnDeviceType;
-  let outputs: ort.InferenceSession.ReturnType;
+  let outputTensors: Record<string, TensorTransport>;
   try {
-    outputs = await runWithHandle(primaryHandle);
+    outputTensors = await runWithHandle(primaryHandle);
   } catch (error) {
     const message = toErrorMessage(error);
     const reason = isContextLostRuntimeError(error) ? "context lost" : "run failed";
@@ -290,7 +292,7 @@ async function runInpaintByOnnx(
     }
     fallbackPlans.push(["wasm"]);
 
-    let recovered: ort.InferenceSession.ReturnType | null = null;
+    let recovered: Record<string, TensorTransport> | null = null;
     let lastFallbackError: unknown = null;
     console.warn(`[inpaint] ${primaryHandle.provider} ${reason}, 尝试回退: ${message}`);
 
@@ -314,18 +316,18 @@ async function runInpaintByOnnx(
       throw new Error(`去字推理失败且回退失败: ${message} | fallback: ${fallbackMessage}`);
     }
 
-    outputs = recovered;
+    outputTensors = recovered;
   }
 
-  let inpaintedRgba = decodeOutputs(outputs);
+  let inpaintedRgba = decodeOutputs(outputTensors);
 
   if (
     actualProvider === "webnn" &&
     isLikelyInvalidInpaintResult(feeds.sourceRgba, inpaintedRgba, feeds.maskBinary)
   ) {
     const wasmHandle = await getModelSession("inpaint", ["wasm"]);
-    const wasmOutputs = await runWithHandle(wasmHandle);
-    inpaintedRgba = decodeOutputs(wasmOutputs);
+    const wasmOutputTensors = await runWithHandle(wasmHandle);
+    inpaintedRgba = decodeOutputs(wasmOutputTensors);
     actualProvider = "wasm";
     actualWebnnDeviceType = undefined;
   }

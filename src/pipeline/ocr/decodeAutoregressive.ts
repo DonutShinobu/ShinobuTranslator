@@ -1,55 +1,39 @@
 import * as ort from "onnxruntime-web/all";
 import type { OcrRunDebugChunk } from "../../types";
 import { normalizeTextLight } from "../utils";
+import {
+  OCR_AR_PAD,
+  OCR_AR_START,
+  OCR_AR_END,
+  OCR_AR_PAD_BIGINT,
+  OCR_AR_START_BIGINT,
+  OCR_BEAM_WIDTH,
+  OCR_MIN_FINISHED_BEAMS,
+  type OcrHypothesis,
+  type OcrDecodeResult,
+  type BatchDecodeInput,
+  type BatchDecodeOutput,
+  tokenToTextAutoregressive,
+  avgLogProbToConfidence,
+} from "./ocrShared";
+import type { OcrInputData } from "./preprocess";
 
-// --- Constants ---
-export const OCR_AR_PAD = 0;
-export const OCR_AR_START = 1;
-export const OCR_AR_END = 2;
-export const OCR_AR_PAD_BIGINT = BigInt(OCR_AR_PAD);
-export const OCR_AR_START_BIGINT = BigInt(OCR_AR_START);
-export const OCR_BEAM_WIDTH = 1;
-export const OCR_MIN_FINISHED_BEAMS = 2;
-export const OCR_CONFIDENCE_THRESHOLD = 0.2;
-export const OCR_DECODE_BATCH_SIZE = 24;
-
-// --- Types ---
-export type OcrHypothesis = {
-  tokenIds: number[];
-  tokenProbs: number[];
-  finished: boolean;
-};
-
-export type OcrDecodeResult = {
-  text: string;
-  confidence: number;
-  tokenIds: number[];
-};
-
-// --- Charset ---
-let charsetPromise: Promise<string[] | null> | null = null;
-
-export async function loadCharset(dictUrl?: string): Promise<string[] | null> {
-  if (!dictUrl) {
-    return null;
-  }
-  if (charsetPromise) {
-    return charsetPromise;
-  }
-  charsetPromise = (async () => {
-    const response = await fetch(dictUrl, { method: "GET" });
-    if (!response.ok) {
-      return null;
-    }
-    const text = await response.text();
-    const lines = text
-      .split(/\r?\n/g)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-    return lines.length > 0 ? lines : null;
-  })();
-  return charsetPromise;
-}
+// --- Re-export shared constants for backward compat ---
+export {
+  OCR_AR_PAD,
+  OCR_AR_START,
+  OCR_AR_END,
+  OCR_AR_PAD_BIGINT,
+  OCR_AR_START_BIGINT,
+  OCR_BEAM_WIDTH,
+  OCR_MIN_FINISHED_BEAMS,
+  OCR_CONFIDENCE_THRESHOLD,
+  OCR_DECODE_BATCH_SIZE,
+  loadCharset,
+  findInputName,
+  tokenToTextAutoregressive,
+  avgLogProbToConfidence,
+} from "./ocrShared";
 
 // --- Tensor picking ---
 export function pickOcrLogits(outputs: ort.InferenceSession.ReturnType): ort.Tensor | null {
@@ -73,24 +57,6 @@ export function pickBatchOcrLogits(outputs: ort.InferenceSession.ReturnType, bat
   return null;
 }
 
-// --- Token-to-text ---
-export function tokenToTextAutoregressive(token: number, charset: string[] | null): string {
-  if (!charset) {
-    return "";
-  }
-  if (token < 0 || token >= charset.length) {
-    return "";
-  }
-  const tokenText = charset[token];
-  if (tokenText === "<S>" || tokenText === "</S>") {
-    return "";
-  }
-  if (tokenText === "<SP>") {
-    return " ";
-  }
-  return tokenText;
-}
-
 // --- Output/input name helpers ---
 export function getOutputByName(outputs: ort.InferenceSession.ReturnType, preferred: string, rank: number): ort.Tensor | null {
   for (const [name, value] of Object.entries(outputs)) {
@@ -101,21 +67,6 @@ export function getOutputByName(outputs: ort.InferenceSession.ReturnType, prefer
   for (const [name, value] of Object.entries(outputs)) {
     if (name.toLowerCase().includes(preferred.toLowerCase()) && value.dims.length === rank) {
       return value;
-    }
-  }
-  return null;
-}
-
-export function findInputName(inputNames: readonly string[], expected: string): string | null {
-  const lower = expected.toLowerCase();
-  for (const name of inputNames) {
-    if (name.toLowerCase() === lower) {
-      return name;
-    }
-  }
-  for (const name of inputNames) {
-    if (name.toLowerCase().includes(lower)) {
-      return name;
     }
   }
   return null;
@@ -174,14 +125,6 @@ function probAt(logits: Float32Array, classes: number, step: number, token: numb
     return 0;
   }
   return Math.exp(logits[base + token] - maxLogit) / sumExp;
-}
-
-export function avgLogProbToConfidence(probs: number[]): number {
-  if (probs.length === 0) {
-    return 0;
-  }
-  const sumLog = probs.reduce((acc, p) => acc + Math.log(Math.max(1e-6, p)), 0);
-  return Math.exp(sumLog / probs.length);
 }
 
 function avgLogProb(probs: number[]): number {
@@ -329,24 +272,19 @@ export async function decodeAutoregressiveWithBeam(
   return best;
 }
 
-// --- Batch types ---
-export type BatchDecodeInput = {
-  regionId: string;
-  inputData: OcrInputData;
-  validEncoderLength: number;
-};
-
-export type BatchDecodeOutput = {
-  text: string;
-  confidence: number;
-  tokenIds: number[];
-  inputData: OcrInputData;
-  validEncoderLength: number;
-};
-
-// --- Import types from preprocess ---
-import type { OcrInputData } from "./preprocess";
-import { buildBatchImageTensor } from "./preprocess";
+function buildBatchImageTensor(
+  inputs: OcrInputData[],
+  inputHeight: number,
+  inputWidth: number
+): ort.Tensor {
+  const N = inputs.length;
+  const pixelsPerImage = 3 * inputHeight * inputWidth;
+  const batchData = new Float32Array(N * pixelsPerImage);
+  for (let i = 0; i < N; i += 1) {
+    batchData.set(inputs[i].data, i * pixelsPerImage);
+  }
+  return new ort.Tensor("float32", batchData, [N, 3, inputHeight, inputWidth]);
+}
 
 /**
  * Run greedy AR decode for multiple regions in lockstep.

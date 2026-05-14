@@ -62,7 +62,8 @@
         "chunks/*",
         "fonts/*",
         "models/*",
-        "ort/*"
+        "ort/*",
+        "onnxWorker.js"
       ],
       "matches": [
         "https://x.com/*",

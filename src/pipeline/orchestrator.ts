@@ -3,6 +3,7 @@ import type {
   PipelineConfig,
   PipelineProgress,
   PipelineTypesetDebugLog,
+  RuntimeStageStatus,
   StageTiming,
   TranslationDebugInfo,
 } from "../types";
@@ -17,8 +18,8 @@ import { mergeTextLines } from "./textlineMerge";
 import { refineTextMask } from "./maskRefinement";
 import { sortRegionsForRender } from "./readingOrder";
 import { detectBubbles, matchRegionsToBubbles, type BubbleDetection } from "./bubbleDetect";
-import type { RuntimeStageStatus } from "../types";
 import { getModelSession } from "../runtime/modelRegistry";
+import type { WorkerSessionHandle } from "../runtime/onnxWorkerTypes";
 
 type ProgressCallback = (progress: PipelineProgress) => void;
 
@@ -47,7 +48,7 @@ export class PipelineStageError extends Error {
 
 async function probeRuntime(model: "detector" | "ocr" | "inpaint"): Promise<RuntimeStageStatus> {
   try {
-    const handle = await getModelSession(model);
+    const handle: WorkerSessionHandle = await getModelSession(model);
     const webnnDeviceType = handle.provider === "webnn" ? handle.webnnDeviceType ?? "default" : undefined;
     const providerLabel = handle.provider === "webnn" ? `${handle.provider}/${webnnDeviceType}` : handle.provider;
     return {

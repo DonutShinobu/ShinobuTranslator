@@ -1,9 +1,10 @@
-import * as ort from "onnxruntime-web/all";
 import type { Rect, TextRegion, QuadPoint } from "../../types";
 import { minAreaRect, type Quad } from "../typeset/geometry";
 import { getModelSession } from "../../runtime/modelRegistry";
-import { isContextLostRuntimeError } from "../../runtime/onnx";
-import type { RuntimeProvider, WebNnDeviceType } from "../../runtime/onnx";
+import { isContextLostRuntimeError } from "../../runtime/onnxTypes";
+import type { RuntimeProvider, WebNnDeviceType } from "../../runtime/onnxTypes";
+import { runInference } from "../../runtime/onnxWorkerBridge";
+import type { WorkerSessionHandle, TensorTransport } from "../../runtime/onnxWorkerTypes";
 import { toErrorMessage } from "../../shared/utils";
 import { clamp, polygonArea, nmsBoxes, convexHull, type ScoredBox } from "../utils";
 
@@ -343,9 +344,9 @@ export function connectedComponents(mask: Uint8Array, width: number, height: num
   return out;
 }
 
-// --- ONNX tensor processing (private) ---
+// --- ONNX tensor processing (private, adapted for TensorTransport) ---
 
-function pickBlkTensor(outputs: ort.InferenceSession.ReturnType): ort.Tensor | null {
+function pickBlkTensor(outputs: Record<string, TensorTransport>): TensorTransport | null {
   const byName = outputs.blk;
   if (byName && byName.dims.length === 3 && byName.dims[2] >= 6) {
     return byName;
@@ -358,7 +359,7 @@ function pickBlkTensor(outputs: ort.InferenceSession.ReturnType): ort.Tensor | n
   return null;
 }
 
-function pickDetTensor(outputs: ort.InferenceSession.ReturnType): ort.Tensor | null {
+function pickDetTensor(outputs: Record<string, TensorTransport>): TensorTransport | null {
   const byName = outputs.det;
   if (byName && byName.dims.length === 4 && byName.dims[1] >= 1) {
     return byName;
@@ -371,7 +372,7 @@ function pickDetTensor(outputs: ort.InferenceSession.ReturnType): ort.Tensor | n
   return null;
 }
 
-function pickSegTensor(outputs: ort.InferenceSession.ReturnType): ort.Tensor {
+function pickSegTensor(outputs: Record<string, TensorTransport>): TensorTransport {
   const byName = outputs.seg;
   if (byName) {
     return byName;
@@ -386,7 +387,7 @@ function pickSegTensor(outputs: ort.InferenceSession.ReturnType): ort.Tensor {
 }
 
 function boxesFromBlk(
-  tensor: ort.Tensor,
+  tensor: TensorTransport,
   inputSize: number,
   unpaddedWidth: number,
   unpaddedHeight: number
@@ -492,7 +493,7 @@ function preprocessLetterbox(image: HTMLImageElement, size: number): LetterboxRe
 }
 
 function buildBinaryMaskFromTensor(
-  tensor: ort.Tensor,
+  tensor: TensorTransport,
   unpaddedWidth: number,
   unpaddedHeight: number,
   threshold: number,
@@ -638,7 +639,7 @@ function mapQuadToOriginal(
 }
 
 function detectCtdRegionsFromDetTensor(
-  detTensor: ort.Tensor,
+  detTensor: TensorTransport,
   image: HTMLImageElement,
   prep: LetterboxResult
 ): TextRegion[] {
@@ -757,20 +758,22 @@ export async function detectByOnnx(image: HTMLImageElement): Promise<DetectOutpu
   const primaryHandle = await getModelSession("detector");
   const inputSize = 1024;
   const prep = preprocessLetterbox(image, inputSize);
-  const runWithHandle = async (handle: { session: ort.InferenceSession }): Promise<ort.InferenceSession.ReturnType> => {
-    const inputName = handle.session.inputNames[0] ?? "images";
-    const feeds: Record<string, ort.Tensor> = {
-      [inputName]: new ort.Tensor("float32", prep.input, [1, 3, inputSize, inputSize])
+
+  const runWithHandle = async (handle: WorkerSessionHandle): Promise<Record<string, TensorTransport>> => {
+    const inputName = handle.inputNames[0] ?? "images";
+    const feeds: Record<string, TensorTransport> = {
+      [inputName]: { data: prep.input, dims: [1, 3, inputSize, inputSize], type: "float32" }
     };
-    return handle.session.run(feeds);
+    const result = await runInference(handle.sessionId, feeds);
+    return result.outputs;
   };
 
   let actualProvider: RuntimeProvider = primaryHandle.provider;
   let actualWebnnDeviceType = primaryHandle.webnnDeviceType;
 
-  let outputs: ort.InferenceSession.ReturnType;
+  let outputTensors: Record<string, TensorTransport>;
   try {
-    outputs = await runWithHandle(primaryHandle);
+    outputTensors = await runWithHandle(primaryHandle);
   } catch (error) {
     const message = toErrorMessage(error);
     const reason = isContextLostRuntimeError(error) ? "context lost" : "run failed";
@@ -784,7 +787,7 @@ export async function detectByOnnx(image: HTMLImageElement): Promise<DetectOutpu
     }
     fallbackPlans.push(["wasm"]);
 
-    let recovered: ort.InferenceSession.ReturnType | null = null;
+    let recovered: Record<string, TensorTransport> | null = null;
     let lastFallbackError: unknown = null;
     console.warn(`[detector] ${primaryHandle.provider} ${reason}, 尝试回退: ${message}`);
 
@@ -808,16 +811,16 @@ export async function detectByOnnx(image: HTMLImageElement): Promise<DetectOutpu
       throw new Error(`检测推理失败且回退失败: ${message} | fallback: ${fallbackMessage}`);
     }
 
-    outputs = recovered;
+    outputTensors = recovered;
   }
 
-  const detTensor = pickDetTensor(outputs);
+  const detTensor = pickDetTensor(outputTensors);
   if (detTensor) {
     const regions = detectCtdRegionsFromDetTensor(detTensor, image, prep);
 
-    let maskTensor: ort.Tensor = detTensor;
+    let maskTensor: TensorTransport = detTensor;
     try {
-      const segTensor = pickSegTensor(outputs);
+      const segTensor = pickSegTensor(outputTensors);
       if (segTensor.dims.length === 4 && (segTensor.dims[1] ?? 0) >= 1) {
         maskTensor = segTensor;
       }
@@ -838,7 +841,7 @@ export async function detectByOnnx(image: HTMLImageElement): Promise<DetectOutpu
     };
   }
 
-  const blkTensor = pickBlkTensor(outputs);
+  const blkTensor = pickBlkTensor(outputTensors);
   if (blkTensor) {
     const blkBoxes = boxesFromBlk(blkTensor, inputSize, prep.unpaddedWidth, prep.unpaddedHeight);
     if (blkBoxes.length > 0) {
@@ -867,7 +870,7 @@ export async function detectByOnnx(image: HTMLImageElement): Promise<DetectOutpu
     }
   }
 
-  const segTensor = pickSegTensor(outputs);
+  const segTensor = pickSegTensor(outputTensors);
   const binaryMask = buildBinaryMaskFromTensor(segTensor, prep.unpaddedWidth, prep.unpaddedHeight, 0.46, 0);
   if (!binaryMask) {
     return { regions: [], rawMaskCanvas: null, actualProvider, actualWebnnDeviceType };

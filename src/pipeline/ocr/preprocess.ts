@@ -1,4 +1,3 @@
-import * as ort from "onnxruntime-web/all";
 import type { TextRegion } from "../../types";
 
 export type Direction = "h" | "v";
@@ -10,7 +9,7 @@ export type DirectedRegion = {
 
 export type OcrInputData = {
   data: Float32Array;
-  tensor: ort.Tensor;
+  dims: number[];
   resizedWidth: number;
 };
 
@@ -241,23 +240,9 @@ export function buildOcrInput(
   }
   return {
     data: input,
-    tensor: new ort.Tensor("float32", input, [1, 3, inputHeight, inputWidth]),
+    dims: [1, 3, inputHeight, inputWidth],
     resizedWidth
   };
-}
-
-export function buildBatchImageTensor(
-  inputs: OcrInputData[],
-  inputHeight: number,
-  inputWidth: number
-): ort.Tensor {
-  const N = inputs.length;
-  const pixelsPerImage = 3 * inputHeight * inputWidth;
-  const batchData = new Float32Array(N * pixelsPerImage);
-  for (let i = 0; i < N; i += 1) {
-    batchData.set(inputs[i].data, i * pixelsPerImage);
-  }
-  return new ort.Tensor("float32", batchData, [N, 3, inputHeight, inputWidth]);
 }
 
 // --- Perspective transform ---

@@ -2,10 +2,12 @@ import * as ortAll from "onnxruntime-web/all";
 import type { InferenceSession } from "onnxruntime-common";
 import { resolveAssetUrl } from "../shared/assetUrl";
 import { toErrorMessage } from "../shared/utils";
+import { isContextLostError, isCreateTimeoutError } from "./onnxTypes";
+import type { RuntimeProvider, WebNnDeviceType } from "./onnxTypes";
 
 export type OrtxSession = InferenceSession;
-export type RuntimeProvider = "webnn" | "webgpu" | "wasm";
-export type WebNnDeviceType = "gpu" | "cpu" | "default";
+export type { RuntimeProvider, WebNnDeviceType } from "./onnxTypes";
+export { isContextLostRuntimeError } from "./onnxTypes";
 
 export type SessionHandle = {
   session: OrtxSession;
@@ -82,19 +84,6 @@ function inferWebNnDeviceType(ep: InferenceSession.ExecutionProviderConfig): Web
     return "cpu";
   }
   return "default";
-}
-
-function isContextLostError(message: string): boolean {
-  const lower = message.toLowerCase();
-  return lower.includes("context is lost") || (lower.includes("mlgraphbuilder") && lower.includes("invalidstateerror"));
-}
-
-export function isContextLostRuntimeError(error: unknown): boolean {
-  return isContextLostError(toErrorMessage(error));
-}
-
-function isCreateTimeoutError(message: string): boolean {
-  return message.includes("Session 创建超时");
 }
 
 async function createSessionWithTimeout(

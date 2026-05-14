@@ -1,5 +1,7 @@
 import { resolveAssetUrl } from '../shared/assetUrl';
-import { createSession, type RuntimeProvider, type SessionHandle } from './onnx';
+import { createSession as workerCreateSession } from './onnxWorkerBridge';
+import type { RuntimeProvider } from './onnxTypes';
+import type { WorkerSessionHandle } from './onnxWorkerTypes';
 
 type ManifestModel = {
   name: string;
@@ -21,7 +23,7 @@ type ManifestData = {
 
 const manifestUrl = resolveAssetUrl('models/manifest.json');
 let manifestCache: ManifestData | null = null;
-const sessionCache = new Map<string, SessionHandle>();
+const sessionCache = new Map<string, WorkerSessionHandle>();
 
 function normalizeRuntime(value: unknown): RuntimeProvider[] {
   if (!Array.isArray(value)) {
@@ -88,7 +90,7 @@ export async function getModel(name: 'detector' | 'ocr' | 'inpaint' | 'bubble'):
 export async function getModelSession(
   name: 'detector' | 'ocr' | 'inpaint' | 'bubble',
   preferred?: RuntimeProvider[]
-): Promise<SessionHandle> {
+): Promise<WorkerSessionHandle> {
   const model = await getModel(name);
   const runtime = preferred && preferred.length > 0 ? preferred : model.runtime ?? ['wasm'];
   const cacheKey = `${name}:${runtime.join(',')}`;
@@ -96,7 +98,7 @@ export async function getModelSession(
   if (cached) {
     return cached;
   }
-  const handle = await createSession(model.url, runtime);
+  const handle = await workerCreateSession(name, model.url, runtime);
   sessionCache.set(cacheKey, handle);
   return handle;
 }

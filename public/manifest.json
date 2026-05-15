@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ShinobuTranslator",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "在 X/Twitter 图片大图中执行漫画翻译，并支持原图/译图切换。",
   "action": {
     "default_title": "ShinobuTranslator",

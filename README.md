@@ -44,6 +44,12 @@
 
 使用大模型翻译时，需在设置中填写对应提供商的 API Key。
 
+## 碎碎念
+
+本项目灵感源于 https://github.com/zyddnys/manga-image-translator 和 https://greasyfork.org/scripts/437569
+
+其中的油猴脚本似乎因为服务器问题无法继续使用，于是决定在不依赖个人服务器的情况下实现一个效果类似的拓展
+
 ## 许可证与第三方声明
 
 - 本项目许可证：`GPL-3.0`（见根目录 `LICENSE`）

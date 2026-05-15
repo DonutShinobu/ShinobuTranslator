@@ -1,28 +1,48 @@
 # ShinobuTranslator
 
-ShinobuTranslator 是一个运行在浏览器中的漫画翻译扩展，主要用于推特条漫翻译场景。
+浏览器中的漫画翻译扩展——在 X/Twitter 和 Pixiv 上一键翻译漫画图片。
 
-它会在本地完成完整流程：文本检测、OCR、翻译、去字与排版，支持在原图与译图之间切换。
+全部流程在本地完成：文本检测 → OCR → 翻译 → 去字 → 排版，无需自建服务器，支持原图/译图切换。
 
-## 功能简介
+## 效果图
 
-- 在推特大图界面点击即可翻译
-- 前端本地执行 ONNX 推理（按环境在 WebNN / WebGPU / WASM 之间回退）
-- 支持 Google 翻译与大模型翻译
-- 主要用于竖排条漫翻译，目前仅支持简体/繁体中文
+<table>
+<thead>
+<tr>
+<th align="center" width="50%">原始图片</th>
+<th align="center" width="50%">翻译后图片</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td align="center" width="50%"><a href="https://user-images.githubusercontent.com/31543482/232265329-6a560438-e887-4f7f-b6a1-a61b8648f781.png"><img src="https://user-images.githubusercontent.com/31543482/232265329-6a560438-e887-4f7f-b6a1-a61b8648f781.png"></a><br>(<a href="https://twitter.com/09ra_19ra/status/1647079591109103617/photo/1">Source @09ra_19ra</a>)</td>
+<td align="center" width="50%"><a href="docs/translated1.png"><img src="docs/translated1.png"></a><br>译图</td>
+</tr>
+<tr>
+<td align="center" width="50%"><a href="https://user-images.githubusercontent.com/31543482/232265794-5ea8a0cb-42fe-4438-80b7-3bf7eaf0ff2c.png"><img src="https://user-images.githubusercontent.com/31543482/232265794-5ea8a0cb-42fe-4438-80b7-3bf7eaf0ff2c.png"></a><br>(<a href="https://twitter.com/rikak/status/1642727617886556160/photo/1">Source @rikak</a>)</td>
+<td align="center" width="50%"><a href="docs/translated4.png"><img src="docs/translated4.png"></a><br>译图</td>
+</tr>
+</tbody>
+</table>
 
-## 使用方式（Chrome/Edge）
+## 使用方式
 
-1. 前往Releases下载压缩包并解压到本地文件夹
-2. 打开浏览器扩展管理页并启用开发者模式
-3. 选择“加载已解压的扩展程序”，目录指向解压出来的文件夹
-4. 打开 X/Twitter 图片大图页面，使用扩展按钮开始翻译
+### 安装（Chrome / Edge）
 
-## 碎碎念
+1. 前往 [Releases](../../releases) 下载压缩包并解压到本地文件夹
+2. 打开浏览器扩展管理页，启用**开发者模式**
+3. 选择「加载已解压的扩展程序」，目录指向解压出来的文件夹
+4. 打开 X/Twitter 或 Pixiv 图片大图页面，点击翻译按钮即可
 
-本项目灵感源于 https://github.com/zyddnys/manga-image-translator 和 https://greasyfork.org/scripts/437569 
+### 翻译设置
 
-其中的油猴脚本似乎因为服务器问题无法继续使用，于是决定在不依赖个人服务器的情况下实现一个效果类似的拓展
+扩展弹出页面提供以下配置：
+
+- **翻译服务**：Google 翻译（大模型翻译有做过优化，效果更好一些）或大模型翻译
+- **大模型提供商**：DeepSeek / GLM / Kimi / MiniMax / MiMo / 自定义
+- **目标语言**：简体中文 / 繁体中文
+
+使用大模型翻译时，需在设置中填写对应提供商的 API Key。
 
 ## 许可证与第三方声明
 

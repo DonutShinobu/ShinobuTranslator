@@ -5,6 +5,7 @@ node_modules/
 dist/
 docs/*
 !docs/superpowers/
+!docs/translated*.png
 
 # Python
 __pycache__/

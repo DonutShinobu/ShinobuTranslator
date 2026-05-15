@@ -16,12 +16,20 @@
 - 本项目用途：图像去字（inpainting）
 - 本项目处理：LaMa 模型通过 `scripts/patch_lama_webgpu.py` 做 WebGPU 侧兼容修补
 
-## 3) 分发说明
+## 3) kitsumed/yolov8m_seg-speech-bubble（气泡检测模型来源）
+
+- 上游模型页：`https://huggingface.co/kitsumed/yolov8m_seg-speech-bubble`
+- 许可证：`GPL-3.0`（以模型页声明为准）
+- 基座框架：Ultralytics YOLOv8m-seg（`AGPL-3.0`）
+- 本项目用途：漫画对话气泡检测
+- 本项目处理：直接使用 HuggingFace 上的 `model_dynamic.onnx`，重命名为 `bubble.onnx`，无需额外导出或修补
+
+## 4) 分发说明
 
 - 本仓库根目录 `LICENSE` 采用 `GPL-3.0`，以满足与 GPL 来源模型的分发一致性要求。
 - 分发本项目（源码或构建产物）时，请保留本文件、上游版权与许可证声明。
 - 如你修改了第三方模型或转换脚本，请在提交记录或发布说明中标注变更内容与日期。
 
-## 4) 免责声明
+## 5) 免责声明
 
 - 本文件仅用于工程合规记录，不构成法律意见。

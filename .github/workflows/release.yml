@@ -38,18 +38,18 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Download model files
+        run: |
+          mkdir -p public/models
+          BASE_URL="https://github.com/${{ github.repository }}/releases/download/${{ steps.models.outputs.tag }}"
+          for file in detector.onnx ocr.onnx lama_fp32.onnx bubble.onnx ocr_dict.txt; do
+            echo "  Downloading $file ..."
+            curl -fSL -o "public/models/$file" "$BASE_URL/$file"
+          done
+          echo "Model files downloaded"
+
       - name: Build extension
         run: npm run build
-        env:
-          MODEL_RELEASE_TAG: ${{ steps.models.outputs.tag }}
-
-      - name: Verify manifest model URLs
-        run: |
-          if grep -q '"/models/' dist/models/manifest.json; then
-            echo "ERROR: manifest.json still has local model paths"
-            exit 1
-          fi
-          echo "Model URLs verified: pointing to GitHub Release"
 
       - name: Verify version matches release tag
         run: |
@@ -62,8 +62,15 @@ jobs:
           fi
           echo "Version check passed: $TAG_VERSION"
 
-      - name: Remove ONNX files from dist
-        run: find dist/ -name '*.onnx' -delete
+      - name: Verify model files in dist
+        run: |
+          for file in detector.onnx ocr.onnx lama_fp32.onnx bubble.onnx ocr_dict.txt; do
+            if [ ! -f "dist/models/$file" ]; then
+              echo "ERROR: Missing $file in dist/models/"
+              exit 1
+            fi
+          done
+          echo "All model files present in dist/models/"
 
       - name: Create extension zip
         run: |

@@ -693,6 +693,7 @@ export function estimateVerticalPreferredProfile(
   fontSize: number,
   fontFamily: string,
   preferredColumns?: string[],
+  originalContentWidth?: number,
 ): { advanceScale: number; colSpacingScale: number } {
   ctx.font = `${fontSize}px ${fontFamily}`;
   const sw = strokeWidth(fontSize);
@@ -719,7 +720,8 @@ export function estimateVerticalPreferredProfile(
   );
   let colSpacingScale = 1;
   if (targetColumnCount > 1) {
-    const rawSpacing = (contentWidth - targetColumnCount * metrics.colWidth) / (targetColumnCount - 1);
+    const spacingWidth = originalContentWidth ?? contentWidth;
+    const rawSpacing = (spacingWidth - targetColumnCount * metrics.colWidth) / (targetColumnCount - 1);
     const targetSpacing = Math.max(0, rawSpacing);
     colSpacingScale = clampNumber(
       targetSpacing / Math.max(1, metrics.colSpacing),

@@ -124,6 +124,7 @@ export function computeFullVerticalTypeset(
   }
 
   const noopHLineCount = () => 1;
+  const originalContentWidth = Math.max(20, clonedQuadDims.width - resolveBoxPadding(cloned) * 2);
   const region = expandRegionBeforeRender(cloned, text, measureCtx, ff, noopHLineCount);
 
   const boxPadding = resolveBoxPadding(region);
@@ -141,6 +142,7 @@ export function computeFullVerticalTypeset(
     estimatedInitialFontSize,
     ff,
     region.translatedColumns,
+    originalContentWidth,
   );
 
   const verticalLayoutOptions: BuildVerticalLayoutOptions = {
@@ -199,6 +201,7 @@ export function computeFullVerticalTypeset(
     const extendedProfile = estimateVerticalPreferredProfile(
       measureCtx, region, text, contentWidth, effectiveContentHeight,
       estimatedInitialFontSize, ff, region.translatedColumns,
+      originalContentWidth,
     );
     const extendedOptions: BuildVerticalLayoutOptions = {
       ...verticalLayoutOptions,
@@ -228,6 +231,7 @@ export function computeFullVerticalTypeset(
       const mid = Math.floor((lo + hi) / 2);
       const profile = estimateVerticalPreferredProfile(
         measureCtx, region, text, contentWidth, effectiveContentHeight, mid, ff, region.translatedColumns,
+        originalContentWidth,
       );
       const opts: BuildVerticalLayoutOptions = {
         ...verticalLayoutOptions,

@@ -29,10 +29,12 @@
 
 ### 安装（Chrome / Edge）
 
-1. 前往 [Releases](../../releases) 下载压缩包并解压到本地文件夹
+1. 前往 [Releases](../../releases) 下载最新版 `ShinobuTranslator.zip` 并解压到本地文件夹
 2. 打开浏览器扩展管理页，启用**开发者模式**
 3. 选择「加载已解压的扩展程序」，目录指向解压出来的文件夹
 4. 打开 X/Twitter 或 Pixiv 图片大图页面，点击翻译按钮即可
+
+> ONNX 模型文件会在首次使用时自动从 GitHub Release 下载，无需手动操作。
 
 ### 翻译设置
 

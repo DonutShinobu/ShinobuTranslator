@@ -1,7 +1,7 @@
 #!/usr/bin/bash
 # 从 GitHub Release 下载 ONNX 模型文件到 public/models/
 # 用法: ./scripts/download-models.sh [版本tag]
-# 默认版本: latest
+# 默认版本: latest（自动查找最新的 models-* Release）
 #
 # Release 里文件名不含目录前缀（如 detector.onnx，不是 models/detector.onnx）
 # 但本地存放路径是 public/models/detector.onnx
@@ -10,16 +10,21 @@ set -euo pipefail
 
 REPO="DonutShinobu/ShinobuTranslator"
 DEST="public/models"
-TAG="${1:-latest}"
+INPUT_TAG="${1:-latest}"
 
 mkdir -p "$DEST"
 
-# 获取实际 tag 名称（latest 需要解析）
-if [ "$TAG" = "latest" ]; then
-  TAG=$(gh release view latest --repo "$REPO" --json tagName --jq '.tagName' 2>/dev/null) || {
-    echo "无法获取 latest release tag，请手动指定版本"
+# 解析 tag：latest 自动查找最新的 models-* Release，v0.1.0 自动加 models- 前缀
+if [ "$INPUT_TAG" = "latest" ]; then
+  TAG=$(gh release list --repo "$REPO" --json tagName --jq '.[] | select(.tagName | startswith("models-")) | .tagName' | head -1)
+  if [ -z "$TAG" ]; then
+    echo "无法找到 models-* Release，请手动指定版本"
     exit 1
-  }
+  fi
+else
+  # 自动加 models- 前缀
+  TAG="${INPUT_TAG#models-}"
+  TAG="models-${TAG}"
 fi
 
 echo "正在从 GitHub Release ($TAG) 下载模型..."

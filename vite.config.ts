@@ -7,7 +7,7 @@ import type { Plugin } from 'vite';
 const REPO = 'DonutShinobu/ShinobuTranslator';
 
 // Replaces model URLs in dist/models/manifest.json with GitHub Release URLs
-// when MODEL_RELEASE_TAG is set (e.g. MODEL_RELEASE_TAG=v0.1.0).
+// when MODEL_RELEASE_TAG is set (e.g. MODEL_RELEASE_TAG=models-v0.1.0).
 function modelReleaseUrlPlugin(): Plugin {
   return {
     name: 'model-release-url',

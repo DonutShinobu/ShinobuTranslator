@@ -52,7 +52,7 @@ function validateActiveSettings(settings: ExtensionSettings): string | null {
   const baseError = validateSettings(settings);
   if (baseError) return baseError;
   const profile = settings.llmProfiles[settings.llmProvider];
-  if (!profile.apiKey.trim()) return '未填写API Key，服务暂不可用';
+  if (settings.translator === 'llm' && !profile.apiKey.trim()) return '未填写API Key，服务暂不可用';
   return null;
 }
 

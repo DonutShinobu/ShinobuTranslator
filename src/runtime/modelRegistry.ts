@@ -21,7 +21,7 @@ type ManifestData = {
   models: Record<string, ManifestModel>;
 };
 
-const manifestUrl = resolveAssetUrl('models/manifest.json');
+const manifestUrl = resolveAssetUrl('models/models.json');
 let manifestCache: ManifestData | null = null;
 const sessionCache = new Map<string, WorkerSessionHandle>();
 

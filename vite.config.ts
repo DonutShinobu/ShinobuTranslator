@@ -6,7 +6,7 @@ import type { Plugin } from 'vite';
 
 const REPO = 'DonutShinobu/ShinobuTranslator';
 
-// Replaces model URLs in dist/models/manifest.json with GitHub Release URLs
+// Replaces model URLs in dist/models/models.json with GitHub Release URLs
 // when MODEL_RELEASE_TAG is set (e.g. MODEL_RELEASE_TAG=models-v0.1.0).
 function modelReleaseUrlPlugin(): Plugin {
   return {
@@ -15,7 +15,7 @@ function modelReleaseUrlPlugin(): Plugin {
     closeBundle() {
       const tag = process.env.MODEL_RELEASE_TAG;
       if (!tag) return;
-      const manifestPath = resolve(__dirname, 'dist/models/manifest.json');
+      const manifestPath = resolve(__dirname, 'dist/models/models.json');
       const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
       const baseUrl = `https://github.com/${REPO}/releases/download/${tag}`;
       // Manifest paths like "/models/detector.onnx" become "detector.onnx" in Release assets

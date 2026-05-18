@@ -178,7 +178,7 @@ export async function runPipeline(
     const t0 = performance.now();
     runtimeStages[1] = await startOcrRuntimeProbe();
     startInpaintRuntimeProbe();
-    const ocrResult = await runOcr(image, latestRegions);
+    const ocrResult = await runOcr(image, latestRegions, config.ocrEngine);
     latestRegions = ocrResult.regions;
     ocrDebug = ocrResult.debug;
     ocrCanvas = drawRegions(originalCanvas, ocrResult.regions, "OCR 识别", (region) => region.sourceText);

@@ -346,6 +346,7 @@ async function runOcrByOnnxWithSession(
     try {
       const runT0 = performance.now();
       const result = await runInference(sessionHandle.sessionId, { [imageInput]: { data: inputData, dims: inputDims, type: "float32" } });
+      if (result.error) throw new Error(result.error);
       outputTensors = result.outputs;
       const runDurationMs = performance.now() - runT0;
       const chunkDebug: OcrRunDebugChunk = {

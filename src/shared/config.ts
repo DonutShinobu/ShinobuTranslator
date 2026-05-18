@@ -128,6 +128,7 @@ export type ExtensionSettings = {
   showStageTimingDetails: boolean;
   showTypesetDebug: boolean;
   ocrEngine: OcrEngine;
+  ortDebugMode: boolean;
 };
 
 export const defaultExtensionSettings: ExtensionSettings = {
@@ -140,6 +141,7 @@ export const defaultExtensionSettings: ExtensionSettings = {
   showStageTimingDetails: false,
   showTypesetDebug: false,
   ocrEngine: 'builtin',
+  ortDebugMode: false,
 };
 
 function sanitizeBoolean(value: unknown, fallback: boolean): boolean {
@@ -287,6 +289,7 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
       : false,
     showTypesetDebug,
     ocrEngine: normalizeOcrEngine(raw.ocrEngine),
+    ortDebugMode: sanitizeBoolean(raw.ortDebugMode, false),
   };
 }
 

@@ -189,6 +189,15 @@ export function App() {
             />
             <span className="checkbox-label">排版调试模式</span>
           </label>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={settings.ortDebugMode}
+              onChange={(event) => updateField('ortDebugMode', event.target.checked)}
+              disabled={loading}
+            />
+            <span className="checkbox-label">ORT 调试模式</span>
+          </label>
         </div>
       </section>
 

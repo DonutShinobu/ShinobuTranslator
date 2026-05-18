@@ -192,6 +192,34 @@ export function App() {
         </div>
       </section>
 
+      <section className="panel">
+        <div className="radio-group">
+          <span>OCR 引擎</span>
+          <label className="radio-row">
+            <input
+              type="radio"
+              name="ocrEngine"
+              value="builtin"
+              checked={settings.ocrEngine === 'builtin'}
+              onChange={() => updateField('ocrEngine', 'builtin' as ExtensionSettings['ocrEngine'])}
+              disabled={loading}
+            />
+            <span className="radio-label">内置模型</span>
+          </label>
+          <label className="radio-row">
+            <input
+              type="radio"
+              name="ocrEngine"
+              value="paddleocr"
+              checked={settings.ocrEngine === 'paddleocr'}
+              onChange={() => updateField('ocrEngine', 'paddleocr' as ExtensionSettings['ocrEngine'])}
+              disabled={loading}
+            />
+            <span className="radio-label">PaddleOCR</span>
+          </label>
+        </div>
+      </section>
+
       {settings.translator === 'llm' ? (
         <section className="panel">
           <label>

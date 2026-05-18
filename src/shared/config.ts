@@ -116,6 +116,8 @@ function createDefaultLlmProfiles(): Record<LlmProvider, LlmProviderProfile> {
   };
 }
 
+export type OcrEngine = 'builtin' | 'paddleocr';
+
 export type ExtensionSettings = {
   sourceLang: string;
   targetLang: string;
@@ -125,6 +127,7 @@ export type ExtensionSettings = {
   showElapsedTime: boolean;
   showStageTimingDetails: boolean;
   showTypesetDebug: boolean;
+  ocrEngine: OcrEngine;
 };
 
 export const defaultExtensionSettings: ExtensionSettings = {
@@ -136,6 +139,7 @@ export const defaultExtensionSettings: ExtensionSettings = {
   showElapsedTime: false,
   showStageTimingDetails: false,
   showTypesetDebug: false,
+  ocrEngine: 'builtin',
 };
 
 function sanitizeBoolean(value: unknown, fallback: boolean): boolean {
@@ -143,6 +147,11 @@ function sanitizeBoolean(value: unknown, fallback: boolean): boolean {
     return fallback;
   }
   return value;
+}
+
+function normalizeOcrEngine(value: unknown): OcrEngine {
+  if (value === 'paddleocr') return 'paddleocr';
+  return 'builtin';
 }
 
 function normalizeTargetLang(value: unknown): string {
@@ -277,6 +286,7 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
       ? sanitizeBoolean(raw.showStageTimingDetails, defaultExtensionSettings.showStageTimingDetails)
       : false,
     showTypesetDebug,
+    ocrEngine: normalizeOcrEngine(raw.ocrEngine),
   };
 }
 
@@ -330,5 +340,6 @@ export function toPipelineConfig(settings: ExtensionSettings): PipelineConfig {
     llmModel: resolveLlmModel(settings),
     llmTemperature: profile.temperature,
     typesetDebug: settings.showTypesetDebug,
+    ocrEngine: settings.ocrEngine,
   };
 }

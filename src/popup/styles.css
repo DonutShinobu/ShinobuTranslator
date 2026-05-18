@@ -92,6 +92,27 @@
   line-height: 1.2;
 }
 
+.radio-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.radio-group > span {
+  font-size: 13px;
+  min-width: 60px;
+}
+
+.radio-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.radio-label {
+  font-size: 13px;
+}
+
 .status {
   margin: 9px 0 0;
   font-size: 12px;

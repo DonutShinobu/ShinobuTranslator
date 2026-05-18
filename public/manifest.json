@@ -28,7 +28,8 @@
   },
   "permissions": [
     "storage",
-    "declarativeNetRequest"
+    "declarativeNetRequest",
+    "downloads"
   ],
   "host_permissions": [
     "https://x.com/*",

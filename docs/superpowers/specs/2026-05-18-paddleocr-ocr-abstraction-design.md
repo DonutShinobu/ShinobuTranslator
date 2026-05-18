@@ -79,11 +79,25 @@ async function runOcr(image, regions, providerName?: string): Promise<OcrResult>
 
 ### PaddleOCR 引擎实现
 
-**方式：本地 ONNX 探索**
+**方式：本地 ONNX 推理**
 
-- PaddleOCR 检测/识别/方向分类模型导出为 ONNX 格式
+**使用模型：PP-OCRv5_server_rec（识别）**
+
+| 属性 | 值 |
+|------|------|
+| 模型名 | PP-OCRv5_server_rec |
+| 大小 | ~84MB ONNX |
+| 日文精度 | 73.72% |
+| 竖排文字 | 支持 |
+| 多语言 | 中文简繁、英文、日文统一模型 |
+| ONNX 导出 | 已有现成导出（MeKo-Christian/paddleocr-onnx） |
+
+备选：PP-OCRv5_mobile_rec（16MB，日文精度约54.65%），可在设置中作为轻量选项。
+
+- 模型导出来源：https://github.com/MeKo-Christian/paddleocr-onnx（PP-OCRv5 全系列已导出为 ONNX）
 - 用 `onnxruntime-web` 在 Web Worker 中本地运行，和自研模型架构一致
 - 只做识别，检测层保持不变（继续用当前 detect 模块）
+- 方向分类模型（PP-LCNet_x0_25_textline_ori）不使用 — 方向由 quad 宽高比推断
 
 **PaddleOCR 引擎不做的事：**
 - 不做检测（由现有 detect 模块负责）

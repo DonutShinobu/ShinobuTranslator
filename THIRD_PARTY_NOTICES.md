@@ -30,6 +30,14 @@
 - 分发本项目（源码或构建产物）时，请保留本文件、上游版权与许可证声明。
 - 如你修改了第三方模型或转换脚本，请在提交记录或发布说明中标注变更内容与日期。
 
-## 5) 免责声明
+## 5) 应用图标（Donut icon）
+
+- 来源：`https://www.flaticon.com/free-icon/donut_6402298`
+- 作者：smashingstocks
+- 许可证：Flaticon Free License（`https://www.flaticon.com/legal`）
+- 本项目用途：浏览器扩展应用图标
+- 署名要求：须注明 "Designed by smashingstocks from Flaticon"
+
+## 6) 免责声明
 
 - 本文件仅用于工程合规记录，不构成法律意见。

@@ -86,7 +86,10 @@ export async function runInference(
   sessionId: string,
   feeds: Record<string, TensorTransport>
 ): Promise<InferenceResult> {
-  return await (await getProxy()).runInference(sessionId, feeds);
+  const result = await (await getProxy()).runInference(sessionId, feeds);
+  // Worker 推理失败时不抛异常，通过 InferenceResult.error 返回错误信息。
+  // 调用者需要自行检查 error 字段。profilingLog 在推理失败时仍会传回。
+  return result;
 }
 
 export async function runOcrBatchDecode(

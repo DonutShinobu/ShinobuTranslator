@@ -58,6 +58,7 @@ export type WebGpuProfilingDataV1 = {
 export type InferenceResult = {
   outputs: Record<string, TensorTransport>;
   profilingLog?: WebGpuProfilingDataV1[];
+  error?: string;
 };
 
 // ---------------------------------------------------------------------------

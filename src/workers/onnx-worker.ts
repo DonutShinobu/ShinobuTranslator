@@ -341,7 +341,19 @@ async function runInference(
   }
 
   profilingLog.length = 0;
-  const outputs = await entry.session.run(ortFeeds);
+  let outputs: Record<string, ortAll.Tensor>;
+  try {
+    outputs = await entry.session.run(ortFeeds);
+  } catch (inferenceError) {
+    // 推理失败时不抛异常，返回带 error 字段的 InferenceResult，
+    // 这样已收集的 profiling 数据可以通过 Comlink 传回主线程
+    const result: InferenceResult = {
+      outputs: {},
+      profilingLog: debugConfig?.profiling ? [...profilingLog] : undefined,
+      error: toErrorMessage(inferenceError),
+    };
+    return result;
+  }
 
   const result: InferenceResult = {
     outputs: {},

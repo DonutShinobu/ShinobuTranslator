@@ -6,7 +6,6 @@ import { decodePaddleCtc } from './paddleocrDecode';
 import { loadCharset } from './ocrShared';
 import { runInference } from '../../runtime/onnxWorkerBridge';
 import { downloadDebugReport } from '../../runtime/ortDebugDownload';
-import { toErrorMessage } from '../../shared/utils';
 
 const PADDLEOCR_CONFIDENCE_THRESHOLD = 0.2;
 
@@ -45,62 +44,64 @@ export const paddleocrProvider: OcrProvider = {
         },
       };
 
-      try {
-        const inferenceResult = await runInference(sessionHandle.sessionId, feeds);
-        if (inferenceResult.profilingLog) {
-          downloadDebugReport('paddleocr_rec', sessionHandle.provider, true, undefined, inferenceResult.profilingLog);
-        }
+      const inferenceResult = await runInference(sessionHandle.sessionId, feeds);
 
-        const outputs = inferenceResult.outputs;
-
-        // PaddleOCR rec 输出: [1, timeSteps, numClasses] 或 [timeSteps, numClasses]
-        const logitsOutput = outputs[sessionHandle.outputNames[0]];
-        if (!logitsOutput) continue;
-
-        const logitsData = logitsOutput.data as Float32Array;
-        const logitsDims = logitsOutput.dims;
-
-        let timeSteps: number;
-        let numClasses: number;
-        let logits: Float32Array;
-
-        if (logitsDims.length === 3) {
-          // [1, timeSteps, numClasses] — remove batch dimension
-          timeSteps = logitsDims[1];
-          numClasses = logitsDims[2];
-          logits = logitsData;
-        } else if (logitsDims.length === 2) {
-          // [timeSteps, numClasses]
-          timeSteps = logitsDims[0];
-          numClasses = logitsDims[1];
-          logits = logitsData;
-        } else {
-          continue;
-        }
-
-        const decoded = decodePaddleCtc(logits, timeSteps, numClasses, ctcCharset);
-
-        if (decoded.confidence < PADDLEOCR_CONFIDENCE_THRESHOLD || decoded.text.trim() === '') {
-          continue;
-        }
-
-        // Build quad from region.box if region.quad is missing
-        const quad: [QuadPoint, QuadPoint, QuadPoint, QuadPoint] = region.quad ?? [
-          { x: region.box.x, y: region.box.y },
-          { x: region.box.x + region.box.width, y: region.box.y },
-          { x: region.box.x + region.box.width, y: region.box.y + region.box.height },
-          { x: region.box.x, y: region.box.y + region.box.height },
-        ];
-
-        results.push({
-          text: decoded.text,
-          confidence: decoded.confidence,
-          quad,
-        });
-      } catch (error) {
-        downloadDebugReport('paddleocr_rec', sessionHandle.provider, false, toErrorMessage(error));
-        throw error;
+      // 推理失败时下载调试报告并抛出错误
+      if (inferenceResult.error) {
+        downloadDebugReport('paddleocr_rec', sessionHandle.provider, false, inferenceResult.error, inferenceResult.profilingLog);
+        throw new Error(inferenceResult.error);
       }
+
+      if (inferenceResult.profilingLog) {
+        downloadDebugReport('paddleocr_rec', sessionHandle.provider, true, undefined, inferenceResult.profilingLog);
+      }
+
+      const outputs = inferenceResult.outputs;
+
+      // PaddleOCR rec 输出: [1, timeSteps, numClasses] 或 [timeSteps, numClasses]
+      const logitsOutput = outputs[sessionHandle.outputNames[0]];
+      if (!logitsOutput) continue;
+
+      const logitsData = logitsOutput.data as Float32Array;
+      const logitsDims = logitsOutput.dims;
+
+      let timeSteps: number;
+      let numClasses: number;
+      let logits: Float32Array;
+
+      if (logitsDims.length === 3) {
+        // [1, timeSteps, numClasses] — remove batch dimension
+        timeSteps = logitsDims[1];
+        numClasses = logitsDims[2];
+        logits = logitsData;
+      } else if (logitsDims.length === 2) {
+        // [timeSteps, numClasses]
+        timeSteps = logitsDims[0];
+        numClasses = logitsDims[1];
+        logits = logitsData;
+      } else {
+        continue;
+      }
+
+      const decoded = decodePaddleCtc(logits, timeSteps, numClasses, ctcCharset);
+
+      if (decoded.confidence < PADDLEOCR_CONFIDENCE_THRESHOLD || decoded.text.trim() === '') {
+        continue;
+      }
+
+      // Build quad from region.box if region.quad is missing
+      const quad: [QuadPoint, QuadPoint, QuadPoint, QuadPoint] = region.quad ?? [
+        { x: region.box.x, y: region.box.y },
+        { x: region.box.x + region.box.width, y: region.box.y },
+        { x: region.box.x + region.box.width, y: region.box.y + region.box.height },
+        { x: region.box.x, y: region.box.y + region.box.height },
+      ];
+
+      results.push({
+        text: decoded.text,
+        confidence: decoded.confidence,
+        quad,
+      });
     }
 
     return results;

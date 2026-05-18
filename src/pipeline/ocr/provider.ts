@@ -41,6 +41,7 @@ export function inferDirectionFromQuad(
 
 export function fillMissingOcrFields(
   results: OcrRecognizeResult[],
+  image?: HTMLImageElement,
 ): OcrRecognizeResult[] {
   return results.map((r) => ({
     ...r,

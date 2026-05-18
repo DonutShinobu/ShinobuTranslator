@@ -22,8 +22,10 @@ import {
 import { registerOcrProvider, getOcrProvider, fillMissingOcrFields } from "./provider";
 import type { OcrRecognizeResult } from "./provider";
 import { builtinOcrProvider } from "./builtinProvider";
+import { paddleocrProvider } from "./paddleocrProvider";
 
 registerOcrProvider(builtinOcrProvider);
+registerOcrProvider(paddleocrProvider);
 
 export type OcrResult = {
   regions: TextRegion[];

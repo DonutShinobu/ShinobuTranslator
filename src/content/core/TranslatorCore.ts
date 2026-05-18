@@ -15,6 +15,7 @@ import type {
   ModelRegionLogItem,
 } from './types';
 import { sendRuntimeMessage } from '../../shared/messages';
+import { setOrtDebugConfig } from '../../runtime/onnxWorkerBridge';
 import {
   base64ToBlob,
   canvasToBlob,
@@ -281,6 +282,11 @@ export class TranslatorCore {
       if (validationError) throw new Error(validationError);
 
       const settings = settingsResponse.settings;
+      if (settings.ortDebugMode) {
+        setOrtDebugConfig({ logLevel: 'verbose', debug: true, profiling: true });
+      } else {
+        setOrtDebugConfig(undefined);
+      }
       const showElapsedTime = settings.showElapsedTime === true;
       const showStageTimingDetails = showElapsedTime && settings.showStageTimingDetails === true;
       const showRuntimeStages = showStageTimingDetails;

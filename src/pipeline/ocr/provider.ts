@@ -1,4 +1,5 @@
 import type { QuadPoint, TextDirection, TextRegion } from "../../types";
+import { sampleEdgeColors, sampleCornerBgColor } from "./colorSampling";
 
 export type OcrRecognizeResult = {
   text: string;
@@ -39,14 +40,54 @@ export function inferDirectionFromQuad(
   return width >= height ? "h" : "v";
 }
 
+function cropQuadRegion(
+  image: HTMLImageElement,
+  quad: [QuadPoint, QuadPoint, QuadPoint, QuadPoint],
+): { data: Uint8ClampedArray; width: number; height: number } | null {
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  const xs = quad.map((p) => p.x);
+  const ys = quad.map((p) => p.y);
+  const minX = Math.floor(Math.min(...xs));
+  const minY = Math.floor(Math.min(...ys));
+  const maxX = Math.ceil(Math.max(...xs));
+  const maxY = Math.ceil(Math.max(...ys));
+  const width = maxX - minX;
+  const height = maxY - minY;
+  canvas.width = width;
+  canvas.height = height;
+  ctx.drawImage(image, minX, minY, width, height, 0, 0, width, height);
+  const imageData = ctx.getImageData(0, 0, width, height);
+  return { data: imageData.data, width, height };
+}
+
 export function fillMissingOcrFields(
   results: OcrRecognizeResult[],
   image?: HTMLImageElement,
 ): OcrRecognizeResult[] {
-  return results.map((r) => ({
-    ...r,
-    direction: r.direction ?? inferDirectionFromQuad(r.quad),
-    fgColor: r.fgColor ?? [0, 0, 0],
-    bgColor: r.bgColor ?? [255, 255, 255],
-  }));
+  return results.map((r) => {
+    let fgColor = r.fgColor;
+    let bgColor = r.bgColor;
+
+    if (image && (fgColor === undefined || bgColor === undefined)) {
+      const cropped = cropQuadRegion(image, r.quad);
+      if (cropped) {
+        if (fgColor === undefined) {
+          const sampled = sampleEdgeColors(cropped.data, cropped.width, cropped.height);
+          fgColor = sampled ?? [0, 0, 0];
+        }
+        if (bgColor === undefined) {
+          bgColor = sampleCornerBgColor(cropped.data, cropped.width, cropped.height);
+        }
+      }
+    }
+
+    return {
+      ...r,
+      direction: r.direction ?? inferDirectionFromQuad(r.quad),
+      fgColor: fgColor ?? [0, 0, 0],
+      bgColor: bgColor ?? [255, 255, 255],
+    };
+  });
 }

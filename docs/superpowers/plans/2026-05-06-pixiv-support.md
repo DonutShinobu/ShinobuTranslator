@@ -1356,7 +1356,7 @@ The full updated manifest:
   "manifest_version": 3,
   "name": "ShinobuTranslator",
   "version": "0.1.0",
-  "description": "在 X/Twitter 图片大图中执行漫画翻译，并支持原图/译图切换。",
+  "description": "用于 X / Pixiv 的漫画翻译器（支持谷歌翻译和大模型翻译）",
   "action": {
     "default_title": "ShinobuTranslator",
     "default_popup": "popup.html",

@@ -17,6 +17,8 @@ export const paddleocrProvider: OcrProvider = {
     if (!charset) {
       throw new Error('PaddleOCR 字典加载失败');
     }
+    // CTC 解码需要索引 0 为 blank，在字典前插入空字符串作为 blank token
+    const ctcCharset = ['', ...charset];
 
     const inputHeight = model.input[0];
     const maxInputWidth = model.input[1];
@@ -69,7 +71,7 @@ export const paddleocrProvider: OcrProvider = {
         continue;
       }
 
-      const decoded = decodePaddleCtc(logits, timeSteps, numClasses, charset);
+      const decoded = decodePaddleCtc(logits, timeSteps, numClasses, ctcCharset);
 
       if (decoded.confidence < PADDLEOCR_CONFIDENCE_THRESHOLD || decoded.text.trim() === '') {
         continue;

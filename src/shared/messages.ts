@@ -16,7 +16,13 @@ export type DownloadImageMessage = {
   imageUrl: string;
 };
 
-export type RuntimeMessage = GetSettingsMessage | SetSettingsMessage | DownloadImageMessage;
+export type DownloadDebugReportMessage = {
+  type: 'mt:download-debug-report';
+  reportJson: string;
+  filename: string;
+};
+
+export type RuntimeMessage = GetSettingsMessage | SetSettingsMessage | DownloadImageMessage | DownloadDebugReportMessage;
 
 export type RuntimeSuccessResponse =
   | {
@@ -35,6 +41,11 @@ export type RuntimeSuccessResponse =
       base64: string;
       contentType: string;
       sourceUrl: string;
+    }
+  | {
+      ok: true;
+      type: 'mt:download-debug-report';
+      downloadId: number;
     };
 
 export type RuntimeErrorResponse = {
@@ -50,7 +61,7 @@ export function isRuntimeMessage(value: unknown): value is RuntimeMessage {
     return false;
   }
   const type = (value as { type?: unknown }).type;
-  return type === 'mt:get-settings' || type === 'mt:set-settings' || type === 'mt:download-image';
+  return type === 'mt:get-settings' || type === 'mt:set-settings' || type === 'mt:download-image' || type === 'mt:download-debug-report';
 }
 
 export function sendRuntimeMessage(message: RuntimeMessage): Promise<RuntimeResponse> {

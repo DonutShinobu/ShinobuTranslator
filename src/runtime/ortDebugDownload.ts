@@ -1,5 +1,6 @@
 import type { WebGpuProfilingDataV1 } from './onnxWorkerTypes';
 import type { RuntimeProvider } from './onnxTypes';
+import { sendRuntimeMessage } from '../shared/messages';
 
 export type OrtDebugReport = {
   timestamp: string;
@@ -10,13 +11,13 @@ export type OrtDebugReport = {
   profilingLog: WebGpuProfilingDataV1[];
 };
 
-export function downloadDebugReport(
+export async function downloadDebugReport(
   model: string,
   provider: RuntimeProvider,
   success: boolean,
   error?: string,
   profilingLog?: WebGpuProfilingDataV1[],
-): void {
+): Promise<void> {
   if (!profilingLog || profilingLog.length === 0) {
     return;
   }
@@ -30,30 +31,30 @@ export function downloadDebugReport(
     profilingLog,
   };
 
-  const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
+  const reportJson = JSON.stringify(report, null, 2);
+  const filename = `ort-debug-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
 
-  const chromeApi = (globalThis as typeof globalThis & {
-    chrome?: { downloads?: { download?: (options: { url: string; filename: string; saveAs?: boolean }) => Promise<number> } };
-  }).chrome;
-
-  if (chromeApi?.downloads?.download) {
-    chromeApi.downloads.download({
-      url,
-      filename: `ort-debug-${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
-      saveAs: false,
-    }).catch(() => {
-      fallbackDownload(url);
+  try {
+    const response = await sendRuntimeMessage({
+      type: 'mt:download-debug-report',
+      reportJson,
+      filename,
     });
-  } else {
-    fallbackDownload(url);
+    if (!response.ok) {
+      console.warn('[ort-debug] 下载调试报告失败:', response.error);
+      fallbackDownload(reportJson, filename);
+    }
+  } catch {
+    fallbackDownload(reportJson, filename);
   }
 }
 
-function fallbackDownload(url: string): void {
+function fallbackDownload(reportJson: string, filename: string): void {
+  const blob = new Blob([reportJson], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `ort-debug-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

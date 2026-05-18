@@ -48,12 +48,12 @@ export const paddleocrProvider: OcrProvider = {
 
       // 推理失败时下载调试报告并抛出错误
       if (inferenceResult.error) {
-        downloadDebugReport('paddleocr_rec', sessionHandle.provider, false, inferenceResult.error, inferenceResult.profilingLog);
+        await downloadDebugReport('paddleocr_rec', sessionHandle.provider, false, inferenceResult.error, inferenceResult.profilingLog);
         throw new Error(inferenceResult.error);
       }
 
       if (inferenceResult.profilingLog) {
-        downloadDebugReport('paddleocr_rec', sessionHandle.provider, true, undefined, inferenceResult.profilingLog);
+        await downloadDebugReport('paddleocr_rec', sessionHandle.provider, true, undefined, inferenceResult.profilingLog);
       }
 
       const outputs = inferenceResult.outputs;

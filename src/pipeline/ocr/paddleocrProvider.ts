@@ -1,4 +1,4 @@
-import type { OcrProvider, OcrRecognizeResult } from './provider';
+import type { OcrProvider, OcrRecognizeOutput, OcrRecognizeResult } from './provider';
 import type { TextRegion, QuadPoint } from '../../types';
 import { getModel, getModelSession } from '../../runtime/modelRegistry';
 import { buildPaddleOcrInput } from './paddleocrPreprocess';
@@ -6,12 +6,18 @@ import { decodePaddleCtc } from './paddleocrDecode';
 import { loadCharset } from './ocrShared';
 import { runInference } from '../../runtime/onnxWorkerBridge';
 import { downloadDebugReport } from '../../runtime/ortDebugDownload';
+import type { Direction } from './preprocess';
 
 const PADDLEOCR_CONFIDENCE_THRESHOLD = 0.2;
 
+function inferDirection(region: TextRegion): Direction {
+  if (region.direction) return region.direction;
+  return region.box.height > region.box.width ? 'v' : 'h';
+}
+
 export const paddleocrProvider: OcrProvider = {
   name: 'paddleocr',
-  async recognize(image: HTMLImageElement, regions: TextRegion[]): Promise<OcrRecognizeResult[]> {
+  async recognize(image: HTMLImageElement, regions: TextRegion[]): Promise<OcrRecognizeOutput> {
     const model = await getModel('paddleocr_rec');
     const sessionHandle = await getModelSession('paddleocr_rec', model.runtime ?? ['webgpu', 'webnn', 'wasm']);
     const charset = await loadCharset(model.dictUrl);
@@ -19,21 +25,23 @@ export const paddleocrProvider: OcrProvider = {
       throw new Error('PaddleOCR 字典加载失败');
     }
     // CTC 解码需要索引 0 为 blank，在字典前插入空字符串作为 blank token
-    const ctcCharset = ['', ...charset];
+    // PaddleOCR use_space_char: 在字典末尾追加半角空格
+    const ctcCharset = ['', ...charset, ' '];
 
     const inputHeight = model.input[0];
     const maxInputWidth = model.input[1];
 
     const imageInputName = sessionHandle.inputNames[0];
     if (!imageInputName) {
-      return [];
+      return { results: [], provider: sessionHandle.provider, webnnDeviceType: sessionHandle.webnnDeviceType };
     }
 
     const results: OcrRecognizeResult[] = [];
 
     for (const region of regions) {
+      const direction = inferDirection(region);
       const inputData = buildPaddleOcrInput(
-        image, region, inputHeight, maxInputWidth, model.normalize ?? 'minus_one_to_one'
+        image, region, direction, inputHeight, maxInputWidth, model.normalize ?? 'minus_one_to_one'
       );
 
       const feeds: Record<string, import('../../runtime/onnxWorkerTypes').TensorTransport> = {
@@ -104,6 +112,6 @@ export const paddleocrProvider: OcrProvider = {
       });
     }
 
-    return results;
+    return { results, provider: sessionHandle.provider, webnnDeviceType: sessionHandle.webnnDeviceType };
   },
 };

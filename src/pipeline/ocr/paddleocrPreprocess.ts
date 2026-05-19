@@ -1,4 +1,6 @@
 import type { TextRegion } from '../../types';
+import type { Direction } from './preprocess';
+import { getTransformedRegion } from './preprocess';
 
 export type PaddleOcrInputData = {
   data: Float32Array;
@@ -7,36 +9,33 @@ export type PaddleOcrInputData = {
 };
 
 /**
- * 从 image 裁剪 region.box 区域，resize 到 inputHeight 高度，
- * 宽度按比例缩放（不超过 maxInputWidth），归一化后输出 NCHW Float32Array。
+ * 从 image 裁剪 region 区域，对竖排文字做透视变换+90度旋转，
+ * resize 到 inputHeight 高度，宽度按比例缩放（不超过 maxInputWidth），归一化后输出 NCHW Float32Array。
  */
 export function buildPaddleOcrInput(
   image: HTMLImageElement,
   region: TextRegion,
+  direction: Direction,
   inputHeight: number,
   maxInputWidth: number,
   normalize: 'zero_to_one' | 'minus_one_to_one',
 ): PaddleOcrInputData {
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d')!;
-  const { x, y, width, height } = region.box;
+  // 使用 getTransformedRegion 处理透视变换和竖排旋转
+  const source = getTransformedRegion(image, region, direction, inputHeight);
+  const srcWidth = Math.max(1, source.width);
+  const srcHeight = Math.max(1, source.height);
 
-  // Step 1: 从原图裁剪 region 区域
-  canvas.width = width;
-  canvas.height = height;
-  ctx.drawImage(image, x, y, width, height, 0, 0, width, height);
-
-  // Step 2: Resize 到 inputHeight，宽度按比例
-  const ratio = inputHeight / height;
-  const resizedWidth = Math.max(1, Math.min(maxInputWidth, Math.round(ratio * width)));
+  // Resize 到 inputHeight，宽度按比例
+  const ratio = srcWidth / srcHeight;
+  const resizedWidth = Math.max(1, Math.min(maxInputWidth, Math.round(ratio * inputHeight)));
 
   const resizeCanvas = document.createElement('canvas');
   resizeCanvas.width = resizedWidth;
   resizeCanvas.height = inputHeight;
   const resizeCtx = resizeCanvas.getContext('2d')!;
-  resizeCtx.drawImage(canvas, 0, 0, resizedWidth, inputHeight);
+  resizeCtx.drawImage(source, 0, 0, srcWidth, srcHeight, 0, 0, resizedWidth, inputHeight);
 
-  // Step 3: 提取像素并归一化
+  // 提取像素并归一化
   const imageData = resizeCtx.getImageData(0, 0, resizedWidth, inputHeight);
   const pixels = imageData.data;
   const pixelCount = resizedWidth * inputHeight;

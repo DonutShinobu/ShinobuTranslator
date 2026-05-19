@@ -10,12 +10,18 @@ export type OcrRecognizeResult = {
   bgColor?: [number, number, number];
 };
 
+export type OcrRecognizeOutput = {
+  results: OcrRecognizeResult[];
+  provider: import('../../runtime/onnxTypes').RuntimeProvider;
+  webnnDeviceType?: import('../../runtime/onnxTypes').WebNnDeviceType;
+};
+
 export type OcrProvider = {
   name: string;
   recognize(
     image: HTMLImageElement,
     regions: TextRegion[],
-  ): Promise<OcrRecognizeResult[]>;
+  ): Promise<OcrRecognizeOutput>;
 };
 
 const ocrProviders: Record<string, OcrProvider> = {};

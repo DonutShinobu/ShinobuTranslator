@@ -537,11 +537,11 @@ export async function runOcr(
   }
 
   // other provider path
-  const rawResults = await provider.recognize(image, detectedRegions);
-  const filled = fillMissingOcrFields(rawResults, image);
+  const output = await provider.recognize(image, detectedRegions);
+  const filled = fillMissingOcrFields(output.results, image);
   const regions = mapResultsToRegions(filled, detectedRegions);
   if (regions.length > 0) {
-    return { regions, actualProvider: 'wasm', debug: createDefaultDebug(regions.length) };
+    return { regions, actualProvider: output.provider, actualWebnnDeviceType: output.webnnDeviceType, debug: createDefaultDebug(regions.length) };
   }
   throw new Error("OCR 未返回有效识别结果");
 }

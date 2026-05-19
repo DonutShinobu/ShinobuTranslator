@@ -435,7 +435,7 @@ function rotate90CounterClockwise(source: HTMLCanvasElement): HTMLCanvasElement 
   return canvas;
 }
 
-function getTransformedRegion(
+export function getTransformedRegion(
   image: HTMLImageElement,
   region: TextRegion,
   direction: Direction,

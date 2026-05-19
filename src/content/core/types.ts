@@ -65,4 +65,4 @@ export type TypesetDebugDownloadData = {
   typeset: PipelineTypesetDebugLog;
 };
 
-export type { PipelineArtifacts, PipelineProgress, RuntimeStageStatus, StageTiming, TextRegion };
+export type { PipelineArtifacts, PipelineProgress, RuntimeStageStatus, StageTiming, TextRegion, TranslationDebugInfo };

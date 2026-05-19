@@ -336,7 +336,7 @@ export class TranslatorCore {
       state.translatedUrl = translatedUrl;
       const totalDurationMs = performance.now() - runStartAt;
       state.elapsedText = showElapsedTime
-        ? formatElapsedText(totalDurationMs, artifacts.stageTimings, artifacts.runtimeStages, showStageTimingDetails, showRuntimeStages)
+        ? formatElapsedText(totalDurationMs, artifacts.stageTimings, artifacts.runtimeStages, showStageTimingDetails, showRuntimeStages, artifacts.translationDebug)
         : '';
       state.stageText = '';
       state.errorText = '';

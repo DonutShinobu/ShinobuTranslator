@@ -1,4 +1,4 @@
-import type { RuntimeStageStatus, StageTiming } from './types';
+import type { RuntimeStageStatus, StageTiming, TranslationDebugInfo } from './types';
 
 export { toErrorMessage } from '../../shared/utils';
 
@@ -75,6 +75,7 @@ export function formatElapsedText(
   runtimeStages: RuntimeStageStatus[],
   showStageDetails: boolean,
   showRuntimeStages: boolean,
+  translationDebug?: TranslationDebugInfo | null,
 ): string {
   const stageLabelMap: Record<string, string> = {
     load: '加载图片',
@@ -100,6 +101,11 @@ export function formatElapsedText(
     const label = stageLabelMap[timing.stage] ?? timing.label ?? timing.stage;
     return `${label}：${formatDuration(timing.durationMs)}`;
   });
+  const translateLineIndex = stageTimings.findIndex((t) => t.stage === 'translate');
+  if (translateLineIndex >= 0 && translationDebug) {
+    const fallbackTag = translationDebug.llmFallbackUsed ? '有回退' : '无回退';
+    detailLines[translateLineIndex] += ` (${fallbackTag})`;
+  }
   return runtimeLine
     ? [totalLine, runtimeLine, ...detailLines].join('\n')
     : [totalLine, ...detailLines].join('\n');

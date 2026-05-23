@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 2
+- **Total Sessions**: 3
 - **Last Active**: 2026-05-23
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~59 | Active |
+| `journal-1.md` | ~85 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 3 | 2026-05-23 | 统一 benchmark 目录结构 | `7399b30` | `master` |
 | 1 | 2026-05-23 | 修复大图模式翻译按钮跟随面板移动 | `1248d1b`, `c73e9ca` | `worktree-fix-translate-btn-follow-panel` |
 | 2 | 2026-05-23 | 颜色识别算法诊断与对比测试框架 | `d6221aa`, `cb4f6a5` | `worktree-color-test-benchmark` |
 <!-- @@@/auto:session-history -->

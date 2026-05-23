@@ -51,3 +51,35 @@
 ### Next Steps
 
 - None - task complete
+
+## Session 3: 统一 benchmark 目录结构
+
+**Date**: 2026-05-23
+**Task**: 统一 benchmark 目录结构
+**Branch**: `master`
+
+### Summary
+
+将 scripts/benchmark/ 和 benchmark/ 合并为 benchmark/typeset/ 和 benchmark/color/ 两个自包含子目录，更新所有 import 路径、npm scripts、.gitignore、spec 文档，335 个测试全部通过
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7399b30` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

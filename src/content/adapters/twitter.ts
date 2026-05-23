@@ -156,6 +156,48 @@ export const twitterAdapter: SiteAdapter = {
 
     if (dialog) {
       dialog.appendChild(anchor);
+
+      let rafId = 0;
+
+      const cleanup = () => {
+        cancelAnimationFrame(rafId);
+        resizeObserver.disconnect();
+        dialog.removeEventListener('transitionend', onTransitionEnd);
+        dialog.removeEventListener('transitionstart', onTransitionStart);
+      };
+
+      const reposition = () => {
+        if (!anchor.isConnected) {
+          cleanup();
+          return;
+        }
+        repositionAnchor(anchor, dialog);
+      };
+
+      const startRafTracking = () => {
+        cancelAnimationFrame(rafId);
+        const tick = () => {
+          if (!anchor.isConnected) { cleanup(); return; }
+          repositionAnchor(anchor, dialog);
+          rafId = requestAnimationFrame(tick);
+        };
+        rafId = requestAnimationFrame(tick);
+      };
+
+      const resizeObserver = new ResizeObserver(reposition);
+      resizeObserver.observe(dialog);
+
+      const onTransitionStart = (e: TransitionEvent) => {
+        if (e.target instanceof HTMLElement && dialog.contains(e.target)) startRafTracking();
+      };
+      const onTransitionEnd = (e: TransitionEvent) => {
+        if (e.target instanceof HTMLElement && dialog.contains(e.target)) {
+          cancelAnimationFrame(rafId);
+          reposition();
+        }
+      };
+      dialog.addEventListener('transitionstart', onTransitionStart, { passive: true });
+      dialog.addEventListener('transitionend', onTransitionEnd, { passive: true });
     } else {
       document.body.appendChild(anchor);
     }

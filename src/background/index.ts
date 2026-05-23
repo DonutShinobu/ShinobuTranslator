@@ -187,30 +187,6 @@ async function handleMessage(message: RuntimeMessage): Promise<RuntimeResponse> 
     };
   }
 
-  if (message.type === 'mt:download-debug-report') {
-    const fullChromeApi = (globalThis as any).chrome;
-    if (!fullChromeApi?.downloads?.download) {
-      return {
-        ok: false,
-        type: 'mt:download-debug-report',
-        error: 'chrome.downloads API 不可用',
-      };
-    }
-    const blob = new Blob([message.reportJson], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const downloadId = await fullChromeApi.downloads.download({
-      url,
-      filename: message.filename,
-      saveAs: false,
-    });
-    URL.revokeObjectURL(url);
-    return {
-      ok: true,
-      type: 'mt:download-debug-report',
-      downloadId,
-    };
-  }
-
   return {
     ok: false,
     type: 'mt:get-settings',

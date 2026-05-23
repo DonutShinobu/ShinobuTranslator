@@ -274,11 +274,11 @@ export function App() {
                   <label className="checkbox-row">
                     <input
                       type="checkbox"
-                      checked={settings.ortDebugMode}
-                      onChange={(event) => updateField('ortDebugMode', event.target.checked)}
+                      checked={settings.enableDebugLog}
+                      onChange={(event) => updateField('enableDebugLog', event.target.checked)}
                       disabled={loading}
                     />
-                    <span className="checkbox-label">ORT 调试</span>
+                    <span className="checkbox-label">日志记录</span>
                   </label>
                 </div>
               )}

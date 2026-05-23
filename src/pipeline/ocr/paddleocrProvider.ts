@@ -5,7 +5,6 @@ import { buildPaddleOcrInput } from './paddleocrPreprocess';
 import { decodePaddleCtc } from './paddleocrDecode';
 import { loadCharset } from './ocrShared';
 import { runInference } from '../../runtime/onnxWorkerBridge';
-import { downloadDebugReport } from '../../runtime/ortDebugDownload';
 import type { Direction } from './preprocess';
 
 const PADDLEOCR_CONFIDENCE_THRESHOLD = 0.2;
@@ -54,14 +53,8 @@ export const paddleocrProvider: OcrProvider = {
 
       const inferenceResult = await runInference(sessionHandle.sessionId, feeds);
 
-      // 推理失败时下载调试报告并抛出错误
       if (inferenceResult.error) {
-        await downloadDebugReport('paddleocr_rec', sessionHandle.provider, false, inferenceResult.error, inferenceResult.profilingLog);
         throw new Error(inferenceResult.error);
-      }
-
-      if (inferenceResult.profilingLog) {
-        await downloadDebugReport('paddleocr_rec', sessionHandle.provider, true, undefined, inferenceResult.profilingLog);
       }
 
       const outputs = inferenceResult.outputs;

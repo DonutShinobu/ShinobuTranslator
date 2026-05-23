@@ -8,11 +8,13 @@ import { createCanvas, loadImage } from "canvas";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import {
+  colorDistance,
   createSyntheticOcrData,
   cropRegion,
   deltaE,
   extractColorsFromOutputsCurrent,
   FIXTURES_DIR,
+  histogramBimodal,
   isGrayFailure,
   loadFixtures,
   REPORTS_DIR,
@@ -49,11 +51,28 @@ function traceRegionColors(
 
   // Determine which color path is taken
   if (ocrResult) {
-    colorPath = "ocr_model";
-    hasFgRatio = ocrResult.cntFg / ocrResult.totalSteps;
-    hasBgRatio = ocrResult.cntBg / ocrResult.totalSteps;
-    rawFgRgb = ocrResult.fgColor;
-    rawBgRgb = ocrResult.bgColor;
+    // Check if OCR colors are unreliable (fg/bg too similar)
+    if (colorDistance(ocrResult.fgColor, ocrResult.bgColor) < 30) {
+      // Fall back to histogram bimodal when OCR colors are unreliable
+      const histResult = histogramBimodal(croppedData, cropWidth, cropHeight);
+      if (histResult) {
+        colorPath = "pixel_sampling";
+        rawFgRgb = histResult.fgColor;
+        rawBgRgb = histResult.bgColor;
+      } else {
+        colorPath = "ocr_model";
+        hasFgRatio = ocrResult.cntFg / ocrResult.totalSteps;
+        hasBgRatio = ocrResult.cntBg / ocrResult.totalSteps;
+        rawFgRgb = ocrResult.fgColor;
+        rawBgRgb = ocrResult.bgColor;
+      }
+    } else {
+      colorPath = "ocr_model";
+      hasFgRatio = ocrResult.cntFg / ocrResult.totalSteps;
+      hasBgRatio = ocrResult.cntBg / ocrResult.totalSteps;
+      rawFgRgb = ocrResult.fgColor;
+      rawBgRgb = ocrResult.bgColor;
+    }
   } else {
     // Try pixel sampling fallback
     const edgeFg = sampleEdgeColors(croppedData, cropWidth, cropHeight);

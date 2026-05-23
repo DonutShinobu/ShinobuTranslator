@@ -8,11 +8,13 @@ import { createCanvas, loadImage } from "canvas";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { basename, join } from "path";
 import {
+  colorDistance,
   createSyntheticOcrData,
   cropRegion,
   deltaE,
   extractColorsFromOutputsCurrent,
   FIXTURES_DIR,
+  histogramBimodal,
   isGrayFailure,
   loadFixtures,
   REPORTS_DIR,
@@ -31,8 +33,8 @@ import type {
 } from "./color-types";
 
 /**
- * Run current algorithm (with the hasBg bug) on cropped region data.
- * Uses OCR model path simulation + pixel sampling fallback + resolveColors.
+ * Run current algorithm (fixed hasBg + histogram fallback) on cropped region data.
+ * When OCR fg/bg DeltaE < 30, falls back to histogramBimodal.
  */
 function runCurrentAlgorithm(
   croppedData: Uint8ClampedArray,
@@ -54,6 +56,15 @@ function runCurrentAlgorithm(
   if (ocrResult) {
     rawFg = ocrResult.fgColor;
     rawBg = ocrResult.bgColor;
+
+    // When OCR colors are too similar, fall back to histogram bimodal
+    if (rawFg && rawBg && colorDistance(rawFg, rawBg) < 30) {
+      const histResult = histogramBimodal(croppedData, cropWidth, cropHeight);
+      if (histResult) {
+        rawFg = histResult.fgColor;
+        rawBg = histResult.bgColor;
+      }
+    }
   } else {
     // Pixel sampling fallback
     const edgeFg = sampleEdgeColors(croppedData, cropWidth, cropHeight);
@@ -171,7 +182,7 @@ function renderComparisonImage(
 
     // Draw three panels
     const algorithms = [
-      { name: "当前算法", result: current },
+      { name: "当前 (修复+回退)", result: current },
       { name: "算法A (修复hasBg)", result: algA },
       { name: "算法D (直方图双峰)", result: algD },
     ];

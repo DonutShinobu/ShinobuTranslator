@@ -68,11 +68,6 @@ function extractColorsFromOutputs(
       bgCh += Math.round(Math.max(0, Math.min(1, bg[bgBase + 1])) * 255);
       bb += Math.round(Math.max(0, Math.min(1, bg[bgBase + 2])) * 255);
       cntBg += 1;
-    } else {
-      br += Math.round(Math.max(0, Math.min(1, fg[fgBase])) * 255);
-      bgCh += Math.round(Math.max(0, Math.min(1, fg[fgBase + 1])) * 255);
-      bb += Math.round(Math.max(0, Math.min(1, fg[fgBase + 2])) * 255);
-      cntBg += 1;
     }
   }
 

@@ -1,5 +1,6 @@
 import type { QuadPoint, TextDirection, TextRegion } from "../../types";
-import { sampleEdgeColors, sampleCornerBgColor } from "./colorSampling";
+import { sampleEdgeColors, sampleCornerBgColor, histogramBimodal } from "./colorSampling";
+import { colorDistance } from "../typeset/color";
 
 export type OcrRecognizeResult = {
   text: string;
@@ -76,15 +77,37 @@ export function fillMissingOcrFields(
     let fgColor = r.fgColor;
     let bgColor = r.bgColor;
 
+    // When OCR model provides both colors but they're too similar, fall back
+    // to histogram bimodal analysis which is more reliable for bimodal distributions.
+    if (fgColor && bgColor && colorDistance(fgColor, bgColor) < 30) {
+      if (image) {
+        const cropped = cropQuadRegion(image, r.quad);
+        if (cropped) {
+          const histResult = histogramBimodal(cropped.data, cropped.width, cropped.height);
+          if (histResult) {
+            fgColor = histResult.fgColor;
+            bgColor = histResult.bgColor;
+          }
+        }
+      }
+    }
+
     if (image && (fgColor === undefined || bgColor === undefined)) {
       const cropped = cropQuadRegion(image, r.quad);
       if (cropped) {
-        if (fgColor === undefined) {
-          const sampled = sampleEdgeColors(cropped.data, cropped.width, cropped.height);
-          fgColor = sampled ?? [0, 0, 0];
-        }
-        if (bgColor === undefined) {
-          bgColor = sampleCornerBgColor(cropped.data, cropped.width, cropped.height);
+        // Try histogram bimodal first — it's more reliable than Sobel edge sampling.
+        const histResult = histogramBimodal(cropped.data, cropped.width, cropped.height);
+        if (histResult) {
+          if (fgColor === undefined) fgColor = histResult.fgColor;
+          if (bgColor === undefined) bgColor = histResult.bgColor;
+        } else {
+          if (fgColor === undefined) {
+            const sampled = sampleEdgeColors(cropped.data, cropped.width, cropped.height);
+            fgColor = sampled ?? [0, 0, 0];
+          }
+          if (bgColor === undefined) {
+            bgColor = sampleCornerBgColor(cropped.data, cropped.width, cropped.height);
+          }
         }
       }
     }

@@ -247,6 +247,23 @@ function initializeBackground(): void {
     .catch(() => defaultExtensionSettings)
     .then((settings) => storageSet(extensionSettingsStorageKey, settings))
     .catch(() => undefined);
+
+  // Register context menu for image translation
+  const fullChrome = (globalThis as any).chrome;
+  if (fullChrome?.contextMenus?.create) {
+    fullChrome.contextMenus.create({
+      id: 'translate-image',
+      title: '翻译图片',
+      contexts: ['image'],
+    });
+    fullChrome.contextMenus.onClicked.addListener((info: any, tab: any) => {
+      if (info.menuItemId === 'translate-image' && tab?.id != null) {
+        fullChrome.tabs.sendMessage(tab.id, { type: 'mt:context-menu-translate' }).catch(() => {
+          // content script may not be injected yet — ignore
+        });
+      }
+    });
+  }
 }
 
 void initializeBackground();

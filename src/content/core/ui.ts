@@ -242,6 +242,31 @@ export function injectStyles(): void {
       gap: 8px;
     }
 
+    /* Context menu close button */
+    .mt-x-close-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      border: none;
+      background: none;
+      color: var(--mt-text, inherit);
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+      opacity: 0.5;
+      border-radius: 50%;
+      transition: opacity 0.15s, background-color 0.15s;
+      padding: 0;
+      margin-left: 2px;
+      flex: 0 0 auto;
+    }
+    .mt-x-close-btn:hover {
+      opacity: 0.8;
+      background-color: oklch(0 0 0 / 0.1);
+    }
+
     @keyframes mt-x-glow-sweep {
       0%, 10% { transform: translateX(-150%); }
       40% { transform: translateX(0%); }
@@ -521,4 +546,66 @@ export function createReadingModeBarUi(): ReadingModeBarUi {
 export function handleDebugDownload(state: PhotoState): void {
   if (!state.debugLogData) return;
   downloadJson(state.debugLogData, 'typeset-debug-log');
+}
+
+export interface ContextMenuUiElements extends UiElements {
+  closeButton: HTMLButtonElement;
+}
+
+/** Create UI elements for context-menu generic flow (light theme, with close button). */
+export function createContextMenuUi(): ContextMenuUiElements {
+  const base = createUiElements();
+  base.host.dataset.theme = 'light';
+
+  const closeButton = document.createElement('button');
+  closeButton.className = 'mt-x-close-btn';
+  closeButton.type = 'button';
+  closeButton.innerHTML = '&#xD7;';
+  closeButton.title = '关闭';
+
+  const actions = base.host.querySelector('.mt-x-actions');
+  if (actions) {
+    actions.appendChild(closeButton);
+  }
+
+  return { ...base, closeButton };
+}
+
+/**
+ * Position a UI host element above an image using fixed positioning.
+ * Returns a cleanup function that removes scroll/resize listeners.
+ */
+export function positionUiAboveImage(host: HTMLElement, img: HTMLImageElement, gap = 8): () => void {
+  host.style.position = 'fixed';
+  host.style.zIndex = '99999';
+
+  const update = () => {
+    const rect = img.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) return;
+
+    const hostHeight = host.offsetHeight || 36;
+    const hostWidth = host.offsetWidth || 180;
+
+    // Try above the image; fall back below if not enough space
+    let top = rect.top - hostHeight - gap;
+    if (top < gap) {
+      top = rect.bottom + gap;
+    }
+
+    // Right-align with image, clamped to viewport
+    const left = Math.max(gap, Math.min(rect.right - hostWidth, window.innerWidth - hostWidth - gap));
+
+    host.style.top = `${top}px`;
+    host.style.left = `${left}px`;
+  };
+
+  requestAnimationFrame(() => update());
+
+  window.addEventListener('scroll', update, { passive: true });
+  window.addEventListener('resize', update, { passive: true });
+
+  return () => {
+    window.removeEventListener('scroll', update);
+    window.removeEventListener('resize', update);
+  };
 }

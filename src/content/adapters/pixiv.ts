@@ -30,23 +30,23 @@ function extractBaseUrlPattern(url: string): { base: string; ext: string } | nul
 let bottomBarAnchor: HTMLElement | null = null;
 
 function getTotalPageCount(): number {
-  // The page slider has max attribute: max = totalPages + 1 (because it's 1-indexed and includes info card).
-  // Or we can read from the page counter near the close icon.
-  const slider = document.querySelector<HTMLInputElement>('.gtm-manga-viewer-change-page');
-  if (slider) {
-    // max = totalPages + 1 (slider includes the info card offset).
-    // Actually max includes offset for the info card card-0. If max=45, pages = 44.
-    const max = parseInt(slider.max, 10);
-    if (max > 1) return max - 1;
-  }
-  // Fallback: read page count from counter text near close icon.
+  // Primary: counter text near close icon. Reliable across single/double-page
+  // modes and regardless of card-0 presence.
   const counterEl = document.querySelector('.gtm-manga-viewer-close-icon + div');
   if (counterEl) {
     const text = counterEl.textContent?.trim();
-    const match = text?.match(/\d+/);
+    const match = text?.match(/^\d+/);
     if (match) return parseInt(match[0], 10);
   }
-  // Fallback: count the number of .gtm-expand-full-size-illust links.
+  // Fallback: manga viewer slider. Only accurate in single-page mode without
+  // card-0. Double-page spreads and card-0 both offset max from the true count.
+  const slider = document.querySelector<HTMLInputElement>('.gtm-manga-viewer-change-page');
+  if (slider) {
+    const min = parseInt(slider.min, 10);
+    const max = parseInt(slider.max, 10);
+    if (max > 0) return min === 0 ? max - 1 : max;
+  }
+  // Last resort: count GTM links currently in the DOM.
   const links = document.querySelectorAll('.gtm-expand-full-size-illust');
   return links.length || 0;
 }

@@ -574,6 +574,16 @@ export class TranslatorCore {
       this.scheduleSync();
     }
 
+    // Cancel the deferred scheduleSync from the last iteration — it would
+    // call syncReadingMode which overwrites allPageUrls via findAllPageUrls().
+    // If the DOM is in a transitional state, findAllPageUrls() may return empty
+    // or inconsistent results, reverting the button to "翻译全部".
+    if (this.syncTimer !== null) {
+      window.clearTimeout(this.syncTimer);
+      this.syncTimer = null;
+    }
+    // Use the URLs we actually translated so allHaveTranslation check is consistent.
+    this.allPageUrls = urls;
     this.translateAllRunning = false;
     this.globalTranslateMode = 'translated';
     this.renderReadingModeBar();

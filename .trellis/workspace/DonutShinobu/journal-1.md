@@ -152,3 +152,36 @@ Pixiv 阅读模式底栏新增「翻译当前页」和「翻译全部」按钮�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 6: 右键菜单翻译图片功能实现
+
+**Date**: 2026-05-23
+**Task**: 右键菜单翻译图片功能实现
+**Branch**: `worktree-context-menu-translate`
+
+### Summary
+
+新增 Chrome 右键菜单翻译图片功能，支持在任意网站右键点击图片触发翻译。manifest 权限扩展到 all_urls，content script 注入所有网站。通过 contextmenu 事件捕获目标图片元素，background 注册 chrome.contextMenus 传递消息。x.com/Pixiv 上优先走 adapter 逻辑，其他网站走通用翻译流程。UI 使用 light theme，按钮浮在图片上方，支持关闭和 MutationObserver 自动清理。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `690c190` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

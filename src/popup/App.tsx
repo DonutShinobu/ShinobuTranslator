@@ -299,7 +299,7 @@ export function App() {
                     onChange={() => updateField('ocrEngine', 'builtin' as ExtensionSettings['ocrEngine'])}
                     disabled={loading}
                   />
-                  <span className="radio-label">内置模型</span>
+                  <span className="radio-label">MangaOCR</span>
                 </label>
                 <label className={`radio-row${settings.ocrEngine === 'paddleocr' ? ' radio-selected' : ''}${loading ? ' radio-disabled' : ''}`}>
                   <input

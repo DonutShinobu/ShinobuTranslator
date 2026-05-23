@@ -154,15 +154,15 @@ Pixiv 阅读模式底栏新增「翻译当前页」和「翻译全部」按钮�
 - None - task complete
 
 
-## Session 6: 右键菜单翻译图片功能实现
+## Session 6: 统一日志功能：ortDebugMode→enableDebugLog，解耦下载按钮与排版调试可视化
 
 **Date**: 2026-05-23
-**Task**: 右键菜单翻译图片功能实现
-**Branch**: `worktree-context-menu-translate`
+**Task**: 统一日志功能：ortDebugMode→enableDebugLog，解耦下载按钮与排版调试可视化
+**Branch**: `worktree/unify-debug-logs`
 
 ### Summary
 
-新增 Chrome 右键菜单翻译图片功能，支持在任意网站右键点击图片触发翻译。manifest 权限扩展到 all_urls，content script 注入所有网站。通过 contextmenu 事件捕获目标图片元素，background 注册 chrome.contextMenus 传递消息。x.com/Pixiv 上优先走 adapter 逻辑，其他网站走通用翻译流程。UI 使用 light theme，按钮浮在图片上方，支持关闭和 MutationObserver 自动清理。
+将 ORT 调试和排版调试两个日志功能合并重构：ortDebugMode 改为 enableDebugLog（日志记录），下载日志按钮与排版调试选项解耦，删除 ORT profiling 整条链路，PipelineConfig 新增 collectDebugLog 字段实现可视化与数据采集职责分离，日志新增 pageUrl。15 文件，+28/-217 行。
 
 ### Main Changes
 
@@ -172,7 +172,7 @@ Pixiv 阅读模式底栏新增「翻译当前页」和「翻译全部」按钮�
 
 | Hash | Message |
 |------|---------|
-| `690c190` | (see git log) |
+| `8f75306` | (see git log) |
 
 ### Testing
 

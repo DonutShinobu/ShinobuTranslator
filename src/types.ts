@@ -41,6 +41,7 @@ export type PipelineConfig = {
   llmModel: string;
   llmTemperature: number;
   typesetDebug: boolean;
+  collectDebugLog: boolean;
   ocrEngine: 'builtin' | 'paddleocr';
 };
 

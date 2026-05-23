@@ -29,7 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
-| 6 | 2026-05-23 | 右键菜单翻译图片功能实现 | `690c190` | `worktree-context-menu-translate` |
+| 6 | 2026-05-23 | 统一日志功能：ortDebugMode→enableDebugLog，解耦下载按钮与排版调试可视化 | `8f75306` | `worktree/unify-debug-logs` |
 | 5 | 2026-05-23 | Pixiv 阅读模式多图翻译支持 | `2c3bca3` | `master` |
 | 4 | 2026-05-23 | 颜色 benchmark fixture 半自动生成流程 | `d49791e`, `83ce714`, `04dd68c`, `f0cf4da` | `master` |
 | 3 | 2026-05-23 | 统一 benchmark 目录结构 | `7399b30` | `master` |

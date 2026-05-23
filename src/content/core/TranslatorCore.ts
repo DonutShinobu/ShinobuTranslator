@@ -17,7 +17,6 @@ import type {
   ModelRegionLogItem,
 } from './types';
 import { sendRuntimeMessage } from '../../shared/messages';
-import { setOrtDebugConfig } from '../../runtime/onnxWorkerBridge';
 import {
   base64ToBlob,
   canvasToBlob,
@@ -87,6 +86,7 @@ function cloneTextRegionQuad(region: TextRegion): TextRegion['quad'] {
 }
 
 function toTypesetDebugDownloadData(
+  pageUrl: string,
   sourceImageUrl: string,
   artifacts: PipelineArtifacts,
 ): TypesetDebugDownloadData | undefined {
@@ -107,6 +107,7 @@ function toTypesetDebugDownloadData(
   }));
   return {
     exportedAt: new Date().toISOString(),
+    pageUrl,
     sourceImageUrl,
     stageTimings: artifacts.stageTimings.map((t) => ({ ...t })),
     runtimeStages: artifacts.runtimeStages.map((s) => ({ ...s })),
@@ -307,15 +308,11 @@ export class TranslatorCore {
       if (validationError) throw new Error(validationError);
 
       const settings = settingsResponse.settings;
-      if (settings.ortDebugMode) {
-        setOrtDebugConfig({ logLevel: 'verbose', debug: true, profiling: true });
-      } else {
-        setOrtDebugConfig(undefined);
-      }
       const showElapsedTime = settings.showElapsedTime === true;
       const showStageTimingDetails = showElapsedTime && settings.showStageTimingDetails === true;
       const showRuntimeStages = showStageTimingDetails;
       const showTypesetDebug = settings.showTypesetDebug === true;
+      const enableDebugLog = settings.enableDebugLog === true;
       state.showTypesetDebug = showTypesetDebug;
 
       const downloadResponse = await sendRuntimeMessage({
@@ -354,7 +351,7 @@ export class TranslatorCore {
         const debugBlob = await canvasToBlob(artifacts.debugOriginalCanvas);
         state.debugOriginalUrl = URL.createObjectURL(debugBlob);
       }
-      const sourceImageDataUrl = showTypesetDebug
+      const sourceImageDataUrl = enableDebugLog
         ? (() => {
             const c = document.createElement('canvas');
             c.width = artifacts.original.naturalWidth;
@@ -364,8 +361,8 @@ export class TranslatorCore {
             return c.toDataURL('image/png');
           })()
         : state.originalUrl;
-      state.debugLogData = showTypesetDebug
-        ? toTypesetDebugDownloadData(sourceImageDataUrl, artifacts)
+      state.debugLogData = enableDebugLog
+        ? toTypesetDebugDownloadData(window.location.href, sourceImageDataUrl, artifacts)
         : undefined;
 
       state.translatedUrl = translatedUrl;
@@ -620,12 +617,8 @@ export class TranslatorCore {
       if (validationError) throw new Error(validationError);
 
       const settings = settingsResponse.settings;
-      if (settings.ortDebugMode) {
-        setOrtDebugConfig({ logLevel: 'verbose', debug: true, profiling: true });
-      } else {
-        setOrtDebugConfig(undefined);
-      }
       const showTypesetDebug = settings.showTypesetDebug === true;
+      const enableDebugLog = settings.enableDebugLog === true;
       state.showTypesetDebug = showTypesetDebug;
 
       const downloadResponse = await sendRuntimeMessage({
@@ -666,7 +659,7 @@ export class TranslatorCore {
         const debugBlob = await canvasToBlob(artifacts.debugOriginalCanvas);
         state.debugOriginalUrl = URL.createObjectURL(debugBlob);
       }
-      const sourceImageDataUrl = showTypesetDebug
+      const sourceImageDataUrl = enableDebugLog
         ? (() => {
             const c = document.createElement('canvas');
             c.width = artifacts.original.naturalWidth;
@@ -676,8 +669,8 @@ export class TranslatorCore {
             return c.toDataURL('image/png');
           })()
         : state.originalUrl;
-      state.debugLogData = showTypesetDebug
-        ? toTypesetDebugDownloadData(sourceImageDataUrl, artifacts)
+      state.debugLogData = enableDebugLog
+        ? toTypesetDebugDownloadData(window.location.href, sourceImageDataUrl, artifacts)
         : undefined;
 
       state.translatedUrl = translatedUrl;
@@ -822,15 +815,11 @@ export class TranslatorCore {
       if (validationError) throw new Error(validationError);
 
       const settings = settingsResponse.settings;
-      if (settings.ortDebugMode) {
-        setOrtDebugConfig({ logLevel: 'verbose', debug: true, profiling: true });
-      } else {
-        setOrtDebugConfig(undefined);
-      }
       const showElapsedTime = settings.showElapsedTime === true;
       const showStageTimingDetails = showElapsedTime && settings.showStageTimingDetails === true;
       const showRuntimeStages = showStageTimingDetails;
       const showTypesetDebug = settings.showTypesetDebug === true;
+      const enableDebugLog = settings.enableDebugLog === true;
       state.showTypesetDebug = showTypesetDebug;
 
       const downloadResponse = await sendRuntimeMessage({
@@ -869,7 +858,7 @@ export class TranslatorCore {
         const debugBlob = await canvasToBlob(artifacts.debugOriginalCanvas);
         state.debugOriginalUrl = URL.createObjectURL(debugBlob);
       }
-      const sourceImageDataUrl = showTypesetDebug
+      const sourceImageDataUrl = enableDebugLog
         ? (() => {
             const c = document.createElement('canvas');
             c.width = artifacts.original.naturalWidth;
@@ -879,8 +868,8 @@ export class TranslatorCore {
             return c.toDataURL('image/png');
           })()
         : state.originalUrl;
-      state.debugLogData = showTypesetDebug
-        ? toTypesetDebugDownloadData(sourceImageDataUrl, artifacts)
+      state.debugLogData = enableDebugLog
+        ? toTypesetDebugDownloadData(window.location.href, sourceImageDataUrl, artifacts)
         : undefined;
 
       state.translatedUrl = translatedUrl;

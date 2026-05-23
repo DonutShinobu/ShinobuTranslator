@@ -82,6 +82,7 @@ export type ModelRegionLogItem = {
 
 export type TypesetDebugDownloadData = {
   exportedAt: string;
+  pageUrl: string;
   sourceImageUrl: string;
   stageTimings: StageTiming[];
   runtimeStages: RuntimeStageStatus[];

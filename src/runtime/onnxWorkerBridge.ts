@@ -11,7 +11,6 @@ import type {
   OcrColorBatchInputItem,
   OcrColorResult,
   OnnxWorkerApi,
-  OrtDebugConfig,
 } from "./onnxWorkerTypes";
 import type { RuntimeSelfCheckReport } from "./selfCheck";
 import { resolveAssetUrl } from "../shared/assetUrl";
@@ -29,12 +28,6 @@ import { resolveAssetUrl } from "../shared/assetUrl";
 
 let worker: Worker | null = null;
 let proxy: Comlink.Remote<OnnxWorkerApi> | null = null;
-
-let globalOrtDebugConfig: OrtDebugConfig | undefined = undefined;
-
-export function setOrtDebugConfig(config: OrtDebugConfig | undefined): void {
-  globalOrtDebugConfig = config;
-}
 
 async function ensureWorker(): Promise<{ worker: Worker; proxy: Comlink.Remote<OnnxWorkerApi> }> {
   if (worker && proxy) return { worker, proxy };
@@ -55,7 +48,7 @@ async function ensureWorker(): Promise<{ worker: Worker; proxy: Comlink.Remote<O
 
   // Pass WASM paths to Worker (it can't access chrome.runtime from blob context)
   const ortPath = chromeApi?.runtime?.getURL?.("ort/") ?? "/ort/";
-  await proxy.init(ortPath, globalOrtDebugConfig);
+  await proxy.init(ortPath);
 
   return { worker, proxy };
 }
@@ -88,7 +81,7 @@ export async function runInference(
 ): Promise<InferenceResult> {
   const result = await (await getProxy()).runInference(sessionId, feeds);
   // Worker 推理失败时不抛异常，通过 InferenceResult.error 返回错误信息。
-  // 调用者需要自行检查 error 字段。profilingLog 在推理失败时仍会传回。
+  // 调用者需要自行检查 error 字段。
   return result;
 }
 

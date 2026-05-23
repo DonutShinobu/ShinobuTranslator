@@ -128,7 +128,7 @@ export type ExtensionSettings = {
   showStageTimingDetails: boolean;
   showTypesetDebug: boolean;
   ocrEngine: OcrEngine;
-  ortDebugMode: boolean;
+  enableDebugLog: boolean;
 };
 
 export const defaultExtensionSettings: ExtensionSettings = {
@@ -141,7 +141,7 @@ export const defaultExtensionSettings: ExtensionSettings = {
   showStageTimingDetails: false,
   showTypesetDebug: false,
   ocrEngine: 'builtin',
-  ortDebugMode: false,
+  enableDebugLog: false,
 };
 
 function sanitizeBoolean(value: unknown, fallback: boolean): boolean {
@@ -289,7 +289,7 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
       : false,
     showTypesetDebug,
     ocrEngine: normalizeOcrEngine(raw.ocrEngine),
-    ortDebugMode: sanitizeBoolean(raw.ortDebugMode, false),
+    enableDebugLog: sanitizeBoolean(raw.enableDebugLog, defaultExtensionSettings.enableDebugLog),
   };
 }
 
@@ -343,6 +343,7 @@ export function toPipelineConfig(settings: ExtensionSettings): PipelineConfig {
     llmModel: resolveLlmModel(settings),
     llmTemperature: profile.temperature,
     typesetDebug: settings.showTypesetDebug,
+    collectDebugLog: settings.showTypesetDebug || settings.enableDebugLog,
     ocrEngine: settings.ocrEngine,
   };
 }

@@ -356,7 +356,7 @@ export function renderUi(ui: UiElements, state: PhotoState | null): void {
     return;
   }
 
-  const canShowDebugDownload = state.showTypesetDebug && !!state.debugLogData;
+  const canShowDebugDownload = !!state.debugLogData;
   debugDownloadButton.style.display = canShowDebugDownload ? 'inline-flex' : 'none';
   debugDownloadButton.disabled = !canShowDebugDownload || state.status === 'running';
 

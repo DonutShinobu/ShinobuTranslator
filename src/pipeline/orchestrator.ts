@@ -381,7 +381,7 @@ export async function runPipeline(
       collectDebugLog: false,
     });
     resultCanvas = typesetResult.canvas;
-    if (config.typesetDebug) {
+    if (config.collectDebugLog) {
       const debugOriginalTypeset = await drawTypeset(originalCanvas, latestRegions, config.targetLang, {
         debugMode: true,
         renderText: false,

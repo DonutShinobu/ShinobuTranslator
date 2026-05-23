@@ -35,7 +35,7 @@ npx vitest run tests/benchmark/color-alg-diagnostic.test.ts
 从真实漫画中截取颜色识别失败的图片（文字和底色看起来都是灰色的区域）。将 PNG 图片放到：
 
 ```
-scripts/benchmark/fixtures/color/
+benchmark/color/fixtures/
   gray-text-01.png
   gray-text-02.png
   ...
@@ -151,21 +151,21 @@ scripts/benchmark/fixtures/color/
 2. npm run color:diagnostic → 查看路径分布和灰色失败率
 3. npm run color:comparison → 对比算法 A/D 的指标改善
 4. 调参 → 修改算法 D 的阈值 (平滑窗口、峰间距)
-5. 加新算法 → 在 scripts/benchmark/ 加新文件，注册到 color-comparison.ts
+5. 加新算法 → 在 benchmark/color/src/ 加新文件，注册到 color-comparison.ts
 6. 循环 2-5 直到命中率达标
 7. 确认最优算法 → 回到 src/pipeline/ 修改浏览器端代码
 ```
 
 ### 调参位置
 
-- **算法 D 直方图参数** — `scripts/benchmark/alg-d-histogram-bimodal.ts`
+- **算法 D 直方图参数** — `benchmark/color/src/alg-d-histogram-bimodal.ts`
   - `SMOOTH_WINDOW` — 直方图平滑窗口大小（默认 3）
   - `MIN_PEAK_GAP` — 两峰之间的最小 bin 间距（默认 30）
   - `PEAK_SAMPLE_RADIUS` — 峰附近 RGB 平均的半径范围（默认 5）
 
 ### 添加新候选算法
 
-1. 在 `scripts/benchmark/` 创建新文件（如 `alg-e-xxx.ts`）
+1. 在 `benchmark/color/src/` 创建新文件（如 `alg-e-xxx.ts`）
 2. 导出函数签名：`(croppedData, width, height) => { fgRgb, bgRgb }`
 3. 在 `color-comparison.ts` 中导入并注册到 `algorithms` 数组
 4. 在 `color-types.ts` 中更新 `AlgorithmName` 类型（如需）
@@ -176,13 +176,13 @@ scripts/benchmark/fixtures/color/
 
 | 文件 | 作用 |
 |------|------|
-| `scripts/benchmark/color-types.ts` | 类型定义（ColorFixture, RegionDiagnosticTrace 等） |
-| `scripts/benchmark/color-utils.ts` | 共享工具（rgbToLab, deltaE, resolveColors, cropRegion 等） |
-| `scripts/benchmark/alg-a-fix-hasbg.ts` | 算法 A 实现 |
-| `scripts/benchmark/alg-d-histogram-bimodal.ts` | 算法 D 实现 |
-| `scripts/benchmark/color-diagnostic.ts` | Phase 1 诊断脚本 |
-| `scripts/benchmark/color-comparison.ts` | Phase 2 对比脚本 |
-| `scripts/benchmark/fixtures/color/` | Fixture 目录（JSON 注解 + PNG 图片） |
+| `benchmark/color/src/color-types.ts` | 类型定义（ColorFixture, RegionDiagnosticTrace 等） |
+| `benchmark/color/src/color-utils.ts` | 共享工具（rgbToLab, deltaE, resolveColors, cropRegion 等） |
+| `benchmark/color/src/alg-a-fix-hasbg.ts` | 算法 A 实现 |
+| `benchmark/color/src/alg-d-histogram-bimodal.ts` | 算法 D 实现 |
+| `benchmark/color/src/color-diagnostic.ts` | Phase 1 诊断脚本 |
+| `benchmark/color/src/color-comparison.ts` | Phase 2 对比脚本 |
+| `benchmark/color/fixtures/` | Fixture 目录（JSON 注解 + PNG 图片） |
 | `tests/benchmark/color-alg-diagnostic.test.ts` | Vitest 单元测试 |
 | `src/pipeline/ocr/color.ts` | 浏览器端颜色提取（bug 所在） |
 | `src/pipeline/ocr/colorSampling.ts` | 浏览器端像素采样 |

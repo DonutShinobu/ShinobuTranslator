@@ -2,14 +2,14 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from "fs";
 import { join, resolve } from "path";
 import type { BenchConfig, BenchmarkSummary } from "./types";
 
-const ROOT = resolve(import.meta.dirname, "../..");
+const ROOT = resolve(import.meta.dirname, "../../../..");
 
 function main(): void {
-  const configRaw = readFileSync(join(ROOT, "benchmark/bench.config.json"), "utf-8");
+  const configRaw = readFileSync(join(ROOT, "benchmark/typeset/bench.config.json"), "utf-8");
   const config: BenchConfig = JSON.parse(configRaw);
 
   const updateBaseline = process.argv.includes("--update-baseline");
-  const baselinePath = join(ROOT, "benchmark/baseline.json");
+  const baselinePath = join(ROOT, "benchmark/typeset/baseline.json");
 
   const reportsDir = join(ROOT, config.reportsDir);
   if (!existsSync(reportsDir)) {

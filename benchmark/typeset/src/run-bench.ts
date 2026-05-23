@@ -11,13 +11,13 @@ import type {
   ImageMetrics,
   RegionMetrics,
 } from "./types";
-import { computeFullVerticalTypeset } from "../../src/pipeline/typesetGeometry";
-import type { TextRegion } from "../../src/types";
+import { computeFullVerticalTypeset } from "../../../src/pipeline/typesetGeometry";
+import type { TextRegion } from "../../../src/types";
 
-const ROOT = resolve(import.meta.dirname, "../..");
+const ROOT = resolve(import.meta.dirname, "../../../..");
 
 function loadConfig(): BenchConfig {
-  const raw = readFileSync(join(ROOT, "benchmark/bench.config.json"), "utf-8");
+  const raw = readFileSync(join(ROOT, "benchmark/typeset/bench.config.json"), "utf-8");
   return JSON.parse(raw);
 }
 
@@ -27,9 +27,9 @@ function sha256File(filePath: string): string {
 }
 
 function registerFonts(): void {
-  const fontsDir = join(ROOT, "benchmark/fonts");
+  const fontsDir = join(ROOT, "benchmark/typeset/fonts");
   if (!existsSync(fontsDir)) {
-    console.warn("No benchmark/fonts/ directory. Using system fonts.");
+    console.warn("No benchmark/typeset/fonts/ directory. Using system fonts.");
     return;
   }
   const files = readdirSync(fontsDir);

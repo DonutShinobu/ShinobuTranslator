@@ -53,7 +53,7 @@ Testing is minimal (3 test files). Linting relies on TypeScript strict mode. No 
 ### Current test coverage
 - `src/pipeline/geometry.test.ts` — Geometry utility functions (convexHull, sortMiniBoxPoints, minAreaRect — now imports from `./typeset/geometry`)
 - `src/pipeline/typesetGeometry.test.ts` — Typeset geometry calculations (queryMaskMaxY — now imports from `./typeset/index`)
-- `scripts/benchmark/metrics.test.ts` — Benchmark metrics
+- `benchmark/typeset/src/metrics.test.ts` — Benchmark metrics
 
 ### Test patterns
 - Pure function testing — no DOM mocking, no React component testing

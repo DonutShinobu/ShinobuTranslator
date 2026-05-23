@@ -8,13 +8,13 @@
     "build": "tsc -b && vite build && node scripts/build-worker.mjs",
     "preview": "vite preview",
     "test": "vitest run",
-    "bench:bake": "tsx scripts/benchmark/bake-fixtures.ts",
-    "bench": "tsx scripts/benchmark/run-bench.ts",
-    "bench:render": "tsx scripts/benchmark/render-result.ts",
-    "bench:baseline": "tsx scripts/benchmark/diff-baseline.ts --update-baseline",
-    "bench:diff": "tsx scripts/benchmark/diff-baseline.ts",
-    "color:diagnostic": "tsx scripts/benchmark/color-diagnostic.ts",
-    "color:comparison": "tsx scripts/benchmark/color-comparison.ts"
+    "bench:bake": "tsx benchmark/typeset/src/bake-fixtures.ts",
+    "bench": "tsx benchmark/typeset/src/run-bench.ts",
+    "bench:render": "tsx benchmark/typeset/src/render-result.ts",
+    "bench:baseline": "tsx benchmark/typeset/src/diff-baseline.ts --update-baseline",
+    "bench:diff": "tsx benchmark/typeset/src/diff-baseline.ts",
+    "color:diagnostic": "tsx benchmark/color/src/color-diagnostic.ts",
+    "color:comparison": "tsx benchmark/color/src/color-comparison.ts"
   },
   "dependencies": {
     "comlink": "^4.4.2",

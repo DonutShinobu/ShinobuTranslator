@@ -4,8 +4,8 @@ import { extname, join, resolve } from "path";
 import { execSync } from "child_process";
 import { createServer } from "http";
 
-const ROOT = resolve(import.meta.dirname, "../..");
-const IMAGES_DIR = join(ROOT, "benchmark/images");
+const ROOT = resolve(import.meta.dirname, "../../../..");
+const IMAGES_DIR = join(ROOT, "benchmark/typeset/images");
 const REPORTS_DIR = join(ROOT, "benchmark/reports");
 const DIST_DIR = join(ROOT, "dist");
 
@@ -60,7 +60,7 @@ async function main(): Promise<void> {
     /\.(png|jpe?g|webp)$/i.test(f),
   );
   if (imageFiles.length === 0) {
-    console.error("No images found in benchmark/images/");
+    console.error("No images found in benchmark/typeset/images/");
     process.exit(1);
   }
 

@@ -3,15 +3,15 @@
 // Re-exports from pipeline source + additional helpers for diagnostic/comparison.
 // ---------------------------------------------------------------------------
 
-import { rgbToLab as _rgbToLab, colorDistance as _colorDistance, resolveColors as _resolveColors } from "../../src/pipeline/typeset/color";
-import { sampleEdgeColors as _sampleEdgeColors, sampleCornerBgColor as _sampleCornerBgColor, grayAt as _grayAt } from "../../src/pipeline/ocr/colorSampling";
+import { rgbToLab as _rgbToLab, colorDistance as _colorDistance, resolveColors as _resolveColors } from "../../../src/pipeline/typeset/color";
+import { sampleEdgeColors as _sampleEdgeColors, sampleCornerBgColor as _sampleCornerBgColor, grayAt as _grayAt } from "../../../src/pipeline/ocr/colorSampling";
 import { existsSync, readFileSync, readdirSync } from "fs";
 import { join, resolve } from "path";
-import type { OcrColorResult } from "../../src/pipeline/ocr/color";
+import type { OcrColorResult } from "../../../src/pipeline/ocr/color";
 import type { ColorFixture } from "./color-types";
 
-export const ROOT = resolve(import.meta.dirname, "../..");
-export const FIXTURES_DIR = join(ROOT, "scripts/benchmark/fixtures/color");
+export const ROOT = resolve(import.meta.dirname, "../../../..");
+export const FIXTURES_DIR = join(ROOT, "benchmark/color/fixtures");
 export const REPORTS_DIR = join(ROOT, "benchmark/reports");
 
 // Re-export under their original names

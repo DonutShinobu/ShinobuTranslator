@@ -1,6 +1,6 @@
 {
-  "fixturesDir": "benchmark/fixtures",
-  "imagesDir": "benchmark/images",
+  "fixturesDir": "benchmark/typeset/fixtures",
+  "imagesDir": "benchmark/typeset/images",
   "reportsDir": "benchmark/reports",
   "scoreWeights": {
     "columnCountMatch": 0.2,

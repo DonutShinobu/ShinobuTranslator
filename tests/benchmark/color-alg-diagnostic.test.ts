@@ -4,8 +4,8 @@
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from "vitest";
-import { extractColorsFromOutputsAlgA } from "../../scripts/benchmark/alg-a-fix-hasbg";
-import { histogramBimodal } from "../../scripts/benchmark/alg-d-histogram-bimodal";
+import { extractColorsFromOutputsAlgA } from "../../benchmark/color/src/alg-a-fix-hasbg";
+import { histogramBimodal } from "../../benchmark/color/src/alg-d-histogram-bimodal";
 import {
   rgbToLab,
   colorDistance,
@@ -13,7 +13,7 @@ import {
   isGrayFailure,
   resolveColors,
   cropRegion,
-} from "../../scripts/benchmark/color-utils";
+} from "../../benchmark/color/src/color-utils";
 
 // ---------------------------------------------------------------------------
 // color-utils tests

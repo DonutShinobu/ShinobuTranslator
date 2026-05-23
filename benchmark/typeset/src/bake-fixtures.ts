@@ -6,9 +6,9 @@ import { execSync } from "child_process";
 import { createServer } from "http";
 import type { BakeInfo, Fixture, FixtureRegion, GroundTruthColumn } from "./types";
 
-const ROOT = resolve(import.meta.dirname, "../..");
-const IMAGES_DIR = join(ROOT, "benchmark/images");
-const FIXTURES_DIR = join(ROOT, "benchmark/fixtures");
+const ROOT = resolve(import.meta.dirname, "../../../..");
+const IMAGES_DIR = join(ROOT, "benchmark/typeset/images");
+const FIXTURES_DIR = join(ROOT, "benchmark/typeset/fixtures");
 const DIST_DIR = join(ROOT, "dist");
 
 function sha256File(path: string): string {
@@ -146,7 +146,7 @@ async function main(): Promise<void> {
     /\.(png|jpe?g|webp)$/i.test(f),
   );
   if (imageFiles.length === 0) {
-    console.error("No images found in benchmark/images/");
+    console.error("No images found in benchmark/typeset/images/");
     process.exit(1);
   }
 

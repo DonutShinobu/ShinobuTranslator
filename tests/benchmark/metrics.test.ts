@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { computeRegionMetrics } from "../../scripts/benchmark/metrics";
-import type { GroundTruthColumn, ScoreWeights } from "../../scripts/benchmark/types";
+import { computeRegionMetrics } from "../../benchmark/typeset/src/metrics";
+import type { GroundTruthColumn, ScoreWeights } from "../../benchmark/typeset/src/types";
 
 const defaultWeights: ScoreWeights = {
   columnCountMatch: 0.2,

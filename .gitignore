@@ -62,11 +62,11 @@ result_verify.png
 .trellis/workspace/*/debug-img/
 
 # Benchmark
-benchmark/images/*
-!benchmark/images/.gitkeep
+benchmark/typeset/images/*
+!benchmark/typeset/images/.gitkeep
 benchmark/reports/
-benchmark/fonts/
-benchmark/fixtures/
+benchmark/typeset/fonts/
+benchmark/typeset/fixtures/
 
 # Claude skills
 .claude/worktrees/

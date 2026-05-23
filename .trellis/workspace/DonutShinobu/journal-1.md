@@ -152,3 +152,36 @@ Pixiv 阅读模式底栏新增「翻译当前页」和「翻译全部」按钮�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 6: 统一日志功能：ortDebugMode→enableDebugLog，解耦下载按钮与排版调试可视化
+
+**Date**: 2026-05-23
+**Task**: 统一日志功能：ortDebugMode→enableDebugLog，解耦下载按钮与排版调试可视化
+**Branch**: `worktree/unify-debug-logs`
+
+### Summary
+
+将 ORT 调试和排版调试两个日志功能合并重构：ortDebugMode 改为 enableDebugLog（日志记录），下载日志按钮与排版调试选项解耦，删除 ORT profiling 整条链路，PipelineConfig 新增 collectDebugLog 字段实现可视化与数据采集职责分离，日志新增 pageUrl。15 文件，+28/-217 行。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8f75306` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

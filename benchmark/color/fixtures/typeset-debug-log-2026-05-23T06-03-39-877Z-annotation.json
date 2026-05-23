@@ -1,0 +1,103 @@
+{
+  "imageFile": "typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+  "regions": [
+    {
+      "regionId": "1fef00dd-53ea-447f-a3ba-9d5ea958a687",
+      "sourceText": "いろはっ!",
+      "bbox": [
+        2567,
+        414,
+        78,
+        328
+      ],
+      "pipelineFg": "#848484",
+      "pipelineBg": "#ffffff",
+      "expectedFg": null,
+      "expectedBg": null
+    },
+    {
+      "regionId": "a8d5094d-e820-471f-9af1-b8e725422211",
+      "sourceText": "壁ドン!\nして!!",
+      "bbox": [
+        1379,
+        433,
+        196,
+        354
+      ],
+      "pipelineFg": "#828282",
+      "pipelineBg": "#ffffff",
+      "expectedFg": null,
+      "expectedBg": null
+    },
+    {
+      "regionId": "68b2b7be-253d-4d02-8c09-ad6e5d4b8e4f",
+      "sourceText": "はあ?",
+      "bbox": [
+        219,
+        1047,
+        90,
+        246
+      ],
+      "pipelineFg": "#7f7f7f",
+      "pipelineBg": "#ffffff",
+      "expectedFg": null,
+      "expectedBg": null
+    },
+    {
+      "regionId": "b2564d45-7109-415d-91e0-6d051b091cfb",
+      "sourceText": "そんな\nいいもんじ\nなくない?",
+      "bbox": [
+        2539,
+        1537,
+        177,
+        325
+      ],
+      "pipelineFg": "#878787",
+      "pipelineBg": "#ffffff",
+      "expectedFg": null,
+      "expectedBg": null
+    },
+    {
+      "regionId": "28f82f88-18bf-4fb8-9be1-4798e4a21b0a",
+      "sourceText": "「回だ!\n一回だけで\nいいから!",
+      "bbox": [
+        2070,
+        1717,
+        204,
+        304
+      ],
+      "pipelineFg": "#858585",
+      "pipelineBg": "#ffffff",
+      "expectedFg": null,
+      "expectedBg": null
+    },
+    {
+      "regionId": "b5c00dd3-5712-4df3-8008-d6cba88cf44c",
+      "sourceText": "41\n一回ね",
+      "bbox": [
+        207,
+        2171,
+        146,
+        194
+      ],
+      "pipelineFg": "#878787",
+      "pipelineBg": "#ffffff",
+      "expectedFg": null,
+      "expectedBg": null
+    },
+    {
+      "regionId": "1fef0913-33e0-4142-acc2-99eb2d4e4686",
+      "sourceText": "待てて",
+      "bbox": [
+        2418,
+        2638,
+        65,
+        236
+      ],
+      "pipelineFg": "#858585",
+      "pipelineBg": "#ffffff",
+      "expectedFg": null,
+      "expectedBg": null
+    }
+  ]
+}

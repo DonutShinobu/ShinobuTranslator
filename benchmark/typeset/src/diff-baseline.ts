@@ -1,8 +1,9 @@
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "fs";
-import { join, resolve } from "path";
+import { dirname, join, resolve } from "path";
+import { fileURLToPath } from "url";
 import type { BenchConfig, BenchmarkSummary } from "./types";
 
-const ROOT = resolve(import.meta.dirname, "../../../..");
+const ROOT = resolve(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "../../..");
 
 function main(): void {
   const configRaw = readFileSync(join(ROOT, "benchmark/typeset/bench.config.json"), "utf-8");

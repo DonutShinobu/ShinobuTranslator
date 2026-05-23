@@ -1,12 +1,13 @@
 import { launchWindowsChrome } from "./chrome-cdp";
 import { createHash } from "crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "fs";
-import { extname, join, resolve } from "path";
+import { dirname, extname, join, resolve } from "path";
+import { fileURLToPath } from "url";
 import { execSync } from "child_process";
 import { createServer } from "http";
 import type { BakeInfo, Fixture, FixtureRegion, GroundTruthColumn } from "./types";
 
-const ROOT = resolve(import.meta.dirname, "../../../..");
+const ROOT = resolve(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "../../..");
 const IMAGES_DIR = join(ROOT, "benchmark/typeset/images");
 const FIXTURES_DIR = join(ROOT, "benchmark/typeset/fixtures");
 const DIST_DIR = join(ROOT, "dist");

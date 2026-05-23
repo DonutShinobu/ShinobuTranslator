@@ -1,10 +1,11 @@
 import { launchWindowsChrome } from "./chrome-cdp";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "fs";
-import { extname, join, resolve } from "path";
+import { dirname, extname, join, resolve } from "path";
+import { fileURLToPath } from "url";
 import { execSync } from "child_process";
 import { createServer } from "http";
 
-const ROOT = resolve(import.meta.dirname, "../../../..");
+const ROOT = resolve(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "../../..");
 const IMAGES_DIR = join(ROOT, "benchmark/typeset/images");
 const REPORTS_DIR = join(ROOT, "benchmark/reports");
 const DIST_DIR = join(ROOT, "dist");

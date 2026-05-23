@@ -1,11 +1,12 @@
 import { createCanvas, loadImage, registerFont } from "canvas";
 import { createHash } from "crypto";
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "fs";
-import { join, resolve } from "path";
+import { dirname, join, resolve } from "path";
+import { fileURLToPath } from "url";
 import { computeFullVerticalTypeset } from "../../src/pipeline/typesetGeometry";
 import type { TextRegion } from "../../src/types";
 
-const ROOT = resolve(import.meta.dirname, "../..");
+const ROOT = resolve(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "../../..");
 const BENCH = join(ROOT, "benchmark");
 const FONTS_DIR = join(BENCH, "fonts");
 const IMAGES_DIR = join(BENCH, "images");

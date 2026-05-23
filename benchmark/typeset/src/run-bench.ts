@@ -1,7 +1,8 @@
 import { createCanvas, loadImage, registerFont } from "canvas";
 import { createHash } from "crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "fs";
-import { basename, join, resolve } from "path";
+import { basename, dirname, join, resolve } from "path";
+import { fileURLToPath } from "url";
 import { computeRegionMetrics } from "./metrics";
 import type {
   BenchConfig,
@@ -14,7 +15,7 @@ import type {
 import { computeFullVerticalTypeset } from "../../../src/pipeline/typesetGeometry";
 import type { TextRegion } from "../../../src/types";
 
-const ROOT = resolve(import.meta.dirname, "../../../..");
+const ROOT = resolve(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "../../..");
 
 function loadConfig(): BenchConfig {
   const raw = readFileSync(join(ROOT, "benchmark/typeset/bench.config.json"), "utf-8");

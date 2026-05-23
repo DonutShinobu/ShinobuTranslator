@@ -31,7 +31,7 @@ echo "正在从 GitHub Release ($TAG) 下载模型..."
 
 BASE_URL="https://github.com/$REPO/releases/download/$TAG"
 
-for file in detector.onnx ocr.onnx lama_fp32.onnx bubble.onnx ocr_dict.txt; do
+for file in detector.onnx ocr.onnx lama_fp32.onnx bubble.onnx ocr_dict.txt ch_PP-OCRv5_rec_mobile.onnx paddleocr_v5_dict.txt; do
   if [ -f "$DEST/$file" ]; then
     echo "  $file 已存在，跳过"
     continue

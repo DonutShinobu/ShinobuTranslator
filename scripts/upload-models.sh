@@ -25,7 +25,7 @@ if ! command -v gh &>/dev/null; then
 fi
 
 # 检查文件存在
-for file in detector.onnx ocr.onnx lama_fp32.onnx bubble.onnx ocr_dict.txt; do
+for file in detector.onnx ocr.onnx lama_fp32.onnx bubble.onnx ocr_dict.txt ch_PP-OCRv5_rec_mobile.onnx paddleocr_v5_dict.txt; do
   if [ ! -f "$MODEL_DIR/$file" ]; then
     echo "缺少模型文件: $MODEL_DIR/$file"
     exit 1
@@ -47,6 +47,8 @@ gh release upload "$TAG" \
   "$MODEL_DIR/lama_fp32.onnx" \
   "$MODEL_DIR/bubble.onnx" \
   "$MODEL_DIR/ocr_dict.txt" \
+  "$MODEL_DIR/ch_PP-OCRv5_rec_mobile.onnx" \
+  "$MODEL_DIR/paddleocr_v5_dict.txt" \
   --repo "$REPO" --clobber
 
 echo "上传完成！"

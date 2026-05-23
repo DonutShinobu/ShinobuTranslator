@@ -29,6 +29,14 @@
 
 ### 安装（Chrome / Edge）
 
+#### Chrome Web Store
+
+> 项目版本更新较快，Chrome Web Store 需等待审核，可能落后于最新版本。如需体验最新功能，建议使用下方的手动安装。
+
+[![Chrome Web Store](https://developer.chrome.com/static/docs/webstore/branding/image/UV4C4ybeBTsZt43U4xis.png)](https://chromewebstore.google.com/detail/pgehhpbnifjlalmmnpiebkjhphojffef)
+
+#### 手动安装（开发者模式）
+
 1. 前往 [Releases](../../releases) 下载最新版 `ShinobuTranslator.zip` 并解压到本地文件夹
 2. 打开浏览器扩展管理页，启用**开发者模式**
 3. 选择「加载已解压的扩展程序」，目录指向解压出来的文件夹

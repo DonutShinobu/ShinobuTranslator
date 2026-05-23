@@ -192,7 +192,7 @@ export function loadFixtures(): ColorFixture[] {
     process.exit(1);
   }
 
-  const files = readdirSync(FIXTURES_DIR).filter((f) => f.endsWith(".json"));
+  const files = readdirSync(FIXTURES_DIR).filter((f) => f.endsWith(".json") && !f.endsWith("-annotation.json"));
   if (files.length === 0) {
     console.error("fixtures 目录中没有 JSON 标注文件。请先添加测试数据。");
     process.exit(1);

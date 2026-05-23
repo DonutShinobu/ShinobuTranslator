@@ -92,6 +92,8 @@ function toTypesetDebugDownloadData(
     box: cloneTextRegionBox(region),
     quad: cloneTextRegionQuad(region),
     sourceText: region.sourceText,
+    fgColor: region.fgColor,
+    bgColor: region.bgColor,
   }));
   const modelRegions: ModelRegionLogItem[] = artifacts.detectedRegions.map((region) => ({
     regionId: region.id,

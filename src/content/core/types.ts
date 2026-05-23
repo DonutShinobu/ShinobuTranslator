@@ -45,6 +45,8 @@ export type OcrRegionLogItem = {
   box: TextRegion['box'];
   quad?: TextRegion['quad'];
   sourceText: string;
+  fgColor?: [number, number, number];
+  bgColor?: [number, number, number];
 };
 
 export type ModelRegionLogItem = {

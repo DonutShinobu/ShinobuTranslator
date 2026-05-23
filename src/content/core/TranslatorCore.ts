@@ -331,8 +331,18 @@ export class TranslatorCore {
         const debugBlob = await canvasToBlob(artifacts.debugOriginalCanvas);
         state.debugOriginalUrl = URL.createObjectURL(debugBlob);
       }
+      const sourceImageDataUrl = showTypesetDebug
+        ? (() => {
+            const c = document.createElement('canvas');
+            c.width = artifacts.original.naturalWidth;
+            c.height = artifacts.original.naturalHeight;
+            const ctx = c.getContext('2d');
+            if (ctx) ctx.drawImage(artifacts.original, 0, 0);
+            return c.toDataURL('image/png');
+          })()
+        : state.originalUrl;
       state.debugLogData = showTypesetDebug
-        ? toTypesetDebugDownloadData(state.originalUrl, artifacts)
+        ? toTypesetDebugDownloadData(sourceImageDataUrl, artifacts)
         : undefined;
 
       state.translatedUrl = translatedUrl;

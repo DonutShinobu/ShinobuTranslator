@@ -185,3 +185,36 @@ Pixiv 阅读模式底栏新增「翻译当前页」和「翻译全部」按钮�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 7: 修复 Pixiv 无内容页面导致翻译全部按钮不切换
+
+**Date**: 2026-05-24
+**Task**: 修复 Pixiv 无内容页面导致翻译全部按钮不切换
+**Branch**: `master`
+
+### Summary
+
+修复 translatePageByUrl 中未处理 pipeline 无内容错误（未找到文本/未返回有效识别结果），导致 allHaveTranslation 检查失败，按钮永远显示翻译全部
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `98801b3` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

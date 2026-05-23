@@ -61,7 +61,8 @@ For multi-step tasks, state a brief plan:
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
 ## 5. 用户需求
-**使用中文回复用户和创建提案、计划**
+- 使用中文回复用户和创建提案、计划
+- 修复bug或者开发新功能后，询问用户是否需要编译插件并替换掉 D:\Downloads\ShinobuTranslator ，供用户进行测试
 
 ---
 

@@ -4,7 +4,7 @@
 // ---------------------------------------------------------------------------
 
 import { rgbToLab as _rgbToLab, colorDistance as _colorDistance, resolveColors as _resolveColors } from "../../../src/pipeline/typeset/color";
-import { sampleEdgeColors as _sampleEdgeColors, sampleCornerBgColor as _sampleCornerBgColor, grayAt as _grayAt } from "../../../src/pipeline/ocr/colorSampling";
+import { sampleEdgeColors as _sampleEdgeColors, sampleCornerBgColor as _sampleCornerBgColor, grayAt as _grayAt, histogramBimodal as _histogramBimodal } from "../../../src/pipeline/ocr/colorSampling";
 import { existsSync, readFileSync, readdirSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
@@ -22,6 +22,7 @@ export const resolveColors = _resolveColors;
 export const sampleEdgeColors = _sampleEdgeColors;
 export const sampleCornerBgColor = _sampleCornerBgColor;
 export const grayAt = _grayAt;
+export const histogramBimodal = _histogramBimodal;
 
 /**
  * DeltaE (CIE76) between two RGB colors.
@@ -78,9 +79,9 @@ export function cropRegion(
 }
 
 // ---------------------------------------------------------------------------
-// Re-implement extractColorsFromOutputs (current/buggy version) for benchmark.
+// Re-implement extractColorsFromOutputs (fixed version) for benchmark.
 // This is NOT exported from src/pipeline/ocr/color.ts, so we copy it here.
-// When hasBg=false, it accumulates fg values into the bg accumulator (the bug).
+// hasBg bug is now fixed: when hasBg=false, we skip the bg accumulator.
 // ---------------------------------------------------------------------------
 
 export type ExtractColorsCountedResult = OcrColorResult & {
@@ -130,13 +131,8 @@ export function extractColorsFromOutputsCurrent(
       bgCh += Math.round(Math.max(0, Math.min(1, bg[bgBase + 1])) * 255);
       bb += Math.round(Math.max(0, Math.min(1, bg[bgBase + 2])) * 255);
       cntBg += 1;
-    } else {
-      // BUG: when hasBg=false, fg values are accumulated into bg accumulator
-      br += Math.round(Math.max(0, Math.min(1, fg[fgBase])) * 255);
-      bgCh += Math.round(Math.max(0, Math.min(1, fg[fgBase + 1])) * 255);
-      bb += Math.round(Math.max(0, Math.min(1, fg[fgBase + 2])) * 255);
-      cntBg += 1;
     }
+    // hasBg=false: skip bg accumulator (fixed — no longer substitute fg values)
   }
 
   const fgColor: [number, number, number] = [

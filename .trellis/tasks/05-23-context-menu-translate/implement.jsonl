@@ -1,0 +1,8 @@
+{"file": "prd.md", "reason": "完整需求文档 — 右键菜单翻译图片的设计决策和验收标准"}
+{"file": "src/content/core/TranslatorCore.ts", "reason": "翻译核心逻辑，需扩展支持右键触发的通用翻译流程"}
+{"file": "src/content/core/ui.ts", "reason": "UI 创建/渲染，需扩展按钮定位（图片上方）和关闭按钮"}
+{"file": "src/content/core/types.ts", "reason": "类型定义，可能需新增通用翻译的 state 管理"}
+{"file": "src/content/index.ts", "reason": "content script 入口，需监听 contextmenu + 接收 background 消息"}
+{"file": "src/background/index.ts", "reason": "注册 contextMenus + 发消息给 content script"}
+{"file": "src/shared/messages.ts", "reason": "新增右键翻译消息类型"}
+{"file": "public/manifest.json", "reason": "新增权限（contextMenus, <all_urls>）和 content script 匹配"}

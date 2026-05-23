@@ -119,3 +119,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 5: Pixiv 阅读模式多图翻译支持
+
+**Date**: 2026-05-23
+**Task**: Pixiv 阅读模式多图翻译支持
+**Branch**: `master`
+
+### Summary
+
+Pixiv 阅读模式底栏新增「翻译当前页」和「翻译全部」按钮。翻译当前页按滑块精确定位可见页（支持单页/双页模式），翻译全部串行执行所有页面并在按钮文字显示进度。阅读模式关闭后翻译继续后台执行。DOM 研究首次使用 Windows Chrome CDP 远程调试完成。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2c3bca3` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

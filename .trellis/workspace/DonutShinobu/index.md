@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 4
+- **Total Sessions**: 5
 - **Last Active**: 2026-05-23
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~121 | Active |
+| `journal-1.md` | ~154 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 5 | 2026-05-23 | Pixiv 阅读模式多图翻译支持 | `2c3bca3` | `master` |
 | 4 | 2026-05-23 | 颜色 benchmark fixture 半自动生成流程 | `d49791e`, `83ce714`, `04dd68c`, `f0cf4da` | `master` |
 | 3 | 2026-05-23 | 统一 benchmark 目录结构 | `7399b30` | `master` |
 | 1 | 2026-05-23 | 修复大图模式翻译按钮跟随面板移动 | `1248d1b`, `c73e9ca` | `worktree-fix-translate-btn-follow-panel` |

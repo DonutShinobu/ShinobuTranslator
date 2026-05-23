@@ -608,6 +608,8 @@ export class TranslatorCore {
     state.debugLogData = undefined;
     state.stageText = '准备中';
 
+    let downloadedBlob: Blob | null = null;
+
     try {
       const settingsResponse = await sendRuntimeMessage({ type: 'mt:get-settings' });
       if (!settingsResponse.ok || settingsResponse.type !== 'mt:get-settings') {
@@ -630,6 +632,7 @@ export class TranslatorCore {
       }
 
       const blob = base64ToBlob(downloadResponse.base64, downloadResponse.contentType);
+      downloadedBlob = blob;
       const suffix = inferFileExtension(downloadResponse.contentType, downloadResponse.sourceUrl);
       const file = new File([blob], `source.${suffix}`, { type: blob.type || 'image/jpeg' });
 
@@ -681,11 +684,20 @@ export class TranslatorCore {
 
       this.adapter.applyImageByKey?.(key, translatedUrl);
     } catch (error) {
-      state.status = 'error';
-      state.errorText = toErrorMessage(error);
-      state.stageText = '';
-      state.elapsedText = '';
-      state.debugLogData = undefined;
+      const errorMsg = toErrorMessage(error);
+      if (downloadedBlob && (errorMsg.includes('未找到文本') || errorMsg.includes('未返回有效识别结果'))) {
+        state.translatedUrl = URL.createObjectURL(downloadedBlob);
+        state.stageText = '';
+        state.errorText = '';
+        state.mode = 'translated';
+        state.status = 'translated';
+      } else {
+        state.status = 'error';
+        state.errorText = toErrorMessage(error);
+        state.stageText = '';
+        state.elapsedText = '';
+        state.debugLogData = undefined;
+      }
       // Don't throw — continue with next page in translate-all loop
     }
   }

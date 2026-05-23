@@ -28,28 +28,17 @@
   },
   "permissions": [
     "storage",
+    "contextMenus",
     "declarativeNetRequest",
     "downloads"
   ],
   "host_permissions": [
-    "https://x.com/*",
-    "https://twitter.com/*",
-    "https://pbs.twimg.com/*",
-    "https://www.pixiv.net/*",
-    "https://i.pximg.net/*",
-    "https://translate.googleapis.com/*",
-    "https://api.deepseek.com/*",
-    "https://api.z.ai/*",
-    "https://api.moonshot.ai/*",
-    "https://api.minimax.io/*",
-    "https://api.mimo-v2.com/*"
+    "<all_urls>"
   ],
   "content_scripts": [
     {
       "matches": [
-        "https://x.com/*",
-        "https://twitter.com/*",
-        "https://www.pixiv.net/*"
+        "<all_urls>"
       ],
       "js": [
         "content.js"
@@ -69,7 +58,8 @@
       "matches": [
         "https://x.com/*",
         "https://twitter.com/*",
-        "https://www.pixiv.net/*"
+        "https://www.pixiv.net/*",
+        "<all_urls>"
       ]
     }
   ]

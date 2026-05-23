@@ -22,6 +22,11 @@ export type DownloadDebugReportMessage = {
   filename: string;
 };
 
+/** Sent from background to content script when user clicks "翻译图片" in context menu. */
+export type ContextMenuTranslateMessage = {
+  type: 'mt:context-menu-translate';
+};
+
 export type RuntimeMessage = GetSettingsMessage | SetSettingsMessage | DownloadImageMessage | DownloadDebugReportMessage;
 
 export type RuntimeSuccessResponse =

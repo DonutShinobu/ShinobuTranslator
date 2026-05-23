@@ -27,9 +27,11 @@ import {
 } from './utils';
 import {
   createUiElements,
+  createContextMenuUi,
   createReadingModeBarUi,
   handleDebugDownload,
   injectStyles,
+  positionUiAboveImage,
   renderUi,
   type UiElements,
 } from './ui';
@@ -132,6 +134,8 @@ type MountedImage = {
   key: string;
   target: ImageTarget;
   ui: UiElements;
+  /** Context-menu generic entries should not be cleaned up by sync(). */
+  isContextMenu?: boolean;
 };
 
 let runPipelineLoader: Promise<typeof import('../../pipeline/orchestrator')> | null = null;
@@ -201,7 +205,7 @@ export class TranslatorCore {
     const currentKeys = new Set(targets.map((t) => t.key));
 
     for (const [key, mounted] of this.mounted) {
-      if (!currentKeys.has(key)) {
+      if (!currentKeys.has(key) && !mounted.isContextMenu) {
         mounted.ui.host.remove();
         this.mounted.delete(key);
       }
@@ -680,6 +684,214 @@ export class TranslatorCore {
       state.elapsedText = '';
       state.debugLogData = undefined;
       // Don't throw — continue with next page in translate-all loop
+    }
+  }
+
+  // --- Context menu translation --------------------------------------------------
+
+  /**
+   * Translate a right-clicked image. If the image is already managed by an adapter,
+   * delegates to the existing adapter flow. Otherwise, runs a generic translation
+   * flow with a self-contained UI positioned above the image.
+   */
+  async contextMenuTranslate(imageElement: HTMLImageElement): Promise<void> {
+    // Check if adapter-managed (not a context-menu entry)
+    for (const [, mounted] of this.mounted) {
+      if (mounted.target.element === imageElement && !mounted.isContextMenu) {
+        const state = this.states.get(mounted.key);
+        if (state?.status === 'running') return;
+        await this.handleTranslateClick(mounted.target);
+        return;
+      }
+    }
+
+    const originalUrl = imageElement.src;
+    const key = `ctx-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    this.ensureState(key, originalUrl);
+
+    // Create and position UI
+    const ui = createContextMenuUi();
+    document.body.appendChild(ui.host);
+    const unposition = positionUiAboveImage(ui.host, imageElement);
+
+    // Full cleanup: restore original, remove UI, disconnect observer
+    const cleanupAll = () => {
+      unposition();
+      observer.disconnect();
+      ui.host.remove();
+      const s = this.states.get(key);
+      if (s) {
+        if (s.translatedUrl) {
+          imageElement.src = s.originalUrl;
+          URL.revokeObjectURL(s.translatedUrl);
+          s.translatedUrl = undefined;
+        }
+        if (s.debugOriginalUrl) {
+          URL.revokeObjectURL(s.debugOriginalUrl);
+          s.debugOriginalUrl = undefined;
+        }
+        s.debugLogData = undefined;
+        this.states.delete(key);
+      }
+      this.mounted.delete(key);
+    };
+
+    // Close button
+    ui.closeButton.addEventListener('click', cleanupAll);
+
+    // MutationObserver: auto-cleanup when image is removed from DOM
+    const observer = new MutationObserver(() => {
+      if (!imageElement.isConnected) {
+        cleanupAll();
+      }
+    });
+    const observeTarget: Node = imageElement.parentElement || document.body;
+    observer.observe(observeTarget, { childList: true, subtree: true });
+
+    // Register mounted entry (so sync() skips it)
+    const target: ImageTarget = { element: imageElement, key, originalUrl };
+    this.mounted.set(key, { key, target, ui, isContextMenu: true });
+
+    // Debug download button
+    ui.debugDownloadButton.addEventListener('click', () => {
+      const s = this.states.get(key);
+      if (s) handleDebugDownload(s);
+    });
+
+    // Button click handler: toggle translated/original, or retry on error
+    ui.button.addEventListener('click', () => {
+      const s = this.states.get(key);
+      if (!s || s.status === 'running') return;
+
+      if (s.translatedUrl) {
+        if (s.mode === 'translated') {
+          s.mode = 'original';
+          s.status = 'showingOriginal';
+          imageElement.src = s.originalUrl;
+        } else {
+          s.mode = 'translated';
+          s.status = 'translated';
+          imageElement.src = s.translatedUrl;
+        }
+        renderUi(ui, s);
+        return;
+      }
+
+      // Retry: run pipeline again
+      void this.runContextMenuPipeline(key, imageElement, ui);
+    });
+
+    // Auto-start translation
+    await this.runContextMenuPipeline(key, imageElement, ui);
+  }
+
+  /** Runs the full translation pipeline for a context-menu image and updates its src. */
+  private async runContextMenuPipeline(
+    key: string,
+    imageElement: HTMLImageElement,
+    ui: UiElements,
+  ): Promise<void> {
+    const state = this.states.get(key);
+    if (!state || state.status === 'running') return;
+
+    state.status = 'running';
+    state.mode = 'original';
+    state.errorText = '';
+    state.elapsedText = '';
+    state.debugLogData = undefined;
+    state.stageText = '准备中';
+    const runStartAt = performance.now();
+    renderUi(ui, state);
+
+    try {
+      const settingsResponse = await sendRuntimeMessage({ type: 'mt:get-settings' });
+      if (!settingsResponse.ok || settingsResponse.type !== 'mt:get-settings') {
+        throw new Error(settingsResponse.ok ? '读取配置失败' : settingsResponse.error);
+      }
+      const validationError = validateActiveSettings(settingsResponse.settings);
+      if (validationError) throw new Error(validationError);
+
+      const settings = settingsResponse.settings;
+      if (settings.ortDebugMode) {
+        setOrtDebugConfig({ logLevel: 'verbose', debug: true, profiling: true });
+      } else {
+        setOrtDebugConfig(undefined);
+      }
+      const showElapsedTime = settings.showElapsedTime === true;
+      const showStageTimingDetails = showElapsedTime && settings.showStageTimingDetails === true;
+      const showRuntimeStages = showStageTimingDetails;
+      const showTypesetDebug = settings.showTypesetDebug === true;
+      state.showTypesetDebug = showTypesetDebug;
+
+      const downloadResponse = await sendRuntimeMessage({
+        type: 'mt:download-image',
+        imageUrl: state.originalUrl,
+      });
+      if (!downloadResponse.ok || downloadResponse.type !== 'mt:download-image') {
+        throw new Error(downloadResponse.ok ? '下载图片失败' : downloadResponse.error);
+      }
+
+      const blob = base64ToBlob(downloadResponse.base64, downloadResponse.contentType);
+      const suffix = inferFileExtension(downloadResponse.contentType, downloadResponse.sourceUrl);
+      const file = new File([blob], `source.${suffix}`, { type: blob.type || 'image/jpeg' });
+
+      const runPipeline = await getRunPipeline();
+      const artifacts = await runPipeline(file, toPipelineConfig(settings), (progress: PipelineProgress) => {
+        const stageLabel = stageLabelMap[progress.stage] ?? progress.stage;
+        if (progress.stage === 'parallel') {
+          state.stageText = progress.detail;
+        } else if (progress.stage === 'done') {
+          state.stageText = '完成';
+        } else {
+          state.stageText = `${stageLabel}中`;
+        }
+        renderUi(ui, state);
+      });
+
+      const translatedBlob = await canvasToBlob(artifacts.resultCanvas);
+      const translatedUrl = URL.createObjectURL(translatedBlob);
+      if (state.translatedUrl) URL.revokeObjectURL(state.translatedUrl);
+      if (state.debugOriginalUrl) {
+        URL.revokeObjectURL(state.debugOriginalUrl);
+        state.debugOriginalUrl = undefined;
+      }
+      if (showTypesetDebug && artifacts.debugOriginalCanvas) {
+        const debugBlob = await canvasToBlob(artifacts.debugOriginalCanvas);
+        state.debugOriginalUrl = URL.createObjectURL(debugBlob);
+      }
+      const sourceImageDataUrl = showTypesetDebug
+        ? (() => {
+            const c = document.createElement('canvas');
+            c.width = artifacts.original.naturalWidth;
+            c.height = artifacts.original.naturalHeight;
+            const ctx = c.getContext('2d');
+            if (ctx) ctx.drawImage(artifacts.original, 0, 0);
+            return c.toDataURL('image/png');
+          })()
+        : state.originalUrl;
+      state.debugLogData = showTypesetDebug
+        ? toTypesetDebugDownloadData(sourceImageDataUrl, artifacts)
+        : undefined;
+
+      state.translatedUrl = translatedUrl;
+      const totalDurationMs = performance.now() - runStartAt;
+      state.elapsedText = showElapsedTime
+        ? formatElapsedText(totalDurationMs, artifacts.stageTimings, artifacts.runtimeStages, showStageTimingDetails, showRuntimeStages, artifacts.translationDebug)
+        : '';
+      state.stageText = '';
+      state.errorText = '';
+      state.mode = 'translated';
+      state.status = 'translated';
+
+      imageElement.src = translatedUrl;
+      renderUi(ui, state);
+    } catch (error) {
+      state.status = 'error';
+      state.errorText = toErrorMessage(error);
+      state.stageText = '';
+      state.elapsedText = '';
+      state.debugLogData = undefined;
+      renderUi(ui, state);
     }
   }
 

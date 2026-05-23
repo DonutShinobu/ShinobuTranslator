@@ -1,0 +1,15 @@
+{
+  "imageFile": "gray-text-02.png",
+  "regions": [
+    {
+      "bbox": [5, 10, 200, 50],
+      "expectedFg": [0, 0, 0],
+      "expectedBg": [240, 240, 240]
+    },
+    {
+      "bbox": [210, 10, 180, 50],
+      "expectedFg": [255, 255, 255],
+      "expectedBg": [30, 30, 30]
+    }
+  ]
+}

@@ -42,6 +42,58 @@ Testing is minimal (3 test files). Linting relies on TypeScript strict mode. No 
 13. **Sub-directory for 500+ line modules** — When a pipeline module exceeds ~500 lines, split into a sub-directory with `index.ts` as the public API entry point.
 14. **Domain-independent extraction for Worker separation** — When moving heavy computation (e.g., ONNX inference) into a Worker, extract domain-independent constants, types, and utility functions into a separate file (e.g., `ocrShared.ts`). This prevents Vite from bundling the heavy library (e.g., onnxruntime-web) into the main thread's shared chunk via transitive imports. The extraction file must NOT import the heavy library.
 
+15. **Stable CSS selectors for external sites** — Pixiv uses hashed (`sc-xxx`) class names from styled-components that change every deployment. Only use GTM-prefixed classes (`.gtm-manga-viewer-*`, `.gtm-expand-full-size-illust`) or `data-*` attributes as selectors. Hashed classes are not forward-compatible.
+
+16. **Dual-mode site adapters** — When a site has multiple viewing modes (e.g., Pixiv normal vs reading mode, `#1` hash), the adapter must detect the mode and the TranslatorCore must handle two distinct UI paths: per-image overlay (normal) and global bottom-bar UI (reading mode). The `findImages()` method should return empty for the "global UI" mode so no per-image overlays are created.
+
+17. **Batch operation race-condition guard** — When running a batch operation (e.g., translate-all) that applies state changes and background sync runs (via MutationObserver), the sync handler must check a running flag to avoid overwriting the batch's newly-applied state. Example: `syncReadingMode` checks `translateAllRunning` to always show translated images during translate-all, regardless of `globalTranslateMode`.
+
+18. **Virtual rendering requires URL-based discovery** — Sites with lazy-loaded/virtual-rendered images (only visible elements have real `<img>` tags) cannot use DOM-based image discovery for batch operations. Batch operations (e.g., translate-all) must construct URLs from a base pattern extracted from any visible link, not iterate `<img>` elements.
+
+19. **Cache limits sized for maximum workload** — `photoStateCacheLimit` must be large enough for the maximum realistic workload (200 for Pixiv manga with 50+ pages). A limit smaller than the batch size causes `trimStateCache` to evict and `disposeState` to revoke blob URLs that are still displayed, resulting in broken images.
+
+## Content Script Adapter Patterns
+
+### SiteAdapter Optional Reading Mode Methods
+
+When extending `SiteAdapter` for reading-mode-only features, use optional `?` methods so existing adapters (Twitter) are unaffected:
+
+```typescript
+export interface SiteAdapter {
+  // Required methods (unchanged)
+  match(): boolean;
+  findImages(): ImageTarget[];
+  createUiAnchor(target: ImageTarget): HTMLElement;
+  applyImage(target: ImageTarget, url: string): void;
+  observe(onChange: () => void): () => void;
+
+  // Optional reading-mode methods — only implemented by Pixiv adapter
+  isReadingMode?(): boolean;
+  findAllPageUrls?(): UrlTarget[];
+  getVisiblePages?(): ImageTarget[];
+  getTotalPageCount?(): number;
+  createBottomBarAnchor?(): HTMLElement | null;
+  applyImageByKey?(key: string, url: string): void;
+}
+```
+
+### Pixiv Bottom Bar Anchor Insertion
+
+The reading mode bottom bar controls area has this structure:
+```
+controls-flex-container
+  DIV (wraps direction toggle button)
+    BUTTON.gtm-manga-viewer-change-direction
+  BUTTON.gtm-manga-viewer-share-button
+```
+
+Insert translation buttons before the direction toggle wrapper:
+```typescript
+const directionToggle = document.querySelector('.gtm-manga-viewer-change-direction');
+const wrapper = directionToggle.parentElement;
+wrapper.before(anchor); // anchor appears to the LEFT of direction toggle
+```
+
 ---
 
 ## Testing Requirements

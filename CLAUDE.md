@@ -63,6 +63,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ## 5. 用户需求
 - 使用中文回复用户和创建提案、计划
 - 修复bug或者开发新功能后，询问用户是否需要编译插件并替换掉 D:\Downloads\ShinobuTranslator ，供用户进行测试。更新benchmark等用户无法直接使用的更新不需要进行这一步。
+- 创建trellis任务前先创建worktree，进入worktree之后再开始创建trellis任务。
 
 ---
 

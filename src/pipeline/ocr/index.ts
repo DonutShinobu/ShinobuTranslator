@@ -19,11 +19,25 @@ import {
   generateTextDirection,
   buildOcrInput,
 } from "./preprocess";
+import { registerOcrProvider, getOcrProvider, fillMissingOcrFields } from "./provider";
+import type { OcrRecognizeResult } from "./provider";
+import { builtinOcrProvider } from "./builtinProvider";
+import { paddleocrProvider } from "./paddleocrProvider";
+
+registerOcrProvider(builtinOcrProvider);
+registerOcrProvider(paddleocrProvider);
 
 export type OcrResult = {
   regions: TextRegion[];
   actualProvider: RuntimeProvider;
   actualWebnnDeviceType?: WebNnDeviceType;
+  debug: OcrRunDebugInfo;
+};
+
+export type OcrInternalResult = {
+  results: OcrRecognizeResult[];
+  provider: RuntimeProvider;
+  webnnDeviceType?: WebNnDeviceType;
   debug: OcrRunDebugInfo;
 };
 
@@ -61,7 +75,7 @@ async function runOcrByOnnxWithSession(
   detectedRegions: TextRegion[],
   model: Awaited<ReturnType<typeof getModel>>,
   sessionHandle: WorkerSessionHandle
-): Promise<{ regions: TextRegion[]; debug: OcrRunDebugInfo }> {
+): Promise<{ results: OcrRecognizeResult[]; debug: OcrRunDebugInfo }> {
   const charset = await loadCharset(model.dictUrl);
   const inputHeight = model.input?.[0] ?? 48;
   const inputWidth = model.input?.[1] ?? 320;
@@ -69,7 +83,7 @@ async function runOcrByOnnxWithSession(
   const imageInput = sessionHandle.inputNames[0];
   const debugInfo = createOcrDebugInfo("ctc");
   if (!imageInput) {
-    return { regions: [], debug: finalizeOcrDebugInfo(debugInfo) };
+    return { results: [], debug: finalizeOcrDebugInfo(debugInfo) };
   }
 
   const charIdxInput = findInputName(sessionHandle.inputNames, "char_idx");
@@ -231,7 +245,7 @@ async function runOcrByOnnxWithSession(
     }
 
     if (decoded.length === 0) {
-      return { regions: [], debug: finalizeOcrDebugInfo(debugInfo) };
+      return { results: [], debug: finalizeOcrDebugInfo(debugInfo) };
     }
 
     // Phase 2: batch color decoding for all successfully decoded regions.
@@ -295,26 +309,25 @@ async function runOcrByOnnxWithSession(
     }
     debugInfo.colorTotalMs = performance.now() - colorT0;
 
-    const next: TextRegion[] = [];
+    const ocrResults: OcrRecognizeResult[] = [];
     for (let i = 0; i < decoded.length; i += 1) {
       const d = decoded[i];
       const colors = batchColors[i] ?? null;
-      next.push({
-        ...d.region,
+      ocrResults.push({
+        text: d.text,
+        confidence: d.confidence,
+        quad: d.region.quad ?? [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }],
         direction: d.direction,
-        prob: d.confidence,
         fgColor: colors?.fgColor,
         bgColor: colors?.bgColor,
-        sourceText: d.text,
-        translatedText: ""
       });
     }
 
-    return { regions: next, debug: finalizeOcrDebugInfo(debugInfo) };
+    return { results: ocrResults, debug: finalizeOcrDebugInfo(debugInfo) };
   }
 
   // CTC path — use Worker for inference, main thread for postprocessing.
-  const next: TextRegion[] = [];
+  const ocrResults: OcrRecognizeResult[] = [];
   const candidates = generateTextDirection(detectedRegions);
   debugInfo.candidateCount = candidates.length;
   const preprocessT0 = performance.now();
@@ -333,6 +346,7 @@ async function runOcrByOnnxWithSession(
     try {
       const runT0 = performance.now();
       const result = await runInference(sessionHandle.sessionId, { [imageInput]: { data: inputData, dims: inputDims, type: "float32" } });
+      if (result.error) throw new Error(result.error);
       outputTensors = result.outputs;
       const runDurationMs = performance.now() - runT0;
       const chunkDebug: OcrRunDebugChunk = {
@@ -401,29 +415,28 @@ async function runOcrByOnnxWithSession(
       if (chunk) {
         chunk.decodeAccepted = 1;
       }
-      next.push({
-        ...region,
+      ocrResults.push({
+        text: bestText,
+        confidence: 1,
+        quad: region.quad ?? [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }],
         direction,
-        sourceText: bestText,
-        translatedText: ""
       });
     }
   }
   debugInfo.preprocessTotalMs = performance.now() - preprocessT0;
-  return { regions: next, debug: finalizeOcrDebugInfo(debugInfo) };
+  return { results: ocrResults, debug: finalizeOcrDebugInfo(debugInfo) };
 }
 
-async function runOcrByOnnx(image: HTMLImageElement, detectedRegions: TextRegion[]): Promise<OcrResult> {
+export async function runOcrByOnnxInternal(image: HTMLImageElement, detectedRegions: TextRegion[]): Promise<OcrInternalResult> {
   const model = await getModel("ocr");
   const primaryHandle = await getModelSession("ocr", ["webgpu", "webnn", "wasm"]);
 
   let actualProvider: RuntimeProvider = primaryHandle.provider;
   let actualWebnnDeviceType = primaryHandle.webnnDeviceType;
-  let debug: OcrRunDebugInfo = createOcrDebugInfo('ctc');
 
   try {
     const result = await runOcrByOnnxWithSession(image, detectedRegions, model, primaryHandle);
-    return { regions: result.regions, actualProvider, actualWebnnDeviceType, debug: result.debug };
+    return { results: result.results, provider: actualProvider, webnnDeviceType: actualWebnnDeviceType, debug: result.debug };
   } catch (error) {
     const message = toErrorMessage(error);
     const reason = isContextLostRuntimeError(error) ? "context lost" : "run failed";
@@ -437,16 +450,17 @@ async function runOcrByOnnx(image: HTMLImageElement, detectedRegions: TextRegion
     }
     fallbackPlans.push(["wasm"]);
 
-    let recovered: TextRegion[] | null = null;
+    let recovered: OcrRecognizeResult[] | null = null;
     let lastFallbackError: unknown = null;
+    let fallbackDebug: OcrRunDebugInfo = createOcrDebugInfo('ctc');
     console.warn(`[ocr] ${primaryHandle.provider} ${reason}, 尝试回退: ${message}`);
 
     for (const preferred of fallbackPlans) {
       try {
         const handle = await getModelSession("ocr", preferred);
         const result = await runOcrByOnnxWithSession(image, detectedRegions, model, handle);
-        recovered = result.regions;
-        debug = result.debug;
+        recovered = result.results;
+        fallbackDebug = result.debug;
         if (handle.provider !== primaryHandle.provider) {
           console.warn(`[ocr] 已回退到 ${handle.provider}`);
           actualProvider = handle.provider;
@@ -463,14 +477,71 @@ async function runOcrByOnnx(image: HTMLImageElement, detectedRegions: TextRegion
       throw new Error(`OCR 推理失败且回退失败: ${message} | fallback: ${fallbackMessage}`);
     }
 
-    return { regions: recovered, actualProvider, actualWebnnDeviceType, debug };
+    return { results: recovered, provider: actualProvider, webnnDeviceType: actualWebnnDeviceType, debug: fallbackDebug };
   }
 }
 
-export async function runOcr(image: HTMLImageElement, detectedRegions: TextRegion[]): Promise<OcrResult> {
-  const onnxResult = await runOcrByOnnx(image, detectedRegions);
-  if (onnxResult.regions.length > 0) {
-    return onnxResult;
+function mapResultsToRegions(results: OcrRecognizeResult[], detectedRegions: TextRegion[]): TextRegion[] {
+  return results.map((r, i) => ({
+    id: detectedRegions[i]?.id ?? `ocr-${i}`,
+    box: detectedRegions[i]?.box ?? { x: 0, y: 0, width: 0, height: 0 },
+    quad: r.quad,
+    direction: r.direction,
+    prob: r.confidence,
+    fgColor: r.fgColor,
+    bgColor: r.bgColor,
+    sourceText: r.text,
+    translatedText: '',
+  }));
+}
+
+function createDefaultDebug(resultCount: number): OcrRunDebugInfo {
+  return {
+    mode: 'ctc',
+    candidateCount: resultCount,
+    preparedCount: resultCount,
+    preprocessTotalMs: 0,
+    preprocessPerRegionMs: [],
+    chunkBatchSize: 0,
+    chunks: [],
+    colorDecodeMode: 'none',
+    colorBatchSize: 0,
+    colorSessionRunCount: 0,
+    colorSessionRunTotalMs: 0,
+    colorTotalMs: 0,
+    colorFallbackRegions: [],
+    fallbackTriggerCount: 0,
+    totalSessionRunCount: 0,
+    totalSessionRunMs: 0,
+  };
+}
+
+export async function runOcr(
+  image: HTMLImageElement,
+  detectedRegions: TextRegion[],
+  providerName?: string,
+): Promise<OcrResult> {
+  const providerNameResolved = providerName ?? 'builtin';
+  const provider = getOcrProvider(providerNameResolved);
+  if (!provider) throw new Error(`OCR 引擎未注册: ${providerNameResolved}`);
+
+  if (providerNameResolved === 'builtin') {
+    // builtin path: preserve full debug and runtime info
+    const internal = await runOcrByOnnxInternal(image, detectedRegions);
+    const filled = fillMissingOcrFields(internal.results, image);
+    const regions = mapResultsToRegions(filled, detectedRegions);
+    if (regions.length > 0) {
+      return { regions, actualProvider: internal.provider, actualWebnnDeviceType: internal.webnnDeviceType, debug: internal.debug };
+    }
+    throw new Error("OCR ONNX 未返回有效识别结果");
   }
-  throw new Error("OCR ONNX 未返回有效识别结果");
+
+  // other provider path
+  const output = await provider.recognize(image, detectedRegions);
+  const filled = fillMissingOcrFields(output.results, image);
+  const regions = mapResultsToRegions(filled, detectedRegions);
+  if (regions.length > 0) {
+    return { regions, actualProvider: output.provider, actualWebnnDeviceType: output.webnnDeviceType, debug: createDefaultDebug(regions.length) };
+  }
+  throw new Error("OCR 未返回有效识别结果");
 }

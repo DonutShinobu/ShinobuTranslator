@@ -263,6 +263,7 @@ async function runInpaintByOnnx(
       [imageName]: feeds.image,
       [maskName]: feeds.mask
     });
+    if (result.error) throw new Error(result.error);
     return result.outputs;
   };
 

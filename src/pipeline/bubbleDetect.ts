@@ -80,6 +80,7 @@ async function runBubbleInference(image: HTMLImageElement): Promise<{
     [inputName]: { data: prep.input, dims: [1, 3, size, size], type: "float32" }
   };
   const result = await runInference(handle.sessionId, feeds);
+  if (result.error) throw new Error(result.error);
 
   const outputNames = handle.outputNames;
   const out0 = result.outputs[outputNames[0]];

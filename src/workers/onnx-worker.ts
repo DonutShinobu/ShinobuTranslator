@@ -15,6 +15,8 @@ import type {
   OcrColorBatchInputItem,
   OcrColorResult,
   OnnxWorkerApi,
+  OrtDebugConfig,
+  WebGpuProfilingDataV1,
 } from "../runtime/onnxWorkerTypes";
 import type { RuntimeSelfCheckReport } from "../runtime/selfCheck";
 import {
@@ -30,9 +32,12 @@ import type { OcrInputData } from "../pipeline/ocr/preprocess";
 
 let envInitialized = false;
 let ortPathOverride: string | null = null;
+let debugConfig: OrtDebugConfig | undefined = undefined;
+const profilingLog: WebGpuProfilingDataV1[] = [];
 
-function init(ortPath: string): Promise<void> {
+function init(ortPath: string, config?: OrtDebugConfig): Promise<void> {
   ortPathOverride = ortPath;
+  debugConfig = config;
   return Promise.resolve();
 }
 
@@ -61,6 +66,24 @@ function ensureOrtEnv(): void {
 
   if (!canUseWasmThreads && hwThreads > 1) {
     console.warn("[onnx-worker] 非 crossOriginIsolated，WASM 线程数被限制为 1");
+  }
+
+  if (debugConfig) {
+    ortAll.env.logLevel = debugConfig.logLevel;
+    ortAll.env.debug = debugConfig.debug;
+    if (debugConfig.profiling && ortAll.env.webgpu) {
+      ortAll.env.webgpu.profiling = {
+        mode: 'default',
+        ondata: (data: WebGpuProfilingDataV1) => {
+          profilingLog.push(data);
+          console.log(
+            `[ort-debug] ${data.kernelType}|${data.kernelName}: ${(data.endTime - data.startTime) / 1000}us`,
+            `in:`, data.inputsMetadata.map(m => `${m.dataType}[${m.dims}]`),
+            `out:`, data.outputsMetadata.map(m => `${m.dataType}[${m.dims}]`),
+          );
+        },
+      };
+    }
   }
 
   envInitialized = true;
@@ -317,9 +340,25 @@ async function runInference(
     ortFeeds[name] = transportToTensor(transport);
   }
 
-  const outputs = await entry.session.run(ortFeeds);
+  profilingLog.length = 0;
+  let outputs: Record<string, ortAll.Tensor>;
+  try {
+    outputs = await entry.session.run(ortFeeds);
+  } catch (inferenceError) {
+    // 推理失败时不抛异常，返回带 error 字段的 InferenceResult，
+    // 这样已收集的 profiling 数据可以通过 Comlink 传回主线程
+    const result: InferenceResult = {
+      outputs: {},
+      profilingLog: debugConfig?.profiling ? [...profilingLog] : undefined,
+      error: toErrorMessage(inferenceError),
+    };
+    return result;
+  }
 
-  const result: InferenceResult = { outputs: {} };
+  const result: InferenceResult = {
+    outputs: {},
+    profilingLog: debugConfig?.profiling ? [...profilingLog] : undefined,
+  };
   const outTransferables: ArrayBuffer[] = [];
   for (const [name, tensor] of Object.entries(outputs)) {
     const transport = tensorToTransport(tensor);

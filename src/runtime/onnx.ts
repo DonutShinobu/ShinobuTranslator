@@ -4,6 +4,7 @@ import { resolveAssetUrl } from "../shared/assetUrl";
 import { toErrorMessage } from "../shared/utils";
 import { isContextLostError, isCreateTimeoutError } from "./onnxTypes";
 import type { RuntimeProvider, WebNnDeviceType } from "./onnxTypes";
+import type { OrtDebugConfig } from "./onnxWorkerTypes";
 
 export type OrtxSession = InferenceSession;
 export type { RuntimeProvider, WebNnDeviceType } from "./onnxTypes";
@@ -120,7 +121,7 @@ async function withPerModelLock<T>(modelUrl: string, task: () => Promise<T>): Pr
   }
 }
 
-export function ensureOrtEnv(): void {
+export function ensureOrtEnv(debugConfig?: OrtDebugConfig): void {
   if (envInitialized) {
     return;
   }
@@ -143,6 +144,23 @@ export function ensureOrtEnv(): void {
 
   if (!canUseWasmThreads && hwThreads > 1) {
     console.warn("[onnx] 当前非 crossOriginIsolated，WASM 线程数被限制为 1。可通过 COOP/COEP 启用多线程。");
+  }
+
+  if (debugConfig) {
+    ortAll.env.logLevel = debugConfig.logLevel;
+    ortAll.env.debug = debugConfig.debug;
+    if (debugConfig.profiling && ortAll.env.webgpu) {
+      ortAll.env.webgpu.profiling = {
+        mode: 'default',
+        ondata: (data) => {
+          console.log(
+            `[ort-debug] ${data.kernelType}|${data.kernelName}: ${(data.endTime - data.startTime) / 1000}us`,
+            `in:`, data.inputsMetadata.map(m => `${m.dataType}[${m.dims}]`),
+            `out:`, data.outputsMetadata.map(m => `${m.dataType}[${m.dims}]`),
+          );
+        },
+      };
+    }
   }
 
   envInitialized = true;

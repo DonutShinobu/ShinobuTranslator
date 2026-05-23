@@ -34,6 +34,15 @@
       "url": "/models/bubble.onnx",
       "input": [640, 640],
       "runtime": ["webgpu", "webnn", "wasm"]
+    },
+    "paddleocr_rec": {
+      "name": "paddleocr_rec",
+      "task": "paddleocr-recognition",
+      "url": "/models/ch_PP-OCRv5_rec_mobile.onnx",
+      "input": [48, 320],
+      "runtime": ["webgpu", "webnn", "wasm"],
+      "dictUrl": "/models/paddleocr_v5_dict.txt",
+      "normalize": "minus_one_to_one"
     }
   }
 }

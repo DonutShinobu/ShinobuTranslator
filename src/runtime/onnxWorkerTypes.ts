@@ -26,11 +26,39 @@ export type WorkerSessionHandle = {
 };
 
 // ---------------------------------------------------------------------------
+// ORT debug configuration — controls verbose logging, debugging, and profiling.
+// ---------------------------------------------------------------------------
+
+export type OrtDebugConfig = {
+  logLevel: 'verbose' | 'info' | 'warning' | 'error' | 'fatal';
+  debug: boolean;
+  profiling: boolean;
+};
+
+// ---------------------------------------------------------------------------
+// WebGPU profiling data — per-kernel timing from onnxruntime-web's profiler.
+// ---------------------------------------------------------------------------
+
+export type WebGpuProfilingDataV1 = {
+  version: 1;
+  inputsMetadata: readonly { dims: readonly number[]; dataType: string }[];
+  outputsMetadata: readonly { dims: readonly number[]; dataType: string }[];
+  kernelId: number;
+  kernelType: string;
+  kernelName: string;
+  programName: string;
+  startTime: number;
+  endTime: number;
+};
+
+// ---------------------------------------------------------------------------
 // Inference result — output tensors from a single session.run() call.
 // ---------------------------------------------------------------------------
 
 export type InferenceResult = {
   outputs: Record<string, TensorTransport>;
+  profilingLog?: WebGpuProfilingDataV1[];
+  error?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -96,7 +124,7 @@ export type OcrColorResult = {
 // ---------------------------------------------------------------------------
 
 export interface OnnxWorkerApi {
-  init(ortPath: string): Promise<void>;
+  init(ortPath: string, debugConfig?: OrtDebugConfig): Promise<void>;
   createSession(
     modelKey: string,
     modelUrl: string,

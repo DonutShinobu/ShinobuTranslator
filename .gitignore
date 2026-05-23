@@ -69,6 +69,6 @@ benchmark/fonts/
 benchmark/fixtures/
 
 # Claude skills
-.claude/
+.claude/worktrees/
 .playwright/
 .worktrees/

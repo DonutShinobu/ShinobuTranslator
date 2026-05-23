@@ -765,6 +765,7 @@ export async function detectByOnnx(image: HTMLImageElement): Promise<DetectOutpu
       [inputName]: { data: prep.input, dims: [1, 3, inputSize, inputSize], type: "float32" }
     };
     const result = await runInference(handle.sessionId, feeds);
+    if (result.error) throw new Error(result.error);
     return result.outputs;
   };
 

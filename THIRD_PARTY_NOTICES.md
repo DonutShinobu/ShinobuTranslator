@@ -24,13 +24,21 @@
 - 本项目用途：漫画对话气泡检测
 - 本项目处理：直接使用 HuggingFace 上的 `model_dynamic.onnx`，重命名为 `bubble.onnx`，无需额外导出或修补
 
-## 4) 分发说明
+## 4) webnn/PP-OCRv5-ONNX（PaddleOCR 识别模型来源）
+
+- 上游模型页：`https://huggingface.co/webnn/PP-OCRv5-ONNX`
+- 许可证：`Apache-2.0`（以模型页声明为准）
+- 基座模型：PaddlePaddle PP-OCRv5_mobile_rec（ONNX 格式导出）
+- 本项目用途：中日英文字识别（OCR）
+- 本项目处理：直接使用 `ch_PP-OCRv5_rec.onnx`，重命名为 `ch_PP-OCRv5_rec_mobile.onnx`，无需额外导出或修补
+
+## 5) 分发说明
 
 - 本仓库根目录 `LICENSE` 采用 `GPL-3.0`，以满足与 GPL 来源模型的分发一致性要求。
 - 分发本项目（源码或构建产物）时，请保留本文件、上游版权与许可证声明。
 - 如你修改了第三方模型或转换脚本，请在提交记录或发布说明中标注变更内容与日期。
 
-## 5) 应用图标（Donut icon）
+## 6) 应用图标（Donut icon）
 
 - 来源：`https://www.flaticon.com/free-icon/donut_6402298`
 - 作者：smashingstocks
@@ -38,6 +46,6 @@
 - 本项目用途：浏览器扩展应用图标
 - 署名要求：须注明 "Designed by smashingstocks from Flaticon"
 
-## 6) 免责声明
+## 7) 免责声明
 
 - 本文件仅用于工程合规记录，不构成法律意见。

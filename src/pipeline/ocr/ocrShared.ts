@@ -45,16 +45,17 @@ export type BatchDecodeOutput = {
 };
 
 // --- Charset ---
-let charsetPromise: Promise<string[] | null> | null = null;
+const charsetCache: Map<string, Promise<string[] | null>> = new Map();
 
 export async function loadCharset(dictUrl?: string): Promise<string[] | null> {
   if (!dictUrl) {
     return null;
   }
-  if (charsetPromise) {
-    return charsetPromise;
+  const cached = charsetCache.get(dictUrl);
+  if (cached) {
+    return cached;
   }
-  charsetPromise = (async () => {
+  const promise = (async () => {
     const response = await fetch(dictUrl, { method: "GET" });
     if (!response.ok) {
       return null;
@@ -62,11 +63,11 @@ export async function loadCharset(dictUrl?: string): Promise<string[] | null> {
     const text = await response.text();
     const lines = text
       .split(/\r?\n/g)
-      .map((line) => line.trim())
       .filter((line) => line.length > 0);
     return lines.length > 0 ? lines : null;
   })();
-  return charsetPromise;
+  charsetCache.set(dictUrl, promise);
+  return promise;
 }
 
 // --- Input name matching ---

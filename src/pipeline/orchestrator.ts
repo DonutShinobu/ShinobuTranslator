@@ -445,7 +445,8 @@ export async function runPipeline(
     reportParallel();
     try {
       const t0 = performance.now();
-      const refineResult = refineTextMask(originalCanvas, orderedRegions, detectionMaskCanvas, {
+      const regionsWithText = orderedRegions.filter(r => r.sourceText.trim() !== '');
+      const refineResult = refineTextMask(originalCanvas, regionsWithText, detectionMaskCanvas, {
         method: "fit_text",
         kernelSize: 3
       }, config.eraseDebug);

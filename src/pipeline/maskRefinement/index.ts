@@ -44,7 +44,6 @@ export function refineTextMask(
     throw new Error("Mask refinement 缺少检测原始 mask，已禁用文本框遮罩回退");
   }
 
-  const dilationOffset = options.dilationOffset ?? 20;
   const kernelSize = options.kernelSize ?? 3;
   const keepThreshold = options.keepThreshold ?? 1e-2;
 
@@ -170,7 +169,7 @@ export function refineTextMask(
       orSubMask(refinedMaskBeforeDilate, scaledWidth, rect1, extractSubMask(regionMask, scaledWidth, rect1));
     }
 
-    const dilateSize = Math.max(Math.floor(Math.floor((regionTextSize + dilationOffset) * 0.3) / 2) * 2 + 1, 3);
+    const dilateSize = Math.max(Math.floor(Math.floor(regionTextSize * 0.3) / 2) * 2 + 1, 3);
     const rect2 = extendRect(baseRect, scaledWidth, scaledHeight, Math.ceil(dilateSize / 2));
     const ccRegion2 = extractSubMask(regionMask, scaledWidth, rect2);
     const dilated = dilate(ccRegion2, rect2.width, rect2.height, dilateSize);

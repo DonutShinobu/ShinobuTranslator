@@ -247,7 +247,9 @@ export function scaleRegions(regions: TextRegion[], scale: number, maxW: number,
     }));
     const box = polygonToBox(scaledPolygon, maxW, maxH);
     const area = Math.max(1, polygonArea(scaledPolygon));
-    const textSize = Math.max(1, Math.min(box.width, box.height));
+    const textSize = region.fontSize && region.fontSize > 0
+      ? Math.max(1, Math.round(region.fontSize * scale))
+      : Math.max(1, Math.min(box.width, box.height));
     return {
       box,
       polygon: scaledPolygon,

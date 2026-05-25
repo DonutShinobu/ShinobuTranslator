@@ -447,7 +447,6 @@ export async function runPipeline(
       const t0 = performance.now();
       const refineResult = refineTextMask(originalCanvas, orderedRegions, detectionMaskCanvas, {
         method: "fit_text",
-        dilationOffset: 20,
         kernelSize: 3
       }, config.eraseDebug);
       refinedMaskCanvas = refineResult.refinedMaskCanvas;

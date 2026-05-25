@@ -6,6 +6,7 @@ import type {
   RuntimeStageStatus,
   StageTiming,
   TranslationDebugInfo,
+  MaskDebugLayers,
 } from "../types";
 import { fileToImage, imageToCanvas } from "./image";
 import { detectTextRegionsWithMask } from "./detect";
@@ -22,6 +23,135 @@ import { getModelSession } from "../runtime/modelRegistry";
 import type { WorkerSessionHandle } from "../runtime/onnxWorkerTypes";
 
 type ProgressCallback = (progress: PipelineProgress) => void;
+
+function buildEraseDebugCanvas(
+  originalCanvas: HTMLCanvasElement,
+  debugLayers: MaskDebugLayers
+): HTMLCanvasElement {
+  const { refinedMask, perRegionDilated, globalDilated, scaledWidth, scaledHeight } = debugLayers;
+  const width = originalCanvas.width;
+  const height = originalCanvas.height;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return canvas;
+  }
+  ctx.drawImage(originalCanvas, 0, 0);
+
+  // Upscale each layer mask to original resolution via intermediate canvas
+  const toScaledCanvas = (mask: Uint8Array): HTMLCanvasElement => {
+    const src = document.createElement("canvas");
+    src.width = scaledWidth;
+    src.height = scaledHeight;
+    const srcCtx = src.getContext("2d");
+    if (!srcCtx) {
+      return src;
+    }
+    const imageData = srcCtx.createImageData(scaledWidth, scaledHeight);
+    for (let i = 0, p = 0; i < mask.length; i += 1, p += 4) {
+      const v = mask[i] > 0 ? 255 : 0;
+      imageData.data[p] = v;
+      imageData.data[p + 1] = v;
+      imageData.data[p + 2] = v;
+      imageData.data[p + 3] = 255;
+    }
+    srcCtx.putImageData(imageData, 0, 0);
+
+    const dst = document.createElement("canvas");
+    dst.width = width;
+    dst.height = height;
+    const dstCtx = dst.getContext("2d");
+    if (!dstCtx) {
+      return dst;
+    }
+    dstCtx.imageSmoothingEnabled = true;
+    dstCtx.drawImage(src, 0, 0, width, height);
+    return dst;
+  };
+
+  // Green: refinedMask (before any dilation)
+  // Yellow: perRegionDilated - refinedMask (per-region dilation increment)
+  // Red: globalDilated - perRegionDilated (global dilation increment)
+
+  const greenCanvas = toScaledCanvas(refinedMask);
+  const yellowRaw = new Uint8Array(scaledWidth * scaledHeight);
+  const redRaw = new Uint8Array(scaledWidth * scaledHeight);
+  for (let i = 0; i < refinedMask.length; i += 1) {
+    const isRefined = refinedMask[i] > 0;
+    const isPerRegion = perRegionDilated[i] > 0;
+    const isGlobal = globalDilated[i] > 0;
+    if (isRefined) {
+      // Green layer (refinedMask base)
+    } else if (isPerRegion) {
+      yellowRaw[i] = 1;
+    } else if (isGlobal) {
+      redRaw[i] = 1;
+    }
+  }
+  const yellowCanvas = toScaledCanvas(yellowRaw);
+  const redCanvas = toScaledCanvas(redRaw);
+
+  // Overlay each color layer with transparency
+  ctx.globalAlpha = 0.5;
+  ctx.globalCompositeOperation = "source-over";
+
+  // Green overlay
+  const greenData = greenCanvas.getContext("2d")?.getImageData(0, 0, width, height);
+  if (greenData) {
+    for (let p = 0; p < greenData.data.length; p += 4) {
+      if (greenData.data[p] > 127) {
+        greenData.data[p] = 0;
+        greenData.data[p + 1] = 255;
+        greenData.data[p + 2] = 0;
+        greenData.data[p + 3] = 128;
+      } else {
+        greenData.data[p + 3] = 0;
+      }
+    }
+    greenCanvas.getContext("2d")?.putImageData(greenData, 0, 0);
+  }
+  ctx.drawImage(greenCanvas, 0, 0);
+
+  // Yellow overlay
+  const yellowData = yellowCanvas.getContext("2d")?.getImageData(0, 0, width, height);
+  if (yellowData) {
+    for (let p = 0; p < yellowData.data.length; p += 4) {
+      if (yellowData.data[p] > 127) {
+        yellowData.data[p] = 255;
+        yellowData.data[p + 1] = 255;
+        yellowData.data[p + 2] = 0;
+        yellowData.data[p + 3] = 128;
+      } else {
+        yellowData.data[p + 3] = 0;
+      }
+    }
+    yellowCanvas.getContext("2d")?.putImageData(yellowData, 0, 0);
+  }
+  ctx.drawImage(yellowCanvas, 0, 0);
+
+  // Red overlay
+  const redData = redCanvas.getContext("2d")?.getImageData(0, 0, width, height);
+  if (redData) {
+    for (let p = 0; p < redData.data.length; p += 4) {
+      if (redData.data[p] > 127) {
+        redData.data[p] = 255;
+        redData.data[p + 1] = 0;
+        redData.data[p + 2] = 0;
+        redData.data[p + 3] = 128;
+      } else {
+        redData.data[p + 3] = 0;
+      }
+    }
+    redCanvas.getContext("2d")?.putImageData(redData, 0, 0);
+  }
+  ctx.drawImage(redCanvas, 0, 0);
+
+  ctx.globalAlpha = 1;
+  return canvas;
+}
 
 function report(cb: ProgressCallback, stage: string, detail: string): void {
   cb({ stage, detail });
@@ -88,6 +218,7 @@ export async function runPipeline(
   let cleanedCanvas: HTMLCanvasElement = originalCanvas;
   let resultCanvas: HTMLCanvasElement = originalCanvas;
   let debugOriginalCanvas: HTMLCanvasElement | null = null;
+  let eraseDebugCanvas: HTMLCanvasElement | null = null;
   let typesetDebugLog: PipelineTypesetDebugLog | null = null;
   let translationDebug: TranslationDebugInfo | null = null;
   let ocrDebug: PipelineArtifacts['ocrDebug'] = null;
@@ -314,11 +445,15 @@ export async function runPipeline(
     reportParallel();
     try {
       const t0 = performance.now();
-      refinedMaskCanvas = refineTextMask(originalCanvas, orderedRegions, detectionMaskCanvas, {
+      const refineResult = refineTextMask(originalCanvas, orderedRegions, detectionMaskCanvas, {
         method: "fit_text",
         dilationOffset: 20,
         kernelSize: 3
-      });
+      }, config.eraseDebug);
+      refinedMaskCanvas = refineResult.refinedMaskCanvas;
+      if (refineResult.debugLayers) {
+        eraseDebugCanvas = buildEraseDebugCanvas(originalCanvas, refineResult.debugLayers);
+      }
       maskRefineTiming = { stage: "mask_refine", label: "\u7ec6\u5316\u53bb\u5b57\u906e\u7f69", durationMs: performance.now() - t0 };
     } catch (error) {
       throw new PipelineStageError("\u906e\u7f69\u7ec6\u5316", toErrorDetail(error), buildArtifacts());
@@ -381,6 +516,9 @@ export async function runPipeline(
       collectDebugLog: false,
     });
     resultCanvas = typesetResult.canvas;
+    if (config.eraseDebug && eraseDebugCanvas) {
+      resultCanvas = eraseDebugCanvas;
+    }
     if (config.collectDebugLog) {
       const debugOriginalTypeset = await drawTypeset(originalCanvas, latestRegions, config.targetLang, {
         debugMode: true,

@@ -1,4 +1,4 @@
-import type { Rect, TextRegion } from "../../types";
+import type { Rect, TextRegion, RefineTextMaskResult } from "../../types";
 import type { MaskRefinementOptions, AssignedExtent, Component } from "./algorithms";
 import {
   makeCanvas,
@@ -27,8 +27,9 @@ export function refineTextMask(
   originalCanvas: HTMLCanvasElement,
   regions: TextRegion[],
   rawMaskCanvas: HTMLCanvasElement,
-  options: MaskRefinementOptions = {}
-): HTMLCanvasElement {
+  options: MaskRefinementOptions = {},
+  collectDebugLayers = false
+): RefineTextMaskResult {
   const method = options.method ?? "fit_text";
   if (method !== "fit_text") {
     throw new Error(`Mask refinement 不支持的 method: ${method}`);
@@ -37,7 +38,7 @@ export function refineTextMask(
   const width = originalCanvas.width;
   const height = originalCanvas.height;
   if (width <= 0 || height <= 0 || regions.length === 0) {
-    return makeCanvas(width, height);
+    return { refinedMaskCanvas: makeCanvas(width, height) };
   }
   if (rawMaskCanvas.width <= 0 || rawMaskCanvas.height <= 0) {
     throw new Error("Mask refinement 缺少检测原始 mask，已禁用文本框遮罩回退");
@@ -132,6 +133,7 @@ export function refineTextMask(
   }
 
   const finalMask = new Uint8Array(scaledWidth * scaledHeight);
+  const refinedMaskBeforeDilate = collectDebugLayers ? new Uint8Array(scaledWidth * scaledHeight) : null;
 
   for (let i = 0; i < scaledRegions.length; i += 1) {
     const regionComponents = assigned[i];
@@ -164,6 +166,10 @@ export function refineTextMask(
     const refined = refineRegionMask(grayRegion, ccRegion);
     replaceSubMask(regionMask, scaledWidth, rect1, refined);
 
+    if (refinedMaskBeforeDilate) {
+      orSubMask(refinedMaskBeforeDilate, scaledWidth, rect1, extractSubMask(regionMask, scaledWidth, rect1));
+    }
+
     const dilateSize = Math.max(Math.floor(Math.floor((regionTextSize + dilationOffset) * 0.3) / 2) * 2 + 1, 3);
     const rect2 = extendRect(baseRect, scaledWidth, scaledHeight, Math.ceil(dilateSize / 2));
     const ccRegion2 = extractSubMask(regionMask, scaledWidth, rect2);
@@ -171,6 +177,20 @@ export function refineTextMask(
     orSubMask(finalMask, scaledWidth, rect2, dilated);
   }
 
+  const perRegionDilatedSnapshot = collectDebugLayers ? finalMask.slice() : null;
+
   const finalDilated = dilate(finalMask, scaledWidth, scaledHeight, Math.max(1, kernelSize));
-  return toMaskCanvas(finalDilated, scaledWidth, scaledHeight, width, height);
+  const refinedMaskCanvas = toMaskCanvas(finalDilated, scaledWidth, scaledHeight, width, height);
+
+  const debugLayers = collectDebugLayers && refinedMaskBeforeDilate && perRegionDilatedSnapshot
+    ? {
+        refinedMask: refinedMaskBeforeDilate,
+        perRegionDilated: perRegionDilatedSnapshot,
+        globalDilated: finalDilated,
+        scaledWidth,
+        scaledHeight,
+      }
+    : undefined;
+
+  return { refinedMaskCanvas, debugLayers };
 }

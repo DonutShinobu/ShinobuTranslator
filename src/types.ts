@@ -41,6 +41,7 @@ export type PipelineConfig = {
   llmModel: string;
   llmTemperature: number;
   typesetDebug: boolean;
+  eraseDebug: boolean;
   collectDebugLog: boolean;
   ocrEngine: 'builtin' | 'paddleocr';
 };
@@ -154,6 +155,19 @@ export type OcrRunDebugInfo = {
   fallbackTriggerCount: number;
   totalSessionRunCount: number;
   totalSessionRunMs: number;
+};
+
+export type MaskDebugLayers = {
+  refinedMask: Uint8Array;
+  perRegionDilated: Uint8Array;
+  globalDilated: Uint8Array;
+  scaledWidth: number;
+  scaledHeight: number;
+};
+
+export type RefineTextMaskResult = {
+  refinedMaskCanvas: HTMLCanvasElement;
+  debugLayers?: MaskDebugLayers;
 };
 
 export type PipelineArtifacts = {

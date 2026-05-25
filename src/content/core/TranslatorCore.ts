@@ -70,6 +70,7 @@ function createInitialState(originalUrl: string): PhotoState {
     debugOriginalUrl: undefined,
     debugLogData: undefined,
     showTypesetDebug: false,
+    showEraseDebug: false,
     stageText: '',
     elapsedText: '',
     errorText: '',
@@ -312,8 +313,10 @@ export class TranslatorCore {
       const showStageTimingDetails = showElapsedTime && settings.showStageTimingDetails === true;
       const showRuntimeStages = showStageTimingDetails;
       const showTypesetDebug = settings.showTypesetDebug === true;
+      const showEraseDebug = settings.showEraseDebug === true;
       const enableDebugLog = settings.enableDebugLog === true;
       state.showTypesetDebug = showTypesetDebug;
+      state.showEraseDebug = showEraseDebug;
 
       const downloadResponse = await sendRuntimeMessage({
         type: 'mt:download-image',
@@ -620,8 +623,10 @@ export class TranslatorCore {
 
       const settings = settingsResponse.settings;
       const showTypesetDebug = settings.showTypesetDebug === true;
+      const showEraseDebug = settings.showEraseDebug === true;
       const enableDebugLog = settings.enableDebugLog === true;
       state.showTypesetDebug = showTypesetDebug;
+      state.showEraseDebug = showEraseDebug;
 
       const downloadResponse = await sendRuntimeMessage({
         type: 'mt:download-image',
@@ -831,8 +836,10 @@ export class TranslatorCore {
       const showStageTimingDetails = showElapsedTime && settings.showStageTimingDetails === true;
       const showRuntimeStages = showStageTimingDetails;
       const showTypesetDebug = settings.showTypesetDebug === true;
+      const showEraseDebug = settings.showEraseDebug === true;
       const enableDebugLog = settings.enableDebugLog === true;
       state.showTypesetDebug = showTypesetDebug;
+      state.showEraseDebug = showEraseDebug;
 
       const downloadResponse = await sendRuntimeMessage({
         type: 'mt:download-image',

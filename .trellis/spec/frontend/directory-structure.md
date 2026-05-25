@@ -51,7 +51,7 @@ src/
 │   │   └── color.ts            #   Color science, contrast, color selection
 │   ├── bubbleDetect.ts         # Speech bubble detection
 │   ├── maskRefinement/         # Mask refinement for inpainting
-│   │   ├── index.ts            #   Entry: refineTextMask
+│   │   ├── index.ts            #   Entry: refineTextMask → RefineTextMaskResult
 │   │   └── algorithms.ts       #   Otsu, dilate, polygon clipping, connected components
 │   ├── readingOrder.ts         # Reading order sorting
 │   ├── textlineMerge/          # Text line merging
@@ -114,6 +114,12 @@ Create `src/translators/<translator>.ts`, implement the translate function signa
 
 ### Adding a new popup setting
 Add the field to `ExtensionSettings` in `src/shared/config.ts`, set a default in `DEFAULT_SETTINGS`, add UI in `src/popup/App.tsx`, and wire the save/load through `src/shared/messages.ts`.
+
+### Adding a new pipeline debug visualization
+Debug visualizations in this project modify the pipeline output directly — they replace `resultCanvas` with a debug canvas so the user sees the debug info in the normal translation result. **Do not** store debug canvases as separate blob URLs in `PhotoState` or open them via `window.open`. Follow the pattern: pipeline stage returns structured debug data → orchestrator builds a debug overlay canvas → replaces `resultCanvas` when the debug flag is enabled.
+
+### refineTextMask contract
+`refineTextMask` returns `RefineTextMaskResult` (not a bare `HTMLCanvasElement`). The `collectDebugLayers` parameter (default `false`) controls whether `debugLayers: MaskDebugLayers` is populated. When `false`, no intermediate arrays are allocated. The `refinedMaskCanvas` field is always present and identical to the previous single-canvas return value.
 
 ### Adding a shared utility function
 - **Globally shared** (used across pipeline/runtime/content/background): `src/shared/utils.ts`

@@ -274,6 +274,15 @@ export function App() {
                   <label className="checkbox-row">
                     <input
                       type="checkbox"
+                      checked={settings.showEraseDebug}
+                      onChange={(event) => updateField('showEraseDebug', event.target.checked)}
+                      disabled={loading}
+                    />
+                    <span className="checkbox-label">去字调试</span>
+                  </label>
+                  <label className="checkbox-row">
+                    <input
+                      type="checkbox"
                       checked={settings.enableDebugLog}
                       onChange={(event) => updateField('enableDebugLog', event.target.checked)}
                       disabled={loading}

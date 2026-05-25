@@ -59,6 +59,7 @@ export type PhotoState = {
   debugOriginalUrl?: string;
   debugLogData?: TypesetDebugDownloadData;
   showTypesetDebug: boolean;
+  showEraseDebug: boolean;
   stageText: string;
   elapsedText: string;
   errorText: string;

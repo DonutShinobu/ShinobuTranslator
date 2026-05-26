@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 9
+- **Total Sessions**: 10
 - **Last Active**: 2026-05-26
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~305 | Active |
+| `journal-1.md` | ~338 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 10 | 2026-05-26 | 优化横排文字排版 | `b07f4b0` | `master` |
 | 9 | 2026-05-26 | 新增原文模式 | `40409ae` | `master` |
 | 8 | 2026-05-15 | 修复多列并排翻译间距异常宽 | `044a71d` | `master` |
 | 7 | 2026-05-15 | ONNX 推理移入自建 Worker，消除动画卡顿 | `202714a`, `82af7c2` | `master` |

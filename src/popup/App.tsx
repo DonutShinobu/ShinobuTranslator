@@ -350,8 +350,9 @@ export function App() {
               <div className="panel-title">模式</div>
               <SegmentedControl
                 options={[
-                  { value: 'translate', label: '翻译模式' },
-                  { value: 'erase', label: '去字模式' },
+                  { value: 'translate', label: '翻译' },
+                  { value: 'original', label: '原文' },
+                  { value: 'erase', label: '去字' },
                 ]}
                 value={settings.processMode}
                 onChange={(v) => updateField('processMode', v as ExtensionSettings['processMode'])}

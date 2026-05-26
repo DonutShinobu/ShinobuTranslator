@@ -421,7 +421,7 @@ export async function runPipeline(
   reportParallel();
   const parallelT0 = performance.now();
 
-  const shouldSkipTranslate = config.processMode === 'erase' || config.eraseDebug;
+  const shouldSkipTranslate = config.processMode === 'erase' || config.processMode === 'original' || config.eraseDebug;
 
   const translateTask = shouldSkipTranslate
     ? Promise.resolve(orderedRegions)
@@ -522,7 +522,8 @@ export async function runPipeline(
       resultCanvas = cleanedCanvas;
     }
   } else {
-    report(onProgress, "typeset", "排版和嵌字");
+    const typesetLabel = config.processMode === 'original' ? "排版原文" : "排版和嵌字";
+    report(onProgress, "typeset", typesetLabel);
     try {
       const t0 = performance.now();
       const typesetResult = await drawTypeset(cleanedCanvas, latestRegions, config.targetLang, {
@@ -546,7 +547,7 @@ export async function runPipeline(
         debugOriginalCanvas = null;
         typesetDebugLog = null;
       }
-      stageTimings.push({ stage: "typeset", label: "排版和嵌字", durationMs: performance.now() - t0 });
+      stageTimings.push({ stage: "typeset", label: typesetLabel, durationMs: performance.now() - t0 });
     } catch (error) {
       throw new PipelineStageError("排版", toErrorDetail(error), buildArtifacts());
     }

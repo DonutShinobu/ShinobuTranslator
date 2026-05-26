@@ -117,7 +117,7 @@ function createDefaultLlmProfiles(): Record<LlmProvider, LlmProviderProfile> {
 }
 
 export type OcrEngine = 'builtin' | 'paddleocr';
-export type ProcessMode = 'translate' | 'erase';
+export type ProcessMode = 'translate' | 'erase' | 'original';
 
 export type ExtensionSettings = {
   sourceLang: string;
@@ -163,6 +163,7 @@ function normalizeOcrEngine(value: unknown): OcrEngine {
 
 function normalizeProcessMode(value: unknown): ProcessMode {
   if (value === 'erase') return 'erase';
+  if (value === 'original') return 'original';
   return 'translate';
 }
 

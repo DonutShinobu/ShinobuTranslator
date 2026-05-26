@@ -19,6 +19,7 @@ import {
   orSubMask,
   toMaskCanvas,
   extendRect,
+  detectOutlineWidth,
 } from "./algorithms";
 
 export type { MaskRefinementOptions } from "./algorithms";
@@ -169,7 +170,11 @@ export function refineTextMask(
       orSubMask(refinedMaskBeforeDilate, scaledWidth, rect1, extractSubMask(regionMask, scaledWidth, rect1));
     }
 
-    const dilateSize = Math.max(Math.floor(Math.floor(regionTextSize * 0.3) / 2) * 2 + 1, 3);
+    const outlineWidth = detectOutlineWidth(scaledGray, regionMask, scaledWidth, scaledHeight, baseRect, regionTextSize);
+    const outlineDilateExtra = outlineWidth > 0 ? outlineWidth * 2 : 0;
+    const baseRatio = outlineWidth > 0 ? 0.05 : 0.1;
+    const baseDilateSize = Math.max(Math.floor(Math.floor(regionTextSize * baseRatio) / 2) * 2 + 1, 3);
+    const dilateSize = Math.max(baseDilateSize + outlineDilateExtra, 3);
     const rect2 = extendRect(baseRect, scaledWidth, scaledHeight, Math.ceil(dilateSize / 2));
     const ccRegion2 = extractSubMask(regionMask, scaledWidth, rect2);
     const dilated = dilate(ccRegion2, rect2.width, rect2.height, dilateSize);

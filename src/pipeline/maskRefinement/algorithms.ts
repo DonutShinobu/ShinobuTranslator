@@ -537,6 +537,116 @@ export function refineRegionMask(gray: Uint8Array, seedMask: Uint8Array): Uint8A
   return chosen;
 }
 
+const BRIGHT_THRESHOLD = 40;
+const OUTLINE_RATIO_THRESHOLD = 0.5;
+
+export function detectOutlineWidth(
+  gray: Uint8Array,
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  regionRect: Rect,
+  textSize: number
+): number {
+  const rx0 = Math.max(0, Math.floor(regionRect.x));
+  const ry0 = Math.max(0, Math.floor(regionRect.y));
+  const rx1 = Math.min(width - 1, Math.floor(regionRect.x + regionRect.width));
+  const ry1 = Math.min(height - 1, Math.floor(regionRect.y + regionRect.height));
+
+  // 1. 计算背景亮度（使用 Q1 避免描边像素抬高背景估计）
+  const outsideGray: number[] = [];
+  for (let y = ry0; y <= ry1; y += 1) {
+    for (let x = rx0; x <= rx1; x += 1) {
+      if (mask[y * width + x] === 0) {
+        outsideGray.push(gray[y * width + x]);
+      }
+    }
+  }
+  if (outsideGray.length === 0) {
+    return 0;
+  }
+  outsideGray.sort((a, b) => a - b);
+  const bgMedian = outsideGray[Math.floor(outsideGray.length * 0.25)];
+
+  // 2. 找 mask 边界像素
+  const boundaryPixels: Array<{ x: number; y: number }> = [];
+  for (let y = ry0; y <= ry1; y += 1) {
+    for (let x = rx0; x <= rx1; x += 1) {
+      if (mask[y * width + x] === 0) {
+        continue;
+      }
+      const hasOutsideNeighbor =
+        (x > 0 && mask[y * width + x - 1] === 0) ||
+        (x < width - 1 && mask[y * width + x + 1] === 0) ||
+        (y > 0 && mask[(y - 1) * width + x] === 0) ||
+        (y < height - 1 && mask[(y + 1) * width + x] === 0) ||
+        (x > 0 && y > 0 && mask[(y - 1) * width + x - 1] === 0) ||
+        (x < width - 1 && y > 0 && mask[(y - 1) * width + x + 1] === 0) ||
+        (x > 0 && y < height - 1 && mask[(y + 1) * width + x - 1] === 0) ||
+        (x < width - 1 && y < height - 1 && mask[(y + 1) * width + x + 1] === 0);
+      if (hasOutsideNeighbor) {
+        boundaryPixels.push({ x, y });
+      }
+    }
+  }
+  if (boundaryPixels.length === 0) {
+    return 0;
+  }
+
+  // 3. 向外扫描描边宽度（允许穿过抗锯齿过渡区）
+  const maxScanDist = Math.max(4, Math.floor(textSize * 0.3));
+  const directions: Array<{ dx: number; dy: number }> = [
+    { dx: -1, dy: 0 },
+    { dx: 1, dy: 0 },
+    { dx: 0, dy: -1 },
+    { dx: 0, dy: 1 },
+  ];
+  const outlineDists: number[] = [];
+
+  for (const bp of boundaryPixels) {
+    let maxDist = 0;
+    for (const dir of directions) {
+      let dist = 0;
+      let reachedBright = false;
+      let cx = bp.x + dir.dx;
+      let cy = bp.y + dir.dy;
+      while (dist < maxScanDist) {
+        if (cx < 0 || cx >= width || cy < 0 || cy >= height) {
+          break;
+        }
+        const idx = cy * width + cx;
+        if (mask[idx] !== 0) {
+          break;
+        }
+        if (gray[idx] > bgMedian + BRIGHT_THRESHOLD) {
+          reachedBright = true;
+        } else if (gray[idx] <= bgMedian) {
+          break;
+        }
+        dist += 1;
+        cx += dir.dx;
+        cy += dir.dy;
+      }
+      if (reachedBright) {
+        maxDist = Math.max(maxDist, dist);
+      }
+    }
+    if (maxDist > 0) {
+      outlineDists.push(maxDist);
+    }
+  }
+
+  // 4. 判定描边存在
+  const outlineRatio = outlineDists.length / boundaryPixels.length;
+  if (outlineRatio < OUTLINE_RATIO_THRESHOLD) {
+    return 0;
+  }
+
+  // 5. 测量描边宽度（中位数）
+  outlineDists.sort((a, b) => a - b);
+  return outlineDists[Math.floor(outlineDists.length / 2)];
+}
+
 export function extendRect(rect: Rect, maxX: number, maxY: number, extendSize: number): Rect {
   const x = Math.max(Math.floor(rect.x - extendSize), 0);
   const y = Math.max(Math.floor(rect.y - extendSize), 0);

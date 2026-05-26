@@ -367,3 +367,36 @@ estimateVerticalPreferredProfile 新增 originalContentWidth 参数，使用扩�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 12: stroke-aware-mask: 亮色描边检测
+
+**Date**: 2026-05-26
+**Task**: stroke-aware-mask: 亮色描边检测
+**Branch**: `worktree-stroke-aware-mask`
+
+### Summary
+
+在去字流程中增加亮色描边检测逻辑，减少白描边残留问题
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `938a400` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

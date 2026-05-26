@@ -336,3 +336,34 @@ estimateVerticalPreferredProfile 新增 originalContentWidth 参数，使用扩�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 11: 归档历史遗留任务
+
+**Date**: 2026-05-26
+**Task**: 归档历史遗留任务
+**Branch**: `master`
+
+### Summary
+
+归档两个已完成但未归档的任务：05-23-unify-debug-logs（统一日志功能）和05-26-process-mode（处理模式）。补写task.json后通过task.py archive归档到archive/2026-05/
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

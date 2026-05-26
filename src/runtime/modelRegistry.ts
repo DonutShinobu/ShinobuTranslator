@@ -61,26 +61,22 @@ export async function loadManifest(): Promise<ManifestData> {
 // ---------------------------------------------------------------------------
 
 function normalizeRuntime(value: unknown): RuntimeProvider[] {
+  if (isNode) {
+    return ['cuda', 'cpu'];
+  }
   if (!Array.isArray(value)) {
-    if (isNode) {
-      return ['cuda'];
-    }
     return ['webnn', 'wasm'];
   }
   const out: RuntimeProvider[] = [];
   for (const item of value) {
-    if (item === 'webnn' || item === 'webgpu' || item === 'wasm' || item === 'cuda' || item === 'cpu') {
+    if (item === 'webnn' || item === 'webgpu' || item === 'wasm') {
       if (!out.includes(item)) {
         out.push(item);
       }
     }
   }
   if (out.length === 0) {
-    if (isNode) {
-      out.push('cuda');
-    } else {
-      out.push('webnn', 'wasm');
-    }
+    out.push('webnn', 'wasm');
   }
   return out;
 }

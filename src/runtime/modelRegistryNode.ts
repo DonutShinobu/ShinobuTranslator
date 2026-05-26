@@ -28,31 +28,43 @@ type ManifestData = {
 
 let _projectRoot: string | null = null;
 
+function verifyRoot(dir: string, existsSync: (p: string) => boolean, path: any): boolean {
+  return existsSync(path.join(dir, 'public', 'models', 'models.json'));
+}
+
 async function getProjectRoot(): Promise<string> {
   if (_projectRoot) return _projectRoot;
   const path = await import('path');
   const fs = await import('fs');
 
-  // Strategy 1: __dirname (CJS or tsx with CJS shim)
-  if (typeof __dirname !== 'undefined') {
-    _projectRoot = path.resolve(__dirname, '..', '..');
-    return _projectRoot;
+  const candidates: string[] = [];
+
+  // Strategy 1: __dirname (CJS)
+  if (typeof __dirname !== 'undefined' && __dirname !== '.') {
+    candidates.push(path.resolve(__dirname, '..', '..'));
   }
 
   // Strategy 2: import.meta.url (ESM)
   try {
     const { fileURLToPath } = await import('url');
     const thisFile = fileURLToPath(import.meta.url);
-    _projectRoot = path.resolve(path.dirname(thisFile), '..', '..');
-    return _projectRoot;
+    candidates.push(path.resolve(path.dirname(thisFile), '..', '..'));
   } catch {
     // import.meta.url not available
+  }
+
+  // Verify file-based candidates
+  for (const dir of candidates) {
+    if (verifyRoot(dir, fs.existsSync, path)) {
+      _projectRoot = dir;
+      return dir;
+    }
   }
 
   // Strategy 3: walk up from process.cwd()
   let dir = process.cwd();
   for (let i = 0; i < 10; i++) {
-    if (fs.existsSync(path.join(dir, 'public', 'models', 'models.json'))) {
+    if (verifyRoot(dir, fs.existsSync, path)) {
       _projectRoot = dir;
       return dir;
     }

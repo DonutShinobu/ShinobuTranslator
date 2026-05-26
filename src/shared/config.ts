@@ -117,6 +117,7 @@ function createDefaultLlmProfiles(): Record<LlmProvider, LlmProviderProfile> {
 }
 
 export type OcrEngine = 'builtin' | 'paddleocr';
+export type ProcessMode = 'translate' | 'erase';
 
 export type ExtensionSettings = {
   sourceLang: string;
@@ -129,6 +130,7 @@ export type ExtensionSettings = {
   showTypesetDebug: boolean;
   showEraseDebug: boolean;
   ocrEngine: OcrEngine;
+  processMode: ProcessMode;
   enableDebugLog: boolean;
 };
 
@@ -143,6 +145,7 @@ export const defaultExtensionSettings: ExtensionSettings = {
   showTypesetDebug: false,
   showEraseDebug: false,
   ocrEngine: 'builtin',
+  processMode: 'translate',
   enableDebugLog: false,
 };
 
@@ -156,6 +159,11 @@ function sanitizeBoolean(value: unknown, fallback: boolean): boolean {
 function normalizeOcrEngine(value: unknown): OcrEngine {
   if (value === 'paddleocr') return 'paddleocr';
   return 'builtin';
+}
+
+function normalizeProcessMode(value: unknown): ProcessMode {
+  if (value === 'erase') return 'erase';
+  return 'translate';
 }
 
 function normalizeTargetLang(value: unknown): string {
@@ -292,6 +300,7 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     showTypesetDebug,
     showEraseDebug: sanitizeBoolean(raw.showEraseDebug, defaultExtensionSettings.showEraseDebug),
     ocrEngine: normalizeOcrEngine(raw.ocrEngine),
+    processMode: normalizeProcessMode(raw.processMode),
     enableDebugLog: sanitizeBoolean(raw.enableDebugLog, defaultExtensionSettings.enableDebugLog),
   };
 }
@@ -349,5 +358,6 @@ export function toPipelineConfig(settings: ExtensionSettings): PipelineConfig {
     eraseDebug: settings.showEraseDebug,
     collectDebugLog: settings.showTypesetDebug || settings.enableDebugLog,
     ocrEngine: settings.ocrEngine,
+    processMode: settings.processMode,
   };
 }

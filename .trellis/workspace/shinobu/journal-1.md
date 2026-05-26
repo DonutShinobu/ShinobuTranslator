@@ -270,3 +270,36 @@ estimateVerticalPreferredProfile 新增 originalContentWidth 参数，使用扩�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 9: 新增原文模式
+
+**Date**: 2026-05-26
+**Task**: 新增原文模式
+**Branch**: `master`
+
+### Summary
+
+新增原文模式(original mode)：跳过翻译阶段，将OCR原文原样排版到去字后的图片上。改动涉及类型扩展(ProcessMode)、orchestrator流水线分支、UI SegmentedControl新增选项。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `40409ae` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

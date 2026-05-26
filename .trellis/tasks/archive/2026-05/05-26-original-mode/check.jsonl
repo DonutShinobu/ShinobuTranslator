@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "验证UI改动符合前端规范"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "验证ProcessMode类型扩展符合类型安全规范"}

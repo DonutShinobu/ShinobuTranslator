@@ -1,4 +1,5 @@
 import type { TextRegion } from "../../types";
+import type { PlatformProvider, PipelineCanvas, PipelineImage } from "../../runtime/platform";
 
 export type Direction = "h" | "v";
 
@@ -199,21 +200,20 @@ export function generateTextDirection(regions: TextRegion[]): DirectedRegion[] {
 
 // --- Input building ---
 export function buildOcrInput(
-  image: HTMLImageElement,
+  image: PipelineImage,
   region: TextRegion,
   direction: Direction,
   inputHeight: number,
   inputWidth: number,
-  normalize: "zero_to_one" | "minus_one_to_one"
+  normalize: "zero_to_one" | "minus_one_to_one",
+  platform: PlatformProvider,
 ): OcrInputData {
-  const source = getTransformedRegion(image, region, direction, inputHeight);
+  const source = getTransformedRegion(image, region, direction, inputHeight, platform);
   const srcWidth = Math.max(1, source.width);
   const srcHeight = Math.max(1, source.height);
   const ratio = srcWidth / srcHeight;
   const resizedWidth = Math.max(1, Math.min(inputWidth, Math.round(ratio * inputHeight)));
-  const canvas = document.createElement("canvas");
-  canvas.width = inputWidth;
-  canvas.height = inputHeight;
+  const canvas = platform.createCanvas(inputWidth, inputHeight);
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) {
     throw new Error("OCR ONNX 预处理阶段无法创建画布上下文");
@@ -365,11 +365,12 @@ function sampleBilinear(
 }
 
 function warpPerspectiveRegion(
-  sourceCanvas: HTMLCanvasElement,
+  sourceCanvas: PipelineCanvas,
   localQuad: Array<{ x: number; y: number }>,
   outW: number,
-  outH: number
-): HTMLCanvasElement | null {
+  outH: number,
+  platform: PlatformProvider,
+): PipelineCanvas | null {
   const dstQuad = [
     { x: 0, y: 0 },
     { x: outW - 1, y: 0 },
@@ -390,9 +391,7 @@ function warpPerspectiveRegion(
     return null;
   }
   const srcData = srcCtx.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height).data;
-  const outCanvas = document.createElement("canvas");
-  outCanvas.width = outW;
-  outCanvas.height = outH;
+  const outCanvas = platform.createCanvas(outW, outH);
   const outCtx = outCanvas.getContext("2d");
   if (!outCtx) {
     return null;
@@ -421,10 +420,8 @@ function warpPerspectiveRegion(
   return outCanvas;
 }
 
-function rotate90CounterClockwise(source: HTMLCanvasElement): HTMLCanvasElement {
-  const canvas = document.createElement("canvas");
-  canvas.width = source.height;
-  canvas.height = source.width;
+function rotate90CounterClockwise(source: PipelineCanvas, platform: PlatformProvider): PipelineCanvas {
+  const canvas = platform.createCanvas(source.height, source.width);
   const ctx = canvas.getContext("2d");
   if (!ctx) {
     return source;
@@ -436,11 +433,12 @@ function rotate90CounterClockwise(source: HTMLCanvasElement): HTMLCanvasElement 
 }
 
 export function getTransformedRegion(
-  image: HTMLImageElement,
+  image: PipelineImage,
   region: TextRegion,
   direction: Direction,
-  textHeight: number
-): HTMLCanvasElement {
+  textHeight: number,
+  platform: PlatformProvider,
+): PipelineCanvas {
   const quad = sortQuadPoints(getRegionQuad(region));
   const imW = image.naturalWidth;
   const imH = image.naturalHeight;
@@ -451,9 +449,7 @@ export function getTransformedRegion(
   const cropW = Math.max(1, maxX - minX);
   const cropH = Math.max(1, maxY - minY);
 
-  const source = document.createElement("canvas");
-  source.width = cropW;
-  source.height = cropH;
+  const source = platform.createCanvas(cropW, cropH);
   const sctx = source.getContext("2d");
   if (!sctx) {
     throw new Error("OCR 透视裁切阶段无法创建画布上下文");
@@ -486,12 +482,12 @@ export function getTransformedRegion(
     outH = Math.max(2, Math.round(textHeight * ratio));
   }
 
-  const warped = warpPerspectiveRegion(source, localQuad, outW, outH);
+  const warped = warpPerspectiveRegion(source, localQuad, outW, outH, platform);
   if (!warped) {
     return source;
   }
   if (direction === "v") {
-    return rotate90CounterClockwise(warped);
+    return rotate90CounterClockwise(warped, platform);
   }
   return warped;
 }

@@ -25,7 +25,7 @@ export type RuntimeSelfCheckReport = {
   checks: RuntimeCheckItem[];
   summary: {
     ok: boolean;
-    effectiveRuntime: "webnn" | "wasm" | "none";
+    effectiveRuntime: "webnn" | "wasm" | "cuda" | "cpu" | "none";
     reason: string;
   };
 };

@@ -343,7 +343,7 @@ export class TranslatorCore {
         this.renderForKey(key);
       });
 
-      const translatedBlob = await canvasToBlob(artifacts.resultCanvas);
+      const translatedBlob = await canvasToBlob(artifacts.resultCanvas as HTMLCanvasElement);
       const translatedUrl = URL.createObjectURL(translatedBlob);
       if (state.translatedUrl) URL.revokeObjectURL(state.translatedUrl);
       if (state.debugOriginalUrl) {
@@ -351,7 +351,7 @@ export class TranslatorCore {
         state.debugOriginalUrl = undefined;
       }
       if (showTypesetDebug && artifacts.debugOriginalCanvas) {
-        const debugBlob = await canvasToBlob(artifacts.debugOriginalCanvas);
+        const debugBlob = await canvasToBlob(artifacts.debugOriginalCanvas as HTMLCanvasElement);
         state.debugOriginalUrl = URL.createObjectURL(debugBlob);
       }
       const sourceImageDataUrl = enableDebugLog
@@ -360,7 +360,7 @@ export class TranslatorCore {
             c.width = artifacts.original.naturalWidth;
             c.height = artifacts.original.naturalHeight;
             const ctx = c.getContext('2d');
-            if (ctx) ctx.drawImage(artifacts.original, 0, 0);
+            if (ctx) ctx.drawImage(artifacts.original as CanvasImageSource, 0, 0);
             return c.toDataURL('image/png');
           })()
         : state.originalUrl;
@@ -656,7 +656,7 @@ export class TranslatorCore {
         }
       });
 
-      const translatedBlob = await canvasToBlob(artifacts.resultCanvas);
+      const translatedBlob = await canvasToBlob(artifacts.resultCanvas as HTMLCanvasElement);
       const translatedUrl = URL.createObjectURL(translatedBlob);
       if (state.translatedUrl) URL.revokeObjectURL(state.translatedUrl);
       if (state.debugOriginalUrl) {
@@ -664,7 +664,7 @@ export class TranslatorCore {
         state.debugOriginalUrl = undefined;
       }
       if (showTypesetDebug && artifacts.debugOriginalCanvas) {
-        const debugBlob = await canvasToBlob(artifacts.debugOriginalCanvas);
+        const debugBlob = await canvasToBlob(artifacts.debugOriginalCanvas as HTMLCanvasElement);
         state.debugOriginalUrl = URL.createObjectURL(debugBlob);
       }
       const sourceImageDataUrl = enableDebugLog
@@ -673,7 +673,7 @@ export class TranslatorCore {
             c.width = artifacts.original.naturalWidth;
             c.height = artifacts.original.naturalHeight;
             const ctx = c.getContext('2d');
-            if (ctx) ctx.drawImage(artifacts.original, 0, 0);
+            if (ctx) ctx.drawImage(artifacts.original as CanvasImageSource, 0, 0);
             return c.toDataURL('image/png');
           })()
         : state.originalUrl;
@@ -866,7 +866,7 @@ export class TranslatorCore {
         renderUi(ui, state);
       });
 
-      const translatedBlob = await canvasToBlob(artifacts.resultCanvas);
+      const translatedBlob = await canvasToBlob(artifacts.resultCanvas as HTMLCanvasElement);
       const translatedUrl = URL.createObjectURL(translatedBlob);
       if (state.translatedUrl) URL.revokeObjectURL(state.translatedUrl);
       if (state.debugOriginalUrl) {
@@ -874,7 +874,7 @@ export class TranslatorCore {
         state.debugOriginalUrl = undefined;
       }
       if (showTypesetDebug && artifacts.debugOriginalCanvas) {
-        const debugBlob = await canvasToBlob(artifacts.debugOriginalCanvas);
+        const debugBlob = await canvasToBlob(artifacts.debugOriginalCanvas as HTMLCanvasElement);
         state.debugOriginalUrl = URL.createObjectURL(debugBlob);
       }
       const sourceImageDataUrl = enableDebugLog
@@ -883,7 +883,7 @@ export class TranslatorCore {
             c.width = artifacts.original.naturalWidth;
             c.height = artifacts.original.naturalHeight;
             const ctx = c.getContext('2d');
-            if (ctx) ctx.drawImage(artifacts.original, 0, 0);
+            if (ctx) ctx.drawImage(artifacts.original as CanvasImageSource, 0, 0);
             return c.toDataURL('image/png');
           })()
         : state.originalUrl;

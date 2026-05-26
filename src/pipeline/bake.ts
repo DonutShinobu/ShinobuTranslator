@@ -1,4 +1,5 @@
 import type { TextRegion } from "../types";
+import type { PlatformProvider, PipelineImage } from "../runtime/platform";
 import { imageToCanvas } from "./image";
 import { detectTextRegionsWithMask } from "./detect";
 import { runOcr } from "./ocr";
@@ -7,7 +8,7 @@ import { sortRegionsForRender } from "./readingOrder";
 import { drawTypeset } from "./typeset";
 import { detectBubbles, matchRegionsToBubbles } from "./bubbleDetect";
 
-type DetectedColumn = {
+export type DetectedColumn = {
   centerX: number;
   topY: number;
   bottomY: number;
@@ -17,7 +18,7 @@ type DetectedColumn = {
   charCount: number;
 };
 
-type BakeResultRegion = {
+export type BakeResultRegion = {
   id: string;
   direction: "v";
   box: { x: number; y: number; width: number; height: number };
@@ -40,19 +41,14 @@ type BakeResultRegion = {
   };
 };
 
-type BakeResult = {
+export type BakeResult = {
   imageWidth: number;
   imageHeight: number;
   regions: BakeResultRegion[];
 };
 
-function loadImage(dataUrl: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("Failed to load image from data URL"));
-    img.src = dataUrl;
-  });
+function loadImage(dataUrl: string, platform: PlatformProvider): Promise<PipelineImage> {
+  return platform.loadImage(dataUrl);
 }
 
 function centerInBox(
@@ -81,19 +77,19 @@ function toDetectedColumn(region: TextRegion): DetectedColumn {
   };
 }
 
-export async function shinobuRender(dataUrl: string): Promise<string> {
-  const image = await loadImage(dataUrl);
-  const canvas = imageToCanvas(image);
+export async function shinobuRender(dataUrl: string, platform: PlatformProvider): Promise<string> {
+  const image = await loadImage(dataUrl, platform);
+  const canvas = imageToCanvas(image, platform);
   const w = image.naturalWidth;
   const h = image.naturalHeight;
 
-  const detected = await detectTextRegionsWithMask(image);
-  const ocrResult = await runOcr(image, detected.regions);
+  const detected = await detectTextRegionsWithMask(image, platform);
+  const ocrResult = await runOcr(image, detected.regions, undefined, platform);
 
   let regions = mergeTextLines(ocrResult.regions, w, h);
-  regions = sortRegionsForRender(regions, canvas);
+  regions = sortRegionsForRender(regions, canvas, platform);
 
-  const bubbleResult = await detectBubbles(image);
+  const bubbleResult = await detectBubbles(image, platform);
   if (bubbleResult.bubbles.length > 0) {
     matchRegionsToBubbles(regions, bubbleResult.bubbles);
   }
@@ -105,27 +101,27 @@ export async function shinobuRender(dataUrl: string): Promise<string> {
 
   const typesetResult = await drawTypeset(canvas, regions, "ja", {
     renderText: true,
-  });
+  }, platform);
 
   return typesetResult.canvas.toDataURL("image/png");
 }
 
-export async function shinobuBake(dataUrl: string): Promise<BakeResult> {
-  const image = await loadImage(dataUrl);
-  const canvas = imageToCanvas(image);
+export async function shinobuBake(dataUrl: string, platform: PlatformProvider): Promise<BakeResult> {
+  const image = await loadImage(dataUrl, platform);
+  const canvas = imageToCanvas(image, platform);
   const w = image.naturalWidth;
   const h = image.naturalHeight;
 
-  const detected = await detectTextRegionsWithMask(image);
-  const ocrResult = await runOcr(image, detected.regions);
+  const detected = await detectTextRegionsWithMask(image, platform);
+  const ocrResult = await runOcr(image, detected.regions, undefined, platform);
 
   // Snapshot pre-merge regions for ground truth
   const preMergeRegions = ocrResult.regions.filter((r) => r.direction === "v");
 
   let regions = mergeTextLines(ocrResult.regions, w, h);
-  regions = sortRegionsForRender(regions, canvas);
+  regions = sortRegionsForRender(regions, canvas, platform);
 
-  const bubbleResultBake = await detectBubbles(image);
+  const bubbleResultBake = await detectBubbles(image, platform);
   if (bubbleResultBake.bubbles.length > 0) {
     matchRegionsToBubbles(regions, bubbleResultBake.bubbles);
   }
@@ -138,7 +134,7 @@ export async function shinobuBake(dataUrl: string): Promise<BakeResult> {
     debugMode: true,
     renderText: false,
     collectDebugLog: true,
-  });
+  }, platform);
 
   const debugRegions = typesetResult.debugLog?.regions ?? [];
 

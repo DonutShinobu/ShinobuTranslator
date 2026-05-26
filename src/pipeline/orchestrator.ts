@@ -8,6 +8,8 @@ import type {
   TranslationDebugInfo,
   MaskDebugLayers,
 } from "../types";
+import type { PlatformProvider, PipelineCanvas } from "../runtime/platform";
+import { browserPlatform } from "../runtime/browserPlatform";
 import { fileToImage, imageToCanvas } from "./image";
 import { detectTextRegionsWithMask } from "./detect";
 import { runOcr } from "./ocr";
@@ -25,17 +27,16 @@ import type { WorkerSessionHandle } from "../runtime/onnxWorkerTypes";
 type ProgressCallback = (progress: PipelineProgress) => void;
 
 function buildEraseDebugCanvas(
-  originalCanvas: HTMLCanvasElement,
+  originalCanvas: PipelineCanvas,
   debugLayers: MaskDebugLayers,
-  baseCanvas?: HTMLCanvasElement
-): HTMLCanvasElement {
+  platform: PlatformProvider,
+  baseCanvas?: PipelineCanvas
+): PipelineCanvas {
   const { refinedMask, perRegionDilated, globalDilated, scaledWidth, scaledHeight } = debugLayers;
   const width = originalCanvas.width;
   const height = originalCanvas.height;
 
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
+  const canvas = platform.createCanvas(width, height);
   const ctx = canvas.getContext("2d");
   if (!ctx) {
     return canvas;
@@ -43,10 +44,8 @@ function buildEraseDebugCanvas(
   ctx.drawImage(baseCanvas ?? originalCanvas, 0, 0);
 
   // Upscale each layer mask to original resolution via intermediate canvas
-  const toScaledCanvas = (mask: Uint8Array): HTMLCanvasElement => {
-    const src = document.createElement("canvas");
-    src.width = scaledWidth;
-    src.height = scaledHeight;
+  const toScaledCanvas = (mask: Uint8Array): PipelineCanvas => {
+    const src = platform.createCanvas(scaledWidth, scaledHeight);
     const srcCtx = src.getContext("2d");
     if (!srcCtx) {
       return src;
@@ -61,9 +60,7 @@ function buildEraseDebugCanvas(
     }
     srcCtx.putImageData(imageData, 0, 0);
 
-    const dst = document.createElement("canvas");
-    dst.width = width;
-    dst.height = height;
+    const dst = platform.createCanvas(width, height);
     const dstCtx = dst.getContext("2d");
     if (!dstCtx) {
       return dst;
@@ -206,25 +203,27 @@ export async function runPipeline(
   config: PipelineConfig,
   onProgress: ProgressCallback
 ): Promise<PipelineArtifacts> {
+  const platform: PlatformProvider = browserPlatform;
+
   report(onProgress, "load", "加载图片");
-  const image = await fileToImage(file);
-  const originalCanvas = imageToCanvas(image);
+  const image = await fileToImage(file, platform);
+  const originalCanvas = imageToCanvas(image, platform);
 
   const runtimeStages: RuntimeStageStatus[] = [];
 
   let latestRegions: PipelineArtifacts["detectedRegions"] = [];
-  let detectionCanvas: HTMLCanvasElement = originalCanvas;
-  let ocrCanvas: HTMLCanvasElement = originalCanvas;
-  let segmentationCanvas: HTMLCanvasElement | null = null;
-  let cleanedCanvas: HTMLCanvasElement = originalCanvas;
-  let resultCanvas: HTMLCanvasElement = originalCanvas;
-  let debugOriginalCanvas: HTMLCanvasElement | null = null;
-  let eraseDebugCanvas: HTMLCanvasElement | null = null;
+  let detectionCanvas: PipelineCanvas = originalCanvas;
+  let ocrCanvas: PipelineCanvas = originalCanvas;
+  let segmentationCanvas: PipelineCanvas | null = null;
+  let cleanedCanvas: PipelineCanvas = originalCanvas;
+  let resultCanvas: PipelineCanvas = originalCanvas;
+  let debugOriginalCanvas: PipelineCanvas | null = null;
+  let eraseDebugCanvas: PipelineCanvas | null = null;
   let typesetDebugLog: PipelineTypesetDebugLog | null = null;
   let translationDebug: TranslationDebugInfo | null = null;
   let ocrDebug: PipelineArtifacts['ocrDebug'] = null;
-  let detectionMaskCanvas: HTMLCanvasElement | null = null;
-  let refinedMaskCanvas: HTMLCanvasElement | null = null;
+  let detectionMaskCanvas: PipelineCanvas | null = null;
+  let refinedMaskCanvas: PipelineCanvas | null = null;
   let debugLayers: MaskDebugLayers | null = null;
   const stageTimings: StageTiming[] = [];
 
@@ -270,11 +269,11 @@ export async function runPipeline(
   try {
     startOcrRuntimeProbe();
     const t0 = performance.now();
-    const detected = await detectTextRegionsWithMask(image);
+    const detected = await detectTextRegionsWithMask(image, platform);
     latestRegions = detected.regions;
     detectionMaskCanvas = detected.rawMaskCanvas;
     segmentationCanvas = detected.rawMaskCanvas;
-    detectionCanvas = drawRegions(originalCanvas, detected.regions, "文本检测", () => "文本框");
+    detectionCanvas = drawRegions(originalCanvas, detected.regions, "文本检测", () => "文本框", platform);
     ocrCanvas = detectionCanvas;
     cleanedCanvas = ocrCanvas;
     resultCanvas = cleanedCanvas;
@@ -299,7 +298,7 @@ export async function runPipeline(
   report(onProgress, "bubble", "气泡检测");
   try {
     const t0 = performance.now();
-    const bubbleResult = await detectBubbles(image);
+    const bubbleResult = await detectBubbles(image, platform);
     detectedBubbles = bubbleResult.bubbles;
     stageTimings.push({ stage: "bubble", label: "气泡检测", durationMs: performance.now() - t0 });
   } catch (error) {
@@ -311,10 +310,10 @@ export async function runPipeline(
     const t0 = performance.now();
     runtimeStages[1] = await startOcrRuntimeProbe();
     startInpaintRuntimeProbe();
-    const ocrResult = await runOcr(image, latestRegions, config.ocrEngine);
+    const ocrResult = await runOcr(image, latestRegions, config.ocrEngine, platform);
     latestRegions = ocrResult.regions;
     ocrDebug = ocrResult.debug;
-    ocrCanvas = drawRegions(originalCanvas, ocrResult.regions, "OCR 识别", (region) => region.sourceText);
+    ocrCanvas = drawRegions(originalCanvas, ocrResult.regions, "OCR 识别", (region) => region.sourceText, platform);
     cleanedCanvas = ocrCanvas;
     resultCanvas = cleanedCanvas;
     if (ocrResult.actualProvider !== runtimeStages[1].provider) {
@@ -357,7 +356,7 @@ export async function runPipeline(
   report(onProgress, "order", "文本顺序排序");
   try {
     const t0 = performance.now();
-    latestRegions = sortRegionsForRender(latestRegions, originalCanvas);
+    latestRegions = sortRegionsForRender(latestRegions, originalCanvas, platform);
     stageTimings.push({ stage: "order", label: "文本顺序排序", durationMs: performance.now() - t0 });
   } catch (error) {
     throw new PipelineStageError("顺序排序", toErrorDetail(error), buildArtifacts());
@@ -442,7 +441,7 @@ export async function runPipeline(
         }
       })();
 
-  const eraseTask = (async (): Promise<HTMLCanvasElement> => {
+  const eraseTask = (async (): Promise<PipelineCanvas> => {
     if (!detectionMaskCanvas) {
       throw new PipelineStageError("\u906e\u7f69\u7ec6\u5316", "\u68c0\u6d4b\u9636\u6bb5\u672a\u63d0\u4f9b\u539f\u59cb mask\uff0c\u5df2\u7981\u7528\u6587\u672c\u6846\u906e\u7f69\u56de\u9000", buildArtifacts());
     }
@@ -452,14 +451,14 @@ export async function runPipeline(
     try {
       const t0 = performance.now();
       const regionsWithText = orderedRegions.filter(r => r.sourceText.trim() !== '');
-      const refineResult = refineTextMask(originalCanvas, regionsWithText, detectionMaskCanvas, {
+      const refineResult = refineTextMask(originalCanvas, regionsWithText, detectionMaskCanvas, platform, {
         method: "fit_text",
         kernelSize: 3
       }, config.eraseDebug);
       refinedMaskCanvas = refineResult.refinedMaskCanvas;
       if (refineResult.debugLayers) {
         debugLayers = refineResult.debugLayers;
-        eraseDebugCanvas = buildEraseDebugCanvas(originalCanvas, refineResult.debugLayers, undefined);
+        eraseDebugCanvas = buildEraseDebugCanvas(originalCanvas, refineResult.debugLayers, platform, undefined);
       }
       maskRefineTiming = { stage: "mask_refine", label: "\u7ec6\u5316\u53bb\u5b57\u906e\u7f69", durationMs: performance.now() - t0 };
     } catch (error) {
@@ -473,7 +472,7 @@ export async function runPipeline(
       if (!refinedMaskCanvas) {
         throw new Error("\u53bb\u5b57\u524d\u7f3a\u5c11 refined mask\uff0c\u5df2\u7981\u7528\u6587\u672c\u6846\u906e\u7f69\u56de\u9000");
       }
-      const inpaintResult = await runInpaint(originalCanvas, refinedMaskCanvas);
+      const inpaintResult = await runInpaint(originalCanvas, refinedMaskCanvas, platform);
       inpaintTiming = { stage: "inpaint", label: "\u53bb\u5b57", durationMs: performance.now() - t0 };
       if (inpaintResult.actualProvider !== runtimeStages[2].provider) {
         const providerLabel = inpaintResult.actualProvider === "webnn"
@@ -517,7 +516,7 @@ export async function runPipeline(
 
   if (config.processMode === 'erase') {
     if (config.eraseDebug && debugLayers) {
-      resultCanvas = buildEraseDebugCanvas(originalCanvas, debugLayers, cleanedCanvas);
+      resultCanvas = buildEraseDebugCanvas(originalCanvas, debugLayers, platform, cleanedCanvas);
     } else {
       resultCanvas = cleanedCanvas;
     }
@@ -530,7 +529,7 @@ export async function runPipeline(
         debugMode: config.typesetDebug,
         renderText: true,
         collectDebugLog: false,
-      });
+      }, platform);
       resultCanvas = typesetResult.canvas;
       if (config.eraseDebug && eraseDebugCanvas) {
         resultCanvas = eraseDebugCanvas;
@@ -540,7 +539,7 @@ export async function runPipeline(
           debugMode: true,
           renderText: false,
           collectDebugLog: true,
-        });
+        }, platform);
         debugOriginalCanvas = debugOriginalTypeset.canvas;
         typesetDebugLog = debugOriginalTypeset.debugLog;
       } else {

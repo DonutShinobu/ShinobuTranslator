@@ -68,7 +68,13 @@ src/
 │   └── onnx-worker.ts       # ONNX inference Worker entry (comlink + onnxruntime-web)
 ├── runtime/
 │   ├── onnx.ts                 # ONNX Runtime session management (WebNN/WebGPU/WASM)
-│   ├── modelRegistry.ts        # Model manifest loading + session caching
+│   ├── onnxBridge.ts           # Conditional ONNX import entry (isNode → onnxNodeBridge, else onnxWorkerBridge)
+│   ├── onnxNodeBridge.ts       # Node ONNX bridge (onnxruntime-node + CUDA EP, in-process sessions)
+│   ├── onnxruntime-node.d.ts   # Type declaration shim for onnxruntime-node
+│   ├── modelRegistry.ts        # Model manifest loading + session caching (Node: fs, Browser: fetch)
+│   ├── platform.ts             # PlatformProvider structural types (PipelineCanvas, PipelineImage, etc.)
+│   ├── browserPlatform.ts      # Browser PlatformProvider (DOM API implementation)
+│   ├── nodePlatform.ts         # Node PlatformProvider (node-canvas implementation)
 │   └── selfCheck.ts            # Runtime self-diagnostic checks
 ├── shared/
 │   ├── utils.ts                # Global shared utilities (toErrorMessage)

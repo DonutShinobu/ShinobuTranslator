@@ -1,13 +1,14 @@
 import type { TextRegion } from "../../types";
+import type { PlatformProvider, PipelineImage } from "../../runtime/platform";
 import { detectByOnnx, type DetectOutput } from "./onnxDetect";
 import { detectByTesseract, detectByHeuristic } from "./heuristicDetect";
 import { toErrorMessage } from "../../shared/utils";
 
 export type { DetectOutput };
 
-export async function detectTextRegionsWithMask(image: HTMLImageElement): Promise<DetectOutput> {
+export async function detectTextRegionsWithMask(image: PipelineImage, platform: PlatformProvider): Promise<DetectOutput> {
   try {
-    const onnxResult = await detectByOnnx(image);
+    const onnxResult = await detectByOnnx(image, platform);
     if (onnxResult.regions.length > 0) {
       return onnxResult;
     }
@@ -20,7 +21,7 @@ export async function detectTextRegionsWithMask(image: HTMLImageElement): Promis
   }
 
   try {
-    const tessRegions = await detectByTesseract(image);
+    const tessRegions = await detectByTesseract(image, platform);
     if (tessRegions.length > 0) {
       return {
         regions: tessRegions,
@@ -31,7 +32,7 @@ export async function detectTextRegionsWithMask(image: HTMLImageElement): Promis
     console.warn(`[detect] tesseract fallback unavailable, switch to heuristic: ${toErrorMessage(error)}`);
   }
 
-  const heuristicRegions = await detectByHeuristic(image);
+  const heuristicRegions = await detectByHeuristic(image, platform);
   if (heuristicRegions.length === 0) {
     throw new Error("未找到文本");
   }
@@ -41,7 +42,7 @@ export async function detectTextRegionsWithMask(image: HTMLImageElement): Promis
   };
 }
 
-export async function detectTextRegions(image: HTMLImageElement): Promise<TextRegion[]> {
-  const result = await detectTextRegionsWithMask(image);
+export async function detectTextRegions(image: PipelineImage, platform: PlatformProvider): Promise<TextRegion[]> {
+  const result = await detectTextRegionsWithMask(image, platform);
   return result.regions;
 }

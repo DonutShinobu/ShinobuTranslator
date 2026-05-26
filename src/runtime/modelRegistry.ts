@@ -1,7 +1,7 @@
-import { resolveAssetUrl } from '../shared/assetUrl';
-import { createSession as workerCreateSession } from './onnxWorkerBridge';
 import type { RuntimeProvider } from './onnxTypes';
 import type { WorkerSessionHandle } from './onnxWorkerTypes';
+import { createSession } from './onnxBridge';
+import { resolveAssetUrl } from '../shared/assetUrl';
 
 type ManifestModel = {
   name: string;
@@ -21,24 +21,66 @@ type ManifestData = {
   models: Record<string, ManifestModel>;
 };
 
-const manifestUrl = resolveAssetUrl('models/models.json');
+// ---------------------------------------------------------------------------
+// Environment detection — Node vs Browser
+// ---------------------------------------------------------------------------
+
+const isNode = typeof process !== 'undefined' && !!process.versions?.node;
+
+// ---------------------------------------------------------------------------
+// Manifest loading — Node uses fs (dynamic import), Browser uses fetch
+// ---------------------------------------------------------------------------
+
 let manifestCache: ManifestData | null = null;
-const sessionCache = new Map<string, WorkerSessionHandle>();
+
+async function loadManifestNode(): Promise<ManifestData> {
+  const { loadManifestNode: load } = await import('./modelRegistryNode');
+  return load();
+}
+
+async function loadManifestBrowser(): Promise<ManifestData> {
+  const manifestUrl = resolveAssetUrl('models/models.json');
+  const response = await fetch(manifestUrl, { method: 'GET' });
+  if (!response.ok) {
+    throw new Error(`模型清单读取失败: ${response.status}`);
+  }
+  return (await response.json()) as ManifestData;
+}
+
+export async function loadManifest(): Promise<ManifestData> {
+  if (manifestCache) {
+    return manifestCache;
+  }
+  const data = isNode ? await loadManifestNode() : await loadManifestBrowser();
+  manifestCache = data;
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Model URL resolution — Node uses file path, Browser uses URL
+// ---------------------------------------------------------------------------
 
 function normalizeRuntime(value: unknown): RuntimeProvider[] {
   if (!Array.isArray(value)) {
+    if (isNode) {
+      return ['cuda'];
+    }
     return ['webnn', 'wasm'];
   }
   const out: RuntimeProvider[] = [];
   for (const item of value) {
-    if (item === 'webnn' || item === 'webgpu' || item === 'wasm') {
+    if (item === 'webnn' || item === 'webgpu' || item === 'wasm' || item === 'cuda' || item === 'cpu') {
       if (!out.includes(item)) {
         out.push(item);
       }
     }
   }
   if (out.length === 0) {
-    out.push('webnn', 'wasm');
+    if (isNode) {
+      out.push('cuda');
+    } else {
+      out.push('webnn', 'wasm');
+    }
   }
   return out;
 }
@@ -48,6 +90,18 @@ function isAbsoluteUrl(url: string): boolean {
 }
 
 function resolveModelAssetUrl(url: string): string {
+  if (isNode) {
+    // In Node, model URLs are resolved to local file paths later
+    // by resolveModelFilePath in modelRegistryNode.ts
+    if (url.startsWith('/') && !isAbsoluteUrl(url)) {
+      return url;
+    }
+    if (isAbsoluteUrl(url)) {
+      return url;
+    }
+    return url;
+  }
+  // Browser: resolve as URL
   if (isAbsoluteUrl(url)) {
     return url;
   }
@@ -57,20 +111,13 @@ function resolveModelAssetUrl(url: string): string {
   if (url.startsWith('/')) {
     return resolveAssetUrl(url);
   }
+  const manifestUrl = resolveAssetUrl('models/models.json');
   return new URL(url, manifestUrl).toString();
 }
 
-export async function loadManifest(): Promise<ManifestData> {
-  if (manifestCache) {
-    return manifestCache;
-  }
-  const response = await fetch(manifestUrl, { method: 'GET' });
-  if (!response.ok) {
-    throw new Error(`模型清单读取失败: ${response.status}`);
-  }
-  const data = (await response.json()) as ManifestData;
-  manifestCache = data;
-  return data;
+async function resolveModelFilePath(modelUrl: string): Promise<string> {
+  const { resolveModelFilePath: resolve } = await import('./modelRegistryNode');
+  return resolve(modelUrl);
 }
 
 export async function getModel(name: 'detector' | 'ocr' | 'inpaint' | 'bubble' | 'paddleocr_rec'): Promise<ManifestModel> {
@@ -79,26 +126,34 @@ export async function getModel(name: 'detector' | 'ocr' | 'inpaint' | 'bubble' |
   if (!model) {
     throw new Error(`manifest 缺少模型定义: ${name}`);
   }
+  const resolvedUrl = resolveModelAssetUrl(model.url);
+  const finalUrl = isNode ? await resolveModelFilePath(resolvedUrl) : resolvedUrl;
   return {
     ...model,
-    url: resolveModelAssetUrl(model.url),
-    dictUrl: model.dictUrl ? resolveModelAssetUrl(model.dictUrl) : undefined,
+    url: finalUrl,
+    dictUrl: model.dictUrl ? (isNode ? await resolveModelFilePath(resolveModelAssetUrl(model.dictUrl)) : resolveModelAssetUrl(model.dictUrl)) : undefined,
     runtime: normalizeRuntime(model.runtime),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Session cache
+// ---------------------------------------------------------------------------
+
+const sessionCache = new Map<string, WorkerSessionHandle>();
 
 export async function getModelSession(
   name: 'detector' | 'ocr' | 'inpaint' | 'bubble' | 'paddleocr_rec',
   preferred?: RuntimeProvider[]
 ): Promise<WorkerSessionHandle> {
   const model = await getModel(name);
-  const runtime = preferred && preferred.length > 0 ? preferred : model.runtime ?? ['wasm'];
+  const runtime = preferred && preferred.length > 0 ? preferred : model.runtime ?? (isNode ? ['cuda'] : ['wasm']);
   const cacheKey = `${name}:${runtime.join(',')}`;
   const cached = sessionCache.get(cacheKey);
   if (cached) {
     return cached;
   }
-  const handle = await workerCreateSession(name, model.url, runtime);
+  const handle = await createSession(name, model.url, runtime);
   sessionCache.set(cacheKey, handle);
   return handle;
 }

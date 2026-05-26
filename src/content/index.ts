@@ -1,4 +1,5 @@
 import { shinobuBake, shinobuRender } from '../pipeline/bake';
+import { browserPlatform } from '../runtime/browserPlatform';
 import { twitterAdapter } from './adapters/twitter';
 import { pixivAdapter } from './adapters/pixiv';
 import type { SiteAdapter } from './core/types';
@@ -11,14 +12,14 @@ import { toErrorMessage } from '../shared/utils';
 window.addEventListener("message", async (event) => {
   if (event.data?.type === "__shinobu_bake_request__") {
     try {
-      const result = await shinobuBake(event.data.dataUrl);
+      const result = await shinobuBake(event.data.dataUrl, browserPlatform);
       window.postMessage({ type: "__shinobu_bake_response__", result }, "*");
     } catch (e: any) {
       window.postMessage({ type: "__shinobu_bake_response__", error: e.message }, "*");
     }
   } else if (event.data?.type === "__shinobu_render_request__") {
     try {
-      const result = await shinobuRender(event.data.dataUrl);
+      const result = await shinobuRender(event.data.dataUrl, browserPlatform);
       window.postMessage({ type: "__shinobu_render_response__", result }, "*");
     } catch (e: any) {
       window.postMessage({ type: "__shinobu_render_response__", error: e.message }, "*");

@@ -1,4 +1,5 @@
 import type { TextRegion } from "../../types";
+import type { PipelineRenderingContext, PipelineImageData } from "../../runtime/platform";
 import { clamp } from "../utils";
 import {
   CJK_H2V,
@@ -172,15 +173,15 @@ export function resolveInitialFontSize(region: TextRegion): number {
  * Prefer TextMetrics actual bounding boxes; fall back to width/fontSize.
  */
 export function measureGlyphBox(
-  ctx: CanvasRenderingContext2D,
+  ctx: PipelineRenderingContext,
   ch: string,
   fallbackFontSize: number,
 ): { width: number; height: number } {
   const metrics = ctx.measureText(ch);
-  const left = Number.isFinite(metrics.actualBoundingBoxLeft) ? Math.abs(metrics.actualBoundingBoxLeft) : 0;
-  const right = Number.isFinite(metrics.actualBoundingBoxRight) ? Math.abs(metrics.actualBoundingBoxRight) : 0;
-  const ascent = Number.isFinite(metrics.actualBoundingBoxAscent) ? Math.abs(metrics.actualBoundingBoxAscent) : 0;
-  const descent = Number.isFinite(metrics.actualBoundingBoxDescent) ? Math.abs(metrics.actualBoundingBoxDescent) : 0;
+  const left = Number.isFinite(metrics.actualBoundingBoxLeft) ? Math.abs(metrics.actualBoundingBoxLeft!) : 0;
+  const right = Number.isFinite(metrics.actualBoundingBoxRight) ? Math.abs(metrics.actualBoundingBoxRight!) : 0;
+  const ascent = Number.isFinite(metrics.actualBoundingBoxAscent) ? Math.abs(metrics.actualBoundingBoxAscent!) : 0;
+  const descent = Number.isFinite(metrics.actualBoundingBoxDescent) ? Math.abs(metrics.actualBoundingBoxDescent!) : 0;
 
   let width = left + right;
   let height = ascent + descent;
@@ -204,11 +205,11 @@ export function metricAbs(value: number): number {
  * In browsers we do not have FreeType's vertAdvance, so use font box / em box.
  */
 export function resolveFontVerticalAdvance(
-  ctx: CanvasRenderingContext2D,
+  ctx: PipelineRenderingContext,
   fontSize: number,
 ): number {
   const metrics = ctx.measureText('国');
-  const fontBox = metricAbs(metrics.fontBoundingBoxAscent) + metricAbs(metrics.fontBoundingBoxDescent);
+  const fontBox = metricAbs(metrics.fontBoundingBoxAscent ?? 0) + metricAbs(metrics.fontBoundingBoxDescent ?? 0);
   const resolved = fontBox > 0
     ? fontBox
     : fontSize;
@@ -220,15 +221,15 @@ export function resolveFontVerticalAdvance(
  * Keeps spacing stable while allowing smaller visual glyphs to consume less height.
  */
 export function resolveGlyphVerticalAdvance(
-  ctx: CanvasRenderingContext2D,
+  ctx: PipelineRenderingContext,
   ch: string,
   fontSize: number,
   defaultAdvanceY: number,
   advanceScale = 1,
 ): number {
   const metrics = ctx.measureText(ch);
-  const fontBox = metricAbs(metrics.fontBoundingBoxAscent) + metricAbs(metrics.fontBoundingBoxDescent);
-  const actualBox = metricAbs(metrics.actualBoundingBoxAscent) + metricAbs(metrics.actualBoundingBoxDescent);
+  const fontBox = metricAbs(metrics.fontBoundingBoxAscent ?? 0) + metricAbs(metrics.fontBoundingBoxDescent ?? 0);
+  const actualBox = metricAbs(metrics.actualBoundingBoxAscent ?? 0) + metricAbs(metrics.actualBoundingBoxDescent ?? 0);
   const baseAdvance = fontBox > 0
     ? fontBox
     : defaultAdvanceY;
@@ -243,7 +244,7 @@ export function resolveGlyphVerticalAdvance(
  * Resolve per-cell metrics for vertical layout based on real glyph bounds.
  */
 export function resolveVerticalCellMetrics(
-  ctx: CanvasRenderingContext2D,
+  ctx: PipelineRenderingContext,
   text: string,
   fontSize: number,
   sw: number,
@@ -282,7 +283,7 @@ export function computeVerticalTotalWidth(columnCount: number, metrics: Vertical
  * Applies CJK_H2V punctuation substitution and kinsoku rules.
  */
 export function calcVertical(
-  ctx: CanvasRenderingContext2D,
+  ctx: PipelineRenderingContext,
   text: string,
   maxHeight: number,
   fontSize: number,
@@ -355,7 +356,7 @@ export function calcVertical(
 }
 
 export function calcVerticalFromColumns(
-  ctx: CanvasRenderingContext2D,
+  ctx: PipelineRenderingContext,
   preferredColumns: string[],
   preferredColumnSources: ColumnSegmentSource[] | undefined,
   maxHeight: number,
@@ -489,7 +490,7 @@ function hasLatinWords(text: string): boolean {
  * Measure horizontal text width with per-char letterSpacing.
  */
 function measureHorizontalTextWidth(
-  ctx: CanvasRenderingContext2D,
+  ctx: PipelineRenderingContext,
   text: string,
   letterSpacing: number,
 ): number {
@@ -516,7 +517,7 @@ function measureHorizontalTextWidth(
  * CJK character-level horizontal line breaking with kinsoku shori.
  */
 function calcHorizontalCjkSegment(
-  ctx: CanvasRenderingContext2D,
+  ctx: PipelineRenderingContext,
   text: string,
   maxWidth: number,
   letterSpacing: number,
@@ -572,7 +573,7 @@ function calcHorizontalCjkSegment(
  * Latin word-level horizontal line breaking. Falls back to character-level for long words.
  */
 function calcHorizontalLatinSegment(
-  ctx: CanvasRenderingContext2D,
+  ctx: PipelineRenderingContext,
   text: string,
   maxWidth: number,
   letterSpacing: number,
@@ -626,7 +627,7 @@ function calcHorizontalLatinSegment(
  * Dispatches to CJK or Latin line-breaking depending on content.
  */
 function wrapHorizontalSegment(
-  ctx: CanvasRenderingContext2D,
+  ctx: PipelineRenderingContext,
   text: string,
   maxWidth: number,
   letterSpacing: number,
@@ -649,7 +650,7 @@ function wrapHorizontalSegment(
  * Tracks break reasons, segment IDs, and segment sources.
  */
 export function calcHorizontalFromLines(
-  ctx: CanvasRenderingContext2D,
+  ctx: PipelineRenderingContext,
   preferredLines: PreferredColumnSegment[],
   maxWidth: number,
   fontSize: number,
@@ -770,7 +771,7 @@ export function resolveOffscreenGuardPadding(fontSize: number): number {
 }
 
 export function resolveVerticalRenderPadding(
-  ctx: CanvasRenderingContext2D,
+  ctx: PipelineRenderingContext,
   columns: VColumn[],
   fontSize: number,
   metrics: VerticalCellMetrics,
@@ -788,10 +789,10 @@ export function resolveVerticalRenderPadding(
   for (const col of columns) {
     for (const glyph of col.glyphs) {
       const measured = ctx.measureText(glyph.ch);
-      const left = metricAbs(measured.actualBoundingBoxLeft);
-      const right = metricAbs(measured.actualBoundingBoxRight);
-      const ascent = metricAbs(measured.actualBoundingBoxAscent);
-      const descent = metricAbs(measured.actualBoundingBoxDescent);
+      const left = metricAbs(measured.actualBoundingBoxLeft ?? 0);
+      const right = metricAbs(measured.actualBoundingBoxRight ?? 0);
+      const ascent = metricAbs(measured.actualBoundingBoxAscent ?? 0);
+      const descent = metricAbs(measured.actualBoundingBoxDescent ?? 0);
 
       const xOverflow = Math.max(0, left - halfColWidth, right - halfColWidth);
       const halfAdvance = glyph.advanceY / 2;
@@ -833,7 +834,7 @@ export function buildVerticalDebugColumnBoxes(
   metrics: VerticalCellMetrics,
   alignment: "left" | "center" | "right",
   padding: number,
-  ctx?: CanvasRenderingContext2D,
+  ctx?: PipelineRenderingContext,
   fontSize?: number,
 ): DebugColumnBox[] {
   if (columns.length === 0) {
@@ -892,7 +893,7 @@ export function resolveAlignment(
  * Find the largest font size for vertical text that fits within content area.
  */
 export function buildVerticalLayout(
-  ctx: CanvasRenderingContext2D,
+  ctx: PipelineRenderingContext,
   text: string,
   contentHeight: number,
   fontSize: number,
@@ -960,7 +961,7 @@ export function hasMinorOverflowWrap(layout: VerticalLayoutResult): boolean {
 }
 
 export function tryShrinkVerticalForMinorOverflow(
-  ctx: CanvasRenderingContext2D,
+  ctx: PipelineRenderingContext,
   text: string,
   contentHeight: number,
   initialFontSize: number,
@@ -998,13 +999,13 @@ export function tryShrinkVerticalForMinorOverflow(
  * progressively smaller font sizes until the text fits in fewer lines.
  */
 export function tryShrinkHorizontalForMinorOverflow(
-  ctx: CanvasRenderingContext2D,
+  ctx: PipelineRenderingContext,
   text: string,
   contentWidth: number,
   initialFontSize: number,
   fontFamily: string,
   baseLines: HLine[],
-  calcLines: (ctx: CanvasRenderingContext2D, text: string, maxWidth: number, fontSize: number) => HLine[],
+  calcLines: (ctx: PipelineRenderingContext, text: string, maxWidth: number, fontSize: number) => HLine[],
 ): { fontSize: number; lines: HLine[] } {
   // Check for minor overflow: last line has only 1-2 characters
   if (baseLines.length < 2) {
@@ -1036,7 +1037,7 @@ export function tryShrinkHorizontalForMinorOverflow(
 }
 
 export function estimateVerticalPreferredProfile(
-  ctx: CanvasRenderingContext2D,
+  ctx: PipelineRenderingContext,
   region: TextRegion,
   text: string,
   contentWidth: number,
@@ -1085,7 +1086,7 @@ export function estimateVerticalPreferredProfile(
 }
 
 export function estimateHorizontalPreferredProfile(
-  ctx: CanvasRenderingContext2D,
+  ctx: PipelineRenderingContext,
   region: TextRegion,
   text: string,
   contentWidth: number,
@@ -1194,7 +1195,7 @@ export function resolveHorizontalContentHeight(contentHeight: number, fontSize: 
  * If no bubble mask is available, returns `contentHeight` unchanged.
  */
 export function resolveHorizontalMaskHeight(
-  bubbleMask: ImageData | undefined,
+  bubbleMask: PipelineImageData | undefined,
   region: TextRegion,
   contentHeight: number,
   fontSize: number,
@@ -1223,17 +1224,17 @@ export function resolveHorizontalMaskHeight(
 }
 
 export function countNeededRowsAtFontSize(
-  measureCtx: CanvasRenderingContext2D,
+  measureCtx: PipelineRenderingContext,
   text: string,
   contentWidth: number,
   fontSize: number,
-  calcHorizontalLineCount: (ctx: CanvasRenderingContext2D, text: string, maxWidth: number, fontSize: number) => number,
+  calcHorizontalLineCount: (ctx: PipelineRenderingContext, text: string, maxWidth: number, fontSize: number) => number,
 ): number {
   return Math.max(1, calcHorizontalLineCount(measureCtx, text, contentWidth, fontSize));
 }
 
 export function countNeededColumnsAtFontSize(
-  measureCtx: CanvasRenderingContext2D,
+  measureCtx: PipelineRenderingContext,
   text: string,
   contentHeight: number,
   fontSize: number,
@@ -1253,7 +1254,7 @@ export function countNeededColumnsAtFontSize(
 }
 
 export function queryMaskMaxY(
-  mask: ImageData,
+  mask: PipelineImageData,
   xStart: number,
   xEnd: number,
   yStart: number,
@@ -1287,9 +1288,9 @@ export function queryMaskMaxY(
 export function expandRegionBeforeRender(
   region: TextRegion,
   text: string,
-  measureCtx: CanvasRenderingContext2D,
+  measureCtx: PipelineRenderingContext,
   fontFamily: string,
-  calcHorizontalLineCount: (ctx: CanvasRenderingContext2D, text: string, maxWidth: number, fontSize: number) => number,
+  calcHorizontalLineCount: (ctx: PipelineRenderingContext, text: string, maxWidth: number, fontSize: number) => number,
 ): TextRegion {
   const expanded = cloneRegionForTypeset(region);
   const initialFontSize = resolveInitialFontSize(expanded);

@@ -1,10 +1,11 @@
 import type { OcrProvider, OcrRecognizeOutput, OcrRecognizeResult } from './provider';
 import type { TextRegion, QuadPoint } from '../../types';
+import type { PlatformProvider, PipelineImage } from '../../runtime/platform';
 import { getModel, getModelSession } from '../../runtime/modelRegistry';
 import { buildPaddleOcrInput } from './paddleocrPreprocess';
 import { decodePaddleCtc } from './paddleocrDecode';
 import { loadCharset } from './ocrShared';
-import { runInference } from '../../runtime/onnxWorkerBridge';
+import { runInference } from '../../runtime/onnxBridge';
 import type { Direction } from './preprocess';
 
 const PADDLEOCR_CONFIDENCE_THRESHOLD = 0.2;
@@ -16,7 +17,7 @@ function inferDirection(region: TextRegion): Direction {
 
 export const paddleocrProvider: OcrProvider = {
   name: 'paddleocr',
-  async recognize(image: HTMLImageElement, regions: TextRegion[]): Promise<OcrRecognizeOutput> {
+  async recognize(image: PipelineImage, regions: TextRegion[], platform?: PlatformProvider): Promise<OcrRecognizeOutput> {
     const model = await getModel('paddleocr_rec');
     const sessionHandle = await getModelSession('paddleocr_rec', model.runtime ?? ['webgpu', 'webnn', 'wasm']);
     const charset = await loadCharset(model.dictUrl);
@@ -40,7 +41,7 @@ export const paddleocrProvider: OcrProvider = {
     for (const region of regions) {
       const direction = inferDirection(region);
       const inputData = buildPaddleOcrInput(
-        image, region, direction, inputHeight, maxInputWidth, model.normalize ?? 'minus_one_to_one'
+        image, region, direction, inputHeight, maxInputWidth, model.normalize ?? 'minus_one_to_one', platform!
       );
 
       const feeds: Record<string, import('../../runtime/onnxWorkerTypes').TensorTransport> = {

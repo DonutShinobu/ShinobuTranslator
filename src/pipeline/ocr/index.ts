@@ -1,8 +1,9 @@
 import type { OcrRunDebugChunk, OcrRunDebugInfo, TextRegion } from "../../types";
+import type { PlatformProvider, PipelineImage } from "../../runtime/platform";
 import { getModel, getModelSession } from "../../runtime/modelRegistry";
 import { isContextLostRuntimeError } from "../../runtime/onnxTypes";
 import type { RuntimeProvider, WebNnDeviceType } from "../../runtime/onnxTypes";
-import { runInference, runOcrBatchDecode, runOcrSingleDecode, runOcrColorBatch, runOcrColorSingle } from "../../runtime/onnxWorkerBridge";
+import { runInference, runOcrBatchDecode, runOcrSingleDecode, runOcrColorBatch, runOcrColorSingle } from "../../runtime/onnxBridge";
 import type { WorkerSessionHandle, TensorTransport, OcrInputNameSet, OcrBatchDecodeInputItem, OcrColorBatchInputItem, OcrColorResult } from "../../runtime/onnxWorkerTypes";
 import { toErrorMessage } from "../../shared/utils";
 import { normalizeTextLight } from "../utils";
@@ -71,10 +72,11 @@ function finalizeOcrDebugInfo(debugInfo: OcrRunDebugInfo): OcrRunDebugInfo {
 }
 
 async function runOcrByOnnxWithSession(
-  image: HTMLImageElement,
+  image: PipelineImage,
   detectedRegions: TextRegion[],
   model: Awaited<ReturnType<typeof getModel>>,
-  sessionHandle: WorkerSessionHandle
+  sessionHandle: WorkerSessionHandle,
+  platform: PlatformProvider,
 ): Promise<{ results: OcrRecognizeResult[]; debug: OcrRunDebugInfo }> {
   const charset = await loadCharset(model.dictUrl);
   const inputHeight = model.input?.[0] ?? 48;
@@ -123,7 +125,7 @@ async function runOcrByOnnxWithSession(
       const { region, direction } = item;
       const regionPreprocessT0 = performance.now();
       try {
-        const inputData = buildOcrInput(image, region, direction, inputHeight, inputWidth, normalize);
+        const inputData = buildOcrInput(image, region, direction, inputHeight, inputWidth, normalize, platform);
         const validEncoderLength = Math.min(encoderLen, Math.floor((inputData.resizedWidth + 3) / 4) + 2);
         prepared.push({ region, direction, inputData, validEncoderLength });
       } catch {
@@ -336,7 +338,7 @@ async function runOcrByOnnxWithSession(
     let bestText = "";
     let bestLength = 0;
     const regionPreprocessT0 = performance.now();
-    const { data: inputData, dims: inputDims } = buildOcrInput(image, region, direction, inputHeight, inputWidth, normalize);
+    const { data: inputData, dims: inputDims } = buildOcrInput(image, region, direction, inputHeight, inputWidth, normalize, platform);
     debugInfo.preprocessPerRegionMs.push({
       regionId: region.id,
       durationMs: performance.now() - regionPreprocessT0
@@ -427,7 +429,7 @@ async function runOcrByOnnxWithSession(
   return { results: ocrResults, debug: finalizeOcrDebugInfo(debugInfo) };
 }
 
-export async function runOcrByOnnxInternal(image: HTMLImageElement, detectedRegions: TextRegion[]): Promise<OcrInternalResult> {
+export async function runOcrByOnnxInternal(image: PipelineImage, detectedRegions: TextRegion[], platform: PlatformProvider): Promise<OcrInternalResult> {
   const model = await getModel("ocr");
   const primaryHandle = await getModelSession("ocr", ["webgpu", "webnn", "wasm"]);
 
@@ -435,7 +437,7 @@ export async function runOcrByOnnxInternal(image: HTMLImageElement, detectedRegi
   let actualWebnnDeviceType = primaryHandle.webnnDeviceType;
 
   try {
-    const result = await runOcrByOnnxWithSession(image, detectedRegions, model, primaryHandle);
+    const result = await runOcrByOnnxWithSession(image, detectedRegions, model, primaryHandle, platform);
     return { results: result.results, provider: actualProvider, webnnDeviceType: actualWebnnDeviceType, debug: result.debug };
   } catch (error) {
     const message = toErrorMessage(error);
@@ -458,7 +460,7 @@ export async function runOcrByOnnxInternal(image: HTMLImageElement, detectedRegi
     for (const preferred of fallbackPlans) {
       try {
         const handle = await getModelSession("ocr", preferred);
-        const result = await runOcrByOnnxWithSession(image, detectedRegions, model, handle);
+        const result = await runOcrByOnnxWithSession(image, detectedRegions, model, handle, platform);
         recovered = result.results;
         fallbackDebug = result.debug;
         if (handle.provider !== primaryHandle.provider) {
@@ -517,9 +519,10 @@ function createDefaultDebug(resultCount: number): OcrRunDebugInfo {
 }
 
 export async function runOcr(
-  image: HTMLImageElement,
+  image: PipelineImage,
   detectedRegions: TextRegion[],
   providerName?: string,
+  platform?: PlatformProvider,
 ): Promise<OcrResult> {
   const providerNameResolved = providerName ?? 'builtin';
   const provider = getOcrProvider(providerNameResolved);
@@ -527,8 +530,8 @@ export async function runOcr(
 
   if (providerNameResolved === 'builtin') {
     // builtin path: preserve full debug and runtime info
-    const internal = await runOcrByOnnxInternal(image, detectedRegions);
-    const filled = fillMissingOcrFields(internal.results, image);
+    const internal = await runOcrByOnnxInternal(image, detectedRegions, platform!);
+    const filled = fillMissingOcrFields(internal.results, image, platform);
     const regions = mapResultsToRegions(filled, detectedRegions);
     if (regions.length > 0) {
       return { regions, actualProvider: internal.provider, actualWebnnDeviceType: internal.webnnDeviceType, debug: internal.debug };
@@ -538,7 +541,7 @@ export async function runOcr(
 
   // other provider path
   const output = await provider.recognize(image, detectedRegions);
-  const filled = fillMissingOcrFields(output.results, image);
+  const filled = fillMissingOcrFields(output.results, image, platform);
   const regions = mapResultsToRegions(filled, detectedRegions);
   if (regions.length > 0) {
     return { regions, actualProvider: output.provider, actualWebnnDeviceType: output.webnnDeviceType, debug: createDefaultDebug(regions.length) };

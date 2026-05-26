@@ -1,13 +1,15 @@
 import type { TextRegion } from "../types";
+import type { PlatformProvider, PipelineCanvas } from "../runtime/platform";
 import { cloneCanvas } from "./image";
 
 export function drawRegions(
-  base: HTMLCanvasElement,
+  base: PipelineCanvas,
   regions: TextRegion[],
   title: string,
-  textSelector: (region: TextRegion) => string
-): HTMLCanvasElement {
-  const canvas = cloneCanvas(base);
+  textSelector: (region: TextRegion) => string,
+  platform: PlatformProvider,
+): PipelineCanvas {
+  const canvas = cloneCanvas(base, platform);
   const ctx = canvas.getContext("2d");
   if (!ctx) {
     throw new Error(`${title} 阶段无法创建预览画布`);

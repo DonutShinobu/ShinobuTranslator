@@ -1,4 +1,5 @@
 import type { Rect, TextRegion } from "../../types";
+import type { PlatformProvider, PipelineCanvas } from "../../runtime/platform";
 import { clamp, polygonArea } from "../utils";
 
 export type Point = {
@@ -36,15 +37,13 @@ export type AssignedExtent = {
   maxY: number;
 };
 
-export function makeCanvas(width: number, height: number): HTMLCanvasElement {
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
+export function makeCanvas(width: number, height: number, platform: PlatformProvider): PipelineCanvas {
+  const canvas = platform.createCanvas(width, height);
   return canvas;
 }
 
-export function readBinaryMask(canvas: HTMLCanvasElement, width: number, height: number): Uint8Array {
-  const resized = makeCanvas(width, height);
+export function readBinaryMask(canvas: PipelineCanvas, width: number, height: number, platform: PlatformProvider): Uint8Array {
+  const resized = makeCanvas(width, height, platform);
   const ctx = resized.getContext("2d", { willReadFrequently: true });
   if (!ctx) {
     throw new Error("Mask refinement 读取遮罩失败：无法创建画布上下文");
@@ -59,8 +58,8 @@ export function readBinaryMask(canvas: HTMLCanvasElement, width: number, height:
   return out;
 }
 
-export function readGrayImage(canvas: HTMLCanvasElement, width: number, height: number): Uint8Array {
-  const resized = makeCanvas(width, height);
+export function readGrayImage(canvas: PipelineCanvas, width: number, height: number, platform: PlatformProvider): Uint8Array {
+  const resized = makeCanvas(width, height, platform);
   const ctx = resized.getContext("2d", { willReadFrequently: true });
   if (!ctx) {
     throw new Error("Mask refinement 读取图像失败：无法创建画布上下文");
@@ -386,8 +385,8 @@ export function computeScaleFactor(rawMaskHeight: number, imageHeight: number): 
   return Math.max(Math.min((rawMaskHeight - imageHeight / 3) / rawMaskHeight, 1), 0.5);
 }
 
-export function toMaskCanvas(mask: Uint8Array, width: number, height: number, outW: number, outH: number): HTMLCanvasElement {
-  const src = makeCanvas(width, height);
+export function toMaskCanvas(mask: Uint8Array, width: number, height: number, outW: number, outH: number, platform: PlatformProvider): PipelineCanvas {
+  const src = makeCanvas(width, height, platform);
   const srcCtx = src.getContext("2d");
   if (!srcCtx) {
     throw new Error("Mask refinement 输出失败：无法创建源画布上下文");
@@ -402,7 +401,7 @@ export function toMaskCanvas(mask: Uint8Array, width: number, height: number, ou
   }
   srcCtx.putImageData(imageData, 0, 0);
 
-  const out = makeCanvas(outW, outH);
+  const out = makeCanvas(outW, outH, platform);
   const outCtx = out.getContext("2d", { willReadFrequently: true });
   if (!outCtx) {
     throw new Error("Mask refinement 输出失败：无法创建目标画布上下文");

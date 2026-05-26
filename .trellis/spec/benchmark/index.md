@@ -10,6 +10,7 @@
 
 1. **排版基准测试** — `benchmark/typeset/`，竖排排版几何精度回归测试（`run-bench.ts`, `bake-fixtures.ts` 等）
 2. **颜色诊断与对比测试** — `benchmark/color/`，OCR 文字前景/背景色识别的诊断 + 量化对比框架（`color-diagnostic.ts`, `color-comparison.ts` 等）
+3. **Node bake CLI** — `bake-node.ts`，纯 Node.js 端到端 pipeline（detect → OCR → merge → JSON 输出），使用 CUDA GPU 加速，替代 Chrome CDP 路径
 
 1. **排版基准测试** — 竖排排版几何精度回归测试（`run-bench.ts`, `bake-fixtures.ts` 等）
 2. **颜色诊断与对比测试** — OCR 文字前景/背景色识别的诊断 + 量化对比框架（`color-diagnostic.ts`, `color-comparison.ts` 等）
@@ -30,6 +31,8 @@
 
 - **Benchmark 脚本运行在 Node.js** — 不依赖浏览器环境，使用 `@napi-rs/canvas` 替代 DOM Canvas
 - **运行方式** — `tsx benchmark/typeset/src/*.ts` / `tsx benchmark/color/src/*.ts`，或通过 `package.json` 中的 npm scripts
+- **bake-node** — `npx tsx benchmark/typeset/src/bake-node.ts [image1.png ...]` 或 `npm run bench:bake-node`，使用 `nodePlatform` + `onnxNodeBridge`（CUDA EP），输出 Fixture JSON
+- **bake-node 字体限制** — node-canvas 的 `registerFont()` 只支持 `.ttf/.otf/.ttc`，不支持 `.woff2`。若项目字体只有 `.woff2` 格式，需安装系统 CJK 字体作为 fallback
 - **Fixture 数据** — JSON 注解文件 git 追踪，实际图片文件 gitignore（用户手动添加）
 - **报告输出** — `benchmark/reports/` 目录，gitignore，每次运行生成带时间戳的子目录
 - **颜色工具函数** — `color-utils.ts` 从 `src/pipeline/typeset/color.ts` 重新导出 `rgbToLab`/`colorDistance`/`resolveColors`，不直接引用浏览器端代码（避免 ONNX Runtime 等浏览器依赖）

@@ -60,15 +60,12 @@ def _parse_marker(line: str) -> tuple[bool, list[str]] | None:
 
 
 def get_phase_index() -> str:
-    """Return Phase Index + Phase 1/2/3 step bodies from workflow.md.
+    """Return the compact Phase Index summary from workflow.md.
 
-    Matches what the SessionStart hook injects into the `<workflow>` block:
-    starts at `## Phase Index`, continues through `## Phase 1: Plan`,
-    `## Phase 2: Execute`, `## Phase 3: Finish`, stops at
-    `## Customizing Trellis (for forks)` (the docs-for-forks footer).
-    `[workflow-state:STATUS]` tag blocks (now embedded in Phase Index since
-    v0.5.0-rc.0) are consumed by the UserPromptSubmit hook so they're
-    stripped from this output.
+    SessionStart and no-step phase context use this small summary as their
+    orientation payload. Detailed Phase 1/2/3 instructions are loaded with
+    ``get_step`` on demand. ``[workflow-state:STATUS]`` tag blocks are
+    consumed by the per-turn hook, so they're stripped from this output.
     """
     text = _read_workflow()
     lines = text.splitlines()
@@ -80,7 +77,7 @@ def get_phase_index() -> str:
         if start is None and stripped == _PHASE_INDEX_HEADING:
             start = i
             continue
-        if start is not None and stripped == "## Customizing Trellis (for forks)":
+        if start is not None and stripped == "## Phase 1: Plan":
             end = i
             break
 

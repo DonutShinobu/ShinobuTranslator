@@ -7,6 +7,7 @@ import {
   countTextLength,
   resolveSourceColumns,
   type ColumnSegmentSource,
+  type PreferredColumnSegment,
 } from "./columns";
 import {
   quadAngle,
@@ -36,6 +37,9 @@ export const minorOverflowMaxGlyphCount = 2;
 export const minorOverflowShrinkMinScale = 0.8;
 export const minOffscreenGuardPaddingPx = 8;
 export const offscreenGuardPaddingByFontRatio = 0.35;
+export const minHorizontalLetterSpacingScale = 0.85;
+export const maxHorizontalLetterSpacingScale = 1.5;
+export const minHorizontalLineHeightScale = 0.85;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -66,6 +70,29 @@ export type BuildVerticalLayoutOptions = {
 };
 
 export type ColumnBreakReason = 'start' | 'model' | 'wrap' | 'both';
+
+// ---------------------------------------------------------------------------
+// Horizontal line types
+// ---------------------------------------------------------------------------
+
+export type HLine = {
+  text: string;
+  width: number;
+};
+
+export type HorizontalFromLinesResult = {
+  lines: HLine[];
+  lineBreakReasons: ColumnBreakReason[];
+  lineSegmentIds: number[];
+  lineSegmentSources: ColumnSegmentSource[];
+};
+
+// ---------------------------------------------------------------------------
+// Horizontal layout constants
+// ---------------------------------------------------------------------------
+
+export const horizontalLetterSpacingRatio = -0.05;
+export const horizontalLineHeightRatio = 0.93;
 
 export type VerticalLayoutResult = {
   columns: VColumn[];
@@ -448,6 +475,285 @@ export function calcVerticalFromColumns(
 }
 
 // ---------------------------------------------------------------------------
+// Horizontal calc helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Detect whether a string contains Latin word characters (needs word-level wrapping).
+ */
+function hasLatinWords(text: string): boolean {
+  return /[a-zA-Z]{2,}/.test(text);
+}
+
+/**
+ * Measure horizontal text width with per-char letterSpacing.
+ */
+function measureHorizontalTextWidth(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  letterSpacing: number,
+): number {
+  const chars = [...text];
+  if (chars.length === 0) {
+    return 0;
+  }
+
+  if (chars.length === 1) {
+    return ctx.measureText(chars[0]).width;
+  }
+
+  let width = 0;
+  for (let i = 0; i < chars.length; i++) {
+    width += ctx.measureText(chars[i]).width;
+    if (i < chars.length - 1) {
+      width += letterSpacing;
+    }
+  }
+  return Math.max(0, width);
+}
+
+/**
+ * CJK character-level horizontal line breaking with kinsoku shori.
+ */
+function calcHorizontalCjkSegment(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  letterSpacing: number,
+): HLine[] {
+  const chars = [...text.replace(/\s+/g, "")];
+  const lines: HLine[] = [];
+  let line = "";
+
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i];
+    const trial = line + ch;
+    const trialWidth = measureHorizontalTextWidth(ctx, trial, letterSpacing);
+
+    if (trialWidth <= maxWidth) {
+      line = trial;
+      continue;
+    }
+
+    // Line is full -- push current line, but apply kinsoku rules
+    if (line.length > 0) {
+      const lastChar = line[line.length - 1];
+      const nextChar = ch;
+
+      // If next char can't start a line, keep it on current line
+      if (KINSOKU_NSTART.has(nextChar) && line.length > 0) {
+        line += ch;
+        lines.push({ text: line, width: measureHorizontalTextWidth(ctx, line, letterSpacing) });
+        line = "";
+        continue;
+      }
+
+      // If current line's last char can't end a line, move it to next line
+      if (KINSOKU_NEND.has(lastChar) && line.length > 1) {
+        const carry = line[line.length - 1];
+        line = line.slice(0, -1);
+        lines.push({ text: line, width: measureHorizontalTextWidth(ctx, line, letterSpacing) });
+        line = carry + ch;
+        continue;
+      }
+
+      lines.push({ text: line, width: measureHorizontalTextWidth(ctx, line, letterSpacing) });
+    }
+    line = ch;
+  }
+
+  if (line) {
+    lines.push({ text: line, width: measureHorizontalTextWidth(ctx, line, letterSpacing) });
+  }
+  return lines;
+}
+
+/**
+ * Latin word-level horizontal line breaking. Falls back to character-level for long words.
+ */
+function calcHorizontalLatinSegment(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  letterSpacing: number,
+): HLine[] {
+  const words = text.split(/\s+/);
+  const lines: HLine[] = [];
+  let line = "";
+
+  for (const word of words) {
+    const trial = line ? line + " " + word : word;
+    const trialWidth = measureHorizontalTextWidth(ctx, trial, letterSpacing);
+
+    if (trialWidth <= maxWidth) {
+      line = trial;
+      continue;
+    }
+
+    // If current line is non-empty, push it
+    if (line) {
+      lines.push({ text: line, width: measureHorizontalTextWidth(ctx, line, letterSpacing) });
+      line = "";
+    }
+
+    // Check if the word itself exceeds maxWidth -- character-break it
+    if (measureHorizontalTextWidth(ctx, word, letterSpacing) > maxWidth) {
+      const chars = [...word];
+      let frag = "";
+      for (const ch of chars) {
+        const fragTrial = frag + ch;
+        if (measureHorizontalTextWidth(ctx, fragTrial, letterSpacing) > maxWidth && frag) {
+          lines.push({ text: frag, width: measureHorizontalTextWidth(ctx, frag, letterSpacing) });
+          frag = ch;
+        } else {
+          frag = fragTrial;
+        }
+      }
+      line = frag;
+    } else {
+      line = word;
+    }
+  }
+
+  if (line) {
+    lines.push({ text: line, width: measureHorizontalTextWidth(ctx, line, letterSpacing) });
+  }
+  return lines;
+}
+
+/**
+ * Wrap a single text segment into horizontal lines based on maxWidth.
+ * Dispatches to CJK or Latin line-breaking depending on content.
+ */
+function wrapHorizontalSegment(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  letterSpacing: number,
+): HLine[] {
+  const cleaned = text.replace(/\n+/g, " ").trim();
+  if (!cleaned) return [];
+
+  if (hasLatinWords(cleaned)) {
+    return calcHorizontalLatinSegment(ctx, cleaned, maxWidth, letterSpacing);
+  }
+  return calcHorizontalCjkSegment(ctx, cleaned, maxWidth, letterSpacing);
+}
+
+/**
+ * Split preferred line segments into horizontal lines with break-reason tracking.
+ * Analogous to calcVerticalFromColumns but for horizontal layout.
+ *
+ * For each preferred line segment (from LLM), try to fit it as a single line.
+ * If the segment width exceeds maxWidth, apply word/character wrapping.
+ * Tracks break reasons, segment IDs, and segment sources.
+ */
+export function calcHorizontalFromLines(
+  ctx: CanvasRenderingContext2D,
+  preferredLines: PreferredColumnSegment[],
+  maxWidth: number,
+  fontSize: number,
+  letterSpacingScale = 1,
+): HorizontalFromLinesResult {
+  const letterSpacing = fontSize * horizontalLetterSpacingRatio * letterSpacingScale;
+
+  const mergeSegmentLinesByMaxCharCount = (
+    segmentLines: HLine[],
+    segmentMaxCharCount: number,
+  ): HLine[] => {
+    if (segmentLines.length <= 1) {
+      return segmentLines;
+    }
+    const merged: HLine[] = [];
+    for (let i = 0; i < segmentLines.length; i += 1) {
+      const current = segmentLines[i];
+      const previous = merged[merged.length - 1];
+      if (!previous) {
+        merged.push(current);
+        continue;
+      }
+      const mergedCharCount = [...previous.text].length + [...current.text].length;
+      const mergedWidth = measureHorizontalTextWidth(
+        ctx,
+        previous.text + current.text,
+        letterSpacing,
+      );
+      const canMergeBySameSegmentMax = mergedCharCount <= segmentMaxCharCount;
+      if (canMergeBySameSegmentMax && mergedWidth <= maxWidth) {
+        previous.text += current.text;
+        previous.width = mergedWidth;
+        continue;
+      }
+      merged.push(current);
+    }
+    return merged;
+  };
+
+  const lines: HLine[] = [];
+  const lineBreakReasons: ColumnBreakReason[] = [];
+  const lineSegmentIds: number[] = [];
+  const lineSegmentSources: ColumnSegmentSource[] = [];
+  let hasOutput = false;
+  let previousSegmentOverflowed = false;
+  let segmentIndex = 0;
+
+  for (const source of preferredLines) {
+    const segment = source.text.trim();
+    if (!segment) {
+      continue;
+    }
+    segmentIndex += 1;
+    const segmentSource = source.source;
+    const segmentLines = wrapHorizontalSegment(ctx, segment, maxWidth, letterSpacing);
+    const segmentMaxCharCount = Math.max(1, ...segmentLines.map((line) => [...line.text].length));
+
+    if (segmentLines.length === 0) {
+      previousSegmentOverflowed = false;
+      continue;
+    }
+
+    const canFollowPrevious = hasOutput
+      && lines.length > 0
+      && (previousSegmentOverflowed || segmentSource === 'split');
+    if (canFollowPrevious) {
+      const lastLine = lines[lines.length - 1];
+      const firstLine = segmentLines[0];
+      // Try to append the first segment line to the previous output line
+      const combined = lastLine.text + firstLine.text;
+      const combinedWidth = measureHorizontalTextWidth(ctx, combined, letterSpacing);
+      if (combinedWidth <= maxWidth) {
+        lastLine.text = combined;
+        lastLine.width = combinedWidth;
+        segmentLines.shift();
+      }
+    }
+
+    const balancedSegmentLines = mergeSegmentLinesByMaxCharCount(segmentLines, segmentMaxCharCount);
+
+    for (let i = 0; i < balancedSegmentLines.length; i += 1) {
+      lines.push(balancedSegmentLines[i]);
+      lineSegmentIds.push(segmentIndex);
+      lineSegmentSources.push(segmentSource);
+      if (!hasOutput && i === 0) {
+        lineBreakReasons.push('start');
+        hasOutput = true;
+        continue;
+      }
+      if (i === 0) {
+        lineBreakReasons.push(canFollowPrevious ? 'both' : 'model');
+        hasOutput = true;
+        continue;
+      }
+      lineBreakReasons.push('wrap');
+    }
+
+    previousSegmentOverflowed = balancedSegmentLines.length > 1;
+  }
+
+  return { lines, lineBreakReasons, lineSegmentIds, lineSegmentSources };
+}
+
+// ---------------------------------------------------------------------------
 // Stroke/padding
 // ---------------------------------------------------------------------------
 
@@ -684,6 +990,51 @@ export function tryShrinkVerticalForMinorOverflow(
   return { fontSize: initialFontSize, layout: baseLayout };
 }
 
+/**
+ * Try to eliminate a minor horizontal overflow by shrinking font size 1px at a time.
+ * Analogous to tryShrinkVerticalForMinorOverflow but for horizontal text.
+ *
+ * Detects when the last line has only 1-2 overflow characters and tries
+ * progressively smaller font sizes until the text fits in fewer lines.
+ */
+export function tryShrinkHorizontalForMinorOverflow(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  contentWidth: number,
+  initialFontSize: number,
+  fontFamily: string,
+  baseLines: HLine[],
+  calcLines: (ctx: CanvasRenderingContext2D, text: string, maxWidth: number, fontSize: number) => HLine[],
+): { fontSize: number; lines: HLine[] } {
+  // Check for minor overflow: last line has only 1-2 characters
+  if (baseLines.length < 2) {
+    return { fontSize: initialFontSize, lines: baseLines };
+  }
+  const tailLine = baseLines[baseLines.length - 1];
+  const tailCharCount = [...tailLine.text].length;
+  if (tailCharCount < 1 || tailCharCount > minorOverflowMaxGlyphCount) {
+    return { fontSize: initialFontSize, lines: baseLines };
+  }
+
+  const minAllowedFontSize = Math.max(
+    minFontSafetySize,
+    Math.ceil(initialFontSize * minorOverflowShrinkMinScale),
+  );
+  if (initialFontSize <= minAllowedFontSize) {
+    return { fontSize: initialFontSize, lines: baseLines };
+  }
+
+  for (let fontSize = initialFontSize - 1; fontSize >= minAllowedFontSize; fontSize -= 1) {
+    ctx.font = `${fontSize}px ${fontFamily}`;
+    const candidate = calcLines(ctx, text, contentWidth, fontSize);
+    if (candidate.length < baseLines.length) {
+      return { fontSize, lines: candidate };
+    }
+  }
+
+  return { fontSize: initialFontSize, lines: baseLines };
+}
+
 export function estimateVerticalPreferredProfile(
   ctx: CanvasRenderingContext2D,
   region: TextRegion,
@@ -733,6 +1084,65 @@ export function estimateVerticalPreferredProfile(
   return { advanceScale, colSpacingScale };
 }
 
+export function estimateHorizontalPreferredProfile(
+  ctx: CanvasRenderingContext2D,
+  region: TextRegion,
+  text: string,
+  contentWidth: number,
+  contentHeight: number,
+  fontSize: number,
+  fontFamily: string,
+  preferredLines?: string[],
+  originalContentHeight?: number,
+): { letterSpacingScale: number; lineHeightScale: number } {
+  ctx.font = `${fontSize}px ${fontFamily}`;
+
+  // Measure total text width with default letterSpacing ratio
+  const defaultLetterSpacing = fontSize * -0.05;
+  const chars = [...text.replace(/\n+/g, ' ').trim()];
+  let totalTextWidth = 0;
+  for (let i = 0; i < chars.length; i++) {
+    totalTextWidth += ctx.measureText(chars[i]).width;
+    if (i < chars.length - 1) {
+      totalTextWidth += defaultLetterSpacing;
+    }
+  }
+  totalTextWidth = Math.max(0, totalTextWidth);
+
+  // Estimate how many lines are needed at default spacing
+  const neededLineCount = Math.max(1, Math.ceil(totalTextWidth / contentWidth));
+  const targetLineCount = Math.max(
+    1,
+    region.originalLineCount ?? 0,
+    preferredLines?.length ?? 0,
+  );
+
+  if (neededLineCount <= targetLineCount) {
+    return { letterSpacingScale: 1, lineHeightScale: 1 };
+  }
+
+  // Compress letter spacing: when letterSpacingRatio is negative, scaling it
+  // UP increases overlap and compresses line width. We need total text to fit
+  // into targetLineCount lines of contentWidth. Scale the ratio so that the
+  // tighter spacing absorbs the overflow.
+  const totalCapacity = contentWidth * targetLineCount;
+  const letterSpacingScale = totalTextWidth > totalCapacity
+    ? clampNumber(totalTextWidth / totalCapacity, 1, maxHorizontalLetterSpacingScale)
+    : 1;
+
+  // Compress line height: how much shorter must each line be to fit
+  // targetLineCount lines in available height
+  const defaultLineHeight = Math.max(1, Math.round(fontSize * 0.93));
+  const availableHeight = originalContentHeight ?? contentHeight;
+  const maxTotalLineHeight = availableHeight;
+  const targetTotalLineHeight = defaultLineHeight * targetLineCount;
+  const lineHeightScale = targetTotalLineHeight > maxTotalLineHeight
+    ? clampNumber(maxTotalLineHeight / targetTotalLineHeight, minHorizontalLineHeightScale, 1)
+    : 1;
+
+  return { letterSpacingScale, lineHeightScale };
+}
+
 // ---------------------------------------------------------------------------
 // Region geometry — layout helpers
 // ---------------------------------------------------------------------------
@@ -754,6 +1164,62 @@ export function resolveVerticalContentHeight(contentHeight: number, fontSize: nu
     dynamicMax,
   );
   return contentHeight + extra;
+}
+
+/**
+ * Resolve content height for horizontal layout with stroke overflow compensation.
+ * Same logic as resolveVerticalContentHeight — adds a small amount of extra
+ * height so that text stroke pixels at the bottom edge are not clipped.
+ */
+export function resolveHorizontalContentHeight(contentHeight: number, fontSize: number): number {
+  const dynamicRatio = clampNumber(
+    verticalContentHeightExpandBaseRatio + fontSize * verticalContentHeightExpandFontRatio,
+    0.0,
+    0.24,
+  );
+  const dynamicMax = Math.max(14, Math.round(fontSize * 1.6));
+  const extra = clampNumber(
+    Math.round(contentHeight * dynamicRatio),
+    minVerticalContentHeightExpandPx,
+    dynamicMax,
+  );
+  return contentHeight + extra;
+}
+
+/**
+ * Compute the maximum content height available for horizontal layout
+ * based on the bubble mask. If the bubble extends below the region box,
+ * we can use the additional vertical space to accommodate more lines.
+ *
+ * If no bubble mask is available, returns `contentHeight` unchanged.
+ */
+export function resolveHorizontalMaskHeight(
+  bubbleMask: ImageData | undefined,
+  region: TextRegion,
+  contentHeight: number,
+  fontSize: number,
+): number {
+  if (!bubbleMask) {
+    return contentHeight;
+  }
+
+  const boxPadding = resolveBoxPadding(region);
+  const sw = strokeWidth(fontSize);
+  const safetyMargin = sw + 2;
+
+  // The horizontal extent of the region in image coordinates.
+  // For horizontal text we query the full width of the region.
+  const boxTop = region.box.y + boxPadding;
+  const boxLeft = region.box.x + boxPadding;
+  const boxRight = region.box.x + region.box.width - boxPadding;
+
+  // Find how far down the bubble extends within the region's horizontal extent.
+  const maskMaxY = queryMaskMaxY(bubbleMask, boxLeft, boxRight, boxTop);
+
+  // The mask allows content to extend from boxTop down to maskMaxY.
+  const maskContentHeight = Math.max(0, maskMaxY - boxTop - safetyMargin);
+
+  return Math.max(contentHeight, maskContentHeight);
 }
 
 export function countNeededRowsAtFontSize(

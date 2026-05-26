@@ -13,11 +13,13 @@ type LlmRegionInput = {
   text: string;
   direction: 'h' | 'v';
   targetColumns?: number;
+  targetLines?: number;
 };
 
 type LlmSourceTextPayload = {
   plainText: string;
   columns?: Array<Record<string, string>>;
+  lines?: Array<Record<string, string>>;
 };
 
 type LlmTranslateRegionsOptions = {
@@ -71,6 +73,14 @@ function extractJsonObject(text: string): string {
 function buildSourceTextPayload(text: string, direction: 'h' | 'v'): LlmSourceTextPayload {
   const plainText = text.replace(/\n+/g, '').trim();
   if (direction !== 'v') {
+    const lines = text
+      .split(/\n+/)
+      .map((segment) => segment.trim())
+      .filter(Boolean)
+      .map((segment, index) => ({ [`line${index + 1}`]: segment }));
+    if (lines.length > 1) {
+      return { plainText, lines };
+    }
     return { plainText };
   }
   const columns = text
@@ -172,6 +182,7 @@ export async function llmTranslateRegions(
     id: region.id,
     direction: region.direction,
     targetColumns: region.direction === 'v' ? Math.max(1, region.targetColumns ?? 1) : undefined,
+    targetLines: region.direction === 'h' ? Math.max(1, region.targetLines ?? 1) : undefined,
     sourceText: buildSourceTextPayload(region.text, region.direction),
   }));
 
@@ -197,16 +208,17 @@ export async function llmTranslateRegions(
           role: 'user',
           content: [
             `请把以下文本从${from}翻译成${to}，并基于整段上下文保持语气一致。`,
-            '输入是多个文本框。对竖排框你会收到 targetColumns（期望列数）。',
+            '输入是多个文本框。对竖排框你会收到 targetColumns（期望列数），对横排框你会收到 targetLines（期望行数）。',
             'sourceText.plainText 是去掉换行后的完整原文。',
             'sourceText.columns 是竖排拆列信息，格式类似 [{"column1":"..."},{"column2":"..."}]。',
+            'sourceText.lines 是横排拆行信息，格式类似 [{"line1":"..."},{"line2":"..."}]。',
             '返回格式必须是：',
             '{"regions":[{"id":"...","translation":"...","columns":["..."]}]}',
             '规则：',
             '1) regions 数组必须覆盖所有输入 id；',
             '2) translation 为完整译文；',
             '3) direction=v 时，columns 必须严格按 sourceText.columns 的顺序返回（不得反转），优先接近 targetColumns；',
-            '4) direction=h 时，columns 省略；',
+            '4) direction=h 时，columns 表示行分段，优先接近 targetLines；',
             '5) 除 JSON 外不要输出任何内容。',
             `输入数据：${JSON.stringify(payload)}`,
           ].join('\n'),

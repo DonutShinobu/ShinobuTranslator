@@ -62,6 +62,7 @@ export async function runTranslate(regions: TextRegion[], config: PipelineConfig
           text: region.sourceText,
           direction: region.direction ?? 'h',
           targetColumns: region.direction === 'v' ? Math.max(1, region.originalLineCount ?? 1) : undefined,
+          targetLines: region.direction === 'h' ? Math.max(1, region.originalLineCount ?? 1) : undefined,
         })),
       });
       batched = batchedResult.byId;
@@ -87,7 +88,7 @@ export async function runTranslate(regions: TextRegion[], config: PipelineConfig
         next.push({
           ...region,
           translatedText: result.translatedText,
-          translatedColumns: region.direction === 'v' ? result.translatedColumns : undefined,
+          translatedColumns: result.translatedColumns,
         });
         continue;
       }

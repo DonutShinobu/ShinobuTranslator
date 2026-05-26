@@ -1,7 +1,5 @@
 import type { PipelineTypesetDebugLog, TextDirection, TextRegion, QuadPoint, TypesetDebugRegionLog } from "../types";
 import {
-  resolveSourceColumns,
-  countTextLength,
   resolveInitialFontSize,
   expandRegionBeforeRender,
   resolveBoxPadding,
@@ -16,6 +14,14 @@ import {
   quadDimensions,
   resolveOffscreenGuardPadding,
   computeFullVerticalTypeset,
+  resolveHorizontalPreferredLines,
+  estimateHorizontalPreferredProfile,
+  tryShrinkHorizontalForMinorOverflow,
+  resolveHorizontalContentHeight,
+  resolveHorizontalMaskHeight,
+  calcHorizontalFromLines,
+  minFontSafetySize,
+  getRegionQuad,
   KINSOKU_NSTART,
   KINSOKU_NEND,
 } from "./typeset/index";
@@ -26,6 +32,9 @@ import type {
   RegionTypesetDebug,
   ResolvedColors,
   CompositeTransform,
+  HLine,
+  ColumnBreakReason,
+  ColumnSegmentSource,
 } from "./typeset/index";
 
 // ---------------------------------------------------------------------------
@@ -45,15 +54,6 @@ const horizontalLetterSpacingRatio = -0.05;
 const horizontalLineHeightRatio = 0.93;
 
 // ---------------------------------------------------------------------------
-// Line type (horizontal)
-// ---------------------------------------------------------------------------
-
-type HLine = {
-  text: string;
-  width: number;
-};
-
-// ---------------------------------------------------------------------------
 // Horizontal layout
 // ---------------------------------------------------------------------------
 
@@ -64,18 +64,19 @@ function hasLatinWords(text: string): boolean {
   return /[a-zA-Z]{2,}/.test(text);
 }
 
-function resolveHorizontalLetterSpacing(fontSize: number): number {
-  return fontSize * horizontalLetterSpacingRatio;
+function resolveHorizontalLetterSpacing(fontSize: number, scale: number = 1): number {
+  return fontSize * horizontalLetterSpacingRatio * scale;
 }
 
-function resolveHorizontalLineHeight(fontSize: number): number {
-  return Math.max(1, Math.round(fontSize * horizontalLineHeightRatio));
+function resolveHorizontalLineHeight(fontSize: number, scale: number = 1): number {
+  return Math.max(1, Math.round(fontSize * horizontalLineHeightRatio * scale));
 }
 
 function measureHorizontalTextWidth(
   ctx: CanvasRenderingContext2D,
   text: string,
   fontSize: number,
+  letterSpacingScale: number = 1,
 ): number {
   const chars = [...text];
   if (chars.length === 0) {
@@ -86,7 +87,7 @@ function measureHorizontalTextWidth(
     return ctx.measureText(chars[0]).width;
   }
 
-  const letterSpacing = resolveHorizontalLetterSpacing(fontSize);
+  const letterSpacing = resolveHorizontalLetterSpacing(fontSize, letterSpacingScale);
   let width = 0;
   for (let i = 0; i < chars.length; i++) {
     width += ctx.measureText(chars[i]).width;
@@ -107,15 +108,16 @@ function calcHorizontal(
   text: string,
   maxWidth: number,
   fontSize: number,
+  letterSpacingScale: number = 1,
 ): HLine[] {
   ctx.font = `${fontSize}px ${fontFamily}`;
   const cleaned = text.replace(/\n+/g, " ").trim();
   if (!cleaned) return [];
 
   if (hasLatinWords(cleaned)) {
-    return calcHorizontalLatin(ctx, cleaned, maxWidth, fontSize);
+    return calcHorizontalLatin(ctx, cleaned, maxWidth, fontSize, letterSpacingScale);
   }
-  return calcHorizontalCjk(ctx, cleaned, maxWidth, fontSize);
+  return calcHorizontalCjk(ctx, cleaned, maxWidth, fontSize, letterSpacingScale);
 }
 
 /**
@@ -126,6 +128,7 @@ function calcHorizontalCjk(
   text: string,
   maxWidth: number,
   fontSize: number,
+  letterSpacingScale: number = 1,
 ): HLine[] {
   const chars = [...text.replace(/\s+/g, "")];
   const lines: HLine[] = [];
@@ -134,7 +137,7 @@ function calcHorizontalCjk(
   for (let i = 0; i < chars.length; i++) {
     const ch = chars[i];
     const trial = line + ch;
-    const trialWidth = measureHorizontalTextWidth(ctx, trial, fontSize);
+    const trialWidth = measureHorizontalTextWidth(ctx, trial, fontSize, letterSpacingScale);
 
     if (trialWidth <= maxWidth) {
       line = trial;
@@ -149,7 +152,7 @@ function calcHorizontalCjk(
       // If next char can't start a line, keep it on current line
       if (KINSOKU_NSTART.has(nextChar) && line.length > 0) {
         line += ch;
-        lines.push({ text: line, width: measureHorizontalTextWidth(ctx, line, fontSize) });
+        lines.push({ text: line, width: measureHorizontalTextWidth(ctx, line, fontSize, letterSpacingScale) });
         line = "";
         continue;
       }
@@ -158,18 +161,18 @@ function calcHorizontalCjk(
       if (KINSOKU_NEND.has(lastChar) && line.length > 1) {
         const carry = line[line.length - 1];
         line = line.slice(0, -1);
-        lines.push({ text: line, width: measureHorizontalTextWidth(ctx, line, fontSize) });
+        lines.push({ text: line, width: measureHorizontalTextWidth(ctx, line, fontSize, letterSpacingScale) });
         line = carry + ch;
         continue;
       }
 
-      lines.push({ text: line, width: measureHorizontalTextWidth(ctx, line, fontSize) });
+      lines.push({ text: line, width: measureHorizontalTextWidth(ctx, line, fontSize, letterSpacingScale) });
     }
     line = ch;
   }
 
   if (line) {
-    lines.push({ text: line, width: measureHorizontalTextWidth(ctx, line, fontSize) });
+    lines.push({ text: line, width: measureHorizontalTextWidth(ctx, line, fontSize, letterSpacingScale) });
   }
   return lines;
 }
@@ -182,6 +185,7 @@ function calcHorizontalLatin(
   text: string,
   maxWidth: number,
   fontSize: number,
+  letterSpacingScale: number = 1,
 ): HLine[] {
   const words = text.split(/\s+/);
   const lines: HLine[] = [];
@@ -189,7 +193,7 @@ function calcHorizontalLatin(
 
   for (const word of words) {
     const trial = line ? line + " " + word : word;
-    const trialWidth = measureHorizontalTextWidth(ctx, trial, fontSize);
+    const trialWidth = measureHorizontalTextWidth(ctx, trial, fontSize, letterSpacingScale);
 
     if (trialWidth <= maxWidth) {
       line = trial;
@@ -198,18 +202,18 @@ function calcHorizontalLatin(
 
     // If current line is non-empty, push it
     if (line) {
-      lines.push({ text: line, width: measureHorizontalTextWidth(ctx, line, fontSize) });
+      lines.push({ text: line, width: measureHorizontalTextWidth(ctx, line, fontSize, letterSpacingScale) });
       line = "";
     }
 
     // Check if the word itself exceeds maxWidth — character-break it
-    if (measureHorizontalTextWidth(ctx, word, fontSize) > maxWidth) {
+    if (measureHorizontalTextWidth(ctx, word, fontSize, letterSpacingScale) > maxWidth) {
       const chars = [...word];
       let frag = "";
       for (const ch of chars) {
         const fragTrial = frag + ch;
-        if (measureHorizontalTextWidth(ctx, fragTrial, fontSize) > maxWidth && frag) {
-          lines.push({ text: frag, width: measureHorizontalTextWidth(ctx, frag, fontSize) });
+        if (measureHorizontalTextWidth(ctx, fragTrial, fontSize, letterSpacingScale) > maxWidth && frag) {
+          lines.push({ text: frag, width: measureHorizontalTextWidth(ctx, frag, fontSize, letterSpacingScale) });
           frag = ch;
         } else {
           frag = fragTrial;
@@ -222,7 +226,7 @@ function calcHorizontalLatin(
   }
 
   if (line) {
-    lines.push({ text: line, width: measureHorizontalTextWidth(ctx, line, fontSize) });
+    lines.push({ text: line, width: measureHorizontalTextWidth(ctx, line, fontSize, letterSpacingScale) });
   }
   return lines;
 }
@@ -238,13 +242,14 @@ function drawHorizontalTextLine(
   y: number,
   fontSize: number,
   mode: "stroke" | "fill",
+  letterSpacingScale: number = 1,
 ): void {
   const chars = [...text];
   if (chars.length === 0) {
     return;
   }
 
-  const letterSpacing = resolveHorizontalLetterSpacing(fontSize);
+  const letterSpacing = resolveHorizontalLetterSpacing(fontSize, letterSpacingScale);
   let penX = x;
   for (let i = 0; i < chars.length; i++) {
     const ch = chars[i];
@@ -263,13 +268,14 @@ function resolveHorizontalRenderPadding(
   ctx: CanvasRenderingContext2D,
   lines: HLine[],
   fontSize: number,
+  letterSpacingScale: number = 1,
 ): number {
   if (lines.length === 0) {
     return strokeWidth(fontSize) + 2;
   }
 
   ctx.font = `${fontSize}px ${fontFamily}`;
-  const letterSpacing = resolveHorizontalLetterSpacing(fontSize);
+  const letterSpacing = resolveHorizontalLetterSpacing(fontSize, letterSpacingScale);
   let maxOverflow = 0;
 
   for (const line of lines) {
@@ -320,9 +326,11 @@ function renderHorizontal(
   colors: ResolvedColors,
   alignment: "left" | "center" | "right",
   padding: number,
+  letterSpacingScale: number = 1,
+  lineHeightScale: number = 1,
 ): HTMLCanvasElement {
   const sw = strokeWidth(fontSize);
-  const lineHeight = resolveHorizontalLineHeight(fontSize);
+  const lineHeight = resolveHorizontalLineHeight(fontSize, lineHeightScale);
 
   const canvasW = Math.ceil(contentWidth + padding * 2);
   const canvasH = Math.ceil(contentHeight + padding * 2);
@@ -348,7 +356,7 @@ function renderHorizontal(
   for (let i = 0; i < lines.length; i++) {
     const x = computeAlignX(lines[i].width, contentWidth, padding, alignment);
     const y = offsetY + i * lineHeight;
-    drawHorizontalTextLine(ctx, lines[i].text, x, y, fontSize, "stroke");
+    drawHorizontalTextLine(ctx, lines[i].text, x, y, fontSize, "stroke", letterSpacingScale);
   }
 
   // Pass 2: fill (foreground color)
@@ -356,7 +364,7 @@ function renderHorizontal(
   for (let i = 0; i < lines.length; i++) {
     const x = computeAlignX(lines[i].width, contentWidth, padding, alignment);
     const y = offsetY + i * lineHeight;
-    drawHorizontalTextLine(ctx, lines[i].text, x, y, fontSize, "fill");
+    drawHorizontalTextLine(ctx, lines[i].text, x, y, fontSize, "fill", letterSpacingScale);
   }
 
   return off;
@@ -389,11 +397,12 @@ function buildHorizontalDebugColumnBoxes(
   fontSize: number,
   alignment: "left" | "center" | "right",
   padding: number,
+  lineHeightScale: number = 1,
 ): DebugColumnBox[] {
   if (lines.length === 0) {
     return [];
   }
-  const lineHeight = resolveHorizontalLineHeight(fontSize);
+  const lineHeight = resolveHorizontalLineHeight(fontSize, lineHeightScale);
   const totalTextH = lines.length * lineHeight;
   const offsetY = padding + Math.max(0, (contentHeight - totalTextH) / 2);
   return lines.map((line, index) => ({
@@ -779,41 +788,257 @@ export async function drawTypeset(
         strokePadding: vResult.strokePadding,
       };
     } else {
-      // Horizontal path — unchanged
-      sourceColumns = resolveSourceColumns(inputRegion);
-      sourceColumnLengths = sourceColumns.map((column) => countTextLength(column));
-      singleColumnMaxLength = sourceColumnLengths.length > 0 ? Math.max(...sourceColumnLengths) : null;
-      preferredColumns = undefined;
+      // Horizontal path — full optimization pipeline (mirrors vertical path)
+
+      // Step 1: resolve preferred lines + rebalance
+      const horizontalPreferred = resolveHorizontalPreferredLines(inputRegion, translated);
+      const preferredLineSegments = horizontalPreferred.lines;
+      const preferredLines = preferredLineSegments.length > 0
+        ? preferredLineSegments.map((s) => s.text)
+        : undefined;
+
+      sourceColumns = horizontalPreferred.sourceLines;
+      sourceColumnLengths = horizontalPreferred.sourceLineLengths;
+      singleColumnMaxLength = horizontalPreferred.singleLineMaxLength;
+      preferredColumns = preferredLines;
 
       text = translated;
       if (!text.trim()) continue;
 
+      // Step 2: initial font size estimation
       estimatedInitialFontSize = Math.max(8, Math.round(resolveInitialFontSize(inputRegion)));
+
+      // Use quad real dimensions for proper sizing (handles tilted quads)
+      const inputQuadDims = quadDimensions(getRegionQuad(inputRegion));
+
+      // Cap font size by available width if single-line max length is known
+      if (singleColumnMaxLength && singleColumnMaxLength > 0) {
+        const boxPaddingEst = resolveBoxPadding(inputRegion);
+        const availableWidth = Math.max(20, inputQuadDims.width - boxPaddingEst * 2);
+        const maxFontByWidth = Math.floor(availableWidth / (singleColumnMaxLength * 1.1));
+        if (maxFontByWidth > 0 && maxFontByWidth < estimatedInitialFontSize) {
+          estimatedInitialFontSize = Math.max(8, maxFontByWidth);
+        }
+      }
+
+      // Step 3: region expansion
       const calcHorizontalLineCountFn = (mCtx: CanvasRenderingContext2D, t: string, maxWidth: number, fontSize: number): number => {
-        const lines = calcHorizontal(mCtx, t, maxWidth, fontSize);
-        return lines.length;
+        if (preferredLineSegments.length > 0) {
+          mCtx.font = `${fontSize}px ${fontFamily}`;
+          const result = calcHorizontalFromLines(mCtx, preferredLineSegments, maxWidth, fontSize);
+          return result.lines.length;
+        }
+        return calcHorizontal(mCtx, t, maxWidth, fontSize).length;
       };
       region = expandRegionBeforeRender(inputRegion, text, measureCtx, fontFamily, calcHorizontalLineCountFn);
-      const boxPadding = resolveBoxPadding(region);
-      const contentWidth = Math.max(20, region.box.width - boxPadding * 2);
-      const contentHeight = Math.max(20, region.box.height - boxPadding * 2);
-      const colors = resolveColors(region.fgColor, region.bgColor);
-      const initialFontSize = estimatedInitialFontSize;
 
-      measureCtx.font = `${initialFontSize}px ${fontFamily}`;
-      const lines = calcHorizontal(measureCtx, text, contentWidth, initialFontSize);
-      const fontSize = initialFontSize;
-      const strokePadding = resolveHorizontalRenderPadding(measureCtx, lines, fontSize);
+      const boxPadding = resolveBoxPadding(region);
+      const regionQuadDims = quadDimensions(getRegionQuad(region));
+      const contentWidth = Math.max(20, regionQuadDims.width - boxPadding * 2);
+      const contentHeight = Math.max(20, regionQuadDims.height - boxPadding * 2);
+
+      // Step 4: estimate preferred profile (dynamic spacing scales)
+      const originalContentHeight = Math.max(20, inputQuadDims.height - resolveBoxPadding(inputRegion) * 2);
+      const preferredProfile = estimateHorizontalPreferredProfile(
+        measureCtx,
+        region,
+        text,
+        contentWidth,
+        contentHeight,
+        estimatedInitialFontSize,
+        fontFamily,
+        preferredLines,
+        originalContentHeight,
+      );
+      let letterSpacingScale = preferredProfile.letterSpacingScale;
+      let lineHeightScale = preferredProfile.lineHeightScale;
+
+      // Step 5: calculate lines (preferred lines or fallback)
+      let fontSize = estimatedInitialFontSize;
+      let lines: HLine[];
+      let lineBreakReasons: ColumnBreakReason[];
+      let lineSegmentIds: number[];
+      let lineSegmentSources: ColumnSegmentSource[];
+
+      if (preferredLineSegments.length > 0) {
+        measureCtx.font = `${fontSize}px ${fontFamily}`;
+        const hResult = calcHorizontalFromLines(
+          measureCtx,
+          preferredLineSegments,
+          contentWidth,
+          fontSize,
+          letterSpacingScale,
+        );
+        lines = hResult.lines;
+        lineBreakReasons = hResult.lineBreakReasons;
+        lineSegmentIds = hResult.lineSegmentIds;
+        lineSegmentSources = hResult.lineSegmentSources;
+      } else {
+        measureCtx.font = `${fontSize}px ${fontFamily}`;
+        lines = calcHorizontal(measureCtx, text, contentWidth, fontSize, letterSpacingScale);
+        lineBreakReasons = lines.map((_, index) => (index === 0 ? 'start' : 'wrap'));
+        lineSegmentIds = lines.map(() => 1);
+        lineSegmentSources = lines.map(() => 'model');
+      }
+
+      // Step 6: try shrink for minor overflow (1-2 char tail line)
+      const calcLinesFn = (mCtx: CanvasRenderingContext2D, t: string, maxWidth: number, fs: number): HLine[] => {
+        if (preferredLineSegments.length > 0) {
+          mCtx.font = `${fs}px ${fontFamily}`;
+          const result = calcHorizontalFromLines(mCtx, preferredLineSegments, maxWidth, fs, letterSpacingScale);
+          return result.lines;
+        }
+        return calcHorizontal(mCtx, t, maxWidth, fs, letterSpacingScale);
+      };
+
+      const shrinkResult = tryShrinkHorizontalForMinorOverflow(
+        measureCtx,
+        text,
+        contentWidth,
+        estimatedInitialFontSize,
+        fontFamily,
+        lines,
+        calcLinesFn,
+      );
+      fontSize = shrinkResult.fontSize;
+      lines = shrinkResult.lines;
+
+      // Recalculate break reasons if font size changed after shrink
+      if (fontSize !== estimatedInitialFontSize && preferredLineSegments.length > 0) {
+        measureCtx.font = `${fontSize}px ${fontFamily}`;
+        const hResult = calcHorizontalFromLines(
+          measureCtx,
+          preferredLineSegments,
+          contentWidth,
+          fontSize,
+          letterSpacingScale,
+        );
+        lineBreakReasons = hResult.lineBreakReasons;
+        lineSegmentIds = hResult.lineSegmentIds;
+        lineSegmentSources = hResult.lineSegmentSources;
+      } else if (fontSize !== estimatedInitialFontSize) {
+        lineBreakReasons = lines.map((_, index) => (index === 0 ? 'start' : 'wrap'));
+        lineSegmentIds = lines.map(() => 1);
+        lineSegmentSources = lines.map(() => 'model');
+      }
+
+      // Step 7: content height + mask-aware extension
+      let horizontalContentHeight = resolveHorizontalContentHeight(contentHeight, fontSize);
+      horizontalContentHeight = resolveHorizontalMaskHeight(
+        inputRegion.bubbleMask,
+        region,
+        horizontalContentHeight,
+        fontSize,
+      );
+
+      // Step 8: binary search font shrink if too many lines
+      const targetLineCount = Math.max(
+        1,
+        sourceColumns.length,
+        preferredLines?.length ?? 0,
+        inputRegion.originalLineCount ?? 0,
+      );
+
+      if (lines.length > targetLineCount && fontSize > minFontSafetySize) {
+        const minAllowed = Math.max(minFontSafetySize, Math.ceil(estimatedInitialFontSize * 0.3));
+        let lo = minAllowed;
+        let hi = fontSize - 1;
+        let bestFs = fontSize;
+        let bestLines = lines;
+        let bestBreakReasons = lineBreakReasons;
+        let bestSegmentIds = lineSegmentIds;
+        let bestSegmentSources = lineSegmentSources;
+        let bestLetterSpacingScale = letterSpacingScale;
+        let bestLineHeightScale = lineHeightScale;
+
+        while (lo <= hi) {
+          const mid = Math.floor((lo + hi) / 2);
+          const midProfile = estimateHorizontalPreferredProfile(
+            measureCtx,
+            region,
+            text,
+            contentWidth,
+            horizontalContentHeight,
+            mid,
+            fontFamily,
+            preferredLines,
+            originalContentHeight,
+          );
+          measureCtx.font = `${mid}px ${fontFamily}`;
+          let candidateLines: HLine[];
+          if (preferredLineSegments.length > 0) {
+            const hResult = calcHorizontalFromLines(
+              measureCtx,
+              preferredLineSegments,
+              contentWidth,
+              mid,
+              midProfile.letterSpacingScale,
+            );
+            candidateLines = hResult.lines;
+            if (candidateLines.length <= targetLineCount) {
+              bestBreakReasons = hResult.lineBreakReasons;
+              bestSegmentIds = hResult.lineSegmentIds;
+              bestSegmentSources = hResult.lineSegmentSources;
+            }
+          } else {
+            candidateLines = calcHorizontal(measureCtx, text, contentWidth, mid, midProfile.letterSpacingScale);
+            if (candidateLines.length <= targetLineCount) {
+              bestBreakReasons = candidateLines.map((_, index) => (index === 0 ? 'start' : 'wrap'));
+              bestSegmentIds = candidateLines.map(() => 1);
+              bestSegmentSources = candidateLines.map(() => 'model');
+            }
+          }
+          if (candidateLines.length <= targetLineCount) {
+            bestFs = mid;
+            bestLines = candidateLines;
+            bestLetterSpacingScale = midProfile.letterSpacingScale;
+            bestLineHeightScale = midProfile.lineHeightScale;
+            lo = mid + 1;
+          } else {
+            hi = mid - 1;
+          }
+        }
+
+        if (bestFs !== fontSize) {
+          fontSize = bestFs;
+          lines = bestLines;
+          lineBreakReasons = bestBreakReasons;
+          lineSegmentIds = bestSegmentIds;
+          lineSegmentSources = bestSegmentSources;
+          letterSpacingScale = bestLetterSpacingScale;
+          lineHeightScale = bestLineHeightScale;
+          // Recalculate content height for new font size
+          horizontalContentHeight = resolveHorizontalContentHeight(contentHeight, fontSize);
+          horizontalContentHeight = resolveHorizontalMaskHeight(
+            inputRegion.bubbleMask,
+            region,
+            horizontalContentHeight,
+            fontSize,
+          );
+        }
+      }
+
+      const colors = resolveColors(region.fgColor, region.bgColor);
+
+      // Step 9: stroke padding (with current spacing scale)
+      measureCtx.font = `${fontSize}px ${fontFamily}`;
+      const strokePadding = resolveHorizontalRenderPadding(measureCtx, lines, fontSize, letterSpacingScale);
+
+      // Step 10: alignment
       const alignment = resolveAlignment(region, lines.length);
+
+      // Step 11: render
       if (renderText) {
         offCanvas = renderHorizontal(
           lines,
           fontSize,
           contentWidth,
-          contentHeight,
+          horizontalContentHeight,
           colors,
           alignment,
           strokePadding,
+          letterSpacingScale,
+          lineHeightScale,
         );
       }
       debug = {
@@ -821,16 +1046,17 @@ export async function drawTypeset(
         columnBoxes: buildHorizontalDebugColumnBoxes(
           lines,
           contentWidth,
-          contentHeight,
+          horizontalContentHeight,
           fontSize,
           alignment,
           strokePadding,
+          lineHeightScale,
         ),
-        columnBreakReasons: lines.map((_, index) => (index === 0 ? 'start' : 'wrap')),
-        columnSegmentIds: lines.map(() => 1),
-        columnSegmentSources: lines.map(() => 'model'),
+        columnBreakReasons: lineBreakReasons,
+        columnSegmentIds: lineSegmentIds,
+        columnSegmentSources: lineSegmentSources,
         offscreenWidth: Math.ceil(contentWidth + strokePadding * 2),
-        offscreenHeight: Math.ceil(contentHeight + strokePadding * 2),
+        offscreenHeight: Math.ceil(horizontalContentHeight + strokePadding * 2),
         boxPadding,
         strokePadding,
       };

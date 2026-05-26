@@ -288,3 +288,120 @@ export function resolveVerticalPreferredColumns(region: TextRegion, translatedTe
     singleColumnMaxLength: balanced.singleColumnMaxLength,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Horizontal line rebalancing
+// ---------------------------------------------------------------------------
+
+export function rebalanceHorizontalLines(
+  sourceLines: string[],
+  translatedSegments: PreferredColumnSegment[],
+): {
+  lines: PreferredColumnSegment[];
+  sourceLineLengths: number[];
+  singleLineMaxLength: number | null;
+} {
+  const sourceLengths = sourceLines.map((line) => countTextLength(line));
+  const totalSourceLength = sourceLengths.reduce((sum, len) => sum + len, 0);
+  const baselineLength = sourceLengths.length > 0
+    ? Math.max(1, totalSourceLength / sourceLengths.length)
+    : 1;
+  const normalizedTranslated = translatedSegments
+    .map((segment) => ({ text: segment.text.trim(), source: segment.source }))
+    .filter((segment) => segment.text.length > 0);
+
+  if (normalizedTranslated.length === 0) {
+    return {
+      lines: [],
+      sourceLineLengths: sourceLengths,
+      singleLineMaxLength: sourceLengths.length > 0 ? Math.max(...sourceLengths) : null,
+    };
+  }
+
+  const targetLines = Math.max(sourceLengths.length, normalizedTranslated.length, 1);
+  const output: PreferredColumnSegment[] = [];
+  let carry = '';
+  let carrySource: ColumnSegmentSource = 'split';
+  let lineIndex = 0;
+
+  while (lineIndex < targetLines || carry.trim()) {
+    const translatedItem = normalizedTranslated[lineIndex];
+    const hadCarry = carry.trim().length > 0;
+    const current = `${carry}${translatedItem?.text ?? ''}`.trim();
+    const currentSource: ColumnSegmentSource = hadCarry
+      ? 'split'
+      : translatedItem?.source ?? carrySource;
+    carry = '';
+
+    if (!current) {
+      output.push({ text: '', source: currentSource });
+      lineIndex += 1;
+      continue;
+    }
+
+    const sourceLength = sourceLengths[lineIndex]
+      ?? sourceLengths[sourceLengths.length - 1]
+      ?? baselineLength;
+    const currentLength = countTextLength(current);
+
+    if (currentLength <= sourceLength) {
+      output.push({ text: current, source: currentSource });
+      lineIndex += 1;
+      continue;
+    }
+
+    if (currentLength <= baselineLength) {
+      output.push({ text: current, source: currentSource });
+      lineIndex += 1;
+      continue;
+    }
+
+    if (lineIndex >= targetLines - 1) {
+      output.push({ text: current, source: currentSource });
+      carry = '';
+      lineIndex += 1;
+      continue;
+    }
+
+    const { kept, overflow } = splitByTextLength(current, baselineLength);
+    output.push({ text: kept || current, source: currentSource });
+    carry = overflow;
+    carrySource = 'split';
+    lineIndex += 1;
+  }
+
+  return {
+    lines: output.filter((line) => line.text.trim().length > 0),
+    sourceLineLengths: sourceLengths,
+    singleLineMaxLength: sourceLengths.length > 0 ? Math.max(...sourceLengths) : null,
+  };
+}
+
+export type HorizontalPreferredLinesResult = {
+  lines: PreferredColumnSegment[];
+  sourceLines: string[];
+  sourceLineLengths: number[];
+  singleLineMaxLength: number | null;
+};
+
+export function resolveHorizontalPreferredLines(region: TextRegion, translatedText: string): HorizontalPreferredLinesResult {
+  const sourceLines = resolveSourceColumns(region);
+  const translatedSegments = resolveTranslatedColumns(region, translatedText);
+  if (translatedSegments.length === 0) {
+    return {
+      lines: [],
+      sourceLines,
+      sourceLineLengths: sourceLines.map((line) => countTextLength(line)),
+      singleLineMaxLength: sourceLines.length > 0
+        ? Math.max(...sourceLines.map((line) => countTextLength(line)))
+        : null,
+    };
+  }
+  const balanced = rebalanceHorizontalLines(sourceLines, translatedSegments);
+  return {
+    lines: balanced.lines,
+    sourceLines,
+    sourceLineLengths: balanced.sourceLineLengths,
+    singleLineMaxLength: balanced.singleLineMaxLength,
+  };
+}

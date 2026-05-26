@@ -324,6 +324,34 @@ export function App() {
               </div>
             </section>
 
+            <section className="panel">
+              <div className="panel-title">模式</div>
+              <div className="radio-group">
+                <label className={`radio-row${settings.processMode === 'translate' ? ' radio-selected' : ''}${loading ? ' radio-disabled' : ''}`}>
+                  <input
+                    type="radio"
+                    name="processMode"
+                    value="translate"
+                    checked={settings.processMode === 'translate'}
+                    onChange={() => updateField('processMode', 'translate' as ExtensionSettings['processMode'])}
+                    disabled={loading}
+                  />
+                  <span className="radio-label">翻译模式</span>
+                </label>
+                <label className={`radio-row${settings.processMode === 'erase' ? ' radio-selected' : ''}${loading ? ' radio-disabled' : ''}`}>
+                  <input
+                    type="radio"
+                    name="processMode"
+                    value="erase"
+                    checked={settings.processMode === 'erase'}
+                    onChange={() => updateField('processMode', 'erase' as ExtensionSettings['processMode'])}
+                    disabled={loading}
+                  />
+                  <span className="radio-label">去字模式</span>
+                </label>
+              </div>
+            </section>
+
             {settings.translator === 'llm' ? (
               <section className="panel panel-llm">
                 <div className="panel-title">

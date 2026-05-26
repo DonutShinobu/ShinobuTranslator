@@ -26,7 +26,8 @@ type ProgressCallback = (progress: PipelineProgress) => void;
 
 function buildEraseDebugCanvas(
   originalCanvas: HTMLCanvasElement,
-  debugLayers: MaskDebugLayers
+  debugLayers: MaskDebugLayers,
+  baseCanvas?: HTMLCanvasElement
 ): HTMLCanvasElement {
   const { refinedMask, perRegionDilated, globalDilated, scaledWidth, scaledHeight } = debugLayers;
   const width = originalCanvas.width;
@@ -39,7 +40,7 @@ function buildEraseDebugCanvas(
   if (!ctx) {
     return canvas;
   }
-  ctx.drawImage(originalCanvas, 0, 0);
+  ctx.drawImage(baseCanvas ?? originalCanvas, 0, 0);
 
   // Upscale each layer mask to original resolution via intermediate canvas
   const toScaledCanvas = (mask: Uint8Array): HTMLCanvasElement => {
@@ -224,6 +225,7 @@ export async function runPipeline(
   let ocrDebug: PipelineArtifacts['ocrDebug'] = null;
   let detectionMaskCanvas: HTMLCanvasElement | null = null;
   let refinedMaskCanvas: HTMLCanvasElement | null = null;
+  let debugLayers: MaskDebugLayers | null = null;
   const stageTimings: StageTiming[] = [];
 
   const buildArtifacts = (): PipelineArtifacts => ({
@@ -419,22 +421,26 @@ export async function runPipeline(
   reportParallel();
   const parallelT0 = performance.now();
 
-  const translateTask = (async (): Promise<PipelineArtifacts["detectedRegions"]> => {
-    parallelTranslateStatus = "running";
-    reportParallel();
-    try {
-      const t0 = performance.now();
-      const translated = await runTranslate(orderedRegions, config);
-      const translatedRegions = translated.regions;
-      translateTiming = { stage: "translate", label: "\u7ffb\u8bd1\u4e3a\u4e2d\u6587", durationMs: performance.now() - t0 };
-      translationDebug = translated.translationDebug;
-      parallelTranslateStatus = "done";
-      reportParallel();
-      return translatedRegions;
-    } catch (error) {
-      throw new PipelineStageError("\u7ffb\u8bd1", toErrorDetail(error), buildArtifacts());
-    }
-  })();
+  const shouldSkipTranslate = config.processMode === 'erase' || config.eraseDebug;
+
+  const translateTask = shouldSkipTranslate
+    ? Promise.resolve(orderedRegions)
+    : (async (): Promise<PipelineArtifacts["detectedRegions"]> => {
+        parallelTranslateStatus = "running";
+        reportParallel();
+        try {
+          const t0 = performance.now();
+          const translated = await runTranslate(orderedRegions, config);
+          const translatedRegions = translated.regions;
+          translateTiming = { stage: "translate", label: "\u7ffb\u8bd1\u4e3a\u4e2d\u6587", durationMs: performance.now() - t0 };
+          translationDebug = translated.translationDebug;
+          parallelTranslateStatus = "done";
+          reportParallel();
+          return translatedRegions;
+        } catch (error) {
+          throw new PipelineStageError("\u7ffb\u8bd1", toErrorDetail(error), buildArtifacts());
+        }
+      })();
 
   const eraseTask = (async (): Promise<HTMLCanvasElement> => {
     if (!detectionMaskCanvas) {
@@ -452,7 +458,8 @@ export async function runPipeline(
       }, config.eraseDebug);
       refinedMaskCanvas = refineResult.refinedMaskCanvas;
       if (refineResult.debugLayers) {
-        eraseDebugCanvas = buildEraseDebugCanvas(originalCanvas, refineResult.debugLayers);
+        debugLayers = refineResult.debugLayers;
+        eraseDebugCanvas = buildEraseDebugCanvas(originalCanvas, refineResult.debugLayers, undefined);
       }
       maskRefineTiming = { stage: "mask_refine", label: "\u7ec6\u5316\u53bb\u5b57\u906e\u7f69", durationMs: performance.now() - t0 };
     } catch (error) {
@@ -494,9 +501,10 @@ export async function runPipeline(
     cleanedCanvas = inpaintedCanvas;
     resultCanvas = cleanedCanvas;
     flushParallelTimings();
+    const parallelLabel = shouldSkipTranslate ? "去字" : "并行处理(翻译 + 去字)";
     stageTimings.push({
       stage: "parallel",
-      label: "\u5e76\u884c\u5904\u7406(\u7ffb\u8bd1 + \u53bb\u5b57)",
+      label: parallelLabel,
       durationMs: performance.now() - parallelT0
     });
   } catch (error) {
@@ -504,36 +512,44 @@ export async function runPipeline(
     if (error instanceof PipelineStageError) {
       throw error;
     }
-    throw new PipelineStageError("\u5e76\u884c\u5904\u7406", toErrorDetail(error), buildArtifacts());
+    throw new PipelineStageError("并行处理", toErrorDetail(error), buildArtifacts());
   }
 
-  report(onProgress, "typeset", "\u6392\u7248\u548c\u5d4c\u5b57");
-  try {
-    const t0 = performance.now();
-    const typesetResult = await drawTypeset(cleanedCanvas, latestRegions, config.targetLang, {
-      debugMode: config.typesetDebug,
-      renderText: true,
-      collectDebugLog: false,
-    });
-    resultCanvas = typesetResult.canvas;
-    if (config.eraseDebug && eraseDebugCanvas) {
-      resultCanvas = eraseDebugCanvas;
-    }
-    if (config.collectDebugLog) {
-      const debugOriginalTypeset = await drawTypeset(originalCanvas, latestRegions, config.targetLang, {
-        debugMode: true,
-        renderText: false,
-        collectDebugLog: true,
-      });
-      debugOriginalCanvas = debugOriginalTypeset.canvas;
-      typesetDebugLog = debugOriginalTypeset.debugLog;
+  if (config.processMode === 'erase') {
+    if (config.eraseDebug && debugLayers) {
+      resultCanvas = buildEraseDebugCanvas(originalCanvas, debugLayers, cleanedCanvas);
     } else {
-      debugOriginalCanvas = null;
-      typesetDebugLog = null;
+      resultCanvas = cleanedCanvas;
     }
-    stageTimings.push({ stage: "typeset", label: "排版和嵌字", durationMs: performance.now() - t0 });
-  } catch (error) {
-    throw new PipelineStageError("排版", toErrorDetail(error), buildArtifacts());
+  } else {
+    report(onProgress, "typeset", "排版和嵌字");
+    try {
+      const t0 = performance.now();
+      const typesetResult = await drawTypeset(cleanedCanvas, latestRegions, config.targetLang, {
+        debugMode: config.typesetDebug,
+        renderText: true,
+        collectDebugLog: false,
+      });
+      resultCanvas = typesetResult.canvas;
+      if (config.eraseDebug && eraseDebugCanvas) {
+        resultCanvas = eraseDebugCanvas;
+      }
+      if (config.collectDebugLog) {
+        const debugOriginalTypeset = await drawTypeset(originalCanvas, latestRegions, config.targetLang, {
+          debugMode: true,
+          renderText: false,
+          collectDebugLog: true,
+        });
+        debugOriginalCanvas = debugOriginalTypeset.canvas;
+        typesetDebugLog = debugOriginalTypeset.debugLog;
+      } else {
+        debugOriginalCanvas = null;
+        typesetDebugLog = null;
+      }
+      stageTimings.push({ stage: "typeset", label: "排版和嵌字", durationMs: performance.now() - t0 });
+    } catch (error) {
+      throw new PipelineStageError("排版", toErrorDetail(error), buildArtifacts());
+    }
   }
 
   report(onProgress, "done", "完成");

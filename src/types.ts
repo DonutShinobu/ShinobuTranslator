@@ -44,6 +44,7 @@ export type PipelineConfig = {
   eraseDebug: boolean;
   collectDebugLog: boolean;
   ocrEngine: 'builtin' | 'paddleocr';
+  processMode: 'translate' | 'erase';
 };
 
 export type RuntimeStageStatus = {

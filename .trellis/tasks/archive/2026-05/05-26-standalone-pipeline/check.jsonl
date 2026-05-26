@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/benchmark/index.md", "reason": "Node benchmark 质量检查清单——tsc --noEmit、vitest run、优雅错误处理"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端代码质量标准和禁止模式——确保 pipeline 重构不引入 forbidden patterns"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨层重构验证——确认浏览器路径和 Node 路径数据流一致"}

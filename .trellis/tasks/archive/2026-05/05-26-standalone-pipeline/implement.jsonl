@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/benchmark/index.md", "reason": "Node.js 环境下的 benchmark 开发模式——tsx runner、fixture 格式、@napi-rs/canvas 使用"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "本次任务是跨层重构（浏览器→Node），需要检查数据流跨层一致性"}

@@ -1,6 +1,6 @@
 import { toErrorMessage } from "../shared/utils";
 
-export type RuntimeProvider = "webnn" | "webgpu" | "wasm";
+export type RuntimeProvider = "webnn" | "webgpu" | "wasm" | "cuda" | "cpu";
 export type WebNnDeviceType = "gpu" | "cpu" | "default";
 
 export function isContextLostError(message: string): boolean {

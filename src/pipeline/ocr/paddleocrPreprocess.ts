@@ -1,4 +1,5 @@
 import type { TextRegion } from '../../types';
+import type { PlatformProvider, PipelineImage } from '../../runtime/platform';
 import type { Direction } from './preprocess';
 import { getTransformedRegion } from './preprocess';
 
@@ -13,15 +14,16 @@ export type PaddleOcrInputData = {
  * resize 到 inputHeight 高度，宽度按比例缩放（不超过 maxInputWidth），归一化后输出 NCHW Float32Array。
  */
 export function buildPaddleOcrInput(
-  image: HTMLImageElement,
+  image: PipelineImage,
   region: TextRegion,
   direction: Direction,
   inputHeight: number,
   maxInputWidth: number,
   normalize: 'zero_to_one' | 'minus_one_to_one',
+  platform: PlatformProvider,
 ): PaddleOcrInputData {
   // 使用 getTransformedRegion 处理透视变换和竖排旋转
-  const source = getTransformedRegion(image, region, direction, inputHeight);
+  const source = getTransformedRegion(image, region, direction, inputHeight, platform);
   const srcWidth = Math.max(1, source.width);
   const srcHeight = Math.max(1, source.height);
 
@@ -29,9 +31,7 @@ export function buildPaddleOcrInput(
   const ratio = srcWidth / srcHeight;
   const resizedWidth = Math.max(1, Math.min(maxInputWidth, Math.round(ratio * inputHeight)));
 
-  const resizeCanvas = document.createElement('canvas');
-  resizeCanvas.width = resizedWidth;
-  resizeCanvas.height = inputHeight;
+  const resizeCanvas = platform.createCanvas(resizedWidth, inputHeight);
   const resizeCtx = resizeCanvas.getContext('2d')!;
   resizeCtx.drawImage(source, 0, 0, srcWidth, srcHeight, 0, 0, resizedWidth, inputHeight);
 

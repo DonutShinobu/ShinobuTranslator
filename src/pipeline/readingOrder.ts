@@ -1,4 +1,5 @@
 import type { Rect, TextRegion } from "../types";
+import type { PlatformProvider, PipelineCanvas } from "../runtime/platform";
 import { clamp } from "./utils";
 
 type Panel = Rect;
@@ -217,7 +218,7 @@ function removeContainedPanels(panels: Panel[]): Panel[] {
   return result;
 }
 
-function detectPanels(sourceCanvas: HTMLCanvasElement): Panel[] {
+function detectPanels(sourceCanvas: PipelineCanvas, platform: PlatformProvider): Panel[] {
   const sourceWidth = sourceCanvas.width;
   const sourceHeight = sourceCanvas.height;
   if (sourceWidth <= 0 || sourceHeight <= 0) {
@@ -228,9 +229,7 @@ function detectPanels(sourceCanvas: HTMLCanvasElement): Panel[] {
   const scaledWidth = Math.max(1, Math.round(sourceWidth * scale));
   const scaledHeight = Math.max(1, Math.round(sourceHeight * scale));
 
-  const work = document.createElement("canvas");
-  work.width = scaledWidth;
-  work.height = scaledHeight;
+  const work = platform.createCanvas(scaledWidth, scaledHeight);
   const ctx = work.getContext("2d", { willReadFrequently: true });
   if (!ctx) {
     return [];
@@ -504,7 +503,8 @@ function simpleSort(regions: TextRegion[], rtl: boolean): TextRegion[] {
 
 export function sortRegionsForRender(
   regions: TextRegion[],
-  sourceCanvas: HTMLCanvasElement,
+  sourceCanvas: PipelineCanvas,
+  platform: PlatformProvider,
 ): TextRegion[] {
   if (regions.length <= 1) {
     return [...regions];
@@ -513,7 +513,7 @@ export function sortRegionsForRender(
   const fallback = (): TextRegion[] => simpleSort(regions, defaultRtl);
 
   try {
-    const panels = detectPanels(sourceCanvas);
+    const panels = detectPanels(sourceCanvas, platform);
     if (panels.length === 0) {
       return fallback();
     }

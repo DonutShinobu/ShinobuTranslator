@@ -1,5 +1,6 @@
 import { PSM, createWorker } from "tesseract.js";
 import type { Rect, TextRegion } from "../../types";
+import type { PlatformProvider, PipelineCanvas, PipelineImage } from "../../runtime/platform";
 import { connectedComponents, mergeRects, makeRegion } from "./onnxDetect";
 import { clamp, nmsBoxes, normalizeTextDeep } from "../utils";
 
@@ -72,14 +73,12 @@ function toRect(bbox: TessBbox, scale: number, imageWidth: number, imageHeight: 
   };
 }
 
-function preprocessForTesseract(image: HTMLImageElement): { canvas: HTMLCanvasElement; scale: number } {
+function preprocessForTesseract(image: PipelineImage, platform: PlatformProvider): { canvas: PipelineCanvas; scale: number } {
   const maxSide = 2200;
   const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
   const width = Math.max(1, Math.round(image.naturalWidth * scale));
   const height = Math.max(1, Math.round(image.naturalHeight * scale));
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
+  const canvas = platform.createCanvas(width, height);
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) {
     throw new Error("Tesseract 检测预处理阶段无法创建画布上下文");
@@ -172,15 +171,13 @@ function estimateThreshold(grays: Uint8ClampedArray): number {
   return clamp(Math.round(mean - stdev * 0.35), 70, 170);
 }
 
-export async function detectByHeuristic(image: HTMLImageElement): Promise<TextRegion[]> {
+export async function detectByHeuristic(image: PipelineImage, platform: PlatformProvider): Promise<TextRegion[]> {
   const maxSide = 1280;
   const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
   const width = Math.max(1, Math.round(image.naturalWidth * scale));
   const height = Math.max(1, Math.round(image.naturalHeight * scale));
 
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
+  const canvas = platform.createCanvas(width, height);
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) {
     throw new Error("文本检测阶段无法创建画布上下文");
@@ -227,15 +224,15 @@ export async function detectByHeuristic(image: HTMLImageElement): Promise<TextRe
   return sorted.map(makeRegion);
 }
 
-export async function detectByTesseract(image: HTMLImageElement): Promise<TextRegion[]> {
+export async function detectByTesseract(image: PipelineImage, platform: PlatformProvider): Promise<TextRegion[]> {
   const worker = await buildWorker();
   try {
     await worker.setParameters({
       tessedit_pageseg_mode: PSM.SPARSE_TEXT,
       preserve_interword_spaces: "1"
     });
-    const preprocessed = preprocessForTesseract(image);
-    const result = await worker.recognize(preprocessed.canvas);
+    const preprocessed = preprocessForTesseract(image, platform);
+    const result = await worker.recognize(preprocessed.canvas as HTMLCanvasElement);
 
     const lineUnits = extractUnits(result.data.lines);
     const lineRegions = buildRegionsFromUnits(

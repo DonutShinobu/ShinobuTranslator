@@ -1,9 +1,10 @@
 import type { Rect, TextRegion, QuadPoint } from "../../types";
+import type { PlatformProvider, PipelineCanvas, PipelineImage } from "../../runtime/platform";
 import { minAreaRect, type Quad } from "../typeset/geometry";
 import { getModelSession } from "../../runtime/modelRegistry";
 import { isContextLostRuntimeError } from "../../runtime/onnxTypes";
 import type { RuntimeProvider, WebNnDeviceType } from "../../runtime/onnxTypes";
-import { runInference } from "../../runtime/onnxWorkerBridge";
+import { runInference } from "../../runtime/onnxBridge";
 import type { WorkerSessionHandle, TensorTransport } from "../../runtime/onnxWorkerTypes";
 import { toErrorMessage } from "../../shared/utils";
 import { clamp, polygonArea, nmsBoxes, convexHull, type ScoredBox } from "../utils";
@@ -22,7 +23,7 @@ type MaskComponent = {
 
 export type DetectOutput = {
   regions: TextRegion[];
-  rawMaskCanvas: HTMLCanvasElement | null;
+  rawMaskCanvas: PipelineCanvas | null;
   actualProvider?: RuntimeProvider;
   actualWebnnDeviceType?: WebNnDeviceType;
 };
@@ -229,10 +230,8 @@ function makeRegionFromQuad(quad: Quad, imageWidth: number, imageHeight: number,
   };
 }
 
-function binaryMaskToCanvas(mask: Uint8Array, width: number, height: number): HTMLCanvasElement {
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
+function binaryMaskToCanvas(mask: Uint8Array, width: number, height: number, platform: PlatformProvider): PipelineCanvas {
+  const canvas = platform.createCanvas(width, height);
   const ctx = canvas.getContext("2d");
   if (!ctx) {
     throw new Error("文本检测遮罩输出无法创建画布上下文");
@@ -249,10 +248,8 @@ function binaryMaskToCanvas(mask: Uint8Array, width: number, height: number): HT
   return canvas;
 }
 
-function scaleMaskToOriginal(maskCanvas: HTMLCanvasElement, image: HTMLImageElement): HTMLCanvasElement {
-  const out = document.createElement("canvas");
-  out.width = image.naturalWidth;
-  out.height = image.naturalHeight;
+function scaleMaskToOriginal(maskCanvas: PipelineCanvas, image: PipelineImage, platform: PlatformProvider): PipelineCanvas {
+  const out = platform.createCanvas(image.naturalWidth, image.naturalHeight);
   const ctx = out.getContext("2d", { willReadFrequently: true });
   if (!ctx) {
     throw new Error("文本检测遮罩缩放失败");
@@ -272,8 +269,8 @@ function scaleMaskToOriginal(maskCanvas: HTMLCanvasElement, image: HTMLImageElem
   return out;
 }
 
-function buildMaskCanvasFromBinary(mask: Uint8Array, width: number, height: number, image: HTMLImageElement): HTMLCanvasElement {
-  return scaleMaskToOriginal(binaryMaskToCanvas(mask, width, height), image);
+function buildMaskCanvasFromBinary(mask: Uint8Array, width: number, height: number, image: PipelineImage, platform: PlatformProvider): PipelineCanvas {
+  return scaleMaskToOriginal(binaryMaskToCanvas(mask, width, height, platform), image, platform);
 }
 
 // --- connectedComponents (shared with heuristic path) ---
@@ -456,16 +453,14 @@ function boxesFromBlk(
   return picked;
 }
 
-function preprocessLetterbox(image: HTMLImageElement, size: number): LetterboxResult {
+function preprocessLetterbox(image: PipelineImage, size: number, platform: PlatformProvider): LetterboxResult {
   const width = image.naturalWidth;
   const height = image.naturalHeight;
   const ratio = Math.min(size / height, size / width);
   const unpaddedWidth = Math.max(1, Math.round(width * ratio));
   const unpaddedHeight = Math.max(1, Math.round(height * ratio));
 
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
+  const canvas = platform.createCanvas(size, size);
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) {
     throw new Error("ONNX 检测预处理失败：无法创建画布");
@@ -640,7 +635,7 @@ function mapQuadToOriginal(
 
 function detectCtdRegionsFromDetTensor(
   detTensor: TensorTransport,
-  image: HTMLImageElement,
+  image: PipelineImage,
   prep: LetterboxResult
 ): TextRegion[] {
   if (!(detTensor.data instanceof Float32Array)) {
@@ -714,7 +709,7 @@ function detectCtdRegionsFromDetTensor(
 
 function mapBoxesToOriginal(
   boxes: Rect[],
-  image: HTMLImageElement,
+  image: PipelineImage,
   prep: LetterboxResult,
   padRatio = 0.15,
   maxAreaRatio = 0.18
@@ -754,10 +749,10 @@ function mapBoxesToOriginal(
 
 // --- Main ONNX detection function (exported) ---
 
-export async function detectByOnnx(image: HTMLImageElement): Promise<DetectOutput> {
+export async function detectByOnnx(image: PipelineImage, platform: PlatformProvider): Promise<DetectOutput> {
   const primaryHandle = await getModelSession("detector");
   const inputSize = 1024;
-  const prep = preprocessLetterbox(image, inputSize);
+  const prep = preprocessLetterbox(image, inputSize, platform);
 
   const runWithHandle = async (handle: WorkerSessionHandle): Promise<Record<string, TensorTransport>> => {
     const inputName = handle.inputNames[0] ?? "images";
@@ -836,7 +831,7 @@ export async function detectByOnnx(image: HTMLImageElement): Promise<DetectOutpu
 
     return {
       regions,
-      rawMaskCanvas: buildMaskCanvasFromBinary(binaryMask.mask, binaryMask.width, binaryMask.height, image),
+      rawMaskCanvas: buildMaskCanvasFromBinary(binaryMask.mask, binaryMask.width, binaryMask.height, image, platform),
       actualProvider,
       actualWebnnDeviceType
     };
@@ -894,7 +889,7 @@ export async function detectByOnnx(image: HTMLImageElement): Promise<DetectOutpu
   const regions = merged.map(makeRegion);
   return {
     regions,
-    rawMaskCanvas: buildMaskCanvasFromBinary(mask, width, height, image),
+    rawMaskCanvas: buildMaskCanvasFromBinary(mask, width, height, image, platform),
     actualProvider,
     actualWebnnDeviceType
   };

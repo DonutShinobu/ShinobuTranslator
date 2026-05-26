@@ -1,3 +1,5 @@
+import type { PipelineCanvas, PipelineImage, PipelineImageData } from "./runtime/platform";
+
 export type Rect = {
   x: number;
   y: number;
@@ -28,7 +30,7 @@ export type TextRegion = {
   /** Optional LLM-provided vertical columns, ordered right-to-left. */
   translatedColumns?: string[];
   bubbleBox?: Rect;
-  bubbleMask?: ImageData;
+  bubbleMask?: PipelineImageData;
 };
 
 export type PipelineConfig = {
@@ -50,7 +52,7 @@ export type PipelineConfig = {
 export type RuntimeStageStatus = {
   model: "detector" | "ocr" | "inpaint";
   enabled: boolean;
-  provider?: "webnn" | "webgpu" | "wasm";
+  provider?: "webnn" | "webgpu" | "wasm" | "cuda" | "cpu";
   webnnDeviceType?: "gpu" | "cpu" | "default";
   detail: string;
 };
@@ -167,19 +169,19 @@ export type MaskDebugLayers = {
 };
 
 export type RefineTextMaskResult = {
-  refinedMaskCanvas: HTMLCanvasElement;
+  refinedMaskCanvas: PipelineCanvas;
   debugLayers?: MaskDebugLayers;
 };
 
 export type PipelineArtifacts = {
-  original: HTMLImageElement;
+  original: PipelineImage;
   detectedRegions: TextRegion[];
-  detectionCanvas: HTMLCanvasElement;
-  ocrCanvas: HTMLCanvasElement;
-  segmentationCanvas: HTMLCanvasElement | null;
-  cleanedCanvas: HTMLCanvasElement;
-  resultCanvas: HTMLCanvasElement;
-  debugOriginalCanvas: HTMLCanvasElement | null;
+  detectionCanvas: PipelineCanvas;
+  ocrCanvas: PipelineCanvas;
+  segmentationCanvas: PipelineCanvas | null;
+  cleanedCanvas: PipelineCanvas;
+  resultCanvas: PipelineCanvas;
+  debugOriginalCanvas: PipelineCanvas | null;
   typesetDebugLog: PipelineTypesetDebugLog | null;
   translationDebug: TranslationDebugInfo | null;
   ocrDebug: OcrRunDebugInfo | null;

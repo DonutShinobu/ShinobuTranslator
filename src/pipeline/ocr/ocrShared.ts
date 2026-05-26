@@ -55,7 +55,18 @@ export async function loadCharset(dictUrl?: string): Promise<string[] | null> {
   if (cached) {
     return cached;
   }
+  const isNode = typeof process !== 'undefined' && !!process.versions?.node;
   const promise = (async () => {
+    if (isNode) {
+      // Node: read from local file system
+      const fs = await import('fs');
+      const text = fs.readFileSync(dictUrl, 'utf-8');
+      const lines = text
+        .split(/\r?\n/g)
+        .filter((line) => line.length > 0);
+      return lines.length > 0 ? lines : null;
+    }
+    // Browser: fetch from URL
     const response = await fetch(dictUrl, { method: "GET" });
     if (!response.ok) {
       return null;

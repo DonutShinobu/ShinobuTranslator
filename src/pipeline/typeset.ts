@@ -1,4 +1,6 @@
 import type { PipelineTypesetDebugLog, TextDirection, TextRegion, QuadPoint, TypesetDebugRegionLog } from "../types";
+import type { PlatformProvider, PipelineCanvas, PipelineRenderingContext } from "../runtime/platform";
+import { browserPlatform as browserPlatformFallback } from "../runtime/browserPlatform";
 import {
   resolveInitialFontSize,
   expandRegionBeforeRender,
@@ -73,7 +75,7 @@ function resolveHorizontalLineHeight(fontSize: number, scale: number = 1): numbe
 }
 
 function measureHorizontalTextWidth(
-  ctx: CanvasRenderingContext2D,
+  ctx: PipelineRenderingContext,
   text: string,
   fontSize: number,
   letterSpacingScale: number = 1,
@@ -104,7 +106,7 @@ function measureHorizontalTextWidth(
  * - For Latin: word-level wrapping with character fallback for long words.
  */
 function calcHorizontal(
-  ctx: CanvasRenderingContext2D,
+  ctx: PipelineRenderingContext,
   text: string,
   maxWidth: number,
   fontSize: number,
@@ -124,7 +126,7 @@ function calcHorizontal(
  * CJK character-level line breaking with kinsoku shori.
  */
 function calcHorizontalCjk(
-  ctx: CanvasRenderingContext2D,
+  ctx: PipelineRenderingContext,
   text: string,
   maxWidth: number,
   fontSize: number,
@@ -181,7 +183,7 @@ function calcHorizontalCjk(
  * Latin word-level line breaking. Falls back to character-level for long words.
  */
 function calcHorizontalLatin(
-  ctx: CanvasRenderingContext2D,
+  ctx: PipelineRenderingContext,
   text: string,
   maxWidth: number,
   fontSize: number,
@@ -236,7 +238,7 @@ function calcHorizontalLatin(
 // ---------------------------------------------------------------------------
 
 function drawHorizontalTextLine(
-  ctx: CanvasRenderingContext2D,
+  ctx: PipelineRenderingContext,
   text: string,
   x: number,
   y: number,
@@ -265,7 +267,7 @@ function drawHorizontalTextLine(
 }
 
 function resolveHorizontalRenderPadding(
-  ctx: CanvasRenderingContext2D,
+  ctx: PipelineRenderingContext,
   lines: HLine[],
   fontSize: number,
   letterSpacingScale: number = 1,
@@ -291,8 +293,8 @@ function resolveHorizontalRenderPadding(
     for (let i = 0; i < chars.length; i++) {
       const ch = chars[i];
       const metrics = ctx.measureText(ch);
-      const left = metricAbs(metrics.actualBoundingBoxLeft);
-      const right = metricAbs(metrics.actualBoundingBoxRight);
+      const left = metricAbs(metrics.actualBoundingBoxLeft ?? 0);
+      const right = metricAbs(metrics.actualBoundingBoxRight ?? 0);
 
       minX = Math.min(minX, penX - left);
       maxX = Math.max(maxX, penX + right);
@@ -328,16 +330,15 @@ function renderHorizontal(
   padding: number,
   letterSpacingScale: number = 1,
   lineHeightScale: number = 1,
-): HTMLCanvasElement {
+  platform?: PlatformProvider,
+): PipelineCanvas {
   const sw = strokeWidth(fontSize);
   const lineHeight = resolveHorizontalLineHeight(fontSize, lineHeightScale);
 
   const canvasW = Math.ceil(contentWidth + padding * 2);
   const canvasH = Math.ceil(contentHeight + padding * 2);
 
-  const off = document.createElement("canvas");
-  off.width = canvasW;
-  off.height = canvasH;
+  const off = platform!.createCanvas(canvasW, canvasH);
   const ctx = off.getContext("2d")!;
 
   ctx.font = `${fontSize}px ${fontFamily}`;
@@ -413,7 +414,7 @@ function buildHorizontalDebugColumnBoxes(
   }));
 }
 
-function traceRegionPath(ctx: CanvasRenderingContext2D, region: TextRegion): void {
+function traceRegionPath(ctx: PipelineRenderingContext, region: TextRegion): void {
   if (region.quad && region.quad.length === 4) {
     ctx.beginPath();
     ctx.moveTo(region.quad[0].x, region.quad[0].y);
@@ -427,7 +428,7 @@ function traceRegionPath(ctx: CanvasRenderingContext2D, region: TextRegion): voi
   ctx.rect(region.box.x, region.box.y, region.box.width, region.box.height);
 }
 
-function drawQuadPath(ctx: CanvasRenderingContext2D, quad: QuadPoint[]): void {
+function drawQuadPath(ctx: PipelineRenderingContext, quad: QuadPoint[]): void {
   if (quad.length !== 4) {
     return;
   }
@@ -440,7 +441,7 @@ function drawQuadPath(ctx: CanvasRenderingContext2D, quad: QuadPoint[]): void {
 }
 
 function drawTypesetDebugOverlay(
-  ctx: CanvasRenderingContext2D,
+  ctx: PipelineRenderingContext,
   sourceRegion: TextRegion,
   expandedRegion: TextRegion,
   regionIndex: number,
@@ -538,16 +539,15 @@ function renderVertical(
   alignment: "left" | "center" | "right",
   metrics: VerticalCellMetrics,
   padding: number,
-): HTMLCanvasElement {
+  platform?: PlatformProvider,
+): PipelineCanvas {
   const sw = strokeWidth(fontSize);
   const { colWidth, colSpacing } = metrics;
 
   const canvasW = Math.ceil(contentWidth + padding * 2);
   const canvasH = Math.ceil(contentHeight + padding * 2);
 
-  const off = document.createElement("canvas");
-  off.width = canvasW;
-  off.height = canvasH;
+  const off = platform!.createCanvas(canvasW, canvasH);
   const ctx = off.getContext("2d")!;
 
   ctx.font = `${fontSize}px ${fontFamily}`;
@@ -622,8 +622,8 @@ function renderVertical(
  * applying affine transform for rotation if the region has a rotated quad.
  */
 function compositeRegion(
-  mainCtx: CanvasRenderingContext2D,
-  offCanvas: HTMLCanvasElement,
+  mainCtx: PipelineRenderingContext,
+  offCanvas: PipelineCanvas,
   region: TextRegion,
   boxPadding: number,
   strokePadding: number,
@@ -692,27 +692,26 @@ type DrawTypesetOptions = {
 };
 
 type DrawTypesetResult = {
-  canvas: HTMLCanvasElement;
+  canvas: PipelineCanvas;
   debugLog: PipelineTypesetDebugLog | null;
 };
 
 export async function drawTypeset(
-  canvas: HTMLCanvasElement,
+  canvas: PipelineCanvas,
   regions: TextRegion[],
   targetLang?: string,
   options?: DrawTypesetOptions,
+  platform?: PlatformProvider,
 ): Promise<DrawTypesetResult> {
   const debugMode = options?.debugMode === true;
   const renderText = options?.renderText !== false;
   const collectDebugLog = options?.collectDebugLog === true;
   // Ensure fonts are loaded before measuring/rendering
-  await document.fonts.ready;
+  await (platform ?? browserPlatformFallback).waitForFonts();
 
   fontFamily = resolveFontFamily(targetLang);
 
-  const out = document.createElement("canvas");
-  out.width = canvas.width;
-  out.height = canvas.height;
+  const out = (platform ?? browserPlatformFallback).createCanvas(canvas.width, canvas.height);
 
   const ctx = out.getContext("2d");
   if (!ctx) {
@@ -722,8 +721,7 @@ export async function drawTypeset(
   ctx.drawImage(canvas, 0, 0);
 
   // We need a scratch context for text measurement (shared across regions)
-  const measureCanvas = document.createElement("canvas");
-  measureCanvas.width = 1;
+  const measureCanvas = (platform ?? browserPlatformFallback).createCanvas(1, 1);
   measureCanvas.height = 1;
   const measureCtx = measureCanvas.getContext("2d")!;
 
@@ -736,7 +734,7 @@ export async function drawTypeset(
     const translated = translatedRaw || inputRegion.sourceText;
     const isVerticalInput = inputRegion.direction === "v";
 
-    let offCanvas: HTMLCanvasElement | null = null;
+    let offCanvas: PipelineCanvas | null = null;
     let debug: RegionTypesetDebug;
     let region: TextRegion;
     let estimatedInitialFontSize: number;
@@ -774,6 +772,7 @@ export async function drawTypeset(
           vResult.alignment,
           vResult.metrics,
           vResult.strokePadding,
+          platform,
         );
       }
       debug = {
@@ -822,7 +821,7 @@ export async function drawTypeset(
       }
 
       // Step 3: region expansion
-      const calcHorizontalLineCountFn = (mCtx: CanvasRenderingContext2D, t: string, maxWidth: number, fontSize: number): number => {
+      const calcHorizontalLineCountFn = (mCtx: PipelineRenderingContext, t: string, maxWidth: number, fontSize: number): number => {
         if (preferredLineSegments.length > 0) {
           mCtx.font = `${fontSize}px ${fontFamily}`;
           const result = calcHorizontalFromLines(mCtx, preferredLineSegments, maxWidth, fontSize);
@@ -882,7 +881,7 @@ export async function drawTypeset(
       }
 
       // Step 6: try shrink for minor overflow (1-2 char tail line)
-      const calcLinesFn = (mCtx: CanvasRenderingContext2D, t: string, maxWidth: number, fs: number): HLine[] => {
+      const calcLinesFn = (mCtx: PipelineRenderingContext, t: string, maxWidth: number, fs: number): HLine[] => {
         if (preferredLineSegments.length > 0) {
           mCtx.font = `${fs}px ${fontFamily}`;
           const result = calcHorizontalFromLines(mCtx, preferredLineSegments, maxWidth, fs, letterSpacingScale);
@@ -1039,6 +1038,7 @@ export async function drawTypeset(
           strokePadding,
           letterSpacingScale,
           lineHeightScale,
+          platform,
         );
       }
       debug = {

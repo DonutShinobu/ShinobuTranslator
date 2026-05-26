@@ -1,4 +1,5 @@
 import type { QuadPoint, TextDirection, TextRegion } from "../../types";
+import type { PlatformProvider, PipelineImage } from "../../runtime/platform";
 import { sampleEdgeColors, sampleCornerBgColor, histogramBimodal } from "./colorSampling";
 import { colorDistance } from "../typeset/color";
 
@@ -20,8 +21,9 @@ export type OcrRecognizeOutput = {
 export type OcrProvider = {
   name: string;
   recognize(
-    image: HTMLImageElement,
+    image: PipelineImage,
     regions: TextRegion[],
+    platform?: PlatformProvider,
   ): Promise<OcrRecognizeOutput>;
 };
 
@@ -48,12 +50,10 @@ export function inferDirectionFromQuad(
 }
 
 function cropQuadRegion(
-  image: HTMLImageElement,
+  image: PipelineImage,
   quad: [QuadPoint, QuadPoint, QuadPoint, QuadPoint],
+  platform: PlatformProvider,
 ): { data: Uint8ClampedArray; width: number; height: number } | null {
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
   const xs = quad.map((p) => p.x);
   const ys = quad.map((p) => p.y);
   const minX = Math.floor(Math.min(...xs));
@@ -62,8 +62,9 @@ function cropQuadRegion(
   const maxY = Math.ceil(Math.max(...ys));
   const width = maxX - minX;
   const height = maxY - minY;
-  canvas.width = width;
-  canvas.height = height;
+  const canvas = platform.createCanvas(width, height);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
   ctx.drawImage(image, minX, minY, width, height, 0, 0, width, height);
   const imageData = ctx.getImageData(0, 0, width, height);
   return { data: imageData.data, width, height };
@@ -71,7 +72,8 @@ function cropQuadRegion(
 
 export function fillMissingOcrFields(
   results: OcrRecognizeResult[],
-  image?: HTMLImageElement,
+  image?: PipelineImage,
+  platform?: PlatformProvider,
 ): OcrRecognizeResult[] {
   return results.map((r) => {
     let fgColor = r.fgColor;
@@ -81,7 +83,7 @@ export function fillMissingOcrFields(
     // to histogram bimodal analysis which is more reliable for bimodal distributions.
     if (fgColor && bgColor && colorDistance(fgColor, bgColor) < 30) {
       if (image) {
-        const cropped = cropQuadRegion(image, r.quad);
+        const cropped = cropQuadRegion(image, r.quad, platform!);
         if (cropped) {
           const histResult = histogramBimodal(cropped.data, cropped.width, cropped.height);
           if (histResult) {
@@ -93,7 +95,7 @@ export function fillMissingOcrFields(
     }
 
     if (image && (fgColor === undefined || bgColor === undefined)) {
-      const cropped = cropQuadRegion(image, r.quad);
+      const cropped = cropQuadRegion(image, r.quad, platform!);
       if (cropped) {
         // Try histogram bimodal first — it's more reliable than Sobel edge sampling.
         const histResult = histogramBimodal(cropped.data, cropped.width, cropped.height);

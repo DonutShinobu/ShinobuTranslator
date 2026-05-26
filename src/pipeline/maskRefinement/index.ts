@@ -1,5 +1,6 @@
 import type { Rect, TextRegion, RefineTextMaskResult } from "../../types";
 import type { MaskRefinementOptions, AssignedExtent, Component } from "./algorithms";
+import type { PlatformProvider, PipelineCanvas } from "../../runtime/platform";
 import {
   makeCanvas,
   readBinaryMask,
@@ -25,9 +26,10 @@ import {
 export type { MaskRefinementOptions } from "./algorithms";
 
 export function refineTextMask(
-  originalCanvas: HTMLCanvasElement,
+  originalCanvas: PipelineCanvas,
   regions: TextRegion[],
-  rawMaskCanvas: HTMLCanvasElement,
+  rawMaskCanvas: PipelineCanvas,
+  platform: PlatformProvider,
   options: MaskRefinementOptions = {},
   collectDebugLayers = false
 ): RefineTextMaskResult {
@@ -39,7 +41,7 @@ export function refineTextMask(
   const width = originalCanvas.width;
   const height = originalCanvas.height;
   if (width <= 0 || height <= 0 || regions.length === 0) {
-    return { refinedMaskCanvas: makeCanvas(width, height) };
+    return { refinedMaskCanvas: makeCanvas(width, height, platform) };
   }
   if (rawMaskCanvas.width <= 0 || rawMaskCanvas.height <= 0) {
     throw new Error("Mask refinement 缺少检测原始 mask，已禁用文本框遮罩回退");
@@ -52,8 +54,8 @@ export function refineTextMask(
   const scaledWidth = Math.max(1, Math.round(width * scaleFactor));
   const scaledHeight = Math.max(1, Math.round(height * scaleFactor));
 
-  const scaledMask = readBinaryMask(rawMaskCanvas, scaledWidth, scaledHeight);
-  const scaledGray = readGrayImage(originalCanvas, scaledWidth, scaledHeight);
+  const scaledMask = readBinaryMask(rawMaskCanvas, scaledWidth, scaledHeight, platform);
+  const scaledGray = readGrayImage(originalCanvas, scaledWidth, scaledHeight, platform);
   const scaledRegions = scaleRegions(regions, scaleFactor, scaledWidth, scaledHeight);
 
   const ccInput = scaledMask.slice();
@@ -184,7 +186,7 @@ export function refineTextMask(
   const perRegionDilatedSnapshot = collectDebugLayers ? finalMask.slice() : null;
 
   const finalDilated = dilate(finalMask, scaledWidth, scaledHeight, Math.max(1, kernelSize));
-  const refinedMaskCanvas = toMaskCanvas(finalDilated, scaledWidth, scaledHeight, width, height);
+  const refinedMaskCanvas = toMaskCanvas(finalDilated, scaledWidth, scaledHeight, width, height, platform);
 
   const debugLayers = collectDebugLayers && refinedMaskBeforeDilate && perRegionDilatedSnapshot
     ? {

@@ -1,7 +1,8 @@
 import type { Rect, TextRegion } from "../types";
+import type { PlatformProvider, PipelineImageData, PipelineImage } from "../runtime/platform";
 import { nmsBoxes, type ScoredBox } from "./utils";
 import { getModelSession } from "../runtime/modelRegistry";
-import { runInference } from "../runtime/onnxWorkerBridge";
+import { runInference } from "../runtime/onnxBridge";
 import type { TensorTransport } from "../runtime/onnxWorkerTypes";
 
 // ---------------------------------------------------------------------------
@@ -11,7 +12,7 @@ import type { TensorTransport } from "../runtime/onnxWorkerTypes";
 export type BubbleDetection = {
   box: Rect;
   score: number;
-  mask: ImageData;
+  mask: PipelineImageData;
 };
 
 export type BubbleDetectResult = {
@@ -30,7 +31,7 @@ type LetterboxResult = {
   padY: number;
 };
 
-function preprocessLetterbox(image: HTMLImageElement, size: number): LetterboxResult {
+function preprocessLetterbox(image: PipelineImage, size: number, platform: PlatformProvider): LetterboxResult {
   const w = image.naturalWidth;
   const h = image.naturalHeight;
   const ratio = Math.min(size / w, size / h);
@@ -39,9 +40,7 @@ function preprocessLetterbox(image: HTMLImageElement, size: number): LetterboxRe
   const padX = Math.round((size - newW) / 2);
   const padY = Math.round((size - newH) / 2);
 
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
+  const canvas = platform.createCanvas(size, size);
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) throw new Error("气泡检测预处理失败：无法创建画布");
 
@@ -64,7 +63,7 @@ function preprocessLetterbox(image: HTMLImageElement, size: number): LetterboxRe
 // Inference
 // ---------------------------------------------------------------------------
 
-async function runBubbleInference(image: HTMLImageElement): Promise<{
+async function runBubbleInference(image: PipelineImage, platform: PlatformProvider): Promise<{
   output0: Float32Array;
   output0Shape: readonly number[];
   output1: Float32Array;
@@ -73,7 +72,7 @@ async function runBubbleInference(image: HTMLImageElement): Promise<{
 }> {
   const handle = await getModelSession("bubble");
   const size = 640;
-  const prep = preprocessLetterbox(image, size);
+  const prep = preprocessLetterbox(image, size, platform);
 
   const inputName = handle.inputNames[0] ?? "images";
   const feeds: Record<string, TensorTransport> = {
@@ -168,7 +167,7 @@ function decodeDetections(
 }
 
 // ---------------------------------------------------------------------------
-// Decode proto masks → per-instance ImageData
+// Decode proto masks → per-instance PipelineImageData
 // ---------------------------------------------------------------------------
 
 function decodeMasks(
@@ -178,12 +177,13 @@ function decodeMasks(
   prep: LetterboxResult,
   imgW: number,
   imgH: number,
-): ImageData[] {
+  platform: PlatformProvider,
+): PipelineImageData[] {
   const numProtos = output1Shape[1];
   const maskH = output1Shape[2];
   const maskW = output1Shape[3];
 
-  const masks: ImageData[] = [];
+  const masks: PipelineImageData[] = [];
 
   for (const det of detections) {
     const combined = new Float32Array(maskH * maskW);
@@ -211,7 +211,7 @@ function decodeMasks(
     const mx2 = Math.min(maskW, Math.ceil(lbx2 * scaleX));
     const my2 = Math.min(maskH, Math.ceil(lby2 * scaleY));
 
-    const imageData = new ImageData(imgW, imgH);
+    const imageData = platform.createImageData(imgW, imgH) as ImageData;
     const pixels = imageData.data;
 
     for (let iy = 0; iy < imgH; iy++) {
@@ -245,13 +245,13 @@ function decodeMasks(
 // Public API
 // ---------------------------------------------------------------------------
 
-export async function detectBubbles(image: HTMLImageElement): Promise<BubbleDetectResult> {
-  const { output0, output0Shape, output1, output1Shape, prep } = await runBubbleInference(image);
+export async function detectBubbles(image: PipelineImage, platform: PlatformProvider): Promise<BubbleDetectResult> {
+  const { output0, output0Shape, output1, output1Shape, prep } = await runBubbleInference(image, platform);
   const imgW = image.naturalWidth;
   const imgH = image.naturalHeight;
 
   const detections = decodeDetections(output0, output0Shape, prep, imgW, imgH);
-  const masks = decodeMasks(detections, output1, output1Shape, prep, imgW, imgH);
+  const masks = decodeMasks(detections, output1, output1Shape, prep, imgW, imgH, platform);
 
   const bubbles: BubbleDetection[] = detections.map((det, i) => ({
     box: det.box,

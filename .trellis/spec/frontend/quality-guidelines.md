@@ -22,6 +22,9 @@ Testing is minimal (3 test files). Linting relies on TypeScript strict mode. No 
 8. **Adding runtime validation for internal types** — Trust TypeScript for internal code. Only validate at system boundaries.
 9. **Long `.then()` chains** — Use async/await instead. `.then()` only for unavoidable Chrome API callback patterns.
 10. **`Comlink.transfer()` on input data** — Never transfer input tensors/data to a Worker via `Comlink.transfer()`. Transfer detaches the ArrayBuffer on the sender side, making fallback paths and subsequent uses (e.g., OCR color decode after batch decode) send corrupted/empty data. Use structured clone (comlink default) for inputs; only use `Comlink.transfer()` for outputs where the sender doesn't need the data afterward.
+11. **Direct import of onnxWorkerBridge or onnxNodeBridge from pipeline code** — Pipeline modules must import from `./onnxBridge`. Direct `onnxWorkerBridge` import pulls Comlink/Worker/DOM code into Node; direct `onnxNodeBridge` import leaks onnxruntime-node into the browser build.
+12. **`require()` in browser-executed code** — `modelRegistry.ts` runs in both browser and Node. Use static `import` for browser-side modules like `resolveAssetUrl`. `require()` is undefined in the Chrome extension and will crash at runtime.
+13. **Unexternalized Node-only dynamic imports in Vite config** — If a module is dynamically imported under `isNode`, Vite still resolves it and bundles it as a reachable chunk. Must add to `rollupOptions.external` to prevent leaking into the browser build.
 
 ---
 
@@ -51,6 +54,16 @@ Testing is minimal (3 test files). Linting relies on TypeScript strict mode. No 
 18. **Virtual rendering requires URL-based discovery** — Sites with lazy-loaded/virtual-rendered images (only visible elements have real `<img>` tags) cannot use DOM-based image discovery for batch operations. Batch operations (e.g., translate-all) must construct URLs from a base pattern extracted from any visible link, not iterate `<img>` elements.
 
 19. **Cache limits sized for maximum workload** — `photoStateCacheLimit` must be large enough for the maximum realistic workload (200 for Pixiv manga with 50+ pages). A limit smaller than the batch size causes `trimStateCache` to evict and `disposeState` to revoke blob URLs that are still displayed, resulting in broken images.
+
+20. **PlatformProvider for cross-platform pipeline** — Pipeline code must NOT directly use `document.createElement("canvas")`, `new Image()`, `document.fonts.ready`, or `fetch()`. Instead, use `platform.createCanvas()`, `platform.createImage()`, `platform.waitForFonts()`, and the ONNX bridge via `onnxBridge.ts`. This ensures pipeline code works identically in browser (DOM) and Node (node-canvas + onnxruntime-node).
+
+21. **Vite externalization for Node-only modules** — Any module that is dynamically imported under an `isNode` guard (e.g., `onnxruntime-node`, `onnxNodeBridge`) MUST be listed in `vite.config.ts` `rollupOptions.external`. Vite/Rollup still resolves and bundles reachable dynamic imports, producing an unwanted chunk (848KB for onnxNodeBridge) in the browser extension output. Externalization prevents this leak.
+
+22. **node-canvas registerFont limitation** — `node-canvas`'s `registerFont()` only supports `.ttf`, `.otf`, and `.ttc` formats. It does NOT support `.woff2`. When running pipeline code in Node, you must have `.ttf` versions of fonts available (system fonts or separate font files). The browser path uses `.woff2` via CSS `@font-face`, which is unaffected.
+
+23. **Conditional import via onnxBridge** — Pipeline code must import ONNX functions from `./onnxBridge`, not directly from `./onnxWorkerBridge` or `./onnxNodeBridge`. Direct imports of `onnxWorkerBridge` pull Comlink/Worker/DOM code into Node; direct imports of `onnxNodeBridge` pull onnxruntime-node into the browser build. The `onnxBridge` module uses `isNode` detection to dynamically import the correct bridge at runtime.
+
+24. **Static imports for browser-side modules** — In `modelRegistry.ts`, `resolveAssetUrl` must be a static import (`import { resolveAssetUrl } from '../shared/assetUrl'`), not a `require()` call. `require` is undefined in the browser environment and will crash the Chrome extension. Node-specific imports (fs, path) use dynamic `await import()` since they're only called on the Node path.
 
 ## Content Script Adapter Patterns
 

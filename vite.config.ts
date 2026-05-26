@@ -136,6 +136,16 @@ export default defineConfig({
         chunkFileNames: 'chunks/[name].js',
         assetFileNames: 'assets/[name][extname]',
       },
+      // Node-only modules must be externalized for the browser build.
+      // onnxruntime-node and onnxNodeBridge are loaded via dynamic import()
+      // guarded by isNode, but Vite/Rollup still bundles them as reachable
+      // chunks. Externalizing prevents the 848KB onnxNodeBridge chunk from
+      // appearing in the browser extension.
+      external: (id) => {
+        if (id.includes('onnxruntime-node')) return true;
+        if (id.includes('onnxNodeBridge')) return true;
+        return false;
+      },
     },
   },
 });

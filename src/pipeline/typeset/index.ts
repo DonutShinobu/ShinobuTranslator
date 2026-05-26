@@ -1,4 +1,5 @@
 import type { TextRegion } from "../../types";
+import type { PipelineRenderingContext } from "../../runtime/platform";
 
 // ---------------------------------------------------------------------------
 // Re-export everything from sub-modules
@@ -16,7 +17,7 @@ export * from "./fontFit";
 export type FullVerticalTypesetInput = {
   region: TextRegion;
   fontFamily: string;
-  measureCtx: CanvasRenderingContext2D;
+  measureCtx: PipelineRenderingContext;
 };
 
 export type FullVerticalTypesetResult = {

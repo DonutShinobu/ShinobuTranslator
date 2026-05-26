@@ -1,13 +1,14 @@
+import type { PlatformProvider, PipelineCanvas } from "../runtime/platform";
 import { getModel, getModelSession } from "../runtime/modelRegistry";
 import { isContextLostRuntimeError } from "../runtime/onnxTypes";
 import type { RuntimeProvider, WebNnDeviceType } from "../runtime/onnxTypes";
-import { runInference } from "../runtime/onnxWorkerBridge";
+import { runInference } from "../runtime/onnxBridge";
 import type { WorkerSessionHandle, TensorTransport } from "../runtime/onnxWorkerTypes";
 import { toErrorMessage } from "../shared/utils";
 import { clamp } from "./utils";
 
 export type InpaintResult = {
-  canvas: HTMLCanvasElement;
+  canvas: PipelineCanvas;
   actualProvider: RuntimeProvider;
   actualWebnnDeviceType?: WebNnDeviceType;
 };
@@ -25,19 +26,18 @@ function pickInpaintTensor(outputs: Record<string, TensorTransport>): TensorTran
 }
 
 function preprocessInpaintImage(
-  source: HTMLCanvasElement,
-  mask: HTMLCanvasElement,
+  source: PipelineCanvas,
+  mask: PipelineCanvas,
   size: number,
-  normalize: InpaintInputNormalize
+  normalize: InpaintInputNormalize,
+  platform: PlatformProvider,
 ): {
   image: TensorTransport;
   mask: TensorTransport;
   sourceRgba: Uint8ClampedArray;
   maskBinary: Float32Array;
 } {
-  const imageCanvas = document.createElement("canvas");
-  imageCanvas.width = size;
-  imageCanvas.height = size;
+  const imageCanvas = platform.createCanvas(size, size);
   const imageCtx = imageCanvas.getContext("2d", { willReadFrequently: true });
   if (!imageCtx) {
     throw new Error("去字 ONNX 图像预处理失败");
@@ -45,9 +45,7 @@ function preprocessInpaintImage(
   imageCtx.drawImage(source, 0, 0, size, size);
   const imageData = imageCtx.getImageData(0, 0, size, size).data;
 
-  const maskCanvas = document.createElement("canvas");
-  maskCanvas.width = size;
-  maskCanvas.height = size;
+  const maskCanvas = platform.createCanvas(size, size);
   const maskCtx = maskCanvas.getContext("2d", { willReadFrequently: true });
   if (!maskCtx) {
     throw new Error("去字 ONNX 遮罩预处理失败");
@@ -86,10 +84,8 @@ function preprocessInpaintImage(
   };
 }
 
-function readCanvasRgba(source: HTMLCanvasElement, width: number, height: number): Uint8ClampedArray {
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
+function readCanvasRgba(source: PipelineCanvas, width: number, height: number, platform: PlatformProvider): Uint8ClampedArray {
+  const canvas = platform.createCanvas(width, height);
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) {
     throw new Error("去字 ONNX 读取原图失败");
@@ -98,10 +94,8 @@ function readCanvasRgba(source: HTMLCanvasElement, width: number, height: number
   return new Uint8ClampedArray(ctx.getImageData(0, 0, width, height).data);
 }
 
-function readMaskBinary(mask: HTMLCanvasElement, width: number, height: number): Float32Array {
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
+function readMaskBinary(mask: PipelineCanvas, width: number, height: number, platform: PlatformProvider): Float32Array {
+  const canvas = platform.createCanvas(width, height);
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) {
     throw new Error("去字 ONNX 读取遮罩失败");
@@ -120,11 +114,10 @@ function resizeRgba(
   sourceWidth: number,
   sourceHeight: number,
   outWidth: number,
-  outHeight: number
+  outHeight: number,
+  platform: PlatformProvider,
 ): Uint8ClampedArray {
-  const sourceCanvas = document.createElement("canvas");
-  sourceCanvas.width = sourceWidth;
-  sourceCanvas.height = sourceHeight;
+  const sourceCanvas = platform.createCanvas(sourceWidth, sourceHeight);
   const sourceCtx = sourceCanvas.getContext("2d");
   if (!sourceCtx) {
     throw new Error("去字 ONNX 图像缩放失败");
@@ -133,9 +126,7 @@ function resizeRgba(
   sourceImage.data.set(sourceRgba);
   sourceCtx.putImageData(sourceImage, 0, 0);
 
-  const outCanvas = document.createElement("canvas");
-  outCanvas.width = outWidth;
-  outCanvas.height = outHeight;
+  const outCanvas = platform.createCanvas(outWidth, outHeight);
   const outCtx = outCanvas.getContext("2d", { willReadFrequently: true });
   if (!outCtx) {
     throw new Error("去字 ONNX 图像缩放失败");
@@ -179,11 +170,10 @@ function composeInpaintResult(
   inpaintedRgba: Uint8ClampedArray,
   maskBinary: Float32Array,
   width: number,
-  height: number
-): HTMLCanvasElement {
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
+  height: number,
+  platform: PlatformProvider,
+): PipelineCanvas {
+  const canvas = platform.createCanvas(width, height);
   const ctx = canvas.getContext("2d");
   if (!ctx) {
     throw new Error("去字 ONNX 合成失败");
@@ -241,8 +231,9 @@ function isLikelyInvalidInpaintResult(
 }
 
 async function runInpaintByOnnx(
-  originalCanvas: HTMLCanvasElement,
-  refinedMaskCanvas: HTMLCanvasElement
+  originalCanvas: PipelineCanvas,
+  refinedMaskCanvas: PipelineCanvas,
+  platform: PlatformProvider,
 ): Promise<InpaintResult> {
   const model = await getModel("inpaint");
   const primaryHandle = await getModelSession("inpaint", ["webgpu", "webnn", "wasm"]);
@@ -252,7 +243,7 @@ async function runInpaintByOnnx(
   if (refinedMaskCanvas.width <= 0 || refinedMaskCanvas.height <= 0) {
     throw new Error("去字 ONNX 缺少有效 refined mask，已禁用文本框遮罩回退");
   }
-  const feeds = preprocessInpaintImage(originalCanvas, refinedMaskCanvas, size, normalize);
+  const feeds = preprocessInpaintImage(originalCanvas, refinedMaskCanvas, size, normalize, platform);
   const runWithHandle = async (handle: WorkerSessionHandle): Promise<Record<string, TensorTransport>> => {
     const imageName = handle.inputNames[0];
     const maskName = model.maskInputName ?? handle.inputNames[1];
@@ -335,24 +326,26 @@ async function runInpaintByOnnx(
 
   const outputWidth = originalCanvas.width;
   const outputHeight = originalCanvas.height;
-  const originalSourceRgba = readCanvasRgba(originalCanvas, outputWidth, outputHeight);
-  const originalMaskBinary = readMaskBinary(refinedMaskCanvas, outputWidth, outputHeight);
-  const inpaintedRgbaAtOriginalSize = resizeRgba(inpaintedRgba, size, size, outputWidth, outputHeight);
+  const originalSourceRgba = readCanvasRgba(originalCanvas, outputWidth, outputHeight, platform);
+  const originalMaskBinary = readMaskBinary(refinedMaskCanvas, outputWidth, outputHeight, platform);
+  const inpaintedRgbaAtOriginalSize = resizeRgba(inpaintedRgba, size, size, outputWidth, outputHeight, platform);
 
   const canvas = composeInpaintResult(
     originalSourceRgba,
     inpaintedRgbaAtOriginalSize,
     originalMaskBinary,
     outputWidth,
-    outputHeight
+    outputHeight,
+    platform
   );
 
   return { canvas, actualProvider, actualWebnnDeviceType };
 }
 
 export async function runInpaint(
-  originalCanvas: HTMLCanvasElement,
-  refinedMaskCanvas: HTMLCanvasElement
+  originalCanvas: PipelineCanvas,
+  refinedMaskCanvas: PipelineCanvas,
+  platform: PlatformProvider,
 ): Promise<InpaintResult> {
-  return runInpaintByOnnx(originalCanvas, refinedMaskCanvas);
+  return runInpaintByOnnx(originalCanvas, refinedMaskCanvas, platform);
 }

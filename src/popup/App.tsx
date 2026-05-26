@@ -54,6 +54,43 @@ const IconLLM = () => (
   </svg>
 );
 
+function SegmentedControl<T extends string>({
+  options,
+  value,
+  onChange,
+  disabled,
+}: {
+  options: { value: T; label: string }[];
+  value: T;
+  onChange: (value: T) => void;
+  disabled?: boolean;
+}) {
+  const selectedIndex = options.findIndex((o) => o.value === value);
+  const count = options.length;
+  return (
+    <div className={`seg-control${disabled ? ' seg-disabled' : ''}`}>
+      <div
+        className="seg-pill"
+        style={{
+          width: `calc(${100 / count}% - ${6 / count}px)`,
+          transform: `translateX(${selectedIndex * 100}%)`,
+        }}
+      />
+      {options.map((option, i) => (
+        <button
+          key={option.value}
+          type="button"
+          className={`seg-option${i === selectedIndex ? ' seg-active' : ''}`}
+          onClick={() => onChange(option.value)}
+          disabled={disabled}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function App() {
   const [settings, setSettings] = useState<ExtensionSettings>(defaultExtensionSettings);
   const [loading, setLoading] = useState(true);
@@ -298,58 +335,28 @@ export function App() {
                 <IconOCR />
                 OCR 引擎
               </div>
-              <div className="radio-group">
-                <label className={`radio-row${settings.ocrEngine === 'builtin' ? ' radio-selected' : ''}${loading ? ' radio-disabled' : ''}`}>
-                  <input
-                    type="radio"
-                    name="ocrEngine"
-                    value="builtin"
-                    checked={settings.ocrEngine === 'builtin'}
-                    onChange={() => updateField('ocrEngine', 'builtin' as ExtensionSettings['ocrEngine'])}
-                    disabled={loading}
-                  />
-                  <span className="radio-label">MangaOCR</span>
-                </label>
-                <label className={`radio-row${settings.ocrEngine === 'paddleocr' ? ' radio-selected' : ''}${loading ? ' radio-disabled' : ''}`}>
-                  <input
-                    type="radio"
-                    name="ocrEngine"
-                    value="paddleocr"
-                    checked={settings.ocrEngine === 'paddleocr'}
-                    onChange={() => updateField('ocrEngine', 'paddleocr' as ExtensionSettings['ocrEngine'])}
-                    disabled={loading}
-                  />
-                  <span className="radio-label">PaddleOCR</span>
-                </label>
-              </div>
+              <SegmentedControl
+                options={[
+                  { value: 'builtin', label: 'MangaOCR' },
+                  { value: 'paddleocr', label: 'PaddleOCR' },
+                ]}
+                value={settings.ocrEngine}
+                onChange={(v) => updateField('ocrEngine', v as ExtensionSettings['ocrEngine'])}
+                disabled={loading}
+              />
             </section>
 
             <section className="panel">
               <div className="panel-title">模式</div>
-              <div className="radio-group">
-                <label className={`radio-row${settings.processMode === 'translate' ? ' radio-selected' : ''}${loading ? ' radio-disabled' : ''}`}>
-                  <input
-                    type="radio"
-                    name="processMode"
-                    value="translate"
-                    checked={settings.processMode === 'translate'}
-                    onChange={() => updateField('processMode', 'translate' as ExtensionSettings['processMode'])}
-                    disabled={loading}
-                  />
-                  <span className="radio-label">翻译模式</span>
-                </label>
-                <label className={`radio-row${settings.processMode === 'erase' ? ' radio-selected' : ''}${loading ? ' radio-disabled' : ''}`}>
-                  <input
-                    type="radio"
-                    name="processMode"
-                    value="erase"
-                    checked={settings.processMode === 'erase'}
-                    onChange={() => updateField('processMode', 'erase' as ExtensionSettings['processMode'])}
-                    disabled={loading}
-                  />
-                  <span className="radio-label">去字模式</span>
-                </label>
-              </div>
+              <SegmentedControl
+                options={[
+                  { value: 'translate', label: '翻译模式' },
+                  { value: 'erase', label: '去字模式' },
+                ]}
+                value={settings.processMode}
+                onChange={(v) => updateField('processMode', v as ExtensionSettings['processMode'])}
+                disabled={loading}
+              />
             </section>
 
             {settings.translator === 'llm' ? (

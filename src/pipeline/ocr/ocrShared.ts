@@ -58,13 +58,9 @@ export async function loadCharset(dictUrl?: string): Promise<string[] | null> {
   const isNode = typeof process !== 'undefined' && !!process.versions?.node;
   const promise = (async () => {
     if (isNode) {
-      // Node: read from local file system
-      const fs = await import('fs');
-      const text = fs.readFileSync(dictUrl, 'utf-8');
-      const lines = text
-        .split(/\r?\n/g)
-        .filter((line) => line.length > 0);
-      return lines.length > 0 ? lines : null;
+      // Node: read from local file system via dynamic import of Node-only module
+      const { loadCharsetNode } = await import('./ocrSharedNode');
+      return loadCharsetNode(dictUrl);
     }
     // Browser: fetch from URL
     const response = await fetch(dictUrl, { method: "GET" });

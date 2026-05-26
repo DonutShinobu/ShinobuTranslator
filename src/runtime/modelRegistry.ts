@@ -28,58 +28,14 @@ type ManifestData = {
 const isNode = typeof process !== 'undefined' && !!process.versions?.node;
 
 // ---------------------------------------------------------------------------
-// Manifest loading — Node uses fs, Browser uses fetch
+// Manifest loading — Node uses fs (dynamic import), Browser uses fetch
 // ---------------------------------------------------------------------------
 
 let manifestCache: ManifestData | null = null;
 
-// ---------------------------------------------------------------------------
-// Project root resolution — works in CJS (__dirname), ESM (import.meta.url),
-// and Vite-bundled environments
-// ---------------------------------------------------------------------------
-
-let _projectRoot: string | null = null;
-
-async function getProjectRoot(): Promise<string> {
-  if (_projectRoot) return _projectRoot;
-  const path = await import('path');
-  const fs = await import('fs');
-
-  // Strategy 1: __dirname (CJS or tsx with CJS shim)
-  if (typeof __dirname !== 'undefined') {
-    _projectRoot = path.resolve(__dirname, '..', '..');
-    return _projectRoot;
-  }
-
-  // Strategy 2: import.meta.url (ESM)
-  if (typeof import.meta !== 'undefined' && typeof import.meta.url === 'string') {
-    const { fileURLToPath } = await import('url');
-    const thisFile = fileURLToPath(import.meta.url);
-    _projectRoot = path.resolve(path.dirname(thisFile), '..', '..');
-    return _projectRoot;
-  }
-
-  // Strategy 3: walk up from process.cwd() looking for public/models/models.json
-  let dir = process.cwd();
-  for (let i = 0; i < 10; i++) {
-    if (fs.existsSync(path.join(dir, 'public', 'models', 'models.json'))) {
-      _projectRoot = dir;
-      return dir;
-    }
-    const parent = path.resolve(dir, '..');
-    if (parent === dir) break; // filesystem root
-    dir = parent;
-  }
-  throw new Error('无法定位项目根目录 (models.json)');
-}
-
 async function loadManifestNode(): Promise<ManifestData> {
-  const fs = await import('fs');
-  const path = await import('path');
-  const root = await getProjectRoot();
-  const manifestPath = path.resolve(root, 'public', 'models', 'models.json');
-  const raw = fs.readFileSync(manifestPath, 'utf-8');
-  return JSON.parse(raw) as ManifestData;
+  const { loadManifestNode: load } = await import('./modelRegistryNode');
+  return load();
 }
 
 async function loadManifestBrowser(): Promise<ManifestData> {
@@ -135,16 +91,12 @@ function isAbsoluteUrl(url: string): boolean {
 
 function resolveModelAssetUrl(url: string): string {
   if (isNode) {
-    // In Node, resolve model URLs to local file paths
-    // Absolute paths (e.g. /home/user/models/xxx.onnx) are kept as-is
-    // Relative paths are resolved relative to public/models/
+    // In Node, model URLs are resolved to local file paths later
+    // by resolveModelFilePath in modelRegistryNode.ts
     if (url.startsWith('/') && !isAbsoluteUrl(url)) {
-      // This is a relative URL like /models/xxx.onnx — resolve to file path
-      // We'll resolve it in getModel() using path.join
       return url;
     }
     if (isAbsoluteUrl(url)) {
-      // Could be file:// or http:// — keep as-is for now
       return url;
     }
     return url;
@@ -164,19 +116,8 @@ function resolveModelAssetUrl(url: string): string {
 }
 
 async function resolveModelFilePath(modelUrl: string): Promise<string> {
-  if (isAbsoluteUrl(modelUrl) && modelUrl.startsWith('file://')) {
-    return modelUrl.slice('file://'.length);
-  }
-  // If it's a URL-style path like /models/xxx.onnx, resolve to local file path
-  if (modelUrl.startsWith('/') && !isAbsoluteUrl(modelUrl)) {
-    const path = await import('path');
-    const root = await getProjectRoot();
-    // Strip leading / so path.resolve treats it as relative, not absolute
-    const relativePath = modelUrl.slice(1);
-    return path.resolve(root, 'public', relativePath);
-  }
-  // If it's already an absolute local file path, return as-is
-  return modelUrl;
+  const { resolveModelFilePath: resolve } = await import('./modelRegistryNode');
+  return resolve(modelUrl);
 }
 
 export async function getModel(name: 'detector' | 'ocr' | 'inpaint' | 'bubble' | 'paddleocr_rec'): Promise<ManifestModel> {

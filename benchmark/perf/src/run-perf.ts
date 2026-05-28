@@ -165,24 +165,11 @@ async function runPipelineOnce(imageDataUrl: string): Promise<StageTiming[]> {
 
   const [translatedRegions, inpaintedCanvas] = await Promise.all([
     (async () => {
+      // Skip translation — network I/O, not relevant to CPU/GPU pipeline perf
       const t0 = performance.now();
-      const translated = await runTranslate(orderedRegions, {
-        sourceLang: "ja",
-        targetLang: "zh-CN",
-        translator: "google_web",
-        llmProvider: "deepseek",
-        llmBaseUrl: "",
-        llmApiKey: "",
-        llmModel: "",
-        llmTemperature: 0.3,
-        typesetDebug: false,
-        eraseDebug: false,
-        collectDebugLog: false,
-        ocrEngine: "builtin",
-        processMode: "translate",
-      });
-      translateTiming = { stage: "translate", label: "翻译为中文", durationMs: performance.now() - t0 };
-      return translated.regions;
+      const skippedRegions = orderedRegions.map(r => ({ ...r, translatedText: r.sourceText }));
+      translateTiming = { stage: "translate", label: "翻译(跳过)", durationMs: performance.now() - t0 };
+      return skippedRegions;
     })(),
     (async () => {
       if (!detectionMaskCanvas) throw new Error("检测阶段未提供 mask");

@@ -15,7 +15,8 @@
     "bench:baseline": "tsx benchmark/typeset/src/diff-baseline.ts --update-baseline",
     "bench:diff": "tsx benchmark/typeset/src/diff-baseline.ts",
     "color:diagnostic": "tsx benchmark/color/src/color-diagnostic.ts",
-    "color:comparison": "tsx benchmark/color/src/color-comparison.ts"
+    "color:comparison": "tsx benchmark/color/src/color-comparison.ts",
+    "bench:perf": "tsx benchmark/perf/src/run-perf.ts"
   },
   "dependencies": {
     "comlink": "^4.4.2",

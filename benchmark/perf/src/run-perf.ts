@@ -32,7 +32,7 @@ import { nodePlatform } from "../../../src/runtime/nodePlatform";
 const ROOT = resolve(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "../../..");
 const REPORTS_DIR = join(ROOT, "benchmark/perf/reports");
 const MODELS_DIR = join(ROOT, "public/models");
-const DEFAULT_IMAGE = join(ROOT, "benchmark/color/fixtures/typeset-debug-log-2026-05-23T06-03-39-877Z.png");
+const DEFAULT_IMAGES_DIR = join(ROOT, "benchmark/typeset/images");
 
 // ---------------------------------------------------------------------------
 // Utilities
@@ -100,14 +100,19 @@ type RunResult = {
   stages: StageTiming[];
 };
 
-type PerfReport = {
-  timestamp: string;
-  gitCommit: string;
-  image: string;
-  runtime: string;
+type ImagePerfResult = {
+  imageFile: string;
   runs: RunResult[];
   median: StageTiming[];
   medianTotalMs: number;
+};
+
+type PerfReport = {
+  timestamp: string;
+  gitCommit: string;
+  images: ImagePerfResult[];
+  runtime: string;
+  overallMedianTotalMs: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -272,40 +277,24 @@ function printMedianTable(median: StageTiming[], totalMs: number): void {
 
 const RUN_COUNT = 3;
 
-async function main(): Promise<void> {
-  const imagePath = DEFAULT_IMAGE;
-  if (!existsSync(imagePath)) {
-    console.error(`Image not found: ${imagePath}`);
-    process.exit(1);
-  }
+function collectImages(dir: string): string[] {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir)
+    .filter((f: string) => /\.(png|jpe?g)$/i.test(f))
+    .sort()
+    .map((f: string) => join(dir, f));
+}
 
-  console.log("Pipeline Performance Benchmark");
-  console.log(`Image: ${imagePath}`);
-
-  checkModelFiles();
-  registerFonts();
-
+async function benchmarkImage(imagePath: string, runCount: number): Promise<ImagePerfResult> {
+  const fileName = imagePath.split(/[/\\]/).pop() ?? imagePath;
   const dataUrl = imageToDataUrl(imagePath);
-
-  let runtime = "unknown";
 
   const runs: RunResult[] = [];
 
-  for (let i = 0; i < RUN_COUNT; i++) {
+  for (let i = 0; i < runCount; i++) {
     const isColdStart = i === 0;
     const runT0 = performance.now();
     const stages = await runPipelineOnce(dataUrl);
-
-    // On first run, detect runtime from modelRegistry session cache
-    if (i === 0) {
-      try {
-        const { getModelSession } = await import("../../../src/runtime/modelRegistry");
-        const handle = await getModelSession("detector");
-        runtime = handle.provider ?? "unknown";
-      } catch {
-        runtime = "unknown";
-      }
-    }
     const totalMs = performance.now() - runT0;
 
     const run: RunResult = { runIndex: i, isColdStart, totalMs, stages };
@@ -316,20 +305,79 @@ async function main(): Promise<void> {
   const { median, medianTotalMs } = computeMedian(runs);
   printMedianTable(median, medianTotalMs);
 
+  return { imageFile: fileName, runs, median, medianTotalMs };
+}
+
+async function main(): Promise<void> {
+  const imagesDir = DEFAULT_IMAGES_DIR;
+  const images = collectImages(imagesDir);
+  if (images.length === 0) {
+    console.error(`No images found in ${imagesDir}`);
+    process.exit(1);
+  }
+
+  console.log("Pipeline Performance Benchmark — Baseline");
+  console.log(`Images dir: ${imagesDir} (${images.length} images)`);
+  console.log(`Runs per image: ${RUN_COUNT}`);
+
+  checkModelFiles();
+  registerFonts();
+
+  let runtime = "unknown";
+
+  const imageResults: ImagePerfResult[] = [];
+
+  for (let imgIdx = 0; imgIdx < images.length; imgIdx++) {
+    const imagePath = images[imgIdx];
+    const fileName = imagePath.split(/[/\\]/).pop() ?? imagePath;
+    console.log(`\n${"═".repeat(60)}`);
+    console.log(`[${imgIdx + 1}/${images.length}] ${fileName}`);
+    console.log("═".repeat(60));
+
+    const result = await benchmarkImage(imagePath, RUN_COUNT);
+    imageResults.push(result);
+
+    // Detect runtime on first image's first run
+    if (imgIdx === 0 && runtime === "unknown") {
+      try {
+        const { getModelSession } = await import("../../../src/runtime/modelRegistry");
+        const handle = await getModelSession("detector");
+        runtime = handle.provider ?? "unknown";
+      } catch {
+        runtime = "unknown";
+      }
+    }
+  }
+
+  // Compute overall median total across all images
+  const allMedians = imageResults.map(r => r.medianTotalMs).sort((a, b) => a - b);
+  const mid = Math.floor(allMedians.length / 2);
+  const overallMedianTotalMs = allMedians.length % 2 !== 0
+    ? allMedians[mid]
+    : (allMedians[mid - 1] + allMedians[mid]) / 2;
+
+  // Summary
+  console.log(`\n${"═".repeat(60)}`);
+  console.log("Baseline Summary");
+  console.log("═".repeat(60));
+  for (const r of imageResults) {
+    console.log(`  ${r.imageFile.padEnd(20)} ${(r.medianTotalMs / 1000).toFixed(2)}s`);
+  }
+  console.log(`  ${"─".repeat(40)}`);
+  console.log(`  ${"Overall median".padEnd(20)} ${(overallMedianTotalMs / 1000).toFixed(2)}s`);
+
   // Write JSON report
   mkdirSync(REPORTS_DIR, { recursive: true });
   const report: PerfReport = {
     timestamp: new Date().toISOString(),
     gitCommit: gitCommit(),
-    image: imagePath,
+    images: imageResults,
     runtime,
-    runs,
-    median,
-    medianTotalMs,
+    overallMedianTotalMs: Math.round(overallMedianTotalMs * 100) / 100,
   };
 
   const ts = new Date().toISOString().replace(/[:.]/g, "-");
-  const reportPath = join(REPORTS_DIR, `perf-${ts}.json`);
+  const reportPath = join(REPORTS_DIR, `perf-baseline-${ts}.json`);
   writeFileSync(reportPath, JSON.stringify(report, null, 2));
   console.log(`\nReport saved: ${reportPath}`);
 }

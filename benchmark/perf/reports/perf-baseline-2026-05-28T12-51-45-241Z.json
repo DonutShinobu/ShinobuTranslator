@@ -1,0 +1,3494 @@
+{
+  "timestamp": "2026-05-28T12:51:45.177Z",
+  "gitCommit": "b0bf94d",
+  "images": [
+    {
+      "imageFile": "1.png",
+      "runs": [
+        {
+          "runIndex": 0,
+          "isColdStart": true,
+          "totalMs": 51921.328451999994,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 99.45600400000001
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 2733.683352
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 853.7461550000003
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 37801.773442
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 7.537168000002566
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 256.79406700000254
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.015430999999807682
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 663.5099780000019
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 9326.567014
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 9990.118994999997
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 157.9618799999953
+            }
+          ]
+        },
+        {
+          "runIndex": 1,
+          "isColdStart": false,
+          "totalMs": 35667.642953999995,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 78.56276999999682
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 274.303899999999
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 140.1836420000036
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 31215.357927000005
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 6.976342000009026
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 244.38728199999605
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.00706499999796506
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 647.7187790000025
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2987.417193999994
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 3635.163222000003
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 59.16340499999933
+            }
+          ]
+        },
+        {
+          "runIndex": 2,
+          "isColdStart": false,
+          "totalMs": 28449.830083999987,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 78.16808400000446
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 289.2549710000021
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 138.89602999998897
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 22480.063461000012
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 1.7769239999906858
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 297.30080600001384
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.007268999994266778
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 622.2320829999953
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 4457.966834999999
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 5080.229259
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 72.06188600001042
+            }
+          ]
+        }
+      ],
+      "median": [
+        {
+          "stage": "load",
+          "label": "加载图片",
+          "durationMs": 78.37
+        },
+        {
+          "stage": "detect",
+          "label": "文本检测",
+          "durationMs": 281.78
+        },
+        {
+          "stage": "bubble",
+          "label": "气泡检测",
+          "durationMs": 139.54
+        },
+        {
+          "stage": "ocr",
+          "label": "OCR 日文识别",
+          "durationMs": 26847.71
+        },
+        {
+          "stage": "merge",
+          "label": "合并文本行",
+          "durationMs": 4.38
+        },
+        {
+          "stage": "order",
+          "label": "文本顺序排序",
+          "durationMs": 270.84
+        },
+        {
+          "stage": "translate",
+          "label": "翻译(跳过)",
+          "durationMs": 0.01
+        },
+        {
+          "stage": "mask_refine",
+          "label": "细化去字遮罩",
+          "durationMs": 634.98
+        },
+        {
+          "stage": "inpaint",
+          "label": "去字",
+          "durationMs": 3722.69
+        },
+        {
+          "stage": "parallel",
+          "label": "并行处理(翻译 + 去字)",
+          "durationMs": 4357.7
+        },
+        {
+          "stage": "typeset",
+          "label": "排版和嵌字",
+          "durationMs": 65.61
+        }
+      ],
+      "medianTotalMs": 32058.74
+    },
+    {
+      "imageFile": "10.png",
+      "runs": [
+        {
+          "runIndex": 0,
+          "isColdStart": true,
+          "totalMs": 6593.375488999998,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 6.389165000000503
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 66.50905699998839
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 37.14855399999942
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 3415.7867489999917
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 0.20604200000525452
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 167.13669300000765
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.01183800000580959
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 79.12515600000916
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2802.7438380000094
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 2881.909541000001
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 17.841297000006307
+            }
+          ]
+        },
+        {
+          "runIndex": 1,
+          "isColdStart": false,
+          "totalMs": 7412.735396000004,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 4.6019669999950565
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 126.2965159999876
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 94.87716199998977
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 2926.1847899999993
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 13.289715000006254
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 105.54756800000905
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.013439999995171092
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 67.72288499999559
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 4049.7955210000073
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 4117.566953000001
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 23.97843999999168
+            }
+          ]
+        },
+        {
+          "runIndex": 2,
+          "isColdStart": false,
+          "totalMs": 6558.847443999999,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 8.749664000002667
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 244.47696599998744
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 70.41001300000062
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 3358.8753460000153
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 0.20608899998478591
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 99.74560999998357
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.012151000002631918
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 71.55718900001375
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2694.926001999993
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 2766.5292760000157
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 9.249769999994896
+            }
+          ]
+        }
+      ],
+      "median": [
+        {
+          "stage": "load",
+          "label": "加载图片",
+          "durationMs": 6.68
+        },
+        {
+          "stage": "detect",
+          "label": "文本检测",
+          "durationMs": 185.39
+        },
+        {
+          "stage": "bubble",
+          "label": "气泡检测",
+          "durationMs": 82.64
+        },
+        {
+          "stage": "ocr",
+          "label": "OCR 日文识别",
+          "durationMs": 3142.53
+        },
+        {
+          "stage": "merge",
+          "label": "合并文本行",
+          "durationMs": 6.75
+        },
+        {
+          "stage": "order",
+          "label": "文本顺序排序",
+          "durationMs": 102.65
+        },
+        {
+          "stage": "translate",
+          "label": "翻译(跳过)",
+          "durationMs": 0.01
+        },
+        {
+          "stage": "mask_refine",
+          "label": "细化去字遮罩",
+          "durationMs": 69.64
+        },
+        {
+          "stage": "inpaint",
+          "label": "去字",
+          "durationMs": 3372.36
+        },
+        {
+          "stage": "parallel",
+          "label": "并行处理(翻译 + 去字)",
+          "durationMs": 3442.05
+        },
+        {
+          "stage": "typeset",
+          "label": "排版和嵌字",
+          "durationMs": 16.61
+        }
+      ],
+      "medianTotalMs": 6985.79
+    },
+    {
+      "imageFile": "11.png",
+      "runs": [
+        {
+          "runIndex": 0,
+          "isColdStart": true,
+          "totalMs": 136314.855538,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 26.730504000006476
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 156.6854839999869
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 169.70889399998123
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 132926.181711
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 2.8355589999700896
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 144.30665799998678
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.006820999959018081
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 137.6514999999781
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2632.343035000027
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 2770.030138000031
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 116.73502399999416
+            }
+          ]
+        },
+        {
+          "runIndex": 1,
+          "isColdStart": false,
+          "totalMs": 153308.55943000002,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 24.517051000031643
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 148.0808379999944
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 85.99420199997257
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 149871.073883
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 2.4841509999823757
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 122.59058100002585
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.00826299999607727
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 129.20506899995962
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2837.391093000013
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 2966.6352400000324
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 83.96718300000066
+            }
+          ]
+        },
+        {
+          "runIndex": 2,
+          "isColdStart": false,
+          "totalMs": 124834.71758300002,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 31.13069700001506
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 146.6461980000022
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 103.32343700004276
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 121888.567912
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 5.7876089999917895
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 180.13664099993184
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.006509999977424741
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 128.26739499997348
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2289.2813580000075
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 2417.5795400000643
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 58.108852999983355
+            }
+          ]
+        }
+      ],
+      "median": [
+        {
+          "stage": "load",
+          "label": "加载图片",
+          "durationMs": 27.82
+        },
+        {
+          "stage": "detect",
+          "label": "文本检测",
+          "durationMs": 147.36
+        },
+        {
+          "stage": "bubble",
+          "label": "气泡检测",
+          "durationMs": 94.66
+        },
+        {
+          "stage": "ocr",
+          "label": "OCR 日文识别",
+          "durationMs": 135879.82
+        },
+        {
+          "stage": "merge",
+          "label": "合并文本行",
+          "durationMs": 4.14
+        },
+        {
+          "stage": "order",
+          "label": "文本顺序排序",
+          "durationMs": 151.36
+        },
+        {
+          "stage": "translate",
+          "label": "翻译(跳过)",
+          "durationMs": 0.01
+        },
+        {
+          "stage": "mask_refine",
+          "label": "细化去字遮罩",
+          "durationMs": 128.74
+        },
+        {
+          "stage": "inpaint",
+          "label": "去字",
+          "durationMs": 2563.34
+        },
+        {
+          "stage": "parallel",
+          "label": "并行处理(翻译 + 去字)",
+          "durationMs": 2692.11
+        },
+        {
+          "stage": "typeset",
+          "label": "排版和嵌字",
+          "durationMs": 71.04
+        }
+      ],
+      "medianTotalMs": 139071.64
+    },
+    {
+      "imageFile": "12.png",
+      "runs": [
+        {
+          "runIndex": 0,
+          "isColdStart": true,
+          "totalMs": 49070.37030000007,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 45.251506999949925
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 142.61083200003486
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 129.02232799993362
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 45436.98909600009
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 1.7693679999792948
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 139.32406899996568
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.006567999953404069
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 149.00679999997374
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2607.032664999948
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 2756.0916059999727
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 415.864518999937
+            }
+          ]
+        },
+        {
+          "runIndex": 1,
+          "isColdStart": false,
+          "totalMs": 58992.216846999945,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 54.52997500007041
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 97.97006700001657
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 87.58476299990434
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 53133.97884800006
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 2.321611999999732
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 139.02940399991348
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.007468000054359436
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 148.71879800001625
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 5063.323012000066
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 5212.070568999974
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 261.4862339999527
+            }
+          ]
+        },
+        {
+          "runIndex": 2,
+          "isColdStart": false,
+          "totalMs": 61500.10523300001,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 27.51471799996216
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 84.7066310000373
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 77.10043099999893
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 58695.62042099994
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 6.344809000031091
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 167.12685100000817
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.008455000002868474
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 147.40239100006875
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2196.687825999921
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 2344.1411410000874
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 95.59287100005895
+            }
+          ]
+        }
+      ],
+      "median": [
+        {
+          "stage": "load",
+          "label": "加载图片",
+          "durationMs": 41.02
+        },
+        {
+          "stage": "detect",
+          "label": "文本检测",
+          "durationMs": 91.34
+        },
+        {
+          "stage": "bubble",
+          "label": "气泡检测",
+          "durationMs": 82.34
+        },
+        {
+          "stage": "ocr",
+          "label": "OCR 日文识别",
+          "durationMs": 55914.8
+        },
+        {
+          "stage": "merge",
+          "label": "合并文本行",
+          "durationMs": 4.33
+        },
+        {
+          "stage": "order",
+          "label": "文本顺序排序",
+          "durationMs": 153.08
+        },
+        {
+          "stage": "translate",
+          "label": "翻译(跳过)",
+          "durationMs": 0.01
+        },
+        {
+          "stage": "mask_refine",
+          "label": "细化去字遮罩",
+          "durationMs": 148.06
+        },
+        {
+          "stage": "inpaint",
+          "label": "去字",
+          "durationMs": 3630.01
+        },
+        {
+          "stage": "parallel",
+          "label": "并行处理(翻译 + 去字)",
+          "durationMs": 3778.11
+        },
+        {
+          "stage": "typeset",
+          "label": "排版和嵌字",
+          "durationMs": 178.54
+        }
+      ],
+      "medianTotalMs": 60246.16
+    },
+    {
+      "imageFile": "13.png",
+      "runs": [
+        {
+          "runIndex": 0,
+          "isColdStart": true,
+          "totalMs": 31232.483339000028,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 27.504989000037313
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 129.03768599999603
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 48.93347899999935
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 27376.48479300004
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 9.949346999987029
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 267.57001899997704
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.014237000024877489
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 169.6986540000653
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 3109.4389030000893
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 3279.175551000051
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 92.4016319999937
+            }
+          ]
+        },
+        {
+          "runIndex": 1,
+          "isColdStart": false,
+          "totalMs": 26310.792875999934,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 31.80207600002177
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 208.70626999996603
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 65.50610800005961
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 22617.583721000003
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 2.604955999995582
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 293.57188099995255
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.019412999972701073
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 121.59674399998039
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2927.279196999967
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 3048.9129759999923
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 39.23325099993963
+            }
+          ]
+        },
+        {
+          "runIndex": 2,
+          "isColdStart": false,
+          "totalMs": 31784.527236999944,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 43.04984600003809
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 234.2410229999805
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 51.86370200000238
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 28819.09033799998
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 4.440640000044368
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 200.84370700002182
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.018065999960526824
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 143.85882900003344
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2240.2255390000064
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 2384.128468000097
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 33.29859600006603
+            }
+          ]
+        }
+      ],
+      "median": [
+        {
+          "stage": "load",
+          "label": "加载图片",
+          "durationMs": 37.43
+        },
+        {
+          "stage": "detect",
+          "label": "文本检测",
+          "durationMs": 221.47
+        },
+        {
+          "stage": "bubble",
+          "label": "气泡检测",
+          "durationMs": 58.68
+        },
+        {
+          "stage": "ocr",
+          "label": "OCR 日文识别",
+          "durationMs": 25718.34
+        },
+        {
+          "stage": "merge",
+          "label": "合并文本行",
+          "durationMs": 3.52
+        },
+        {
+          "stage": "order",
+          "label": "文本顺序排序",
+          "durationMs": 247.21
+        },
+        {
+          "stage": "translate",
+          "label": "翻译(跳过)",
+          "durationMs": 0.02
+        },
+        {
+          "stage": "mask_refine",
+          "label": "细化去字遮罩",
+          "durationMs": 132.73
+        },
+        {
+          "stage": "inpaint",
+          "label": "去字",
+          "durationMs": 2583.75
+        },
+        {
+          "stage": "parallel",
+          "label": "并行处理(翻译 + 去字)",
+          "durationMs": 2716.52
+        },
+        {
+          "stage": "typeset",
+          "label": "排版和嵌字",
+          "durationMs": 36.27
+        }
+      ],
+      "medianTotalMs": 29047.66
+    },
+    {
+      "imageFile": "14.png",
+      "runs": [
+        {
+          "runIndex": 0,
+          "isColdStart": true,
+          "totalMs": 14103.788552000071,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 21.56779000000097
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 132.15060699998867
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 87.65005599998403
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 9513.642899000086
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 2.838287999969907
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 222.27476199995726
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.008502000011503696
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 178.9766280000331
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 3833.5558009999804
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 4012.561362999957
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 109.46259100001771
+            }
+          ]
+        },
+        {
+          "runIndex": 1,
+          "isColdStart": false,
+          "totalMs": 18373.39845899993,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 43.46014700003434
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 108.38650299992878
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 45.21192900009919
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 15615.486112000071
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 3.1980999999213964
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 207.8580620000139
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.008196000009775162
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 151.156517000054
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2157.8325290000066
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 2309.0203699999256
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 39.029410999966785
+            }
+          ]
+        },
+        {
+          "runIndex": 2,
+          "isColdStart": false,
+          "totalMs": 22499.04426600004,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 26.870217999909073
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 129.40514100005385
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 60.32998999999836
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 16961.56800800003
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 3.2346189999952912
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 350.11319699999876
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.03418400010559708
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 149.66273999994155
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 4764.721972999978
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 4914.470060999971
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 50.5928230000427
+            }
+          ]
+        }
+      ],
+      "median": [
+        {
+          "stage": "load",
+          "label": "加载图片",
+          "durationMs": 35.17
+        },
+        {
+          "stage": "detect",
+          "label": "文本检测",
+          "durationMs": 118.9
+        },
+        {
+          "stage": "bubble",
+          "label": "气泡检测",
+          "durationMs": 52.77
+        },
+        {
+          "stage": "ocr",
+          "label": "OCR 日文识别",
+          "durationMs": 16288.53
+        },
+        {
+          "stage": "merge",
+          "label": "合并文本行",
+          "durationMs": 3.22
+        },
+        {
+          "stage": "order",
+          "label": "文本顺序排序",
+          "durationMs": 278.99
+        },
+        {
+          "stage": "translate",
+          "label": "翻译(跳过)",
+          "durationMs": 0.02
+        },
+        {
+          "stage": "mask_refine",
+          "label": "细化去字遮罩",
+          "durationMs": 150.41
+        },
+        {
+          "stage": "inpaint",
+          "label": "去字",
+          "durationMs": 3461.28
+        },
+        {
+          "stage": "parallel",
+          "label": "并行处理(翻译 + 去字)",
+          "durationMs": 3611.75
+        },
+        {
+          "stage": "typeset",
+          "label": "排版和嵌字",
+          "durationMs": 44.81
+        }
+      ],
+      "medianTotalMs": 20436.22
+    },
+    {
+      "imageFile": "2.png",
+      "runs": [
+        {
+          "runIndex": 0,
+          "isColdStart": true,
+          "totalMs": 21022.814770000055,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 38.645363999996334
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 161.0435760000255
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 49.824222999974154
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 17924.589457000024
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 2.3292459999211133
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 216.86594400007743
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.013051000074483454
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 153.49179399991408
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2413.506807000027
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 2567.0339430000167
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 56.33850299997721
+            }
+          ]
+        },
+        {
+          "runIndex": 1,
+          "isColdStart": false,
+          "totalMs": 13182.161155999987,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 28.35086899995804
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 148.91704500000924
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 65.9069610000588
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 9931.343122999999
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 1.0545909999636933
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 189.90307500003837
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.007910000043921173
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 154.42405700008385
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2623.2252480000025
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 2777.7122619999573
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 37.556105999974534
+            }
+          ]
+        },
+        {
+          "runIndex": 2,
+          "isColdStart": false,
+          "totalMs": 12063.984020999982,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 22.58484500006307
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 115.44881500001065
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 51.118090000003576
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 9372.98960500001
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 2.7918369999388233
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 342.09188500000164
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.014737999998033047
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 142.13318600005005
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 1981.3440040000714
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 2123.583098000032
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 31.93486599996686
+            }
+          ]
+        }
+      ],
+      "median": [
+        {
+          "stage": "load",
+          "label": "加载图片",
+          "durationMs": 25.47
+        },
+        {
+          "stage": "detect",
+          "label": "文本检测",
+          "durationMs": 132.18
+        },
+        {
+          "stage": "bubble",
+          "label": "气泡检测",
+          "durationMs": 58.51
+        },
+        {
+          "stage": "ocr",
+          "label": "OCR 日文识别",
+          "durationMs": 9652.17
+        },
+        {
+          "stage": "merge",
+          "label": "合并文本行",
+          "durationMs": 1.92
+        },
+        {
+          "stage": "order",
+          "label": "文本顺序排序",
+          "durationMs": 266
+        },
+        {
+          "stage": "translate",
+          "label": "翻译(跳过)",
+          "durationMs": 0.01
+        },
+        {
+          "stage": "mask_refine",
+          "label": "细化去字遮罩",
+          "durationMs": 148.28
+        },
+        {
+          "stage": "inpaint",
+          "label": "去字",
+          "durationMs": 2302.28
+        },
+        {
+          "stage": "parallel",
+          "label": "并行处理(翻译 + 去字)",
+          "durationMs": 2450.65
+        },
+        {
+          "stage": "typeset",
+          "label": "排版和嵌字",
+          "durationMs": 34.75
+        }
+      ],
+      "medianTotalMs": 12623.07
+    },
+    {
+      "imageFile": "3.png",
+      "runs": [
+        {
+          "runIndex": 0,
+          "isColdStart": true,
+          "totalMs": 7618.724532000022,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 16.743173000053503
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 99.10983299999498
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 53.844527999986894
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 5117.7490869999165
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 3.059356000041589
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 132.39609699998982
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.01639699994120747
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 135.9544450000394
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2042.0730040000053
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 2178.0644620000385
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 16.677750000031665
+            }
+          ]
+        },
+        {
+          "runIndex": 1,
+          "isColdStart": false,
+          "totalMs": 13371.64892399998,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 18.532814000034705
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 100.28464399999939
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 36.77663300000131
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 8116.682854000013
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 0.3115209999959916
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 307.1521369999973
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.010590000078082085
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 185.9972139999736
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 4569.853244999889
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 4755.885395999998
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 33.18216100009158
+            }
+          ]
+        },
+        {
+          "runIndex": 2,
+          "isColdStart": false,
+          "totalMs": 17808.621212000027,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 53.05936700000893
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 191.4959900000831
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 61.65599800006021
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 11713.256410999922
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 5.847709000110626
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 323.2589689999586
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.013644999940879643
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 169.45011099998374
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 5245.0422719999915
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 5414.532682000077
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 37.49890499992762
+            }
+          ]
+        }
+      ],
+      "median": [
+        {
+          "stage": "load",
+          "label": "加载图片",
+          "durationMs": 35.8
+        },
+        {
+          "stage": "detect",
+          "label": "文本检测",
+          "durationMs": 145.89
+        },
+        {
+          "stage": "bubble",
+          "label": "气泡检测",
+          "durationMs": 49.22
+        },
+        {
+          "stage": "ocr",
+          "label": "OCR 日文识别",
+          "durationMs": 9914.97
+        },
+        {
+          "stage": "merge",
+          "label": "合并文本行",
+          "durationMs": 3.08
+        },
+        {
+          "stage": "order",
+          "label": "文本顺序排序",
+          "durationMs": 315.21
+        },
+        {
+          "stage": "translate",
+          "label": "翻译(跳过)",
+          "durationMs": 0.01
+        },
+        {
+          "stage": "mask_refine",
+          "label": "细化去字遮罩",
+          "durationMs": 177.72
+        },
+        {
+          "stage": "inpaint",
+          "label": "去字",
+          "durationMs": 4907.45
+        },
+        {
+          "stage": "parallel",
+          "label": "并行处理(翻译 + 去字)",
+          "durationMs": 5085.21
+        },
+        {
+          "stage": "typeset",
+          "label": "排版和嵌字",
+          "durationMs": 35.34
+        }
+      ],
+      "medianTotalMs": 15590.14
+    },
+    {
+      "imageFile": "4.png",
+      "runs": [
+        {
+          "runIndex": 0,
+          "isColdStart": true,
+          "totalMs": 32072.398060000036,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 43.08055399998557
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 269.8888900000602
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 59.08733000000939
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 29169.83815700002
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 5.392978999996558
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 159.4016540000448
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.013934999937191606
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 103.3578259999631
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2166.5140200000023
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 2269.9483410000103
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 92.31246599997394
+            }
+          ]
+        },
+        {
+          "runIndex": 1,
+          "isColdStart": false,
+          "totalMs": 26045.653644999955,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 26.359578000032343
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 157.5324050000636
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 53.64618100004736
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 22244.138445000048
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 1.7554480000399053
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 187.6592820000369
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.018237999989651144
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 102.76245199993718
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 3207.2377759999363
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 3310.0402069999836
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 61.64543200004846
+            }
+          ]
+        },
+        {
+          "runIndex": 2,
+          "isColdStart": false,
+          "totalMs": 30709.088871999993,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 21.401233999989927
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 136.6713480000617
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 73.11505599995144
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 27076.131969999988
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 6.4455549999838695
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 225.1221679999726
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.01251799997407943
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 104.03599900007248
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2981.785845000064
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 3085.8611219999148
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 83.05558299995027
+            }
+          ]
+        }
+      ],
+      "median": [
+        {
+          "stage": "load",
+          "label": "加载图片",
+          "durationMs": 23.88
+        },
+        {
+          "stage": "detect",
+          "label": "文本检测",
+          "durationMs": 147.1
+        },
+        {
+          "stage": "bubble",
+          "label": "气泡检测",
+          "durationMs": 63.38
+        },
+        {
+          "stage": "ocr",
+          "label": "OCR 日文识别",
+          "durationMs": 24660.14
+        },
+        {
+          "stage": "merge",
+          "label": "合并文本行",
+          "durationMs": 4.1
+        },
+        {
+          "stage": "order",
+          "label": "文本顺序排序",
+          "durationMs": 206.39
+        },
+        {
+          "stage": "translate",
+          "label": "翻译(跳过)",
+          "durationMs": 0.02
+        },
+        {
+          "stage": "mask_refine",
+          "label": "细化去字遮罩",
+          "durationMs": 103.4
+        },
+        {
+          "stage": "inpaint",
+          "label": "去字",
+          "durationMs": 3094.51
+        },
+        {
+          "stage": "parallel",
+          "label": "并行处理(翻译 + 去字)",
+          "durationMs": 3197.95
+        },
+        {
+          "stage": "typeset",
+          "label": "排版和嵌字",
+          "durationMs": 72.35
+        }
+      ],
+      "medianTotalMs": 28377.37
+    },
+    {
+      "imageFile": "5.png",
+      "runs": [
+        {
+          "runIndex": 0,
+          "isColdStart": true,
+          "totalMs": 51996.78393200005,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 235.58632100000978
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 236.70983800000977
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 94.43758000002708
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 48037.41177200002
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 0.4981750000733882
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 317.42729700007476
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.005945999873802066
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 512.6100600000937
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2481.8743749998976
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 2994.5115229999647
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 73.24040300003253
+            }
+          ]
+        },
+        {
+          "runIndex": 1,
+          "isColdStart": false,
+          "totalMs": 38280.58171700011,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 102.55611800006591
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 262.8772759998683
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 82.33577600005083
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 34456.531789000146
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 5.25548499985598
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 295.3572410000488
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.00825399998575449
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 529.7722020000219
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2493.1000389999244
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 3022.9022200000472
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 41.07693800004199
+            }
+          ]
+        },
+        {
+          "runIndex": 2,
+          "isColdStart": false,
+          "totalMs": 40428.609295999864,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 104.22153199999593
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 383.65163500001654
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 82.74158299993724
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 36488.72226099996
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 0.8405919999349862
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 344.995402000146
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.009597999975085258
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 524.0995670000557
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2446.649046999868
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 2970.7803690000437
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 40.212904000189155
+            }
+          ]
+        }
+      ],
+      "median": [
+        {
+          "stage": "load",
+          "label": "加载图片",
+          "durationMs": 103.39
+        },
+        {
+          "stage": "detect",
+          "label": "文本检测",
+          "durationMs": 323.26
+        },
+        {
+          "stage": "bubble",
+          "label": "气泡检测",
+          "durationMs": 82.54
+        },
+        {
+          "stage": "ocr",
+          "label": "OCR 日文识别",
+          "durationMs": 35472.63
+        },
+        {
+          "stage": "merge",
+          "label": "合并文本行",
+          "durationMs": 3.05
+        },
+        {
+          "stage": "order",
+          "label": "文本顺序排序",
+          "durationMs": 320.18
+        },
+        {
+          "stage": "translate",
+          "label": "翻译(跳过)",
+          "durationMs": 0.01
+        },
+        {
+          "stage": "mask_refine",
+          "label": "细化去字遮罩",
+          "durationMs": 526.94
+        },
+        {
+          "stage": "inpaint",
+          "label": "去字",
+          "durationMs": 2469.87
+        },
+        {
+          "stage": "parallel",
+          "label": "并行处理(翻译 + 去字)",
+          "durationMs": 2996.84
+        },
+        {
+          "stage": "typeset",
+          "label": "排版和嵌字",
+          "durationMs": 40.64
+        }
+      ],
+      "medianTotalMs": 39354.6
+    },
+    {
+      "imageFile": "6.png",
+      "runs": [
+        {
+          "runIndex": 0,
+          "isColdStart": true,
+          "totalMs": 12022.386077000061,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 123.06017800001428
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 257.71341699990444
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 91.77180099999532
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 8156.895063000033
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 1.7100830001290888
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 293.4596579999197
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.006763000041246414
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 561.6085240000393
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2465.947066999972
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 3027.5814789999276
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 58.47125499998219
+            }
+          ]
+        },
+        {
+          "runIndex": 1,
+          "isColdStart": false,
+          "totalMs": 12860.652690000134,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 122.9835220000241
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 437.22959000011906
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 95.04862800007686
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 8616.194765999913
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 2.027771000051871
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 314.7038219999522
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.011754000093787909
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 552.4740100000054
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2672.5042430001777
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 3225.0073969999794
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 29.28734299982898
+            }
+          ]
+        },
+        {
+          "runIndex": 2,
+          "isColdStart": false,
+          "totalMs": 12712.036654999945,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 116.2177049999591
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 428.5879929999355
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 102.59526400011964
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 8575.454882999882
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 0.44965099985711277
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 364.89108800003305
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.0086260000243783
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 557.8145139999688
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2524.731854000129
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 3082.5702779998537
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 28.519112000009045
+            }
+          ]
+        }
+      ],
+      "median": [
+        {
+          "stage": "load",
+          "label": "加载图片",
+          "durationMs": 119.6
+        },
+        {
+          "stage": "detect",
+          "label": "文本检测",
+          "durationMs": 432.91
+        },
+        {
+          "stage": "bubble",
+          "label": "气泡检测",
+          "durationMs": 98.82
+        },
+        {
+          "stage": "ocr",
+          "label": "OCR 日文识别",
+          "durationMs": 8595.82
+        },
+        {
+          "stage": "merge",
+          "label": "合并文本行",
+          "durationMs": 1.24
+        },
+        {
+          "stage": "order",
+          "label": "文本顺序排序",
+          "durationMs": 339.8
+        },
+        {
+          "stage": "translate",
+          "label": "翻译(跳过)",
+          "durationMs": 0.01
+        },
+        {
+          "stage": "mask_refine",
+          "label": "细化去字遮罩",
+          "durationMs": 555.14
+        },
+        {
+          "stage": "inpaint",
+          "label": "去字",
+          "durationMs": 2598.62
+        },
+        {
+          "stage": "parallel",
+          "label": "并行处理(翻译 + 去字)",
+          "durationMs": 3153.79
+        },
+        {
+          "stage": "typeset",
+          "label": "排版和嵌字",
+          "durationMs": 28.9
+        }
+      ],
+      "medianTotalMs": 12786.34
+    },
+    {
+      "imageFile": "7.png",
+      "runs": [
+        {
+          "runIndex": 0,
+          "isColdStart": true,
+          "totalMs": 11193.48641699995,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 37.696813999908045
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 266.1983739999123
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 52.84871400007978
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 8128.763894000091
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 0.4314380001742393
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 293.6611649999395
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.012544000055640936
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 150.2956969998777
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2205.8269650000148
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 2356.158553000074
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 56.023957000114024
+            }
+          ]
+        },
+        {
+          "runIndex": 1,
+          "isColdStart": false,
+          "totalMs": 11259.809507999802,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 39.36329000000842
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 220.55133700021543
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 50.01280100014992
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 8586.191357000032
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 2.861750999931246
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 223.165469000116
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.0092720000538975
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 145.92343299998902
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 1967.423019999871
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 2113.37550799991
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 22.521035999991
+            }
+          ]
+        },
+        {
+          "runIndex": 2,
+          "isColdStart": false,
+          "totalMs": 10763.132628000109,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 40.91213799989782
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 227.81608900008723
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 45.48643000004813
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 7972.707234000089
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 2.7729090000502765
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 206.9645470001269
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.008038999978452921
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 159.28237299993634
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2077.504285000032
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 2236.8148120001424
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 26.021483999909833
+            }
+          ]
+        }
+      ],
+      "median": [
+        {
+          "stage": "load",
+          "label": "加载图片",
+          "durationMs": 40.14
+        },
+        {
+          "stage": "detect",
+          "label": "文本检测",
+          "durationMs": 224.18
+        },
+        {
+          "stage": "bubble",
+          "label": "气泡检测",
+          "durationMs": 47.75
+        },
+        {
+          "stage": "ocr",
+          "label": "OCR 日文识别",
+          "durationMs": 8279.45
+        },
+        {
+          "stage": "merge",
+          "label": "合并文本行",
+          "durationMs": 2.82
+        },
+        {
+          "stage": "order",
+          "label": "文本顺序排序",
+          "durationMs": 215.07
+        },
+        {
+          "stage": "translate",
+          "label": "翻译(跳过)",
+          "durationMs": 0.01
+        },
+        {
+          "stage": "mask_refine",
+          "label": "细化去字遮罩",
+          "durationMs": 152.6
+        },
+        {
+          "stage": "inpaint",
+          "label": "去字",
+          "durationMs": 2022.46
+        },
+        {
+          "stage": "parallel",
+          "label": "并行处理(翻译 + 去字)",
+          "durationMs": 2175.1
+        },
+        {
+          "stage": "typeset",
+          "label": "排版和嵌字",
+          "durationMs": 24.27
+        }
+      ],
+      "medianTotalMs": 11011.47
+    },
+    {
+      "imageFile": "8.png",
+      "runs": [
+        {
+          "runIndex": 0,
+          "isColdStart": true,
+          "totalMs": 15513.912143999944,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 103.4364030000288
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 430.29014800000004
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 117.3505010001827
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 11566.414401999908
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 4.141366999829188
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 257.84622199996375
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.009459000080823898
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 475.27199400006793
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2479.1362489999738
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 2954.4397330000065
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 58.44306999980472
+            }
+          ]
+        },
+        {
+          "runIndex": 1,
+          "isColdStart": false,
+          "totalMs": 14938.003220999846,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 70.22846300015226
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 417.84902200009674
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 118.61615500017069
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 11090.973173000151
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 2.2392029999755323
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 285.4848569999449
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.0100040000397712
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 481.878810999915
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2419.8612529998645
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 2901.767182999989
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 38.878183000022545
+            }
+          ]
+        },
+        {
+          "runIndex": 2,
+          "isColdStart": false,
+          "totalMs": 15259.563185999868,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 68.96429700008593
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 259.4622149998322
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 116.09599799988791
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 11434.956892000046
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 2.1750779999420047
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 270.5517879999243
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.012722000014036894
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 487.4668329998385
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2561.833062999882
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 3049.333282999927
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 46.50762299983762
+            }
+          ]
+        }
+      ],
+      "median": [
+        {
+          "stage": "load",
+          "label": "加载图片",
+          "durationMs": 69.6
+        },
+        {
+          "stage": "detect",
+          "label": "文本检测",
+          "durationMs": 338.66
+        },
+        {
+          "stage": "bubble",
+          "label": "气泡检测",
+          "durationMs": 117.36
+        },
+        {
+          "stage": "ocr",
+          "label": "OCR 日文识别",
+          "durationMs": 11262.97
+        },
+        {
+          "stage": "merge",
+          "label": "合并文本行",
+          "durationMs": 2.21
+        },
+        {
+          "stage": "order",
+          "label": "文本顺序排序",
+          "durationMs": 278.02
+        },
+        {
+          "stage": "translate",
+          "label": "翻译(跳过)",
+          "durationMs": 0.01
+        },
+        {
+          "stage": "mask_refine",
+          "label": "细化去字遮罩",
+          "durationMs": 484.67
+        },
+        {
+          "stage": "inpaint",
+          "label": "去字",
+          "durationMs": 2490.85
+        },
+        {
+          "stage": "parallel",
+          "label": "并行处理(翻译 + 去字)",
+          "durationMs": 2975.55
+        },
+        {
+          "stage": "typeset",
+          "label": "排版和嵌字",
+          "durationMs": 42.69
+        }
+      ],
+      "medianTotalMs": 15098.78
+    },
+    {
+      "imageFile": "9.png",
+      "runs": [
+        {
+          "runIndex": 0,
+          "isColdStart": true,
+          "totalMs": 9699.365013999864,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 73.90372500009835
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 404.62622600002214
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 96.64853600016795
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 5817.731455000117
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 0.5435850000940263
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 267.3899669998791
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.011329999892041087
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 493.1484290000517
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2488.734058999922
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 2981.912502999883
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 43.85441800020635
+            }
+          ]
+        },
+        {
+          "runIndex": 1,
+          "isColdStart": false,
+          "totalMs": 9719.259849000024,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 67.56196199986152
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 446.00061099999584
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 98.88979299995117
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 5768.872996999882
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 2.3640750001650304
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 280.0721749998629
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.007474999874830246
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 486.8475230000913
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2514.453783000121
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 3001.324019999942
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 41.79735499992967
+            }
+          ]
+        },
+        {
+          "runIndex": 2,
+          "isColdStart": false,
+          "totalMs": 9776.17158900015,
+          "stages": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 78.20754599990323
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 370.5501650001388
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 94.74132600007579
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 5997.936736000003
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 2.0580970000009984
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 296.10624999995343
+            },
+            {
+              "stage": "translate",
+              "label": "翻译(跳过)",
+              "durationMs": 0.012968000024557114
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 487.05362499994226
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2394.2479280000553
+            },
+            {
+              "stage": "parallel",
+              "label": "并行处理(翻译 + 去字)",
+              "durationMs": 2881.3381300000474
+            },
+            {
+              "stage": "typeset",
+              "label": "排版和嵌字",
+              "durationMs": 37.44150399998762
+            }
+          ]
+        }
+      ],
+      "median": [
+        {
+          "stage": "load",
+          "label": "加载图片",
+          "durationMs": 72.88
+        },
+        {
+          "stage": "detect",
+          "label": "文本检测",
+          "durationMs": 408.28
+        },
+        {
+          "stage": "bubble",
+          "label": "气泡检测",
+          "durationMs": 96.82
+        },
+        {
+          "stage": "ocr",
+          "label": "OCR 日文识别",
+          "durationMs": 5883.4
+        },
+        {
+          "stage": "merge",
+          "label": "合并文本行",
+          "durationMs": 2.21
+        },
+        {
+          "stage": "order",
+          "label": "文本顺序排序",
+          "durationMs": 288.09
+        },
+        {
+          "stage": "translate",
+          "label": "翻译(跳过)",
+          "durationMs": 0.01
+        },
+        {
+          "stage": "mask_refine",
+          "label": "细化去字遮罩",
+          "durationMs": 486.95
+        },
+        {
+          "stage": "inpaint",
+          "label": "去字",
+          "durationMs": 2454.35
+        },
+        {
+          "stage": "parallel",
+          "label": "并行处理(翻译 + 去字)",
+          "durationMs": 2941.33
+        },
+        {
+          "stage": "typeset",
+          "label": "排版和嵌字",
+          "durationMs": 39.62
+        }
+      ],
+      "medianTotalMs": 9747.72
+    }
+  ],
+  "runtime": "cuda",
+  "overallMedianTotalMs": 18013.18
+}

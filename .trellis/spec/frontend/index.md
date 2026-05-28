@@ -20,6 +20,7 @@ This project is a Chrome Manifest V3 browser extension for translating manga/com
 | [State Management](./state-management.md) | Local state, global state, server state | Filled |
 | [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | Filled |
 | [Type Safety](./type-safety.md) | Type patterns, validation | Filled |
+| [WebGPU Dataflow](./webgpu-dataflow.md) | GPU-accelerated preprocessing and IO Binding contracts | Filled |
 
 ---
 

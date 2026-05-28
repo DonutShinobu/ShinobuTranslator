@@ -22,6 +22,7 @@ import type {
   OcrSingleDecodeOutput,
   OcrColorBatchInputItem,
   OcrColorResult,
+  GpuDetectResult,
 } from "./onnxWorkerTypes";
 import type { RuntimeSelfCheckReport } from "./selfCheck";
 import {
@@ -508,6 +509,17 @@ export async function probeRuntime(modelUrl: string): Promise<RuntimeSelfCheckRe
       reason,
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// GPU-preprocessed detection — not supported in Node (no WebGPU)
+// ---------------------------------------------------------------------------
+
+export async function runDetectWithGpuPreprocess(
+  _sessionId: string,
+  _imageSource: ImageBitmap,
+): Promise<GpuDetectResult> {
+  throw new Error("GPU 预处理仅在浏览器 WebGPU 环境下可用");
 }
 
 // ---------------------------------------------------------------------------

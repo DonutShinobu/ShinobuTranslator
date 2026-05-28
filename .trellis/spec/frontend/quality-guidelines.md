@@ -25,6 +25,8 @@ Testing is minimal (3 test files). Linting relies on TypeScript strict mode. No 
 11. **Direct import of onnxWorkerBridge or onnxNodeBridge from pipeline code** — Pipeline modules must import from `./onnxBridge`. Direct `onnxWorkerBridge` import pulls Comlink/Worker/DOM code into Node; direct `onnxNodeBridge` import leaks onnxruntime-node into the browser build.
 12. **`require()` in browser-executed code** — `modelRegistry.ts` runs in both browser and Node. Use static `import` for browser-side modules like `resolveAssetUrl`. `require()` is undefined in the Chrome extension and will crash at runtime.
 13. **Unexternalized Node-only dynamic imports in Vite config** — If a module is dynamically imported under `isNode`, Vite still resolves it and bundles it as a reachable chunk. Must add to `rollupOptions.external` to prevent leaking into the browser build.
+14. **`preferredOutputLocation:"gpu-buffer"` on all WebGPU sessions** — Only apply `preferredOutputLocation:"gpu-buffer"` to sessions whose outputs are consumed via the GPU-preprocessed path. Other sessions' `tensorToTransport` reads `tensor.data` directly, which fails on GPU tensors ("The data is not on CPU"). Restrict by `modelKey`, not by provider.
+15. **Omitting `platform` parameter in OCR provider calls** — `OcrProvider.recognize()` takes an optional `platform?: PlatformProvider`. Non-builtin providers (e.g., `paddleocrProvider`) call `platform.createCanvas()`, so passing `undefined` crashes. Always pass `platform` through from the caller.
 
 ---
 

@@ -22,6 +22,7 @@ import type {
   OcrSingleDecodeOutput,
   OcrColorBatchInputItem,
   OcrColorResult,
+  GpuDetectResult,
 } from "./onnxWorkerTypes";
 import type { RuntimeSelfCheckReport } from "./selfCheck";
 
@@ -125,6 +126,13 @@ export async function runOcrColorSingle(
 
 export async function probeRuntime(modelUrl: string): Promise<RuntimeSelfCheckReport> {
   return (await loadBridge()).probeRuntime(modelUrl);
+}
+
+export async function runDetectWithGpuPreprocess(
+  sessionId: string,
+  imageSource: ImageBitmap
+): Promise<GpuDetectResult> {
+  return (await loadBridge()).runDetectWithGpuPreprocess(sessionId, imageSource);
 }
 
 export async function disposeSession(sessionId: string): Promise<void> {

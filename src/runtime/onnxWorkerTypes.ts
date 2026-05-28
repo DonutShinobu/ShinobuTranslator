@@ -93,6 +93,17 @@ export type OcrColorResult = {
 };
 
 // ---------------------------------------------------------------------------
+// GPU detect — result from GPU-preprocessed detection inference
+// ---------------------------------------------------------------------------
+
+export type GpuDetectResult = {
+  outputs: Record<string, TensorTransport>;
+  ratio: number;
+  unpaddedWidth: number;
+  unpaddedHeight: number;
+};
+
+// ---------------------------------------------------------------------------
 // Worker API — the comlink-exposed interface
 // ---------------------------------------------------------------------------
 
@@ -153,6 +164,10 @@ export interface OnnxWorkerApi {
     encoderLen: number
   ): Promise<OcrColorResult | null>;
   probeRuntime(modelUrl: string): Promise<RuntimeSelfCheckReport>;
+  runDetectWithGpuPreprocess(
+    sessionId: string,
+    imageSource: ImageBitmap
+  ): Promise<GpuDetectResult>;
   disposeSession(sessionId: string): Promise<void>;
   disposeAll(): Promise<void>;
 }

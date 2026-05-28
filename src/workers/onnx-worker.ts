@@ -15,6 +15,7 @@ import type {
   OcrColorBatchInputItem,
   OcrColorResult,
   OnnxWorkerApi,
+  GpuDetectResult,
 } from "../runtime/onnxWorkerTypes";
 import type { RuntimeSelfCheckReport } from "../runtime/selfCheck";
 import {
@@ -23,6 +24,7 @@ import {
 } from "../pipeline/ocr/decodeAutoregressive";
 import { decodeTokenColorsBatch, decodeTokenColors } from "../pipeline/ocr/color";
 import type { OcrInputData } from "../pipeline/ocr/preprocess";
+import { preprocessLetterboxGpu } from "./gpuPreprocess";
 
 // ---------------------------------------------------------------------------
 // ORT environment
@@ -216,9 +218,16 @@ async function createSession(
         const maxAttempts = provider === "webnn" ? 2 : 1;
         for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
           try {
+            const sessionOptions: Parameters<typeof ortAll.InferenceSession.create>[1] = {
+              executionProviders: [ep],
+              graphOptimizationLevel: "all",
+            };
+            if (provider === "webgpu" && modelKey === "detector") {
+              sessionOptions.preferredOutputLocation = "gpu-buffer";
+            }
             const session = await createSessionWithTimeout(
               modelUrl,
-              { executionProviders: [ep], graphOptimizationLevel: "all" },
+              sessionOptions,
               SESSION_CREATE_TIMEOUT_MS
             );
 
@@ -273,7 +282,12 @@ async function createSession(
 // Inference
 // ---------------------------------------------------------------------------
 
-function tensorToTransport(tensor: ortAll.Tensor): TensorTransport {
+async function tensorToTransport(tensor: ortAll.Tensor): Promise<TensorTransport> {
+  // Handle GPU-buffer-located tensors (preferredOutputLocation: "gpu-buffer")
+  if ((tensor as unknown as { location?: string }).location === "gpu-buffer") {
+    const data = (await (tensor as unknown as { getData: () => Promise<Float32Array> }).getData()) as Float32Array | BigInt64Array | Uint8Array;
+    return { data, dims: [...tensor.dims], type: tensor.type as "float32" | "int64" | "bool" };
+  }
   if (tensor.data instanceof Float32Array) {
     return { data: tensor.data, dims: [...tensor.dims], type: "float32" };
   }
@@ -333,7 +347,7 @@ async function runInference(
   };
   const outTransferables: ArrayBuffer[] = [];
   for (const [name, tensor] of Object.entries(outputs)) {
-    const transport = tensorToTransport(tensor);
+    const transport = await tensorToTransport(tensor);
     result.outputs[name] = transport;
     if (transport.data instanceof Float32Array) {
       outTransferables.push(transport.data.buffer as ArrayBuffer);
@@ -696,6 +710,62 @@ async function probeRuntime(modelUrl: string): Promise<RuntimeSelfCheckReport> {
 }
 
 // ---------------------------------------------------------------------------
+// GPU-preprocessed detection inference
+// ---------------------------------------------------------------------------
+
+async function runDetectWithGpuPreprocess(
+  sessionId: string,
+  imageSource: ImageBitmap
+): Promise<GpuDetectResult> {
+  const entry = sessions.get(sessionId);
+  if (!entry) {
+    throw new Error(`Session 不存在: ${sessionId}`);
+  }
+  if (entry.provider !== "webgpu") {
+    throw new Error(`GPU 预处理仅支持 WebGPU EP，当前: ${entry.provider}`);
+  }
+
+  const inputSize = 1024;
+  const { tensor, params } = await preprocessLetterboxGpu(imageSource, inputSize);
+
+  const inputName = entry.session.inputNames[0] ?? "images";
+  const feeds: Record<string, ortAll.Tensor> = { [inputName]: tensor };
+
+  let outputs: Record<string, ortAll.Tensor>;
+  try {
+    outputs = await entry.session.run(feeds);
+  } catch (inferenceError) {
+    throw inferenceError;
+  }
+
+  const result: GpuDetectResult = {
+    outputs: {},
+    ratio: params.ratio,
+    unpaddedWidth: params.unpaddedWidth,
+    unpaddedHeight: params.unpaddedHeight,
+  };
+  const outTransferables: ArrayBuffer[] = [];
+
+  for (const [name, outTensor] of Object.entries(outputs)) {
+    let data: Float32Array | BigInt64Array | Uint8Array;
+    if (outTensor.location === "gpu-buffer") {
+      data = (await outTensor.getData()) as Float32Array;
+    } else {
+      data = outTensor.data as Float32Array | BigInt64Array | Uint8Array;
+    }
+    const transport: TensorTransport = { data, dims: [...outTensor.dims], type: outTensor.type as "float32" | "int64" | "bool" };
+    result.outputs[name] = transport;
+    if (data instanceof Float32Array) {
+      outTransferables.push(data.buffer as ArrayBuffer);
+    } else if (data instanceof BigInt64Array) {
+      outTransferables.push(data.buffer as ArrayBuffer);
+    }
+  }
+
+  return Comlink.transfer(result, outTransferables);
+}
+
+// ---------------------------------------------------------------------------
 // Dispose
 // ---------------------------------------------------------------------------
 
@@ -731,6 +801,7 @@ const api: OnnxWorkerApi = {
   runOcrColorBatch,
   runOcrColorSingle,
   probeRuntime,
+  runDetectWithGpuPreprocess,
   disposeSession,
   disposeAll,
 };

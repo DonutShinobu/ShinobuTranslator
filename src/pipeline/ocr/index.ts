@@ -540,7 +540,7 @@ export async function runOcr(
   }
 
   // other provider path
-  const output = await provider.recognize(image, detectedRegions);
+  const output = await provider.recognize(image, detectedRegions, platform);
   const filled = fillMissingOcrFields(output.results, image, platform);
   const regions = mapResultsToRegions(filled, detectedRegions);
   if (regions.length > 0) {

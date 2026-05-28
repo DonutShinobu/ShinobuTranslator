@@ -4,7 +4,7 @@ import { minAreaRect, type Quad } from "../typeset/geometry";
 import { getModelSession } from "../../runtime/modelRegistry";
 import { isContextLostRuntimeError } from "../../runtime/onnxTypes";
 import type { RuntimeProvider, WebNnDeviceType } from "../../runtime/onnxTypes";
-import { runInference } from "../../runtime/onnxBridge";
+import { runInference, runDetectWithGpuPreprocess } from "../../runtime/onnxBridge";
 import type { WorkerSessionHandle, TensorTransport } from "../../runtime/onnxWorkerTypes";
 import { toErrorMessage } from "../../shared/utils";
 import { clamp, polygonArea, nmsBoxes, convexHull, type ScoredBox } from "../utils";
@@ -752,62 +752,114 @@ function mapBoxesToOriginal(
 export async function detectByOnnx(image: PipelineImage, platform: PlatformProvider): Promise<DetectOutput> {
   const primaryHandle = await getModelSession("detector");
   const inputSize = 1024;
-  const prep = preprocessLetterbox(image, inputSize, platform);
-
-  const runWithHandle = async (handle: WorkerSessionHandle): Promise<Record<string, TensorTransport>> => {
-    const inputName = handle.inputNames[0] ?? "images";
-    const feeds: Record<string, TensorTransport> = {
-      [inputName]: { data: prep.input, dims: [1, 3, inputSize, inputSize], type: "float32" }
-    };
-    const result = await runInference(handle.sessionId, feeds);
-    if (result.error) throw new Error(result.error);
-    return result.outputs;
-  };
 
   let actualProvider: RuntimeProvider = primaryHandle.provider;
   let actualWebnnDeviceType = primaryHandle.webnnDeviceType;
 
-  let outputTensors: Record<string, TensorTransport>;
-  try {
-    outputTensors = await runWithHandle(primaryHandle);
-  } catch (error) {
-    const message = toErrorMessage(error);
-    const reason = isContextLostRuntimeError(error) ? "context lost" : "run failed";
-    if (primaryHandle.provider === "wasm") {
-      throw error;
-    }
+  let outputTensors!: Record<string, TensorTransport>;
+  let prep: LetterboxResult;
 
-    const fallbackPlans: RuntimeProvider[][] = [];
-    if (primaryHandle.provider === "webgpu") {
-      fallbackPlans.push(["webnn", "wasm"]);
-    }
-    fallbackPlans.push(["wasm"]);
+  // WebGPU path: GPU preprocess + IO binding
+  if (primaryHandle.provider === "webgpu") {
+    try {
+      // PipelineImage is HTMLImageElement at runtime in the browser (browserPlatform.createImage)
+      const imageBitmap = await createImageBitmap(image as HTMLImageElement);
+      const gpuResult = await runDetectWithGpuPreprocess(primaryHandle.sessionId, imageBitmap);
+      prep = {
+        input: new Float32Array(0), // not needed for GPU path
+        size: inputSize,
+        ratio: gpuResult.ratio,
+        unpaddedWidth: gpuResult.unpaddedWidth,
+        unpaddedHeight: gpuResult.unpaddedHeight,
+      };
+      outputTensors = gpuResult.outputs;
+    } catch (error) {
+      const message = toErrorMessage(error);
+      console.warn(`[detector] WebGPU GPU预处理失败，回退到 CPU: ${message}`);
+      // Fallback: try WebNN first, then WASM (matching original fallback order)
+      prep = preprocessLetterbox(image, inputSize, platform);
 
-    let recovered: Record<string, TensorTransport> | null = null;
-    let lastFallbackError: unknown = null;
-    console.warn(`[detector] ${primaryHandle.provider} ${reason}, 尝试回退: ${message}`);
+      const fallbackPlans: RuntimeProvider[][] = [["webnn", "wasm"], ["wasm"]];
+      let recovered = false;
+      let lastFallbackError: unknown = null;
 
-    for (const preferred of fallbackPlans) {
-      try {
-        const handle = await getModelSession("detector", preferred);
-        recovered = await runWithHandle(handle);
-        if (handle.provider !== primaryHandle.provider) {
-          console.warn(`[detector] 已回退到 ${handle.provider}`);
+      for (const preferred of fallbackPlans) {
+        try {
+          const handle = await getModelSession("detector", preferred);
+          const inputName = handle.inputNames[0] ?? "images";
+          const feeds: Record<string, TensorTransport> = {
+            [inputName]: { data: prep.input, dims: [1, 3, inputSize, inputSize], type: "float32" }
+          };
+          const result = await runInference(handle.sessionId, feeds);
+          if (result.error) throw new Error(result.error);
+          outputTensors = result.outputs;
           actualProvider = handle.provider;
           actualWebnnDeviceType = handle.webnnDeviceType;
+          console.warn(`[detector] 已回退到 ${handle.provider}`);
+          recovered = true;
+          break;
+        } catch (fallbackError) {
+          lastFallbackError = fallbackError;
         }
-        break;
-      } catch (fallbackError) {
-        lastFallbackError = fallbackError;
+      }
+
+      if (!recovered) {
+        const fallbackMessage = lastFallbackError ? toErrorMessage(lastFallbackError) : "未知错误";
+        throw new Error(`WebGPU GPU预处理失败且回退失败: ${message} | fallback: ${fallbackMessage}`);
       }
     }
+  } else {
+    // CPU path (webnn/wasm): existing letterbox preprocessing
+    prep = preprocessLetterbox(image, inputSize, platform);
 
-    if (!recovered) {
-      const fallbackMessage = lastFallbackError ? toErrorMessage(lastFallbackError) : "未知错误";
-      throw new Error(`检测推理失败且回退失败: ${message} | fallback: ${fallbackMessage}`);
+    const runWithHandle = async (handle: WorkerSessionHandle): Promise<Record<string, TensorTransport>> => {
+      const inputName = handle.inputNames[0] ?? "images";
+      const feeds: Record<string, TensorTransport> = {
+        [inputName]: { data: prep.input, dims: [1, 3, inputSize, inputSize], type: "float32" }
+      };
+      const result = await runInference(handle.sessionId, feeds);
+      if (result.error) throw new Error(result.error);
+      return result.outputs;
+    };
+
+    try {
+      outputTensors = await runWithHandle(primaryHandle);
+    } catch (error) {
+      const message = toErrorMessage(error);
+      const reason = isContextLostRuntimeError(error) ? "context lost" : "run failed";
+      if (primaryHandle.provider === "wasm") {
+        throw error;
+      }
+
+      const fallbackPlans: RuntimeProvider[][] = [];
+      fallbackPlans.push(["wasm"]);
+
+      let recovered: Record<string, TensorTransport> | null = null;
+      let lastFallbackError: unknown = null;
+      console.warn(`[detector] ${primaryHandle.provider} ${reason}, 尝试回退: ${message}`);
+
+      for (const preferred of fallbackPlans) {
+        try {
+          const handle = await getModelSession("detector", preferred);
+          recovered = await runWithHandle(handle);
+          if (handle.provider !== primaryHandle.provider) {
+            console.warn(`[detector] 已回退到 ${handle.provider}`);
+            actualProvider = handle.provider;
+            actualWebnnDeviceType = handle.webnnDeviceType;
+          }
+          break;
+        } catch (fallbackError) {
+          lastFallbackError = fallbackError;
+        }
+      }
+
+      if (!recovered) {
+        const fallbackMessage = lastFallbackError ? toErrorMessage(lastFallbackError) : "未知错误";
+        throw new Error(`检测推理失败且回退失败: ${message} | fallback: ${fallbackMessage}`);
+      }
+
+      outputTensors = recovered;
     }
-
-    outputTensors = recovered;
   }
 
   const detTensor = pickDetTensor(outputTensors);

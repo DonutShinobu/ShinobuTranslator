@@ -400,3 +400,37 @@ estimateVerticalPreferredProfile 新增 originalContentWidth 参数，使用扩�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 13: Pipeline性能Benchmark
+
+**Date**: 2026-05-28
+**Task**: Pipeline性能Benchmark
+**Branch**: `master`
+
+### Summary
+
+新建benchmark/perf目录，实现run-perf.ts性能基准测试脚本。运行完整pipeline 3次(冷启动+稳态)，记录detect/ocr/inpaint/typeset等阶段耗时，输出控制台表格和JSON报告。跳过翻译阶段避免网络I/O干扰。CPU模式基线：OCR 61.4%(8.94s)、inpaint 20.6%(3.00s)是主要瓶颈。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5b22932` | (see git log) |
+| `cfa849e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

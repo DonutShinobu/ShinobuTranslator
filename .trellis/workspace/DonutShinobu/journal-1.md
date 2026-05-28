@@ -218,3 +218,36 @@ Pixiv 阅读模式底栏新增「翻译当前页」和「翻译全部」按钮�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 8: WebGPU compute shader preprocessing for detector letterbox
+
+**Date**: 2026-05-28
+**Task**: WebGPU compute shader preprocessing for detector letterbox
+**Branch**: `worktree-gpu-optimize`
+
+### Summary
+
+实现detector letterbox GPU预处理：WGSL compute shader + bilinear interpolation + Tensor.fromGpuBuffer + preferredOutputLocation:gpu-buffer。修复PaddleOCR platform参数缺失、tensorToTransport GPU buffer处理、回退链完整性。添加WebGPU数据流spec文档。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `23272c9` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

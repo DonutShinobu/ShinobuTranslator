@@ -1,0 +1,23 @@
+title: ShinobuTranslator
+description: Browser extension for manga translation
+
+exclude:
+  - node_modules
+  - src
+  - dist
+  - public
+  - benchmark
+  - tests
+  - scripts
+  - .claude
+  - package.json
+  - package-lock.json
+  - tsconfig.json
+  - tsconfig.tsbuildinfo
+  - vite.config.ts
+  - vitest.config.ts
+  - skills-lock.json
+  - AGENTS.md
+  - CLAUDE.md
+  - THIRD_PARTY_NOTICES.md
+  - popup.html

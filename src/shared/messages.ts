@@ -1,4 +1,5 @@
 import type { ExtensionSettings } from './config';
+import type { OpenAiOAuthStatusInfo } from './openaiOAuth';
 import { requireChromeApi } from './chrome';
 import { toErrorMessage } from './utils';
 
@@ -16,12 +17,51 @@ export type DownloadImageMessage = {
   imageUrl: string;
 };
 
+export type OpenAiOAuthStatusMessage = {
+  type: 'mt:openai-oauth-status';
+};
+
+export type OpenAiOAuthLoginMessage = {
+  type: 'mt:openai-oauth-login';
+};
+
+export type OpenAiOAuthLogoutMessage = {
+  type: 'mt:openai-oauth-logout';
+};
+
+export type LlmChatMessage = {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+};
+
+export type LlmChatCompletionRequestBody = {
+  model: string;
+  temperature?: number;
+  messages: LlmChatMessage[];
+  response_format?: {
+    type: 'json_object' | 'text';
+  };
+};
+
+export type LlmChatCompletionsMessage = {
+  type: 'mt:llm-chat-completions';
+  body: LlmChatCompletionRequestBody;
+};
+
 /** Sent from background to content script when user clicks "翻译图片" in context menu. */
 export type ContextMenuTranslateMessage = {
   type: 'mt:context-menu-translate';
 };
 
-export type RuntimeMessage = GetSettingsMessage | SetSettingsMessage | DownloadImageMessage | ContextMenuTranslateMessage;
+export type RuntimeMessage =
+  | GetSettingsMessage
+  | SetSettingsMessage
+  | DownloadImageMessage
+  | OpenAiOAuthStatusMessage
+  | OpenAiOAuthLoginMessage
+  | OpenAiOAuthLogoutMessage
+  | LlmChatCompletionsMessage
+  | ContextMenuTranslateMessage;
 
 export type RuntimeSuccessResponse =
   | {
@@ -41,6 +81,26 @@ export type RuntimeSuccessResponse =
       contentType: string;
       sourceUrl: string;
     }
+  | {
+      ok: true;
+      type: 'mt:openai-oauth-status';
+      status: OpenAiOAuthStatusInfo;
+    }
+  | {
+      ok: true;
+      type: 'mt:openai-oauth-login';
+      status: OpenAiOAuthStatusInfo;
+    }
+  | {
+      ok: true;
+      type: 'mt:openai-oauth-logout';
+      status: OpenAiOAuthStatusInfo;
+    }
+  | {
+      ok: true;
+      type: 'mt:llm-chat-completions';
+      data: unknown;
+    }
 
 export type RuntimeErrorResponse = {
   ok: false;
@@ -50,12 +110,31 @@ export type RuntimeErrorResponse = {
 
 export type RuntimeResponse = RuntimeSuccessResponse | RuntimeErrorResponse;
 
-export function isRuntimeMessage(value: unknown): value is RuntimeMessage {
-  if (!value || typeof value !== 'object') {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isLlmChatCompletionsMessage(value: Record<string, unknown>): value is LlmChatCompletionsMessage {
+  if (value.type !== 'mt:llm-chat-completions' || !isRecord(value.body)) {
     return false;
   }
-  const type = (value as { type?: unknown }).type;
-  return type === 'mt:get-settings' || type === 'mt:set-settings' || type === 'mt:download-image';
+  return typeof value.body.model === 'string' && Array.isArray(value.body.messages);
+}
+
+export function isRuntimeMessage(value: unknown): value is RuntimeMessage {
+  if (!isRecord(value)) {
+    return false;
+  }
+  const type = value.type;
+  return (
+    type === 'mt:get-settings' ||
+    type === 'mt:set-settings' ||
+    type === 'mt:download-image' ||
+    type === 'mt:openai-oauth-status' ||
+    type === 'mt:openai-oauth-login' ||
+    type === 'mt:openai-oauth-logout' ||
+    isLlmChatCompletionsMessage(value)
+  );
 }
 
 export function sendRuntimeMessage(message: RuntimeMessage): Promise<RuntimeResponse> {

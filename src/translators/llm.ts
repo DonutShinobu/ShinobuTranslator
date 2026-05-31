@@ -1,4 +1,9 @@
+import type { LlmAuthMode, LlmProvider } from '../types';
+import { sendRuntimeMessage, type LlmChatCompletionRequestBody } from '../shared/messages';
+
 type LlmTranslateOptions = {
+  provider: LlmProvider;
+  authMode: LlmAuthMode;
   baseUrl: string;
   apiKey: string;
   model: string;
@@ -23,6 +28,8 @@ type LlmSourceTextPayload = {
 };
 
 type LlmTranslateRegionsOptions = {
+  provider: LlmProvider;
+  authMode: LlmAuthMode;
   baseUrl: string;
   apiKey: string;
   model: string;
@@ -35,6 +42,13 @@ type LlmTranslateRegionsOptions = {
 type RegionTranslationResult = {
   translatedText: string;
   translatedColumns?: string[];
+};
+
+type ChatCompletionRequestOptions = {
+  provider: LlmProvider;
+  authMode: LlmAuthMode;
+  baseUrl: string;
+  apiKey: string;
 };
 
 export type LlmRegionBatchResult = {
@@ -135,40 +149,57 @@ function parseColumnsPayload(content: string): Map<string, RegionTranslationResu
   return byId;
 }
 
-export async function llmTranslate(options: LlmTranslateOptions): Promise<string> {
-  const { baseUrl, apiKey, model, temperature, from, to, text } = options;
-  const endpoint = `${baseUrl.replace(/\/$/, "")}/chat/completions`;
+async function requestChatCompletion(
+  options: ChatCompletionRequestOptions,
+  body: LlmChatCompletionRequestBody,
+): Promise<ChatCompletionResponse> {
+  if (options.provider === 'openai' && options.authMode === 'openai_oauth') {
+    const response = await sendRuntimeMessage({
+      type: 'mt:llm-chat-completions',
+      body,
+    });
+    if (!response.ok || response.type !== 'mt:llm-chat-completions') {
+      throw new Error(response.ok ? 'OpenAI 翻译请求失败' : response.error);
+    }
+    return response.data as ChatCompletionResponse;
+  }
 
+  const endpoint = `${options.baseUrl.replace(/\/$/, '')}/chat/completions`;
   const res = await fetch(endpoint, {
-    method: "POST",
+    method: 'POST',
     headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${options.apiKey}`,
     },
-    body: JSON.stringify({
-      model,
-      temperature,
-      messages: [
-        {
-          role: "system",
-          content: "你是漫画翻译助手，只输出翻译文本，不输出解释。"
-        },
-        {
-          role: "user",
-          content: `请把以下文本从${from}翻译成${to}：\n${text}`
-        }
-      ]
-    })
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
     throw new Error(`LLM 翻译请求失败: ${res.status}`);
   }
 
-  const data = (await res.json()) as ChatCompletionResponse;
+  return (await res.json()) as ChatCompletionResponse;
+}
+
+export async function llmTranslate(options: LlmTranslateOptions): Promise<string> {
+  const { model, temperature, from, to, text } = options;
+  const data = await requestChatCompletion(options, {
+    model,
+    temperature,
+    messages: [
+      {
+        role: 'system',
+        content: '你是漫画翻译助手，只输出翻译文本，不输出解释。',
+      },
+      {
+        role: 'user',
+        content: `请把以下文本从 ${from} 翻译成 ${to}：\n${text}`,
+      },
+    ],
+  });
   const content = data.choices?.[0]?.message?.content?.trim();
   if (!content) {
-    throw new Error("LLM 翻译响应为空");
+    throw new Error('LLM 翻译响应为空');
   }
   return content;
 }
@@ -176,8 +207,7 @@ export async function llmTranslate(options: LlmTranslateOptions): Promise<string
 export async function llmTranslateRegions(
   options: LlmTranslateRegionsOptions,
 ): Promise<LlmRegionBatchResult> {
-  const { baseUrl, apiKey, model, temperature, from, to, regions } = options;
-  const endpoint = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
+  const { model, temperature, from, to, regions } = options;
   const payload = regions.map((region) => ({
     id: region.id,
     direction: region.direction,
@@ -186,55 +216,42 @@ export async function llmTranslateRegions(
     sourceText: buildSourceTextPayload(region.text, region.direction),
   }));
 
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      temperature,
-      messages: [
-        {
-          role: 'system',
-          content: [
-            '你是漫画翻译助手。',
-            '你会在理解整页上下文的前提下逐框翻译。',
-            '必须严格输出 JSON，不得输出解释。',
-          ].join(''),
-        },
-        {
-          role: 'user',
-          content: [
-            `请把以下文本从${from}翻译成${to}，并基于整段上下文保持语气一致。`,
-            '输入是多个文本框。对竖排框你会收到 targetColumns（期望列数），对横排框你会收到 targetLines（期望行数）。',
-            'sourceText.plainText 是去掉换行后的完整原文。',
-            'sourceText.columns 是竖排拆列信息，格式类似 [{"column1":"..."},{"column2":"..."}]。',
-            'sourceText.lines 是横排拆行信息，格式类似 [{"line1":"..."},{"line2":"..."}]。',
-            '返回格式必须是：',
-            '{"regions":[{"id":"...","translation":"...","columns":["..."]}]}',
-            '规则：',
-            '1) regions 数组必须覆盖所有输入 id；',
-            '2) translation 为完整译文；',
-            '3) direction=v 时，columns 必须严格按 sourceText.columns 的顺序返回（不得反转），优先接近 targetColumns；',
-            '4) direction=h 时，columns 表示行分段，优先接近 targetLines；',
-            '5) 除 JSON 外不要输出任何内容。',
-            `输入数据：${JSON.stringify(payload)}`,
-          ].join('\n'),
-        },
-      ],
-      response_format: {
-        type: 'json_object',
+  const data = await requestChatCompletion(options, {
+    model,
+    temperature,
+    messages: [
+      {
+        role: 'system',
+        content: [
+          '你是漫画翻译助手。',
+          '你会在理解整页上下文的前提下逐框翻译。',
+          '必须严格输出 JSON，不得输出解释。',
+        ].join(''),
       },
-    }),
+      {
+        role: 'user',
+        content: [
+          `请把以下文本从 ${from} 翻译成 ${to}，并基于整段上下文保持语气一致。`,
+          '输入是多个文本框。对竖排框你会收到 targetColumns（期望列数），对横排框你会收到 targetLines（期望行数）。',
+          'sourceText.plainText 是去掉换行后的完整原文。',
+          'sourceText.columns 是竖排拆列信息，格式类似 [{"column1":"..."},{"column2":"..."}]。',
+          'sourceText.lines 是横排拆行信息，格式类似 [{"line1":"..."},{"line2":"..."}]。',
+          '返回格式必须是：',
+          '{"regions":[{"id":"...","translation":"...","columns":["..."]}]}',
+          '规则：',
+          '1. regions 数组必须覆盖所有输入 id。',
+          '2. translation 为完整译文。',
+          '3. direction=v 时，columns 必须严格按 sourceText.columns 的顺序返回（不得反转），优先接近 targetColumns。',
+          '4. direction=h 时，columns 表示行分段，优先接近 targetLines。',
+          '5. 除 JSON 外不要输出任何内容。',
+          `输入数据：${JSON.stringify(payload)}`,
+        ].join('\n'),
+      },
+    ],
+    response_format: {
+      type: 'json_object',
+    },
   });
-
-  if (!res.ok) {
-    throw new Error(`LLM 翻译请求失败: ${res.status}`);
-  }
-
-  const data = (await res.json()) as ChatCompletionResponse;
   const content = data.choices?.[0]?.message?.content?.trim();
   if (!content) {
     throw new Error('LLM 翻译响应为空');

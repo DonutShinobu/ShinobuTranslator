@@ -66,6 +66,26 @@ const IconLLM = () => (
   </svg>
 );
 
+const IconMode = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 4h-7" />
+    <path d="M10 4H3" />
+    <path d="M21 12h-9" />
+    <path d="M8 12H3" />
+    <path d="M21 20h-5" />
+    <path d="M12 20H3" />
+    <circle cx="12" cy="4" r="2" />
+    <circle cx="10" cy="12" r="2" />
+    <circle cx="14" cy="20" r="2" />
+  </svg>
+);
+
+const IconDebug = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.5-3.5a6 6 0 0 1-7.9 7.9l-6.6 6.6a2.1 2.1 0 0 1-3-3l6.6-6.6a6 6 0 0 1 7.9-7.9l-3.5 3.5z" />
+  </svg>
+);
+
 function SegmentedControl<T extends string>({
   options,
   value,
@@ -269,6 +289,15 @@ export function App() {
   const builtInCustomModelPlaceholder = currentProviderModels[0] ?? currentProfile.modelPreset;
   const usesOpenAiOAuth = settings.llmProvider === 'openai' && currentProfile.authMode === 'openai_oauth';
   const showTemperatureControl = supportsLlmTemperatureControl(settings);
+  const openAiStatusLabel = openAiStatus.loading
+    ? '正在检查 OpenAI 登录'
+    : openAiStatus.authenticated
+      ? openAiStatus.email ?? '已登录 OpenAI'
+      : openAiStatus.error
+        ? openAiStatus.error
+        : openAiStatus.pending
+          ? '等待 OpenAI 授权完成'
+          : '未登录 OpenAI';
 
   async function persistSettings(nextSettings: ExtensionSettings): Promise<void> {
     const requestId = saveRequestIdRef.current + 1;
@@ -357,96 +386,35 @@ export function App() {
                 <IconTranslate />
                 翻译设置
               </div>
-              <div className="field-row">
-                <label className="field">
-                  <span className="field-label">翻译服务</span>
-                  <select
-                  value={settings.translator}
-                  onChange={(event) => updateTranslator(event.target.value as ExtensionSettings['translator'])}
-                  disabled={loading}
-                >
-                  <option value="google_web">Google 翻译</option>
-                  <option value="llm">大模型翻译</option>
-                </select>
-              </label>
-              <label className="field">
-                <span className="field-label">目标语言</span>
-                <select
-                  value={settings.targetLang}
-                  onChange={(event) => updateField('targetLang', event.target.value)}
-                  disabled={loading}
-                >
-                  <option value="zh-CHS">简体中文</option>
-                  <option value="zh-CHT">繁体中文</option>
-                </select>
-              </label>
-              </div>
-              <button
-                className={`debug-toggle${showDebugOptions ? ' debug-toggle-open' : ''}`}
-                onClick={() => setShowDebugOptions((v) => !v)}
-                type="button"
-              >
-                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="8" cy="8" r="5" />
-                  <path d="M8 5v3M8 10.5v0" />
-                </svg>
-                调试选项
-                <svg className="debug-chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M6 4l4 4l-4 4" />
-                </svg>
-              </button>
-              {showDebugOptions && (
-                <div className="debug-row">
-                  <label className="checkbox-row">
-                    <input
-                      type="checkbox"
-                      checked={settings.showElapsedTime}
-                      onChange={(event) => updateElapsedTime(event.target.checked)}
-                      disabled={loading}
-                    />
-                    <span className="checkbox-label">显示耗时</span>
-                  </label>
-                  <label className={`checkbox-row${!settings.showElapsedTime ? ' checkbox-disabled' : ''}`}>
-                    <input
-                      type="checkbox"
-                      checked={settings.showStageTimingDetails}
-                      onChange={(event) => updateField('showStageTimingDetails', event.target.checked)}
-                      disabled={loading || !settings.showElapsedTime}
-                    />
-                    <span className="checkbox-label">阶段明细</span>
-                  </label>
-                  <label className="checkbox-row">
-                    <input
-                      type="checkbox"
-                      checked={settings.showTypesetDebug}
-                      onChange={(event) => updateField('showTypesetDebug', event.target.checked)}
-                      disabled={loading}
-                    />
-                    <span className="checkbox-label">排版调试</span>
-                  </label>
-                  <label className="checkbox-row">
-                    <input
-                      type="checkbox"
-                      checked={settings.showEraseDebug}
-                      onChange={(event) => updateField('showEraseDebug', event.target.checked)}
-                      disabled={loading}
-                    />
-                    <span className="checkbox-label">去字调试</span>
-                  </label>
-                  <label className="checkbox-row">
-                    <input
-                      type="checkbox"
-                      checked={settings.enableDebugLog}
-                      onChange={(event) => updateField('enableDebugLog', event.target.checked)}
-                      disabled={loading}
-                    />
-                    <span className="checkbox-label">日志记录</span>
-                  </label>
+              <div className="settings-stack">
+                <div className="setting-row">
+                  <span className="field-label">服务</span>
+                  <SegmentedControl
+                    options={[
+                      { value: 'google_web', label: '谷歌翻译' },
+                      { value: 'llm', label: '大模型' },
+                    ]}
+                    value={settings.translator}
+                    onChange={(value) => updateTranslator(value as ExtensionSettings['translator'])}
+                    disabled={loading}
+                  />
                 </div>
-              )}
+                <div className="setting-row">
+                  <span className="field-label">语言</span>
+                  <SegmentedControl
+                    options={[
+                      { value: 'zh-CHS', label: '简体中文' },
+                      { value: 'zh-CHT', label: '繁体中文' },
+                    ]}
+                    value={settings.targetLang}
+                    onChange={(value) => updateField('targetLang', value)}
+                    disabled={loading}
+                  />
+                </div>
+              </div>
             </section>
 
-            <section className="panel">
+            <section className="panel option-panel">
               <div className="panel-title">
                 <IconOCR />
                 OCR 引擎
@@ -462,8 +430,11 @@ export function App() {
               />
             </section>
 
-            <section className="panel">
-              <div className="panel-title">模式</div>
+            <section className="panel option-panel">
+              <div className="panel-title">
+                <IconMode />
+                模式
+              </div>
               <SegmentedControl
                 options={[
                   { value: 'translate', label: '翻译' },
@@ -550,81 +521,74 @@ export function App() {
                         />
                       </div>
                     ) : null}
-                    <label className="field">
-                      <span className="field-label">模型名称</span>
-                      {currentProfile.useCustomModel ? (
-                        <input
-                          type="text"
-                          value={currentProfile.modelCustom}
-                          onChange={(event) => updateActiveLlmProfile({ modelCustom: event.target.value })}
-                          disabled={loading}
-                          placeholder={builtInCustomModelPlaceholder}
-                        />
-                      ) : (
-                        <select
-                          value={currentProfile.modelPreset}
-                          onChange={(event) => updateActiveLlmProfile({ modelPreset: event.target.value })}
-                          disabled={loading}
-                        >
-                          {currentProviderModels.map((model) => (
-                            <option key={model} value={model}>
-                              {model}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </label>
-                    <label className="checkbox-row">
-                      <input
-                        type="checkbox"
-                        checked={currentProfile.useCustomModel}
-                        onChange={(event) => updateUseCustomModel(event.target.checked)}
-                        disabled={loading}
-                      />
-                      <span className="checkbox-label">自定义模型</span>
-                    </label>
                     {usesOpenAiOAuth ? (
-                      <div className={`oauth-card${openAiStatus.authenticated ? ' oauth-card-authed' : ''}`}>
-                        <div className="oauth-copy">
-                          <span className={`oauth-dot${openAiStatus.authenticated ? ' oauth-dot-authed' : ''}`} />
-                          <div>
-                            <div className="oauth-title">
-                              {openAiStatus.loading
-                                ? '正在检查 OpenAI 登录'
-                                : openAiStatus.authenticated
-                                  ? openAiStatus.email ?? '已登录 OpenAI'
-                                  : openAiStatus.error
-                                    ? openAiStatus.error
-                                  : openAiStatus.pending
-                                    ? '等待 OpenAI 授权完成'
-                                  : '未登录 OpenAI'}
-                            </div>
+                      <div className="auth-status-row">
+                        <span className="field-label">登录状态</span>
+                        <div className="auth-status-control">
+                          <div className="oauth-copy">
+                            <span className={`oauth-dot${openAiStatus.authenticated ? ' oauth-dot-authed' : ''}`} />
+                            <div className="oauth-title">{openAiStatusLabel}</div>
                           </div>
-                        </div>
-                        <button
-                          className="oauth-action"
-                          type="button"
-                          onClick={() => {
-                            void (
-                              openAiStatus.authenticated
-                                ? logoutOpenAiOAuth()
+                          <button
+                            className="oauth-action"
+                            type="button"
+                            onClick={() => {
+                              void (
+                                openAiStatus.authenticated
+                                  ? logoutOpenAiOAuth()
+                                  : openAiStatus.pending
+                                    ? refreshOpenAiOAuthStatus()
+                                    : loginOpenAiOAuth()
+                              );
+                            }}
+                            disabled={loading || openAiStatus.loading || openAiStatus.busy}
+                          >
+                            {openAiStatus.busy
+                              ? '处理中...'
+                              : openAiStatus.authenticated
+                                ? '退出登录'
                                 : openAiStatus.pending
-                                  ? refreshOpenAiOAuthStatus()
-                                  : loginOpenAiOAuth()
-                            );
-                          }}
-                          disabled={loading || openAiStatus.loading || openAiStatus.busy}
-                        >
-                          {openAiStatus.busy
-                            ? '处理中...'
-                            : openAiStatus.authenticated
-                              ? '退出登录'
-                              : openAiStatus.pending
-                                ? '检查状态'
-                              : '登录 OpenAI'}
-                        </button>
+                                  ? '检查状态'
+                                  : '登录 OpenAI'}
+                          </button>
+                        </div>
                       </div>
                     ) : null}
+                    <div className="field model-field">
+                      <span className="field-label">模型名称</span>
+                      <div className="model-control">
+                        {currentProfile.useCustomModel ? (
+                          <input
+                            type="text"
+                            value={currentProfile.modelCustom}
+                            onChange={(event) => updateActiveLlmProfile({ modelCustom: event.target.value })}
+                            disabled={loading}
+                            placeholder={builtInCustomModelPlaceholder}
+                          />
+                        ) : (
+                          <select
+                            value={currentProfile.modelPreset}
+                            onChange={(event) => updateActiveLlmProfile({ modelPreset: event.target.value })}
+                            disabled={loading}
+                          >
+                            {currentProviderModels.map((model) => (
+                              <option key={model} value={model}>
+                                {model}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                        <label className={`custom-model-toggle${loading ? ' custom-model-toggle-disabled' : ''}`}>
+                          <input
+                            type="checkbox"
+                            checked={currentProfile.useCustomModel}
+                            onChange={(event) => updateUseCustomModel(event.target.checked)}
+                            disabled={loading}
+                          />
+                          <span>自定义</span>
+                        </label>
+                      </div>
+                    </div>
                     <div className="field-row">
                       {!usesOpenAiOAuth ? (
                         <label className="field">
@@ -657,6 +621,71 @@ export function App() {
                 )}
               </section>
             ) : null}
+
+            <div className="debug-footer">
+              <div className="debug-compact">
+                <button
+                  className={`debug-toggle${showDebugOptions ? ' debug-toggle-open' : ''}`}
+                  onClick={() => setShowDebugOptions((v) => !v)}
+                  type="button"
+                >
+                  <IconDebug />
+                  调试选项
+                  <svg className="debug-chevron" viewBox="0 0 10 6" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 1L5 5L9 1" />
+                  </svg>
+                </button>
+                {showDebugOptions && (
+                  <div className="debug-row">
+                    <label className="checkbox-row">
+                      <input
+                        type="checkbox"
+                        checked={settings.showElapsedTime}
+                        onChange={(event) => updateElapsedTime(event.target.checked)}
+                        disabled={loading}
+                      />
+                      <span className="checkbox-label">显示耗时</span>
+                    </label>
+                    <label className={`checkbox-row${!settings.showElapsedTime ? ' checkbox-disabled' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={settings.showStageTimingDetails}
+                        onChange={(event) => updateField('showStageTimingDetails', event.target.checked)}
+                        disabled={loading || !settings.showElapsedTime}
+                      />
+                      <span className="checkbox-label">阶段明细</span>
+                    </label>
+                    <label className="checkbox-row">
+                      <input
+                        type="checkbox"
+                        checked={settings.showTypesetDebug}
+                        onChange={(event) => updateField('showTypesetDebug', event.target.checked)}
+                        disabled={loading}
+                      />
+                      <span className="checkbox-label">排版调试</span>
+                    </label>
+                    <label className="checkbox-row">
+                      <input
+                        type="checkbox"
+                        checked={settings.showEraseDebug}
+                        onChange={(event) => updateField('showEraseDebug', event.target.checked)}
+                        disabled={loading}
+                      />
+                      <span className="checkbox-label">去字调试</span>
+                    </label>
+                    <label className="checkbox-row">
+                      <input
+                        type="checkbox"
+                        checked={settings.enableDebugLog}
+                        onChange={(event) => updateField('enableDebugLog', event.target.checked)}
+                        disabled={loading}
+                      />
+                      <span className="checkbox-label">日志记录</span>
+                    </label>
+                  </div>
+                )}
+              </div>
+            </div>
           </>
         )}
       </div>

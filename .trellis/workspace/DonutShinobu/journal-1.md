@@ -251,3 +251,36 @@ Pixiv 阅读模式底栏新增「翻译当前页」和「翻译全部」按钮�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 9: OCR inference speed optimization
+
+**Date**: 2026-06-01
+**Task**: OCR inference speed optimization
+**Branch**: `master`
+
+### Summary
+
+Implemented split encoder/decoder OCR caching, GPU-side AR postprocess, browser smoke benchmarks, X image before/after comparison, and synced validated build artifacts.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d0414c4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 8
-- **Last Active**: 2026-05-28
+- **Total Sessions**: 9
+- **Last Active**: 2026-06-01
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~253 | Active |
+| `journal-1.md` | ~286 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 9 | 2026-06-01 | OCR inference speed optimization | `d0414c4` | `master` |
 | 8 | 2026-05-28 | WebGPU compute shader preprocessing for detector letterbox | `23272c9` | `worktree-gpu-optimize` |
 | 7 | 2026-05-24 | 修复 Pixiv 无内容页面导致翻译全部按钮不切换 | `98801b3` | `master` |
 | 6 | 2026-05-23 | 统一日志功能：ortDebugMode→enableDebugLog，解耦下载按钮与排版调试可视化 | `8f75306` | `worktree/unify-debug-logs` |

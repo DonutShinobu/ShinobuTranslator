@@ -1,1 +1,0 @@
-/home/stone/projects/ShinobuTranslator/public/models/paddleocr_v5_dict.txt

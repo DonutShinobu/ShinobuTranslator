@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 9
+- **Total Sessions**: 10
 - **Last Active**: 2026-06-01
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~286 | Active |
+| `journal-1.md` | ~321 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 10 | 2026-06-01 | OCR split-only model release | `37abbb0`, `7648dbd`, `0c96df2` | `master` |
 | 9 | 2026-06-01 | OCR inference speed optimization | `d0414c4` | `master` |
 | 8 | 2026-05-28 | WebGPU compute shader preprocessing for detector letterbox | `23272c9` | `worktree-gpu-optimize` |
 | 7 | 2026-05-24 | 修复 Pixiv 无内容页面导致翻译全部按钮不切换 | `98801b3` | `master` |

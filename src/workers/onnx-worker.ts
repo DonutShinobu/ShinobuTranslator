@@ -233,7 +233,7 @@ async function createSession(
             };
             if (provider === "webgpu" && modelKey === "detector") {
               sessionOptions.preferredOutputLocation = "gpu-buffer";
-            } else if (provider === "webgpu" && (modelKey === "ocr" || modelKey === "ocr_decoder")) {
+            } else if (provider === "webgpu" && modelKey === "ocr_decoder") {
               sessionOptions.preferredOutputLocation = { logits: "gpu-buffer" };
             }
             const session = await createSessionWithTimeout(

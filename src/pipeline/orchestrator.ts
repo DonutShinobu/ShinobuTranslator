@@ -176,7 +176,16 @@ export class PipelineStageError extends Error {
 
 async function probeRuntime(model: "detector" | "ocr" | "inpaint"): Promise<RuntimeStageStatus> {
   try {
-    const handle: WorkerSessionHandle = await getModelSession(model);
+    let handle: WorkerSessionHandle;
+    if (model === "ocr") {
+      const encoderHandle = await getModelSession("ocr_encoder");
+      handle = await getModelSession("ocr_decoder", [encoderHandle.provider]);
+      if (encoderHandle.provider !== handle.provider) {
+        throw new Error(`ocr split provider 不一致: encoder=${encoderHandle.provider}, decoder=${handle.provider}`);
+      }
+    } else {
+      handle = await getModelSession(model);
+    }
     const webnnDeviceType = handle.provider === "webnn" ? handle.webnnDeviceType ?? "default" : undefined;
     const providerLabel = handle.provider === "webnn" ? `${handle.provider}/${webnnDeviceType}` : handle.provider;
     return {

@@ -9,15 +9,6 @@
       "input": [1024, 1024],
       "runtime": ["webgpu", "webnn", "wasm"]
     },
-    "ocr": {
-      "name": "ocr",
-      "task": "japanese-ocr",
-      "url": "/models/ocr.onnx",
-      "input": [48, 320],
-      "runtime": ["webgpu", "webnn", "wasm"],
-      "dictUrl": "/models/ocr_dict.txt",
-      "normalize": "minus_one_to_one"
-    },
     "ocr_encoder": {
       "name": "ocr_encoder",
       "task": "japanese-ocr-encoder",

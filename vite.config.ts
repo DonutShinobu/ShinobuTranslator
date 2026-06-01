@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import type { Plugin } from 'vite';
@@ -7,12 +7,13 @@ import type { Plugin } from 'vite';
 const REPO = 'DonutShinobu/ShinobuTranslator';
 
 // Replaces model URLs in dist/models/models.json with GitHub Release URLs
-// when MODEL_RELEASE_TAG is set (e.g. MODEL_RELEASE_TAG=models-v0.1.0).
+// when MODEL_RELEASE_TAG is set (e.g. MODEL_RELEASE_TAG=models-v0.4.0).
 function modelReleaseUrlPlugin(): Plugin {
   return {
     name: 'model-release-url',
     apply: 'build',
     closeBundle() {
+      rmSync(resolve(__dirname, 'dist/models/ocr.onnx'), { force: true });
       const tag = process.env.MODEL_RELEASE_TAG;
       if (!tag) return;
       const manifestPath = resolve(__dirname, 'dist/models/models.json');

@@ -1,6 +1,6 @@
 import type { RuntimeProvider } from './onnxTypes';
 import type { WorkerSessionHandle } from './onnxWorkerTypes';
-import { createSession } from './onnxBridge';
+import { createSession, disposeSession } from './onnxBridge';
 import { resolveAssetUrl } from '../shared/assetUrl';
 
 type ManifestModel = {
@@ -116,7 +116,7 @@ async function resolveModelFilePath(modelUrl: string): Promise<string> {
   return resolve(modelUrl);
 }
 
-export type ModelName = 'detector' | 'ocr' | 'ocr_encoder' | 'ocr_decoder' | 'inpaint' | 'bubble' | 'paddleocr_rec';
+export type ModelName = 'detector' | 'ocr_encoder' | 'ocr_decoder' | 'inpaint' | 'bubble' | 'paddleocr_rec';
 
 export async function getModel(name: ModelName): Promise<ManifestModel> {
   const manifest = await loadManifest();
@@ -154,4 +154,13 @@ export async function getModelSession(
   const handle = await createSession(name, model.url, runtime);
   sessionCache.set(cacheKey, handle);
   return handle;
+}
+
+export async function disposeModelSession(name: ModelName): Promise<void> {
+  for (const key of [...sessionCache.keys()]) {
+    if (key.startsWith(`${name}:`)) {
+      sessionCache.delete(key);
+    }
+  }
+  await disposeSession(name);
 }

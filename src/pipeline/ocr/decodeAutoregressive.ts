@@ -1,12 +1,15 @@
 import * as ort from "onnxruntime-web/all";
-import type { OcrRunDebugChunk } from "../../types";
+import type { OcrRunDebugChunk, OcrRunDebugStep } from "../../types";
 import { normalizeTextLight } from "../utils";
+import { extractColorsFromOutputs } from "./colorDecodeShared";
+import type { OcrColorResult } from "./colorDecodeShared";
+import { OcrGpuStepReducer } from "./gpuArgmax";
+import type { OcrGpuStepResult } from "./gpuArgmax";
 import {
   OCR_AR_PAD,
   OCR_AR_START,
   OCR_AR_END,
   OCR_AR_PAD_BIGINT,
-  OCR_AR_START_BIGINT,
   OCR_BEAM_WIDTH,
   OCR_MIN_FINISHED_BEAMS,
   type OcrHypothesis,
@@ -16,7 +19,16 @@ import {
   tokenToTextAutoregressive,
   avgLogProbToConfidence,
 } from "./ocrShared";
-import type { OcrInputData } from "./preprocess";
+
+export type OcrEncoderCacheInputNames = {
+  encoderImageInput: string;
+  encoderMaskInput: string;
+  memoryOutput: string;
+  decoderMemoryInput: string;
+  decoderCharIdxInput: string;
+  decoderMaskInput: string;
+  decoderEncoderMaskInput: string;
+};
 
 // --- Re-export shared constants for backward compat ---
 export {
@@ -47,7 +59,7 @@ export function pickOcrLogits(outputs: ort.InferenceSession.ReturnType): ort.Ten
 
 export function pickBatchOcrLogits(outputs: ort.InferenceSession.ReturnType, batchN: number): ort.Tensor | null {
   for (const value of Object.values(outputs)) {
-    if (value.dims.length === 3 && value.dims[0] === batchN && value.data instanceof Float32Array) {
+    if (value.dims.length === 3 && value.dims[0] === batchN && value.type === "float32") {
       const classes = value.dims[2];
       if (classes > 10) {
         return value;
@@ -83,6 +95,28 @@ export function getInputDim(session: ort.InferenceSession, inputName: string, ax
     return dim;
   }
   return fallback;
+}
+
+async function readFloat32TensorData(tensor: ort.Tensor): Promise<Float32Array | null> {
+  try {
+    if (tensor.data instanceof Float32Array) {
+      return tensor.data;
+    }
+  } catch {
+    // GPU-backed tensors throw when `data` is accessed. Fall through to getData().
+  }
+  try {
+    const data = await tensor.getData();
+    return data instanceof Float32Array ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+function disposeOutputs(outputs: ort.InferenceSession.ReturnType): void {
+  for (const tensor of Object.values(outputs)) {
+    tensor.dispose();
+  }
 }
 
 // --- Beam search helpers ---
@@ -197,43 +231,46 @@ export async function decodeAutoregressiveWithBeam(
         chunkDebug.decodeSessionRunCount += 1;
         chunkDebug.decodeSessionRunTotalMs += runDurationMs;
       }
-
-      const logitsTensor = pickOcrLogits(outputs);
-      if (!logitsTensor) {
-        expanded.push({ ...hypothesis, finished: true });
-        continue;
-      }
-
-      const raw = logitsTensor.data;
-      const dims = logitsTensor.dims;
-      if (!(raw instanceof Float32Array) || dims.length !== 3 || dims[0] !== 1 || dims[2] <= 0) {
-        expanded.push({ ...hypothesis, finished: true });
-        continue;
-      }
-
-      const classes = dims[2];
-      const decodeStep = Math.min(hypothesis.tokenIds.length - 1, Math.max(0, dims[1] - 1));
-      const nextTokens = topKAt(raw, classes, decodeStep, OCR_BEAM_WIDTH);
-      let produced = false;
-
-      for (const nextToken of nextTokens) {
-        if (nextToken === OCR_AR_PAD) {
-          continue;
-        }
-        produced = true;
-        if (nextToken === OCR_AR_END) {
+      try {
+        const logitsTensor = pickOcrLogits(outputs);
+        if (!logitsTensor) {
           expanded.push({ ...hypothesis, finished: true });
           continue;
         }
-        expanded.push({
-          tokenIds: [...hypothesis.tokenIds, nextToken],
-          tokenProbs: [...hypothesis.tokenProbs, probAt(raw, classes, decodeStep, nextToken)],
-          finished: false
-        });
-      }
 
-      if (!produced) {
-        expanded.push({ ...hypothesis, finished: true });
+        const raw = await readFloat32TensorData(logitsTensor);
+        const dims = logitsTensor.dims;
+        if (!raw || dims.length !== 3 || dims[0] !== 1 || dims[2] <= 0) {
+          expanded.push({ ...hypothesis, finished: true });
+          continue;
+        }
+
+        const classes = dims[2];
+        const decodeStep = Math.min(hypothesis.tokenIds.length - 1, Math.max(0, dims[1] - 1));
+        const nextTokens = topKAt(raw, classes, decodeStep, OCR_BEAM_WIDTH);
+        let produced = false;
+
+        for (const nextToken of nextTokens) {
+          if (nextToken === OCR_AR_PAD) {
+            continue;
+          }
+          produced = true;
+          if (nextToken === OCR_AR_END) {
+            expanded.push({ ...hypothesis, finished: true });
+            continue;
+          }
+          expanded.push({
+            tokenIds: [...hypothesis.tokenIds, nextToken],
+            tokenProbs: [...hypothesis.tokenProbs, probAt(raw, classes, decodeStep, nextToken)],
+            finished: false
+          });
+        }
+
+        if (!produced) {
+          expanded.push({ ...hypothesis, finished: true });
+        }
+      } finally {
+        disposeOutputs(outputs);
       }
     }
 
@@ -272,23 +309,150 @@ export async function decodeAutoregressiveWithBeam(
   return best;
 }
 
-function buildBatchImageTensor(
-  inputs: OcrInputData[],
+function buildActiveBatchFeeds(
+  items: BatchDecodeInput[],
+  activeIndices: readonly number[],
+  regionTokenIds: number[][],
+  seqLen: number,
+  encoderLen: number,
   inputHeight: number,
   inputWidth: number
-): ort.Tensor {
-  const N = inputs.length;
+): {
+  imageTensor: ort.Tensor;
+  charTensor: ort.Tensor;
+  decoderMaskTensor: ort.Tensor;
+  encoderMaskTensor: ort.Tensor;
+} {
+  const activeN = activeIndices.length;
   const pixelsPerImage = 3 * inputHeight * inputWidth;
-  const batchData = new Float32Array(N * pixelsPerImage);
-  for (let i = 0; i < N; i += 1) {
-    batchData.set(inputs[i].data, i * pixelsPerImage);
+  const imageData = new Float32Array(activeN * pixelsPerImage);
+  const charData = new BigInt64Array(activeN * seqLen);
+  charData.fill(OCR_AR_PAD_BIGINT);
+  const decoderMask = new Array<boolean>(activeN * seqLen).fill(true);
+  const encoderMask = new Array<boolean>(activeN * encoderLen).fill(false);
+
+  for (let local = 0; local < activeN; local += 1) {
+    const sourceIndex = activeIndices[local];
+    imageData.set(items[sourceIndex].inputData.data, local * pixelsPerImage);
+
+    const tokens = regionTokenIds[sourceIndex];
+    const charOffset = local * seqLen;
+    for (let pos = 0; pos < tokens.length && pos < seqLen; pos += 1) {
+      charData[charOffset + pos] = BigInt(tokens[pos]);
+      decoderMask[charOffset + pos] = false;
+    }
+
+    const encoderOffset = local * encoderLen;
+    const validEncoderLength = items[sourceIndex].validEncoderLength;
+    for (let pos = validEncoderLength; pos < encoderLen; pos += 1) {
+      encoderMask[encoderOffset + pos] = true;
+    }
   }
-  return new ort.Tensor("float32", batchData, [N, 3, inputHeight, inputWidth]);
+
+  return {
+    imageTensor: new ort.Tensor("float32", imageData, [activeN, 3, inputHeight, inputWidth]),
+    charTensor: new ort.Tensor("int64", charData, [activeN, seqLen]),
+    decoderMaskTensor: new ort.Tensor("bool", decoderMask, [activeN, seqLen]),
+    encoderMaskTensor: new ort.Tensor("bool", encoderMask, [activeN, encoderLen])
+  };
+}
+
+function extractBatchColorsFromOutputs(
+  outputs: ort.InferenceSession.ReturnType,
+  batchN: number,
+  sampleIndex: number,
+  tokenCount: number
+): OcrColorResult | null {
+  if (tokenCount <= 0) {
+    return null;
+  }
+  const fg = getOutputByName(outputs, "fg", 3);
+  const bg = getOutputByName(outputs, "bg", 3);
+  const fgInd = getOutputByName(outputs, "fg_ind", 3);
+  const bgInd = getOutputByName(outputs, "bg_ind", 3);
+  if (!fg || !bg || !fgInd || !bgInd) {
+    return null;
+  }
+  if (fg.dims[0] !== batchN || bg.dims[0] !== batchN || fgInd.dims[0] !== batchN || bgInd.dims[0] !== batchN) {
+    return null;
+  }
+  if (!(fg.data instanceof Float32Array) || !(bg.data instanceof Float32Array) || !(fgInd.data instanceof Float32Array) || !(bgInd.data instanceof Float32Array)) {
+    return null;
+  }
+  const stepsPerSample = Math.min(fg.dims[1] ?? 0, bg.dims[1] ?? 0, fgInd.dims[1] ?? 0, bgInd.dims[1] ?? 0);
+  return extractColorsFromOutputs(
+    fg.data,
+    bg.data,
+    fgInd.data,
+    bgInd.data,
+    stepsPerSample,
+    sampleIndex * stepsPerSample,
+    tokenCount
+  );
+}
+
+function copyActiveMemoryTensor(
+  memoryData: Float32Array,
+  memoryDims: readonly number[],
+  activeIndices: readonly number[]
+): ort.Tensor {
+  const encoderLen = memoryDims[1];
+  const memoryWidth = memoryDims[2];
+  const valuesPerSample = encoderLen * memoryWidth;
+  const activeData = new Float32Array(activeIndices.length * valuesPerSample);
+  for (let local = 0; local < activeIndices.length; local += 1) {
+    const sourceOffset = activeIndices[local] * valuesPerSample;
+    activeData.set(memoryData.subarray(sourceOffset, sourceOffset + valuesPerSample), local * valuesPerSample);
+  }
+  return new ort.Tensor("float32", activeData, [activeIndices.length, encoderLen, memoryWidth]);
+}
+
+function buildActiveDecoderFeeds(
+  items: BatchDecodeInput[],
+  activeIndices: readonly number[],
+  regionTokenIds: number[][],
+  cachedMemory: { data: Float32Array; dims: readonly number[] },
+  seqLen: number,
+  encoderLen: number
+): {
+  memoryTensor: ort.Tensor;
+  charTensor: ort.Tensor;
+  decoderMaskTensor: ort.Tensor;
+  encoderMaskTensor: ort.Tensor;
+} {
+  const activeN = activeIndices.length;
+  const charData = new BigInt64Array(activeN * seqLen);
+  charData.fill(OCR_AR_PAD_BIGINT);
+  const decoderMask = new Array<boolean>(activeN * seqLen).fill(true);
+  const encoderMask = new Array<boolean>(activeN * encoderLen).fill(false);
+
+  for (let local = 0; local < activeN; local += 1) {
+    const sourceIndex = activeIndices[local];
+    const tokens = regionTokenIds[sourceIndex];
+    const charOffset = local * seqLen;
+    for (let pos = 0; pos < tokens.length && pos < seqLen; pos += 1) {
+      charData[charOffset + pos] = BigInt(tokens[pos]);
+      decoderMask[charOffset + pos] = false;
+    }
+
+    const encoderOffset = local * encoderLen;
+    const validEncoderLength = items[sourceIndex].validEncoderLength;
+    for (let pos = validEncoderLength; pos < encoderLen; pos += 1) {
+      encoderMask[encoderOffset + pos] = true;
+    }
+  }
+
+  return {
+    memoryTensor: copyActiveMemoryTensor(cachedMemory.data, cachedMemory.dims, activeIndices),
+    charTensor: new ort.Tensor("int64", charData, [activeN, seqLen]),
+    decoderMaskTensor: new ort.Tensor("bool", decoderMask, [activeN, seqLen]),
+    encoderMaskTensor: new ort.Tensor("bool", encoderMask, [activeN, encoderLen])
+  };
 }
 
 /**
  * Run greedy AR decode for multiple regions in lockstep.
- * Uses a fixed-size batch and reuses decode buffers across steps to reduce CPU churn.
+ * Uses active batch compaction so finished regions stop consuming model compute.
  * Only works correctly when OCR_BEAM_WIDTH === 1 (greedy).
  */
 export async function decodeBatchAutoregressive(
@@ -307,11 +471,12 @@ export async function decodeBatchAutoregressive(
     charset: string[] | null;
     inputHeight: number;
     inputWidth: number;
+    gpuArgmaxDevice?: GPUDevice;
   },
   chunkDebug?: OcrRunDebugChunk
 ): Promise<BatchDecodeOutput[]> {
   const { imageInput, charIdxInput, decoderMaskInput, encoderMaskInput } = inputNames;
-  const { seqLen, encoderLen, maxSteps, charset, inputHeight, inputWidth } = options;
+  const { seqLen, encoderLen, maxSteps, charset, inputHeight, inputWidth, gpuArgmaxDevice } = options;
   const N = items.length;
   if (N === 0) {
     return [];
@@ -320,116 +485,179 @@ export async function decodeBatchAutoregressive(
   const regionTokenIds: number[][] = items.map(() => [OCR_AR_START]);
   const regionTokenProbs: number[][] = items.map(() => []);
   const finished: boolean[] = items.map(() => false);
-  const batchImage = buildBatchImageTensor(items.map((item) => item.inputData), inputHeight, inputWidth);
-  const batchCharData = new BigInt64Array(N * seqLen);
-  batchCharData.fill(OCR_AR_PAD_BIGINT);
-  const batchDecoderMask = new Array<boolean>(N * seqLen).fill(true);
-  const batchEncoderMask = new Array<boolean>(N * encoderLen).fill(false);
-
-  for (let n = 0; n < N; n += 1) {
-    const charOffset = n * seqLen;
-    batchCharData[charOffset] = OCR_AR_START_BIGINT;
-    batchDecoderMask[charOffset] = false;
-
-    const emOffset = n * encoderLen;
-    const validEncoderLength = items[n].validEncoderLength;
-    for (let i = validEncoderLength; i < encoderLen; i += 1) {
-      batchEncoderMask[emOffset + i] = true;
-    }
-  }
+  const latestColors: Array<OcrColorResult | null> = items.map(() => null);
+  const latestColorTokenCounts: number[] = items.map(() => 0);
+  let gpuStepReducer: OcrGpuStepReducer | null = gpuArgmaxDevice ? new OcrGpuStepReducer(gpuArgmaxDevice) : null;
 
   for (let step = 0; step < maxSteps; step += 1) {
-    let activeCount = 0;
+    const activeIndices: number[] = [];
     for (let i = 0; i < N; i += 1) {
-      if (!finished[i]) {
-        activeCount += 1;
+      if (finished[i]) {
+        continue;
       }
+      if (regionTokenIds[i].length >= seqLen) {
+        finished[i] = true;
+        continue;
+      }
+      activeIndices.push(i);
     }
+    const activeCount = activeIndices.length;
     if (activeCount === 0) {
       break;
     }
 
+    const runSessionForIndices = async (sourceIndices: readonly number[]) => {
+      const feeds = buildActiveBatchFeeds(
+        items,
+        sourceIndices,
+        regionTokenIds,
+        seqLen,
+        encoderLen,
+        inputHeight,
+        inputWidth
+      );
+      return session.run({
+        [imageInput]: feeds.imageTensor,
+        [charIdxInput]: feeds.charTensor,
+        [decoderMaskInput]: feeds.decoderMaskTensor,
+        [encoderMaskInput]: feeds.encoderMaskTensor
+      });
+    };
+
+    let runIndices = activeIndices;
+    let compactFallback = false;
     const runT0 = performance.now();
-    const outputs = await session.run({
-      [imageInput]: batchImage,
-      [charIdxInput]: new ort.Tensor("int64", batchCharData, [N, seqLen]),
-      [decoderMaskInput]: new ort.Tensor("bool", batchDecoderMask, [N, seqLen]),
-      [encoderMaskInput]: new ort.Tensor("bool", batchEncoderMask, [N, encoderLen])
-    });
+    let outputs: ort.InferenceSession.ReturnType;
+    try {
+      outputs = await runSessionForIndices(runIndices);
+    } catch (error) {
+      if (activeCount === N) {
+        throw error;
+      }
+      compactFallback = true;
+      runIndices = items.map((_, index) => index);
+      outputs = await runSessionForIndices(runIndices);
+    }
     const runDurationMs = performance.now() - runT0;
+    const runBatchSize = runIndices.length;
+    const debugStep: OcrRunDebugStep | null = chunkDebug ? {
+      step,
+      activeCount,
+      batchSize: runBatchSize,
+      compactFallback,
+      durationMs: runDurationMs,
+    } : null;
     if (chunkDebug) {
       chunkDebug.decodeSessionRunCount += 1;
       chunkDebug.decodeSessionRunTotalMs += runDurationMs;
-      chunkDebug.decodeSteps.push({
-        step,
-        activeCount,
-        durationMs: runDurationMs
-      });
+      chunkDebug.decodeSteps.push(debugStep!);
     }
-
-    const logitsTensor = pickBatchOcrLogits(outputs, N);
-    if (!logitsTensor) {
-      for (let i = 0; i < N; i += 1) {
-        if (!finished[i]) {
-          finished[i] = true;
+    const postprocessT0 = performance.now();
+    let postprocessMode: "cpu" | "gpu" | "gpu-fallback" = "cpu";
+    try {
+      const logitsTensor = pickBatchOcrLogits(outputs, runBatchSize);
+      if (!logitsTensor) {
+        for (const sourceIndex of activeIndices) {
+          finished[sourceIndex] = true;
         }
+        break;
       }
-      break;
-    }
 
-    const raw = logitsTensor.data as Float32Array;
-    const dims = logitsTensor.dims;
-    const stepsPerSample = dims[1];
-    const classes = dims[2];
-    const sampleStride = stepsPerSample * classes;
+      const dims = logitsTensor.dims;
+      const stepsPerSample = dims[1];
+      const classes = dims[2];
+      const sampleStride = stepsPerSample * classes;
+      const commonDecodeStep = Math.min(regionTokenIds[activeIndices[0]].length - 1, Math.max(0, stepsPerSample - 1));
+      let gpuStepResults: OcrGpuStepResult[] | null = null;
+      let raw: Float32Array | null = null;
 
-    for (let idx = 0; idx < N; idx += 1) {
-      if (finished[idx]) {
-        continue;
-      }
-      const tokens = regionTokenIds[idx];
-      if (tokens.length >= seqLen) {
-        finished[idx] = true;
-        continue;
-      }
-      const decodeStep = Math.min(tokens.length - 1, Math.max(0, stepsPerSample - 1));
-      const sampleOffset = idx * sampleStride;
-      const stepOffset = sampleOffset + decodeStep * classes;
-
-      let bestToken = 0;
-      let bestScore = Number.NEGATIVE_INFINITY;
-      for (let c = 0; c < classes; c += 1) {
-        const score = raw[stepOffset + c];
-        if (score > bestScore) {
-          bestScore = score;
-          bestToken = c;
+      if (gpuStepReducer) {
+        try {
+          gpuStepResults = await gpuStepReducer.reduce(logitsTensor, runBatchSize, stepsPerSample, classes, commonDecodeStep);
+          if (gpuStepResults) {
+            postprocessMode = "gpu";
+          }
+        } catch (error) {
+          console.warn(`[ocr] GPU argmax 失败，回退 CPU logits: ${error instanceof Error ? error.message : String(error)}`);
+          gpuStepReducer = null;
+          postprocessMode = "gpu-fallback";
         }
       }
 
-      if (bestToken === OCR_AR_PAD || bestToken === OCR_AR_END) {
-        finished[idx] = true;
-        continue;
-      }
-
-      let maxLogit = Number.NEGATIVE_INFINITY;
-      for (let c = 0; c < classes; c += 1) {
-        const s = raw[stepOffset + c];
-        if (s > maxLogit) {
-          maxLogit = s;
+      if (!gpuStepResults) {
+        raw = await readFloat32TensorData(logitsTensor);
+        if (!raw) {
+          for (const sourceIndex of activeIndices) {
+            finished[sourceIndex] = true;
+          }
+          break;
         }
       }
-      let sumExp = 0;
-      for (let c = 0; c < classes; c += 1) {
-        sumExp += Math.exp(raw[stepOffset + c] - maxLogit);
-      }
-      const prob = sumExp > 0 ? Math.exp(raw[stepOffset + bestToken] - maxLogit) / sumExp : 0;
 
-      const nextPos = tokens.length;
-      const charOffset = idx * seqLen;
-      batchCharData[charOffset + nextPos] = BigInt(bestToken);
-      batchDecoderMask[charOffset + nextPos] = false;
-      tokens.push(bestToken);
-      regionTokenProbs[idx].push(prob);
+      for (let local = 0; local < runBatchSize; local += 1) {
+        const idx = runIndices[local];
+        if (finished[idx]) {
+          continue;
+        }
+        const tokens = regionTokenIds[idx];
+        const currentTokenCount = Math.max(0, tokens.length - 1);
+        const colors = extractBatchColorsFromOutputs(outputs, runBatchSize, local, currentTokenCount);
+        if (colors) {
+          latestColors[idx] = colors;
+          latestColorTokenCounts[idx] = currentTokenCount;
+        }
+        if (tokens.length >= seqLen) {
+          finished[idx] = true;
+          continue;
+        }
+        const decodeStep = Math.min(tokens.length - 1, Math.max(0, stepsPerSample - 1));
+
+        let bestToken = 0;
+        let prob = 0;
+        if (gpuStepResults) {
+          const gpuResult = gpuStepResults[local];
+          bestToken = gpuResult.token;
+          prob = gpuResult.probability;
+        } else if (raw) {
+          const sampleOffset = local * sampleStride;
+          const stepOffset = sampleOffset + decodeStep * classes;
+          let bestScore = Number.NEGATIVE_INFINITY;
+          for (let c = 0; c < classes; c += 1) {
+            const score = raw[stepOffset + c];
+            if (score > bestScore) {
+              bestScore = score;
+              bestToken = c;
+            }
+          }
+
+          let maxLogit = Number.NEGATIVE_INFINITY;
+          for (let c = 0; c < classes; c += 1) {
+            const s = raw[stepOffset + c];
+            if (s > maxLogit) {
+              maxLogit = s;
+            }
+          }
+          let sumExp = 0;
+          for (let c = 0; c < classes; c += 1) {
+            sumExp += Math.exp(raw[stepOffset + c] - maxLogit);
+          }
+          prob = sumExp > 0 ? Math.exp(raw[stepOffset + bestToken] - maxLogit) / sumExp : 0;
+        }
+
+        if (bestToken === OCR_AR_PAD || bestToken === OCR_AR_END) {
+          finished[idx] = true;
+          continue;
+        }
+
+        tokens.push(bestToken);
+        regionTokenProbs[idx].push(prob);
+      }
+    } finally {
+      if (debugStep) {
+        debugStep.postprocessMode = postprocessMode;
+        debugStep.postprocessMs = performance.now() - postprocessT0;
+      }
+      disposeOutputs(outputs);
     }
   }
 
@@ -443,7 +671,271 @@ export async function decodeBatchAutoregressive(
       confidence,
       tokenIds,
       inputData: items[i].inputData,
-      validEncoderLength: items[i].validEncoderLength
+      validEncoderLength: items[i].validEncoderLength,
+      colors: latestColorTokenCounts[i] >= tokenIds.length ? latestColors[i] ?? undefined : undefined
+    });
+  }
+  return results;
+}
+
+/**
+ * Run greedy AR decode using a split OCR encoder/decoder pair.
+ * The encoder is executed once per chunk; decoder steps reuse cached memory.
+ */
+export async function decodeBatchAutoregressiveWithEncoderCache(
+  encoderSession: ort.InferenceSession,
+  decoderSession: ort.InferenceSession,
+  inputNames: OcrEncoderCacheInputNames,
+  items: BatchDecodeInput[],
+  options: {
+    seqLen: number;
+    encoderLen: number;
+    maxSteps: number;
+    charset: string[] | null;
+    inputHeight: number;
+    inputWidth: number;
+    gpuArgmaxDevice?: GPUDevice;
+  },
+  chunkDebug?: OcrRunDebugChunk
+): Promise<BatchDecodeOutput[]> {
+  const {
+    encoderImageInput,
+    encoderMaskInput,
+    memoryOutput,
+    decoderMemoryInput,
+    decoderCharIdxInput,
+    decoderMaskInput,
+    decoderEncoderMaskInput,
+  } = inputNames;
+  const { seqLen, encoderLen, maxSteps, charset, inputHeight, inputWidth, gpuArgmaxDevice } = options;
+  const N = items.length;
+  if (N === 0) {
+    return [];
+  }
+
+  const allIndices = items.map((_, index) => index);
+  const encoderFeeds = buildActiveBatchFeeds(items, allIndices, items.map(() => [OCR_AR_START]), seqLen, encoderLen, inputHeight, inputWidth);
+  const encoderT0 = performance.now();
+  const encoderOutputs = await encoderSession.run({
+    [encoderImageInput]: encoderFeeds.imageTensor,
+    [encoderMaskInput]: encoderFeeds.encoderMaskTensor,
+  });
+  const encoderRunMs = performance.now() - encoderT0;
+  if (chunkDebug) {
+    chunkDebug.encoderCache = true;
+    chunkDebug.encoderRunMs = (chunkDebug.encoderRunMs ?? 0) + encoderRunMs;
+    chunkDebug.decodeSessionRunCount += 1;
+    chunkDebug.decodeSessionRunTotalMs += encoderRunMs;
+  }
+
+  const memoryTensor = encoderOutputs[memoryOutput] ?? Object.values(encoderOutputs)[0];
+  if (!memoryTensor || memoryTensor.dims.length !== 3 || memoryTensor.dims[0] !== N) {
+    disposeOutputs(encoderOutputs);
+    throw new Error("OCR encoder cache output shape invalid");
+  }
+  const memoryRaw = await readFloat32TensorData(memoryTensor);
+  if (!memoryRaw) {
+    disposeOutputs(encoderOutputs);
+    throw new Error("OCR encoder cache output is not float32");
+  }
+  const cachedMemory = {
+    data: new Float32Array(memoryRaw),
+    dims: [...memoryTensor.dims],
+  };
+  disposeOutputs(encoderOutputs);
+
+  const regionTokenIds: number[][] = items.map(() => [OCR_AR_START]);
+  const regionTokenProbs: number[][] = items.map(() => []);
+  const finished: boolean[] = items.map(() => false);
+  const latestColors: Array<OcrColorResult | null> = items.map(() => null);
+  const latestColorTokenCounts: number[] = items.map(() => 0);
+  let gpuStepReducer: OcrGpuStepReducer | null = gpuArgmaxDevice ? new OcrGpuStepReducer(gpuArgmaxDevice) : null;
+
+  for (let step = 0; step < maxSteps; step += 1) {
+    const activeIndices: number[] = [];
+    for (let i = 0; i < N; i += 1) {
+      if (finished[i]) {
+        continue;
+      }
+      if (regionTokenIds[i].length >= seqLen) {
+        finished[i] = true;
+        continue;
+      }
+      activeIndices.push(i);
+    }
+    const activeCount = activeIndices.length;
+    if (activeCount === 0) {
+      break;
+    }
+
+    const runDecoderForIndices = async (sourceIndices: readonly number[]) => {
+      const feeds = buildActiveDecoderFeeds(
+        items,
+        sourceIndices,
+        regionTokenIds,
+        cachedMemory,
+        seqLen,
+        encoderLen
+      );
+      return decoderSession.run({
+        [decoderMemoryInput]: feeds.memoryTensor,
+        [decoderCharIdxInput]: feeds.charTensor,
+        [decoderMaskInput]: feeds.decoderMaskTensor,
+        [decoderEncoderMaskInput]: feeds.encoderMaskTensor,
+      });
+    };
+
+    let runIndices = activeIndices;
+    let compactFallback = false;
+    const runT0 = performance.now();
+    let outputs: ort.InferenceSession.ReturnType;
+    try {
+      outputs = await runDecoderForIndices(runIndices);
+    } catch (error) {
+      if (activeCount === N) {
+        throw error;
+      }
+      compactFallback = true;
+      runIndices = allIndices;
+      outputs = await runDecoderForIndices(runIndices);
+    }
+    const runDurationMs = performance.now() - runT0;
+    const runBatchSize = runIndices.length;
+    const debugStep: OcrRunDebugStep | null = chunkDebug ? {
+      step,
+      activeCount,
+      batchSize: runBatchSize,
+      compactFallback,
+      durationMs: runDurationMs,
+    } : null;
+    if (chunkDebug) {
+      chunkDebug.decoderRunMs = (chunkDebug.decoderRunMs ?? 0) + runDurationMs;
+      chunkDebug.decodeSessionRunCount += 1;
+      chunkDebug.decodeSessionRunTotalMs += runDurationMs;
+      chunkDebug.decodeSteps.push(debugStep!);
+    }
+
+    const postprocessT0 = performance.now();
+    let postprocessMode: "cpu" | "gpu" | "gpu-fallback" = "cpu";
+    try {
+      const logitsTensor = pickBatchOcrLogits(outputs, runBatchSize);
+      if (!logitsTensor) {
+        for (const sourceIndex of activeIndices) {
+          finished[sourceIndex] = true;
+        }
+        break;
+      }
+
+      const dims = logitsTensor.dims;
+      const stepsPerSample = dims[1];
+      const classes = dims[2];
+      const sampleStride = stepsPerSample * classes;
+      const commonDecodeStep = Math.min(regionTokenIds[activeIndices[0]].length - 1, Math.max(0, stepsPerSample - 1));
+      let gpuStepResults: OcrGpuStepResult[] | null = null;
+      let raw: Float32Array | null = null;
+
+      if (gpuStepReducer) {
+        try {
+          gpuStepResults = await gpuStepReducer.reduce(logitsTensor, runBatchSize, stepsPerSample, classes, commonDecodeStep);
+          if (gpuStepResults) {
+            postprocessMode = "gpu";
+          }
+        } catch (error) {
+          console.warn(`[ocr] GPU argmax 失败，回退 CPU logits: ${error instanceof Error ? error.message : String(error)}`);
+          gpuStepReducer = null;
+          postprocessMode = "gpu-fallback";
+        }
+      }
+
+      if (!gpuStepResults) {
+        raw = await readFloat32TensorData(logitsTensor);
+        if (!raw) {
+          for (const sourceIndex of activeIndices) {
+            finished[sourceIndex] = true;
+          }
+          break;
+        }
+      }
+
+      for (let local = 0; local < runBatchSize; local += 1) {
+        const idx = runIndices[local];
+        if (finished[idx]) {
+          continue;
+        }
+        const tokens = regionTokenIds[idx];
+        const currentTokenCount = Math.max(0, tokens.length - 1);
+        const colors = extractBatchColorsFromOutputs(outputs, runBatchSize, local, currentTokenCount);
+        if (colors) {
+          latestColors[idx] = colors;
+          latestColorTokenCounts[idx] = currentTokenCount;
+        }
+        if (tokens.length >= seqLen) {
+          finished[idx] = true;
+          continue;
+        }
+        const decodeStep = Math.min(tokens.length - 1, Math.max(0, stepsPerSample - 1));
+
+        let bestToken = 0;
+        let prob = 0;
+        if (gpuStepResults) {
+          const gpuResult = gpuStepResults[local];
+          bestToken = gpuResult.token;
+          prob = gpuResult.probability;
+        } else if (raw) {
+          const sampleOffset = local * sampleStride;
+          const stepOffset = sampleOffset + decodeStep * classes;
+          let bestScore = Number.NEGATIVE_INFINITY;
+          for (let c = 0; c < classes; c += 1) {
+            const score = raw[stepOffset + c];
+            if (score > bestScore) {
+              bestScore = score;
+              bestToken = c;
+            }
+          }
+
+          let maxLogit = Number.NEGATIVE_INFINITY;
+          for (let c = 0; c < classes; c += 1) {
+            const s = raw[stepOffset + c];
+            if (s > maxLogit) {
+              maxLogit = s;
+            }
+          }
+          let sumExp = 0;
+          for (let c = 0; c < classes; c += 1) {
+            sumExp += Math.exp(raw[stepOffset + c] - maxLogit);
+          }
+          prob = sumExp > 0 ? Math.exp(raw[stepOffset + bestToken] - maxLogit) / sumExp : 0;
+        }
+
+        if (bestToken === OCR_AR_PAD || bestToken === OCR_AR_END) {
+          finished[idx] = true;
+          continue;
+        }
+
+        tokens.push(bestToken);
+        regionTokenProbs[idx].push(prob);
+      }
+    } finally {
+      if (debugStep) {
+        debugStep.postprocessMode = postprocessMode;
+        debugStep.postprocessMs = performance.now() - postprocessT0;
+      }
+      disposeOutputs(outputs);
+    }
+  }
+
+  const results: BatchDecodeOutput[] = [];
+  for (let i = 0; i < N; i += 1) {
+    const tokenIds = regionTokenIds[i].slice(1);
+    const text = normalizeTextLight(tokenIds.map((id) => tokenToTextAutoregressive(id, charset)).join(""));
+    const confidence = avgLogProbToConfidence(regionTokenProbs[i]);
+    results.push({
+      text,
+      confidence,
+      tokenIds,
+      inputData: items[i].inputData,
+      validEncoderLength: items[i].validEncoderLength,
+      colors: latestColorTokenCounts[i] >= tokenIds.length ? latestColors[i] ?? undefined : undefined
     });
   }
   return results;

@@ -17,16 +17,21 @@ import type {
   WorkerSessionHandle,
   InferenceResult,
   OcrInputNameSet,
+  OcrSplitInputNameSet,
   OcrBatchDecodeInputItem,
+  OcrBatchDecodeResult,
   OcrBatchDecodeOutputItem,
-  OcrSingleDecodeOutput,
+  OcrSingleDecodeResult,
   OcrColorBatchInputItem,
-  OcrColorResult,
+  OcrColorBatchResult,
+  OcrColorSingleResult,
   GpuDetectResult,
 } from "./onnxWorkerTypes";
 import type { RuntimeSelfCheckReport } from "./selfCheck";
+import type { OcrRunDebugChunk } from "../types";
 import {
   decodeBatchAutoregressive,
+  decodeBatchAutoregressiveWithEncoderCache,
   decodeAutoregressiveWithBeam,
 } from "../pipeline/ocr/decodeAutoregressive";
 import { decodeTokenColorsBatch, decodeTokenColors } from "../pipeline/ocr/color";
@@ -239,7 +244,7 @@ export async function runOcrBatchDecode(
     inputHeight: number;
     inputWidth: number;
   }
-): Promise<OcrBatchDecodeOutputItem[]> {
+): Promise<OcrBatchDecodeResult> {
   const entry = sessions.get(sessionId);
   if (!entry) {
     throw new Error(`Session 不存在: ${sessionId}`);
@@ -256,11 +261,24 @@ export async function runOcrBatchDecode(
     validEncoderLength: item.validEncoderLength,
   }));
 
+  const chunkDebug: OcrRunDebugChunk = {
+    chunkIndex: 0,
+    chunkSize: items.length,
+    regionIds: items.map((item) => item.regionId),
+    decodeMode: "batch",
+    decodeAccepted: 0,
+    decodeSessionRunCount: 0,
+    decodeSessionRunTotalMs: 0,
+    decodeSteps: [],
+    fallbackRegions: [],
+  };
+
   const batchResults = await decodeBatchAutoregressive(
     entry.session,
     inputNames,
     batchItems,
-    options
+    options,
+    chunkDebug
   );
 
   const outputItems: OcrBatchDecodeOutputItem[] = batchResults.map((result, i) => ({
@@ -271,9 +289,92 @@ export async function runOcrBatchDecode(
     imageData: items[i].imageData,
     imageDims: items[i].imageDims,
     validEncoderLength: result.validEncoderLength,
+    colors: result.colors,
   }));
 
-  return outputItems;
+  return {
+    items: outputItems,
+    telemetry: {
+      sessionRunCount: chunkDebug.decodeSessionRunCount,
+      sessionRunTotalMs: chunkDebug.decodeSessionRunTotalMs,
+      steps: chunkDebug.decodeSteps,
+    },
+  };
+}
+
+export async function runOcrSplitBatchDecode(
+  encoderSessionId: string,
+  decoderSessionId: string,
+  inputNames: OcrSplitInputNameSet,
+  items: OcrBatchDecodeInputItem[],
+  options: {
+    seqLen: number;
+    encoderLen: number;
+    maxSteps: number;
+    charset: string[] | null;
+    inputHeight: number;
+    inputWidth: number;
+  }
+): Promise<OcrBatchDecodeResult> {
+  const encoderEntry = sessions.get(encoderSessionId);
+  const decoderEntry = sessions.get(decoderSessionId);
+  if (!encoderEntry || !decoderEntry) {
+    throw new Error(`OCR split session 不存在: ${encoderSessionId}/${decoderSessionId}`);
+  }
+
+  const batchItems: { regionId: string; inputData: OcrInputData; validEncoderLength: number }[] = items.map((item) => ({
+    regionId: item.regionId,
+    inputData: {
+      data: item.imageData,
+      dims: item.imageDims,
+      resizedWidth: item.imageDims[3] ?? 0,
+    },
+    validEncoderLength: item.validEncoderLength,
+  }));
+
+  const chunkDebug: OcrRunDebugChunk = {
+    chunkIndex: 0,
+    chunkSize: items.length,
+    regionIds: items.map((item) => item.regionId),
+    decodeMode: "batch",
+    encoderCache: true,
+    decodeAccepted: 0,
+    decodeSessionRunCount: 0,
+    decodeSessionRunTotalMs: 0,
+    decodeSteps: [],
+    fallbackRegions: [],
+  };
+
+  const batchResults = await decodeBatchAutoregressiveWithEncoderCache(
+    encoderEntry.session,
+    decoderEntry.session,
+    inputNames,
+    batchItems,
+    options,
+    chunkDebug
+  );
+
+  const outputItems: OcrBatchDecodeOutputItem[] = batchResults.map((result, i) => ({
+    regionId: items[i].regionId,
+    text: result.text,
+    confidence: result.confidence,
+    tokenIds: result.tokenIds,
+    imageData: items[i].imageData,
+    imageDims: items[i].imageDims,
+    validEncoderLength: result.validEncoderLength,
+    colors: result.colors,
+  }));
+
+  return {
+    items: outputItems,
+    telemetry: {
+      sessionRunCount: chunkDebug.decodeSessionRunCount,
+      sessionRunTotalMs: chunkDebug.decodeSessionRunTotalMs,
+      encoderRunMs: chunkDebug.encoderRunMs,
+      decoderRunMs: chunkDebug.decoderRunMs,
+      steps: chunkDebug.decodeSteps,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -292,13 +393,24 @@ export async function runOcrSingleDecode(
     maxSteps: number;
     charset: string[] | null;
   }
-): Promise<OcrSingleDecodeOutput | null> {
+): Promise<OcrSingleDecodeResult> {
   const entry = sessions.get(sessionId);
   if (!entry) {
     throw new Error(`Session 不存在: ${sessionId}`);
   }
 
   const ort = await getOrtNode();
+  const chunkDebug: OcrRunDebugChunk = {
+    chunkIndex: 0,
+    chunkSize: 1,
+    regionIds: [],
+    decodeMode: "fallback",
+    decodeAccepted: 0,
+    decodeSessionRunCount: 0,
+    decodeSessionRunTotalMs: 0,
+    decodeSteps: [],
+    fallbackRegions: [],
+  };
   const imageTensor = new ort.Tensor("float32", imageData, imageDims);
   const result = await decodeAutoregressiveWithBeam(
     entry.session,
@@ -315,14 +427,21 @@ export async function runOcrSingleDecode(
       validEncoderLength,
       maxSteps: options.maxSteps,
       charset: options.charset,
-    }
+    },
+    chunkDebug
   );
 
-  if (!result) return null;
   return {
-    text: result.text,
-    confidence: result.confidence,
-    tokenIds: result.tokenIds,
+    output: result ? {
+      text: result.text,
+      confidence: result.confidence,
+      tokenIds: result.tokenIds,
+    } : null,
+    telemetry: {
+      sessionRunCount: chunkDebug.decodeSessionRunCount,
+      sessionRunTotalMs: chunkDebug.decodeSessionRunTotalMs,
+      steps: chunkDebug.decodeSteps,
+    },
   };
 }
 
@@ -338,7 +457,7 @@ export async function runOcrColorBatch(
   encoderLen: number,
   inputHeight: number,
   inputWidth: number
-): Promise<(OcrColorResult | null)[]> {
+): Promise<OcrColorBatchResult> {
   const entry = sessions.get(sessionId);
   if (!entry) {
     throw new Error(`Session 不存在: ${sessionId}`);
@@ -354,15 +473,18 @@ export async function runOcrColorBatch(
     tokenIds: item.tokenIds,
   }));
 
-  return await decodeTokenColorsBatch(
+  const runCounter = { sessionRunCount: 0, sessionRunTotalMs: 0 };
+  const colors = await decodeTokenColorsBatch(
     entry.session,
     inputNames,
     colorItems,
     seqLen,
     encoderLen,
     inputHeight,
-    inputWidth
+    inputWidth,
+    runCounter
   );
+  return { colors, telemetry: runCounter };
 }
 
 // ---------------------------------------------------------------------------
@@ -378,7 +500,7 @@ export async function runOcrColorSingle(
   tokenIds: number[],
   seqLen: number,
   encoderLen: number
-): Promise<OcrColorResult | null> {
+): Promise<OcrColorSingleResult> {
   const entry = sessions.get(sessionId);
   if (!entry) {
     throw new Error(`Session 不存在: ${sessionId}`);
@@ -386,6 +508,7 @@ export async function runOcrColorSingle(
 
   const ort = await getOrtNode();
   const imageTensor = new ort.Tensor("float32", imageData, imageDims);
+  const runCounter = { sessionRunCount: 0, sessionRunTotalMs: 0 };
   const result = await decodeTokenColors(
     entry.session,
     {
@@ -400,10 +523,11 @@ export async function runOcrColorSingle(
       encoderLen,
       validEncoderLength,
       tokenIds,
-    }
+    },
+    runCounter
   );
 
-  return result;
+  return { color: result, telemetry: runCounter };
 }
 
 // ---------------------------------------------------------------------------

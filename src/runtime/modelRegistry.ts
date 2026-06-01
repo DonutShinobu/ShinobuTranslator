@@ -116,7 +116,9 @@ async function resolveModelFilePath(modelUrl: string): Promise<string> {
   return resolve(modelUrl);
 }
 
-export async function getModel(name: 'detector' | 'ocr' | 'inpaint' | 'bubble' | 'paddleocr_rec'): Promise<ManifestModel> {
+export type ModelName = 'detector' | 'ocr' | 'ocr_encoder' | 'ocr_decoder' | 'inpaint' | 'bubble' | 'paddleocr_rec';
+
+export async function getModel(name: ModelName): Promise<ManifestModel> {
   const manifest = await loadManifest();
   const model = manifest.models?.[name];
   if (!model) {
@@ -139,7 +141,7 @@ export async function getModel(name: 'detector' | 'ocr' | 'inpaint' | 'bubble' |
 const sessionCache = new Map<string, WorkerSessionHandle>();
 
 export async function getModelSession(
-  name: 'detector' | 'ocr' | 'inpaint' | 'bubble' | 'paddleocr_rec',
+  name: ModelName,
   preferred?: RuntimeProvider[]
 ): Promise<WorkerSessionHandle> {
   const model = await getModel(name);

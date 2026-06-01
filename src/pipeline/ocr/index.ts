@@ -3,8 +3,8 @@ import type { PlatformProvider, PipelineImage } from "../../runtime/platform";
 import { getModel, getModelSession } from "../../runtime/modelRegistry";
 import { isContextLostRuntimeError } from "../../runtime/onnxTypes";
 import type { RuntimeProvider, WebNnDeviceType } from "../../runtime/onnxTypes";
-import { runInference, runOcrBatchDecode, runOcrSingleDecode, runOcrColorBatch, runOcrColorSingle } from "../../runtime/onnxBridge";
-import type { WorkerSessionHandle, TensorTransport, OcrInputNameSet, OcrBatchDecodeInputItem, OcrColorBatchInputItem, OcrColorResult } from "../../runtime/onnxWorkerTypes";
+import { runInference, runOcrBatchDecode, runOcrSplitBatchDecode, runOcrSingleDecode, runOcrColorBatch, runOcrColorSingle } from "../../runtime/onnxBridge";
+import type { WorkerSessionHandle, TensorTransport, OcrInputNameSet, OcrSplitInputNameSet, OcrBatchDecodeInputItem, OcrColorBatchInputItem, OcrColorResult } from "../../runtime/onnxWorkerTypes";
 import { toErrorMessage } from "../../shared/utils";
 import { normalizeTextLight } from "../utils";
 import {
@@ -71,6 +71,31 @@ function finalizeOcrDebugInfo(debugInfo: OcrRunDebugInfo): OcrRunDebugInfo {
   return debugInfo;
 }
 
+function createSplitInputNames(
+  encoderHandle: WorkerSessionHandle,
+  decoderHandle: WorkerSessionHandle
+): OcrSplitInputNameSet | null {
+  const encoderImageInput = findInputName(encoderHandle.inputNames, "image") ?? encoderHandle.inputNames[0];
+  const encoderMaskInput = findInputName(encoderHandle.inputNames, "encoder_mask");
+  const memoryOutput = encoderHandle.outputNames[0];
+  const decoderMemoryInput = decoderHandle.inputNames.find((name) => name === memoryOutput) ?? decoderHandle.inputNames[0];
+  const decoderCharIdxInput = findInputName(decoderHandle.inputNames, "char_idx");
+  const decoderMaskInput = findInputName(decoderHandle.inputNames, "decoder_mask");
+  const decoderEncoderMaskInput = findInputName(decoderHandle.inputNames, "encoder_mask");
+  if (!encoderImageInput || !encoderMaskInput || !memoryOutput || !decoderMemoryInput || !decoderCharIdxInput || !decoderMaskInput || !decoderEncoderMaskInput) {
+    return null;
+  }
+  return {
+    encoderImageInput,
+    encoderMaskInput,
+    memoryOutput,
+    decoderMemoryInput,
+    decoderCharIdxInput,
+    decoderMaskInput,
+    decoderEncoderMaskInput,
+  };
+}
+
 async function runOcrByOnnxWithSession(
   image: PipelineImage,
   detectedRegions: TextRegion[],
@@ -98,6 +123,23 @@ async function runOcrByOnnxWithSession(
     const encoderLen = 80; // getInputDim fallback: encoder_mask input dim at axis 1
     const maxSteps = Math.max(1, seqLen - 1);
     const inputNames: OcrInputNameSet = { imageInput, charIdxInput, decoderMaskInput, encoderMaskInput };
+    let splitDecode: {
+      encoderHandle: WorkerSessionHandle;
+      decoderHandle: WorkerSessionHandle;
+      inputNames: OcrSplitInputNameSet;
+    } | null = null;
+    try {
+      const [encoderHandle, decoderHandle] = await Promise.all([
+        getModelSession("ocr_encoder", [sessionHandle.provider]),
+        getModelSession("ocr_decoder", [sessionHandle.provider]),
+      ]);
+      const splitInputNames = createSplitInputNames(encoderHandle, decoderHandle);
+      if (splitInputNames) {
+        splitDecode = { encoderHandle, decoderHandle, inputNames: splitInputNames };
+      }
+    } catch (error) {
+      console.warn(`[ocr] encoder cache 模型不可用，继续使用 full AR: ${toErrorMessage(error)}`);
+    }
 
     const candidates = generateTextDirection(detectedRegions);
     debugInfo.candidateCount = candidates.length;
@@ -110,6 +152,7 @@ async function runOcrByOnnxWithSession(
       tokenIds: number[];
       inputData: OcrInputData;
       validEncoderLength: number;
+      colors?: OcrColorResult;
     };
     const decoded: DecodedCandidate[] = [];
 
@@ -162,12 +205,27 @@ async function runOcrByOnnxWithSession(
           imageDims: c.inputData.dims,
           validEncoderLength: c.validEncoderLength
         }));
-        const batchResults = await runOcrBatchDecode(
-          sessionHandle.sessionId,
-          inputNames,
-          batchItems,
-          { seqLen, encoderLen, maxSteps, charset, inputHeight, inputWidth }
-        );
+        const batchDecode = splitDecode
+          ? await runOcrSplitBatchDecode(
+            splitDecode.encoderHandle.sessionId,
+            splitDecode.decoderHandle.sessionId,
+            splitDecode.inputNames,
+            batchItems,
+            { seqLen, encoderLen, maxSteps, charset, inputHeight, inputWidth }
+          )
+          : await runOcrBatchDecode(
+            sessionHandle.sessionId,
+            inputNames,
+            batchItems,
+            { seqLen, encoderLen, maxSteps, charset, inputHeight, inputWidth }
+          );
+        chunkDebug.encoderCache = !!splitDecode;
+        chunkDebug.encoderRunMs = batchDecode.telemetry.encoderRunMs;
+        chunkDebug.decoderRunMs = batchDecode.telemetry.decoderRunMs;
+        chunkDebug.decodeSessionRunCount = batchDecode.telemetry.sessionRunCount;
+        chunkDebug.decodeSessionRunTotalMs = batchDecode.telemetry.sessionRunTotalMs;
+        chunkDebug.decodeSteps = batchDecode.telemetry.steps;
+        const batchResults = batchDecode.items;
         for (let i = 0; i < batchResults.length; i += 1) {
           const result = batchResults[i];
           const candidate = chunk[i];
@@ -181,7 +239,8 @@ async function runOcrByOnnxWithSession(
               confidence: result.confidence,
               tokenIds: result.tokenIds,
               inputData: candidate.inputData,
-              validEncoderLength: result.validEncoderLength
+              validEncoderLength: result.validEncoderLength,
+              colors: result.colors,
             });
           }
         }
@@ -198,7 +257,7 @@ async function runOcrByOnnxWithSession(
         for (const candidate of chunk) {
           const fallbackT0 = performance.now();
           try {
-            const result = await runOcrSingleDecode(
+            const singleDecode = await runOcrSingleDecode(
               sessionHandle.sessionId,
               inputNames,
               candidate.inputData.data,
@@ -207,6 +266,10 @@ async function runOcrByOnnxWithSession(
               { seqLen, encoderLen, maxSteps, charset }
             );
             const fallbackDurationMs = performance.now() - fallbackT0;
+            chunkDebug.decodeSessionRunCount += singleDecode.telemetry.sessionRunCount;
+            chunkDebug.decodeSessionRunTotalMs += singleDecode.telemetry.sessionRunTotalMs;
+            chunkDebug.decodeSteps.push(...singleDecode.telemetry.steps);
+            const result = singleDecode.output;
             const accepted = !!result && result.text.length > 0 && result.confidence >= OCR_CONFIDENCE_THRESHOLD;
             chunkDebug.fallbackRegions.push({
               regionId: candidate.region.id,
@@ -259,57 +322,69 @@ async function runOcrByOnnxWithSession(
     }));
 
     let batchColors: (OcrColorResult | null)[];
-    const colorT0 = performance.now();
     debugInfo.colorBatchSize = colorItems.length;
-    try {
-      debugInfo.colorDecodeMode = 'batch';
-      batchColors = await runOcrColorBatch(
-        sessionHandle.sessionId,
-        inputNames,
-        colorItems,
-        seqLen,
-        encoderLen,
-        inputHeight,
-        inputWidth
-      );
-    } catch (error) {
-      if (isContextLostRuntimeError(error)) {
-        throw error;
-      }
-      // Fall back to per-region color decode on batch failure.
-      debugInfo.fallbackTriggerCount += 1;
-      debugInfo.colorDecodeMode = 'fallback';
-      batchColors = [];
-      for (const d of decoded) {
-        const fallbackT0 = performance.now();
-        try {
-          const colors = await runOcrColorSingle(
-            sessionHandle.sessionId,
-            inputNames,
-            d.inputData.data,
-            d.inputData.dims,
-            d.validEncoderLength,
-            d.tokenIds,
-            seqLen,
-            encoderLen
-          );
-          batchColors.push(colors);
-          debugInfo.colorFallbackRegions.push({
-            regionId: d.region.id,
-            durationMs: performance.now() - fallbackT0,
-            accepted: colors !== null
-          });
-        } catch {
-          batchColors.push(null);
-          debugInfo.colorFallbackRegions.push({
-            regionId: d.region.id,
-            durationMs: performance.now() - fallbackT0,
-            accepted: false
-          });
+    if (decoded.every((d) => d.colors)) {
+      debugInfo.colorDecodeMode = 'reuse';
+      debugInfo.colorTotalMs = 0;
+      batchColors = decoded.map((d) => d.colors ?? null);
+    } else {
+      const colorT0 = performance.now();
+      try {
+        debugInfo.colorDecodeMode = 'batch';
+        const colorBatch = await runOcrColorBatch(
+          sessionHandle.sessionId,
+          inputNames,
+          colorItems,
+          seqLen,
+          encoderLen,
+          inputHeight,
+          inputWidth
+        );
+        batchColors = colorBatch.colors;
+        debugInfo.colorSessionRunCount += colorBatch.telemetry.sessionRunCount;
+        debugInfo.colorSessionRunTotalMs += colorBatch.telemetry.sessionRunTotalMs;
+      } catch (error) {
+        if (isContextLostRuntimeError(error)) {
+          throw error;
+        }
+        // Fall back to per-region color decode on batch failure.
+        debugInfo.fallbackTriggerCount += 1;
+        debugInfo.colorDecodeMode = 'fallback';
+        batchColors = [];
+        for (const d of decoded) {
+          const fallbackT0 = performance.now();
+          try {
+            const colorSingle = await runOcrColorSingle(
+              sessionHandle.sessionId,
+              inputNames,
+              d.inputData.data,
+              d.inputData.dims,
+              d.validEncoderLength,
+              d.tokenIds,
+              seqLen,
+              encoderLen
+            );
+            const colors = colorSingle.color;
+            debugInfo.colorSessionRunCount += colorSingle.telemetry.sessionRunCount;
+            debugInfo.colorSessionRunTotalMs += colorSingle.telemetry.sessionRunTotalMs;
+            batchColors.push(colors);
+            debugInfo.colorFallbackRegions.push({
+              regionId: d.region.id,
+              durationMs: performance.now() - fallbackT0,
+              accepted: colors !== null
+            });
+          } catch {
+            batchColors.push(null);
+            debugInfo.colorFallbackRegions.push({
+              regionId: d.region.id,
+              durationMs: performance.now() - fallbackT0,
+              accepted: false
+            });
+          }
         }
       }
+      debugInfo.colorTotalMs = performance.now() - colorT0;
     }
-    debugInfo.colorTotalMs = performance.now() - colorT0;
 
     const ocrResults: OcrRecognizeResult[] = [];
     for (let i = 0; i < decoded.length; i += 1) {

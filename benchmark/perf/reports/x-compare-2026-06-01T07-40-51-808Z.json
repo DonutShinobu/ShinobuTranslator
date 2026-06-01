@@ -1,0 +1,2362 @@
+{
+  "createdAt": "2026-06-01T07:40:51.807Z",
+  "xUrl": "https://x.com/nanashiwan/status/2061024890195435823/photo/1",
+  "image": {
+    "pageUrl": "https://x.com/nanashiwan/status/2061024890195435823/photo/1",
+    "imageUrl": "https://pbs.twimg.com/media/HJmBKj5aMAArR-6?format=jpg&name=orig",
+    "contentType": "image/jpeg",
+    "bytes": 1134861
+  },
+  "runsPerMode": 3,
+  "modes": [
+    {
+      "mode": "old-full-ar",
+      "extensionDir": "C:\\code\\ShinobuTranslator-dev\\.tmp\\x-compare-old-full-ar-1780299549431",
+      "runs": [
+        {
+          "runIndex": 0,
+          "isColdStart": true,
+          "totalMs": 30379.6,
+          "imageWidth": 1500,
+          "imageHeight": 1500,
+          "regionCount": 16,
+          "sourceCharCount": 113,
+          "sampleTexts": [
+            "わたし",
+            "天",
+            "わす",
+            "私があんたの",
+            "替えてあげたこと\n忘れないでよね…"
+          ],
+          "runtimeStages": [
+            {
+              "model": "detector",
+              "enabled": true,
+              "provider": "webgpu",
+              "detail": "detector 模型已加载 (webgpu)"
+            },
+            {
+              "model": "ocr",
+              "enabled": true,
+              "provider": "webgpu",
+              "detail": "ocr 模型已加载 (webgpu)"
+            },
+            {
+              "model": "inpaint",
+              "enabled": true,
+              "provider": "webgpu",
+              "detail": "inpaint 模型已加载 (webgpu)"
+            }
+          ],
+          "stageTimings": [
+            {
+              "stage": "preload",
+              "label": "加载检测模型",
+              "durationMs": 1158.5
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 3216.9
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 1877.9
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 21567
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 3
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 154.3
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 117.6
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2272.2
+            },
+            {
+              "stage": "parallel",
+              "label": "去字",
+              "durationMs": 2389.9
+            }
+          ],
+          "ocrDebug": {
+            "mode": "autoregressive",
+            "candidateCount": 20,
+            "preparedCount": 20,
+            "preprocessTotalMs": 100.89999999850988,
+            "preprocessPerRegionMs": [
+              {
+                "regionId": "02e56933-8d78-404f-8c87-f62da54f11a9",
+                "durationMs": 19.399999998509884
+              },
+              {
+                "regionId": "37892934-44db-4ff9-8051-26f7da0dbcb0",
+                "durationMs": 5.400000002235174
+              },
+              {
+                "regionId": "35e9066d-9c0a-49df-ae3d-4b20e4c82f09",
+                "durationMs": 3.300000000745058
+              },
+              {
+                "regionId": "89380b53-e7d0-48b3-9e0b-a011810363a3",
+                "durationMs": 3.699999999254942
+              },
+              {
+                "regionId": "64a53d38-c24f-4df3-b396-47e829aa286f",
+                "durationMs": 3.599999997764826
+              },
+              {
+                "regionId": "98eb886e-0d9a-4fe6-9e88-8f1b695267bf",
+                "durationMs": 4.5
+              },
+              {
+                "regionId": "5060c17a-3db0-4cb5-be97-b1d136111ba6",
+                "durationMs": 4.5
+              },
+              {
+                "regionId": "1ba83db1-6ef2-4cd7-9937-68d6b4f378d1",
+                "durationMs": 4.400000002235174
+              },
+              {
+                "regionId": "e7c70d85-b905-4815-bb77-8dde144092ff",
+                "durationMs": 3.599999997764826
+              },
+              {
+                "regionId": "0fdeea4e-8b49-44d4-8e1e-f56798777f05",
+                "durationMs": 3.2000000029802322
+              },
+              {
+                "regionId": "141577ae-7417-4d7d-a281-4c508e8e934d",
+                "durationMs": 3.2999999970197678
+              },
+              {
+                "regionId": "239b79d1-8934-4c40-b84b-fa0b1a464b3e",
+                "durationMs": 4.400000002235174
+              },
+              {
+                "regionId": "f33623c4-6148-47be-b9e8-30b88fde7e1e",
+                "durationMs": 2.899999998509884
+              },
+              {
+                "regionId": "a866f0c7-cd6a-49ca-89c4-70e7c1221994",
+                "durationMs": 3.900000002235174
+              },
+              {
+                "regionId": "525dda27-76aa-492c-843e-ad45f2a474ef",
+                "durationMs": 5
+              },
+              {
+                "regionId": "3f5c3d11-de8e-4da6-b348-7df30135fe2d",
+                "durationMs": 5.599999997764826
+              },
+              {
+                "regionId": "4ed2ebe5-dabe-4876-86d8-f88b2debcf30",
+                "durationMs": 5.800000000745058
+              },
+              {
+                "regionId": "30f34330-c3d1-4c5f-a592-8e5fee737d6d",
+                "durationMs": 4.899999998509884
+              },
+              {
+                "regionId": "0a37f7bb-a858-4250-80af-fc29c558fbb8",
+                "durationMs": 4.800000000745058
+              },
+              {
+                "regionId": "22c2df1b-524c-4456-afa0-590f485bc38f",
+                "durationMs": 4.699999999254942
+              }
+            ],
+            "chunkBatchSize": 24,
+            "chunks": [
+              {
+                "chunkIndex": 0,
+                "chunkSize": 20,
+                "regionIds": [
+                  "02e56933-8d78-404f-8c87-f62da54f11a9",
+                  "37892934-44db-4ff9-8051-26f7da0dbcb0",
+                  "35e9066d-9c0a-49df-ae3d-4b20e4c82f09",
+                  "89380b53-e7d0-48b3-9e0b-a011810363a3",
+                  "64a53d38-c24f-4df3-b396-47e829aa286f",
+                  "98eb886e-0d9a-4fe6-9e88-8f1b695267bf",
+                  "5060c17a-3db0-4cb5-be97-b1d136111ba6",
+                  "1ba83db1-6ef2-4cd7-9937-68d6b4f378d1",
+                  "e7c70d85-b905-4815-bb77-8dde144092ff",
+                  "0fdeea4e-8b49-44d4-8e1e-f56798777f05",
+                  "141577ae-7417-4d7d-a281-4c508e8e934d",
+                  "239b79d1-8934-4c40-b84b-fa0b1a464b3e",
+                  "f33623c4-6148-47be-b9e8-30b88fde7e1e",
+                  "a866f0c7-cd6a-49ca-89c4-70e7c1221994",
+                  "525dda27-76aa-492c-843e-ad45f2a474ef",
+                  "3f5c3d11-de8e-4da6-b348-7df30135fe2d",
+                  "4ed2ebe5-dabe-4876-86d8-f88b2debcf30",
+                  "30f34330-c3d1-4c5f-a592-8e5fee737d6d",
+                  "0a37f7bb-a858-4250-80af-fc29c558fbb8",
+                  "22c2df1b-524c-4456-afa0-590f485bc38f"
+                ],
+                "decodeMode": "batch",
+                "decodeAccepted": 20,
+                "decodeSessionRunCount": 17,
+                "decodeSessionRunTotalMs": 21350.69999998808,
+                "decodeSteps": [
+                  {
+                    "step": 0,
+                    "activeCount": 20,
+                    "batchSize": 20,
+                    "compactFallback": false,
+                    "durationMs": 12476.5,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 4.899999998509884
+                  },
+                  {
+                    "step": 1,
+                    "activeCount": 20,
+                    "batchSize": 20,
+                    "compactFallback": false,
+                    "durationMs": 1584,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 5.200000002980232
+                  },
+                  {
+                    "step": 2,
+                    "activeCount": 18,
+                    "batchSize": 18,
+                    "compactFallback": false,
+                    "durationMs": 1182.5999999977648,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.800000000745058
+                  },
+                  {
+                    "step": 3,
+                    "activeCount": 16,
+                    "batchSize": 16,
+                    "compactFallback": false,
+                    "durationMs": 1120.199999999255,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3
+                  },
+                  {
+                    "step": 4,
+                    "activeCount": 13,
+                    "batchSize": 13,
+                    "compactFallback": false,
+                    "durationMs": 922.9000000022352,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3
+                  },
+                  {
+                    "step": 5,
+                    "activeCount": 10,
+                    "batchSize": 10,
+                    "compactFallback": false,
+                    "durationMs": 694.8999999985099,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.900000002235174
+                  },
+                  {
+                    "step": 6,
+                    "activeCount": 9,
+                    "batchSize": 9,
+                    "compactFallback": false,
+                    "durationMs": 612.7999999970198,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.7000000029802322
+                  },
+                  {
+                    "step": 7,
+                    "activeCount": 8,
+                    "batchSize": 8,
+                    "compactFallback": false,
+                    "durationMs": 588.2999999970198,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.900000002235174
+                  },
+                  {
+                    "step": 8,
+                    "activeCount": 7,
+                    "batchSize": 7,
+                    "compactFallback": false,
+                    "durationMs": 538.3000000007451,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.800000000745058
+                  },
+                  {
+                    "step": 9,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 201.5,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.800000000745058
+                  },
+                  {
+                    "step": 10,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 200.09999999776483,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.900000002235174
+                  },
+                  {
+                    "step": 11,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 206.39999999850988,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.300000000745058
+                  },
+                  {
+                    "step": 12,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 195.5,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.600000001490116
+                  },
+                  {
+                    "step": 13,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 195.89999999850988,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.800000000745058
+                  },
+                  {
+                    "step": 14,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 208,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.199999999254942
+                  },
+                  {
+                    "step": 15,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 210.59999999776483,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.699999999254942
+                  },
+                  {
+                    "step": 16,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 212.20000000298023,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.7999999970197678
+                  }
+                ],
+                "fallbackRegions": [],
+                "encoderCache": false,
+                "decodeConfidenceAvg": 0.9247277693110746
+              }
+            ],
+            "colorDecodeMode": "reuse",
+            "colorBatchSize": 20,
+            "colorSessionRunCount": 0,
+            "colorSessionRunTotalMs": 0,
+            "colorTotalMs": 0,
+            "colorFallbackRegions": [],
+            "fallbackTriggerCount": 0,
+            "totalSessionRunCount": 17,
+            "totalSessionRunMs": 21350.69999998808
+          },
+          "ocrSummary": {
+            "stageMs": 21567,
+            "encoderCache": false,
+            "decodeSessionRunCount": 17,
+            "decodeSessionRunTotalMs": 21350.7,
+            "decodeStepCount": 17,
+            "encoderRunMs": 0,
+            "decoderRunMs": 0,
+            "gpuPostprocessStepCount": 17,
+            "postprocessMs": 59.3,
+            "colorDecodeMode": "reuse",
+            "colorTotalMs": 0,
+            "fallbackTriggerCount": 0
+          }
+        },
+        {
+          "runIndex": 1,
+          "isColdStart": false,
+          "totalMs": 13625.7,
+          "imageWidth": 1500,
+          "imageHeight": 1500,
+          "regionCount": 16,
+          "sourceCharCount": 113,
+          "sampleTexts": [
+            "わたし",
+            "天",
+            "わす",
+            "私があんたの",
+            "替えてあげたこと\n忘れないでよね…"
+          ],
+          "runtimeStages": [
+            {
+              "model": "detector",
+              "enabled": true,
+              "provider": "webgpu",
+              "detail": "detector 模型已加载 (webgpu)"
+            },
+            {
+              "model": "ocr",
+              "enabled": true,
+              "provider": "webgpu",
+              "detail": "ocr 模型已加载 (webgpu)"
+            },
+            {
+              "model": "inpaint",
+              "enabled": true,
+              "provider": "webgpu",
+              "detail": "inpaint 模型已加载 (webgpu)"
+            }
+          ],
+          "stageTimings": [
+            {
+              "stage": "preload",
+              "label": "加载检测模型",
+              "durationMs": 0.1
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 939.3
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 329
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 10339.5
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 1.6
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 169.2
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 97.5
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 1742.5
+            },
+            {
+              "stage": "parallel",
+              "label": "去字",
+              "durationMs": 1840.2
+            }
+          ],
+          "ocrDebug": {
+            "mode": "autoregressive",
+            "candidateCount": 20,
+            "preparedCount": 20,
+            "preprocessTotalMs": 81.80000000074506,
+            "preprocessPerRegionMs": [
+              {
+                "regionId": "80ba90e6-9daf-468d-bf20-e5207cbdd1e3",
+                "durationMs": 14.300000000745058
+              },
+              {
+                "regionId": "11a4d0fe-514a-4c60-a809-e2c40102cfb2",
+                "durationMs": 3.900000002235174
+              },
+              {
+                "regionId": "4038493b-0ead-4430-9a2f-25d2f454b6f8",
+                "durationMs": 2.899999998509884
+              },
+              {
+                "regionId": "c336cda5-bc53-4504-9d1a-9c4875da0e2c",
+                "durationMs": 4.399999998509884
+              },
+              {
+                "regionId": "793f49b4-67aa-4303-aa40-5eb9b4041f65",
+                "durationMs": 4
+              },
+              {
+                "regionId": "44f2424d-741d-4531-b590-0be72b8adba1",
+                "durationMs": 3.7000000029802322
+              },
+              {
+                "regionId": "627e8f9f-ffe9-4ce1-a175-179a6c586b14",
+                "durationMs": 3.599999997764826
+              },
+              {
+                "regionId": "796e04cc-a3de-46ee-a4d7-fcfc1668c858",
+                "durationMs": 3.699999999254942
+              },
+              {
+                "regionId": "9e48c0d1-31b1-4769-9f51-30a398315512",
+                "durationMs": 3
+              },
+              {
+                "regionId": "31e5dd6f-c896-496c-af53-f953ce6c72da",
+                "durationMs": 2.699999999254942
+              },
+              {
+                "regionId": "8fb8113f-cc23-4ab5-85cf-8c9161673f5e",
+                "durationMs": 2.300000000745058
+              },
+              {
+                "regionId": "cfdbbaaf-2566-4e08-a6a3-074bfd1b2edb",
+                "durationMs": 3.300000000745058
+              },
+              {
+                "regionId": "f353a047-83cb-4699-a19c-10cab396cb6c",
+                "durationMs": 2.300000000745058
+              },
+              {
+                "regionId": "1fd171bc-5355-4e61-86a4-74625f7f9e8b",
+                "durationMs": 3.600000001490116
+              },
+              {
+                "regionId": "9fb5123e-6cc0-44a1-b98a-79a04f627a7b",
+                "durationMs": 3.800000000745058
+              },
+              {
+                "regionId": "d69d7cb1-6aad-4e3d-8b7b-349c8b809711",
+                "durationMs": 3.199999999254942
+              },
+              {
+                "regionId": "aa027133-01e9-488d-9813-36a25b23dc54",
+                "durationMs": 4.699999999254942
+              },
+              {
+                "regionId": "209dc046-8acc-4e04-a885-94ed9ca9fdfa",
+                "durationMs": 3.699999999254942
+              },
+              {
+                "regionId": "a8fd88e3-2e40-4f89-9ef7-83ce0c21a0b9",
+                "durationMs": 4.800000000745058
+              },
+              {
+                "regionId": "587916b7-47dc-4f79-9f4d-0d14cdc33b86",
+                "durationMs": 3.699999999254942
+              }
+            ],
+            "chunkBatchSize": 24,
+            "chunks": [
+              {
+                "chunkIndex": 0,
+                "chunkSize": 20,
+                "regionIds": [
+                  "80ba90e6-9daf-468d-bf20-e5207cbdd1e3",
+                  "11a4d0fe-514a-4c60-a809-e2c40102cfb2",
+                  "4038493b-0ead-4430-9a2f-25d2f454b6f8",
+                  "c336cda5-bc53-4504-9d1a-9c4875da0e2c",
+                  "793f49b4-67aa-4303-aa40-5eb9b4041f65",
+                  "44f2424d-741d-4531-b590-0be72b8adba1",
+                  "627e8f9f-ffe9-4ce1-a175-179a6c586b14",
+                  "796e04cc-a3de-46ee-a4d7-fcfc1668c858",
+                  "9e48c0d1-31b1-4769-9f51-30a398315512",
+                  "31e5dd6f-c896-496c-af53-f953ce6c72da",
+                  "8fb8113f-cc23-4ab5-85cf-8c9161673f5e",
+                  "cfdbbaaf-2566-4e08-a6a3-074bfd1b2edb",
+                  "f353a047-83cb-4699-a19c-10cab396cb6c",
+                  "1fd171bc-5355-4e61-86a4-74625f7f9e8b",
+                  "9fb5123e-6cc0-44a1-b98a-79a04f627a7b",
+                  "d69d7cb1-6aad-4e3d-8b7b-349c8b809711",
+                  "aa027133-01e9-488d-9813-36a25b23dc54",
+                  "209dc046-8acc-4e04-a885-94ed9ca9fdfa",
+                  "a8fd88e3-2e40-4f89-9ef7-83ce0c21a0b9",
+                  "587916b7-47dc-4f79-9f4d-0d14cdc33b86"
+                ],
+                "decodeMode": "batch",
+                "decodeAccepted": 20,
+                "decodeSessionRunCount": 17,
+                "decodeSessionRunTotalMs": 10176.79999999702,
+                "decodeSteps": [
+                  {
+                    "step": 0,
+                    "activeCount": 20,
+                    "batchSize": 20,
+                    "compactFallback": false,
+                    "durationMs": 1540,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.800000000745058
+                  },
+                  {
+                    "step": 1,
+                    "activeCount": 20,
+                    "batchSize": 20,
+                    "compactFallback": false,
+                    "durationMs": 1485.5999999977648,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.400000002235174
+                  },
+                  {
+                    "step": 2,
+                    "activeCount": 18,
+                    "batchSize": 18,
+                    "compactFallback": false,
+                    "durationMs": 1186,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3
+                  },
+                  {
+                    "step": 3,
+                    "activeCount": 16,
+                    "batchSize": 16,
+                    "compactFallback": false,
+                    "durationMs": 1026.5999999977648,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.900000002235174
+                  },
+                  {
+                    "step": 4,
+                    "activeCount": 13,
+                    "batchSize": 13,
+                    "compactFallback": false,
+                    "durationMs": 850.8999999985099,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.5
+                  },
+                  {
+                    "step": 5,
+                    "activeCount": 10,
+                    "batchSize": 10,
+                    "compactFallback": false,
+                    "durationMs": 704.8000000007451,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.899999998509884
+                  },
+                  {
+                    "step": 6,
+                    "activeCount": 9,
+                    "batchSize": 9,
+                    "compactFallback": false,
+                    "durationMs": 645.3000000007451,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.699999999254942
+                  },
+                  {
+                    "step": 7,
+                    "activeCount": 8,
+                    "batchSize": 8,
+                    "compactFallback": false,
+                    "durationMs": 609.0999999977648,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.800000000745058
+                  },
+                  {
+                    "step": 8,
+                    "activeCount": 7,
+                    "batchSize": 7,
+                    "compactFallback": false,
+                    "durationMs": 533,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.900000002235174
+                  },
+                  {
+                    "step": 9,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 191.39999999850988,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.800000000745058
+                  },
+                  {
+                    "step": 10,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 190.10000000149012,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.899999998509884
+                  },
+                  {
+                    "step": 11,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 194.40000000223517,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.5
+                  },
+                  {
+                    "step": 12,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 197.90000000223517,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3
+                  },
+                  {
+                    "step": 13,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 204.90000000223517,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.899999998509884
+                  },
+                  {
+                    "step": 14,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 214.69999999925494,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.800000000745058
+                  },
+                  {
+                    "step": 15,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 199.39999999850988,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.699999999254942
+                  },
+                  {
+                    "step": 16,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 202.69999999925494,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.800000000745058
+                  }
+                ],
+                "fallbackRegions": [],
+                "encoderCache": false,
+                "decodeConfidenceAvg": 0.9247277693110746
+              }
+            ],
+            "colorDecodeMode": "reuse",
+            "colorBatchSize": 20,
+            "colorSessionRunCount": 0,
+            "colorSessionRunTotalMs": 0,
+            "colorTotalMs": 0,
+            "colorFallbackRegions": [],
+            "fallbackTriggerCount": 0,
+            "totalSessionRunCount": 17,
+            "totalSessionRunMs": 10176.79999999702
+          },
+          "ocrSummary": {
+            "stageMs": 10339.5,
+            "encoderCache": false,
+            "decodeSessionRunCount": 17,
+            "decodeSessionRunTotalMs": 10176.8,
+            "decodeStepCount": 17,
+            "encoderRunMs": 0,
+            "decoderRunMs": 0,
+            "gpuPostprocessStepCount": 17,
+            "postprocessMs": 54.3,
+            "colorDecodeMode": "reuse",
+            "colorTotalMs": 0,
+            "fallbackTriggerCount": 0
+          }
+        },
+        {
+          "runIndex": 2,
+          "isColdStart": false,
+          "totalMs": 13470.7,
+          "imageWidth": 1500,
+          "imageHeight": 1500,
+          "regionCount": 16,
+          "sourceCharCount": 113,
+          "sampleTexts": [
+            "わたし",
+            "天",
+            "わす",
+            "私があんたの",
+            "替えてあげたこと\n忘れないでよね…"
+          ],
+          "runtimeStages": [
+            {
+              "model": "detector",
+              "enabled": true,
+              "provider": "webgpu",
+              "detail": "detector 模型已加载 (webgpu)"
+            },
+            {
+              "model": "ocr",
+              "enabled": true,
+              "provider": "webgpu",
+              "detail": "ocr 模型已加载 (webgpu)"
+            },
+            {
+              "model": "inpaint",
+              "enabled": true,
+              "provider": "webgpu",
+              "detail": "inpaint 模型已加载 (webgpu)"
+            }
+          ],
+          "stageTimings": [
+            {
+              "stage": "preload",
+              "label": "加载检测模型",
+              "durationMs": 0
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 927.1
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 331.6
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 10094.2
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 1.5
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 192.5
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 85.6
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 1831.5
+            },
+            {
+              "stage": "parallel",
+              "label": "去字",
+              "durationMs": 1917.2
+            }
+          ],
+          "ocrDebug": {
+            "mode": "autoregressive",
+            "candidateCount": 20,
+            "preparedCount": 20,
+            "preprocessTotalMs": 71.59999999776483,
+            "preprocessPerRegionMs": [
+              {
+                "regionId": "8ad4f8aa-f062-41c6-9fea-2e6b8384f644",
+                "durationMs": 6.599999997764826
+              },
+              {
+                "regionId": "e12b9b27-700a-4485-b216-5275da2c4fcd",
+                "durationMs": 3.199999999254942
+              },
+              {
+                "regionId": "7480bc02-7a63-485b-a2d2-9bc82a512960",
+                "durationMs": 3.2000000029802322
+              },
+              {
+                "regionId": "192ff9d9-cadc-4ed9-95b3-bca2cbceb731",
+                "durationMs": 2.899999998509884
+              },
+              {
+                "regionId": "cc03475c-b932-48a2-aab4-057c7ffba20d",
+                "durationMs": 2.800000000745058
+              },
+              {
+                "regionId": "601e12ee-07e9-4fe2-ba97-3f15346d904c",
+                "durationMs": 3.099999997764826
+              },
+              {
+                "regionId": "7abb0a19-d1aa-4467-88d7-8ef1d2fbe132",
+                "durationMs": 4.300000000745058
+              },
+              {
+                "regionId": "5cf8b36c-73db-4272-80eb-8d8001106444",
+                "durationMs": 4
+              },
+              {
+                "regionId": "75336027-f8e3-4c72-8c4f-4bb548b5a5aa",
+                "durationMs": 3.100000001490116
+              },
+              {
+                "regionId": "040d4c93-dea0-48b9-a1e0-078827c3abb2",
+                "durationMs": 2.699999999254942
+              },
+              {
+                "regionId": "f746830d-a0c3-41ec-bb92-33a19d43d2d0",
+                "durationMs": 2.600000001490116
+              },
+              {
+                "regionId": "f7dffd5e-ca2c-4a05-bc36-aea965517351",
+                "durationMs": 3.7999999970197678
+              },
+              {
+                "regionId": "2168a2df-a308-4b77-b32a-5d1f3d474086",
+                "durationMs": 3
+              },
+              {
+                "regionId": "03fa6bbc-a7cd-4e0d-ac34-215d175b79c9",
+                "durationMs": 3
+              },
+              {
+                "regionId": "c96137e1-5603-4918-9201-0c65ad5462a4",
+                "durationMs": 3.7000000029802322
+              },
+              {
+                "regionId": "85c3af5d-b69c-4255-88ef-70be5f22a2b1",
+                "durationMs": 3.599999997764826
+              },
+              {
+                "regionId": "54810dc0-14cb-4d59-8bae-9e809940dd35",
+                "durationMs": 5
+              },
+              {
+                "regionId": "d055c891-1042-421c-b0ed-ce8920d9b5a4",
+                "durationMs": 3.300000000745058
+              },
+              {
+                "regionId": "bd109f83-be93-4120-b6eb-e2841f62551d",
+                "durationMs": 4.300000000745058
+              },
+              {
+                "regionId": "9923e526-ca22-48cd-89b2-a8cf87dbc2a8",
+                "durationMs": 3.399999998509884
+              }
+            ],
+            "chunkBatchSize": 24,
+            "chunks": [
+              {
+                "chunkIndex": 0,
+                "chunkSize": 20,
+                "regionIds": [
+                  "8ad4f8aa-f062-41c6-9fea-2e6b8384f644",
+                  "e12b9b27-700a-4485-b216-5275da2c4fcd",
+                  "7480bc02-7a63-485b-a2d2-9bc82a512960",
+                  "192ff9d9-cadc-4ed9-95b3-bca2cbceb731",
+                  "cc03475c-b932-48a2-aab4-057c7ffba20d",
+                  "601e12ee-07e9-4fe2-ba97-3f15346d904c",
+                  "7abb0a19-d1aa-4467-88d7-8ef1d2fbe132",
+                  "5cf8b36c-73db-4272-80eb-8d8001106444",
+                  "75336027-f8e3-4c72-8c4f-4bb548b5a5aa",
+                  "040d4c93-dea0-48b9-a1e0-078827c3abb2",
+                  "f746830d-a0c3-41ec-bb92-33a19d43d2d0",
+                  "f7dffd5e-ca2c-4a05-bc36-aea965517351",
+                  "2168a2df-a308-4b77-b32a-5d1f3d474086",
+                  "03fa6bbc-a7cd-4e0d-ac34-215d175b79c9",
+                  "c96137e1-5603-4918-9201-0c65ad5462a4",
+                  "85c3af5d-b69c-4255-88ef-70be5f22a2b1",
+                  "54810dc0-14cb-4d59-8bae-9e809940dd35",
+                  "d055c891-1042-421c-b0ed-ce8920d9b5a4",
+                  "bd109f83-be93-4120-b6eb-e2841f62551d",
+                  "9923e526-ca22-48cd-89b2-a8cf87dbc2a8"
+                ],
+                "decodeMode": "batch",
+                "decodeAccepted": 20,
+                "decodeSessionRunCount": 17,
+                "decodeSessionRunTotalMs": 9947.800000015646,
+                "decodeSteps": [
+                  {
+                    "step": 0,
+                    "activeCount": 20,
+                    "batchSize": 20,
+                    "compactFallback": false,
+                    "durationMs": 1448.4000000022352,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.199999999254942
+                  },
+                  {
+                    "step": 1,
+                    "activeCount": 20,
+                    "batchSize": 20,
+                    "compactFallback": false,
+                    "durationMs": 1320.5,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.2999999970197678
+                  },
+                  {
+                    "step": 2,
+                    "activeCount": 18,
+                    "batchSize": 18,
+                    "compactFallback": false,
+                    "durationMs": 1245.300000000745,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 4
+                  },
+                  {
+                    "step": 3,
+                    "activeCount": 16,
+                    "batchSize": 16,
+                    "compactFallback": false,
+                    "durationMs": 1018.3000000007451,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.899999998509884
+                  },
+                  {
+                    "step": 4,
+                    "activeCount": 13,
+                    "batchSize": 13,
+                    "compactFallback": false,
+                    "durationMs": 869.1000000014901,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.800000000745058
+                  },
+                  {
+                    "step": 5,
+                    "activeCount": 10,
+                    "batchSize": 10,
+                    "compactFallback": false,
+                    "durationMs": 689.1000000014901,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.800000000745058
+                  },
+                  {
+                    "step": 6,
+                    "activeCount": 9,
+                    "batchSize": 9,
+                    "compactFallback": false,
+                    "durationMs": 632.7000000029802,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.7999999970197678
+                  },
+                  {
+                    "step": 7,
+                    "activeCount": 8,
+                    "batchSize": 8,
+                    "compactFallback": false,
+                    "durationMs": 589.8999999985099,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.800000000745058
+                  },
+                  {
+                    "step": 8,
+                    "activeCount": 7,
+                    "batchSize": 7,
+                    "compactFallback": false,
+                    "durationMs": 512.9000000022352,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.7999999970197678
+                  },
+                  {
+                    "step": 9,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 201.10000000149012,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.800000000745058
+                  },
+                  {
+                    "step": 10,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 202.40000000223517,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.899999998509884
+                  },
+                  {
+                    "step": 11,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 196.40000000223517,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.7999999970197678
+                  },
+                  {
+                    "step": 12,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 203.5,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.5
+                  },
+                  {
+                    "step": 13,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 208.19999999925494,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.900000002235174
+                  },
+                  {
+                    "step": 14,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 211.79999999701977,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.5
+                  },
+                  {
+                    "step": 15,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 200.10000000149012,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3
+                  },
+                  {
+                    "step": 16,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 198.10000000149012,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 4.399999998509884
+                  }
+                ],
+                "fallbackRegions": [],
+                "encoderCache": false,
+                "decodeConfidenceAvg": 0.9247277693110746
+              }
+            ],
+            "colorDecodeMode": "reuse",
+            "colorBatchSize": 20,
+            "colorSessionRunCount": 0,
+            "colorSessionRunTotalMs": 0,
+            "colorTotalMs": 0,
+            "colorFallbackRegions": [],
+            "fallbackTriggerCount": 0,
+            "totalSessionRunCount": 17,
+            "totalSessionRunMs": 9947.800000015646
+          },
+          "ocrSummary": {
+            "stageMs": 10094.2,
+            "encoderCache": false,
+            "decodeSessionRunCount": 17,
+            "decodeSessionRunTotalMs": 9947.8,
+            "decodeStepCount": 17,
+            "encoderRunMs": 0,
+            "decoderRunMs": 0,
+            "gpuPostprocessStepCount": 17,
+            "postprocessMs": 53.2,
+            "colorDecodeMode": "reuse",
+            "colorTotalMs": 0,
+            "fallbackTriggerCount": 0
+          }
+        }
+      ],
+      "warmMedian": {
+        "totalMs": 13548.2,
+        "ocrStageMs": 10216.85,
+        "decodeSessionRunTotalMs": 10062.3
+      }
+    },
+    {
+      "mode": "new-split",
+      "extensionDir": "C:\\code\\ShinobuTranslator-dev\\dist",
+      "runs": [
+        {
+          "runIndex": 0,
+          "isColdStart": true,
+          "totalMs": 24046.2,
+          "imageWidth": 1500,
+          "imageHeight": 1500,
+          "regionCount": 16,
+          "sourceCharCount": 113,
+          "sampleTexts": [
+            "わたし",
+            "天",
+            "わす",
+            "私があんたの",
+            "替えてあげたこと\n忘れないでよね…"
+          ],
+          "runtimeStages": [
+            {
+              "model": "detector",
+              "enabled": true,
+              "provider": "webgpu",
+              "detail": "detector 模型已加载 (webgpu)"
+            },
+            {
+              "model": "ocr",
+              "enabled": true,
+              "provider": "webgpu",
+              "detail": "ocr 模型已加载 (webgpu)"
+            },
+            {
+              "model": "inpaint",
+              "enabled": true,
+              "provider": "webgpu",
+              "detail": "inpaint 模型已加载 (webgpu)"
+            }
+          ],
+          "stageTimings": [
+            {
+              "stage": "preload",
+              "label": "加载检测模型",
+              "durationMs": 985.7
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 3024.1
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 1445.6
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 15758
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 2.5
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 155.7
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 104.7
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 2559.9
+            },
+            {
+              "stage": "parallel",
+              "label": "去字",
+              "durationMs": 2664.7
+            }
+          ],
+          "ocrDebug": {
+            "mode": "autoregressive",
+            "candidateCount": 20,
+            "preparedCount": 20,
+            "preprocessTotalMs": 180.30000000074506,
+            "preprocessPerRegionMs": [
+              {
+                "regionId": "86e2b140-a06b-4445-bd25-79dec12cf14e",
+                "durationMs": 69.80000000074506
+              },
+              {
+                "regionId": "63ae317f-e7da-4e66-9e98-d31fe621c5b1",
+                "durationMs": 7
+              },
+              {
+                "regionId": "b6dddffe-a756-4cf9-ba29-736692e13401",
+                "durationMs": 7
+              },
+              {
+                "regionId": "9aaa6285-d8b2-4516-a3a2-b1d70cdb42f1",
+                "durationMs": 6
+              },
+              {
+                "regionId": "5d99a500-6fb4-4515-878e-e3e09d458d47",
+                "durationMs": 6.100000001490116
+              },
+              {
+                "regionId": "45717b01-f0f5-4817-91cf-0e0332962352",
+                "durationMs": 6.399999998509884
+              },
+              {
+                "regionId": "3877adef-933e-4c9a-8779-370ff5907eab",
+                "durationMs": 6.600000001490116
+              },
+              {
+                "regionId": "b9d556b7-d3d1-45d3-9bbc-e02d6b0da70e",
+                "durationMs": 7.699999999254942
+              },
+              {
+                "regionId": "4dfb99a3-7dda-46c4-b13f-fad7b9284dac",
+                "durationMs": 5.699999999254942
+              },
+              {
+                "regionId": "cdcb8bfa-3827-4c17-bed1-dd1fa50073ea",
+                "durationMs": 4
+              },
+              {
+                "regionId": "b318973d-b241-4288-b5e3-513c6d90e5d1",
+                "durationMs": 4.699999999254942
+              },
+              {
+                "regionId": "d7da8521-64cf-46df-be75-6214d68e4e0d",
+                "durationMs": 5.600000001490116
+              },
+              {
+                "regionId": "ca049cca-39fa-43c3-9c41-bded67a47052",
+                "durationMs": 3.600000001490116
+              },
+              {
+                "regionId": "31852946-658d-411b-9fc5-0e0be8182b39",
+                "durationMs": 4.899999998509884
+              },
+              {
+                "regionId": "78a6baa3-922d-4fe6-92a8-ccdbad94d974",
+                "durationMs": 5.099999997764826
+              },
+              {
+                "regionId": "f35a6e47-de35-44c3-b47b-d2e7658ae16a",
+                "durationMs": 6.300000000745058
+              },
+              {
+                "regionId": "7d182c07-67de-4424-ab71-3a10d7bc1a3f",
+                "durationMs": 6.300000000745058
+              },
+              {
+                "regionId": "7a59ddb6-f597-49d4-bae8-eaafa79934cf",
+                "durationMs": 4.800000000745058
+              },
+              {
+                "regionId": "64dc2772-5e9a-4c9c-a35f-f581015d7420",
+                "durationMs": 7
+              },
+              {
+                "regionId": "59d60274-04e9-4d9d-8ba9-b246f5910ee1",
+                "durationMs": 5.5
+              }
+            ],
+            "chunkBatchSize": 24,
+            "chunks": [
+              {
+                "chunkIndex": 0,
+                "chunkSize": 20,
+                "regionIds": [
+                  "86e2b140-a06b-4445-bd25-79dec12cf14e",
+                  "63ae317f-e7da-4e66-9e98-d31fe621c5b1",
+                  "b6dddffe-a756-4cf9-ba29-736692e13401",
+                  "9aaa6285-d8b2-4516-a3a2-b1d70cdb42f1",
+                  "5d99a500-6fb4-4515-878e-e3e09d458d47",
+                  "45717b01-f0f5-4817-91cf-0e0332962352",
+                  "3877adef-933e-4c9a-8779-370ff5907eab",
+                  "b9d556b7-d3d1-45d3-9bbc-e02d6b0da70e",
+                  "4dfb99a3-7dda-46c4-b13f-fad7b9284dac",
+                  "cdcb8bfa-3827-4c17-bed1-dd1fa50073ea",
+                  "b318973d-b241-4288-b5e3-513c6d90e5d1",
+                  "d7da8521-64cf-46df-be75-6214d68e4e0d",
+                  "ca049cca-39fa-43c3-9c41-bded67a47052",
+                  "31852946-658d-411b-9fc5-0e0be8182b39",
+                  "78a6baa3-922d-4fe6-92a8-ccdbad94d974",
+                  "f35a6e47-de35-44c3-b47b-d2e7658ae16a",
+                  "7d182c07-67de-4424-ab71-3a10d7bc1a3f",
+                  "7a59ddb6-f597-49d4-bae8-eaafa79934cf",
+                  "64dc2772-5e9a-4c9c-a35f-f581015d7420",
+                  "59d60274-04e9-4d9d-8ba9-b246f5910ee1"
+                ],
+                "decodeMode": "batch",
+                "decodeAccepted": 20,
+                "decodeSessionRunCount": 18,
+                "decodeSessionRunTotalMs": 14124.599999997765,
+                "decodeSteps": [
+                  {
+                    "step": 0,
+                    "activeCount": 20,
+                    "batchSize": 20,
+                    "compactFallback": false,
+                    "durationMs": 822.1999999992549,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 17.100000001490116
+                  },
+                  {
+                    "step": 1,
+                    "activeCount": 20,
+                    "batchSize": 20,
+                    "compactFallback": false,
+                    "durationMs": 609.6000000014901,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.5
+                  },
+                  {
+                    "step": 2,
+                    "activeCount": 18,
+                    "batchSize": 18,
+                    "compactFallback": false,
+                    "durationMs": 344.69999999925494,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.599999997764826
+                  },
+                  {
+                    "step": 3,
+                    "activeCount": 16,
+                    "batchSize": 16,
+                    "compactFallback": false,
+                    "durationMs": 306.1000000014901,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 4.099999997764826
+                  },
+                  {
+                    "step": 4,
+                    "activeCount": 13,
+                    "batchSize": 13,
+                    "compactFallback": false,
+                    "durationMs": 264.5999999977648,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.900000002235174
+                  },
+                  {
+                    "step": 5,
+                    "activeCount": 10,
+                    "batchSize": 10,
+                    "compactFallback": false,
+                    "durationMs": 218.30000000074506,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.5
+                  },
+                  {
+                    "step": 6,
+                    "activeCount": 9,
+                    "batchSize": 9,
+                    "compactFallback": false,
+                    "durationMs": 208.59999999776483,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.300000000745058
+                  },
+                  {
+                    "step": 7,
+                    "activeCount": 8,
+                    "batchSize": 8,
+                    "compactFallback": false,
+                    "durationMs": 209.39999999850988,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.800000000745058
+                  },
+                  {
+                    "step": 8,
+                    "activeCount": 7,
+                    "batchSize": 7,
+                    "compactFallback": false,
+                    "durationMs": 191.5,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.699999999254942
+                  },
+                  {
+                    "step": 9,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 122.20000000298023,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.7999999970197678
+                  },
+                  {
+                    "step": 10,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 127.70000000298023,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.699999999254942
+                  },
+                  {
+                    "step": 11,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 127.59999999776483,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3
+                  },
+                  {
+                    "step": 12,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 125.30000000074506,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3
+                  },
+                  {
+                    "step": 13,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 119.39999999850988,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3
+                  },
+                  {
+                    "step": 14,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 119.69999999925494,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3
+                  },
+                  {
+                    "step": 15,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 121.30000000074506,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.300000000745058
+                  },
+                  {
+                    "step": 16,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 120.69999999925494,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 4.300000000745058
+                  }
+                ],
+                "fallbackRegions": [],
+                "encoderCache": true,
+                "encoderRunMs": 9965.699999999255,
+                "decoderRunMs": 4158.89999999851,
+                "decodeConfidenceAvg": 0.9247277693110746
+              }
+            ],
+            "colorDecodeMode": "reuse",
+            "colorBatchSize": 20,
+            "colorSessionRunCount": 0,
+            "colorSessionRunTotalMs": 0,
+            "colorTotalMs": 0,
+            "colorFallbackRegions": [],
+            "fallbackTriggerCount": 0,
+            "totalSessionRunCount": 18,
+            "totalSessionRunMs": 14124.599999997765
+          },
+          "ocrSummary": {
+            "stageMs": 15758,
+            "encoderCache": true,
+            "decodeSessionRunCount": 18,
+            "decodeSessionRunTotalMs": 14124.6,
+            "decodeStepCount": 17,
+            "encoderRunMs": 9965.7,
+            "decoderRunMs": 4158.9,
+            "gpuPostprocessStepCount": 17,
+            "postprocessMs": 69.6,
+            "colorDecodeMode": "reuse",
+            "colorTotalMs": 0,
+            "fallbackTriggerCount": 0
+          }
+        },
+        {
+          "runIndex": 1,
+          "isColdStart": false,
+          "totalMs": 8217.2,
+          "imageWidth": 1500,
+          "imageHeight": 1500,
+          "regionCount": 16,
+          "sourceCharCount": 113,
+          "sampleTexts": [
+            "わたし",
+            "天",
+            "わす",
+            "私があんたの",
+            "替えてあげたこと\n忘れないでよね…"
+          ],
+          "runtimeStages": [
+            {
+              "model": "detector",
+              "enabled": true,
+              "provider": "webgpu",
+              "detail": "detector 模型已加载 (webgpu)"
+            },
+            {
+              "model": "ocr",
+              "enabled": true,
+              "provider": "webgpu",
+              "detail": "ocr 模型已加载 (webgpu)"
+            },
+            {
+              "model": "inpaint",
+              "enabled": true,
+              "provider": "webgpu",
+              "detail": "inpaint 模型已加载 (webgpu)"
+            }
+          ],
+          "stageTimings": [
+            {
+              "stage": "preload",
+              "label": "加载检测模型",
+              "durationMs": 0.1
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 962.1
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 332.4
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 4948.2
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 1
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 150.4
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 89.7
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 1726.6
+            },
+            {
+              "stage": "parallel",
+              "label": "去字",
+              "durationMs": 1816.3
+            }
+          ],
+          "ocrDebug": {
+            "mode": "autoregressive",
+            "candidateCount": 20,
+            "preparedCount": 20,
+            "preprocessTotalMs": 85.80000000074506,
+            "preprocessPerRegionMs": [
+              {
+                "regionId": "7b2d3b41-d7f8-4855-b4c7-3b4e3b122720",
+                "durationMs": 12.399999998509884
+              },
+              {
+                "regionId": "c585dea0-b4dc-43f6-a268-0cd79fe5b4de",
+                "durationMs": 3.900000002235174
+              },
+              {
+                "regionId": "cff4671a-beec-4ca0-ae89-031d800019d3",
+                "durationMs": 3.099999997764826
+              },
+              {
+                "regionId": "e93444ba-e2ad-4f8d-9396-131574a7d616",
+                "durationMs": 2.800000000745058
+              },
+              {
+                "regionId": "b1cb572a-d0a7-452d-8dde-b9df596276de",
+                "durationMs": 3.800000000745058
+              },
+              {
+                "regionId": "ec3b20a1-ed8e-4cd7-b924-19abb5301334",
+                "durationMs": 5.699999999254942
+              },
+              {
+                "regionId": "126d36d5-ea7d-41e0-8b6c-f2451253349c",
+                "durationMs": 6.300000000745058
+              },
+              {
+                "regionId": "3788704f-4492-40fb-b1c9-2ade00eb694f",
+                "durationMs": 4.099999997764826
+              },
+              {
+                "regionId": "63c53111-725d-4c79-8d2b-c409c721dd14",
+                "durationMs": 3
+              },
+              {
+                "regionId": "659f4c6b-60b8-4d9f-8a97-c3c1d1b5f733",
+                "durationMs": 2.800000000745058
+              },
+              {
+                "regionId": "4f6d41d4-81f9-4a84-af93-17dabb76de10",
+                "durationMs": 2.800000000745058
+              },
+              {
+                "regionId": "6f6c87bb-193e-472a-930d-3b83c63e565d",
+                "durationMs": 3.399999998509884
+              },
+              {
+                "regionId": "24a88d69-e995-428e-ab00-e4f2b2a19a87",
+                "durationMs": 3.300000000745058
+              },
+              {
+                "regionId": "b2eb8a88-c1e1-419a-ab89-cfb95b0a264b",
+                "durationMs": 3.699999999254942
+              },
+              {
+                "regionId": "dad1a534-e47b-4ce6-afb5-cbf2b0561722",
+                "durationMs": 3.7000000029802322
+              },
+              {
+                "regionId": "7e226f6d-8c52-4da4-a8ed-03d02bf8afe1",
+                "durationMs": 3.599999997764826
+              },
+              {
+                "regionId": "7639d159-58be-4cd5-a5b2-f7cb0922965f",
+                "durationMs": 5.600000001490116
+              },
+              {
+                "regionId": "3d7e6991-0036-4479-9ccb-c0c7957859ae",
+                "durationMs": 3.599999997764826
+              },
+              {
+                "regionId": "02b539c7-c839-4e4e-811e-1f9f1fc32eb8",
+                "durationMs": 4.100000001490116
+              },
+              {
+                "regionId": "8b3291ce-8b96-42af-ae53-61e31a6f3a33",
+                "durationMs": 4.100000001490116
+              }
+            ],
+            "chunkBatchSize": 24,
+            "chunks": [
+              {
+                "chunkIndex": 0,
+                "chunkSize": 20,
+                "regionIds": [
+                  "7b2d3b41-d7f8-4855-b4c7-3b4e3b122720",
+                  "c585dea0-b4dc-43f6-a268-0cd79fe5b4de",
+                  "cff4671a-beec-4ca0-ae89-031d800019d3",
+                  "e93444ba-e2ad-4f8d-9396-131574a7d616",
+                  "b1cb572a-d0a7-452d-8dde-b9df596276de",
+                  "ec3b20a1-ed8e-4cd7-b924-19abb5301334",
+                  "126d36d5-ea7d-41e0-8b6c-f2451253349c",
+                  "3788704f-4492-40fb-b1c9-2ade00eb694f",
+                  "63c53111-725d-4c79-8d2b-c409c721dd14",
+                  "659f4c6b-60b8-4d9f-8a97-c3c1d1b5f733",
+                  "4f6d41d4-81f9-4a84-af93-17dabb76de10",
+                  "6f6c87bb-193e-472a-930d-3b83c63e565d",
+                  "24a88d69-e995-428e-ab00-e4f2b2a19a87",
+                  "b2eb8a88-c1e1-419a-ab89-cfb95b0a264b",
+                  "dad1a534-e47b-4ce6-afb5-cbf2b0561722",
+                  "7e226f6d-8c52-4da4-a8ed-03d02bf8afe1",
+                  "7639d159-58be-4cd5-a5b2-f7cb0922965f",
+                  "3d7e6991-0036-4479-9ccb-c0c7957859ae",
+                  "02b539c7-c839-4e4e-811e-1f9f1fc32eb8",
+                  "8b3291ce-8b96-42af-ae53-61e31a6f3a33"
+                ],
+                "decodeMode": "batch",
+                "decodeAccepted": 20,
+                "decodeSessionRunCount": 18,
+                "decodeSessionRunTotalMs": 4783.5999999940395,
+                "decodeSteps": [
+                  {
+                    "step": 0,
+                    "activeCount": 20,
+                    "batchSize": 20,
+                    "compactFallback": false,
+                    "durationMs": 579.1000000014901,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.5
+                  },
+                  {
+                    "step": 1,
+                    "activeCount": 20,
+                    "batchSize": 20,
+                    "compactFallback": false,
+                    "durationMs": 469.5999999977648,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.900000002235174
+                  },
+                  {
+                    "step": 2,
+                    "activeCount": 18,
+                    "batchSize": 18,
+                    "compactFallback": false,
+                    "durationMs": 376.29999999701977,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.300000000745058
+                  },
+                  {
+                    "step": 3,
+                    "activeCount": 16,
+                    "batchSize": 16,
+                    "compactFallback": false,
+                    "durationMs": 303.9000000022352,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 4
+                  },
+                  {
+                    "step": 4,
+                    "activeCount": 13,
+                    "batchSize": 13,
+                    "compactFallback": false,
+                    "durationMs": 254.09999999776483,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.900000002235174
+                  },
+                  {
+                    "step": 5,
+                    "activeCount": 10,
+                    "batchSize": 10,
+                    "compactFallback": false,
+                    "durationMs": 222,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.899999998509884
+                  },
+                  {
+                    "step": 6,
+                    "activeCount": 9,
+                    "batchSize": 9,
+                    "compactFallback": false,
+                    "durationMs": 206.89999999850988,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.800000000745058
+                  },
+                  {
+                    "step": 7,
+                    "activeCount": 8,
+                    "batchSize": 8,
+                    "compactFallback": false,
+                    "durationMs": 205.19999999925494,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.300000000745058
+                  },
+                  {
+                    "step": 8,
+                    "activeCount": 7,
+                    "batchSize": 7,
+                    "compactFallback": false,
+                    "durationMs": 195.69999999925494,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.7000000029802322
+                  },
+                  {
+                    "step": 9,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 127.5,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.099999997764826
+                  },
+                  {
+                    "step": 10,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 121.40000000223517,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.900000002235174
+                  },
+                  {
+                    "step": 11,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 118,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.7999999970197678
+                  },
+                  {
+                    "step": 12,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 119,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.800000000745058
+                  },
+                  {
+                    "step": 13,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 122.69999999925494,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.800000000745058
+                  },
+                  {
+                    "step": 14,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 125.80000000074506,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.599999997764826
+                  },
+                  {
+                    "step": 15,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 118.60000000149012,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.699999999254942
+                  },
+                  {
+                    "step": 16,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 118.59999999776483,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.900000002235174
+                  }
+                ],
+                "fallbackRegions": [],
+                "encoderCache": true,
+                "encoderRunMs": 999.1999999992549,
+                "decoderRunMs": 3784.3999999947846,
+                "decodeConfidenceAvg": 0.9247277693110746
+              }
+            ],
+            "colorDecodeMode": "reuse",
+            "colorBatchSize": 20,
+            "colorSessionRunCount": 0,
+            "colorSessionRunTotalMs": 0,
+            "colorTotalMs": 0,
+            "colorFallbackRegions": [],
+            "fallbackTriggerCount": 0,
+            "totalSessionRunCount": 18,
+            "totalSessionRunMs": 4783.5999999940395
+          },
+          "ocrSummary": {
+            "stageMs": 4948.2,
+            "encoderCache": true,
+            "decodeSessionRunCount": 18,
+            "decodeSessionRunTotalMs": 4783.6,
+            "decodeStepCount": 17,
+            "encoderRunMs": 999.2,
+            "decoderRunMs": 3784.4,
+            "gpuPostprocessStepCount": 17,
+            "postprocessMs": 53.9,
+            "colorDecodeMode": "reuse",
+            "colorTotalMs": 0,
+            "fallbackTriggerCount": 0
+          }
+        },
+        {
+          "runIndex": 2,
+          "isColdStart": false,
+          "totalMs": 8194.9,
+          "imageWidth": 1500,
+          "imageHeight": 1500,
+          "regionCount": 16,
+          "sourceCharCount": 113,
+          "sampleTexts": [
+            "わたし",
+            "天",
+            "わす",
+            "私があんたの",
+            "替えてあげたこと\n忘れないでよね…"
+          ],
+          "runtimeStages": [
+            {
+              "model": "detector",
+              "enabled": true,
+              "provider": "webgpu",
+              "detail": "detector 模型已加载 (webgpu)"
+            },
+            {
+              "model": "ocr",
+              "enabled": true,
+              "provider": "webgpu",
+              "detail": "ocr 模型已加载 (webgpu)"
+            },
+            {
+              "model": "inpaint",
+              "enabled": true,
+              "provider": "webgpu",
+              "detail": "inpaint 模型已加载 (webgpu)"
+            }
+          ],
+          "stageTimings": [
+            {
+              "stage": "preload",
+              "label": "加载检测模型",
+              "durationMs": 0.1
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 958.9
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 314.7
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 4725.6
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 3
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 193.5
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 105.6
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 1888
+            },
+            {
+              "stage": "parallel",
+              "label": "去字",
+              "durationMs": 1993.6
+            }
+          ],
+          "ocrDebug": {
+            "mode": "autoregressive",
+            "candidateCount": 20,
+            "preparedCount": 20,
+            "preprocessTotalMs": 70.09999999776483,
+            "preprocessPerRegionMs": [
+              {
+                "regionId": "126aa65a-e6fe-4743-9e99-538f9aa0acc3",
+                "durationMs": 6
+              },
+              {
+                "regionId": "56e53dde-5cab-421d-8fb1-294694b36e87",
+                "durationMs": 2.7999999970197678
+              },
+              {
+                "regionId": "7886325d-f3bf-44c4-a588-b928652aec47",
+                "durationMs": 2.800000000745058
+              },
+              {
+                "regionId": "84e14d8a-5a81-486d-9300-a6aae20700dc",
+                "durationMs": 3.400000002235174
+              },
+              {
+                "regionId": "de287ac4-99e7-42d3-9ddd-26b02040c89e",
+                "durationMs": 2.899999998509884
+              },
+              {
+                "regionId": "55814b9d-929e-4e8e-8bbd-07de9f224bf9",
+                "durationMs": 3.100000001490116
+              },
+              {
+                "regionId": "b062df47-06ce-444f-a234-ed19449cd098",
+                "durationMs": 5.299999997019768
+              },
+              {
+                "regionId": "4dcd349c-1d99-4ac4-9843-2bebd2229d8b",
+                "durationMs": 4.200000002980232
+              },
+              {
+                "regionId": "d25cc228-2460-4100-bdf4-e3e0673c098b",
+                "durationMs": 2.599999997764826
+              },
+              {
+                "regionId": "5acd2978-fce3-4684-9334-d2dd6ea6b413",
+                "durationMs": 2.5
+              },
+              {
+                "regionId": "b4bd0232-2655-4289-8f15-9a247fab9ac0",
+                "durationMs": 2.699999999254942
+              },
+              {
+                "regionId": "22d19878-463a-4339-b86f-f46541223f1f",
+                "durationMs": 3.600000001490116
+              },
+              {
+                "regionId": "500b4cc3-26ca-4488-8fba-9f7aeb6a49c1",
+                "durationMs": 2.199999999254942
+              },
+              {
+                "regionId": "3f6d753a-ba73-46fb-9bba-d7aff5a04c49",
+                "durationMs": 3.800000000745058
+              },
+              {
+                "regionId": "3cec61d9-7cb5-4b11-8012-3b284de0ac44",
+                "durationMs": 4
+              },
+              {
+                "regionId": "16ebbaea-7c4a-4e44-9a5a-146095941598",
+                "durationMs": 3.300000000745058
+              },
+              {
+                "regionId": "e9ba847a-aee9-437f-912b-c4f9f9c35b3c",
+                "durationMs": 5.300000000745058
+              },
+              {
+                "regionId": "3f938d72-5d83-43c2-b335-48522e0dc5e5",
+                "durationMs": 3
+              },
+              {
+                "regionId": "45077c85-2623-49cb-a5e9-1d7fbc1d8704",
+                "durationMs": 3.099999997764826
+              },
+              {
+                "regionId": "f4a5d844-5487-4121-8e40-9895dcb2320f",
+                "durationMs": 3.5
+              }
+            ],
+            "chunkBatchSize": 24,
+            "chunks": [
+              {
+                "chunkIndex": 0,
+                "chunkSize": 20,
+                "regionIds": [
+                  "126aa65a-e6fe-4743-9e99-538f9aa0acc3",
+                  "56e53dde-5cab-421d-8fb1-294694b36e87",
+                  "7886325d-f3bf-44c4-a588-b928652aec47",
+                  "84e14d8a-5a81-486d-9300-a6aae20700dc",
+                  "de287ac4-99e7-42d3-9ddd-26b02040c89e",
+                  "55814b9d-929e-4e8e-8bbd-07de9f224bf9",
+                  "b062df47-06ce-444f-a234-ed19449cd098",
+                  "4dcd349c-1d99-4ac4-9843-2bebd2229d8b",
+                  "d25cc228-2460-4100-bdf4-e3e0673c098b",
+                  "5acd2978-fce3-4684-9334-d2dd6ea6b413",
+                  "b4bd0232-2655-4289-8f15-9a247fab9ac0",
+                  "22d19878-463a-4339-b86f-f46541223f1f",
+                  "500b4cc3-26ca-4488-8fba-9f7aeb6a49c1",
+                  "3f6d753a-ba73-46fb-9bba-d7aff5a04c49",
+                  "3cec61d9-7cb5-4b11-8012-3b284de0ac44",
+                  "16ebbaea-7c4a-4e44-9a5a-146095941598",
+                  "e9ba847a-aee9-437f-912b-c4f9f9c35b3c",
+                  "3f938d72-5d83-43c2-b335-48522e0dc5e5",
+                  "45077c85-2623-49cb-a5e9-1d7fbc1d8704",
+                  "f4a5d844-5487-4121-8e40-9895dcb2320f"
+                ],
+                "decodeMode": "batch",
+                "decodeAccepted": 20,
+                "decodeSessionRunCount": 18,
+                "decodeSessionRunTotalMs": 4578.79999999702,
+                "decodeSteps": [
+                  {
+                    "step": 0,
+                    "activeCount": 20,
+                    "batchSize": 20,
+                    "compactFallback": false,
+                    "durationMs": 375.0999999977648,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.699999999254942
+                  },
+                  {
+                    "step": 1,
+                    "activeCount": 20,
+                    "batchSize": 20,
+                    "compactFallback": false,
+                    "durationMs": 451.1000000014901,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.5
+                  },
+                  {
+                    "step": 2,
+                    "activeCount": 18,
+                    "batchSize": 18,
+                    "compactFallback": false,
+                    "durationMs": 389.1000000014901,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.800000000745058
+                  },
+                  {
+                    "step": 3,
+                    "activeCount": 16,
+                    "batchSize": 16,
+                    "compactFallback": false,
+                    "durationMs": 305.3999999985099,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3
+                  },
+                  {
+                    "step": 4,
+                    "activeCount": 13,
+                    "batchSize": 13,
+                    "compactFallback": false,
+                    "durationMs": 258.69999999925494,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.800000000745058
+                  },
+                  {
+                    "step": 5,
+                    "activeCount": 10,
+                    "batchSize": 10,
+                    "compactFallback": false,
+                    "durationMs": 222,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.899999998509884
+                  },
+                  {
+                    "step": 6,
+                    "activeCount": 9,
+                    "batchSize": 9,
+                    "compactFallback": false,
+                    "durationMs": 212.10000000149012,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.699999999254942
+                  },
+                  {
+                    "step": 7,
+                    "activeCount": 8,
+                    "batchSize": 8,
+                    "compactFallback": false,
+                    "durationMs": 204.40000000223517,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.699999999254942
+                  },
+                  {
+                    "step": 8,
+                    "activeCount": 7,
+                    "batchSize": 7,
+                    "compactFallback": false,
+                    "durationMs": 192.39999999850988,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.800000000745058
+                  },
+                  {
+                    "step": 9,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 112.30000000074506,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.800000000745058
+                  },
+                  {
+                    "step": 10,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 124.09999999776483,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.7000000029802322
+                  },
+                  {
+                    "step": 11,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 121.40000000223517,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.7999999970197678
+                  },
+                  {
+                    "step": 12,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 129.40000000223517,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.899999998509884
+                  },
+                  {
+                    "step": 13,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 123.5,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3
+                  },
+                  {
+                    "step": 14,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 129.19999999925494,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 2.699999999254942
+                  },
+                  {
+                    "step": 15,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 118.09999999776483,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 4.200000002980232
+                  },
+                  {
+                    "step": 16,
+                    "activeCount": 1,
+                    "batchSize": 1,
+                    "compactFallback": false,
+                    "durationMs": 123.59999999776483,
+                    "postprocessMode": "gpu",
+                    "postprocessMs": 3.800000000745058
+                  }
+                ],
+                "fallbackRegions": [],
+                "encoderCache": true,
+                "encoderRunMs": 986.8999999985099,
+                "decoderRunMs": 3591.89999999851,
+                "decodeConfidenceAvg": 0.9247277693110746
+              }
+            ],
+            "colorDecodeMode": "reuse",
+            "colorBatchSize": 20,
+            "colorSessionRunCount": 0,
+            "colorSessionRunTotalMs": 0,
+            "colorTotalMs": 0,
+            "colorFallbackRegions": [],
+            "fallbackTriggerCount": 0,
+            "totalSessionRunCount": 18,
+            "totalSessionRunMs": 4578.79999999702
+          },
+          "ocrSummary": {
+            "stageMs": 4725.6,
+            "encoderCache": true,
+            "decodeSessionRunCount": 18,
+            "decodeSessionRunTotalMs": 4578.8,
+            "decodeStepCount": 17,
+            "encoderRunMs": 986.9,
+            "decoderRunMs": 3591.9,
+            "gpuPostprocessStepCount": 17,
+            "postprocessMs": 51.8,
+            "colorDecodeMode": "reuse",
+            "colorTotalMs": 0,
+            "fallbackTriggerCount": 0
+          }
+        }
+      ],
+      "warmMedian": {
+        "totalMs": 8206.05,
+        "ocrStageMs": 4836.9,
+        "decodeSessionRunTotalMs": 4681.2
+      }
+    }
+  ],
+  "improvement": {
+    "totalMsSaved": 5342.15,
+    "totalPct": 39.43,
+    "totalSpeedup": 1.65,
+    "ocrStageMsSaved": 5379.95,
+    "ocrStagePct": 52.66,
+    "ocrStageSpeedup": 2.11,
+    "decodeSessionRunMsSaved": 5381.1,
+    "decodeSessionRunPct": 53.48,
+    "decodeSessionRunSpeedup": 2.15
+  }
+}

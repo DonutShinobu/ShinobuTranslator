@@ -1,0 +1,30 @@
+{
+  "id": "ocr-ar-path-optimization",
+  "name": "ocr-ar-path-optimization",
+  "title": "内置 OCR AR 路径优化",
+  "description": "",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "DonutShinobu",
+  "assignee": "DonutShinobu",
+  "createdAt": "2026-06-01",
+  "completedAt": "2026-06-01",
+  "branch": null,
+  "base_branch": "master",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "06-01-ocr-substage-benchmark",
+    "06-01-ocr-ar-structure-reuse",
+    "06-01-ocr-webgpu-ar-optimize"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

@@ -51,6 +51,7 @@ Thumbs.db
 *.bin
 
 # Model files (large, download separately)
+public/models/
 *.onnx
 
 # Test/output images (large files)

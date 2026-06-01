@@ -14,6 +14,10 @@ export type QuadPoint = {
 
 export type TextDirection = "h" | "v";
 
+export type LlmProvider = 'deepseek' | 'glm' | 'kimi' | 'minimax' | 'mimo' | 'openai' | 'custom';
+
+export type LlmAuthMode = 'api_key' | 'openai_oauth';
+
 export type TextRegion = {
   id: string;
   box: Rect;
@@ -37,7 +41,8 @@ export type PipelineConfig = {
   sourceLang: string;
   targetLang: string;
   translator: 'google_web' | 'llm';
-  llmProvider: 'deepseek' | 'glm' | 'kimi' | 'minimax' | 'mimo' | 'custom';
+  llmProvider: LlmProvider;
+  llmAuthMode: LlmAuthMode;
   llmBaseUrl: string;
   llmApiKey: string;
   llmModel: string;

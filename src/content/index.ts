@@ -2,6 +2,7 @@ import { shinobuBake, shinobuRender } from '../pipeline/bake';
 import { browserPlatform } from '../runtime/browserPlatform';
 import { twitterAdapter } from './adapters/twitter';
 import { pixivAdapter } from './adapters/pixiv';
+import { ehentaiAdapter } from './adapters/ehentai';
 import type { SiteAdapter } from './core/types';
 import { TranslatorCore } from './core/TranslatorCore';
 import { toErrorMessage } from '../shared/utils';
@@ -40,7 +41,7 @@ function createNullAdapter(): SiteAdapter {
   };
 }
 
-const adapters = [twitterAdapter, pixivAdapter];
+const adapters = [twitterAdapter, pixivAdapter, ehentaiAdapter];
 const adapter = adapters.find(a => a.match()) || createNullAdapter();
 const core = new TranslatorCore(adapter);
 core.start();

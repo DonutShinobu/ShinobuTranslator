@@ -405,6 +405,81 @@ html, body {
   cursor: not-allowed;
 }
 
+.auth-mode-field {
+  margin-bottom: 8px;
+}
+
+.oauth-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 6px 0;
+  padding: 6px 8px;
+  border: 1px solid oklch(0.90 0.006 350);
+  border-radius: var(--radius-sm);
+  background: oklch(0.985 0.004 350);
+}
+
+.oauth-card-authed {
+  border-color: var(--accent-muted);
+  background: var(--accent-soft);
+}
+
+.oauth-copy {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.oauth-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: oklch(0.72 0.01 350);
+  flex: 0 0 auto;
+}
+
+.oauth-dot-authed {
+  background: var(--accent);
+}
+
+.oauth-title {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.oauth-card-authed .oauth-title {
+  color: var(--accent-hover);
+}
+
+.oauth-action {
+  flex: 0 0 auto;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  background: var(--accent);
+  color: oklch(0.98 0.005 350);
+  font-size: 11.5px;
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease-out, opacity 0.15s ease-out;
+}
+
+.oauth-action:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.oauth-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* ── Status Bubble ── */
 .status-bubble {
   position: absolute;

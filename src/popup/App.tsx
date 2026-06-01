@@ -4,6 +4,8 @@ import {
   llmBuiltInProviderDefinitions,
   llmProviderOptions,
   normalizeSettings,
+  supportsLlmTemperatureControl,
+  type LlmAuthMode,
   type LlmProviderProfile,
   type LlmProvider,
   type ExtensionSettings,
@@ -13,6 +15,16 @@ import { sendRuntimeMessage } from '../shared/messages';
 type SaveStatus = {
   kind: 'idle' | 'saving' | 'success' | 'error';
   message: string;
+};
+
+type OpenAiOAuthViewState = {
+  loading: boolean;
+  busy: boolean;
+  authenticated: boolean;
+  pending: boolean;
+  email?: string;
+  planType?: string;
+  error: string;
 };
 
 const IconGitHub = () => (
@@ -96,6 +108,13 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<SaveStatus>({ kind: 'idle', message: '' });
   const [showDebugOptions, setShowDebugOptions] = useState(false);
+  const [openAiStatus, setOpenAiStatus] = useState<OpenAiOAuthViewState>({
+    loading: false,
+    busy: false,
+    authenticated: false,
+    pending: false,
+    error: '',
+  });
   const hasHydratedRef = useRef(false);
   const saveRequestIdRef = useRef(0);
 
@@ -168,10 +187,88 @@ export function App() {
     updateActiveLlmProfile({ temperature: Math.max(0, Math.min(parsed, 2)) });
   }
 
+  function applyOpenAiStatus(next: {
+    authenticated: boolean;
+    pending?: boolean;
+    email?: string;
+    planType?: string;
+    error?: string;
+  }): void {
+    setOpenAiStatus({
+      loading: false,
+      busy: false,
+      authenticated: next.authenticated,
+      pending: next.pending ?? false,
+      email: next.email,
+      planType: next.planType,
+      error: next.error ?? '',
+    });
+  }
+
+  async function refreshOpenAiOAuthStatus(): Promise<void> {
+    setOpenAiStatus((prev) => ({ ...prev, loading: true, error: '' }));
+    try {
+      const response = await sendRuntimeMessage({ type: 'mt:openai-oauth-status' });
+      if (!response.ok || response.type !== 'mt:openai-oauth-status') {
+        throw new Error(response.ok ? '读取 OpenAI 登录状态失败' : response.error);
+      }
+      applyOpenAiStatus(response.status);
+    } catch (error) {
+      setOpenAiStatus({
+        loading: false,
+        busy: false,
+        authenticated: false,
+        pending: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  async function loginOpenAiOAuth(): Promise<void> {
+    setOpenAiStatus((prev) => ({ ...prev, busy: true, error: '' }));
+    try {
+      const response = await sendRuntimeMessage({ type: 'mt:openai-oauth-login' });
+      if (!response.ok || response.type !== 'mt:openai-oauth-login') {
+        throw new Error(response.ok ? 'OpenAI 登录失败' : response.error);
+      }
+      applyOpenAiStatus(response.status);
+      setStatus({
+        kind: 'success',
+        message: response.status.authenticated ? 'OpenAI 已登录' : 'OpenAI 登录页已打开，请在新标签页完成授权',
+      });
+    } catch (error) {
+      setOpenAiStatus((prev) => ({
+        ...prev,
+        busy: false,
+        error: error instanceof Error ? error.message : String(error),
+      }));
+    }
+  }
+
+  async function logoutOpenAiOAuth(): Promise<void> {
+    setOpenAiStatus((prev) => ({ ...prev, busy: true, error: '' }));
+    try {
+      const response = await sendRuntimeMessage({ type: 'mt:openai-oauth-logout' });
+      if (!response.ok || response.type !== 'mt:openai-oauth-logout') {
+        throw new Error(response.ok ? 'OpenAI 退出登录失败' : response.error);
+      }
+      applyOpenAiStatus(response.status);
+      setStatus({ kind: 'success', message: 'OpenAI 已退出登录' });
+    } catch (error) {
+      setOpenAiStatus((prev) => ({
+        ...prev,
+        busy: false,
+        error: error instanceof Error ? error.message : String(error),
+      }));
+    }
+  }
+
   const currentProfile = settings.llmProfiles[settings.llmProvider];
   const currentProviderModels =
     settings.llmProvider === 'custom' ? [] : llmBuiltInProviderDefinitions[settings.llmProvider].models;
   const builtInCustomModelPlaceholder = currentProviderModels[0] ?? currentProfile.modelPreset;
+  const usesOpenAiOAuth = settings.llmProvider === 'openai' && currentProfile.authMode === 'openai_oauth';
+  const showTemperatureControl = supportsLlmTemperatureControl(settings);
 
   async function persistSettings(nextSettings: ExtensionSettings): Promise<void> {
     const requestId = saveRequestIdRef.current + 1;
@@ -209,6 +306,25 @@ export function App() {
 
     void persistSettings(settings);
   }, [loading, settings]);
+
+  useEffect(() => {
+    if (loading || !usesOpenAiOAuth) {
+      return;
+    }
+    void refreshOpenAiOAuthStatus();
+  }, [loading, usesOpenAiOAuth]);
+
+  useEffect(() => {
+    if (!usesOpenAiOAuth || !openAiStatus.pending) {
+      return;
+    }
+    const intervalId = window.setInterval(() => {
+      if (!openAiStatus.loading && !openAiStatus.busy) {
+        void refreshOpenAiOAuthStatus();
+      }
+    }, 2_000);
+    return () => window.clearInterval(intervalId);
+  }, [usesOpenAiOAuth, openAiStatus.pending, openAiStatus.loading, openAiStatus.busy]);
 
   return (
     <main className="popup">
@@ -420,6 +536,20 @@ export function App() {
                   </>
                 ) : (
                   <>
+                    {settings.llmProvider === 'openai' ? (
+                      <div className="auth-mode-field">
+                        <span className="field-label">认证方式</span>
+                        <SegmentedControl<LlmAuthMode>
+                          options={[
+                            { value: 'openai_oauth', label: 'OpenAI 登录' },
+                            { value: 'api_key', label: 'API Key' },
+                          ]}
+                          value={currentProfile.authMode}
+                          onChange={(value) => updateActiveLlmProfile({ authMode: value })}
+                          disabled={loading}
+                        />
+                      </div>
+                    ) : null}
                     <label className="field">
                       <span className="field-label">模型名称</span>
                       {currentProfile.useCustomModel ? (
@@ -453,29 +583,75 @@ export function App() {
                       />
                       <span className="checkbox-label">自定义模型</span>
                     </label>
+                    {usesOpenAiOAuth ? (
+                      <div className={`oauth-card${openAiStatus.authenticated ? ' oauth-card-authed' : ''}`}>
+                        <div className="oauth-copy">
+                          <span className={`oauth-dot${openAiStatus.authenticated ? ' oauth-dot-authed' : ''}`} />
+                          <div>
+                            <div className="oauth-title">
+                              {openAiStatus.loading
+                                ? '正在检查 OpenAI 登录'
+                                : openAiStatus.authenticated
+                                  ? openAiStatus.email ?? '已登录 OpenAI'
+                                  : openAiStatus.error
+                                    ? openAiStatus.error
+                                  : openAiStatus.pending
+                                    ? '等待 OpenAI 授权完成'
+                                  : '未登录 OpenAI'}
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          className="oauth-action"
+                          type="button"
+                          onClick={() => {
+                            void (
+                              openAiStatus.authenticated
+                                ? logoutOpenAiOAuth()
+                                : openAiStatus.pending
+                                  ? refreshOpenAiOAuthStatus()
+                                  : loginOpenAiOAuth()
+                            );
+                          }}
+                          disabled={loading || openAiStatus.loading || openAiStatus.busy}
+                        >
+                          {openAiStatus.busy
+                            ? '处理中...'
+                            : openAiStatus.authenticated
+                              ? '退出登录'
+                              : openAiStatus.pending
+                                ? '检查状态'
+                              : '登录 OpenAI'}
+                        </button>
+                      </div>
+                    ) : null}
                     <div className="field-row">
-                      <label className="field">
-                        <span className="field-label">API Key</span>
-                        <input
-                          type="password"
-                          value={currentProfile.apiKey}
-                          onChange={(event) => updateActiveLlmProfile({ apiKey: event.target.value })}
-                          disabled={loading}
-                          placeholder="sk-..."
-                        />
-                      </label>
-                      <label className="field">
-                        <span className="field-label">温度</span>
-                        <input
-                          type="number"
-                          min={0}
-                          max={2}
-                          step={0.1}
-                          value={currentProfile.temperature}
-                          onChange={(event) => updateTemperatureInput(event.target.value)}
-                          disabled={loading}
-                        />
-                      </label>
+                      {!usesOpenAiOAuth ? (
+                        <label className="field">
+                          <span className="field-label">API Key</span>
+                          <input
+                            type="password"
+                            value={currentProfile.apiKey}
+                            onChange={(event) => updateActiveLlmProfile({ apiKey: event.target.value })}
+                            disabled={loading}
+                            placeholder="sk-..."
+                          />
+                        </label>
+                      ) : null}
+                      {showTemperatureControl ? (
+                        <label className="field">
+                          <span className="field-label">温度</span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={2}
+                            step={0.1}
+                            value={currentProfile.temperature}
+                            onChange={(event) => updateTemperatureInput(event.target.value)}
+                            disabled={loading}
+                          />
+                        </label>
+                      ) : null}
                     </div>
                   </>
                 )}

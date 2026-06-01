@@ -28,6 +28,7 @@
   },
   "permissions": [
     "storage",
+    "tabs",
     "contextMenus",
     "declarativeNetRequest"
   ],

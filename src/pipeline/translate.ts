@@ -2,6 +2,10 @@ import type { PipelineConfig, TextRegion, TranslationDebugInfo } from '../types'
 import { LlmColumnsParseError, llmTranslate, llmTranslateRegions } from '../translators/llm';
 import { googleWebTranslate } from '../translators/googleWeb';
 
+function requiresPipelineLlmApiKey(config: PipelineConfig): boolean {
+  return !(config.llmProvider === 'openai' && config.llmAuthMode === 'openai_oauth');
+}
+
 async function translateOne(text: string, config: PipelineConfig): Promise<string> {
   if (!text.trim()) {
     return '';
@@ -11,11 +15,13 @@ async function translateOne(text: string, config: PipelineConfig): Promise<strin
     return googleWebTranslate(text, config.sourceLang, config.targetLang);
   }
 
-  if (!config.llmApiKey.trim()) {
+  if (requiresPipelineLlmApiKey(config) && !config.llmApiKey.trim()) {
     throw new Error('LLM 模式需要填写 API Key');
   }
 
   return llmTranslate({
+    provider: config.llmProvider,
+    authMode: config.llmAuthMode,
     baseUrl: config.llmBaseUrl,
     apiKey: config.llmApiKey,
     model: config.llmModel,
@@ -40,7 +46,7 @@ export async function runTranslate(regions: TextRegion[], config: PipelineConfig
   }
 
   if (config.translator === 'llm') {
-    if (!config.llmApiKey.trim()) {
+    if (requiresPipelineLlmApiKey(config) && !config.llmApiKey.trim()) {
       throw new Error('LLM 模式需要填写 API Key');
     }
 
@@ -51,6 +57,8 @@ export async function runTranslate(regions: TextRegion[], config: PipelineConfig
     };
     try {
       const batchedResult = await llmTranslateRegions({
+        provider: config.llmProvider,
+        authMode: config.llmAuthMode,
         baseUrl: config.llmBaseUrl,
         apiKey: config.llmApiKey,
         model: config.llmModel,

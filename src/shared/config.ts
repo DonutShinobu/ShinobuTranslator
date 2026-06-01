@@ -3,9 +3,11 @@ import type { PipelineConfig } from '../types';
 export const extensionSettingsStorageKey = 'mangaTranslate.settings';
 
 export type LlmProvider = PipelineConfig['llmProvider'];
+export type LlmAuthMode = PipelineConfig['llmAuthMode'];
 export type BuiltInLlmProvider = Exclude<LlmProvider, 'custom'>;
 export type LlmProviderProfile = {
   apiKey: string;
+  authMode: LlmAuthMode;
   modelPreset: string;
   modelCustom: string;
   useCustomModel: boolean;
@@ -45,6 +47,11 @@ export const llmBuiltInProviderDefinitions: Record<BuiltInLlmProvider, BuiltInPr
     baseUrl: 'https://api.mimo-v2.com/v1',
     models: ['MiMo-V2.5-Pro', 'MiMo-V2.5'],
   },
+  openai: {
+    label: 'OpenAI',
+    baseUrl: 'https://api.openai.com/v1',
+    models: ['gpt-5.4-mini', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-nano'],
+  },
 };
 
 export const llmProviderOptions: Array<{ value: LlmProvider; label: string }> = [
@@ -53,13 +60,22 @@ export const llmProviderOptions: Array<{ value: LlmProvider; label: string }> = 
   { value: 'kimi', label: 'Kimi (Moonshot)' },
   { value: 'minimax', label: 'MiniMax' },
   { value: 'mimo', label: 'MiMo (小米)' },
+  { value: 'openai', label: 'OpenAI' },
   { value: 'custom', label: '自定义提供商' },
 ];
 
 const builtInProviders = Object.keys(llmBuiltInProviderDefinitions) as BuiltInLlmProvider[];
 
 function isLlmProvider(value: unknown): value is LlmProvider {
-  return value === 'deepseek' || value === 'glm' || value === 'kimi' || value === 'minimax' || value === 'mimo' || value === 'custom';
+  return (
+    value === 'deepseek' ||
+    value === 'glm' ||
+    value === 'kimi' ||
+    value === 'minimax' ||
+    value === 'mimo' ||
+    value === 'openai' ||
+    value === 'custom'
+  );
 }
 
 function isBuiltInProvider(provider: LlmProvider): provider is BuiltInLlmProvider {
@@ -88,6 +104,7 @@ function createDefaultProviderProfile(provider: LlmProvider): LlmProviderProfile
   if (isBuiltInProvider(provider)) {
     return {
       apiKey: '',
+      authMode: provider === 'openai' ? 'openai_oauth' : 'api_key',
       modelPreset: getDefaultModelPreset(provider),
       modelCustom: '',
       useCustomModel: false,
@@ -97,6 +114,7 @@ function createDefaultProviderProfile(provider: LlmProvider): LlmProviderProfile
   }
   return {
     apiKey: '',
+    authMode: 'api_key',
     modelPreset: '',
     modelCustom: '',
     useCustomModel: true,
@@ -112,6 +130,7 @@ function createDefaultLlmProfiles(): Record<LlmProvider, LlmProviderProfile> {
     kimi: createDefaultProviderProfile('kimi'),
     minimax: createDefaultProviderProfile('minimax'),
     mimo: createDefaultProviderProfile('mimo'),
+    openai: createDefaultProviderProfile('openai'),
     custom: createDefaultProviderProfile('custom'),
   };
 }
@@ -195,6 +214,13 @@ function normalizeTemperature(value: unknown, fallback: number): number {
   return Math.max(0, Math.min(value, 2));
 }
 
+function normalizeAuthMode(provider: LlmProvider, value: unknown): LlmAuthMode {
+  if (provider !== 'openai') {
+    return 'api_key';
+  }
+  return value === 'api_key' ? 'api_key' : 'openai_oauth';
+}
+
 function normalizeProviderProfile(
   provider: LlmProvider,
   value: unknown,
@@ -205,11 +231,13 @@ function normalizeProviderProfile(
     modelToggleInput: boolean | null;
     llmCustomBaseUrl: string;
     llmApiKey: string;
+    llmAuthMode: unknown;
   } | null
 ): LlmProviderProfile {
   const defaults = createDefaultProviderProfile(provider);
   const raw = value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
   const apiKey = normalizeProfileString(raw?.apiKey, defaults.apiKey);
+  const authMode = normalizeAuthMode(provider, raw?.authMode ?? legacy?.llmAuthMode ?? defaults.authMode);
   const modelPresetInput = normalizeProfileString(raw?.modelPreset, '');
   const modelCustomInput = normalizeProfileString(raw?.modelCustom, '');
   const useCustomModelInput = typeof raw?.useCustomModel === 'boolean' ? raw.useCustomModel : null;
@@ -235,6 +263,7 @@ function normalizeProviderProfile(
 
     return {
       apiKey: apiKey || (legacy?.llmApiKey ?? defaults.apiKey),
+      authMode,
       modelPreset: candidatePreset,
       modelCustom,
       useCustomModel,
@@ -245,6 +274,7 @@ function normalizeProviderProfile(
 
   return {
     apiKey: apiKey || (legacy?.llmApiKey ?? defaults.apiKey),
+    authMode,
     modelPreset: '',
     modelCustom: modelCustomInput || (legacy?.modelCustomInput ?? legacy?.modelFromLegacy ?? defaults.modelCustom),
     useCustomModel: true,
@@ -275,6 +305,7 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     modelToggleInput: typeof raw.llmUseCustomModel === 'boolean' ? raw.llmUseCustomModel : null,
     llmCustomBaseUrl: typeof raw.llmCustomBaseUrl === 'string' ? raw.llmCustomBaseUrl.trim() : '',
     llmApiKey: typeof raw.llmApiKey === 'string' ? raw.llmApiKey.trim() : defaultExtensionSettings.llmProfiles[provider].apiKey,
+    llmAuthMode: raw.llmAuthMode,
   };
   const rawProfiles = raw.llmProfiles && typeof raw.llmProfiles === 'object' ? (raw.llmProfiles as Record<string, unknown>) : {};
 
@@ -284,6 +315,7 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     kimi: normalizeProviderProfile('kimi', rawProfiles.kimi, provider === 'kimi' ? legacy : null),
     minimax: normalizeProviderProfile('minimax', rawProfiles.minimax, provider === 'minimax' ? legacy : null),
     mimo: normalizeProviderProfile('mimo', rawProfiles.mimo, provider === 'mimo' ? legacy : null),
+    openai: normalizeProviderProfile('openai', rawProfiles.openai, provider === 'openai' ? legacy : null),
     custom: normalizeProviderProfile('custom', rawProfiles.custom, provider === 'custom' ? legacy : null),
   };
   const showElapsedTime = sanitizeBoolean(raw.showElapsedTime, defaultExtensionSettings.showElapsedTime);
@@ -326,6 +358,16 @@ export function resolveLlmModel(settings: ExtensionSettings): string {
   return customModel;
 }
 
+export function requiresLlmApiKey(settings: ExtensionSettings): boolean {
+  const profile = settings.llmProfiles[settings.llmProvider];
+  return !(settings.llmProvider === 'openai' && profile.authMode === 'openai_oauth');
+}
+
+export function supportsLlmTemperatureControl(settings: ExtensionSettings): boolean {
+  const profile = settings.llmProfiles[settings.llmProvider];
+  return !(settings.llmProvider === 'openai' && profile.authMode === 'openai_oauth');
+}
+
 export function validateSettings(settings: ExtensionSettings): string | null {
   if (settings.translator !== 'llm') {
     return null;
@@ -340,6 +382,9 @@ export function validateSettings(settings: ExtensionSettings): string | null {
   if (settings.llmProvider === 'custom' && !profile.customBaseUrl.trim()) {
     return '自定义提供商 Base URL 不能为空';
   }
+  if (requiresLlmApiKey(settings) && !profile.apiKey.trim()) {
+    return 'LLM 模式需要填写 API Key';
+  }
 
   return null;
 }
@@ -351,6 +396,7 @@ export function toPipelineConfig(settings: ExtensionSettings): PipelineConfig {
     targetLang: settings.targetLang,
     translator: settings.translator,
     llmProvider: settings.llmProvider,
+    llmAuthMode: profile.authMode,
     llmBaseUrl: resolveLlmBaseUrl(settings),
     llmApiKey: profile.apiKey,
     llmModel: resolveLlmModel(settings),

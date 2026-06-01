@@ -19,6 +19,36 @@ type ChromeLike = {
     local?: {
       get?: (keys: string | string[] | Record<string, unknown>, callback: (items: Record<string, unknown>) => void) => void;
       set?: (items: Record<string, unknown>, callback: () => void) => void;
+      remove?: (keys: string | string[], callback: () => void) => void;
+    };
+  };
+  tabs?: {
+    create?: (
+      createProperties: {
+        url?: string;
+        active?: boolean;
+      },
+      callback?: (tab: { id?: number }) => void
+    ) => void;
+    remove?: (tabId: number, callback?: () => void) => void;
+    onUpdated?: {
+      addListener: (
+        listener: (
+          tabId: number,
+          changeInfo: {
+            url?: string;
+          },
+          tab: unknown
+        ) => void
+      ) => void;
+    };
+    onRemoved?: {
+      addListener: (
+        listener: (
+          tabId: number,
+          removeInfo: unknown
+        ) => void
+      ) => void;
     };
   };
 };

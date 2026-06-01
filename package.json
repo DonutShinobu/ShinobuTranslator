@@ -20,6 +20,8 @@
     "bench:browser-pipeline-smoke": "tsx benchmark/perf/src/run-browser-pipeline-smoke.ts",
     "bench:browser-x-compare": "tsx benchmark/perf/src/run-browser-x-compare.ts",
     "models:split-ocr": "node scripts/split-ocr-encoder-decoder.mjs",
+    "models:download": "node scripts/download-models.mjs",
+    "models:upload": "node scripts/upload-models.mjs",
     "color:diagnostic": "tsx benchmark/color/src/color-diagnostic.ts",
     "color:comparison": "tsx benchmark/color/src/color-comparison.ts",
     "bench:perf": "tsx benchmark/perf/src/run-perf.ts"

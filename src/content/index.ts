@@ -5,9 +5,18 @@ import { pixivAdapter } from './adapters/pixiv';
 import { ehentaiAdapter } from './adapters/ehentai';
 import type { SiteAdapter } from './core/types';
 import { TranslatorCore } from './core/TranslatorCore';
+import { getChromeApi } from '../shared/chrome';
 import { toErrorMessage } from '../shared/utils';
 
-(window as any).__shinobu_bake__ = shinobuBake;
+type ShinobuWindow = typeof window & {
+  __shinobu_bake__?: typeof shinobuBake;
+};
+
+(window as ShinobuWindow).__shinobu_bake__ = shinobuBake;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
 
 // Bridge for benchmark baking: listen for postMessage from main world
 window.addEventListener("message", async (event) => {
@@ -15,15 +24,15 @@ window.addEventListener("message", async (event) => {
     try {
       const result = await shinobuBake(event.data.dataUrl, browserPlatform);
       window.postMessage({ type: "__shinobu_bake_response__", result }, "*");
-    } catch (e: any) {
-      window.postMessage({ type: "__shinobu_bake_response__", error: e.message }, "*");
+    } catch (error: unknown) {
+      window.postMessage({ type: "__shinobu_bake_response__", error: toErrorMessage(error) }, "*");
     }
   } else if (event.data?.type === "__shinobu_render_request__") {
     try {
       const result = await shinobuRender(event.data.dataUrl, browserPlatform);
       window.postMessage({ type: "__shinobu_render_response__", result }, "*");
-    } catch (e: any) {
-      window.postMessage({ type: "__shinobu_render_response__", error: e.message }, "*");
+    } catch (error: unknown) {
+      window.postMessage({ type: "__shinobu_render_response__", error: toErrorMessage(error) }, "*");
     }
   }
 });
@@ -60,23 +69,38 @@ document.addEventListener('contextmenu', (event) => {
 }, true);
 
 // Listen for context-menu translate requests from background
-const chromeApi = (globalThis as any).chrome;
+const chromeApi = getChromeApi();
 if (chromeApi?.runtime?.onMessage?.addListener) {
-  chromeApi.runtime.onMessage.addListener((message: any, _sender: any, sendResponse: any) => {
-  if (message && typeof message === 'object' && (message as any).type === 'mt:context-menu-translate') {
-    if (contextMenuImage && contextMenuImage.isConnected) {
-      const img = contextMenuImage;
-      // Clear the reference so a stale image isn't reused
-      contextMenuImage = null;
-      core.contextMenuTranslate(img).then(() => {
-        sendResponse({ ok: true, type: 'mt:context-menu-translate' });
-      }).catch((err: unknown) => {
-        sendResponse({ ok: false, type: 'mt:context-menu-translate', error: toErrorMessage(err) });
-      });
-    } else {
-      sendResponse({ ok: false, type: 'mt:context-menu-translate', error: '未找到图片元素' });
+  chromeApi.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+    if (!isRecord(message) || typeof message.type !== 'string') {
+      return false;
     }
-    return true; // keep message channel open for async response
-  }
+
+    if (message.type === 'mt:context-menu-translate') {
+      if (contextMenuImage && contextMenuImage.isConnected) {
+        const img = contextMenuImage;
+        // Clear the reference so a stale image isn't reused.
+        contextMenuImage = null;
+        core.contextMenuTranslate(img).then(() => {
+          sendResponse({ ok: true, type: 'mt:context-menu-translate' });
+        }).catch((error: unknown) => {
+          sendResponse({ ok: false, type: 'mt:context-menu-translate', error: toErrorMessage(error) });
+        });
+      } else {
+        sendResponse({ ok: false, type: 'mt:context-menu-translate', error: '未找到图片元素' });
+      }
+      return true;
+    }
+
+    if (message.type === 'mt:start-screenshot-translate') {
+      core.startScreenshotTranslate().then(() => {
+        sendResponse({ ok: true, type: 'mt:start-screenshot-translate' });
+      }).catch((error: unknown) => {
+        sendResponse({ ok: false, type: 'mt:start-screenshot-translate', error: toErrorMessage(error) });
+      });
+      return true;
+    }
+
+    return false;
   });
 }

@@ -17,6 +17,10 @@ export type DownloadImageMessage = {
   imageUrl: string;
 };
 
+export type CaptureVisibleTabMessage = {
+  type: 'mt:capture-visible-tab';
+};
+
 export type OpenAiOAuthStatusMessage = {
   type: 'mt:openai-oauth-status';
 };
@@ -52,15 +56,22 @@ export type ContextMenuTranslateMessage = {
   type: 'mt:context-menu-translate';
 };
 
+/** Sent from background to content script when user clicks "截图翻译" in context menu. */
+export type StartScreenshotTranslateMessage = {
+  type: 'mt:start-screenshot-translate';
+};
+
 export type RuntimeMessage =
   | GetSettingsMessage
   | SetSettingsMessage
   | DownloadImageMessage
+  | CaptureVisibleTabMessage
   | OpenAiOAuthStatusMessage
   | OpenAiOAuthLoginMessage
   | OpenAiOAuthLogoutMessage
   | LlmChatCompletionsMessage
-  | ContextMenuTranslateMessage;
+  | ContextMenuTranslateMessage
+  | StartScreenshotTranslateMessage;
 
 export type RuntimeSuccessResponse =
   | {
@@ -76,6 +87,13 @@ export type RuntimeSuccessResponse =
   | {
       ok: true;
       type: 'mt:download-image';
+      base64: string;
+      contentType: string;
+      sourceUrl: string;
+    }
+  | {
+      ok: true;
+      type: 'mt:capture-visible-tab';
       base64: string;
       contentType: string;
       sourceUrl: string;
@@ -99,6 +117,14 @@ export type RuntimeSuccessResponse =
       ok: true;
       type: 'mt:llm-chat-completions';
       data: unknown;
+    }
+  | {
+      ok: true;
+      type: 'mt:context-menu-translate';
+    }
+  | {
+      ok: true;
+      type: 'mt:start-screenshot-translate';
     }
 
 export type RuntimeErrorResponse = {
@@ -129,9 +155,12 @@ export function isRuntimeMessage(value: unknown): value is RuntimeMessage {
     type === 'mt:get-settings' ||
     type === 'mt:set-settings' ||
     type === 'mt:download-image' ||
+    type === 'mt:capture-visible-tab' ||
     type === 'mt:openai-oauth-status' ||
     type === 'mt:openai-oauth-login' ||
     type === 'mt:openai-oauth-logout' ||
+    type === 'mt:context-menu-translate' ||
+    type === 'mt:start-screenshot-translate' ||
     isLlmChatCompletionsMessage(value)
   );
 }

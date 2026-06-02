@@ -1,3 +1,22 @@
+type ChromeContextMenuContext =
+  | 'all'
+  | 'page'
+  | 'frame'
+  | 'selection'
+  | 'link'
+  | 'editable'
+  | 'image'
+  | 'video'
+  | 'audio';
+
+export type ChromeMessageSender = {
+  tab?: {
+    id?: number;
+    windowId?: number;
+    url?: string;
+  };
+};
+
 type ChromeLike = {
   runtime?: {
     getURL?: (path: string) => string;
@@ -6,7 +25,7 @@ type ChromeLike = {
       addListener: (
         listener: (
           message: unknown,
-          sender: unknown,
+          sender: ChromeMessageSender,
           sendResponse: (response: unknown) => void
         ) => boolean | void
       ) => void;
@@ -23,6 +42,14 @@ type ChromeLike = {
     };
   };
   tabs?: {
+    sendMessage?: (tabId: number, message: unknown) => Promise<unknown>;
+    captureVisibleTab?: (
+      windowId: number | undefined,
+      options: {
+        format: 'png' | 'jpeg';
+      },
+      callback: (dataUrl?: string) => void
+    ) => void;
     create?: (
       createProperties: {
         url?: string;
@@ -50,6 +77,35 @@ type ChromeLike = {
         ) => void
       ) => void;
     };
+  };
+  contextMenus?: {
+    create?: (
+      createProperties: {
+        id: string;
+        title: string;
+        contexts?: ChromeContextMenuContext[];
+      },
+      callback?: () => void
+    ) => void;
+    removeAll?: (callback?: () => void) => void;
+    onClicked?: {
+      addListener: (
+        listener: (
+          info: {
+            menuItemId?: string | number;
+          },
+          tab?: {
+            id?: number;
+          }
+        ) => void
+      ) => void;
+    };
+  };
+  declarativeNetRequest?: {
+    updateDynamicRules?: (options: {
+      removeRuleIds: number[];
+      addRules: Array<Record<string, unknown>>;
+    }) => Promise<void>;
   };
 };
 

@@ -5,6 +5,7 @@ import {
   type ExtensionSettings,
 } from '../shared/config';
 import { getChromeApi } from '../shared/chrome';
+import type { ChromeMessageSender } from '../shared/chrome';
 import {
   isRuntimeMessage,
   type LlmChatCompletionRequestBody,
@@ -623,8 +624,8 @@ function getRefererForUrl(url: string): string | undefined {
 // Use declarativeNetRequest to set Referer for pximg.net requests,
 // since service worker fetch() cannot override Referer reliably.
 async function ensurePximgRefererRule(): Promise<void> {
-  const api = (globalThis as any).chrome?.declarativeNetRequest;
-  if (!api) return;
+  const api = getChromeApi()?.declarativeNetRequest;
+  if (!api?.updateDynamicRules) return;
   const RULE_ID = 1;
   try {
     await api.updateDynamicRules({
@@ -698,7 +699,52 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
-async function handleMessage(message: RuntimeMessage): Promise<RuntimeResponse> {
+function parseImageDataUrl(dataUrl: string): {
+  base64: string;
+  contentType: string;
+} {
+  const match = /^data:([^;,]+);base64,(.+)$/u.exec(dataUrl);
+  if (!match) {
+    throw new Error('截图数据格式无效');
+  }
+  return {
+    contentType: match[1] || 'image/png',
+    base64: match[2] || '',
+  };
+}
+
+function captureVisibleTab(sender: ChromeMessageSender): Promise<{
+  base64: string;
+  contentType: string;
+  sourceUrl: string;
+}> {
+  const chromeApi = getChromeApi();
+  if (!chromeApi?.tabs?.captureVisibleTab) {
+    return Promise.reject(new Error('当前浏览器不支持标签页截图'));
+  }
+
+  const windowId = typeof sender.tab?.windowId === 'number' ? sender.tab.windowId : undefined;
+  return new Promise((resolve, reject) => {
+    chromeApi.tabs?.captureVisibleTab?.(windowId, { format: 'png' }, (dataUrl?: string) => {
+      const lastError = chromeApi.runtime?.lastError;
+      if (lastError?.message) {
+        reject(new Error(lastError.message));
+        return;
+      }
+      if (!dataUrl) {
+        reject(new Error('截图返回为空'));
+        return;
+      }
+      const parsed = parseImageDataUrl(dataUrl);
+      resolve({
+        ...parsed,
+        sourceUrl: sender.tab?.url ?? '',
+      });
+    });
+  });
+}
+
+async function handleMessage(message: RuntimeMessage, sender: ChromeMessageSender): Promise<RuntimeResponse> {
   if (message.type === 'mt:get-settings') {
     const settings = await getSettings();
     return {
@@ -723,6 +769,15 @@ async function handleMessage(message: RuntimeMessage): Promise<RuntimeResponse> 
       ok: true,
       type: 'mt:download-image',
       ...downloaded,
+    };
+  }
+
+  if (message.type === 'mt:capture-visible-tab') {
+    const captured = await captureVisibleTab(sender);
+    return {
+      ok: true,
+      type: 'mt:capture-visible-tab',
+      ...captured,
     };
   }
 
@@ -760,9 +815,25 @@ async function handleMessage(message: RuntimeMessage): Promise<RuntimeResponse> 
 
   return {
     ok: false,
-    type: 'mt:get-settings',
+    type: message.type,
     error: '不支持的消息类型',
   };
+}
+
+function registerContextMenus(): void {
+  const chromeApi = getChromeApi();
+  if (!chromeApi?.contextMenus?.create) return;
+
+  chromeApi.contextMenus.create({
+    id: 'translate-image',
+    title: '翻译图片',
+    contexts: ['image'],
+  });
+  chromeApi.contextMenus.create({
+    id: 'translate-screenshot',
+    title: '截图翻译',
+    contexts: ['all'],
+  });
 }
 
 function initializeBackground(): void {
@@ -771,12 +842,12 @@ function initializeBackground(): void {
     return;
   }
 
-  chromeApi.runtime.onMessage.addListener((message: unknown, _sender: unknown, sendResponse: (response: unknown) => void) => {
+  chromeApi.runtime.onMessage.addListener((message: unknown, sender: ChromeMessageSender, sendResponse: (response: unknown) => void) => {
     if (!isRuntimeMessage(message)) {
       return false;
     }
 
-    void handleMessage(message)
+    void handleMessage(message, sender)
       .then((response) => {
         sendResponse(response);
       })
@@ -805,17 +876,21 @@ function initializeBackground(): void {
     .then((settings) => storageSet(extensionSettingsStorageKey, settings))
     .catch(() => undefined);
 
-  // Register context menu for image translation
-  const fullChrome = (globalThis as any).chrome;
-  if (fullChrome?.contextMenus?.create) {
-    fullChrome.contextMenus.create({
-      id: 'translate-image',
-      title: '翻译图片',
-      contexts: ['image'],
-    });
-    fullChrome.contextMenus.onClicked.addListener((info: any, tab: any) => {
-      if (info.menuItemId === 'translate-image' && tab?.id != null) {
-        fullChrome.tabs.sendMessage(tab.id, { type: 'mt:context-menu-translate' }).catch(() => {
+  // Register context menus for image and screenshot translation.
+  if (chromeApi.contextMenus?.create) {
+    if (chromeApi.contextMenus.removeAll) {
+      chromeApi.contextMenus.removeAll(() => registerContextMenus());
+    } else {
+      registerContextMenus();
+    }
+    chromeApi.contextMenus.onClicked?.addListener((info, tab) => {
+      if (typeof tab?.id !== 'number' || !chromeApi.tabs?.sendMessage) return;
+      if (info.menuItemId === 'translate-image') {
+        chromeApi.tabs.sendMessage(tab.id, { type: 'mt:context-menu-translate' }).catch(() => {
+          // content script may not be injected yet — ignore
+        });
+      } else if (info.menuItemId === 'translate-screenshot') {
+        chromeApi.tabs.sendMessage(tab.id, { type: 'mt:start-screenshot-translate' }).catch(() => {
           // content script may not be injected yet — ignore
         });
       }

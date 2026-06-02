@@ -1,8 +1,8 @@
 import {
   validateSettings,
   toPipelineConfig,
-  type ExtensionSettings,
 } from '../../shared/config';
+import type { ExtensionSettings } from '../../shared/config';
 import type {
   ImageTarget,
   PhotoState,
@@ -28,12 +28,17 @@ import {
   createUiElements,
   createContextMenuUi,
   createReadingModeBarUi,
+  createScreenshotResultUi,
   handleDebugDownload,
   injectStyles,
   positionUiAboveImage,
+  renderScreenshotResultUi,
   renderUi,
-  type UiElements,
+  requestScreenshotSelection,
 } from './ui';
+import type { ScreenshotResultUiElements, UiElements } from './ui';
+import { cropScreenshotToFile } from './screenshot';
+import type { ScreenshotSelection } from './screenshot';
 
 const photoStateCacheLimit = 200;
 
@@ -138,6 +143,15 @@ type MountedImage = {
   isContextMenu?: boolean;
 };
 
+type PipelineRunSettings = {
+  settings: ExtensionSettings;
+  showElapsedTime: boolean;
+  showStageTimingDetails: boolean;
+  showRuntimeStages: boolean;
+  showTypesetDebug: boolean;
+  enableDebugLog: boolean;
+};
+
 let runPipelineLoader: Promise<typeof import('../../pipeline/orchestrator')> | null = null;
 
 async function getRunPipeline(): Promise<typeof import('../../pipeline/orchestrator')['runPipeline']> {
@@ -148,12 +162,21 @@ async function getRunPipeline(): Promise<typeof import('../../pipeline/orchestra
   return module.runPipeline;
 }
 
+function waitForNextPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => resolve());
+    });
+  });
+}
+
 export class TranslatorCore {
   private adapter: SiteAdapter;
   private states = new Map<string, PhotoState>();
   private mounted = new Map<string, MountedImage>();
   private disposeObserver: (() => void) | null = null;
   private syncTimer: number | null = null;
+  private screenshotSelectionRunning = false;
 
   // Reading mode state
   private readingBarUi: ReadingModeBarUi | null = null;
@@ -269,6 +292,136 @@ export class TranslatorCore {
     renderUi(mounted.ui, state);
   }
 
+  private resetStateForPipeline(state: PhotoState): void {
+    state.status = 'running';
+    state.mode = 'original';
+    state.errorText = '';
+    state.elapsedText = '';
+    state.debugLogData = undefined;
+    state.stageText = '准备中';
+  }
+
+  private async loadPipelineRunSettings(state: PhotoState): Promise<PipelineRunSettings> {
+    const settingsResponse = await sendRuntimeMessage({ type: 'mt:get-settings' });
+    if (!settingsResponse.ok || settingsResponse.type !== 'mt:get-settings') {
+      throw new Error(settingsResponse.ok ? '读取配置失败' : settingsResponse.error);
+    }
+    const validationError = validateActiveSettings(settingsResponse.settings);
+    if (validationError) throw new Error(validationError);
+
+    const settings = settingsResponse.settings;
+    const showElapsedTime = settings.showElapsedTime === true;
+    const showStageTimingDetails = showElapsedTime && settings.showStageTimingDetails === true;
+    const showRuntimeStages = showStageTimingDetails;
+    const showTypesetDebug = settings.showTypesetDebug === true;
+    const showEraseDebug = settings.showEraseDebug === true;
+    const enableDebugLog = settings.enableDebugLog === true;
+    state.showTypesetDebug = showTypesetDebug;
+    state.showEraseDebug = showEraseDebug;
+    return {
+      settings,
+      showElapsedTime,
+      showStageTimingDetails,
+      showRuntimeStages,
+      showTypesetDebug,
+      enableDebugLog,
+    };
+  }
+
+  private async downloadImageFile(originalUrl: string): Promise<{
+    file: File;
+    blob: Blob;
+  }> {
+    const downloadResponse = await sendRuntimeMessage({
+      type: 'mt:download-image',
+      imageUrl: originalUrl,
+    });
+    if (!downloadResponse.ok || downloadResponse.type !== 'mt:download-image') {
+      throw new Error(downloadResponse.ok ? '下载图片失败' : downloadResponse.error);
+    }
+
+    const blob = base64ToBlob(downloadResponse.base64, downloadResponse.contentType);
+    const suffix = inferFileExtension(downloadResponse.contentType, downloadResponse.sourceUrl);
+    const file = new File([blob], `source.${suffix}`, { type: blob.type || 'image/jpeg' });
+    return {
+      file,
+      blob,
+    };
+  }
+
+  private updatePipelineProgress(
+    state: PhotoState,
+    progress: PipelineProgress,
+    onProgress: (stageText: string) => void,
+  ): void {
+    const stageLabel = stageLabelMap[progress.stage] ?? progress.stage;
+    if (progress.stage === 'parallel') {
+      state.stageText = progress.detail;
+    } else if (progress.stage === 'done') {
+      state.stageText = '完成';
+    } else {
+      state.stageText = `${stageLabel}中`;
+    }
+    onProgress(state.stageText);
+  }
+
+  private async runPipelineFromFile(options: {
+    state: PhotoState;
+    file: File;
+    runSettings: PipelineRunSettings;
+    runStartAt: number;
+    includeElapsedText: boolean;
+    onProgress: (stageText: string) => void;
+  }): Promise<void> {
+    const { state, file, runSettings, runStartAt, includeElapsedText, onProgress } = options;
+    const runPipeline = await getRunPipeline();
+    const artifacts = await runPipeline(file, toPipelineConfig(runSettings.settings), (progress: PipelineProgress) => {
+      this.updatePipelineProgress(state, progress, onProgress);
+    });
+
+    const translatedBlob = await canvasToBlob(artifacts.resultCanvas as HTMLCanvasElement);
+    const translatedUrl = URL.createObjectURL(translatedBlob);
+    if (state.translatedUrl) URL.revokeObjectURL(state.translatedUrl);
+    if (state.debugOriginalUrl) {
+      URL.revokeObjectURL(state.debugOriginalUrl);
+      state.debugOriginalUrl = undefined;
+    }
+    if (runSettings.showTypesetDebug && artifacts.debugOriginalCanvas) {
+      const debugBlob = await canvasToBlob(artifacts.debugOriginalCanvas as HTMLCanvasElement);
+      state.debugOriginalUrl = URL.createObjectURL(debugBlob);
+    }
+    const sourceImageDataUrl = runSettings.enableDebugLog
+      ? (() => {
+          const c = document.createElement('canvas');
+          c.width = artifacts.original.naturalWidth;
+          c.height = artifacts.original.naturalHeight;
+          const ctx = c.getContext('2d');
+          if (ctx) ctx.drawImage(artifacts.original as CanvasImageSource, 0, 0);
+          return c.toDataURL('image/png');
+        })()
+      : state.originalUrl;
+    state.debugLogData = runSettings.enableDebugLog
+      ? toTypesetDebugDownloadData(window.location.href, sourceImageDataUrl, artifacts)
+      : undefined;
+
+    state.translatedUrl = translatedUrl;
+    const totalDurationMs = performance.now() - runStartAt;
+    state.elapsedText = includeElapsedText && runSettings.showElapsedTime
+      ? formatElapsedText(
+          totalDurationMs,
+          artifacts.stageTimings,
+          artifacts.runtimeStages,
+          runSettings.showStageTimingDetails,
+          runSettings.showRuntimeStages,
+          artifacts.translationDebug,
+        )
+      : '';
+    state.stageText = '';
+    state.errorText = '';
+    state.mode = 'translated';
+    state.status = 'translated';
+  }
+
   private async handleTranslateClick(target: ImageTarget): Promise<void> {
     const { key } = target;
     const state = this.ensureState(key, target.originalUrl);
@@ -289,94 +442,24 @@ export class TranslatorCore {
       return;
     }
 
-    state.status = 'running';
-    state.mode = 'original';
-    state.errorText = '';
-    state.elapsedText = '';
-    state.debugLogData = undefined;
-    state.stageText = '准备中';
+    this.resetStateForPipeline(state);
     const runStartAt = performance.now();
     this.renderForKey(key);
 
     try {
-      const settingsResponse = await sendRuntimeMessage({ type: 'mt:get-settings' });
-      if (!settingsResponse.ok || settingsResponse.type !== 'mt:get-settings') {
-        throw new Error(settingsResponse.ok ? '读取配置失败' : settingsResponse.error);
-      }
-      const validationError = validateActiveSettings(settingsResponse.settings);
-      if (validationError) throw new Error(validationError);
-
-      const settings = settingsResponse.settings;
-      const showElapsedTime = settings.showElapsedTime === true;
-      const showStageTimingDetails = showElapsedTime && settings.showStageTimingDetails === true;
-      const showRuntimeStages = showStageTimingDetails;
-      const showTypesetDebug = settings.showTypesetDebug === true;
-      const showEraseDebug = settings.showEraseDebug === true;
-      const enableDebugLog = settings.enableDebugLog === true;
-      state.showTypesetDebug = showTypesetDebug;
-      state.showEraseDebug = showEraseDebug;
-
-      const downloadResponse = await sendRuntimeMessage({
-        type: 'mt:download-image',
-        imageUrl: state.originalUrl,
+      const runSettings = await this.loadPipelineRunSettings(state);
+      const source = await this.downloadImageFile(state.originalUrl);
+      await this.runPipelineFromFile({
+        state,
+        file: source.file,
+        runSettings,
+        runStartAt,
+        includeElapsedText: true,
+        onProgress: () => {
+          this.renderForKey(key);
+        },
       });
-      if (!downloadResponse.ok || downloadResponse.type !== 'mt:download-image') {
-        throw new Error(downloadResponse.ok ? '下载图片失败' : downloadResponse.error);
-      }
-
-      const blob = base64ToBlob(downloadResponse.base64, downloadResponse.contentType);
-      const suffix = inferFileExtension(downloadResponse.contentType, downloadResponse.sourceUrl);
-      const file = new File([blob], `source.${suffix}`, { type: blob.type || 'image/jpeg' });
-
-      const runPipeline = await getRunPipeline();
-      const artifacts = await runPipeline(file, toPipelineConfig(settings), (progress: PipelineProgress) => {
-        const stageLabel = stageLabelMap[progress.stage] ?? progress.stage;
-        if (progress.stage === 'parallel') {
-          state.stageText = progress.detail;
-        } else if (progress.stage === 'done') {
-          state.stageText = '完成';
-        } else {
-          state.stageText = `${stageLabel}中`;
-        }
-        this.renderForKey(key);
-      });
-
-      const translatedBlob = await canvasToBlob(artifacts.resultCanvas as HTMLCanvasElement);
-      const translatedUrl = URL.createObjectURL(translatedBlob);
-      if (state.translatedUrl) URL.revokeObjectURL(state.translatedUrl);
-      if (state.debugOriginalUrl) {
-        URL.revokeObjectURL(state.debugOriginalUrl);
-        state.debugOriginalUrl = undefined;
-      }
-      if (showTypesetDebug && artifacts.debugOriginalCanvas) {
-        const debugBlob = await canvasToBlob(artifacts.debugOriginalCanvas as HTMLCanvasElement);
-        state.debugOriginalUrl = URL.createObjectURL(debugBlob);
-      }
-      const sourceImageDataUrl = enableDebugLog
-        ? (() => {
-            const c = document.createElement('canvas');
-            c.width = artifacts.original.naturalWidth;
-            c.height = artifacts.original.naturalHeight;
-            const ctx = c.getContext('2d');
-            if (ctx) ctx.drawImage(artifacts.original as CanvasImageSource, 0, 0);
-            return c.toDataURL('image/png');
-          })()
-        : state.originalUrl;
-      state.debugLogData = enableDebugLog
-        ? toTypesetDebugDownloadData(window.location.href, sourceImageDataUrl, artifacts)
-        : undefined;
-
-      state.translatedUrl = translatedUrl;
-      const totalDurationMs = performance.now() - runStartAt;
-      state.elapsedText = showElapsedTime
-        ? formatElapsedText(totalDurationMs, artifacts.stageTimings, artifacts.runtimeStages, showStageTimingDetails, showRuntimeStages, artifacts.translationDebug)
-        : '';
-      state.stageText = '';
-      state.errorText = '';
-      state.mode = 'translated';
-      state.status = 'translated';
-
-      this.adapter.applyImage(target, translatedUrl);
+      if (state.translatedUrl) this.adapter.applyImage(target, state.translatedUrl);
       this.renderForKey(key);
     } catch (error) {
       state.status = 'error';
@@ -602,90 +685,23 @@ export class TranslatorCore {
     // Skip if already translated
     if (state.translatedUrl) return;
 
-    state.status = 'running';
-    state.mode = 'original';
-    state.errorText = '';
-    state.elapsedText = '';
-    state.debugLogData = undefined;
-    state.stageText = '准备中';
+    this.resetStateForPipeline(state);
 
     let downloadedBlob: Blob | null = null;
 
     try {
-      const settingsResponse = await sendRuntimeMessage({ type: 'mt:get-settings' });
-      if (!settingsResponse.ok || settingsResponse.type !== 'mt:get-settings') {
-        throw new Error(settingsResponse.ok ? '读取配置失败' : settingsResponse.error);
-      }
-      const validationError = validateActiveSettings(settingsResponse.settings);
-      if (validationError) throw new Error(validationError);
-
-      const settings = settingsResponse.settings;
-      const showTypesetDebug = settings.showTypesetDebug === true;
-      const showEraseDebug = settings.showEraseDebug === true;
-      const enableDebugLog = settings.enableDebugLog === true;
-      state.showTypesetDebug = showTypesetDebug;
-      state.showEraseDebug = showEraseDebug;
-
-      const downloadResponse = await sendRuntimeMessage({
-        type: 'mt:download-image',
-        imageUrl: originalUrl,
+      const runSettings = await this.loadPipelineRunSettings(state);
+      const source = await this.downloadImageFile(originalUrl);
+      downloadedBlob = source.blob;
+      await this.runPipelineFromFile({
+        state,
+        file: source.file,
+        runSettings,
+        runStartAt: performance.now(),
+        includeElapsedText: false,
+        onProgress,
       });
-      if (!downloadResponse.ok || downloadResponse.type !== 'mt:download-image') {
-        throw new Error(downloadResponse.ok ? '下载图片失败' : downloadResponse.error);
-      }
-
-      const blob = base64ToBlob(downloadResponse.base64, downloadResponse.contentType);
-      downloadedBlob = blob;
-      const suffix = inferFileExtension(downloadResponse.contentType, downloadResponse.sourceUrl);
-      const file = new File([blob], `source.${suffix}`, { type: blob.type || 'image/jpeg' });
-
-      const runPipeline = await getRunPipeline();
-      const artifacts = await runPipeline(file, toPipelineConfig(settings), (progress: PipelineProgress) => {
-        const stageLabel = stageLabelMap[progress.stage] ?? progress.stage;
-        if (progress.stage === 'parallel') {
-          state.stageText = progress.detail;
-          onProgress(progress.detail);
-        } else if (progress.stage === 'done') {
-          state.stageText = '完成';
-          onProgress('完成');
-        } else {
-          state.stageText = `${stageLabel}中`;
-          onProgress(`${stageLabel}中`);
-        }
-      });
-
-      const translatedBlob = await canvasToBlob(artifacts.resultCanvas as HTMLCanvasElement);
-      const translatedUrl = URL.createObjectURL(translatedBlob);
-      if (state.translatedUrl) URL.revokeObjectURL(state.translatedUrl);
-      if (state.debugOriginalUrl) {
-        URL.revokeObjectURL(state.debugOriginalUrl);
-        state.debugOriginalUrl = undefined;
-      }
-      if (showTypesetDebug && artifacts.debugOriginalCanvas) {
-        const debugBlob = await canvasToBlob(artifacts.debugOriginalCanvas as HTMLCanvasElement);
-        state.debugOriginalUrl = URL.createObjectURL(debugBlob);
-      }
-      const sourceImageDataUrl = enableDebugLog
-        ? (() => {
-            const c = document.createElement('canvas');
-            c.width = artifacts.original.naturalWidth;
-            c.height = artifacts.original.naturalHeight;
-            const ctx = c.getContext('2d');
-            if (ctx) ctx.drawImage(artifacts.original as CanvasImageSource, 0, 0);
-            return c.toDataURL('image/png');
-          })()
-        : state.originalUrl;
-      state.debugLogData = enableDebugLog
-        ? toTypesetDebugDownloadData(window.location.href, sourceImageDataUrl, artifacts)
-        : undefined;
-
-      state.translatedUrl = translatedUrl;
-      state.stageText = '';
-      state.errorText = '';
-      state.mode = 'translated';
-      state.status = 'translated';
-
-      this.adapter.applyImageByKey?.(key, translatedUrl);
+      if (state.translatedUrl) this.adapter.applyImageByKey?.(key, state.translatedUrl);
     } catch (error) {
       const errorMsg = toErrorMessage(error);
       if (downloadedBlob && (errorMsg.includes('未找到文本') || errorMsg.includes('未返回有效识别结果'))) {
@@ -812,94 +828,24 @@ export class TranslatorCore {
     const state = this.states.get(key);
     if (!state || state.status === 'running') return;
 
-    state.status = 'running';
-    state.mode = 'original';
-    state.errorText = '';
-    state.elapsedText = '';
-    state.debugLogData = undefined;
-    state.stageText = '准备中';
+    this.resetStateForPipeline(state);
     const runStartAt = performance.now();
     renderUi(ui, state);
 
     try {
-      const settingsResponse = await sendRuntimeMessage({ type: 'mt:get-settings' });
-      if (!settingsResponse.ok || settingsResponse.type !== 'mt:get-settings') {
-        throw new Error(settingsResponse.ok ? '读取配置失败' : settingsResponse.error);
-      }
-      const validationError = validateActiveSettings(settingsResponse.settings);
-      if (validationError) throw new Error(validationError);
-
-      const settings = settingsResponse.settings;
-      const showElapsedTime = settings.showElapsedTime === true;
-      const showStageTimingDetails = showElapsedTime && settings.showStageTimingDetails === true;
-      const showRuntimeStages = showStageTimingDetails;
-      const showTypesetDebug = settings.showTypesetDebug === true;
-      const showEraseDebug = settings.showEraseDebug === true;
-      const enableDebugLog = settings.enableDebugLog === true;
-      state.showTypesetDebug = showTypesetDebug;
-      state.showEraseDebug = showEraseDebug;
-
-      const downloadResponse = await sendRuntimeMessage({
-        type: 'mt:download-image',
-        imageUrl: state.originalUrl,
+      const runSettings = await this.loadPipelineRunSettings(state);
+      const source = await this.downloadImageFile(state.originalUrl);
+      await this.runPipelineFromFile({
+        state,
+        file: source.file,
+        runSettings,
+        runStartAt,
+        includeElapsedText: true,
+        onProgress: () => {
+          renderUi(ui, state);
+        },
       });
-      if (!downloadResponse.ok || downloadResponse.type !== 'mt:download-image') {
-        throw new Error(downloadResponse.ok ? '下载图片失败' : downloadResponse.error);
-      }
-
-      const blob = base64ToBlob(downloadResponse.base64, downloadResponse.contentType);
-      const suffix = inferFileExtension(downloadResponse.contentType, downloadResponse.sourceUrl);
-      const file = new File([blob], `source.${suffix}`, { type: blob.type || 'image/jpeg' });
-
-      const runPipeline = await getRunPipeline();
-      const artifacts = await runPipeline(file, toPipelineConfig(settings), (progress: PipelineProgress) => {
-        const stageLabel = stageLabelMap[progress.stage] ?? progress.stage;
-        if (progress.stage === 'parallel') {
-          state.stageText = progress.detail;
-        } else if (progress.stage === 'done') {
-          state.stageText = '完成';
-        } else {
-          state.stageText = `${stageLabel}中`;
-        }
-        renderUi(ui, state);
-      });
-
-      const translatedBlob = await canvasToBlob(artifacts.resultCanvas as HTMLCanvasElement);
-      const translatedUrl = URL.createObjectURL(translatedBlob);
-      if (state.translatedUrl) URL.revokeObjectURL(state.translatedUrl);
-      if (state.debugOriginalUrl) {
-        URL.revokeObjectURL(state.debugOriginalUrl);
-        state.debugOriginalUrl = undefined;
-      }
-      if (showTypesetDebug && artifacts.debugOriginalCanvas) {
-        const debugBlob = await canvasToBlob(artifacts.debugOriginalCanvas as HTMLCanvasElement);
-        state.debugOriginalUrl = URL.createObjectURL(debugBlob);
-      }
-      const sourceImageDataUrl = enableDebugLog
-        ? (() => {
-            const c = document.createElement('canvas');
-            c.width = artifacts.original.naturalWidth;
-            c.height = artifacts.original.naturalHeight;
-            const ctx = c.getContext('2d');
-            if (ctx) ctx.drawImage(artifacts.original as CanvasImageSource, 0, 0);
-            return c.toDataURL('image/png');
-          })()
-        : state.originalUrl;
-      state.debugLogData = enableDebugLog
-        ? toTypesetDebugDownloadData(window.location.href, sourceImageDataUrl, artifacts)
-        : undefined;
-
-      state.translatedUrl = translatedUrl;
-      const totalDurationMs = performance.now() - runStartAt;
-      state.elapsedText = showElapsedTime
-        ? formatElapsedText(totalDurationMs, artifacts.stageTimings, artifacts.runtimeStages, showStageTimingDetails, showRuntimeStages, artifacts.translationDebug)
-        : '';
-      state.stageText = '';
-      state.errorText = '';
-      state.mode = 'translated';
-      state.status = 'translated';
-
-      imageElement.src = translatedUrl;
+      if (state.translatedUrl) imageElement.src = state.translatedUrl;
       renderUi(ui, state);
     } catch (error) {
       state.status = 'error';
@@ -909,6 +855,139 @@ export class TranslatorCore {
       state.debugLogData = undefined;
       renderUi(ui, state);
     }
+  }
+
+  async startScreenshotTranslate(): Promise<void> {
+    if (this.screenshotSelectionRunning) return;
+    this.screenshotSelectionRunning = true;
+    let selection: ScreenshotSelection | null;
+    try {
+      selection = await requestScreenshotSelection();
+    } finally {
+      this.screenshotSelectionRunning = false;
+    }
+    if (!selection) return;
+
+    const key = `screenshot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const state = this.ensureState(key, `screenshot:${key}`);
+    const ui = createScreenshotResultUi(selection.documentRect);
+    document.body.appendChild(ui.host);
+    ui.host.style.visibility = 'hidden';
+
+    let disposed = false;
+    let detachDrag: (() => void) | null = null;
+    const render = (): void => {
+      if (!disposed) renderScreenshotResultUi(ui, state);
+    };
+    const cleanup = (): void => {
+      if (disposed) return;
+      disposed = true;
+      detachDrag?.();
+      this.disposeState(state);
+      this.states.delete(key);
+      ui.host.remove();
+    };
+
+    ui.closeButton.addEventListener('click', cleanup);
+    detachDrag = this.attachScreenshotResultDrag(ui);
+    this.resetStateForPipeline(state);
+    state.stageText = '截图中';
+    render();
+
+    try {
+      await waitForNextPaint();
+      const captureResponse = await sendRuntimeMessage({ type: 'mt:capture-visible-tab' });
+      if (!captureResponse.ok || captureResponse.type !== 'mt:capture-visible-tab') {
+        throw new Error(captureResponse.ok ? '截图失败' : captureResponse.error);
+      }
+      if (disposed) return;
+
+      ui.host.style.visibility = '';
+      state.stageText = '裁剪截图中';
+      render();
+      const screenshotDataUrl = `data:${captureResponse.contentType};base64,${captureResponse.base64}`;
+      const screenshotFile = await cropScreenshotToFile(screenshotDataUrl, selection.viewportRect, {
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+      if (disposed) return;
+
+      const runSettings = await this.loadPipelineRunSettings(state);
+      if (disposed) return;
+      await this.runPipelineFromFile({
+        state,
+        file: screenshotFile,
+        runSettings,
+        runStartAt: performance.now(),
+        includeElapsedText: true,
+        onProgress: render,
+      });
+      if (disposed) {
+        this.disposeState(state);
+        return;
+      }
+      render();
+    } catch (error) {
+      if (disposed) return;
+      ui.host.style.visibility = '';
+      state.status = 'error';
+      state.errorText = toErrorMessage(error);
+      state.stageText = '';
+      state.elapsedText = '';
+      state.debugLogData = undefined;
+      render();
+    }
+  }
+
+  private attachScreenshotResultDrag(ui: ScreenshotResultUiElements): () => void {
+    let dragging = false;
+    let pointerId: number | null = null;
+    let startClientX = 0;
+    let startClientY = 0;
+    let startLeft = 0;
+    let startTop = 0;
+
+    const onPointerDown = (event: PointerEvent): void => {
+      const target = event.target;
+      if (event.button !== 0 || (target instanceof Node && ui.closeButton.contains(target))) return;
+      event.preventDefault();
+      event.stopPropagation();
+      dragging = true;
+      pointerId = event.pointerId;
+      startClientX = event.clientX;
+      startClientY = event.clientY;
+      startLeft = Number.parseFloat(ui.host.style.left || '0');
+      startTop = Number.parseFloat(ui.host.style.top || '0');
+      ui.host.setPointerCapture(event.pointerId);
+    };
+
+    const onPointerMove = (event: PointerEvent): void => {
+      if (!dragging || pointerId !== event.pointerId) return;
+      event.preventDefault();
+      const nextLeft = startLeft + event.clientX - startClientX;
+      const nextTop = startTop + event.clientY - startClientY;
+      ui.host.style.left = `${Math.max(0, nextLeft)}px`;
+      ui.host.style.top = `${Math.max(0, nextTop)}px`;
+    };
+
+    const onPointerUp = (event: PointerEvent): void => {
+      if (!dragging || pointerId !== event.pointerId) return;
+      event.preventDefault();
+      dragging = false;
+      pointerId = null;
+      if (ui.host.hasPointerCapture(event.pointerId)) {
+        ui.host.releasePointerCapture(event.pointerId);
+      }
+    };
+
+    ui.host.addEventListener('pointerdown', onPointerDown);
+    ui.host.addEventListener('pointermove', onPointerMove);
+    ui.host.addEventListener('pointerup', onPointerUp);
+    return () => {
+      ui.host.removeEventListener('pointerdown', onPointerDown);
+      ui.host.removeEventListener('pointermove', onPointerMove);
+      ui.host.removeEventListener('pointerup', onPointerUp);
+    };
   }
 
   private teardownReadingBar(): void {

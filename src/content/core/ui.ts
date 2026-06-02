@@ -1,4 +1,6 @@
 import type { PhotoState, ReadingModeBarUi } from './types';
+import { normalizeScreenshotRect, toDocumentScreenshotRect } from './screenshot';
+import type { ScreenshotRect, ScreenshotSelection } from './screenshot';
 import { downloadJson } from './utils';
 
 const styleId = 'mt-overlay-style';
@@ -11,6 +13,13 @@ export type UiElements = {
   buttonLabel: HTMLSpanElement;
   detailLine: HTMLDivElement;
   debugDownloadButton: HTMLButtonElement;
+};
+
+export type ScreenshotResultUiElements = {
+  host: HTMLElement;
+  image: HTMLImageElement;
+  statusLine: HTMLDivElement;
+  closeButton: HTMLButtonElement;
 };
 
 const ICONS = {
@@ -265,6 +274,133 @@ export function injectStyles(): void {
     .mt-x-close-btn:hover {
       opacity: 0.8;
       background-color: oklch(0 0 0 / 0.1);
+    }
+
+    .mt-x-screenshot-select {
+      position: fixed;
+      inset: 0;
+      z-index: 2147483647;
+      background: oklch(0 0 0 / 0.18);
+      cursor: crosshair;
+      user-select: none;
+      touch-action: none;
+      font-family: "MTX-SourceHanSans-CN", "MTX-SourceHanSans-TW", system-ui, sans-serif;
+    }
+    .mt-x-screenshot-select-hint {
+      position: fixed;
+      left: 50%;
+      top: 16px;
+      transform: translateX(-50%);
+      display: inline-flex;
+      align-items: center;
+      min-height: 34px;
+      padding: 0 14px;
+      border: 1px solid oklch(1 0 0 / 0.35);
+      border-radius: 999px;
+      background: oklch(0.14 0.01 250 / 0.78);
+      color: oklch(0.96 0.01 250);
+      font-size: 13px;
+      line-height: 1;
+      box-shadow: 0 8px 24px oklch(0 0 0 / 0.28);
+      pointer-events: none;
+    }
+    .mt-x-screenshot-select-cancel {
+      position: fixed;
+      right: 16px;
+      top: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 56px;
+      height: 34px;
+      border: 1px solid oklch(1 0 0 / 0.35);
+      border-radius: 999px;
+      background: oklch(0.14 0.01 250 / 0.78);
+      color: oklch(0.96 0.01 250);
+      cursor: pointer;
+      font-size: 13px;
+      line-height: 1;
+      box-shadow: 0 8px 24px oklch(0 0 0 / 0.28);
+    }
+    .mt-x-screenshot-select-cancel:hover {
+      background: oklch(0.2 0.01 250 / 0.88);
+    }
+    .mt-x-screenshot-select-rect {
+      position: fixed;
+      display: none;
+      border: 2px solid oklch(0.83 0.16 190);
+      background: oklch(0.83 0.16 190 / 0.12);
+      box-shadow:
+        0 0 0 1px oklch(1 0 0 / 0.75),
+        0 0 0 9999px oklch(0 0 0 / 0.22);
+      pointer-events: none;
+    }
+    .mt-x-screenshot-result {
+      position: absolute;
+      z-index: 2147483646;
+      min-width: 40px;
+      min-height: 40px;
+      border: 1px solid oklch(1 0 0 / 0.38);
+      background: oklch(0.12 0.01 250 / 0.74);
+      box-shadow: 0 12px 32px oklch(0 0 0 / 0.32);
+      overflow: visible;
+      cursor: move;
+      user-select: none;
+      touch-action: none;
+      font-family: "MTX-SourceHanSans-CN", "MTX-SourceHanSans-TW", system-ui, sans-serif;
+    }
+    .mt-x-screenshot-result img {
+      display: none;
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+      pointer-events: none;
+      user-select: none;
+    }
+    .mt-x-screenshot-result[data-status='translated'] img {
+      display: block;
+    }
+    .mt-x-screenshot-result[data-status='translated'] .mt-x-screenshot-status {
+      display: none;
+    }
+    .mt-x-screenshot-status {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px;
+      color: oklch(0.96 0.01 250);
+      font-size: 13px;
+      line-height: 1.4;
+      text-align: center;
+      white-space: pre-line;
+      pointer-events: none;
+    }
+    .mt-x-screenshot-status[data-variant='error'] {
+      color: oklch(0.84 0.14 25);
+    }
+    .mt-x-screenshot-result-close {
+      position: absolute;
+      right: -10px;
+      top: -10px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      border: 1px solid oklch(1 0 0 / 0.42);
+      border-radius: 50%;
+      background: oklch(0.14 0.01 250 / 0.92);
+      color: oklch(0.96 0.01 250);
+      cursor: pointer;
+      font-size: 14px;
+      line-height: 1;
+      padding: 0;
+      box-shadow: 0 6px 18px oklch(0 0 0 / 0.28);
+    }
+    .mt-x-screenshot-result-close:hover {
+      background: oklch(0.22 0.01 250 / 0.96);
     }
 
     @keyframes mt-x-glow-sweep {
@@ -608,4 +744,162 @@ export function positionUiAboveImage(host: HTMLElement, img: HTMLImageElement, g
     window.removeEventListener('scroll', update);
     window.removeEventListener('resize', update);
   };
+}
+
+function setRectStyle(element: HTMLElement, rect: ScreenshotRect): void {
+  element.style.left = `${rect.left}px`;
+  element.style.top = `${rect.top}px`;
+  element.style.width = `${rect.width}px`;
+  element.style.height = `${rect.height}px`;
+}
+
+export function requestScreenshotSelection(): Promise<ScreenshotSelection | null> {
+  return new Promise((resolve) => {
+    const minSelectionSize = 12;
+    const host = document.createElement('div');
+    host.className = 'mt-x-screenshot-select';
+
+    const hint = document.createElement('div');
+    hint.className = 'mt-x-screenshot-select-hint';
+    hint.textContent = '拖拽选择截图区域';
+
+    const cancelButton = document.createElement('button');
+    cancelButton.className = 'mt-x-screenshot-select-cancel';
+    cancelButton.type = 'button';
+    cancelButton.textContent = '取消';
+
+    const selectionRect = document.createElement('div');
+    selectionRect.className = 'mt-x-screenshot-select-rect';
+
+    host.appendChild(hint);
+    host.appendChild(cancelButton);
+    host.appendChild(selectionRect);
+    document.body.appendChild(host);
+
+    let active = false;
+    let startX = 0;
+    let startY = 0;
+    let pointerId: number | null = null;
+    let settled = false;
+
+    const cleanup = (selection: ScreenshotSelection | null): void => {
+      if (settled) return;
+      settled = true;
+      document.removeEventListener('keydown', onKeydown, true);
+      host.remove();
+      resolve(selection);
+    };
+
+    const updateSelectionRect = (currentX: number, currentY: number): ScreenshotRect => {
+      const rect = normalizeScreenshotRect(startX, startY, currentX, currentY, window.innerWidth, window.innerHeight);
+      selectionRect.style.display = 'block';
+      setRectStyle(selectionRect, rect);
+      return rect;
+    };
+
+    const onPointerDown = (event: PointerEvent): void => {
+      if (event.button !== 0 || event.target === cancelButton) return;
+      event.preventDefault();
+      event.stopPropagation();
+      active = true;
+      pointerId = event.pointerId;
+      startX = Math.min(Math.max(event.clientX, 0), window.innerWidth);
+      startY = Math.min(Math.max(event.clientY, 0), window.innerHeight);
+      host.setPointerCapture(event.pointerId);
+      hint.textContent = '松开鼠标开始翻译';
+      updateSelectionRect(startX, startY);
+    };
+
+    const onPointerMove = (event: PointerEvent): void => {
+      if (!active || pointerId !== event.pointerId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const currentX = Math.min(Math.max(event.clientX, 0), window.innerWidth);
+      const currentY = Math.min(Math.max(event.clientY, 0), window.innerHeight);
+      updateSelectionRect(currentX, currentY);
+    };
+
+    const onPointerUp = (event: PointerEvent): void => {
+      if (!active || pointerId !== event.pointerId) return;
+      event.preventDefault();
+      event.stopPropagation();
+      active = false;
+      if (host.hasPointerCapture(event.pointerId)) {
+        host.releasePointerCapture(event.pointerId);
+      }
+      pointerId = null;
+
+      const currentX = Math.min(Math.max(event.clientX, 0), window.innerWidth);
+      const currentY = Math.min(Math.max(event.clientY, 0), window.innerHeight);
+      const viewportRect = updateSelectionRect(currentX, currentY);
+      if (viewportRect.width < minSelectionSize || viewportRect.height < minSelectionSize) {
+        hint.textContent = '区域太小，请重新选择';
+        selectionRect.style.display = 'none';
+        return;
+      }
+
+      cleanup({
+        viewportRect,
+        documentRect: toDocumentScreenshotRect(viewportRect, window.scrollX, window.scrollY),
+      });
+    };
+
+    const onKeydown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      cleanup(null);
+    };
+
+    cancelButton.addEventListener('click', () => cleanup(null));
+    host.addEventListener('pointerdown', onPointerDown);
+    host.addEventListener('pointermove', onPointerMove);
+    host.addEventListener('pointerup', onPointerUp);
+    document.addEventListener('keydown', onKeydown, true);
+  });
+}
+
+export function createScreenshotResultUi(rect: ScreenshotRect): ScreenshotResultUiElements {
+  const host = document.createElement('div');
+  host.className = 'mt-x-screenshot-result';
+  host.dataset.status = 'running';
+  setRectStyle(host, rect);
+
+  const image = document.createElement('img');
+  image.alt = '翻译截图';
+  image.draggable = false;
+
+  const statusLine = document.createElement('div');
+  statusLine.className = 'mt-x-screenshot-status';
+  statusLine.textContent = '准备中';
+
+  const closeButton = document.createElement('button');
+  closeButton.className = 'mt-x-screenshot-result-close';
+  closeButton.type = 'button';
+  closeButton.textContent = 'x';
+  closeButton.title = '关闭';
+
+  host.appendChild(image);
+  host.appendChild(statusLine);
+  host.appendChild(closeButton);
+  return { host, image, statusLine, closeButton };
+}
+
+export function renderScreenshotResultUi(
+  ui: ScreenshotResultUiElements,
+  state: PhotoState,
+): void {
+  ui.host.dataset.status = state.status === 'translated' ? 'translated' : state.status;
+  ui.statusLine.dataset.variant = state.status === 'error' ? 'error' : 'normal';
+  if (state.status === 'running') {
+    ui.statusLine.textContent = state.stageText || '翻译中...';
+  } else if (state.status === 'error') {
+    ui.statusLine.textContent = state.errorText.includes('未找到文本') ? '未找到文本' : `翻译失败：${state.errorText}`;
+  } else if (state.status === 'translated') {
+    ui.statusLine.textContent = '';
+  } else {
+    ui.statusLine.textContent = '准备中';
+  }
+  if (state.translatedUrl && ui.image.src !== state.translatedUrl) {
+    ui.image.src = state.translatedUrl;
+  }
 }

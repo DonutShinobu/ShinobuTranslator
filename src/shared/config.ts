@@ -12,7 +12,6 @@ export type LlmProviderProfile = {
   modelCustom: string;
   useCustomModel: boolean;
   customBaseUrl: string;
-  temperature: number;
 };
 
 type BuiltInProviderDefinition = {
@@ -109,7 +108,6 @@ function createDefaultProviderProfile(provider: LlmProvider): LlmProviderProfile
       modelCustom: '',
       useCustomModel: false,
       customBaseUrl: '',
-      temperature: 1,
     };
   }
   return {
@@ -119,7 +117,6 @@ function createDefaultProviderProfile(provider: LlmProvider): LlmProviderProfile
     modelCustom: '',
     useCustomModel: true,
     customBaseUrl: '',
-    temperature: 1,
   };
 }
 
@@ -148,6 +145,7 @@ export type ExtensionSettings = {
   showStageTimingDetails: boolean;
   showTypesetDebug: boolean;
   showEraseDebug: boolean;
+  debugOptionsExpanded: boolean;
   ocrEngine: OcrEngine;
   processMode: ProcessMode;
   enableDebugLog: boolean;
@@ -163,6 +161,7 @@ export const defaultExtensionSettings: ExtensionSettings = {
   showStageTimingDetails: false,
   showTypesetDebug: false,
   showEraseDebug: false,
+  debugOptionsExpanded: false,
   ocrEngine: 'builtin',
   processMode: 'translate',
   enableDebugLog: false,
@@ -207,13 +206,6 @@ function normalizeProfileString(value: unknown, fallback: string): string {
   return value.trim();
 }
 
-function normalizeTemperature(value: unknown, fallback: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return fallback;
-  }
-  return Math.max(0, Math.min(value, 2));
-}
-
 function normalizeAuthMode(provider: LlmProvider, value: unknown): LlmAuthMode {
   if (provider !== 'openai') {
     return 'api_key';
@@ -242,7 +234,6 @@ function normalizeProviderProfile(
   const modelCustomInput = normalizeProfileString(raw?.modelCustom, '');
   const useCustomModelInput = typeof raw?.useCustomModel === 'boolean' ? raw.useCustomModel : null;
   const customBaseUrlInput = normalizeProfileString(raw?.customBaseUrl, '');
-  const temperature = normalizeTemperature(raw?.temperature, defaults.temperature);
 
   if (isBuiltInProvider(provider)) {
     const modelSet = new Set(llmBuiltInProviderDefinitions[provider].models);
@@ -268,7 +259,6 @@ function normalizeProviderProfile(
       modelCustom,
       useCustomModel,
       customBaseUrl: '',
-      temperature,
     };
   }
 
@@ -279,7 +269,6 @@ function normalizeProviderProfile(
     modelCustom: modelCustomInput || (legacy?.modelCustomInput ?? legacy?.modelFromLegacy ?? defaults.modelCustom),
     useCustomModel: true,
     customBaseUrl: customBaseUrlInput || (legacy?.llmCustomBaseUrl ?? defaults.customBaseUrl),
-    temperature,
   };
 }
 
@@ -332,6 +321,7 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
       : false,
     showTypesetDebug,
     showEraseDebug: sanitizeBoolean(raw.showEraseDebug, defaultExtensionSettings.showEraseDebug),
+    debugOptionsExpanded: sanitizeBoolean(raw.debugOptionsExpanded, defaultExtensionSettings.debugOptionsExpanded),
     ocrEngine: normalizeOcrEngine(raw.ocrEngine),
     processMode: normalizeProcessMode(raw.processMode),
     enableDebugLog: sanitizeBoolean(raw.enableDebugLog, defaultExtensionSettings.enableDebugLog),
@@ -359,11 +349,6 @@ export function resolveLlmModel(settings: ExtensionSettings): string {
 }
 
 export function requiresLlmApiKey(settings: ExtensionSettings): boolean {
-  const profile = settings.llmProfiles[settings.llmProvider];
-  return !(settings.llmProvider === 'openai' && profile.authMode === 'openai_oauth');
-}
-
-export function supportsLlmTemperatureControl(settings: ExtensionSettings): boolean {
   const profile = settings.llmProfiles[settings.llmProvider];
   return !(settings.llmProvider === 'openai' && profile.authMode === 'openai_oauth');
 }
@@ -400,7 +385,6 @@ export function toPipelineConfig(settings: ExtensionSettings): PipelineConfig {
     llmBaseUrl: resolveLlmBaseUrl(settings),
     llmApiKey: profile.apiKey,
     llmModel: resolveLlmModel(settings),
-    llmTemperature: profile.temperature,
     typesetDebug: settings.showTypesetDebug,
     eraseDebug: settings.showEraseDebug,
     collectDebugLog: settings.showTypesetDebug || settings.enableDebugLog,

@@ -4,7 +4,6 @@ import {
   llmBuiltInProviderDefinitions,
   llmProviderOptions,
   normalizeSettings,
-  supportsLlmTemperatureControl,
   type LlmAuthMode,
   type LlmProviderProfile,
   type LlmProvider,
@@ -25,6 +24,14 @@ type OpenAiOAuthViewState = {
   email?: string;
   planType?: string;
   error: string;
+};
+
+type PersistSettingsOptions = {
+  silent?: boolean;
+};
+
+type SettingsUpdateOptions = {
+  showSaveStatus?: boolean;
 };
 
 const IconGitHub = () => (
@@ -127,7 +134,6 @@ export function App() {
   const [settings, setSettings] = useState<ExtensionSettings>(defaultExtensionSettings);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<SaveStatus>({ kind: 'idle', message: '' });
-  const [showDebugOptions, setShowDebugOptions] = useState(false);
   const [openAiStatus, setOpenAiStatus] = useState<OpenAiOAuthViewState>({
     loading: false,
     busy: false,
@@ -136,6 +142,7 @@ export function App() {
     error: '',
   });
   const hasHydratedRef = useRef(false);
+  const nextSaveShowsStatusRef = useRef(false);
   const saveRequestIdRef = useRef(0);
 
   useEffect(() => {
@@ -158,14 +165,24 @@ export function App() {
     void loadSettings();
   }, []);
 
-  function updateField<K extends keyof ExtensionSettings>(key: K, value: ExtensionSettings[K]): void {
+  function queueSaveStatus(options: SettingsUpdateOptions = {}): void {
+    nextSaveShowsStatusRef.current = nextSaveShowsStatusRef.current || options.showSaveStatus === true;
+  }
+
+  function updateField<K extends keyof ExtensionSettings>(
+    key: K,
+    value: ExtensionSettings[K],
+    options?: SettingsUpdateOptions,
+  ): void {
+    queueSaveStatus(options);
     setSettings((prev) => ({
       ...prev,
       [key]: value,
     }));
   }
 
-  function updateElapsedTime(checked: boolean): void {
+  function updateElapsedTime(checked: boolean, options?: SettingsUpdateOptions): void {
+    queueSaveStatus(options);
     setSettings((prev) => ({
       ...prev,
       showElapsedTime: checked,
@@ -173,7 +190,8 @@ export function App() {
     }));
   }
 
-  function updateActiveLlmProfile(patch: Partial<LlmProviderProfile>): void {
+  function updateActiveLlmProfile(patch: Partial<LlmProviderProfile>, options?: SettingsUpdateOptions): void {
+    queueSaveStatus(options);
     setSettings((prev) => ({
       ...prev,
       llmProfiles: {
@@ -196,15 +214,6 @@ export function App() {
 
   function updateUseCustomModel(checked: boolean): void {
     updateActiveLlmProfile({ useCustomModel: checked });
-  }
-
-  function updateTemperatureInput(value: string): void {
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed)) {
-      updateActiveLlmProfile({ temperature: 1 });
-      return;
-    }
-    updateActiveLlmProfile({ temperature: Math.max(0, Math.min(parsed, 2)) });
   }
 
   function applyOpenAiStatus(next: {
@@ -288,7 +297,6 @@ export function App() {
     settings.llmProvider === 'custom' ? [] : llmBuiltInProviderDefinitions[settings.llmProvider].models;
   const builtInCustomModelPlaceholder = currentProviderModels[0] ?? currentProfile.modelPreset;
   const usesOpenAiOAuth = settings.llmProvider === 'openai' && currentProfile.authMode === 'openai_oauth';
-  const showTemperatureControl = supportsLlmTemperatureControl(settings);
   const openAiStatusLabel = openAiStatus.loading
     ? '正在检查 OpenAI 登录'
     : openAiStatus.authenticated
@@ -299,10 +307,14 @@ export function App() {
           ? '等待 OpenAI 授权完成'
           : '未登录 OpenAI';
 
-  async function persistSettings(nextSettings: ExtensionSettings): Promise<void> {
+  async function persistSettings(nextSettings: ExtensionSettings, options: PersistSettingsOptions = {}): Promise<void> {
     const requestId = saveRequestIdRef.current + 1;
     saveRequestIdRef.current = requestId;
-    setStatus({ kind: 'saving', message: '正在自动保存...' });
+    if (options.silent) {
+      setStatus((prev) => (prev.kind === 'saving' || prev.kind === 'success' ? { kind: 'idle', message: '' } : prev));
+    } else {
+      setStatus({ kind: 'saving', message: '正在自动保存...' });
+    }
     try {
       const response = await sendRuntimeMessage({
         type: 'mt:set-settings',
@@ -311,7 +323,7 @@ export function App() {
       if (!response.ok || response.type !== 'mt:set-settings') {
         throw new Error(response.ok ? '自动保存失败' : response.error);
       }
-      if (saveRequestIdRef.current === requestId) {
+      if (!options.silent && saveRequestIdRef.current === requestId) {
         setStatus({ kind: 'success', message: '已自动保存' });
       }
     } catch (error) {
@@ -333,7 +345,9 @@ export function App() {
       return;
     }
 
-    void persistSettings(settings);
+    const showSaveStatus = nextSaveShowsStatusRef.current;
+    nextSaveShowsStatusRef.current = false;
+    void persistSettings(settings, { silent: !showSaveStatus });
   }, [loading, settings]);
 
   useEffect(() => {
@@ -475,35 +489,25 @@ export function App() {
                       <input
                         type="text"
                         value={currentProfile.customBaseUrl}
-                        onChange={(event) => updateActiveLlmProfile({ customBaseUrl: event.target.value })}
+                        onChange={(event) =>
+                          updateActiveLlmProfile({ customBaseUrl: event.target.value }, { showSaveStatus: true })
+                        }
                         disabled={loading}
                         placeholder="https://api.example.com/v1"
                       />
                     </label>
-                    <div className="field-row">
-                      <label className="field">
-                        <span className="field-label">模型名称</span>
-                        <input
-                          type="text"
-                          value={currentProfile.modelCustom}
-                          onChange={(event) => updateActiveLlmProfile({ modelCustom: event.target.value })}
-                          disabled={loading}
-                          placeholder="例如：your-model-name"
-                        />
-                      </label>
-                      <label className="field">
-                        <span className="field-label">温度</span>
-                        <input
-                          type="number"
-                          min={0}
-                          max={2}
-                          step={0.1}
-                          value={currentProfile.temperature}
-                          onChange={(event) => updateTemperatureInput(event.target.value)}
-                          disabled={loading}
-                        />
-                      </label>
-                    </div>
+                    <label className="field">
+                      <span className="field-label">模型名称</span>
+                      <input
+                        type="text"
+                        value={currentProfile.modelCustom}
+                        onChange={(event) =>
+                          updateActiveLlmProfile({ modelCustom: event.target.value }, { showSaveStatus: true })
+                        }
+                        disabled={loading}
+                        placeholder="例如：your-model-name"
+                      />
+                    </label>
                   </>
                 ) : (
                   <>
@@ -561,7 +565,9 @@ export function App() {
                           <input
                             type="text"
                             value={currentProfile.modelCustom}
-                            onChange={(event) => updateActiveLlmProfile({ modelCustom: event.target.value })}
+                            onChange={(event) =>
+                              updateActiveLlmProfile({ modelCustom: event.target.value }, { showSaveStatus: true })
+                            }
                             disabled={loading}
                             placeholder={builtInCustomModelPlaceholder}
                           />
@@ -589,34 +595,20 @@ export function App() {
                         </label>
                       </div>
                     </div>
-                    <div className="field-row">
-                      {!usesOpenAiOAuth ? (
-                        <label className="field">
-                          <span className="field-label">API Key</span>
-                          <input
-                            type="password"
-                            value={currentProfile.apiKey}
-                            onChange={(event) => updateActiveLlmProfile({ apiKey: event.target.value })}
-                            disabled={loading}
-                            placeholder="sk-..."
-                          />
-                        </label>
-                      ) : null}
-                      {showTemperatureControl ? (
-                        <label className="field">
-                          <span className="field-label">温度</span>
-                          <input
-                            type="number"
-                            min={0}
-                            max={2}
-                            step={0.1}
-                            value={currentProfile.temperature}
-                            onChange={(event) => updateTemperatureInput(event.target.value)}
-                            disabled={loading}
-                          />
-                        </label>
-                      ) : null}
-                    </div>
+                    {!usesOpenAiOAuth ? (
+                      <label className="field">
+                        <span className="field-label">API Key</span>
+                        <input
+                          type="password"
+                          value={currentProfile.apiKey}
+                          onChange={(event) =>
+                            updateActiveLlmProfile({ apiKey: event.target.value }, { showSaveStatus: true })
+                          }
+                          disabled={loading}
+                          placeholder="sk-..."
+                        />
+                      </label>
+                    ) : null}
                   </>
                 )}
               </section>
@@ -625,8 +617,8 @@ export function App() {
             <div className="debug-footer">
               <div className="debug-compact">
                 <button
-                  className={`debug-toggle${showDebugOptions ? ' debug-toggle-open' : ''}`}
-                  onClick={() => setShowDebugOptions((v) => !v)}
+                  className={`debug-toggle${settings.debugOptionsExpanded ? ' debug-toggle-open' : ''}`}
+                  onClick={() => updateField('debugOptionsExpanded', !settings.debugOptionsExpanded)}
                   type="button"
                 >
                   <IconDebug />
@@ -635,7 +627,7 @@ export function App() {
                     <path d="M1 1L5 5L9 1" />
                   </svg>
                 </button>
-                {showDebugOptions && (
+                {settings.debugOptionsExpanded && (
                   <div className="debug-row">
                     <label className="checkbox-row">
                       <input

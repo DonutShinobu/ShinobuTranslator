@@ -325,12 +325,29 @@ html, body {
 }
 
 .debug-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   align-items: center;
-  gap: 4px;
-  margin-top: 6px;
+  gap: 2px;
+  margin-top: 5px;
   animation: debugRowIn 0.2s ease-out;
+}
+
+.debug-row .checkbox-row {
+  justify-content: center;
+  gap: 3px;
+  padding: 2px 3px;
+}
+
+.debug-row .checkbox-row input[type='checkbox'] {
+  width: 13px;
+  height: 13px;
+  border-width: 1.3px;
+}
+
+.debug-row .checkbox-row .checkbox-label {
+  font-size: 10.5px;
+  line-height: 1.2;
 }
 
 @keyframes debugRowIn {

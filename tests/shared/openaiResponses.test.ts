@@ -10,7 +10,6 @@ describe("buildOpenAiResponsesRequest", () => {
   it("converts a chat completion request to the Codex Responses shape", () => {
     const body: LlmChatCompletionRequestBody = {
       model: "gpt-5.1",
-      temperature: 0.2,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: "Only output JSON." },

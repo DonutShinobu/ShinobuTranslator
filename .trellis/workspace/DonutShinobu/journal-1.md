@@ -319,3 +319,36 @@ Switched builtin OCR runtime to split-only encoder/decoder models, removed ocr.o
 ### Next Steps
 
 - None - task complete
+
+
+## Session 11: Screenshot context translation
+
+**Date**: 2026-06-03
+**Task**: Screenshot context translation
+**Branch**: `codex/screenshot-context-translation`
+
+### Summary
+
+Implemented a generic right-click screenshot translation flow with in-page region selection, visible-tab capture, cropped pipeline input, draggable result overlays, close cleanup, and tests for message guards and crop geometry.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `372a4b4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

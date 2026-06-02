@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 10
-- **Last Active**: 2026-06-01
+- **Total Sessions**: 11
+- **Last Active**: 2026-06-03
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~321 | Active |
+| `journal-1.md` | ~354 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 11 | 2026-06-03 | Screenshot context translation | `372a4b4` | `codex/screenshot-context-translation` |
 | 10 | 2026-06-01 | OCR split-only model release | `37abbb0`, `7648dbd`, `0c96df2` | `master` |
 | 9 | 2026-06-01 | OCR inference speed optimization | `d0414c4` | `master` |
 | 8 | 2026-05-28 | WebGPU compute shader preprocessing for detector letterbox | `23272c9` | `worktree-gpu-optimize` |

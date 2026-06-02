@@ -46,7 +46,6 @@ export type PipelineConfig = {
   llmBaseUrl: string;
   llmApiKey: string;
   llmModel: string;
-  llmTemperature: number;
   typesetDebug: boolean;
   eraseDebug: boolean;
   collectDebugLog: boolean;
@@ -122,7 +121,11 @@ export type TranslationDebugInfo = {
 export type OcrRunDebugStep = {
   step: number;
   activeCount: number;
+  batchSize?: number;
+  compactFallback?: boolean;
   durationMs: number;
+  postprocessMode?: 'cpu' | 'gpu' | 'gpu-fallback';
+  postprocessMs?: number;
 };
 
 export type OcrRunDebugRegionFallback = {
@@ -138,6 +141,9 @@ export type OcrRunDebugChunk = {
   chunkSize: number;
   regionIds: string[];
   decodeMode: 'batch' | 'fallback';
+  encoderCache?: boolean;
+  encoderRunMs?: number;
+  decoderRunMs?: number;
   decodeAccepted: number;
   decodeConfidenceAvg?: number;
   decodeSessionRunCount: number;
@@ -154,7 +160,7 @@ export type OcrRunDebugInfo = {
   preprocessPerRegionMs: Array<{ regionId: string; durationMs: number }>;
   chunkBatchSize: number;
   chunks: OcrRunDebugChunk[];
-  colorDecodeMode: 'none' | 'batch' | 'fallback';
+  colorDecodeMode: 'none' | 'batch' | 'fallback' | 'reuse';
   colorBatchSize: number;
   colorSessionRunCount: number;
   colorSessionRunTotalMs: number;

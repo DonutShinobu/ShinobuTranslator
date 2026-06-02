@@ -51,6 +51,10 @@ Thumbs.db
 *.bin
 
 # Model files (large, download separately)
+public/models/*
+!public/models/models.json
+!public/models/ocr_dict.txt
+!public/models/paddleocr_v5_dict.txt
 *.onnx
 
 # Test/output images (large files)

@@ -251,3 +251,71 @@ Pixiv 阅读模式底栏新增「翻译当前页」和「翻译全部」按钮�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 9: OCR inference speed optimization
+
+**Date**: 2026-06-01
+**Task**: OCR inference speed optimization
+**Branch**: `master`
+
+### Summary
+
+Implemented split encoder/decoder OCR caching, GPU-side AR postprocess, browser smoke benchmarks, X image before/after comparison, and synced validated build artifacts.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d0414c4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 10: OCR split-only model release
+
+**Date**: 2026-06-01
+**Task**: OCR split-only model release
+**Branch**: `master`
+
+### Summary
+
+Switched builtin OCR runtime to split-only encoder/decoder models, removed ocr.onnx from the default release/download path, added portable model release scripts, uploaded and verified models-v0.4.0 assets, and recorded Chrome/WebGPU OCR timing for the latest X image.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `37abbb0` | (see git log) |
+| `7648dbd` | (see git log) |
+| `0c96df2` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

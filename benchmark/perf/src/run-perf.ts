@@ -24,6 +24,7 @@ import { refineTextMask } from "../../../src/pipeline/maskRefinement";
 import { sortRegionsForRender } from "../../../src/pipeline/readingOrder";
 import { detectBubbles, matchRegionsToBubbles } from "../../../src/pipeline/bubbleDetect";
 import { nodePlatform } from "../../../src/runtime/nodePlatform";
+import type { OcrRunDebugInfo } from "../../../src/types";
 
 // ---------------------------------------------------------------------------
 // Path constants
@@ -93,11 +94,30 @@ function checkModelFiles(): void {
 
 type StageTiming = { stage: string; label: string; durationMs: number };
 
+type OcrDebugSummary = {
+  mode: OcrRunDebugInfo["mode"];
+  candidateCount: number;
+  preparedCount: number;
+  preprocessTotalMs: number;
+  decodeSessionRunCount: number;
+  decodeSessionRunTotalMs: number;
+  decodeStepCount: number;
+  colorDecodeMode: OcrRunDebugInfo["colorDecodeMode"];
+  colorBatchSize: number;
+  colorSessionRunCount: number;
+  colorSessionRunTotalMs: number;
+  colorTotalMs: number;
+  fallbackTriggerCount: number;
+  totalSessionRunCount: number;
+  totalSessionRunMs: number;
+};
+
 type RunResult = {
   runIndex: number;
   isColdStart: boolean;
   totalMs: number;
   stages: StageTiming[];
+  ocrDebug?: OcrDebugSummary;
 };
 
 type ImagePerfResult = {
@@ -115,11 +135,34 @@ type PerfReport = {
   overallMedianTotalMs: number;
 };
 
+function summarizeOcrDebug(debug: OcrRunDebugInfo): OcrDebugSummary {
+  const decodeSessionRunCount = debug.chunks.reduce((acc, chunk) => acc + chunk.decodeSessionRunCount, 0);
+  const decodeSessionRunTotalMs = debug.chunks.reduce((acc, chunk) => acc + chunk.decodeSessionRunTotalMs, 0);
+  const decodeStepCount = debug.chunks.reduce((acc, chunk) => acc + chunk.decodeSteps.length, 0);
+  return {
+    mode: debug.mode,
+    candidateCount: debug.candidateCount,
+    preparedCount: debug.preparedCount,
+    preprocessTotalMs: Math.round(debug.preprocessTotalMs * 100) / 100,
+    decodeSessionRunCount,
+    decodeSessionRunTotalMs: Math.round(decodeSessionRunTotalMs * 100) / 100,
+    decodeStepCount,
+    colorDecodeMode: debug.colorDecodeMode,
+    colorBatchSize: debug.colorBatchSize,
+    colorSessionRunCount: debug.colorSessionRunCount,
+    colorSessionRunTotalMs: Math.round(debug.colorSessionRunTotalMs * 100) / 100,
+    colorTotalMs: Math.round(debug.colorTotalMs * 100) / 100,
+    fallbackTriggerCount: debug.fallbackTriggerCount,
+    totalSessionRunCount: debug.totalSessionRunCount,
+    totalSessionRunMs: Math.round(debug.totalSessionRunMs * 100) / 100,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Pipeline runner with per-stage timing
 // ---------------------------------------------------------------------------
 
-async function runPipelineOnce(imageDataUrl: string): Promise<StageTiming[]> {
+async function runPipelineOnce(imageDataUrl: string): Promise<{ stages: StageTiming[]; ocrDebug?: OcrDebugSummary }> {
   const stages: StageTiming[] = [];
 
   const time = async <T>(stage: string, label: string, fn: () => Promise<T>): Promise<T> => {
@@ -144,6 +187,7 @@ async function runPipelineOnce(imageDataUrl: string): Promise<StageTiming[]> {
   // ocr
   const ocrResult = await time("ocr", "OCR 日文识别", () => runOcr(image, regions, undefined, nodePlatform));
   regions = ocrResult.regions;
+  const ocrDebug = summarizeOcrDebug(ocrResult.debug);
 
   // merge (synchronous)
   const mergeT0 = performance.now();
@@ -207,7 +251,7 @@ async function runPipelineOnce(imageDataUrl: string): Promise<StageTiming[]> {
     drawTypeset(cleanedCanvas, regions, "zh-CN", { renderText: true }, nodePlatform),
   );
 
-  return stages;
+  return { stages, ocrDebug };
 }
 
 // ---------------------------------------------------------------------------
@@ -253,7 +297,15 @@ function printRunTable(run: RunResult): void {
       : `${s.durationMs.toFixed(0)}ms`;
     console.log(`  ${s.label.padEnd(18)} ${dur.padStart(8)}  ${pct.padStart(5)}%`);
   }
+  if (run.ocrDebug) {
+    const d = run.ocrDebug;
+    console.log(`  OCR子阶段           decode ${d.decodeSessionRunCount}次/${formatMs(d.decodeSessionRunTotalMs)}  color ${d.colorDecodeMode}/${formatMs(d.colorTotalMs)}`);
+  }
   console.log("  ───────────────────────────────────────────");
+}
+
+function formatMs(durationMs: number): string {
+  return durationMs >= 1000 ? `${(durationMs / 1000).toFixed(2)}s` : `${durationMs.toFixed(0)}ms`;
 }
 
 function printMedianTable(median: StageTiming[], totalMs: number): void {
@@ -294,10 +346,10 @@ async function benchmarkImage(imagePath: string, runCount: number): Promise<Imag
   for (let i = 0; i < runCount; i++) {
     const isColdStart = i === 0;
     const runT0 = performance.now();
-    const stages = await runPipelineOnce(dataUrl);
+    const { stages, ocrDebug } = await runPipelineOnce(dataUrl);
     const totalMs = performance.now() - runT0;
 
-    const run: RunResult = { runIndex: i, isColdStart, totalMs, stages };
+    const run: RunResult = { runIndex: i, isColdStart, totalMs, stages, ocrDebug };
     runs.push(run);
     printRunTable(run);
   }

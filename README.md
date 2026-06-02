@@ -62,3 +62,24 @@
 
 - 本项目许可证：`GPL-3.0`（见根目录 `LICENSE`）
 - 第三方模型与脚本处理说明：见 `THIRD_PARTY_NOTICES.md`
+
+## 开发模型文件
+
+模型权重不提交到仓库，仓库只保留 `public/models/models.json` 和字典文件。换电脑开发时，先安装依赖，再从最新的 `models-*` 预发布拉取模型：
+
+```bash
+npm run models:download
+```
+
+也可以固定拉取某个版本，`0.4.0`、`v0.4.0` 和 `models-v0.4.0` 都会归一化为同一个模型 Release：
+
+```bash
+npm run models:download -- 0.4.0
+```
+
+发布新版模型时，脚本会从 `public/models/models.json` 自动推导需要上传的资产，并生成 `models.sha256` 校验文件：
+
+```bash
+npm run models:upload -- 0.4.0 "ONNX 模型 v0.4.0"
+MODEL_RELEASE_TAG=models-v0.4.0 npm run build
+```

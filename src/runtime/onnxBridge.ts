@@ -17,11 +17,13 @@ import type {
   WorkerSessionHandle,
   InferenceResult,
   OcrInputNameSet,
+  OcrSplitInputNameSet,
   OcrBatchDecodeInputItem,
-  OcrBatchDecodeOutputItem,
-  OcrSingleDecodeOutput,
+  OcrBatchDecodeResult,
+  OcrSingleDecodeResult,
   OcrColorBatchInputItem,
-  OcrColorResult,
+  OcrColorBatchResult,
+  OcrColorSingleResult,
   GpuDetectResult,
 } from "./onnxWorkerTypes";
 import type { RuntimeSelfCheckReport } from "./selfCheck";
@@ -79,8 +81,25 @@ export async function runOcrBatchDecode(
     inputHeight: number;
     inputWidth: number;
   }
-): Promise<OcrBatchDecodeOutputItem[]> {
+): Promise<OcrBatchDecodeResult> {
   return (await loadBridge()).runOcrBatchDecode(sessionId, inputNames, items, options);
+}
+
+export async function runOcrSplitBatchDecode(
+  encoderSessionId: string,
+  decoderSessionId: string,
+  inputNames: OcrSplitInputNameSet,
+  items: OcrBatchDecodeInputItem[],
+  options: {
+    seqLen: number;
+    encoderLen: number;
+    maxSteps: number;
+    charset: string[] | null;
+    inputHeight: number;
+    inputWidth: number;
+  }
+): Promise<OcrBatchDecodeResult> {
+  return (await loadBridge()).runOcrSplitBatchDecode(encoderSessionId, decoderSessionId, inputNames, items, options);
 }
 
 export async function runOcrSingleDecode(
@@ -95,7 +114,7 @@ export async function runOcrSingleDecode(
     maxSteps: number;
     charset: string[] | null;
   }
-): Promise<OcrSingleDecodeOutput | null> {
+): Promise<OcrSingleDecodeResult> {
   return (await loadBridge()).runOcrSingleDecode(sessionId, inputNames, imageData, imageDims, validEncoderLength, options);
 }
 
@@ -107,7 +126,7 @@ export async function runOcrColorBatch(
   encoderLen: number,
   inputHeight: number,
   inputWidth: number
-): Promise<(OcrColorResult | null)[]> {
+): Promise<OcrColorBatchResult> {
   return (await loadBridge()).runOcrColorBatch(sessionId, inputNames, items, seqLen, encoderLen, inputHeight, inputWidth);
 }
 
@@ -120,7 +139,7 @@ export async function runOcrColorSingle(
   tokenIds: number[],
   seqLen: number,
   encoderLen: number
-): Promise<OcrColorResult | null> {
+): Promise<OcrColorSingleResult> {
   return (await loadBridge()).runOcrColorSingle(sessionId, inputNames, imageData, imageDims, validEncoderLength, tokenIds, seqLen, encoderLen);
 }
 

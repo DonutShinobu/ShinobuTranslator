@@ -6,6 +6,8 @@
  * does not pull in onnxruntime-web via shared-chunk bundling.
  */
 
+import type { OcrColorResult } from "./colorDecodeShared";
+
 // --- Constants ---
 export const OCR_AR_PAD = 0;
 export const OCR_AR_START = 1;
@@ -42,6 +44,7 @@ export type BatchDecodeOutput = {
   tokenIds: number[];
   inputData: import("./preprocess").OcrInputData;
   validEncoderLength: number;
+  colors?: OcrColorResult;
 };
 
 // --- Charset ---

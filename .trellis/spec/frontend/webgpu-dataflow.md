@@ -129,3 +129,71 @@ The WebGPU fallback must attempt WebNN before falling back to WASM, matching the
 - [ ] Detection result comparison: GPU path vs CPU path on same image (same number of detections, similar bounding boxes)
 - [ ] Fallback: GPU path failure falls back to WASM without crash
 - [ ] Resource cleanup: No GPU buffer/texture leaks after preprocessing
+
+---
+
+## Scenario: Extension Worker Origin for ORT Backend Assets
+
+### 1. Scope / Trigger
+
+- Trigger: Creating or changing the ONNX Worker bootstrap path in a Chrome extension page or content script.
+- Applies when: `onnxWorker.js` loads `onnxruntime-web` and ORT must dynamically import backend files from `dist/ort/*.mjs`.
+
+### 2. Signatures
+
+- `ensureWorker(): Promise<{ worker: Worker; proxy: Comlink.Remote<OnnxWorkerApi> }>`
+- `initWorker(candidate: Worker, ortPath: string, label: string): Promise<Comlink.Remote<OnnxWorkerApi>>`
+- Worker init contract: `OnnxWorkerApi.init(ortPath: string): Promise<void>`
+
+### 3. Contracts
+
+- Prefer `new Worker(chrome.runtime.getURL("onnxWorker.js"), { type: "module" })` when the worker script URL starts with `chrome-extension://`.
+- Pass `chrome.runtime.getURL("ort/")` to `proxy.init(ortPath)` so ORT resolves `ort-wasm-simd-threaded.jsep.mjs` and its `.wasm` sidecar from the packaged extension assets.
+- Keep a Blob Worker fallback for page/content-script contexts that reject `chrome-extension://` Worker scripts.
+- `public/manifest.json` must expose both `onnxWorker.js` and `ort/*` through `web_accessible_resources`.
+
+### 4. Validation & Error Matrix
+
+| Condition | Symptom | Fix |
+|-----------|---------|-----|
+| Blob Worker is used in an extension page while `ortPath` points at `chrome-extension://.../ort/` | `Failed to fetch dynamically imported module: chrome-extension://.../ort/ort-wasm-simd-threaded.jsep.mjs` | Prefer direct extension URL Worker before Blob fallback |
+| `ort/*` missing from `web_accessible_resources` | Backend `.mjs` or `.wasm` fetch fails from content-script/page-origin workers | Add `ort/*` to WAR |
+| `onnxWorker.js` missing from `web_accessible_resources` | Content script cannot fetch Worker script for Blob fallback | Add `onnxWorker.js` to WAR |
+| Direct extension Worker is blocked in a page context | Worker init timeout or load error | Terminate candidate and fall back to Blob Worker |
+
+### 5. Good/Base/Bad Cases
+
+- Good: Extension page creates a direct `chrome-extension://.../onnxWorker.js` module Worker; WebGPU and WASM backend imports load from `chrome-extension://.../ort/`.
+- Base: Content script tries direct extension Worker, catches the load/init failure, then uses Blob fallback with the same `ortPath`.
+- Bad: Always converting the Worker script to Blob. This changes the Worker origin and can break ORT dynamic backend imports even when `ort/*` exists in `dist`.
+
+### 6. Tests Required
+
+- Real-browser smoke: load `dist` as an MV3 extension and run `runOcrSplitBatchDecode` in a Chrome/Chromium extension page.
+- Full pipeline smoke: load a normal web page with the content script and run detect + OCR + bake through the extension bridge.
+- Failure assertion: if direct extension Worker init fails, Blob fallback is attempted and the failed candidate is terminated.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+const scriptText = await (await fetch(scriptUrl)).text();
+const blobUrl = URL.createObjectURL(new Blob([scriptText], { type: "application/javascript" }));
+const worker = new Worker(blobUrl, { type: "module" });
+await proxy.init(chrome.runtime.getURL("ort/"));
+```
+
+#### Correct
+
+```typescript
+if (scriptUrl.startsWith("chrome-extension://")) {
+  try {
+    const worker = new Worker(scriptUrl, { type: "module" });
+    await proxy.init(chrome.runtime.getURL("ort/"));
+    return { worker, proxy };
+  } catch {
+    // Fall back to Blob Worker for content-script contexts that reject extension Workers.
+  }
+}
+```

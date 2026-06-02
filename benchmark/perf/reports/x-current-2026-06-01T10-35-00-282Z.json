@@ -1,0 +1,2396 @@
+{
+  "createdAt": "2026-06-01T10:35:00.282Z",
+  "xUrl": "https://x.com/mepoakitao/status/2061239432557248938/photo/1",
+  "image": {
+    "pageUrl": "https://x.com/mepoakitao/status/2061239432557248938/photo/1",
+    "imageUrl": "https://pbs.twimg.com/media/HJr-UddbUAA0NLX?format=jpg&name=orig",
+    "contentType": "image/jpeg",
+    "bytes": 801664
+  },
+  "runs": [
+    {
+      "runIndex": 0,
+      "isColdStart": true,
+      "totalMs": 29592.2,
+      "imageWidth": 2108,
+      "imageHeight": 2981,
+      "regionCount": 7,
+      "sourceCharCount": 173,
+      "sampleTexts": [
+        "いろは、\n大変だ！",
+        "はぁ！\nなんで？！",
+        "かぐやが\nウイルスに\nかかったみたいで",
+        "今、体がめっちゃ\nオーバーヒートしてる！",
+        "送られてきた\n変なリンクを\n「うっかり押したみたいで...............うっかりっうっかりすしたみたいで...................."
+      ],
+      "runtimeStages": [
+        {
+          "model": "detector",
+          "enabled": true,
+          "provider": "webgpu",
+          "detail": "detector 模型已加载 (webgpu)"
+        },
+        {
+          "model": "ocr",
+          "enabled": true,
+          "provider": "webgpu",
+          "detail": "ocr 模型已加载 (webgpu)"
+        },
+        {
+          "model": "inpaint",
+          "enabled": true,
+          "provider": "webgpu",
+          "detail": "inpaint 模型已加载 (webgpu)"
+        }
+      ],
+      "stageTimings": [
+        {
+          "stage": "preload",
+          "label": "加载检测模型",
+          "durationMs": 1606.2
+        },
+        {
+          "stage": "detect",
+          "label": "文本检测",
+          "durationMs": 2668.1
+        },
+        {
+          "stage": "bubble",
+          "label": "气泡检测",
+          "durationMs": 3091.4
+        },
+        {
+          "stage": "ocr",
+          "label": "OCR 日文识别",
+          "durationMs": 19495.2
+        },
+        {
+          "stage": "merge",
+          "label": "合并文本行",
+          "durationMs": 4.7
+        },
+        {
+          "stage": "order",
+          "label": "文本顺序排序",
+          "durationMs": 157.8
+        },
+        {
+          "stage": "mask_refine",
+          "label": "细化去字遮罩",
+          "durationMs": 226.3
+        },
+        {
+          "stage": "inpaint",
+          "label": "去字",
+          "durationMs": 2328.4
+        },
+        {
+          "stage": "parallel",
+          "label": "去字",
+          "durationMs": 2554.7
+        }
+      ],
+      "ocrDebug": {
+        "mode": "autoregressive",
+        "candidateCount": 16,
+        "preparedCount": 16,
+        "preprocessTotalMs": 83.30000000447035,
+        "preprocessPerRegionMs": [
+          {
+            "regionId": "15066843-ff25-432c-ad9a-52e0aa244702",
+            "durationMs": 9.5
+          },
+          {
+            "regionId": "2c12e939-8353-4548-b6c7-774fa6384364",
+            "durationMs": 4.4000000059604645
+          },
+          {
+            "regionId": "1495b09a-2ea1-4de6-9f8c-6a5cbf8c909d",
+            "durationMs": 2.899999998509884
+          },
+          {
+            "regionId": "01efc9d7-cb19-4dfe-97a8-b95b93770f87",
+            "durationMs": 3.1999999955296516
+          },
+          {
+            "regionId": "c737b20d-f3d5-4e15-823d-9a01f4830d88",
+            "durationMs": 3.600000001490116
+          },
+          {
+            "regionId": "da167875-1c06-4aed-b49f-bb2b683c9f14",
+            "durationMs": 4.399999998509884
+          },
+          {
+            "regionId": "0393222d-7314-422a-8258-f3463d3c9622",
+            "durationMs": 6
+          },
+          {
+            "regionId": "48bfe326-f0c6-4e10-9b83-986401e813c8",
+            "durationMs": 4.9000000059604645
+          },
+          {
+            "regionId": "03132aac-9d6d-493f-89f1-77e6b5d24676",
+            "durationMs": 5.199999995529652
+          },
+          {
+            "regionId": "71f486f1-c2c4-4ce7-be19-f8e6248c3db9",
+            "durationMs": 3.8000000044703484
+          },
+          {
+            "regionId": "5d9ce25e-b3d4-440d-a855-182641d983be",
+            "durationMs": 10.799999997019768
+          },
+          {
+            "regionId": "7a67aa13-d6a7-4c2c-a113-32f026943668",
+            "durationMs": 5.600000001490116
+          },
+          {
+            "regionId": "bf0721b7-3d7f-452f-b52f-1b31a94e7051",
+            "durationMs": 3.2999999970197678
+          },
+          {
+            "regionId": "61cd3fd3-4abc-4bfd-aae3-413fbffe5d7e",
+            "durationMs": 5
+          },
+          {
+            "regionId": "477237ab-0688-48ca-8d41-556d458ae143",
+            "durationMs": 5.899999998509884
+          },
+          {
+            "regionId": "21be6b3a-87b0-48e9-8702-015944022139",
+            "durationMs": 4.800000004470348
+          }
+        ],
+        "chunkBatchSize": 24,
+        "chunks": [
+          {
+            "chunkIndex": 0,
+            "chunkSize": 16,
+            "regionIds": [
+              "15066843-ff25-432c-ad9a-52e0aa244702",
+              "2c12e939-8353-4548-b6c7-774fa6384364",
+              "1495b09a-2ea1-4de6-9f8c-6a5cbf8c909d",
+              "01efc9d7-cb19-4dfe-97a8-b95b93770f87",
+              "c737b20d-f3d5-4e15-823d-9a01f4830d88",
+              "da167875-1c06-4aed-b49f-bb2b683c9f14",
+              "0393222d-7314-422a-8258-f3463d3c9622",
+              "48bfe326-f0c6-4e10-9b83-986401e813c8",
+              "03132aac-9d6d-493f-89f1-77e6b5d24676",
+              "71f486f1-c2c4-4ce7-be19-f8e6248c3db9",
+              "5d9ce25e-b3d4-440d-a855-182641d983be",
+              "7a67aa13-d6a7-4c2c-a113-32f026943668",
+              "bf0721b7-3d7f-452f-b52f-1b31a94e7051",
+              "61cd3fd3-4abc-4bfd-aae3-413fbffe5d7e",
+              "477237ab-0688-48ca-8d41-556d458ae143",
+              "21be6b3a-87b0-48e9-8702-015944022139"
+            ],
+            "decodeMode": "batch",
+            "encoderCache": true,
+            "decodeAccepted": 16,
+            "decodeSessionRunCount": 64,
+            "decodeSessionRunTotalMs": 18929.099999964237,
+            "decodeSteps": [
+              {
+                "step": 0,
+                "activeCount": 16,
+                "batchSize": 16,
+                "compactFallback": false,
+                "durationMs": 597.5999999940395,
+                "postprocessMode": "gpu",
+                "postprocessMs": 4.9000000059604645
+              },
+              {
+                "step": 1,
+                "activeCount": 16,
+                "batchSize": 16,
+                "compactFallback": false,
+                "durationMs": 301.69999999552965,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.2000000029802322
+              },
+              {
+                "step": 2,
+                "activeCount": 16,
+                "batchSize": 16,
+                "compactFallback": false,
+                "durationMs": 301.69999999552965,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.7000000029802322
+              },
+              {
+                "step": 3,
+                "activeCount": 16,
+                "batchSize": 16,
+                "compactFallback": false,
+                "durationMs": 289.8999999985099,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.8000000044703484
+              },
+              {
+                "step": 4,
+                "activeCount": 15,
+                "batchSize": 15,
+                "compactFallback": false,
+                "durationMs": 276.29999999701977,
+                "postprocessMode": "gpu",
+                "postprocessMs": 4.100000001490116
+              },
+              {
+                "step": 5,
+                "activeCount": 12,
+                "batchSize": 12,
+                "compactFallback": false,
+                "durationMs": 251.60000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.7999999970197678
+              },
+              {
+                "step": 6,
+                "activeCount": 9,
+                "batchSize": 9,
+                "compactFallback": false,
+                "durationMs": 205.20000000298023,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.7999999970197678
+              },
+              {
+                "step": 7,
+                "activeCount": 7,
+                "batchSize": 7,
+                "compactFallback": false,
+                "durationMs": 189.29999999701977,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.8000000044703484
+              },
+              {
+                "step": 8,
+                "activeCount": 7,
+                "batchSize": 7,
+                "compactFallback": false,
+                "durationMs": 188.19999999552965,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.600000001490116
+              },
+              {
+                "step": 9,
+                "activeCount": 5,
+                "batchSize": 5,
+                "compactFallback": false,
+                "durationMs": 237.89999999850988,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.9000000059604645
+              },
+              {
+                "step": 10,
+                "activeCount": 4,
+                "batchSize": 4,
+                "compactFallback": false,
+                "durationMs": 183,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 11,
+                "activeCount": 4,
+                "batchSize": 4,
+                "compactFallback": false,
+                "durationMs": 141.79999999701977,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3
+              },
+              {
+                "step": 12,
+                "activeCount": 2,
+                "batchSize": 2,
+                "compactFallback": false,
+                "durationMs": 127.89999999850988,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.899999998509884
+              },
+              {
+                "step": 13,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 123.79999999701977,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.8000000044703484
+              },
+              {
+                "step": 14,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 121.29999999701977,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.1999999955296516
+              },
+              {
+                "step": 15,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 127.90000000596046,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.1999999955296516
+              },
+              {
+                "step": 16,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 126.80000000447035,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 17,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 117.10000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.0999999940395355
+              },
+              {
+                "step": 18,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 112.60000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.899999998509884
+              },
+              {
+                "step": 19,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 118.30000000447035,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.899999998509884
+              },
+              {
+                "step": 20,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 122.29999999701977,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.9000000059604645
+              },
+              {
+                "step": 21,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 113.5,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.7999999970197678
+              },
+              {
+                "step": 22,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 118.69999999552965,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.9000000059604645
+              },
+              {
+                "step": 23,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 109.5,
+                "postprocessMode": "gpu",
+                "postprocessMs": 4
+              },
+              {
+                "step": 24,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 115.79999999701977,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.7999999970197678
+              },
+              {
+                "step": 25,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 115.20000000298023,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.600000001490116
+              },
+              {
+                "step": 26,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 114.5,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.100000001490116
+              },
+              {
+                "step": 27,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 145.79999999701977,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.7999999970197678
+              },
+              {
+                "step": 28,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 114.60000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.7000000029802322
+              },
+              {
+                "step": 29,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 118.09999999403954,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.2000000029802322
+              },
+              {
+                "step": 30,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 121.20000000298023,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3
+              },
+              {
+                "step": 31,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 128.09999999403954,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.9000000059604645
+              },
+              {
+                "step": 32,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 122.29999999701977,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.7999999970197678
+              },
+              {
+                "step": 33,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 116.30000000447035,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.6999999955296516
+              },
+              {
+                "step": 34,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 113.39999999850988,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.9000000059604645
+              },
+              {
+                "step": 35,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 112.20000000298023,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 36,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 114.10000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.899999998509884
+              },
+              {
+                "step": 37,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 114.89999999850988,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.9000000059604645
+              },
+              {
+                "step": 38,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 115.09999999403954,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.8000000044703484
+              },
+              {
+                "step": 39,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 115.19999999552965,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.9000000059604645
+              },
+              {
+                "step": 40,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 115.89999999850988,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.600000001490116
+              },
+              {
+                "step": 41,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 114,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.0999999940395355
+              },
+              {
+                "step": 42,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 113.70000000298023,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.7999999970197678
+              },
+              {
+                "step": 43,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 120.80000000447035,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.9000000059604645
+              },
+              {
+                "step": 44,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 117.69999999552965,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 45,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 116,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.8000000044703484
+              },
+              {
+                "step": 46,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 115.5,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.899999998509884
+              },
+              {
+                "step": 47,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 109.70000000298023,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.7999999970197678
+              },
+              {
+                "step": 48,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 110.89999999850988,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.899999998509884
+              },
+              {
+                "step": 49,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 118.10000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 50,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 121.60000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.399999998509884
+              },
+              {
+                "step": 51,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 124.5,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 52,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 119.80000000447035,
+                "postprocessMode": "gpu",
+                "postprocessMs": 4.100000001490116
+              },
+              {
+                "step": 53,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 114.39999999850988,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.2999999970197678
+              },
+              {
+                "step": 54,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 118.39999999850988,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.9000000059604645
+              },
+              {
+                "step": 55,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 116.79999999701977,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.5
+              },
+              {
+                "step": 56,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 117.89999999850988,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 57,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 119,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.8000000044703484
+              },
+              {
+                "step": 58,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 112.39999999850988,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.899999998509884
+              },
+              {
+                "step": 59,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 112.20000000298023,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 60,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 112.70000000298023,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.9000000059604645
+              },
+              {
+                "step": 61,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 122.39999999850988,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 62,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 109.79999999701977,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              }
+            ],
+            "fallbackRegions": [],
+            "encoderRunMs": 9754.20000000298,
+            "decoderRunMs": 9174.899999961257,
+            "decodeConfidenceAvg": 0.9679643630879796
+          }
+        ],
+        "colorDecodeMode": "fallback",
+        "colorBatchSize": 16,
+        "colorSessionRunCount": 0,
+        "colorSessionRunTotalMs": 0,
+        "colorTotalMs": 0,
+        "colorFallbackRegions": [
+          {
+            "regionId": "7a67aa13-d6a7-4c2c-a113-32f026943668",
+            "durationMs": 0,
+            "accepted": false,
+            "error": "模型未返回颜色，后续使用图像采样兜底"
+          }
+        ],
+        "fallbackTriggerCount": 0,
+        "totalSessionRunCount": 64,
+        "totalSessionRunMs": 18929.099999964237
+      },
+      "ocrSummary": {
+        "stageMs": 19495.2,
+        "candidateCount": 16,
+        "preparedCount": 16,
+        "preprocessTotalMs": 83.3,
+        "chunkCount": 1,
+        "encoderCache": true,
+        "decodeSessionRunCount": 64,
+        "decodeSessionRunTotalMs": 18929.1,
+        "decodeStepCount": 63,
+        "encoderRunMs": 9754.2,
+        "decoderRunMs": 9174.9,
+        "postprocessMs": 202.8,
+        "gpuPostprocessStepCount": 63,
+        "colorDecodeMode": "fallback",
+        "colorTotalMs": 0,
+        "fallbackTriggerCount": 0
+      }
+    },
+    {
+      "runIndex": 1,
+      "isColdStart": false,
+      "totalMs": 14398.6,
+      "imageWidth": 2108,
+      "imageHeight": 2981,
+      "regionCount": 7,
+      "sourceCharCount": 173,
+      "sampleTexts": [
+        "いろは、\n大変だ！",
+        "はぁ！\nなんで？！",
+        "かぐやが\nウイルスに\nかかったみたいで",
+        "今、体がめっちゃ\nオーバーヒートしてる！",
+        "送られてきた\n変なリンクを\n「うっかり押したみたいで...............うっかりっうっかりすしたみたいで...................."
+      ],
+      "runtimeStages": [
+        {
+          "model": "detector",
+          "enabled": true,
+          "provider": "webgpu",
+          "detail": "detector 模型已加载 (webgpu)"
+        },
+        {
+          "model": "ocr",
+          "enabled": true,
+          "provider": "webgpu",
+          "detail": "ocr 模型已加载 (webgpu)"
+        },
+        {
+          "model": "inpaint",
+          "enabled": true,
+          "provider": "webgpu",
+          "detail": "inpaint 模型已加载 (webgpu)"
+        }
+      ],
+      "stageTimings": [
+        {
+          "stage": "preload",
+          "label": "加载检测模型",
+          "durationMs": 0.2
+        },
+        {
+          "stage": "detect",
+          "label": "文本检测",
+          "durationMs": 999.2
+        },
+        {
+          "stage": "bubble",
+          "label": "气泡检测",
+          "durationMs": 361.6
+        },
+        {
+          "stage": "ocr",
+          "label": "OCR 日文识别",
+          "durationMs": 10752.8
+        },
+        {
+          "stage": "merge",
+          "label": "合并文本行",
+          "durationMs": 1.3
+        },
+        {
+          "stage": "order",
+          "label": "文本顺序排序",
+          "durationMs": 263.4
+        },
+        {
+          "stage": "mask_refine",
+          "label": "细化去字遮罩",
+          "durationMs": 216.5
+        },
+        {
+          "stage": "inpaint",
+          "label": "去字",
+          "durationMs": 1799.2
+        },
+        {
+          "stage": "parallel",
+          "label": "去字",
+          "durationMs": 2015.7
+        }
+      ],
+      "ocrDebug": {
+        "mode": "autoregressive",
+        "candidateCount": 16,
+        "preparedCount": 16,
+        "preprocessTotalMs": 88,
+        "preprocessPerRegionMs": [
+          {
+            "regionId": "b0c50806-13d3-47fe-ab0a-7935c1a8bf3f",
+            "durationMs": 28.600000001490116
+          },
+          {
+            "regionId": "104e533e-f697-4ef6-ace6-4bc1037215b5",
+            "durationMs": 5.800000004470348
+          },
+          {
+            "regionId": "ca8b9da5-f559-4847-a5e9-bea546fda832",
+            "durationMs": 4.199999995529652
+          },
+          {
+            "regionId": "850a1ad4-ee7b-4286-b117-22a29c20c760",
+            "durationMs": 4.300000004470348
+          },
+          {
+            "regionId": "9b53904f-adec-412e-a10f-b68ddba4d4e6",
+            "durationMs": 3.3000000044703484
+          },
+          {
+            "regionId": "040c0d3a-6ee6-46c8-82ed-86a2e00bfd54",
+            "durationMs": 3.1999999955296516
+          },
+          {
+            "regionId": "cc037c40-47b2-4abf-b5d8-33cec4aa4ecf",
+            "durationMs": 4.4000000059604645
+          },
+          {
+            "regionId": "35a85107-7a09-4cb1-a36a-ea51471db607",
+            "durationMs": 4.5
+          },
+          {
+            "regionId": "7d21d6bc-b883-4ec8-b3cd-22a37fc6c40e",
+            "durationMs": 4.5
+          },
+          {
+            "regionId": "9aacadd9-b9f6-4db2-b2ae-cd61e3e482f5",
+            "durationMs": 2.899999998509884
+          },
+          {
+            "regionId": "8f72d51c-d009-460d-a9a1-c911eb6cf33d",
+            "durationMs": 2.899999998509884
+          },
+          {
+            "regionId": "aa16003f-ef61-4e0d-93b6-f8a0d165f44b",
+            "durationMs": 5.100000001490116
+          },
+          {
+            "regionId": "414a17fd-9f29-4cc8-afdd-8ac030451029",
+            "durationMs": 2.399999998509884
+          },
+          {
+            "regionId": "93a7f6fb-8bba-4739-90da-f65e86fb1215",
+            "durationMs": 4.200000002980232
+          },
+          {
+            "regionId": "9942e299-0f60-42f3-9b2d-1ee768ed3188",
+            "durationMs": 3.5999999940395355
+          },
+          {
+            "regionId": "176f481d-efae-47d1-b43e-f8894065f010",
+            "durationMs": 4
+          }
+        ],
+        "chunkBatchSize": 24,
+        "chunks": [
+          {
+            "chunkIndex": 0,
+            "chunkSize": 16,
+            "regionIds": [
+              "b0c50806-13d3-47fe-ab0a-7935c1a8bf3f",
+              "104e533e-f697-4ef6-ace6-4bc1037215b5",
+              "ca8b9da5-f559-4847-a5e9-bea546fda832",
+              "850a1ad4-ee7b-4286-b117-22a29c20c760",
+              "9b53904f-adec-412e-a10f-b68ddba4d4e6",
+              "040c0d3a-6ee6-46c8-82ed-86a2e00bfd54",
+              "cc037c40-47b2-4abf-b5d8-33cec4aa4ecf",
+              "35a85107-7a09-4cb1-a36a-ea51471db607",
+              "7d21d6bc-b883-4ec8-b3cd-22a37fc6c40e",
+              "9aacadd9-b9f6-4db2-b2ae-cd61e3e482f5",
+              "8f72d51c-d009-460d-a9a1-c911eb6cf33d",
+              "aa16003f-ef61-4e0d-93b6-f8a0d165f44b",
+              "414a17fd-9f29-4cc8-afdd-8ac030451029",
+              "93a7f6fb-8bba-4739-90da-f65e86fb1215",
+              "9942e299-0f60-42f3-9b2d-1ee768ed3188",
+              "176f481d-efae-47d1-b43e-f8894065f010"
+            ],
+            "decodeMode": "batch",
+            "encoderCache": true,
+            "decodeAccepted": 16,
+            "decodeSessionRunCount": 64,
+            "decodeSessionRunTotalMs": 10413.000000022352,
+            "decodeSteps": [
+              {
+                "step": 0,
+                "activeCount": 16,
+                "batchSize": 16,
+                "compactFallback": false,
+                "durationMs": 488.30000000447035,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.6999999955296516
+              },
+              {
+                "step": 1,
+                "activeCount": 16,
+                "batchSize": 16,
+                "compactFallback": false,
+                "durationMs": 359.20000000298023,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.1999999955296516
+              },
+              {
+                "step": 2,
+                "activeCount": 16,
+                "batchSize": 16,
+                "compactFallback": false,
+                "durationMs": 365.90000000596046,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.600000001490116
+              },
+              {
+                "step": 3,
+                "activeCount": 16,
+                "batchSize": 16,
+                "compactFallback": false,
+                "durationMs": 347.70000000298023,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.7999999970197678
+              },
+              {
+                "step": 4,
+                "activeCount": 15,
+                "batchSize": 15,
+                "compactFallback": false,
+                "durationMs": 327,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 5,
+                "activeCount": 12,
+                "batchSize": 12,
+                "compactFallback": false,
+                "durationMs": 252.5,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.8000000044703484
+              },
+              {
+                "step": 6,
+                "activeCount": 9,
+                "batchSize": 9,
+                "compactFallback": false,
+                "durationMs": 211,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 7,
+                "activeCount": 7,
+                "batchSize": 7,
+                "compactFallback": false,
+                "durationMs": 191.10000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.6999999955296516
+              },
+              {
+                "step": 8,
+                "activeCount": 7,
+                "batchSize": 7,
+                "compactFallback": false,
+                "durationMs": 176.40000000596046,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.899999998509884
+              },
+              {
+                "step": 9,
+                "activeCount": 5,
+                "batchSize": 5,
+                "compactFallback": false,
+                "durationMs": 166.59999999403954,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.8000000044703484
+              },
+              {
+                "step": 10,
+                "activeCount": 4,
+                "batchSize": 4,
+                "compactFallback": false,
+                "durationMs": 152.60000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.7999999970197678
+              },
+              {
+                "step": 11,
+                "activeCount": 4,
+                "batchSize": 4,
+                "compactFallback": false,
+                "durationMs": 158.79999999701977,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.3000000044703484
+              },
+              {
+                "step": 12,
+                "activeCount": 2,
+                "batchSize": 2,
+                "compactFallback": false,
+                "durationMs": 123.19999999552965,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.3000000044703484
+              },
+              {
+                "step": 13,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 116.09999999403954,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.3000000044703484
+              },
+              {
+                "step": 14,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 128.60000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.2999999970197678
+              },
+              {
+                "step": 15,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 121.5,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.7999999970197678
+              },
+              {
+                "step": 16,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 126.60000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.899999998509884
+              },
+              {
+                "step": 17,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 119,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.9000000059604645
+              },
+              {
+                "step": 18,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 115.59999999403954,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.100000001490116
+              },
+              {
+                "step": 19,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 168.79999999701977,
+                "postprocessMode": "gpu",
+                "postprocessMs": 4.200000002980232
+              },
+              {
+                "step": 20,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 143.39999999850988,
+                "postprocessMode": "gpu",
+                "postprocessMs": 4.300000004470348
+              },
+              {
+                "step": 21,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 159.69999999552965,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.5
+              },
+              {
+                "step": 22,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 137.30000000447035,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.5
+              },
+              {
+                "step": 23,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 124.80000000447035,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.7999999970197678
+              },
+              {
+                "step": 24,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 127.80000000447035,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 25,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 126.60000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.5999999940395355
+              },
+              {
+                "step": 26,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 123.10000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.8000000044703484
+              },
+              {
+                "step": 27,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 134,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.8000000044703484
+              },
+              {
+                "step": 28,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 136.29999999701977,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.8000000044703484
+              },
+              {
+                "step": 29,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 148,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.7999999970197678
+              },
+              {
+                "step": 30,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 127.70000000298023,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3
+              },
+              {
+                "step": 31,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 121.60000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 32,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 125,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.8000000044703484
+              },
+              {
+                "step": 33,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 116.5,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.8000000044703484
+              },
+              {
+                "step": 34,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 117.29999999701977,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.8000000044703484
+              },
+              {
+                "step": 35,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 118.60000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.899999998509884
+              },
+              {
+                "step": 36,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 119.40000000596046,
+                "postprocessMode": "gpu",
+                "postprocessMs": 4.5
+              },
+              {
+                "step": 37,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 114.89999999850988,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 38,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 120.5,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.899999998509884
+              },
+              {
+                "step": 39,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 117.5,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3
+              },
+              {
+                "step": 40,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 130.70000000298023,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.899999998509884
+              },
+              {
+                "step": 41,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 130.69999999552965,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.9000000059604645
+              },
+              {
+                "step": 42,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 132.19999999552965,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 43,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 121.30000000447035,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.7999999970197678
+              },
+              {
+                "step": 44,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 123.39999999850988,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.8000000044703484
+              },
+              {
+                "step": 45,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 123.39999999850988,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 46,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 121.60000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.7999999970197678
+              },
+              {
+                "step": 47,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 123.30000000447035,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 48,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 118.20000000298023,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.1999999955296516
+              },
+              {
+                "step": 49,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 119.10000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3
+              },
+              {
+                "step": 50,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 125.79999999701977,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 51,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 131.5,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.9000000059604645
+              },
+              {
+                "step": 52,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 133.39999999850988,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.7999999970197678
+              },
+              {
+                "step": 53,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 132.39999999850988,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.8000000044703484
+              },
+              {
+                "step": 54,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 126,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.6999999955296516
+              },
+              {
+                "step": 55,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 125,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.8000000044703484
+              },
+              {
+                "step": 56,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 124.89999999850988,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.6999999955296516
+              },
+              {
+                "step": 57,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 127.10000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 4
+              },
+              {
+                "step": 58,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 137.20000000298023,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 59,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 132.79999999701977,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.7000000029802322
+              },
+              {
+                "step": 60,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 129.5,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 61,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 124.30000000447035,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.7999999970197678
+              },
+              {
+                "step": 62,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 128.20000000298023,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3
+              }
+            ],
+            "fallbackRegions": [],
+            "encoderRunMs": 714.5,
+            "decoderRunMs": 9698.500000022352,
+            "decodeConfidenceAvg": 0.9679643630879796
+          }
+        ],
+        "colorDecodeMode": "fallback",
+        "colorBatchSize": 16,
+        "colorSessionRunCount": 0,
+        "colorSessionRunTotalMs": 0,
+        "colorTotalMs": 0,
+        "colorFallbackRegions": [
+          {
+            "regionId": "aa16003f-ef61-4e0d-93b6-f8a0d165f44b",
+            "durationMs": 0,
+            "accepted": false,
+            "error": "模型未返回颜色，后续使用图像采样兜底"
+          }
+        ],
+        "fallbackTriggerCount": 0,
+        "totalSessionRunCount": 64,
+        "totalSessionRunMs": 10413.000000022352
+      },
+      "ocrSummary": {
+        "stageMs": 10752.8,
+        "candidateCount": 16,
+        "preparedCount": 16,
+        "preprocessTotalMs": 88,
+        "chunkCount": 1,
+        "encoderCache": true,
+        "decodeSessionRunCount": 64,
+        "decodeSessionRunTotalMs": 10413,
+        "decodeStepCount": 63,
+        "encoderRunMs": 714.5,
+        "decoderRunMs": 9698.5,
+        "postprocessMs": 198.5,
+        "gpuPostprocessStepCount": 63,
+        "colorDecodeMode": "fallback",
+        "colorTotalMs": 0,
+        "fallbackTriggerCount": 0
+      }
+    },
+    {
+      "runIndex": 2,
+      "isColdStart": false,
+      "totalMs": 14587.5,
+      "imageWidth": 2108,
+      "imageHeight": 2981,
+      "regionCount": 7,
+      "sourceCharCount": 173,
+      "sampleTexts": [
+        "いろは、\n大変だ！",
+        "はぁ！\nなんで？！",
+        "かぐやが\nウイルスに\nかかったみたいで",
+        "今、体がめっちゃ\nオーバーヒートしてる！",
+        "送られてきた\n変なリンクを\n「うっかり押したみたいで...............うっかりっうっかりすしたみたいで...................."
+      ],
+      "runtimeStages": [
+        {
+          "model": "detector",
+          "enabled": true,
+          "provider": "webgpu",
+          "detail": "detector 模型已加载 (webgpu)"
+        },
+        {
+          "model": "ocr",
+          "enabled": true,
+          "provider": "webgpu",
+          "detail": "ocr 模型已加载 (webgpu)"
+        },
+        {
+          "model": "inpaint",
+          "enabled": true,
+          "provider": "webgpu",
+          "detail": "inpaint 模型已加载 (webgpu)"
+        }
+      ],
+      "stageTimings": [
+        {
+          "stage": "preload",
+          "label": "加载检测模型",
+          "durationMs": 0.2
+        },
+        {
+          "stage": "detect",
+          "label": "文本检测",
+          "durationMs": 1007.5
+        },
+        {
+          "stage": "bubble",
+          "label": "气泡检测",
+          "durationMs": 474.9
+        },
+        {
+          "stage": "ocr",
+          "label": "OCR 日文识别",
+          "durationMs": 10557.3
+        },
+        {
+          "stage": "merge",
+          "label": "合并文本行",
+          "durationMs": 4.8
+        },
+        {
+          "stage": "order",
+          "label": "文本顺序排序",
+          "durationMs": 264.9
+        },
+        {
+          "stage": "mask_refine",
+          "label": "细化去字遮罩",
+          "durationMs": 219.7
+        },
+        {
+          "stage": "inpaint",
+          "label": "去字",
+          "durationMs": 2052.8
+        },
+        {
+          "stage": "parallel",
+          "label": "去字",
+          "durationMs": 2272.6
+        }
+      ],
+      "ocrDebug": {
+        "mode": "autoregressive",
+        "candidateCount": 16,
+        "preparedCount": 16,
+        "preprocessTotalMs": 102.60000000149012,
+        "preprocessPerRegionMs": [
+          {
+            "regionId": "9d1d9cbb-2a03-4216-afc5-6c203e583975",
+            "durationMs": 17.399999998509884
+          },
+          {
+            "regionId": "80a7afdb-d748-4416-bd22-4208ea043abf",
+            "durationMs": 4.300000004470348
+          },
+          {
+            "regionId": "3cacba74-5e12-48d9-b428-4014abf3a5e1",
+            "durationMs": 4.199999995529652
+          },
+          {
+            "regionId": "746a62fe-dc72-427b-baa3-2da2100fdac6",
+            "durationMs": 5
+          },
+          {
+            "regionId": "bb8a79a7-a128-47f3-98ca-6d1543c71390",
+            "durationMs": 4.399999998509884
+          },
+          {
+            "regionId": "e6f0b7d5-6b38-49ea-bf6b-d5c7309685c5",
+            "durationMs": 5.200000002980232
+          },
+          {
+            "regionId": "478be82b-1946-44f8-a33d-ecc86553814a",
+            "durationMs": 6.799999997019768
+          },
+          {
+            "regionId": "7ec5e72e-ae1a-4155-8ba3-46a4b0e10da5",
+            "durationMs": 5.800000004470348
+          },
+          {
+            "regionId": "e95f5f14-3ec0-4a50-bb3a-a03d938b4813",
+            "durationMs": 6.100000001490116
+          },
+          {
+            "regionId": "3026d459-b1d4-4bae-b3b7-9899ef8d87cc",
+            "durationMs": 5
+          },
+          {
+            "regionId": "5d9a92a6-3c82-431f-a625-e3b6f259dd81",
+            "durationMs": 4.399999998509884
+          },
+          {
+            "regionId": "c5273737-37c3-41f9-b4c0-4729a2a6114f",
+            "durationMs": 8
+          },
+          {
+            "regionId": "6c381328-af4e-4562-b1ba-016871506af1",
+            "durationMs": 4.100000001490116
+          },
+          {
+            "regionId": "dea11c7c-378f-4a96-8623-462691629200",
+            "durationMs": 7.299999997019768
+          },
+          {
+            "regionId": "bea0b12b-535e-41f1-8431-83573cef0170",
+            "durationMs": 7.5
+          },
+          {
+            "regionId": "304367b7-b991-4569-892e-18d2ad1d8cff",
+            "durationMs": 7.100000001490116
+          }
+        ],
+        "chunkBatchSize": 24,
+        "chunks": [
+          {
+            "chunkIndex": 0,
+            "chunkSize": 16,
+            "regionIds": [
+              "9d1d9cbb-2a03-4216-afc5-6c203e583975",
+              "80a7afdb-d748-4416-bd22-4208ea043abf",
+              "3cacba74-5e12-48d9-b428-4014abf3a5e1",
+              "746a62fe-dc72-427b-baa3-2da2100fdac6",
+              "bb8a79a7-a128-47f3-98ca-6d1543c71390",
+              "e6f0b7d5-6b38-49ea-bf6b-d5c7309685c5",
+              "478be82b-1946-44f8-a33d-ecc86553814a",
+              "7ec5e72e-ae1a-4155-8ba3-46a4b0e10da5",
+              "e95f5f14-3ec0-4a50-bb3a-a03d938b4813",
+              "3026d459-b1d4-4bae-b3b7-9899ef8d87cc",
+              "5d9a92a6-3c82-431f-a625-e3b6f259dd81",
+              "c5273737-37c3-41f9-b4c0-4729a2a6114f",
+              "6c381328-af4e-4562-b1ba-016871506af1",
+              "dea11c7c-378f-4a96-8623-462691629200",
+              "bea0b12b-535e-41f1-8431-83573cef0170",
+              "304367b7-b991-4569-892e-18d2ad1d8cff"
+            ],
+            "decodeMode": "batch",
+            "encoderCache": true,
+            "decodeAccepted": 16,
+            "decodeSessionRunCount": 64,
+            "decodeSessionRunTotalMs": 10212.500000014901,
+            "decodeSteps": [
+              {
+                "step": 0,
+                "activeCount": 16,
+                "batchSize": 16,
+                "compactFallback": false,
+                "durationMs": 314,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.7999999970197678
+              },
+              {
+                "step": 1,
+                "activeCount": 16,
+                "batchSize": 16,
+                "compactFallback": false,
+                "durationMs": 366.3999999985099,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.399999998509884
+              },
+              {
+                "step": 2,
+                "activeCount": 16,
+                "batchSize": 16,
+                "compactFallback": false,
+                "durationMs": 383.80000000447035,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.6999999955296516
+              },
+              {
+                "step": 3,
+                "activeCount": 16,
+                "batchSize": 16,
+                "compactFallback": false,
+                "durationMs": 385.30000000447035,
+                "postprocessMode": "gpu",
+                "postprocessMs": 4.199999995529652
+              },
+              {
+                "step": 4,
+                "activeCount": 15,
+                "batchSize": 15,
+                "compactFallback": false,
+                "durationMs": 348.30000000447035,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.0999999940395355
+              },
+              {
+                "step": 5,
+                "activeCount": 12,
+                "batchSize": 12,
+                "compactFallback": false,
+                "durationMs": 246.30000000447035,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 6,
+                "activeCount": 9,
+                "batchSize": 9,
+                "compactFallback": false,
+                "durationMs": 210.5,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.399999998509884
+              },
+              {
+                "step": 7,
+                "activeCount": 7,
+                "batchSize": 7,
+                "compactFallback": false,
+                "durationMs": 194.39999999850988,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.8000000044703484
+              },
+              {
+                "step": 8,
+                "activeCount": 7,
+                "batchSize": 7,
+                "compactFallback": false,
+                "durationMs": 191.29999999701977,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.7999999970197678
+              },
+              {
+                "step": 9,
+                "activeCount": 5,
+                "batchSize": 5,
+                "compactFallback": false,
+                "durationMs": 165.80000000447035,
+                "postprocessMode": "gpu",
+                "postprocessMs": 4.0999999940395355
+              },
+              {
+                "step": 10,
+                "activeCount": 4,
+                "batchSize": 4,
+                "compactFallback": false,
+                "durationMs": 150.80000000447035,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.899999998509884
+              },
+              {
+                "step": 11,
+                "activeCount": 4,
+                "batchSize": 4,
+                "compactFallback": false,
+                "durationMs": 155.29999999701977,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.8000000044703484
+              },
+              {
+                "step": 12,
+                "activeCount": 2,
+                "batchSize": 2,
+                "compactFallback": false,
+                "durationMs": 136.29999999701977,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.600000001490116
+              },
+              {
+                "step": 13,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 135.79999999701977,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.5
+              },
+              {
+                "step": 14,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 125.5,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.7000000029802322
+              },
+              {
+                "step": 15,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 122.60000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.5999999940395355
+              },
+              {
+                "step": 16,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 130.60000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 4.700000002980232
+              },
+              {
+                "step": 17,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 134.59999999403954,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.9000000059604645
+              },
+              {
+                "step": 18,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 128.89999999850988,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3
+              },
+              {
+                "step": 19,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 124.5,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.7999999970197678
+              },
+              {
+                "step": 20,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 125.80000000447035,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3
+              },
+              {
+                "step": 21,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 128.5,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.399999998509884
+              },
+              {
+                "step": 22,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 121.19999999552965,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.7000000029802322
+              },
+              {
+                "step": 23,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 125.5,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.7999999970197678
+              },
+              {
+                "step": 24,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 138.10000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 25,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 130.20000000298023,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.5
+              },
+              {
+                "step": 26,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 134.5,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.7999999970197678
+              },
+              {
+                "step": 27,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 132.89999999850988,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.9000000059604645
+              },
+              {
+                "step": 28,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 134.89999999850988,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 29,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 128.79999999701977,
+                "postprocessMode": "gpu",
+                "postprocessMs": 4
+              },
+              {
+                "step": 30,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 128,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 31,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 118.60000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.8000000044703484
+              },
+              {
+                "step": 32,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 124,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.7999999970197678
+              },
+              {
+                "step": 33,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 124.60000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 4
+              },
+              {
+                "step": 34,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 123.29999999701977,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 35,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 132.10000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.8000000044703484
+              },
+              {
+                "step": 36,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 134.29999999701977,
+                "postprocessMode": "gpu",
+                "postprocessMs": 4.200000002980232
+              },
+              {
+                "step": 37,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 127.79999999701977,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.5
+              },
+              {
+                "step": 38,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 145.39999999850988,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.899999998509884
+              },
+              {
+                "step": 39,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 123.70000000298023,
+                "postprocessMode": "gpu",
+                "postprocessMs": 4
+              },
+              {
+                "step": 40,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 124.5,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 41,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 117.70000000298023,
+                "postprocessMode": "gpu",
+                "postprocessMs": 4.199999995529652
+              },
+              {
+                "step": 42,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 113.60000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 43,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 122.5,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.600000001490116
+              },
+              {
+                "step": 44,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 119.60000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.399999998509884
+              },
+              {
+                "step": 45,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 126.30000000447035,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.7999999970197678
+              },
+              {
+                "step": 46,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 118.60000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.600000001490116
+              },
+              {
+                "step": 47,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 126.79999999701977,
+                "postprocessMode": "gpu",
+                "postprocessMs": 4.200000002980232
+              },
+              {
+                "step": 48,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 119.20000000298023,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.899999998509884
+              },
+              {
+                "step": 49,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 120.20000000298023,
+                "postprocessMode": "gpu",
+                "postprocessMs": 4
+              },
+              {
+                "step": 50,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 117.89999999850988,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 51,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 119.70000000298023,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.6999999955296516
+              },
+              {
+                "step": 52,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 118.89999999850988,
+                "postprocessMode": "gpu",
+                "postprocessMs": 4
+              },
+              {
+                "step": 53,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 118.20000000298023,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.600000001490116
+              },
+              {
+                "step": 54,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 118.19999999552965,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.8000000044703484
+              },
+              {
+                "step": 55,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 118.10000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.8000000044703484
+              },
+              {
+                "step": 56,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 121.69999999552965,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.899999998509884
+              },
+              {
+                "step": 57,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 118.80000000447035,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 58,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 120.10000000149012,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              },
+              {
+                "step": 59,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 121.39999999850988,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3.8000000044703484
+              },
+              {
+                "step": 60,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 117.39999999850988,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3
+              },
+              {
+                "step": 61,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 115.29999999701977,
+                "postprocessMode": "gpu",
+                "postprocessMs": 3
+              },
+              {
+                "step": 62,
+                "activeCount": 1,
+                "batchSize": 1,
+                "compactFallback": false,
+                "durationMs": 119.70000000298023,
+                "postprocessMode": "gpu",
+                "postprocessMs": 2.899999998509884
+              }
+            ],
+            "fallbackRegions": [],
+            "encoderRunMs": 724.8999999985099,
+            "decoderRunMs": 9487.600000016391,
+            "decodeConfidenceAvg": 0.9679643630879796
+          }
+        ],
+        "colorDecodeMode": "fallback",
+        "colorBatchSize": 16,
+        "colorSessionRunCount": 0,
+        "colorSessionRunTotalMs": 0,
+        "colorTotalMs": 0,
+        "colorFallbackRegions": [
+          {
+            "regionId": "c5273737-37c3-41f9-b4c0-4729a2a6114f",
+            "durationMs": 0,
+            "accepted": false,
+            "error": "模型未返回颜色，后续使用图像采样兜底"
+          }
+        ],
+        "fallbackTriggerCount": 0,
+        "totalSessionRunCount": 64,
+        "totalSessionRunMs": 10212.500000014901
+      },
+      "ocrSummary": {
+        "stageMs": 10557.3,
+        "candidateCount": 16,
+        "preparedCount": 16,
+        "preprocessTotalMs": 102.6,
+        "chunkCount": 1,
+        "encoderCache": true,
+        "decodeSessionRunCount": 64,
+        "decodeSessionRunTotalMs": 10212.5,
+        "decodeStepCount": 63,
+        "encoderRunMs": 724.9,
+        "decoderRunMs": 9487.6,
+        "postprocessMs": 207.1,
+        "gpuPostprocessStepCount": 63,
+        "colorDecodeMode": "fallback",
+        "colorTotalMs": 0,
+        "fallbackTriggerCount": 0
+      }
+    }
+  ],
+  "summary": {
+    "warmMedianTotalMs": 14493.05,
+    "warmMedianOcrMs": 10655.05,
+    "warmMedianDecodeMs": 10312.75,
+    "warmMedianEncoderMs": 719.7,
+    "warmMedianDecoderMs": 9593.05,
+    "warmMedianPostprocessMs": 202.8
+  }
+}

@@ -64,6 +64,40 @@ export type OcrBatchDecodeOutputItem = {
   imageData: Float32Array;
   imageDims: number[];
   validEncoderLength: number;
+  colors?: OcrColorResult;
+};
+
+export type OcrDecodeTelemetryStep = {
+  step: number;
+  activeCount: number;
+  batchSize?: number;
+  compactFallback?: boolean;
+  durationMs: number;
+  postprocessMode?: 'cpu' | 'gpu' | 'gpu-fallback';
+  postprocessMs?: number;
+};
+
+export type OcrDecodeTelemetry = {
+  sessionRunCount: number;
+  sessionRunTotalMs: number;
+  encoderRunMs?: number;
+  decoderRunMs?: number;
+  steps: OcrDecodeTelemetryStep[];
+};
+
+export type OcrSplitInputNameSet = {
+  encoderImageInput: string;
+  encoderMaskInput: string;
+  memoryOutput: string;
+  decoderMemoryInput: string;
+  decoderCharIdxInput: string;
+  decoderMaskInput: string;
+  decoderEncoderMaskInput: string;
+};
+
+export type OcrBatchDecodeResult = {
+  items: OcrBatchDecodeOutputItem[];
+  telemetry: OcrDecodeTelemetry;
 };
 
 // ---------------------------------------------------------------------------
@@ -74,6 +108,11 @@ export type OcrSingleDecodeOutput = {
   text: string;
   confidence: number;
   tokenIds: number[];
+};
+
+export type OcrSingleDecodeResult = {
+  output: OcrSingleDecodeOutput | null;
+  telemetry: OcrDecodeTelemetry;
 };
 
 // ---------------------------------------------------------------------------
@@ -90,6 +129,21 @@ export type OcrColorBatchInputItem = {
 export type OcrColorResult = {
   fgColor: [number, number, number];
   bgColor: [number, number, number];
+};
+
+export type OcrColorDecodeTelemetry = {
+  sessionRunCount: number;
+  sessionRunTotalMs: number;
+};
+
+export type OcrColorBatchResult = {
+  colors: (OcrColorResult | null)[];
+  telemetry: OcrColorDecodeTelemetry;
+};
+
+export type OcrColorSingleResult = {
+  color: OcrColorResult | null;
+  telemetry: OcrColorDecodeTelemetry;
 };
 
 // ---------------------------------------------------------------------------
@@ -130,7 +184,21 @@ export interface OnnxWorkerApi {
       inputHeight: number;
       inputWidth: number;
     }
-  ): Promise<OcrBatchDecodeOutputItem[]>;
+  ): Promise<OcrBatchDecodeResult>;
+  runOcrSplitBatchDecode(
+    encoderSessionId: string,
+    decoderSessionId: string,
+    inputNames: OcrSplitInputNameSet,
+    items: OcrBatchDecodeInputItem[],
+    options: {
+      seqLen: number;
+      encoderLen: number;
+      maxSteps: number;
+      charset: string[] | null;
+      inputHeight: number;
+      inputWidth: number;
+    }
+  ): Promise<OcrBatchDecodeResult>;
   runOcrSingleDecode(
     sessionId: string,
     inputNames: OcrInputNameSet,
@@ -143,7 +211,7 @@ export interface OnnxWorkerApi {
       maxSteps: number;
       charset: string[] | null;
     }
-  ): Promise<OcrSingleDecodeOutput | null>;
+  ): Promise<OcrSingleDecodeResult>;
   runOcrColorBatch(
     sessionId: string,
     inputNames: OcrInputNameSet,
@@ -152,7 +220,7 @@ export interface OnnxWorkerApi {
     encoderLen: number,
     inputHeight: number,
     inputWidth: number
-  ): Promise<(OcrColorResult | null)[]>;
+  ): Promise<OcrColorBatchResult>;
   runOcrColorSingle(
     sessionId: string,
     inputNames: OcrInputNameSet,
@@ -162,7 +230,7 @@ export interface OnnxWorkerApi {
     tokenIds: number[],
     seqLen: number,
     encoderLen: number
-  ): Promise<OcrColorResult | null>;
+  ): Promise<OcrColorSingleResult>;
   probeRuntime(modelUrl: string): Promise<RuntimeSelfCheckReport>;
   runDetectWithGpuPreprocess(
     sessionId: string,

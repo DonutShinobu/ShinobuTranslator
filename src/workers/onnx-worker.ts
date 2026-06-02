@@ -9,17 +9,22 @@ import type {
   WorkerSessionHandle,
   InferenceResult,
   OcrInputNameSet,
+  OcrSplitInputNameSet,
   OcrBatchDecodeInputItem,
+  OcrBatchDecodeResult,
   OcrBatchDecodeOutputItem,
-  OcrSingleDecodeOutput,
+  OcrSingleDecodeResult,
   OcrColorBatchInputItem,
-  OcrColorResult,
+  OcrColorBatchResult,
+  OcrColorSingleResult,
   OnnxWorkerApi,
   GpuDetectResult,
 } from "../runtime/onnxWorkerTypes";
 import type { RuntimeSelfCheckReport } from "../runtime/selfCheck";
+import type { OcrRunDebugChunk } from "../types";
 import {
   decodeBatchAutoregressive,
+  decodeBatchAutoregressiveWithEncoderCache,
   decodeAutoregressiveWithBeam,
 } from "../pipeline/ocr/decodeAutoregressive";
 import { decodeTokenColorsBatch, decodeTokenColors } from "../pipeline/ocr/color";
@@ -66,6 +71,10 @@ function ensureOrtEnv(): void {
   }
 
   envInitialized = true;
+}
+
+function getWebGpuDevice(): GPUDevice | undefined {
+  return (ortAll.env.webgpu as unknown as { device?: GPUDevice } | undefined)?.device;
 }
 
 // ---------------------------------------------------------------------------
@@ -224,6 +233,8 @@ async function createSession(
             };
             if (provider === "webgpu" && modelKey === "detector") {
               sessionOptions.preferredOutputLocation = "gpu-buffer";
+            } else if (provider === "webgpu" && modelKey === "ocr_decoder") {
+              sessionOptions.preferredOutputLocation = { logits: "gpu-buffer" };
             }
             const session = await createSessionWithTimeout(
               modelUrl,
@@ -375,7 +386,7 @@ async function runOcrBatchDecode(
     inputHeight: number;
     inputWidth: number;
   }
-): Promise<OcrBatchDecodeOutputItem[]> {
+): Promise<OcrBatchDecodeResult> {
   const entry = sessions.get(sessionId);
   if (!entry) {
     throw new Error(`Session 不存在: ${sessionId}`);
@@ -392,11 +403,27 @@ async function runOcrBatchDecode(
     validEncoderLength: item.validEncoderLength,
   }));
 
+  const chunkDebug: OcrRunDebugChunk = {
+    chunkIndex: 0,
+    chunkSize: items.length,
+    regionIds: items.map((item) => item.regionId),
+    decodeMode: "batch",
+    decodeAccepted: 0,
+    decodeSessionRunCount: 0,
+    decodeSessionRunTotalMs: 0,
+    decodeSteps: [],
+    fallbackRegions: [],
+  };
+
   const batchResults = await decodeBatchAutoregressive(
     entry.session,
     inputNames,
     batchItems,
-    options
+    {
+      ...options,
+      gpuArgmaxDevice: entry.provider === "webgpu" ? getWebGpuDevice() : undefined,
+    },
+    chunkDebug
   );
 
   const outputItems: OcrBatchDecodeOutputItem[] = batchResults.map((result, i) => ({
@@ -407,9 +434,95 @@ async function runOcrBatchDecode(
     imageData: items[i].imageData,
     imageDims: items[i].imageDims,
     validEncoderLength: result.validEncoderLength,
+    colors: result.colors,
   }));
 
-  return outputItems;
+  return {
+    items: outputItems,
+    telemetry: {
+      sessionRunCount: chunkDebug.decodeSessionRunCount,
+      sessionRunTotalMs: chunkDebug.decodeSessionRunTotalMs,
+      steps: chunkDebug.decodeSteps,
+    },
+  };
+}
+
+async function runOcrSplitBatchDecode(
+  encoderSessionId: string,
+  decoderSessionId: string,
+  inputNames: OcrSplitInputNameSet,
+  items: OcrBatchDecodeInputItem[],
+  options: {
+    seqLen: number;
+    encoderLen: number;
+    maxSteps: number;
+    charset: string[] | null;
+    inputHeight: number;
+    inputWidth: number;
+  }
+): Promise<OcrBatchDecodeResult> {
+  const encoderEntry = sessions.get(encoderSessionId);
+  const decoderEntry = sessions.get(decoderSessionId);
+  if (!encoderEntry || !decoderEntry) {
+    throw new Error(`OCR split session 不存在: ${encoderSessionId}/${decoderSessionId}`);
+  }
+
+  const batchItems: { regionId: string; inputData: OcrInputData; validEncoderLength: number }[] = items.map((item) => ({
+    regionId: item.regionId,
+    inputData: {
+      data: item.imageData,
+      dims: item.imageDims,
+      resizedWidth: item.imageDims[3] ?? 0,
+    },
+    validEncoderLength: item.validEncoderLength,
+  }));
+
+  const chunkDebug: OcrRunDebugChunk = {
+    chunkIndex: 0,
+    chunkSize: items.length,
+    regionIds: items.map((item) => item.regionId),
+    decodeMode: "batch",
+    encoderCache: true,
+    decodeAccepted: 0,
+    decodeSessionRunCount: 0,
+    decodeSessionRunTotalMs: 0,
+    decodeSteps: [],
+    fallbackRegions: [],
+  };
+
+  const batchResults = await decodeBatchAutoregressiveWithEncoderCache(
+    encoderEntry.session,
+    decoderEntry.session,
+    inputNames,
+    batchItems,
+    {
+      ...options,
+      gpuArgmaxDevice: decoderEntry.provider === "webgpu" ? getWebGpuDevice() : undefined,
+    },
+    chunkDebug
+  );
+
+  const outputItems: OcrBatchDecodeOutputItem[] = batchResults.map((result, i) => ({
+    regionId: items[i].regionId,
+    text: result.text,
+    confidence: result.confidence,
+    tokenIds: result.tokenIds,
+    imageData: items[i].imageData,
+    imageDims: items[i].imageDims,
+    validEncoderLength: result.validEncoderLength,
+    colors: result.colors,
+  }));
+
+  return {
+    items: outputItems,
+    telemetry: {
+      sessionRunCount: chunkDebug.decodeSessionRunCount,
+      sessionRunTotalMs: chunkDebug.decodeSessionRunTotalMs,
+      encoderRunMs: chunkDebug.encoderRunMs,
+      decoderRunMs: chunkDebug.decoderRunMs,
+      steps: chunkDebug.decodeSteps,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -428,11 +541,23 @@ async function runOcrSingleDecode(
     maxSteps: number;
     charset: string[] | null;
   }
-): Promise<OcrSingleDecodeOutput | null> {
+): Promise<OcrSingleDecodeResult> {
   const entry = sessions.get(sessionId);
   if (!entry) {
     throw new Error(`Session 不存在: ${sessionId}`);
   }
+
+  const chunkDebug: OcrRunDebugChunk = {
+    chunkIndex: 0,
+    chunkSize: 1,
+    regionIds: [],
+    decodeMode: "fallback",
+    decodeAccepted: 0,
+    decodeSessionRunCount: 0,
+    decodeSessionRunTotalMs: 0,
+    decodeSteps: [],
+    fallbackRegions: [],
+  };
 
   const imageTensor = new ortAll.Tensor("float32", imageData, imageDims);
   const result = await decodeAutoregressiveWithBeam(
@@ -450,14 +575,21 @@ async function runOcrSingleDecode(
       validEncoderLength,
       maxSteps: options.maxSteps,
       charset: options.charset,
-    }
+    },
+    chunkDebug
   );
 
-  if (!result) return null;
   return {
-    text: result.text,
-    confidence: result.confidence,
-    tokenIds: result.tokenIds,
+    output: result ? {
+      text: result.text,
+      confidence: result.confidence,
+      tokenIds: result.tokenIds,
+    } : null,
+    telemetry: {
+      sessionRunCount: chunkDebug.decodeSessionRunCount,
+      sessionRunTotalMs: chunkDebug.decodeSessionRunTotalMs,
+      steps: chunkDebug.decodeSteps,
+    },
   };
 }
 
@@ -473,7 +605,7 @@ async function runOcrColorBatch(
   encoderLen: number,
   inputHeight: number,
   inputWidth: number
-): Promise<(OcrColorResult | null)[]> {
+): Promise<OcrColorBatchResult> {
   const entry = sessions.get(sessionId);
   if (!entry) {
     throw new Error(`Session 不存在: ${sessionId}`);
@@ -490,15 +622,18 @@ async function runOcrColorBatch(
     tokenIds: item.tokenIds,
   }));
 
-  return await decodeTokenColorsBatch(
+  const runCounter = { sessionRunCount: 0, sessionRunTotalMs: 0 };
+  const colors = await decodeTokenColorsBatch(
     entry.session,
     inputNames,
     colorItems,
     seqLen,
     encoderLen,
     inputHeight,
-    inputWidth
+    inputWidth,
+    runCounter
   );
+  return { colors, telemetry: runCounter };
 }
 
 // ---------------------------------------------------------------------------
@@ -514,13 +649,14 @@ async function runOcrColorSingle(
   tokenIds: number[],
   seqLen: number,
   encoderLen: number
-): Promise<OcrColorResult | null> {
+): Promise<OcrColorSingleResult> {
   const entry = sessions.get(sessionId);
   if (!entry) {
     throw new Error(`Session 不存在: ${sessionId}`);
   }
 
   const imageTensor = new ortAll.Tensor("float32", imageData, imageDims);
+  const runCounter = { sessionRunCount: 0, sessionRunTotalMs: 0 };
   const result = await decodeTokenColors(
     entry.session,
     {
@@ -535,10 +671,11 @@ async function runOcrColorSingle(
       encoderLen,
       validEncoderLength,
       tokenIds,
-    }
+    },
+    runCounter
   );
 
-  return result;
+  return { color: result, telemetry: runCounter };
 }
 
 // ---------------------------------------------------------------------------
@@ -797,6 +934,7 @@ const api: OnnxWorkerApi = {
   createSession,
   runInference,
   runOcrBatchDecode,
+  runOcrSplitBatchDecode,
   runOcrSingleDecode,
   runOcrColorBatch,
   runOcrColorSingle,

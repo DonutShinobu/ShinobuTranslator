@@ -38,7 +38,6 @@ describe('llmTranslate', () => {
       baseUrl: 'https://api.openai.com/v1',
       apiKey: '',
       model: 'gpt-5.4-mini',
-      temperature: 0.4,
       from: 'ja',
       to: 'zh-CHS',
       text: 'こんにちは',
@@ -49,7 +48,6 @@ describe('llmTranslate', () => {
       type: 'mt:llm-chat-completions',
       body: {
         model: 'gpt-5.4-mini',
-        temperature: 0.4,
       },
     });
   });
@@ -69,7 +67,6 @@ describe('llmTranslate', () => {
       baseUrl: 'https://api.openai.com/v1',
       apiKey: 'sk-test',
       model: 'gpt-5.4-mini',
-      temperature: 0.4,
       from: 'ja',
       to: 'zh-CHS',
       text: 'こんにちは',
@@ -84,5 +81,8 @@ describe('llmTranslate', () => {
         }),
       }),
     );
+    const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    expect(requestInit?.body).toBeTypeOf('string');
+    expect(JSON.parse(requestInit?.body as string)).not.toHaveProperty('temperature');
   });
 });

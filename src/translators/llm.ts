@@ -7,7 +7,6 @@ type LlmTranslateOptions = {
   baseUrl: string;
   apiKey: string;
   model: string;
-  temperature: number;
   from: string;
   to: string;
   text: string;
@@ -33,7 +32,6 @@ type LlmTranslateRegionsOptions = {
   baseUrl: string;
   apiKey: string;
   model: string;
-  temperature: number;
   from: string;
   to: string;
   regions: LlmRegionInput[];
@@ -182,10 +180,9 @@ async function requestChatCompletion(
 }
 
 export async function llmTranslate(options: LlmTranslateOptions): Promise<string> {
-  const { model, temperature, from, to, text } = options;
+  const { model, from, to, text } = options;
   const data = await requestChatCompletion(options, {
     model,
-    temperature,
     messages: [
       {
         role: 'system',
@@ -207,7 +204,7 @@ export async function llmTranslate(options: LlmTranslateOptions): Promise<string
 export async function llmTranslateRegions(
   options: LlmTranslateRegionsOptions,
 ): Promise<LlmRegionBatchResult> {
-  const { model, temperature, from, to, regions } = options;
+  const { model, from, to, regions } = options;
   const payload = regions.map((region) => ({
     id: region.id,
     direction: region.direction,
@@ -218,7 +215,6 @@ export async function llmTranslateRegions(
 
   const data = await requestChatCompletion(options, {
     model,
-    temperature,
     messages: [
       {
         role: 'system',

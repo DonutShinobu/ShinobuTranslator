@@ -36,7 +36,6 @@ export type LlmChatMessage = {
 
 export type LlmChatCompletionRequestBody = {
   model: string;
-  temperature?: number;
   messages: LlmChatMessage[];
   response_format?: {
     type: 'json_object' | 'text';

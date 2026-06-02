@@ -9,10 +9,18 @@
       "input": [1024, 1024],
       "runtime": ["webgpu", "webnn", "wasm"]
     },
-    "ocr": {
-      "name": "ocr",
-      "task": "japanese-ocr",
-      "url": "/models/ocr.onnx",
+    "ocr_encoder": {
+      "name": "ocr_encoder",
+      "task": "japanese-ocr-encoder",
+      "url": "/models/ocr_encoder.onnx",
+      "input": [48, 320],
+      "runtime": ["webgpu", "webnn", "wasm"],
+      "normalize": "minus_one_to_one"
+    },
+    "ocr_decoder": {
+      "name": "ocr_decoder",
+      "task": "japanese-ocr-decoder",
+      "url": "/models/ocr_decoder.onnx",
       "input": [48, 320],
       "runtime": ["webgpu", "webnn", "wasm"],
       "dictUrl": "/models/ocr_dict.txt",

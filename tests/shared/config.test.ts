@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeSettings,
   resolveLlmBaseUrl,
-  supportsLlmTemperatureControl,
   toPipelineConfig,
   validateSettings,
 } from "../../src/shared/config";
@@ -31,7 +30,6 @@ describe("OpenAI provider settings", () => {
           modelCustom: "",
           useCustomModel: false,
           customBaseUrl: "",
-          temperature: 0.4,
         },
       },
     });
@@ -46,28 +44,29 @@ describe("OpenAI provider settings", () => {
     });
   });
 
-  it("hides temperature controls for OpenAI OAuth because the Codex endpoint ignores them", () => {
-    const oauthSettings = normalizeSettings({
-      translator: "llm",
-      llmProvider: "openai",
-      llmProfiles: {
-        openai: {
-          authMode: "openai_oauth",
-        },
-      },
-    });
-    const apiKeySettings = normalizeSettings({
+  it("drops legacy temperature values from normalized settings and pipeline config", () => {
+    const settings = normalizeSettings({
       translator: "llm",
       llmProvider: "openai",
       llmProfiles: {
         openai: {
           authMode: "api_key",
           apiKey: "sk-test",
+          temperature: 0.4,
         },
       },
     });
 
-    expect(supportsLlmTemperatureControl(oauthSettings)).toBe(false);
-    expect(supportsLlmTemperatureControl(apiKeySettings)).toBe(true);
+    expect(settings.llmProfiles.openai).not.toHaveProperty("temperature");
+    expect(toPipelineConfig(settings)).not.toHaveProperty("llmTemperature");
+  });
+
+  it("keeps the popup debug section expanded preference out of pipeline config", () => {
+    const settings = normalizeSettings({
+      debugOptionsExpanded: true,
+    });
+
+    expect(settings.debugOptionsExpanded).toBe(true);
+    expect(toPipelineConfig(settings)).not.toHaveProperty("debugOptionsExpanded");
   });
 });

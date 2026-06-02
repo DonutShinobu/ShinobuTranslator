@@ -5,11 +5,13 @@ import type {
   WorkerSessionHandle,
   InferenceResult,
   OcrInputNameSet,
+  OcrSplitInputNameSet,
   OcrBatchDecodeInputItem,
-  OcrBatchDecodeOutputItem,
-  OcrSingleDecodeOutput,
+  OcrBatchDecodeResult,
+  OcrSingleDecodeResult,
   OcrColorBatchInputItem,
-  OcrColorResult,
+  OcrColorBatchResult,
+  OcrColorSingleResult,
   OnnxWorkerApi,
   GpuDetectResult,
 } from "./onnxWorkerTypes";
@@ -19,16 +21,55 @@ import { resolveAssetUrl } from "../shared/assetUrl";
 // ---------------------------------------------------------------------------
 // Worker singleton — created once, reused across pipeline calls.
 //
-// Content scripts run in the page's origin (e.g. https://x.com) and cannot
-// create Workers pointing to chrome-extension:// URLs (same-origin policy).
-// We fetch the Worker script, create a Blob URL, and instantiate the Worker
-// from the Blob. The Worker then runs in the page's origin but can fetch
-// extension resources (WASM, models) from chrome-extension:// URLs because
-// they are listed in web_accessible_resources.
+// Prefer a Worker created directly from the extension URL so ORT's dynamic
+// backend imports stay same-origin with the copied runtime files. Some content
+// script contexts reject extension Workers, so keep the Blob Worker fallback.
 // ---------------------------------------------------------------------------
 
 let worker: Worker | null = null;
 let proxy: Comlink.Remote<OnnxWorkerApi> | null = null;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  return Promise.race([
+    promise,
+    new Promise<T>((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+    }),
+  ]).finally(() => {
+    if (timer !== null) {
+      clearTimeout(timer);
+    }
+  });
+}
+
+async function initWorker(candidate: Worker, ortPath: string, label: string): Promise<Comlink.Remote<OnnxWorkerApi>> {
+  const candidateProxy = Comlink.wrap<OnnxWorkerApi>(candidate);
+  const workerError = new Promise<never>((_resolve, reject) => {
+    candidate.addEventListener("error", (event) => {
+      reject(event.error ?? new Error(`${label} failed to load`));
+    }, { once: true });
+  });
+  try {
+    await withTimeout(Promise.race([candidateProxy.init(ortPath), workerError]), 10000, `${label} init`);
+    return candidateProxy;
+  } catch (error) {
+    candidate.terminate();
+    throw error;
+  }
+}
+
+async function createBlobWorker(scriptUrl: string): Promise<Worker> {
+  const response = await fetch(scriptUrl);
+  const scriptText = await response.text();
+  const blob = new Blob([scriptText], { type: "application/javascript" });
+  const blobUrl = URL.createObjectURL(blob);
+  try {
+    return new Worker(blobUrl, { type: "module" });
+  } finally {
+    URL.revokeObjectURL(blobUrl);
+  }
+}
 
 async function ensureWorker(): Promise<{ worker: Worker; proxy: Comlink.Remote<OnnxWorkerApi> }> {
   if (worker && proxy) return { worker, proxy };
@@ -37,19 +78,25 @@ async function ensureWorker(): Promise<{ worker: Worker; proxy: Comlink.Remote<O
     chrome?: { runtime?: { getURL?: (path: string) => string } };
   }).chrome;
   const scriptUrl = chromeApi?.runtime?.getURL?.("onnxWorker.js") ?? resolveAssetUrl("onnxWorker.js");
-
-  const response = await fetch(scriptUrl);
-  const scriptText = await response.text();
-  const blob = new Blob([scriptText], { type: "application/javascript" });
-  const blobUrl = URL.createObjectURL(blob);
-
-  worker = new Worker(blobUrl, { type: "module" });
-  URL.revokeObjectURL(blobUrl);
-  proxy = Comlink.wrap<OnnxWorkerApi>(worker);
-
-  // Pass WASM paths to Worker (it can't access chrome.runtime from blob context)
   const ortPath = chromeApi?.runtime?.getURL?.("ort/") ?? "/ort/";
-  await proxy.init(ortPath);
+
+  if (scriptUrl.startsWith("chrome-extension://")) {
+    try {
+      const directWorker = new Worker(scriptUrl, { type: "module" });
+      const directProxy = await initWorker(directWorker, ortPath, "extension Worker");
+      worker = directWorker;
+      proxy = directProxy;
+      return { worker, proxy };
+    } catch {
+      // Fall through to Blob Worker for content script contexts that reject
+      // chrome-extension:// Worker scripts.
+    }
+  }
+
+  const blobWorker = await createBlobWorker(scriptUrl);
+  const blobProxy = await initWorker(blobWorker, ortPath, "blob Worker");
+  worker = blobWorker;
+  proxy = blobProxy;
 
   return { worker, proxy };
 }
@@ -98,8 +145,25 @@ export async function runOcrBatchDecode(
     inputHeight: number;
     inputWidth: number;
   }
-): Promise<OcrBatchDecodeOutputItem[]> {
+): Promise<OcrBatchDecodeResult> {
   return await (await getProxy()).runOcrBatchDecode(sessionId, inputNames, items, options);
+}
+
+export async function runOcrSplitBatchDecode(
+  encoderSessionId: string,
+  decoderSessionId: string,
+  inputNames: OcrSplitInputNameSet,
+  items: OcrBatchDecodeInputItem[],
+  options: {
+    seqLen: number;
+    encoderLen: number;
+    maxSteps: number;
+    charset: string[] | null;
+    inputHeight: number;
+    inputWidth: number;
+  }
+): Promise<OcrBatchDecodeResult> {
+  return await (await getProxy()).runOcrSplitBatchDecode(encoderSessionId, decoderSessionId, inputNames, items, options);
 }
 
 export async function runOcrSingleDecode(
@@ -114,7 +178,7 @@ export async function runOcrSingleDecode(
     maxSteps: number;
     charset: string[] | null;
   }
-): Promise<OcrSingleDecodeOutput | null> {
+): Promise<OcrSingleDecodeResult> {
   return await (await getProxy()).runOcrSingleDecode(sessionId, inputNames, imageData, imageDims, validEncoderLength, options);
 }
 
@@ -126,7 +190,7 @@ export async function runOcrColorBatch(
   encoderLen: number,
   inputHeight: number,
   inputWidth: number
-): Promise<(OcrColorResult | null)[]> {
+): Promise<OcrColorBatchResult> {
   return await (await getProxy()).runOcrColorBatch(sessionId, inputNames, items, seqLen, encoderLen, inputHeight, inputWidth);
 }
 
@@ -139,7 +203,7 @@ export async function runOcrColorSingle(
   tokenIds: number[],
   seqLen: number,
   encoderLen: number
-): Promise<OcrColorResult | null> {
+): Promise<OcrColorSingleResult> {
   return await (await getProxy()).runOcrColorSingle(sessionId, inputNames, imageData, imageDims, validEncoderLength, tokenIds, seqLen, encoderLen);
 }
 

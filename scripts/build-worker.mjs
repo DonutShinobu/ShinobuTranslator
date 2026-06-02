@@ -11,6 +11,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // achieved by building it as a single-entry Rollup bundle.
 await build({
   root: resolve(__dirname, '..'),
+  publicDir: false,
   build: {
     rollupOptions: {
       input: resolve(__dirname, '../src/workers/onnx-worker.ts'),

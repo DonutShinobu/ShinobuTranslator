@@ -42,7 +42,7 @@ jobs:
         run: |
           mkdir -p public/models
           BASE_URL="https://github.com/${{ github.repository }}/releases/download/${{ steps.models.outputs.tag }}"
-          for file in detector.onnx ocr.onnx lama_fp32.onnx bubble.onnx ocr_dict.txt; do
+          for file in detector.onnx ocr_encoder.onnx ocr_decoder.onnx ocr_dict.txt lama_fp32.onnx bubble.onnx ch_PP-OCRv5_rec_mobile.onnx paddleocr_v5_dict.txt; do
             echo "  Downloading $file ..."
             curl -fSL -o "public/models/$file" "$BASE_URL/$file"
           done
@@ -64,13 +64,23 @@ jobs:
 
       - name: Verify model files in dist
         run: |
-          for file in detector.onnx ocr.onnx lama_fp32.onnx bubble.onnx ocr_dict.txt; do
+          if find dist/models -name '*.onnx' | grep -q .; then
+            echo "ONNX files present in dist/models/"
+          else
+            echo "ERROR: Missing bundled ONNX files in dist/models/"
+            exit 1
+          fi
+          for file in detector.onnx ocr_encoder.onnx ocr_decoder.onnx ocr_dict.txt lama_fp32.onnx bubble.onnx ch_PP-OCRv5_rec_mobile.onnx paddleocr_v5_dict.txt; do
             if [ ! -f "dist/models/$file" ]; then
               echo "ERROR: Missing $file in dist/models/"
               exit 1
             fi
           done
-          echo "All model files present in dist/models/"
+          if [ -f "dist/models/ocr.onnx" ]; then
+            echo "ERROR: Legacy ocr.onnx should not be bundled for split OCR releases"
+            exit 1
+          fi
+          echo "All split OCR model files present in dist/models/"
 
       - name: Create extension zip
         run: |

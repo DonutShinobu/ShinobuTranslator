@@ -11,6 +11,7 @@ import type {
   OcrInputNameSet,
   OcrSplitInputNameSet,
   OcrBatchDecodeInputItem,
+  OcrBatchDecodeOptions,
   OcrBatchDecodeResult,
   OcrBatchDecodeOutputItem,
   OcrSingleDecodeResult,
@@ -378,14 +379,7 @@ async function runOcrBatchDecode(
   sessionId: string,
   inputNames: OcrInputNameSet,
   items: OcrBatchDecodeInputItem[],
-  options: {
-    seqLen: number;
-    encoderLen: number;
-    maxSteps: number;
-    charset: string[] | null;
-    inputHeight: number;
-    inputWidth: number;
-  }
+  options: OcrBatchDecodeOptions
 ): Promise<OcrBatchDecodeResult> {
   const entry = sessions.get(sessionId);
   if (!entry) {
@@ -452,14 +446,7 @@ async function runOcrSplitBatchDecode(
   decoderSessionId: string,
   inputNames: OcrSplitInputNameSet,
   items: OcrBatchDecodeInputItem[],
-  options: {
-    seqLen: number;
-    encoderLen: number;
-    maxSteps: number;
-    charset: string[] | null;
-    inputHeight: number;
-    inputWidth: number;
-  }
+  options: OcrBatchDecodeOptions
 ): Promise<OcrBatchDecodeResult> {
   const encoderEntry = sessions.get(encoderSessionId);
   const decoderEntry = sessions.get(decoderSessionId);

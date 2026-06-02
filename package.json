@@ -18,6 +18,7 @@
     "bench:ocr-gpu-argmax": "tsx benchmark/perf/src/run-ocr-gpu-argmax.ts",
     "bench:browser-ocr-smoke": "tsx benchmark/perf/src/run-browser-ocr-smoke.ts",
     "bench:browser-pipeline-smoke": "tsx benchmark/perf/src/run-browser-pipeline-smoke.ts",
+    "bench:browser-x-current": "tsx benchmark/perf/src/run-browser-x-compare.ts --current-only",
     "bench:browser-x-compare": "tsx benchmark/perf/src/run-browser-x-compare.ts",
     "models:split-ocr": "node scripts/split-ocr-encoder-decoder.mjs",
     "models:download": "node scripts/download-models.mjs",

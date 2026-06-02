@@ -6,6 +6,7 @@ import type { RuntimeProvider, WebNnDeviceType } from "../../runtime/onnxTypes";
 import { runOcrSplitBatchDecode } from "../../runtime/onnxBridge";
 import type {
   OcrBatchDecodeInputItem,
+  OcrBatchDecodeOptions,
   OcrDecodeTelemetry,
   OcrSplitInputNameSet,
   OcrColorResult,
@@ -73,6 +74,23 @@ type PreparedCandidate = {
 };
 
 const isNodeRuntime = typeof process !== "undefined" && !!process.versions?.node;
+let webGpuFixedBatchColdRunConsumed = false;
+
+function resolveCompactActiveBatch(provider: RuntimeProvider, override?: boolean): boolean {
+  if (typeof override === "boolean") {
+    return override;
+  }
+  if (provider === "webgpu" && !webGpuFixedBatchColdRunConsumed) {
+    return false;
+  }
+  return true;
+}
+
+function markFixedBatchColdRunConsumed(provider: RuntimeProvider, compactActiveBatch: boolean, override?: boolean): void {
+  if (provider === "webgpu" && !compactActiveBatch && typeof override !== "boolean") {
+    webGpuFixedBatchColdRunConsumed = true;
+  }
+}
 
 function createOcrDebugInfo(mode: "autoregressive" | "ctc"): OcrRunDebugInfo {
   return {
@@ -211,14 +229,7 @@ function acceptBatchResults(
 async function decodeSplitChunk(
   sessions: OcrSplitSessionPair,
   chunk: PreparedCandidate[],
-  options: {
-    seqLen: number;
-    encoderLen: number;
-    maxSteps: number;
-    charset: string[] | null;
-    inputHeight: number;
-    inputWidth: number;
-  },
+  options: OcrBatchDecodeOptions,
   chunkDebug: OcrRunDebugChunk,
   decoded: DecodedCandidate[]
 ): Promise<void> {
@@ -292,7 +303,10 @@ async function runOcrByOnnxWithSplitSessions(
   detectedRegions: TextRegion[],
   model: OcrModel,
   sessions: OcrSplitSessionPair,
-  platform: PlatformProvider
+  platform: PlatformProvider,
+  options?: {
+    compactActiveBatch?: boolean;
+  }
 ): Promise<{ results: OcrRecognizeResult[]; debug: OcrRunDebugInfo }> {
   const charset = await loadCharset(model.dictUrl);
   const inputHeight = model.input?.[0] ?? 48;
@@ -304,6 +318,7 @@ async function runOcrByOnnxWithSplitSessions(
   const debugInfo = createOcrDebugInfo("autoregressive");
   const candidates = generateTextDirection(detectedRegions);
   debugInfo.candidateCount = candidates.length;
+  const compactActiveBatch = resolveCompactActiveBatch(sessions.encoderHandle.provider, options?.compactActiveBatch);
 
   const prepared: PreparedCandidate[] = [];
   const preprocessT0 = performance.now();
@@ -334,6 +349,7 @@ async function runOcrByOnnxWithSplitSessions(
       regionIds: chunk.map((candidate) => candidate.region.id),
       decodeMode: "batch",
       encoderCache: true,
+      compactActiveBatch,
       decodeAccepted: 0,
       decodeSessionRunCount: 0,
       decodeSessionRunTotalMs: 0,
@@ -344,13 +360,16 @@ async function runOcrByOnnxWithSplitSessions(
     await decodeSplitChunk(
       sessions,
       chunk,
-      { seqLen, encoderLen, maxSteps, charset, inputHeight, inputWidth },
+      { seqLen, encoderLen, maxSteps, charset, inputHeight, inputWidth, compactActiveBatch },
       chunkDebug,
       decoded
     );
     if (chunkDebug.decodeMode === "fallback") {
       debugInfo.fallbackTriggerCount += 1;
     }
+  }
+  if (prepared.length > 0) {
+    markFixedBatchColdRunConsumed(sessions.encoderHandle.provider, compactActiveBatch, options?.compactActiveBatch);
   }
 
   if (decoded.length === 0) {
@@ -386,7 +405,10 @@ async function runOcrByOnnxWithSplitSessions(
 export async function runOcrByOnnxInternal(
   image: PipelineImage,
   detectedRegions: TextRegion[],
-  platform: PlatformProvider
+  platform: PlatformProvider,
+  options?: {
+    compactActiveBatch?: boolean;
+  }
 ): Promise<OcrInternalResult> {
   const model = await getModel("ocr_decoder");
   let lastError: unknown = null;
@@ -402,7 +424,7 @@ export async function runOcrByOnnxInternal(
         continue;
       }
       attemptedProviders.add(provider);
-      const result = await runOcrByOnnxWithSplitSessions(image, detectedRegions, model, sessions, platform);
+      const result = await runOcrByOnnxWithSplitSessions(image, detectedRegions, model, sessions, platform, options);
       return {
         results: result.results,
         provider,
@@ -461,14 +483,17 @@ export async function runOcr(
   image: PipelineImage,
   detectedRegions: TextRegion[],
   providerName?: string,
-  platform?: PlatformProvider
+  platform?: PlatformProvider,
+  options?: {
+    compactActiveBatch?: boolean;
+  }
 ): Promise<OcrResult> {
   const providerNameResolved = providerName ?? "builtin";
   const provider = getOcrProvider(providerNameResolved);
   if (!provider) throw new Error(`OCR 引擎未注册: ${providerNameResolved}`);
 
   if (providerNameResolved === "builtin") {
-    const internal = await runOcrByOnnxInternal(image, detectedRegions, platform!);
+    const internal = await runOcrByOnnxInternal(image, detectedRegions, platform!, options);
     const filled = fillMissingOcrFields(internal.results, image, platform);
     const regions = mapResultsToRegions(filled, detectedRegions);
     if (regions.length > 0) {

@@ -7,6 +7,7 @@ import type {
   OcrInputNameSet,
   OcrSplitInputNameSet,
   OcrBatchDecodeInputItem,
+  OcrBatchDecodeOptions,
   OcrBatchDecodeResult,
   OcrSingleDecodeResult,
   OcrColorBatchInputItem,
@@ -137,14 +138,7 @@ export async function runOcrBatchDecode(
   sessionId: string,
   inputNames: OcrInputNameSet,
   items: OcrBatchDecodeInputItem[],
-  options: {
-    seqLen: number;
-    encoderLen: number;
-    maxSteps: number;
-    charset: string[] | null;
-    inputHeight: number;
-    inputWidth: number;
-  }
+  options: OcrBatchDecodeOptions
 ): Promise<OcrBatchDecodeResult> {
   return await (await getProxy()).runOcrBatchDecode(sessionId, inputNames, items, options);
 }
@@ -154,14 +148,7 @@ export async function runOcrSplitBatchDecode(
   decoderSessionId: string,
   inputNames: OcrSplitInputNameSet,
   items: OcrBatchDecodeInputItem[],
-  options: {
-    seqLen: number;
-    encoderLen: number;
-    maxSteps: number;
-    charset: string[] | null;
-    inputHeight: number;
-    inputWidth: number;
-  }
+  options: OcrBatchDecodeOptions
 ): Promise<OcrBatchDecodeResult> {
   return await (await getProxy()).runOcrSplitBatchDecode(encoderSessionId, decoderSessionId, inputNames, items, options);
 }

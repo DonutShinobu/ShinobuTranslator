@@ -1,9 +1,10 @@
 import { createServer } from "http";
 import type { AddressInfo } from "net";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
-import { dirname, extname, join, resolve } from "path";
+import { dirname, extname, join, resolve, sep } from "path";
 import { fileURLToPath } from "url";
 import { chromium } from "@playwright/test";
+import type { BrowserContext } from "@playwright/test";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const DIST_DIR = join(ROOT, "dist");
@@ -31,6 +32,7 @@ type StageTiming = {
 
 type OcrDebugChunk = {
   encoderCache?: boolean;
+  compactActiveBatch?: boolean;
   encoderRunMs?: number;
   decoderRunMs?: number;
   decodeSessionRunCount: number;
@@ -39,6 +41,7 @@ type OcrDebugChunk = {
     step: number;
     activeCount: number;
     batchSize?: number;
+    compactFallback?: boolean;
     durationMs: number;
     postprocessMode?: "cpu" | "gpu" | "gpu-fallback";
     postprocessMs?: number;
@@ -91,8 +94,9 @@ type OcrSummary = {
 };
 
 type ModeResult = {
-  mode: "old-full-ar" | "new-split";
+  mode: "old-full-ar" | "new-split" | "current";
   extensionDir: string;
+  ocrCompactActiveBatch?: boolean;
   runs: PipelineRun[];
   warmMedian: {
     totalMs: number;
@@ -115,7 +119,7 @@ type CompareReport = {
   image: Omit<XImage, "dataUrl">;
   runsPerMode: number;
   modes: ModeResult[];
-  improvement: {
+  improvement?: {
     totalMsSaved: number;
     totalPct: number;
     totalSpeedup: number;
@@ -138,6 +142,10 @@ function pickUrl(): string {
   return argValue("url") ?? DEFAULT_X_URL;
 }
 
+function pickImageUrlOverride(): string | null {
+  return argValue("image-url");
+}
+
 function pickRunCount(): number {
   const raw = argValue("runs");
   if (!raw) return 3;
@@ -146,6 +154,32 @@ function pickRunCount(): number {
     throw new Error(`Invalid --runs value: ${raw}`);
   }
   return parsed;
+}
+
+function pickPrewarmOcrBatch(): number {
+  const raw = argValue("prewarm-ocr-batch");
+  if (!raw) return 0;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error(`Invalid --prewarm-ocr-batch value: ${raw}`);
+  }
+  return parsed;
+}
+
+function pickOcrCompactActiveBatch(): boolean | undefined {
+  if (process.argv.includes("--fixed-ocr-batch")) {
+    return false;
+  }
+  const raw = argValue("ocr-compact-active-batch");
+  if (!raw) return undefined;
+  const normalized = raw.toLowerCase();
+  if (normalized === "false" || normalized === "0" || normalized === "no") return false;
+  if (normalized === "true" || normalized === "1" || normalized === "yes") return true;
+  throw new Error(`Invalid --ocr-compact-active-batch value: ${raw}`);
+}
+
+function isCurrentOnly(): boolean {
+  return process.argv.includes("--current-only") || argValue("mode") === "current";
 }
 
 function findChromeExecutable(): string | undefined {
@@ -163,14 +197,13 @@ function requireDistAsset(relativePath: string): void {
   }
 }
 
-function ensureDistReady(): void {
+function ensureDistReady(options: { includeLegacyOcr: boolean }): void {
   const required = [
     "manifest.json",
     "content.js",
     "chunks/orchestrator.js",
     "onnxWorker.js",
     "models/models.json",
-    "models/ocr.onnx",
     "models/ocr_encoder.onnx",
     "models/ocr_decoder.onnx",
     "models/detector.onnx",
@@ -179,6 +212,9 @@ function ensureDistReady(): void {
     "ort/ort-wasm-simd-threaded.jsep.mjs",
     "ort/ort-wasm-simd-threaded.jsep.wasm",
   ];
+  if (options.includeLegacyOcr) {
+    required.push("models/ocr.onnx");
+  }
   for (const item of required) {
     requireDistAsset(item);
   }
@@ -195,7 +231,32 @@ function toOrigTwitterImageUrl(input: string): string {
   return url.toString();
 }
 
-async function resolveXImage(xUrl: string): Promise<XImage> {
+async function fetchImageFromContext(
+  context: BrowserContext,
+  imageUrl: string,
+  referer: string
+): Promise<XImage> {
+  const response = await context.request.get(imageUrl, {
+    headers: {
+      referer,
+    },
+    timeout: 120000,
+  });
+  if (!response.ok()) {
+    throw new Error(`Image fetch failed: ${response.status()} ${response.statusText()} ${imageUrl}`);
+  }
+  const body = await response.body();
+  const contentType = response.headers()["content-type"]?.split(";")[0] ?? contentTypeFromUrl(imageUrl);
+  return {
+    pageUrl: referer,
+    imageUrl,
+    contentType,
+    dataUrl: `data:${contentType};base64,${body.toString("base64")}`,
+    bytes: body.length,
+  };
+}
+
+async function resolveXImage(xUrl: string, imageUrlOverride: string | null): Promise<XImage> {
   const chromePath = findChromeExecutable();
   const browser = await chromium.launch({
     ...(chromePath ? { executablePath: chromePath } : {}),
@@ -209,6 +270,9 @@ async function resolveXImage(xUrl: string): Promise<XImage> {
   });
   try {
     const context = await browser.newContext();
+    if (imageUrlOverride) {
+      return await fetchImageFromContext(context, toOrigTwitterImageUrl(imageUrlOverride), xUrl);
+    }
     const page = await context.newPage();
     page.setDefaultTimeout(120000);
     await page.goto(xUrl, { waitUntil: "domcontentloaded", timeout: 120000 });
@@ -225,28 +289,12 @@ async function resolveXImage(xUrl: string): Promise<XImage> {
       }
       return Array.from(urls);
     });
-    const imageUrl = toOrigTwitterImageUrl(candidates.find((url) => url.includes("pbs.twimg.com/media")) ?? "");
-    if (!imageUrl) {
+    const imageCandidate = candidates.find((url) => url.includes("pbs.twimg.com/media"));
+    if (!imageCandidate) {
       throw new Error(`Could not find a pbs.twimg.com image on ${xUrl}. candidates=${JSON.stringify(candidates)}`);
     }
-    const response = await context.request.get(imageUrl, {
-      headers: {
-        referer: xUrl,
-      },
-      timeout: 120000,
-    });
-    if (!response.ok()) {
-      throw new Error(`Image fetch failed: ${response.status()} ${response.statusText()} ${imageUrl}`);
-    }
-    const body = await response.body();
-    const contentType = response.headers()["content-type"]?.split(";")[0] ?? contentTypeFromUrl(imageUrl);
-    return {
-      pageUrl: page.url(),
-      imageUrl,
-      contentType,
-      dataUrl: `data:${contentType};base64,${body.toString("base64")}`,
-      bytes: body.length,
-    };
+    const imageUrl = toOrigTwitterImageUrl(imageCandidate);
+    return await fetchImageFromContext(context, imageUrl, page.url());
   } finally {
     await browser.close();
   }
@@ -295,11 +343,30 @@ function rmInsideTmp(target: string): void {
 
 async function startProbeServer(): Promise<{ url: string; close(): Promise<void> }> {
   const server = createServer((req, res) => {
-    if (req.url !== "/" && req.url !== "/probe.html") {
-      res.writeHead(404).end("not found");
+    const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    if (url.pathname !== "/" && url.pathname !== "/probe.html") {
+      const relativePath = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
+      const filePath = resolve(DIST_DIR, relativePath);
+      const distRoot = resolve(DIST_DIR);
+      if (!filePath.startsWith(distRoot + sep) || !existsSync(filePath)) {
+        res.writeHead(404).end("not found");
+        return;
+      }
+      res.writeHead(200, {
+        "content-type": contentTypeFromFilePath(filePath),
+        "cross-origin-opener-policy": "same-origin",
+        "cross-origin-embedder-policy": "require-corp",
+        "cross-origin-resource-policy": "same-origin",
+      });
+      res.end(readFileSync(filePath));
       return;
     }
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    res.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      "cross-origin-opener-policy": "same-origin",
+      "cross-origin-embedder-policy": "require-corp",
+      "cross-origin-resource-policy": "same-origin",
+    });
     res.end("<!doctype html><meta charset=\"utf-8\"><title>x compare</title><body>x compare</body>");
   });
   await new Promise<void>((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
@@ -313,6 +380,20 @@ async function startProbeServer(): Promise<{ url: string; close(): Promise<void>
       });
     }),
   };
+}
+
+function contentTypeFromFilePath(path: string): string {
+  const ext = extname(path).toLowerCase();
+  if (ext === ".html") return "text/html; charset=utf-8";
+  if (ext === ".js" || ext === ".mjs") return "text/javascript; charset=utf-8";
+  if (ext === ".json") return "application/json; charset=utf-8";
+  if (ext === ".wasm") return "application/wasm";
+  if (ext === ".onnx") return "application/octet-stream";
+  if (ext === ".css") return "text/css; charset=utf-8";
+  if (ext === ".png") return "image/png";
+  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+  if (ext === ".woff2") return "font/woff2";
+  return "application/octet-stream";
 }
 
 function median(values: number[]): number {
@@ -517,6 +598,246 @@ async function runMode(mode: ModeResult["mode"], extensionDir: string, image: XI
   }
 }
 
+async function runCurrentWebMode(
+  pageUrl: string,
+  image: XImage,
+  runs: number,
+  prewarmOcrBatch: number,
+  ocrCompactActiveBatch: boolean | undefined
+): Promise<ModeResult> {
+  const mode: ModeResult["mode"] = "current";
+  const userDataDir = join(TMP_DIR, `x-current-web-${Date.now()}`);
+  rmInsideTmp(userDataDir);
+  mkdirSync(userDataDir, { recursive: true });
+  const chromePath = findChromeExecutable();
+  const context = await chromium.launchPersistentContext(userDataDir, {
+    ...(chromePath ? { executablePath: chromePath } : {}),
+    headless: false,
+    args: [
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--disable-background-timer-throttling",
+      "--disable-renderer-backgrounding",
+      "--enable-unsafe-webgpu",
+    ],
+  });
+  context.setDefaultTimeout(900000);
+  try {
+    const page = await context.newPage();
+    page.setDefaultTimeout(900000);
+    page.on("console", (message) => {
+      const text = message.text();
+      if (text.includes("[ocr] encoder cache")) return;
+      console.log(`[${mode}:browser:${message.type()}] ${text}`);
+    });
+    page.on("pageerror", (error) => {
+      console.log(`[${mode}:pageerror] ${error.message}`);
+    });
+    await page.goto(pageUrl, { waitUntil: "load" });
+    await page.evaluate(() => {
+      (window as any).chrome = {
+        runtime: {
+          getURL(path: string) {
+            return new URL(path.replace(/^\/+/, ""), `${location.origin}/`).toString();
+          },
+          onMessage: {
+            addListener() {
+              // No-op shim for the benchmark web harness.
+            },
+          },
+        },
+      };
+    });
+    await page.addScriptTag({ url: "/content.js" });
+    await page.waitForFunction(() => Boolean((window as any).__shinobu_shared), undefined, { timeout: 30000 });
+    await page.evaluate("var __name = (target) => target;");
+    if (prewarmOcrBatch > 0) {
+      const warmup = await page.evaluate(async ({ batchSize, compactActiveBatch }) => {
+        type RuntimeProvider = "webnn" | "webgpu" | "wasm";
+        type SessionHandle = {
+          sessionId: string;
+          provider: RuntimeProvider;
+          inputNames: string[];
+          outputNames: string[];
+        };
+        type DecodeItem = {
+          regionId: string;
+          imageData: Float32Array;
+          imageDims: number[];
+          validEncoderLength: number;
+        };
+        type Bridge = {
+          createSession(modelKey: string, modelUrl: string, preferred: RuntimeProvider[]): Promise<SessionHandle>;
+          runOcrSplitBatchDecode(
+            encoderSessionId: string,
+            decoderSessionId: string,
+            inputNames: {
+              encoderImageInput: string;
+              encoderMaskInput: string;
+              memoryOutput: string;
+              decoderMemoryInput: string;
+              decoderCharIdxInput: string;
+              decoderMaskInput: string;
+              decoderEncoderMaskInput: string;
+            },
+            items: DecodeItem[],
+            options: {
+              seqLen: number;
+              encoderLen: number;
+              maxSteps: number;
+              charset: string[] | null;
+              inputHeight: number;
+              inputWidth: number;
+              compactActiveBatch?: boolean;
+            }
+          ): Promise<{ telemetry: { sessionRunCount: number; sessionRunTotalMs: number; encoderRunMs?: number; decoderRunMs?: number } }>;
+        };
+
+        const pickName = (names: string[], candidates: string[], fallbackIndex = 0): string => {
+          for (const candidate of candidates) {
+            const exact = names.find((name) => name.toLowerCase() === candidate.toLowerCase());
+            if (exact) return exact;
+          }
+          for (const candidate of candidates) {
+            const fuzzy = names.find((name) => name.toLowerCase().includes(candidate.toLowerCase()));
+            if (fuzzy) return fuzzy;
+          }
+          const fallback = names[fallbackIndex];
+          if (!fallback) throw new Error(`No input/output name available. candidates=${candidates.join(",")}`);
+          return fallback;
+        };
+
+        const bridge = await import("/chunks/onnxWorkerBridge.js") as Bridge;
+        const assetUrl = (path: string) => new URL(path.replace(/^\/+/, ""), `${location.origin}/`).toString();
+        const createT0 = performance.now();
+        const encoder = await bridge.createSession("ocr_encoder", assetUrl("/models/ocr_encoder.onnx"), ["webgpu", "wasm"]);
+        const decoder = await bridge.createSession("ocr_decoder", assetUrl("/models/ocr_decoder.onnx"), [encoder.provider]);
+        const createMs = performance.now() - createT0;
+        const dictResponse = await fetch(assetUrl("/models/ocr_dict.txt"));
+        const charset = dictResponse.ok ? (await dictResponse.text()).split(/\r?\n/g).filter((line) => line.length > 0) : null;
+        const inputHeight = 48;
+        const inputWidth = 320;
+        const encoderLen = 80;
+        const seqLen = 64;
+        const pixels = 3 * inputHeight * inputWidth;
+        const items = Array.from({ length: batchSize }, (_, index) => ({
+          regionId: `prewarm-${index}`,
+          imageData: new Float32Array(pixels),
+          imageDims: [1, 3, inputHeight, inputWidth],
+          validEncoderLength: encoderLen,
+        }));
+        const runT0 = performance.now();
+        const decode = await bridge.runOcrSplitBatchDecode(
+          encoder.sessionId,
+          decoder.sessionId,
+          {
+            encoderImageInput: pickName(encoder.inputNames, ["image", "input"], 0),
+            encoderMaskInput: pickName(encoder.inputNames, ["encoder_mask", "mask"], 1),
+            memoryOutput: pickName(encoder.outputNames, ["memory", "encoder"], 0),
+            decoderMemoryInput: pickName(decoder.inputNames, ["memory", "encoder"], 0),
+            decoderCharIdxInput: pickName(decoder.inputNames, ["char_idx", "char"], 1),
+            decoderMaskInput: pickName(decoder.inputNames, ["decoder_mask"], 2),
+            decoderEncoderMaskInput: pickName(decoder.inputNames, ["encoder_mask"], 3),
+          },
+          items,
+          { seqLen, encoderLen, maxSteps: 1, charset, inputHeight, inputWidth, compactActiveBatch }
+        );
+        return {
+          batchSize,
+          compactActiveBatch,
+          provider: encoder.provider,
+          createMs,
+          runMs: performance.now() - runT0,
+          telemetry: decode.telemetry,
+        };
+      }, { batchSize: prewarmOcrBatch, compactActiveBatch: ocrCompactActiveBatch });
+      console.log(
+        `current OCR prewarm: batch=${warmup.batchSize}, compact=${warmup.compactActiveBatch}, provider=${warmup.provider}, create=${formatMs(warmup.createMs)}, run=${formatMs(warmup.runMs)}, session=${formatMs(warmup.telemetry.sessionRunTotalMs)}`
+      );
+    }
+
+    const results: PipelineRun[] = [];
+    for (let i = 0; i < runs; i += 1) {
+      const run = await page.evaluate<PipelineRun, { dataUrl: string; contentType: string; runIndex: number; ocrCompactActiveBatch?: boolean }>(
+        async ({ dataUrl, contentType, runIndex, ocrCompactActiveBatch }) => {
+          type Orchestrator = {
+            runPipeline(file: File, config: Record<string, unknown>, onProgress: () => void): Promise<{
+              original: { naturalWidth: number; naturalHeight: number };
+              detectedRegions: Array<{ sourceText: string }>;
+              runtimeStages: PipelineRun["runtimeStages"];
+              stageTimings: StageTiming[];
+              ocrDebug: OcrDebug | null;
+            }>;
+          };
+          const module = await import("/chunks/orchestrator.js") as Orchestrator;
+          const blob = await (await fetch(dataUrl)).blob();
+          const file = new File([blob], `x-source.${contentType.includes("jpeg") ? "jpg" : "png"}`, { type: contentType });
+          const config = {
+            sourceLang: "ja",
+            targetLang: "zh-CHS",
+            translator: "google_web",
+            llmProvider: "deepseek",
+            llmBaseUrl: "https://api.deepseek.com",
+            llmApiKey: "",
+            llmModel: "deepseek-v4-flash",
+            llmTemperature: 1,
+            typesetDebug: false,
+            eraseDebug: false,
+            collectDebugLog: false,
+            ocrEngine: "builtin",
+            ocrCompactActiveBatch,
+            processMode: "erase",
+          };
+          const totalT0 = performance.now();
+          const artifacts = await module.runPipeline(file, config, () => {});
+          const totalMs = performance.now() - totalT0;
+          const sourceTexts = artifacts.detectedRegions.map((region) => region.sourceText);
+          return {
+            runIndex,
+            isColdStart: runIndex === 0,
+            totalMs,
+            imageWidth: artifacts.original.naturalWidth,
+            imageHeight: artifacts.original.naturalHeight,
+            regionCount: artifacts.detectedRegions.length,
+            sourceCharCount: sourceTexts.reduce((sum, text) => sum + text.length, 0),
+            sampleTexts: sourceTexts.filter((text) => text.length > 0).slice(0, 5),
+            runtimeStages: artifacts.runtimeStages,
+            stageTimings: artifacts.stageTimings,
+            ocrDebug: artifacts.ocrDebug,
+            ocrSummary: {
+              stageMs: 0,
+              encoderCache: false,
+              decodeSessionRunCount: 0,
+              decodeSessionRunTotalMs: 0,
+              decodeStepCount: 0,
+              encoderRunMs: 0,
+              decoderRunMs: 0,
+              gpuPostprocessStepCount: 0,
+              postprocessMs: 0,
+              colorDecodeMode: "none",
+              colorTotalMs: 0,
+              fallbackTriggerCount: 0,
+            },
+          };
+        },
+        { dataUrl: image.dataUrl, contentType: image.contentType, runIndex: i, ocrCompactActiveBatch }
+      );
+      run.ocrSummary = summarizeOcr(run);
+      results.push(roundRun(run));
+      console.log(`${mode} run ${i + 1}/${runs}: total=${formatMs(run.totalMs)}, ocr=${formatMs(run.ocrSummary.stageMs)}, decode=${formatMs(run.ocrSummary.decodeSessionRunTotalMs)}, encoderCache=${run.ocrSummary.encoderCache}`);
+    }
+    return {
+      mode,
+      extensionDir: DIST_DIR,
+      ocrCompactActiveBatch,
+      runs: results,
+      warmMedian: computeWarmMedian(results),
+    };
+  } finally {
+    await context.close();
+  }
+}
+
 function roundRun(run: PipelineRun): PipelineRun {
   return {
     ...run,
@@ -539,11 +860,14 @@ function formatMs(ms: number): string {
 }
 
 function printSummary(report: CompareReport): void {
-  console.log("\n=== X image compare summary ===");
+  console.log(`\n=== X image ${report.modes.length === 1 ? "current" : "compare"} summary ===`);
   console.log(`URL: ${report.xUrl}`);
   console.log(`Image: ${report.image.imageUrl}`);
   for (const mode of report.modes) {
     console.log(`\n${mode.mode}`);
+    if (typeof mode.ocrCompactActiveBatch === "boolean") {
+      console.log(`  OCR compact batch: ${mode.ocrCompactActiveBatch}`);
+    }
     console.log(`  warm median total: ${formatMs(mode.warmMedian.totalMs)}`);
     console.log(`  warm median OCR:   ${formatMs(mode.warmMedian.ocrStageMs)}`);
     console.log(`  warm median decode:${formatMs(mode.warmMedian.decodeSessionRunTotalMs)}`);
@@ -553,27 +877,54 @@ function printSummary(report: CompareReport): void {
       console.log(`  sample:            ${latestWarm.sampleTexts.slice(0, 3).join(" | ")}`);
     }
   }
-  console.log("\nimprovement (warm median, old-full-ar -> new-split)");
-  console.log(`  total:  -${formatMs(report.improvement.totalMsSaved)} (${report.improvement.totalPct}%, ${report.improvement.totalSpeedup}x)`);
-  console.log(`  OCR:    -${formatMs(report.improvement.ocrStageMsSaved)} (${report.improvement.ocrStagePct}%, ${report.improvement.ocrStageSpeedup}x)`);
-  console.log(`  decode: -${formatMs(report.improvement.decodeSessionRunMsSaved)} (${report.improvement.decodeSessionRunPct}%, ${report.improvement.decodeSessionRunSpeedup}x)`);
+  if (report.improvement) {
+    console.log("\nimprovement (warm median, old-full-ar -> new-split)");
+    console.log(`  total:  -${formatMs(report.improvement.totalMsSaved)} (${report.improvement.totalPct}%, ${report.improvement.totalSpeedup}x)`);
+    console.log(`  OCR:    -${formatMs(report.improvement.ocrStageMsSaved)} (${report.improvement.ocrStagePct}%, ${report.improvement.ocrStageSpeedup}x)`);
+    console.log(`  decode: -${formatMs(report.improvement.decodeSessionRunMsSaved)} (${report.improvement.decodeSessionRunPct}%, ${report.improvement.decodeSessionRunSpeedup}x)`);
+  }
 }
 
 async function main(): Promise<void> {
-  ensureDistReady();
+  const currentOnly = isCurrentOnly();
+  ensureDistReady({ includeLegacyOcr: !currentOnly });
   mkdirSync(TMP_DIR, { recursive: true });
   mkdirSync(REPORTS_DIR, { recursive: true });
   const xUrl = pickUrl();
+  const imageUrlOverride = pickImageUrlOverride();
   const runs = pickRunCount();
+  const prewarmOcrBatch = pickPrewarmOcrBatch();
+  const ocrCompactActiveBatch = pickOcrCompactActiveBatch();
   console.log(`Resolving X image: ${xUrl}`);
-  const image = await resolveXImage(xUrl);
+  const image = await resolveXImage(xUrl, imageUrlOverride);
   console.log(`Resolved image: ${image.imageUrl} (${image.contentType}, ${image.bytes} bytes)`);
   const server = await startProbeServer();
-  const oldExtensionDir = createOldFullArExtensionDir();
   try {
     // Keep the local server alive so Chrome treats the process like a real page
     // benchmark session if future runs need a non-extension page.
     void server.url;
+    if (currentOnly) {
+      const currentResult = await runCurrentWebMode(server.url, image, runs, prewarmOcrBatch, ocrCompactActiveBatch);
+      const report: CompareReport = {
+        createdAt: new Date().toISOString(),
+        xUrl,
+        image: {
+          pageUrl: image.pageUrl,
+          imageUrl: image.imageUrl,
+          contentType: image.contentType,
+          bytes: image.bytes,
+        },
+        runsPerMode: runs,
+        modes: [currentResult],
+      };
+      printSummary(report);
+      const reportPath = join(REPORTS_DIR, `x-current-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
+      writeFileSync(reportPath, JSON.stringify(report, null, 2));
+      console.log(`\nReport saved: ${reportPath}`);
+      return;
+    }
+
+    const oldExtensionDir = createOldFullArExtensionDir();
     const oldResult = await runMode("old-full-ar", oldExtensionDir, image, runs);
     const newResult = await runMode("new-split", DIST_DIR, image, runs);
     const total = improvement(oldResult.warmMedian.totalMs, newResult.warmMedian.totalMs);

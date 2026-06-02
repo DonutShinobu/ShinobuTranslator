@@ -472,15 +472,17 @@ export async function decodeBatchAutoregressive(
     inputHeight: number;
     inputWidth: number;
     gpuArgmaxDevice?: GPUDevice;
+    compactActiveBatch?: boolean;
   },
   chunkDebug?: OcrRunDebugChunk
 ): Promise<BatchDecodeOutput[]> {
   const { imageInput, charIdxInput, decoderMaskInput, encoderMaskInput } = inputNames;
-  const { seqLen, encoderLen, maxSteps, charset, inputHeight, inputWidth, gpuArgmaxDevice } = options;
+  const { seqLen, encoderLen, maxSteps, charset, inputHeight, inputWidth, gpuArgmaxDevice, compactActiveBatch = true } = options;
   const N = items.length;
   if (N === 0) {
     return [];
   }
+  const allIndices = items.map((_, index) => index);
 
   const regionTokenIds: number[][] = items.map(() => [OCR_AR_START]);
   const regionTokenProbs: number[][] = items.map(() => []);
@@ -524,18 +526,18 @@ export async function decodeBatchAutoregressive(
       });
     };
 
-    let runIndices = activeIndices;
+    let runIndices = compactActiveBatch ? activeIndices : allIndices;
     let compactFallback = false;
     const runT0 = performance.now();
     let outputs: ort.InferenceSession.ReturnType;
     try {
       outputs = await runSessionForIndices(runIndices);
     } catch (error) {
-      if (activeCount === N) {
+      if (!compactActiveBatch || activeCount === N) {
         throw error;
       }
       compactFallback = true;
-      runIndices = items.map((_, index) => index);
+      runIndices = allIndices;
       outputs = await runSessionForIndices(runIndices);
     }
     const runDurationMs = performance.now() - runT0;
@@ -695,6 +697,7 @@ export async function decodeBatchAutoregressiveWithEncoderCache(
     inputHeight: number;
     inputWidth: number;
     gpuArgmaxDevice?: GPUDevice;
+    compactActiveBatch?: boolean;
   },
   chunkDebug?: OcrRunDebugChunk
 ): Promise<BatchDecodeOutput[]> {
@@ -707,7 +710,7 @@ export async function decodeBatchAutoregressiveWithEncoderCache(
     decoderMaskInput,
     decoderEncoderMaskInput,
   } = inputNames;
-  const { seqLen, encoderLen, maxSteps, charset, inputHeight, inputWidth, gpuArgmaxDevice } = options;
+  const { seqLen, encoderLen, maxSteps, charset, inputHeight, inputWidth, gpuArgmaxDevice, compactActiveBatch = true } = options;
   const N = items.length;
   if (N === 0) {
     return [];
@@ -785,14 +788,14 @@ export async function decodeBatchAutoregressiveWithEncoderCache(
       });
     };
 
-    let runIndices = activeIndices;
+    let runIndices = compactActiveBatch ? activeIndices : allIndices;
     let compactFallback = false;
     const runT0 = performance.now();
     let outputs: ort.InferenceSession.ReturnType;
     try {
       outputs = await runDecoderForIndices(runIndices);
     } catch (error) {
-      if (activeCount === N) {
+      if (!compactActiveBatch || activeCount === N) {
         throw error;
       }
       compactFallback = true;

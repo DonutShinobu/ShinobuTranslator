@@ -85,6 +85,16 @@ export type OcrDecodeTelemetry = {
   steps: OcrDecodeTelemetryStep[];
 };
 
+export type OcrBatchDecodeOptions = {
+  seqLen: number;
+  encoderLen: number;
+  maxSteps: number;
+  charset: string[] | null;
+  inputHeight: number;
+  inputWidth: number;
+  compactActiveBatch?: boolean;
+};
+
 export type OcrSplitInputNameSet = {
   encoderImageInput: string;
   encoderMaskInput: string;
@@ -176,28 +186,14 @@ export interface OnnxWorkerApi {
     sessionId: string,
     inputNames: OcrInputNameSet,
     items: OcrBatchDecodeInputItem[],
-    options: {
-      seqLen: number;
-      encoderLen: number;
-      maxSteps: number;
-      charset: string[] | null;
-      inputHeight: number;
-      inputWidth: number;
-    }
+    options: OcrBatchDecodeOptions
   ): Promise<OcrBatchDecodeResult>;
   runOcrSplitBatchDecode(
     encoderSessionId: string,
     decoderSessionId: string,
     inputNames: OcrSplitInputNameSet,
     items: OcrBatchDecodeInputItem[],
-    options: {
-      seqLen: number;
-      encoderLen: number;
-      maxSteps: number;
-      charset: string[] | null;
-      inputHeight: number;
-      inputWidth: number;
-    }
+    options: OcrBatchDecodeOptions
   ): Promise<OcrBatchDecodeResult>;
   runOcrSingleDecode(
     sessionId: string,

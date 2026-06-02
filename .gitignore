@@ -69,6 +69,7 @@ result_verify.png
 benchmark/typeset/images/*
 !benchmark/typeset/images/.gitkeep
 benchmark/reports/
+benchmark/perf/reports/
 benchmark/typeset/fonts/
 benchmark/typeset/fixtures/
 

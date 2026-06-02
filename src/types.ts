@@ -50,6 +50,8 @@ export type PipelineConfig = {
   eraseDebug: boolean;
   collectDebugLog: boolean;
   ocrEngine: 'builtin' | 'paddleocr';
+  /** Internal benchmark override; production OCR picks its batch compaction policy automatically. */
+  ocrCompactActiveBatch?: boolean;
   processMode: 'translate' | 'erase' | 'original';
 };
 
@@ -142,6 +144,7 @@ export type OcrRunDebugChunk = {
   regionIds: string[];
   decodeMode: 'batch' | 'fallback';
   encoderCache?: boolean;
+  compactActiveBatch?: boolean;
   encoderRunMs?: number;
   decoderRunMs?: number;
   decodeAccepted: number;

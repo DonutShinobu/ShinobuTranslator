@@ -44,6 +44,8 @@ const openAiOAuthLastErrorStorageKey = 'mangaTranslate.openaiOAuthLastError';
 const openAiOAuthInstallationIdStorageKey = 'mangaTranslate.openaiOAuthInstallationId';
 const openAiOAuthPendingTtlMs = 10 * 60 * 1000;
 const openAiCodexResponsesEndpoint = 'https://chatgpt.com/backend-api/codex/responses';
+const startScreenshotTranslateCommand = 'start-screenshot-translate';
+const translateHoverTargetCommand = 'translate-hover-target';
 
 let openAiRefreshPromise: {
   refreshToken: string;
@@ -836,6 +838,14 @@ function registerContextMenus(): void {
   });
 }
 
+function sendTabMessage(tabId: number, message: RuntimeMessage): void {
+  const chromeApi = getChromeApi();
+  if (!chromeApi?.tabs?.sendMessage) return;
+  chromeApi.tabs.sendMessage(tabId, message).catch(() => {
+    // content script may not be injected yet — ignore
+  });
+}
+
 function initializeBackground(): void {
   const chromeApi = getChromeApi();
   if (!chromeApi?.runtime?.onMessage?.addListener) {
@@ -884,18 +894,25 @@ function initializeBackground(): void {
       registerContextMenus();
     }
     chromeApi.contextMenus.onClicked?.addListener((info, tab) => {
-      if (typeof tab?.id !== 'number' || !chromeApi.tabs?.sendMessage) return;
+      if (typeof tab?.id !== 'number') return;
       if (info.menuItemId === 'translate-image') {
-        chromeApi.tabs.sendMessage(tab.id, { type: 'mt:context-menu-translate' }).catch(() => {
-          // content script may not be injected yet — ignore
-        });
+        sendTabMessage(tab.id, { type: 'mt:context-menu-translate' });
       } else if (info.menuItemId === 'translate-screenshot') {
-        chromeApi.tabs.sendMessage(tab.id, { type: 'mt:start-screenshot-translate' }).catch(() => {
-          // content script may not be injected yet — ignore
-        });
+        sendTabMessage(tab.id, { type: 'mt:start-screenshot-translate' });
       }
     });
   }
+
+  chromeApi.commands?.onCommand?.addListener((command, tab) => {
+    if (typeof tab?.id !== 'number') return;
+    if (command === startScreenshotTranslateCommand) {
+      sendTabMessage(tab.id, { type: 'mt:start-screenshot-translate' });
+      return;
+    }
+    if (command === translateHoverTargetCommand) {
+      sendTabMessage(tab.id, { type: 'mt:shortcut-translate-hover' });
+    }
+  });
 }
 
 void initializeBackground();

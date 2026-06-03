@@ -1,26 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { getScreenshotResultOverlayOffset } from "../../../src/content/core/ui";
+import { getScreenshotResultOverlayPositionStyle } from "../../../src/content/core/ui";
 
-describe("getScreenshotResultOverlayOffset", () => {
-  it("keeps right and bottom anchored controls moving with the resized image edge", () => {
+describe("getScreenshotResultOverlayPositionStyle", () => {
+  it("uses CSS right and 100% top for controls anchored to the image edge", () => {
     const anchor = {
       anchorX: "right" as const,
       anchorY: "bottom" as const,
-      offsetX: -72,
+      offsetX: 0,
       offsetY: 8,
     };
 
-    expect(getScreenshotResultOverlayOffset(anchor, { width: 400, height: 300 })).toEqual({
-      left: 328,
-      top: 308,
-    });
-    expect(getScreenshotResultOverlayOffset(anchor, { width: 480, height: 360 })).toEqual({
-      left: 408,
-      top: 368,
+    expect(getScreenshotResultOverlayPositionStyle(anchor)).toEqual({
+      left: "auto",
+      right: "0px",
+      top: "calc(100% + 8px)",
     });
   });
 
-  it("keeps left and top anchored controls stable while the image resizes", () => {
+  it("uses fixed left and top offsets for controls anchored away from the resized edge", () => {
     const anchor = {
       anchorX: "left" as const,
       anchorY: "top" as const,
@@ -28,13 +25,10 @@ describe("getScreenshotResultOverlayOffset", () => {
       offsetY: -42,
     };
 
-    expect(getScreenshotResultOverlayOffset(anchor, { width: 400, height: 300 })).toEqual({
-      left: 12,
-      top: -42,
-    });
-    expect(getScreenshotResultOverlayOffset(anchor, { width: 480, height: 360 })).toEqual({
-      left: 12,
-      top: -42,
+    expect(getScreenshotResultOverlayPositionStyle(anchor)).toEqual({
+      left: "12px",
+      right: "auto",
+      top: "-42px",
     });
   });
 });

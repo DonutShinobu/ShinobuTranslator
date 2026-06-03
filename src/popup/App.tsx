@@ -9,6 +9,7 @@ import {
   type LlmProvider,
   type ExtensionSettings,
 } from '../shared/config';
+import { getChromeApi } from '../shared/chrome';
 import { sendRuntimeMessage } from '../shared/messages';
 
 type SaveStatus = {
@@ -93,6 +94,23 @@ const IconDebug = () => (
   </svg>
 );
 
+const shortcutCommandDefinitions = [
+  { name: 'start-screenshot-translate', label: '截图翻译' },
+  { name: 'translate-hover-target', label: '翻译悬停元素' },
+] as const;
+
+type ShortcutCommandName = typeof shortcutCommandDefinitions[number]['name'];
+type ShortcutCommandInfo = {
+  name?: string;
+  shortcut?: string;
+};
+type ShortcutState = Record<ShortcutCommandName, string>;
+
+const defaultShortcutState: ShortcutState = {
+  'start-screenshot-translate': '',
+  'translate-hover-target': '',
+};
+
 function SegmentedControl<T extends string>({
   options,
   value,
@@ -134,6 +152,9 @@ export function App() {
   const [settings, setSettings] = useState<ExtensionSettings>(defaultExtensionSettings);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<SaveStatus>({ kind: 'idle', message: '' });
+  const [shortcutsLoading, setShortcutsLoading] = useState(true);
+  const [shortcuts, setShortcuts] = useState<ShortcutState>(defaultShortcutState);
+  const [shortcutError, setShortcutError] = useState('');
   const [openAiStatus, setOpenAiStatus] = useState<OpenAiOAuthViewState>({
     loading: false,
     busy: false,
@@ -163,6 +184,42 @@ export function App() {
       }
     }
     void loadSettings();
+  }, []);
+
+  useEffect(() => {
+    async function loadShortcuts(): Promise<void> {
+      setShortcutsLoading(true);
+      setShortcutError('');
+      const chromeApi = getChromeApi();
+      if (!chromeApi?.commands?.getAll) {
+        setShortcutError('当前浏览器不支持读取扩展命令');
+        setShortcutsLoading(false);
+        return;
+      }
+      try {
+        const commands = await new Promise<ShortcutCommandInfo[]>((resolve, reject) => {
+          chromeApi.commands?.getAll?.((items) => {
+            const lastError = chromeApi.runtime?.lastError;
+            if (lastError?.message) {
+              reject(new Error(lastError.message));
+              return;
+            }
+            resolve(items);
+          });
+        });
+        const nextShortcuts: ShortcutState = { ...defaultShortcutState };
+        for (const commandDefinition of shortcutCommandDefinitions) {
+          const command = commands.find((item) => item.name === commandDefinition.name);
+          nextShortcuts[commandDefinition.name] = command?.shortcut ?? '';
+        }
+        setShortcuts(nextShortcuts);
+      } catch (error) {
+        setShortcutError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setShortcutsLoading(false);
+      }
+    }
+    void loadShortcuts();
   }, []);
 
   function queueSaveStatus(options: SettingsUpdateOptions = {}): void {
@@ -306,6 +363,19 @@ export function App() {
         : openAiStatus.pending
           ? '等待 OpenAI 授权完成'
           : '未登录 OpenAI';
+  function openShortcutManager(): void {
+    const chromeApi = getChromeApi();
+    if (!chromeApi?.tabs?.create) {
+      setStatus({ kind: 'error', message: '无法打开扩展命令管理页' });
+      return;
+    }
+    chromeApi.tabs.create({ url: 'chrome://extensions/shortcuts', active: true }, () => {
+      const lastError = chromeApi.runtime?.lastError;
+      if (lastError?.message) {
+        setStatus({ kind: 'error', message: lastError.message });
+      }
+    });
+  }
 
   async function persistSettings(nextSettings: ExtensionSettings, options: PersistSettingsOptions = {}): Promise<void> {
     const requestId = saveRequestIdRef.current + 1;
@@ -396,9 +466,30 @@ export function App() {
         ) : (
           <>
             <section className="panel">
-              <div className="panel-title">
-                <IconTranslate />
-                翻译设置
+              <div className="panel-title panel-title-with-shortcuts">
+                <span className="panel-title-copy">
+                  <IconTranslate />
+                  翻译设置
+                </span>
+                <button
+                  className={`panel-title-shortcuts${shortcutError ? ' panel-title-shortcuts-error' : ''}`}
+                  type="button"
+                  onClick={openShortcutManager}
+                  title={shortcutError || '打开 Chrome 扩展命令管理页'}
+                  aria-label="管理扩展命令"
+                >
+                  {shortcutCommandDefinitions.map((definition) => {
+                    const shortcut = shortcuts[definition.name];
+                    return (
+                      <span className="panel-title-shortcut-row" key={definition.name}>
+                        <span className="panel-title-shortcut-label">{definition.label}</span>
+                        <kbd className={`panel-title-shortcut-key${!shortcutsLoading && !shortcut ? ' panel-title-shortcut-key-unbound' : ''}`}>
+                          {shortcutsLoading ? '读取中' : shortcut || '未绑定'}
+                        </kbd>
+                      </span>
+                    );
+                  })}
+                </button>
               </div>
               <div className="settings-stack">
                 <div className="setting-row">

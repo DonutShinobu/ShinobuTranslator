@@ -73,6 +73,85 @@ Testing is minimal (3 test files). Linting relies on TypeScript strict mode. No 
 
 27. **Content-script import rewriting must parse bindings** - The Vite content-script compatibility plugin rewrites static ESM imports into classic-script-safe dynamic imports. Never rewrite named imports with a blanket text replacement like `bindings.replace(/\bas\b/g, ':')`: minification can legally produce a local identifier named `as`, turning `b as as` into invalid code such as `b : :`. Parse each binding into `{ imported, local }`, generate namespace property reads, and run `node --check dist/content.js` after build changes that touch the plugin or content-script import graph.
 
+28. **Floating result controls must use CSS edge anchors during zoom animations** — When the floating screenshot/image result host animates `left/top/width/height`, overlay controls that should stay right-aligned or bottom-aligned must be positioned with CSS edge semantics such as `right: 0` or `top: calc(100% + 8px)`. Do not compute a one-time `left = targetWidth - controlWidth` from the final style width; that makes the pill drift during transitions because the visual host size is still animating.
+
+## Scenario: Chrome Extension Shortcuts
+
+### 1. Scope / Trigger
+
+- Trigger: adding or changing browser-level extension shortcuts.
+- Applies to `public/manifest.json`, `src/background/index.ts`, `src/shared/chrome.ts`, `src/shared/messages.ts`, `src/content/**`, and `src/popup/**`.
+
+### 2. Signatures
+
+- Manifest commands:
+  ```json
+  {
+    "commands": {
+      "command-name": {
+        "suggested_key": { "default": "Alt+Q" },
+        "description": "Chinese user-facing description"
+      }
+    }
+  }
+  ```
+- Chrome API abstraction:
+  ```typescript
+  commands?: {
+    getAll?: (callback: (commands: Array<{ name?: string; shortcut?: string }>) => void) => void;
+    onCommand?: {
+      addListener: (listener: (command: string, tab?: { id?: number }) => void) => void;
+    };
+  };
+  ```
+- Background-to-content messages must remain `mt:` discriminated unions, e.g. `{ type: 'mt:shortcut-translate-hover' }`.
+
+### 3. Contracts
+
+- Browser-level shortcuts are declared in `manifest.json` `commands`.
+- Background listens to `chrome.commands.onCommand` and forwards to the triggering tab with `chrome.tabs.sendMessage`.
+- Command forwarding is best-effort: if the tab id is missing or the content script is unavailable, ignore the failure.
+- Popup reads the actual binding with `chrome.commands.getAll()` and opens `chrome://extensions/shortcuts` with `chrome.tabs.create()`.
+- Popup must not present a fake editable shortcut input: Chrome does not allow extension pages to write browser-level command shortcuts.
+
+### 4. Validation & Error Matrix
+
+- `commands.getAll` missing -> popup shows a Chinese read error, no settings write.
+- Command shortcut empty -> popup shows `未绑定` and a short warning that it may be occupied or cleared.
+- `tabs.create` missing or errors -> popup status shows a Chinese error.
+- `onCommand` receives an unknown command -> do nothing.
+- Content target missing -> content script returns an error response and shows lightweight in-page feedback when user-triggered.
+
+### 5. Good/Base/Bad Cases
+
+- Good: manifest command, shared message type, background forwarder, content handler, popup status, and message guard test all use the same command/message names.
+- Base: shortcut is registered and popup displays the actual `shortcut` returned by Chrome.
+- Bad: popup saves an internal string such as `Alt+Q` and claims it changed the browser shortcut.
+
+### 6. Tests Required
+
+- Add or update `tests/shared/messages.test.ts` for every new `mt:` message discriminant.
+- Run targeted tests for touched pure helpers and message guards.
+- Run `npm run build` because manifest/background/content/popup changes cross entry points.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+// Stores a value, but does not change Chrome's real command shortcut.
+updateField('shortcut', 'Alt+Q');
+```
+
+#### Correct
+
+```typescript
+chrome.commands.getAll((commands) => {
+  const shortcut = commands.find((command) => command.name === 'command-name')?.shortcut ?? '';
+});
+chrome.tabs.create({ url: 'chrome://extensions/shortcuts', active: true });
+```
+
 ## Content Script Adapter Patterns
 
 ### SiteAdapter Optional Reading Mode Methods

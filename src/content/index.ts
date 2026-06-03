@@ -74,8 +74,16 @@ type ContextMenuTranslateTarget =
       selection: ScreenshotSelection;
     };
 
+type PointerPosition = {
+  clientX: number;
+  clientY: number;
+};
+
 /** The last right-click translation target. */
 let contextMenuTarget: ContextMenuTranslateTarget | null = null;
+let lastPointerPosition: PointerPosition | null = null;
+let shortcutToastElement: HTMLElement | null = null;
+let shortcutToastTimer: number | null = null;
 
 function toElementScreenshotRect(element: Element): ScreenshotRect {
   const rect = element.getBoundingClientRect();
@@ -155,22 +163,19 @@ function isContextMenuScreenshotElement(element: Element): boolean {
   return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
 }
 
-function findContextMenuScreenshotSelection(event: MouseEvent): ScreenshotSelection | null {
-  const elements: Element[] = [];
+function collectScreenshotCandidateElements(addCandidates: (addElement: (element: Element | null) => void) => void): Element[] {
+  const candidates: Element[] = [];
   const seen = new Set<Element>();
   const addElement = (element: Element | null): void => {
     if (!element || seen.has(element) || !isContextMenuScreenshotElement(element)) return;
     seen.add(element);
-    elements.push(element);
+    candidates.push(element);
   };
+  addCandidates(addElement);
+  return candidates;
+}
 
-  for (const target of event.composedPath()) {
-    if (target instanceof Element) addElement(target);
-  }
-  for (const element of document.elementsFromPoint(event.clientX, event.clientY)) {
-    addElement(element);
-  }
-
+function toScreenshotSelectionFromElements(elements: Element[]): ScreenshotSelection | null {
   const candidates = buildScreenshotElementCandidates(
     elements.map((element) => ({
       element,
@@ -180,6 +185,18 @@ function findContextMenuScreenshotSelection(event: MouseEvent): ScreenshotSelect
   );
   const candidate = candidates.find((item) => item.area >= 1600) ?? candidates[0];
   return candidate ? toScreenshotSelection(candidate.rect) : null;
+}
+
+function findContextMenuScreenshotSelection(event: MouseEvent): ScreenshotSelection | null {
+  const elements = collectScreenshotCandidateElements((addElement) => {
+    for (const target of event.composedPath()) {
+      if (target instanceof Element) addElement(target);
+    }
+    for (const element of document.elementsFromPoint(event.clientX, event.clientY)) {
+      addElement(element);
+    }
+  });
+  return toScreenshotSelectionFromElements(elements);
 }
 
 function findContextMenuTarget(event: MouseEvent): ContextMenuTranslateTarget | null {
@@ -200,8 +217,98 @@ function findContextMenuTarget(event: MouseEvent): ContextMenuTranslateTarget | 
   return selection ? { kind: 'screenshot', selection } : null;
 }
 
+function isPointerInsideViewport(position: PointerPosition): boolean {
+  return position.clientX >= 0 &&
+    position.clientY >= 0 &&
+    position.clientX <= window.innerWidth &&
+    position.clientY <= window.innerHeight;
+}
+
+function updateLastPointerPosition(event: MouseEvent | PointerEvent): void {
+  lastPointerPosition = {
+    clientX: event.clientX,
+    clientY: event.clientY,
+  };
+}
+
+function showShortcutToast(message: string): void {
+  if (!shortcutToastElement) {
+    shortcutToastElement = document.createElement('div');
+    shortcutToastElement.className = 'mt-x-shortcut-toast';
+    document.body.appendChild(shortcutToastElement);
+  }
+  shortcutToastElement.textContent = message;
+  shortcutToastElement.dataset.visible = 'true';
+  if (shortcutToastTimer !== null) {
+    window.clearTimeout(shortcutToastTimer);
+  }
+  shortcutToastTimer = window.setTimeout(() => {
+    if (!shortcutToastElement) return;
+    shortcutToastElement.remove();
+    shortcutToastElement = null;
+    shortcutToastTimer = null;
+  }, 1800);
+}
+
+function findHoverScreenshotSelection(elementsFromPoint: Element[]): ScreenshotSelection | null {
+  const elements = collectScreenshotCandidateElements((addElement) => {
+    for (const element of elementsFromPoint) {
+      let current: Element | null = element;
+      while (current && current !== document.body && current !== document.documentElement) {
+        addElement(current);
+        current = current.parentElement;
+      }
+    }
+  });
+  return toScreenshotSelectionFromElements(elements);
+}
+
+function findHoverTranslateTarget(): ContextMenuTranslateTarget | null {
+  if (!lastPointerPosition || !isPointerInsideViewport(lastPointerPosition)) {
+    return null;
+  }
+  const elements = document.elementsFromPoint(lastPointerPosition.clientX, lastPointerPosition.clientY);
+  const topElement = elements[0];
+  if (!topElement || isShinobuUiElement(topElement)) {
+    return null;
+  }
+
+  const hoverElement = elements.find((element) => isContextMenuScreenshotElement(element));
+  if (!hoverElement) {
+    return null;
+  }
+
+  if (hoverElement instanceof HTMLImageElement) {
+    const originalUrl = readContextImageOriginalUrl(hoverElement);
+    const documentRect = toElementDocumentScreenshotRect(hoverElement);
+    if (originalUrl && isUsableScreenshotRect(documentRect)) {
+      return {
+        kind: 'image',
+        originalUrl,
+        documentRect,
+      };
+    }
+  }
+
+  const selection = findHoverScreenshotSelection(elements);
+  return selection ? { kind: 'screenshot', selection } : null;
+}
+
+async function translateTarget(target: ContextMenuTranslateTarget): Promise<void> {
+  if (target.kind === 'image') {
+    await core.translateImageInFloatingOverlay(target.originalUrl, target.documentRect);
+    return;
+  }
+  await core.translateScreenshotSelection(target.selection);
+}
+
 document.addEventListener('contextmenu', (event) => {
   contextMenuTarget = findContextMenuTarget(event);
+}, true);
+document.addEventListener('pointermove', updateLastPointerPosition, true);
+document.addEventListener('mousemove', updateLastPointerPosition, true);
+document.addEventListener('mouseleave', () => {
+  lastPointerPosition = null;
 }, true);
 
 // Listen for context-menu translate requests from background
@@ -216,14 +323,14 @@ if (chromeApi?.runtime?.onMessage?.addListener) {
       const target = contextMenuTarget;
       contextMenuTarget = null;
       if (target) {
-        const translatePromise = target.kind === 'image'
-          ? core.translateImageInFloatingOverlay(target.originalUrl, target.documentRect)
-          : core.translateScreenshotSelection(target.selection);
-        translatePromise.then(() => {
-          sendResponse({ ok: true, type: 'mt:context-menu-translate' });
-        }).catch((error: unknown) => {
-          sendResponse({ ok: false, type: 'mt:context-menu-translate', error: toErrorMessage(error) });
-        });
+        void (async () => {
+          try {
+            await translateTarget(target);
+            sendResponse({ ok: true, type: 'mt:context-menu-translate' });
+          } catch (error: unknown) {
+            sendResponse({ ok: false, type: 'mt:context-menu-translate', error: toErrorMessage(error) });
+          }
+        })();
       } else {
         sendResponse({ ok: false, type: 'mt:context-menu-translate', error: '未找到可翻译区域' });
       }
@@ -236,6 +343,24 @@ if (chromeApi?.runtime?.onMessage?.addListener) {
       }).catch((error: unknown) => {
         sendResponse({ ok: false, type: 'mt:start-screenshot-translate', error: toErrorMessage(error) });
       });
+      return true;
+    }
+
+    if (message.type === 'mt:shortcut-translate-hover') {
+      const target = findHoverTranslateTarget();
+      if (!target) {
+        showShortcutToast('未找到可翻译区域');
+        sendResponse({ ok: false, type: 'mt:shortcut-translate-hover', error: '未找到可翻译区域' });
+        return true;
+      }
+      void (async () => {
+        try {
+          await translateTarget(target);
+          sendResponse({ ok: true, type: 'mt:shortcut-translate-hover' });
+        } catch (error: unknown) {
+          sendResponse({ ok: false, type: 'mt:shortcut-translate-hover', error: toErrorMessage(error) });
+        }
+      })();
       return true;
     }
 

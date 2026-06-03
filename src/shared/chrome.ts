@@ -9,6 +9,12 @@ type ChromeContextMenuContext =
   | 'video'
   | 'audio';
 
+type ChromeCommand = {
+  name?: string;
+  description?: string;
+  shortcut?: string;
+};
+
 export type ChromeMessageSender = {
   tab?: {
     id?: number;
@@ -94,6 +100,19 @@ type ChromeLike = {
           info: {
             menuItemId?: string | number;
           },
+          tab?: {
+            id?: number;
+          }
+        ) => void
+      ) => void;
+    };
+  };
+  commands?: {
+    getAll?: (callback: (commands: ChromeCommand[]) => void) => void;
+    onCommand?: {
+      addListener: (
+        listener: (
+          command: string,
           tab?: {
             id?: number;
           }

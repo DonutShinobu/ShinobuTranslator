@@ -1016,11 +1016,23 @@ export class TranslatorCore {
     const minSize = 24;
     const maxSize = 60000;
     const zoomStep = 1.12;
+    let zoomClassTimer: number | null = null;
+
+    const scheduleZoomTransitionCleanup = (): void => {
+      if (zoomClassTimer !== null) {
+        window.clearTimeout(zoomClassTimer);
+      }
+      zoomClassTimer = window.setTimeout(() => {
+        ui.host.classList.remove('mt-x-screenshot-result-zooming');
+        zoomClassTimer = null;
+      }, 260);
+    };
 
     const onWheel = (event: WheelEvent): void => {
       if (event.deltaY === 0) return;
       event.preventDefault();
       event.stopPropagation();
+      ui.host.classList.add('mt-x-screenshot-result-zooming');
       const currentRect: ScreenshotRect = {
         left: Number.parseFloat(ui.host.style.left || '0'),
         top: Number.parseFloat(ui.host.style.top || '0'),
@@ -1043,10 +1055,15 @@ export class TranslatorCore {
       ui.host.style.width = `${nextRect.width}px`;
       ui.host.style.height = `${nextRect.height}px`;
       onZoom();
+      scheduleZoomTransitionCleanup();
     };
 
     ui.host.addEventListener('wheel', onWheel, { passive: false });
     return () => {
+      if (zoomClassTimer !== null) {
+        window.clearTimeout(zoomClassTimer);
+      }
+      ui.host.classList.remove('mt-x-screenshot-result-zooming');
       ui.host.removeEventListener('wheel', onWheel);
     };
   }

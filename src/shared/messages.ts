@@ -61,6 +61,11 @@ export type StartScreenshotTranslateMessage = {
   type: 'mt:start-screenshot-translate';
 };
 
+/** Sent from background to content script when user presses the hover-target translation shortcut. */
+export type ShortcutTranslateHoverMessage = {
+  type: 'mt:shortcut-translate-hover';
+};
+
 export type RuntimeMessage =
   | GetSettingsMessage
   | SetSettingsMessage
@@ -71,7 +76,8 @@ export type RuntimeMessage =
   | OpenAiOAuthLogoutMessage
   | LlmChatCompletionsMessage
   | ContextMenuTranslateMessage
-  | StartScreenshotTranslateMessage;
+  | StartScreenshotTranslateMessage
+  | ShortcutTranslateHoverMessage;
 
 export type RuntimeSuccessResponse =
   | {
@@ -126,6 +132,10 @@ export type RuntimeSuccessResponse =
       ok: true;
       type: 'mt:start-screenshot-translate';
     }
+  | {
+      ok: true;
+      type: 'mt:shortcut-translate-hover';
+    }
 
 export type RuntimeErrorResponse = {
   ok: false;
@@ -161,6 +171,7 @@ export function isRuntimeMessage(value: unknown): value is RuntimeMessage {
     type === 'mt:openai-oauth-logout' ||
     type === 'mt:context-menu-translate' ||
     type === 'mt:start-screenshot-translate' ||
+    type === 'mt:shortcut-translate-hover' ||
     isLlmChatCompletionsMessage(value)
   );
 }

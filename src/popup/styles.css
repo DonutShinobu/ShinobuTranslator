@@ -61,6 +61,10 @@ html, body {
   background: linear-gradient(to bottom, var(--accent-soft), transparent 120%);
 }
 
+.popup-header-text {
+  min-width: 0;
+}
+
 .popup-header h1 {
   margin: 0;
   font-size: 15px;
@@ -146,6 +150,90 @@ html, body {
   height: 14px;
   flex-shrink: 0;
   opacity: 0.65;
+}
+
+.panel-title-with-shortcuts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+}
+
+.panel-title-copy {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+}
+
+.panel-title-shortcuts {
+  display: grid;
+  justify-items: end;
+  gap: 0;
+  min-width: 104px;
+  margin: -1px 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: oklch(0.58 0.035 350 / 0.84);
+  font-family: inherit;
+  text-align: right;
+  cursor: pointer;
+  opacity: 0.72;
+  transition: opacity 0.15s ease-out;
+}
+
+.panel-title-shortcuts:hover {
+  opacity: 0.95;
+}
+
+.panel-title-shortcuts:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 2px;
+}
+
+.panel-title-shortcuts-error {
+  opacity: 0.86;
+}
+
+.panel-title-shortcut-row {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  justify-content: end;
+  gap: 4px;
+  min-width: 0;
+}
+
+.panel-title-shortcut-label,
+.panel-title-shortcut-key {
+  color: oklch(0.58 0.035 350 / 0.84);
+  font-size: 9.4px;
+  line-height: 1.22;
+  white-space: nowrap;
+}
+
+.panel-title-shortcut-label {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+}
+
+.panel-title-shortcut-key {
+  display: inline-flex;
+  justify-content: flex-end;
+  min-width: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-weight: 650;
+}
+
+.panel-title-shortcut-key-unbound {
+  font-family: inherit;
+  font-weight: 600;
 }
 
 /* ── Form Fields ── */

@@ -52,6 +52,12 @@ export type ScreenshotResultOverlayAnchor = {
   offsetY: number;
 };
 
+export type ScreenshotResultOverlayPositionStyle = {
+  left: string;
+  right: string;
+  top: string;
+};
+
 const ICONS = {
   translate: `<svg viewBox="0 0 16 16"><text x="1.5" y="11" font-size="8.5" fill="currentColor" font-family="sans-serif" font-weight="700">文</text><text x="8.5" y="11" font-size="8.5" fill="currentColor" font-family="sans-serif" font-weight="700">A</text></svg>`,
   original: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="3" width="13" height="10" rx="1.5"/><circle cx="5" cy="6" r="1.5" fill="currentColor"/><path d="M1.5 11l4-3 2 2 3-2.5 3.5 2.5"/></svg>`,
@@ -363,6 +369,13 @@ export function injectStyles(): void {
     .mt-x-screenshot-select-rect[data-mode='element'] {
       border-style: solid;
     }
+    .mt-x-screenshot-select[data-phase='selecting'] .mt-x-screenshot-select-rect[data-mode='element'] {
+      transition:
+        left 180ms cubic-bezier(0.2, 0.85, 0.25, 1),
+        top 180ms cubic-bezier(0.2, 0.85, 0.25, 1),
+        width 180ms cubic-bezier(0.2, 0.85, 0.25, 1),
+        height 180ms cubic-bezier(0.2, 0.85, 0.25, 1);
+    }
     .mt-x-screenshot-select-rect[data-mode='manual'] {
       border-style: dashed;
     }
@@ -487,6 +500,13 @@ export function injectStyles(): void {
       touch-action: none;
       font-family: "MTX-SourceHanSans-CN", "MTX-SourceHanSans-TW", system-ui, sans-serif;
     }
+    .mt-x-screenshot-result.mt-x-screenshot-result-zooming {
+      transition:
+        left 180ms cubic-bezier(0.2, 0.85, 0.25, 1),
+        top 180ms cubic-bezier(0.2, 0.85, 0.25, 1),
+        width 180ms cubic-bezier(0.2, 0.85, 0.25, 1),
+        height 180ms cubic-bezier(0.2, 0.85, 0.25, 1);
+    }
     .mt-x-screenshot-result::before {
       content: "";
       position: absolute;
@@ -530,6 +550,33 @@ export function injectStyles(): void {
     }
     .mt-x-screenshot-result[data-status='running'][data-image='original'] img {
       filter: saturate(0.96) brightness(0.99);
+    }
+    .mt-x-shortcut-toast {
+      position: fixed;
+      left: 50%;
+      bottom: 28px;
+      z-index: 2147483647;
+      transform: translateX(-50%) translateY(6px);
+      max-width: min(280px, calc(100vw - 32px));
+      padding: 8px 12px;
+      border: 1px solid oklch(0.55 0.01 250 / 0.28);
+      border-radius: 999px;
+      background: oklch(0.97 0.005 250 / 0.92);
+      color: oklch(0.18 0.006 250);
+      box-shadow: 0 10px 28px oklch(0 0 0 / 0.18);
+      backdrop-filter: blur(16px) saturate(1.35);
+      -webkit-backdrop-filter: blur(16px) saturate(1.35);
+      font: 500 12px/1.2 "MTX-SourceHanSans-CN", "MTX-SourceHanSans-TW", system-ui, sans-serif;
+      text-align: center;
+      pointer-events: none;
+      opacity: 0;
+      transition:
+        opacity 150ms ease-out,
+        transform 180ms cubic-bezier(0.2, 0.85, 0.25, 1);
+    }
+    .mt-x-shortcut-toast[data-visible='true'] {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
     }
 
     @keyframes mt-x-glow-sweep {
@@ -900,37 +947,35 @@ function positionScreenshotResultOverlay(ui: ScreenshotResultUiElements): boolea
   ui.overlayAnchor = {
     anchorX: position.anchorX,
     anchorY: position.anchorY,
-    offsetX: position.anchorX === 'right' ? overlayLeft - hostRect.width : overlayLeft,
+    offsetX: position.anchorX === 'right' ? hostRect.width - overlayLeft - overlayWidth : overlayLeft,
     offsetY: position.anchorY === 'bottom' ? overlayTop - hostRect.height : overlayTop,
   };
   ui.overlay.dataset.anchorX = position.anchorX;
-  ui.overlay.style.right = 'auto';
   syncScreenshotResultOverlayPosition(ui);
   return true;
 }
 
-export function getScreenshotResultOverlayOffset(
-  anchor: ScreenshotResultOverlayAnchor,
-  hostSize: { width: number; height: number },
-): { left: number; top: number } {
-  return {
-    left: anchor.anchorX === 'right' ? hostSize.width + anchor.offsetX : anchor.offsetX,
-    top: anchor.anchorY === 'bottom' ? hostSize.height + anchor.offsetY : anchor.offsetY,
-  };
+function formatCssCalcFromFullSize(offset: number): string {
+  const sign = offset < 0 ? '-' : '+';
+  return `calc(100% ${sign} ${Math.abs(offset)}px)`;
 }
 
-function getScreenshotResultHostSize(ui: ScreenshotResultUiElements): { width: number; height: number } {
+export function getScreenshotResultOverlayPositionStyle(
+  anchor: ScreenshotResultOverlayAnchor,
+): ScreenshotResultOverlayPositionStyle {
   return {
-    width: Number.parseFloat(ui.host.style.width || `${ui.host.offsetWidth}`),
-    height: Number.parseFloat(ui.host.style.height || `${ui.host.offsetHeight}`),
+    left: anchor.anchorX === 'left' ? `${anchor.offsetX}px` : 'auto',
+    right: anchor.anchorX === 'right' ? `${anchor.offsetX}px` : 'auto',
+    top: anchor.anchorY === 'bottom' ? formatCssCalcFromFullSize(anchor.offsetY) : `${anchor.offsetY}px`,
   };
 }
 
 function syncScreenshotResultOverlayPosition(ui: ScreenshotResultUiElements): void {
   if (!ui.overlayAnchor) return;
-  const offset = getScreenshotResultOverlayOffset(ui.overlayAnchor, getScreenshotResultHostSize(ui));
-  ui.overlay.style.left = `${offset.left}px`;
-  ui.overlay.style.top = `${offset.top}px`;
+  const positionStyle = getScreenshotResultOverlayPositionStyle(ui.overlayAnchor);
+  ui.overlay.style.left = positionStyle.left;
+  ui.overlay.style.right = positionStyle.right;
+  ui.overlay.style.top = positionStyle.top;
 }
 
 function clampViewportX(value: number): number {

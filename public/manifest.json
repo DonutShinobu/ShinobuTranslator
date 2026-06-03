@@ -23,6 +23,20 @@
     "service_worker": "background.js",
     "type": "module"
   },
+  "commands": {
+    "start-screenshot-translate": {
+      "suggested_key": {
+        "default": "Alt+Q"
+      },
+      "description": "截图翻译"
+    },
+    "translate-hover-target": {
+      "suggested_key": {
+        "default": "Alt+W"
+      },
+      "description": "翻译悬停元素"
+    }
+  },
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
   },

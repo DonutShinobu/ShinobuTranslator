@@ -7,6 +7,7 @@ describe("isRuntimeMessage", () => {
     expect(isRuntimeMessage({ type: "mt:capture-visible-tab" })).toBe(true);
     expect(isRuntimeMessage({ type: "mt:context-menu-translate" })).toBe(true);
     expect(isRuntimeMessage({ type: "mt:start-screenshot-translate" })).toBe(true);
+    expect(isRuntimeMessage({ type: "mt:shortcut-translate-hover" })).toBe(true);
   });
 
   it("accepts OpenAI OAuth and LLM proxy runtime messages", () => {

@@ -177,12 +177,14 @@ async function createSession(
 ): Promise<WorkerSessionHandle> {
   return withPerModelLock(modelUrl, async () => {
     ensureOrtEnv();
+    const normalized = preferred.filter((item, idx) => preferred.indexOf(item) === idx);
+    const sessionId = `${modelKey}:${normalized.join(",")}`;
 
     // Check if session already cached
-    const existing = sessions.get(modelKey);
+    const existing = sessions.get(sessionId);
     if (existing) {
       return {
-        sessionId: modelKey,
+        sessionId,
         provider: existing.provider,
         webnnDeviceType: existing.webnnDeviceType,
         inputNames: [...existing.session.inputNames],
@@ -190,7 +192,6 @@ async function createSession(
       };
     }
 
-    const normalized = preferred.filter((item, idx) => preferred.indexOf(item) === idx);
     const providerOrder: RuntimeProvider[] = [];
     const providerErrors: Partial<Record<RuntimeProvider, string>> = {};
 
@@ -254,10 +255,10 @@ async function createSession(
               }
             }
 
-            sessions.set(modelKey, { session, provider, webnnDeviceType, modelUrl });
+            sessions.set(sessionId, { session, provider, webnnDeviceType, modelUrl });
 
             return {
-              sessionId: modelKey,
+              sessionId,
               provider,
               webnnDeviceType,
               inputNames: [...session.inputNames],
@@ -425,8 +426,6 @@ async function runOcrBatchDecode(
     text: result.text,
     confidence: result.confidence,
     tokenIds: result.tokenIds,
-    imageData: items[i].imageData,
-    imageDims: items[i].imageDims,
     validEncoderLength: result.validEncoderLength,
     colors: result.colors,
   }));
@@ -494,8 +493,6 @@ async function runOcrSplitBatchDecode(
     text: result.text,
     confidence: result.confidence,
     tokenIds: result.tokenIds,
-    imageData: items[i].imageData,
-    imageDims: items[i].imageDims,
     validEncoderLength: result.validEncoderLength,
     colors: result.colors,
   }));
@@ -894,12 +891,23 @@ async function runDetectWithGpuPreprocess(
 // ---------------------------------------------------------------------------
 
 async function disposeSession(sessionId: string): Promise<void> {
-  const entry = sessions.get(sessionId);
-  if (!entry) return;
-  if (typeof (entry.session as { release?: () => void }).release === "function") {
-    (entry.session as { release: () => void }).release();
+  const releaseEntry = (key: string, entry: { session: InferenceSession }): void => {
+    if (typeof (entry.session as { release?: () => void }).release === "function") {
+      (entry.session as { release: () => void }).release();
+    }
+    sessions.delete(key);
+  };
+
+  const exact = sessions.get(sessionId);
+  if (exact) {
+    releaseEntry(sessionId, exact);
   }
-  sessions.delete(sessionId);
+  const prefix = `${sessionId}:`;
+  for (const [key, entry] of [...sessions.entries()]) {
+    if (key.startsWith(prefix)) {
+      releaseEntry(key, entry);
+    }
+  }
 }
 
 async function disposeAll(): Promise<void> {

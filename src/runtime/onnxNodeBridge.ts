@@ -280,8 +280,6 @@ export async function runOcrBatchDecode(
     text: result.text,
     confidence: result.confidence,
     tokenIds: result.tokenIds,
-    imageData: items[i].imageData,
-    imageDims: items[i].imageDims,
     validEncoderLength: result.validEncoderLength,
     colors: result.colors,
   }));
@@ -346,8 +344,6 @@ export async function runOcrSplitBatchDecode(
     text: result.text,
     confidence: result.confidence,
     tokenIds: result.tokenIds,
-    imageData: items[i].imageData,
-    imageDims: items[i].imageDims,
     validEncoderLength: result.validEncoderLength,
     colors: result.colors,
   }));

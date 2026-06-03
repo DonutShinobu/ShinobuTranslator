@@ -197,3 +197,99 @@ if (scriptUrl.startsWith("chrome-extension://")) {
   }
 }
 ```
+
+---
+
+## Scenario: ONNX Worker Session Variants and OCR Decode Payloads
+
+### 1. Scope / Trigger
+
+- Trigger: Creating, reusing, disposing, or instrumenting ONNX sessions through `src/runtime/onnxWorkerBridge.ts` and `src/workers/onnx-worker.ts`.
+- Applies when the same model can be requested with different provider plans, for example `["webgpu", "webnn", "wasm"]` vs `["webnn", "wasm"]`.
+- Applies to OCR batch decode contracts because OCR inputs are large `Float32Array` payloads and main-thread responsiveness depends on not sending them back unnecessarily.
+
+### 2. Signatures
+
+- `createSession(modelKey: string, modelUrl: string, preferred: RuntimeProvider[]): Promise<WorkerSessionHandle>`
+- Worker cache key: `` `${modelKey}:${normalizedPreferredProviders.join(",")}` ``
+- `disposeSession(sessionId: string): Promise<void>` accepts either an exact worker `sessionId` or a bare model key such as `"ocr_encoder"`.
+- `OcrBatchDecodeOutputItem` returns only decode results:
+
+```typescript
+export type OcrBatchDecodeOutputItem = {
+  regionId: string;
+  text: string;
+  confidence: number;
+  tokenIds: number[];
+  validEncoderLength: number;
+  colors?: OcrColorResult;
+};
+```
+
+### 3. Contracts
+
+- The worker session cache must include the normalized preferred provider list in the key. A runtime probe must not poison a later pipeline request that asks for a different provider plan.
+- `WorkerSessionHandle.sessionId` must be the same provider-plan-qualified key used by the worker cache.
+- `disposeSession("modelName")` must dispose all cached variants whose keys start with `"modelName:"`, as well as an exact key when one is provided.
+- Do not return OCR batch input image data from the worker. The main thread already owns `candidate.inputData` and uses it for result mapping and color reuse after decode.
+- Keep structured clone for worker inputs. Do not use `Comlink.transfer()` for input tensors unless the caller creates a throwaway copy specifically for transfer.
+
+### 4. Validation & Error Matrix
+
+| Condition | Symptom | Fix |
+|-----------|---------|-----|
+| Session cache keyed only by `modelKey` | A WebGPU probe can make a later `["webnn", "wasm"]` request reuse the wrong provider | Key sessions by `modelKey + normalized provider plan` |
+| `disposeSession("ocr_encoder")` clears only an exact key | Old provider-plan variants survive and are reused unexpectedly | Dispose exact key and every key with the `ocr_encoder:` prefix |
+| OCR batch output includes `imageData` / `imageDims` | Worker response includes megabytes of data the main thread already has, increasing message handling jank | Return only text, confidence, token ids, valid encoder length, and colors |
+| Input arrays are transferred directly | Fallback retries or later color decoding see detached buffers | Use structured clone for inputs, or transfer only copied throwaway buffers |
+
+### 5. Good/Base/Bad Cases
+
+- Good: `getModelSession("inpaint", ["webgpu", "webnn", "wasm"])` and `getModelSession("inpaint", ["webnn", "wasm"])` create distinct cached sessions and report distinct `sessionId` values.
+- Base: Repeated calls with the same normalized provider plan reuse the cached session.
+- Bad: Caching by only `"inpaint"` or `"ocr_encoder"` allows a probe, fallback, or experiment to silently change the provider used by later work.
+- Bad: Returning OCR `imageData` from `runOcrSplitBatchDecode()` duplicates the input payload across the worker boundary.
+
+### 6. Tests Required
+
+- `npx tsc --noEmit` must catch stale consumers of removed OCR output fields.
+- Real-browser smoke must run `runOcrSplitBatchDecode` through `dist/chunks/onnxWorkerBridge.js`.
+- Full pipeline smoke must load `dist` as an MV3 extension and complete detect + OCR + result generation.
+- When changing content-script import graph or worker bridge output, run `node --check dist/content.js`, `node --check dist/chunks/orchestrator.js`, `node --check dist/chunks/onnxWorkerBridge.js`, and `node --check dist/onnxWorker.js`.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+const existing = sessions.get(modelKey);
+sessions.set(modelKey, { session, provider, modelUrl });
+
+const outputItems = batchResults.map((result, i) => ({
+  regionId: items[i].regionId,
+  text: result.text,
+  confidence: result.confidence,
+  tokenIds: result.tokenIds,
+  imageData: items[i].imageData,
+  imageDims: items[i].imageDims,
+  validEncoderLength: result.validEncoderLength,
+}));
+```
+
+#### Correct
+
+```typescript
+const normalized = preferred.filter((item, idx) => preferred.indexOf(item) === idx);
+const sessionId = `${modelKey}:${normalized.join(",")}`;
+const existing = sessions.get(sessionId);
+sessions.set(sessionId, { session, provider, modelUrl });
+
+const outputItems = batchResults.map((result, i) => ({
+  regionId: items[i].regionId,
+  text: result.text,
+  confidence: result.confidence,
+  tokenIds: result.tokenIds,
+  validEncoderLength: result.validEncoderLength,
+  colors: result.colors,
+}));
+```

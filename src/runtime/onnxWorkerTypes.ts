@@ -61,8 +61,6 @@ export type OcrBatchDecodeOutputItem = {
   text: string;
   confidence: number;
   tokenIds: number[];
-  imageData: Float32Array;
-  imageDims: number[];
   validEncoderLength: number;
   colors?: OcrColorResult;
 };

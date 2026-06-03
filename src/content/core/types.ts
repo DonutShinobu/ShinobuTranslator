@@ -81,6 +81,77 @@ export type ModelRegionLogItem = {
   translatedColumnsRaw: string[];
 };
 
+export type ProgressJankEntry = 'image' | 'screenshot' | 'context-image' | 'reading-mode';
+
+export type ProgressJankFrameStats = {
+  samples: number;
+  maxDeltaMs: number;
+  p95DeltaMs: number;
+  over33Count: number;
+  over50Count: number;
+  over100Count: number;
+  longestSlowStreak: number;
+};
+
+export type ProgressJankUiStats = {
+  renderCalls: number;
+  renderTotalMs: number;
+  renderMaxMs: number;
+  stageTextChanges: number;
+};
+
+export type ProgressJankStageSummary = {
+  stage: string;
+  detail: string;
+  startMs: number;
+  durationMs: number;
+  maxFrameDeltaMs: number;
+  longFrameCount: number;
+  longTaskCount: number;
+};
+
+export type ProgressJankWorkerCall = {
+  kind: string;
+  model?: string;
+  provider?: string;
+  inputBytes?: number;
+  outputBytes?: number;
+  startMs: number;
+  durationMs: number;
+};
+
+export type ProgressJankMainThreadTask = {
+  kind: string;
+  startMs: number;
+  durationMs: number;
+};
+
+export type ProgressJankLongFrame = {
+  startMs: number;
+  durationMs: number;
+  blockingDurationMs?: number;
+  stage?: string;
+};
+
+export type ProgressJankLongTask = {
+  startMs: number;
+  durationMs: number;
+  stage?: string;
+};
+
+export type ProgressJankReport = {
+  runId: string;
+  entry: ProgressJankEntry;
+  totalMs: number;
+  frame: ProgressJankFrameStats;
+  ui: ProgressJankUiStats;
+  stages: ProgressJankStageSummary[];
+  workerCalls: ProgressJankWorkerCall[];
+  mainThreadTasks: ProgressJankMainThreadTask[];
+  longFrames: ProgressJankLongFrame[];
+  longTasks: ProgressJankLongTask[];
+};
+
 export type TypesetDebugDownloadData = {
   exportedAt: string;
   pageUrl: string;
@@ -89,6 +160,7 @@ export type TypesetDebugDownloadData = {
   runtimeStages: RuntimeStageStatus[];
   translationDebug: TranslationDebugInfo | null;
   ocrDebug: OcrRunDebugInfo | null;
+  progressJank: ProgressJankReport | null;
   ocrRegions: OcrRegionLogItem[];
   modelRegions: ModelRegionLogItem[];
   typeset: PipelineTypesetDebugLog;

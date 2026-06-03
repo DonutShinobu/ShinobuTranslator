@@ -5,6 +5,7 @@ import type { RuntimeProvider, WebNnDeviceType } from "../runtime/onnxTypes";
 import { runInference } from "../runtime/onnxBridge";
 import type { WorkerSessionHandle, TensorTransport } from "../runtime/onnxWorkerTypes";
 import { toErrorMessage } from "../shared/utils";
+import { createMainThreadYieldCheckpoint } from "./scheduler";
 import { clamp } from "./utils";
 
 export type InpaintResult = {
@@ -15,6 +16,9 @@ export type InpaintResult = {
 
 type InpaintInputNormalize = "zero_to_one" | "minus_one_to_one";
 type InpaintOutputNormalize = InpaintInputNormalize | "zero_to_255";
+type YieldCheckpoint = () => Promise<void>;
+
+const inpaintPixelYieldStride = 16_384;
 
 function pickInpaintTensor(outputs: Record<string, TensorTransport>): TensorTransport | null {
   for (const value of Object.values(outputs)) {
@@ -25,18 +29,19 @@ function pickInpaintTensor(outputs: Record<string, TensorTransport>): TensorTran
   return null;
 }
 
-function preprocessInpaintImage(
+async function preprocessInpaintImage(
   source: PipelineCanvas,
   mask: PipelineCanvas,
   size: number,
   normalize: InpaintInputNormalize,
   platform: PlatformProvider,
-): {
+  maybeYield: YieldCheckpoint,
+): Promise<{
   image: TensorTransport;
   mask: TensorTransport;
   sourceRgba: Uint8ClampedArray;
   maskBinary: Float32Array;
-} {
+}> {
   const imageCanvas = platform.createCanvas(size, size);
   const imageCtx = imageCanvas.getContext("2d", { willReadFrequently: true });
   if (!imageCtx) {
@@ -58,6 +63,9 @@ function preprocessInpaintImage(
   const maskOut = new Float32Array(area);
   const sourceRgba = new Uint8ClampedArray(imageData);
   for (let i = 0, p = 0; i < area; i += 1, p += 4) {
+    if (i > 0 && i % inpaintPixelYieldStride === 0) {
+      await maybeYield();
+    }
     const maskValue = maskData[p] > 127 ? 1 : 0;
     maskOut[i] = maskValue;
     const sourceR = imageData[p];
@@ -94,7 +102,13 @@ function readCanvasRgba(source: PipelineCanvas, width: number, height: number, p
   return new Uint8ClampedArray(ctx.getImageData(0, 0, width, height).data);
 }
 
-function readMaskBinary(mask: PipelineCanvas, width: number, height: number, platform: PlatformProvider): Float32Array {
+async function readMaskBinary(
+  mask: PipelineCanvas,
+  width: number,
+  height: number,
+  platform: PlatformProvider,
+  maybeYield: YieldCheckpoint,
+): Promise<Float32Array> {
   const canvas = platform.createCanvas(width, height);
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) {
@@ -104,6 +118,9 @@ function readMaskBinary(mask: PipelineCanvas, width: number, height: number, pla
   const data = ctx.getImageData(0, 0, width, height).data;
   const out = new Float32Array(width * height);
   for (let i = 0, p = 0; i < out.length; i += 1, p += 4) {
+    if (i > 0 && i % inpaintPixelYieldStride === 0) {
+      await maybeYield();
+    }
     out[i] = data[p] > 127 ? 1 : 0;
   }
   return out;
@@ -135,12 +152,13 @@ function resizeRgba(
   return new Uint8ClampedArray(outCtx.getImageData(0, 0, outWidth, outHeight).data);
 }
 
-function decodeInpaintTensor(
+async function decodeInpaintTensor(
   tensor: TensorTransport,
   width: number,
   height: number,
-  normalize: InpaintOutputNormalize
-): Uint8ClampedArray {
+  normalize: InpaintOutputNormalize,
+  maybeYield: YieldCheckpoint,
+): Promise<Uint8ClampedArray> {
   const area = width * height;
   const data = tensor.data;
   if (!(data instanceof Float32Array)) {
@@ -148,6 +166,9 @@ function decodeInpaintTensor(
   }
   const out = new Uint8ClampedArray(area * 4);
   for (let i = 0, p = 0; i < area; i += 1, p += 4) {
+    if (i > 0 && i % inpaintPixelYieldStride === 0) {
+      await maybeYield();
+    }
     const r = data[i];
     const g = data[area + i];
     const b = data[2 * area + i];
@@ -165,14 +186,15 @@ function decodeInpaintTensor(
   return out;
 }
 
-function composeInpaintResult(
+async function composeInpaintResult(
   sourceRgba: Uint8ClampedArray,
   inpaintedRgba: Uint8ClampedArray,
   maskBinary: Float32Array,
   width: number,
   height: number,
   platform: PlatformProvider,
-): PipelineCanvas {
+  maybeYield: YieldCheckpoint,
+): Promise<PipelineCanvas> {
   const canvas = platform.createCanvas(width, height);
   const ctx = canvas.getContext("2d");
   if (!ctx) {
@@ -181,6 +203,9 @@ function composeInpaintResult(
   const image = ctx.createImageData(width, height);
   const area = width * height;
   for (let i = 0, p = 0; i < area; i += 1, p += 4) {
+    if (i > 0 && i % inpaintPixelYieldStride === 0) {
+      await maybeYield();
+    }
     const useInpainted = maskBinary[i] >= 0.5;
     image.data[p] = useInpainted ? inpaintedRgba[p] : sourceRgba[p];
     image.data[p + 1] = useInpainted ? inpaintedRgba[p + 1] : sourceRgba[p + 1];
@@ -240,10 +265,11 @@ async function runInpaintByOnnx(
   const size = model.input?.[0] ?? 512;
   const normalize = model.normalize ?? "zero_to_one";
   const outputNormalize = model.outputNormalize ?? normalize;
+  const maybeYield = createMainThreadYieldCheckpoint();
   if (refinedMaskCanvas.width <= 0 || refinedMaskCanvas.height <= 0) {
     throw new Error("去字 ONNX 缺少有效 refined mask，已禁用文本框遮罩回退");
   }
-  const feeds = preprocessInpaintImage(originalCanvas, refinedMaskCanvas, size, normalize, platform);
+  const feeds = await preprocessInpaintImage(originalCanvas, refinedMaskCanvas, size, normalize, platform, maybeYield);
   const runWithHandle = async (handle: WorkerSessionHandle): Promise<Record<string, TensorTransport>> => {
     const imageName = handle.inputNames[0];
     const maskName = model.maskInputName ?? handle.inputNames[1];
@@ -258,12 +284,12 @@ async function runInpaintByOnnx(
     return result.outputs;
   };
 
-  const decodeOutputs = (outputs: Record<string, TensorTransport>): Uint8ClampedArray => {
+  const decodeOutputs = (outputs: Record<string, TensorTransport>): Promise<Uint8ClampedArray> => {
     const outTensor = pickInpaintTensor(outputs);
     if (!outTensor) {
       throw new Error("去字 ONNX 模型输出未匹配到图像张量");
     }
-    return decodeInpaintTensor(outTensor, size, size, outputNormalize);
+    return decodeInpaintTensor(outTensor, size, size, outputNormalize, maybeYield);
   };
 
   let actualProvider: RuntimeProvider = primaryHandle.provider;
@@ -311,7 +337,7 @@ async function runInpaintByOnnx(
     outputTensors = recovered;
   }
 
-  let inpaintedRgba = decodeOutputs(outputTensors);
+  let inpaintedRgba = await decodeOutputs(outputTensors);
 
   if (
     actualProvider === "webnn" &&
@@ -319,24 +345,29 @@ async function runInpaintByOnnx(
   ) {
     const wasmHandle = await getModelSession("inpaint", ["wasm"]);
     const wasmOutputTensors = await runWithHandle(wasmHandle);
-    inpaintedRgba = decodeOutputs(wasmOutputTensors);
+    inpaintedRgba = await decodeOutputs(wasmOutputTensors);
     actualProvider = "wasm";
     actualWebnnDeviceType = undefined;
   }
 
   const outputWidth = originalCanvas.width;
   const outputHeight = originalCanvas.height;
+  await maybeYield();
   const originalSourceRgba = readCanvasRgba(originalCanvas, outputWidth, outputHeight, platform);
-  const originalMaskBinary = readMaskBinary(refinedMaskCanvas, outputWidth, outputHeight, platform);
+  await maybeYield();
+  const originalMaskBinary = await readMaskBinary(refinedMaskCanvas, outputWidth, outputHeight, platform, maybeYield);
+  await maybeYield();
   const inpaintedRgbaAtOriginalSize = resizeRgba(inpaintedRgba, size, size, outputWidth, outputHeight, platform);
+  await maybeYield();
 
-  const canvas = composeInpaintResult(
+  const canvas = await composeInpaintResult(
     originalSourceRgba,
     inpaintedRgbaAtOriginalSize,
     originalMaskBinary,
     outputWidth,
     outputHeight,
-    platform
+    platform,
+    maybeYield,
   );
 
   return { canvas, actualProvider, actualWebnnDeviceType };

@@ -220,19 +220,21 @@ export function injectStyles(): void {
       height: 16px;
       flex: 0 0 auto;
       will-change: transform;
-      animation: mt-x-spin-rotate 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+      transform-origin: center;
+      animation: mt-x-spin-rotate 1.2s linear infinite;
     }
     .mt-x-spinner svg {
       width: 16px;
       height: 16px;
+      display: block;
     }
     .mt-x-spinner svg circle {
       fill: none;
       stroke: currentColor;
       stroke-width: 2.5;
       stroke-linecap: round;
-      stroke-dasharray: 1, 37.7;
-      animation: mt-x-spin-arc 1.8s ease-in-out infinite;
+      stroke-dasharray: 24, 37.7;
+      stroke-dashoffset: 0;
     }
     .mt-x-control[data-status='running'] .mt-x-spinner {
       display: inline-flex;
@@ -587,20 +589,6 @@ export function injectStyles(): void {
     }
     @keyframes mt-x-spin-rotate {
       to { transform: rotate(360deg); }
-    }
-    @keyframes mt-x-spin-arc {
-      0% {
-        stroke-dasharray: 1, 37.7;
-        stroke-dashoffset: 0;
-      }
-      50% {
-        stroke-dasharray: 25, 37.7;
-        stroke-dashoffset: -12;
-      }
-      100% {
-        stroke-dasharray: 1, 37.7;
-        stroke-dashoffset: -37.7;
-      }
     }
   `;
   document.documentElement.appendChild(style);

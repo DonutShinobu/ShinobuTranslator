@@ -37,12 +37,22 @@ export type AssignedExtent = {
   maxY: number;
 };
 
+type YieldCheckpoint = () => Promise<void>;
+
+const algorithmPixelYieldStride = 16_384;
+
 export function makeCanvas(width: number, height: number, platform: PlatformProvider): PipelineCanvas {
   const canvas = platform.createCanvas(width, height);
   return canvas;
 }
 
-export function readBinaryMask(canvas: PipelineCanvas, width: number, height: number, platform: PlatformProvider): Uint8Array {
+export async function readBinaryMask(
+  canvas: PipelineCanvas,
+  width: number,
+  height: number,
+  platform: PlatformProvider,
+  maybeYield?: YieldCheckpoint,
+): Promise<Uint8Array> {
   const resized = makeCanvas(width, height, platform);
   const ctx = resized.getContext("2d", { willReadFrequently: true });
   if (!ctx) {
@@ -53,12 +63,21 @@ export function readBinaryMask(canvas: PipelineCanvas, width: number, height: nu
   const data = ctx.getImageData(0, 0, width, height).data;
   const out = new Uint8Array(width * height);
   for (let i = 0, p = 0; i < out.length; i += 1, p += 4) {
+    if (maybeYield && i > 0 && i % algorithmPixelYieldStride === 0) {
+      await maybeYield();
+    }
     out[i] = data[p] > 0 ? 1 : 0;
   }
   return out;
 }
 
-export function readGrayImage(canvas: PipelineCanvas, width: number, height: number, platform: PlatformProvider): Uint8Array {
+export async function readGrayImage(
+  canvas: PipelineCanvas,
+  width: number,
+  height: number,
+  platform: PlatformProvider,
+  maybeYield?: YieldCheckpoint,
+): Promise<Uint8Array> {
   const resized = makeCanvas(width, height, platform);
   const ctx = resized.getContext("2d", { willReadFrequently: true });
   if (!ctx) {
@@ -69,6 +88,9 @@ export function readGrayImage(canvas: PipelineCanvas, width: number, height: num
   const data = ctx.getImageData(0, 0, width, height).data;
   const out = new Uint8Array(width * height);
   for (let i = 0, p = 0; i < out.length; i += 1, p += 4) {
+    if (maybeYield && i > 0 && i % algorithmPixelYieldStride === 0) {
+      await maybeYield();
+    }
     out[i] = Math.round(data[p] * 0.299 + data[p + 1] * 0.587 + data[p + 2] * 0.114);
   }
   return out;
@@ -258,13 +280,21 @@ export function scaleRegions(regions: TextRegion[], scale: number, maxW: number,
   });
 }
 
-export function connectedComponents(mask: Uint8Array, width: number, height: number): Component[] {
+export async function connectedComponents(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  maybeYield?: YieldCheckpoint,
+): Promise<Component[]> {
   const total = width * height;
   const visited = new Uint8Array(total);
   const queue = new Int32Array(total);
   const out: Component[] = [];
 
   for (let i = 0; i < total; i += 1) {
+    if (maybeYield && i > 0 && i % algorithmPixelYieldStride === 0) {
+      await maybeYield();
+    }
     if (mask[i] === 0 || visited[i] === 1) {
       continue;
     }
@@ -282,6 +312,9 @@ export function connectedComponents(mask: Uint8Array, width: number, height: num
     let maxY = 0;
 
     while (head < tail) {
+      if (maybeYield && head > 0 && head % algorithmPixelYieldStride === 0) {
+        await maybeYield();
+      }
       const current = queue[head];
       head += 1;
       pixels.push(current);
@@ -353,7 +386,13 @@ function ellipseOffsets(size: number): Array<{ dx: number; dy: number }> {
   return out;
 }
 
-export function dilate(mask: Uint8Array, width: number, height: number, kernelSize: number): Uint8Array {
+export async function dilate(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  kernelSize: number,
+  maybeYield?: YieldCheckpoint,
+): Promise<Uint8Array> {
   if (kernelSize <= 1) {
     return mask.slice();
   }
@@ -362,6 +401,9 @@ export function dilate(mask: Uint8Array, width: number, height: number, kernelSi
   for (let y = 0; y < height; y += 1) {
     const row = y * width;
     for (let x = 0; x < width; x += 1) {
+      if (maybeYield && row + x > 0 && (row + x) % algorithmPixelYieldStride === 0) {
+        await maybeYield();
+      }
       if (mask[row + x] === 0) {
         continue;
       }
@@ -385,7 +427,15 @@ export function computeScaleFactor(rawMaskHeight: number, imageHeight: number): 
   return Math.max(Math.min((rawMaskHeight - imageHeight / 3) / rawMaskHeight, 1), 0.5);
 }
 
-export function toMaskCanvas(mask: Uint8Array, width: number, height: number, outW: number, outH: number, platform: PlatformProvider): PipelineCanvas {
+export async function toMaskCanvas(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  outW: number,
+  outH: number,
+  platform: PlatformProvider,
+  maybeYield?: YieldCheckpoint,
+): Promise<PipelineCanvas> {
   const src = makeCanvas(width, height, platform);
   const srcCtx = src.getContext("2d");
   if (!srcCtx) {
@@ -393,6 +443,9 @@ export function toMaskCanvas(mask: Uint8Array, width: number, height: number, ou
   }
   const imageData = srcCtx.createImageData(width, height);
   for (let i = 0, p = 0; i < mask.length; i += 1, p += 4) {
+    if (maybeYield && i > 0 && i % algorithmPixelYieldStride === 0) {
+      await maybeYield();
+    }
     const v = mask[i] > 0 ? 255 : 0;
     imageData.data[p] = v;
     imageData.data[p + 1] = v;
@@ -401,6 +454,9 @@ export function toMaskCanvas(mask: Uint8Array, width: number, height: number, ou
   }
   srcCtx.putImageData(imageData, 0, 0);
 
+  if (maybeYield) {
+    await maybeYield();
+  }
   const out = makeCanvas(outW, outH, platform);
   const outCtx = out.getContext("2d", { willReadFrequently: true });
   if (!outCtx) {
@@ -410,6 +466,9 @@ export function toMaskCanvas(mask: Uint8Array, width: number, height: number, ou
   outCtx.drawImage(src, 0, 0, outW, outH);
   const outData = outCtx.getImageData(0, 0, outW, outH);
   for (let p = 0; p < outData.data.length; p += 4) {
+    if (maybeYield && p > 0 && p % (algorithmPixelYieldStride * 4) === 0) {
+      await maybeYield();
+    }
     const v = outData.data[p] > 127 ? 255 : 0;
     outData.data[p] = v;
     outData.data[p + 1] = v;
@@ -515,7 +574,11 @@ export function xorCost(a: Uint8Array, b: Uint8Array): number {
   return cost;
 }
 
-export function refineRegionMask(gray: Uint8Array, seedMask: Uint8Array): Uint8Array {
+export async function refineRegionMask(
+  gray: Uint8Array,
+  seedMask: Uint8Array,
+  maybeYield?: YieldCheckpoint,
+): Promise<Uint8Array> {
   if (!hasForeground(seedMask)) {
     return seedMask.slice();
   }
@@ -523,6 +586,9 @@ export function refineRegionMask(gray: Uint8Array, seedMask: Uint8Array): Uint8A
   const candidate = new Uint8Array(gray.length);
   const inverse = new Uint8Array(gray.length);
   for (let i = 0; i < gray.length; i += 1) {
+    if (maybeYield && i > 0 && i % algorithmPixelYieldStride === 0) {
+      await maybeYield();
+    }
     const isDark = gray[i] <= threshold ? 1 : 0;
     candidate[i] = isDark;
     inverse[i] = isDark === 1 ? 0 : 1;
@@ -539,14 +605,15 @@ export function refineRegionMask(gray: Uint8Array, seedMask: Uint8Array): Uint8A
 const BRIGHT_THRESHOLD = 40;
 const OUTLINE_RATIO_THRESHOLD = 0.5;
 
-export function detectOutlineWidth(
+export async function detectOutlineWidth(
   gray: Uint8Array,
   mask: Uint8Array,
   width: number,
   height: number,
   regionRect: Rect,
-  textSize: number
-): number {
+  textSize: number,
+  maybeYield?: YieldCheckpoint,
+): Promise<number> {
   const rx0 = Math.max(0, Math.floor(regionRect.x));
   const ry0 = Math.max(0, Math.floor(regionRect.y));
   const rx1 = Math.min(width - 1, Math.floor(regionRect.x + regionRect.width));
@@ -555,6 +622,9 @@ export function detectOutlineWidth(
   // 1. 计算背景亮度（使用 Q1 避免描边像素抬高背景估计）
   const outsideGray: number[] = [];
   for (let y = ry0; y <= ry1; y += 1) {
+    if (maybeYield) {
+      await maybeYield();
+    }
     for (let x = rx0; x <= rx1; x += 1) {
       if (mask[y * width + x] === 0) {
         outsideGray.push(gray[y * width + x]);
@@ -570,6 +640,9 @@ export function detectOutlineWidth(
   // 2. 找 mask 边界像素
   const boundaryPixels: Array<{ x: number; y: number }> = [];
   for (let y = ry0; y <= ry1; y += 1) {
+    if (maybeYield) {
+      await maybeYield();
+    }
     for (let x = rx0; x <= rx1; x += 1) {
       if (mask[y * width + x] === 0) {
         continue;
@@ -602,7 +675,11 @@ export function detectOutlineWidth(
   ];
   const outlineDists: number[] = [];
 
-  for (const bp of boundaryPixels) {
+  for (let i = 0; i < boundaryPixels.length; i += 1) {
+    if (maybeYield && i > 0 && i % algorithmPixelYieldStride === 0) {
+      await maybeYield();
+    }
+    const bp = boundaryPixels[i];
     let maxDist = 0;
     for (const dir of directions) {
       let dist = 0;

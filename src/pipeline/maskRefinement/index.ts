@@ -1,6 +1,7 @@
 import type { Rect, TextRegion, RefineTextMaskResult } from "../../types";
 import type { MaskRefinementOptions, AssignedExtent, Component } from "./algorithms";
 import type { PlatformProvider, PipelineCanvas } from "../../runtime/platform";
+import { createMainThreadYieldCheckpoint } from "../scheduler";
 import {
   makeCanvas,
   readBinaryMask,
@@ -25,14 +26,16 @@ import {
 
 export type { MaskRefinementOptions } from "./algorithms";
 
-export function refineTextMask(
+const maskPixelYieldStride = 16_384;
+
+export async function refineTextMask(
   originalCanvas: PipelineCanvas,
   regions: TextRegion[],
   rawMaskCanvas: PipelineCanvas,
   platform: PlatformProvider,
   options: MaskRefinementOptions = {},
   collectDebugLayers = false
-): RefineTextMaskResult {
+): Promise<RefineTextMaskResult> {
   const method = options.method ?? "fit_text";
   if (method !== "fit_text") {
     throw new Error(`Mask refinement 不支持的 method: ${method}`);
@@ -49,26 +52,33 @@ export function refineTextMask(
 
   const kernelSize = options.kernelSize ?? 3;
   const keepThreshold = options.keepThreshold ?? 1e-2;
+  const maybeYield = createMainThreadYieldCheckpoint();
 
   const scaleFactor = computeScaleFactor(rawMaskCanvas.height, height);
   const scaledWidth = Math.max(1, Math.round(width * scaleFactor));
   const scaledHeight = Math.max(1, Math.round(height * scaleFactor));
 
-  const scaledMask = readBinaryMask(rawMaskCanvas, scaledWidth, scaledHeight, platform);
-  const scaledGray = readGrayImage(originalCanvas, scaledWidth, scaledHeight, platform);
+  await maybeYield();
+  const scaledMask = await readBinaryMask(rawMaskCanvas, scaledWidth, scaledHeight, platform, maybeYield);
+  await maybeYield();
+  const scaledGray = await readGrayImage(originalCanvas, scaledWidth, scaledHeight, platform, maybeYield);
   const scaledRegions = scaleRegions(regions, scaleFactor, scaledWidth, scaledHeight);
 
   const ccInput = scaledMask.slice();
   for (const region of scaledRegions) {
+    await maybeYield();
     drawRectOutline(ccInput, scaledWidth, scaledHeight, region.box);
   }
-  const components = connectedComponents(ccInput, scaledWidth, scaledHeight);
+  await maybeYield();
+  const components = await connectedComponents(ccInput, scaledWidth, scaledHeight, maybeYield);
+  await maybeYield();
 
   const assigned: Component[][] = new Array(scaledRegions.length).fill(null).map(() => []);
   const extents: Array<AssignedExtent | null> = new Array(scaledRegions.length).fill(null);
   let valid = false;
 
   for (const component of components) {
+    await maybeYield();
     let bestRatio = -1;
     let bestIndex = -1;
     let nearestDistance = Number.POSITIVE_INFINITY;
@@ -138,6 +148,7 @@ export function refineTextMask(
   const refinedMaskBeforeDilate = collectDebugLayers ? new Uint8Array(scaledWidth * scaledHeight) : null;
 
   for (let i = 0; i < scaledRegions.length; i += 1) {
+    await maybeYield();
     const regionComponents = assigned[i];
     const extent = extents[i];
     if (!extent || regionComponents.length === 0) {
@@ -154,8 +165,13 @@ export function refineTextMask(
 
     const regionMask = new Uint8Array(scaledWidth * scaledHeight);
     for (const component of regionComponents) {
+      let copiedPixels = 0;
       for (const pixel of component.pixels) {
         regionMask[pixel] = 1;
+        copiedPixels += 1;
+        if (copiedPixels % maskPixelYieldStride === 0) {
+          await maybeYield();
+        }
       }
     }
 
@@ -165,28 +181,32 @@ export function refineTextMask(
       continue;
     }
     const grayRegion = extractSubGray(scaledGray, scaledWidth, rect1);
-    const refined = refineRegionMask(grayRegion, ccRegion);
+    await maybeYield();
+    const refined = await refineRegionMask(grayRegion, ccRegion, maybeYield);
     replaceSubMask(regionMask, scaledWidth, rect1, refined);
 
     if (refinedMaskBeforeDilate) {
       orSubMask(refinedMaskBeforeDilate, scaledWidth, rect1, extractSubMask(regionMask, scaledWidth, rect1));
     }
 
-    const outlineWidth = detectOutlineWidth(scaledGray, regionMask, scaledWidth, scaledHeight, baseRect, regionTextSize);
+    const outlineWidth = await detectOutlineWidth(scaledGray, regionMask, scaledWidth, scaledHeight, baseRect, regionTextSize, maybeYield);
     const outlineDilateExtra = outlineWidth > 0 ? outlineWidth * 2 : 0;
     const baseRatio = outlineWidth > 0 ? 0.05 : 0.1;
     const baseDilateSize = Math.max(Math.floor(Math.floor(regionTextSize * baseRatio) / 2) * 2 + 1, 3);
     const dilateSize = Math.max(baseDilateSize + outlineDilateExtra, 3);
     const rect2 = extendRect(baseRect, scaledWidth, scaledHeight, Math.ceil(dilateSize / 2));
     const ccRegion2 = extractSubMask(regionMask, scaledWidth, rect2);
-    const dilated = dilate(ccRegion2, rect2.width, rect2.height, dilateSize);
+    await maybeYield();
+    const dilated = await dilate(ccRegion2, rect2.width, rect2.height, dilateSize, maybeYield);
     orSubMask(finalMask, scaledWidth, rect2, dilated);
   }
 
   const perRegionDilatedSnapshot = collectDebugLayers ? finalMask.slice() : null;
 
-  const finalDilated = dilate(finalMask, scaledWidth, scaledHeight, Math.max(1, kernelSize));
-  const refinedMaskCanvas = toMaskCanvas(finalDilated, scaledWidth, scaledHeight, width, height, platform);
+  await maybeYield();
+  const finalDilated = await dilate(finalMask, scaledWidth, scaledHeight, Math.max(1, kernelSize), maybeYield);
+  await maybeYield();
+  const refinedMaskCanvas = await toMaskCanvas(finalDilated, scaledWidth, scaledHeight, width, height, platform, maybeYield);
 
   const debugLayers = collectDebugLayers && refinedMaskBeforeDilate && perRegionDilatedSnapshot
     ? {

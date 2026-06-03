@@ -196,6 +196,93 @@ wrapper.before(anchor); // anchor appears to the LEFT of direction toggle
 
 ---
 
+## Scenario: Translation Progress Animation Responsiveness
+
+### 1. Scope / Trigger
+
+- Trigger: changing content-script progress UI, pipeline progress reporting, or heavy pipeline stages that run while the pill/spinner is visible.
+- Applies to `src/content/core/ui.ts`, `src/content/core/TranslatorCore.ts`, `src/content/core/progressJank.ts`, `src/pipeline/orchestrator.ts`, and pipeline stages that perform main-thread image/canvas work.
+
+### 2. Signatures
+
+- Progress callback may be async so content UI can render before the next heavy stage:
+
+```typescript
+type ProgressCallback = (progress: PipelineProgress) => void | Promise<void>;
+```
+
+- Main-thread cooperative yielding uses:
+
+```typescript
+export function createMainThreadYieldCheckpoint(budgetMs?: number): () => Promise<void>;
+```
+
+### 3. Contracts
+
+- The progress pill must keep its dimensions, Chinese labels, running state semantics, and `mt-x-` CSS namespace.
+- The running spinner should animate via compositor-friendly properties such as `transform`; do not animate SVG `stroke-dasharray` or `stroke-dashoffset` every frame in the normal running state.
+- Progress UI updates for major stages should get a paint opportunity before the stage starts expensive work. Use an async progress callback in the content layer, not a pipeline-global paint wait that affects Node/bake paths.
+- Do not create full-size detection/OCR preview canvases during normal translation unless a visible feature or explicit debug output consumes them. Large `drawImage`/`getImageData`/`toBlob` work can produce long frames even when model inference is workerized.
+- For main-thread pixel/component loops that must stay in the browser pipeline, call `maybeYield()` at row/component/chunk boundaries, not per pixel.
+- Treat WebGPU/worker boundaries as possible animation jank sources even when `longtask` counts are low. Long animation frames with low blocking duration can still make the spinner look choppy because rendering/compositing is delayed.
+
+### 4. Validation & Error Matrix
+
+| Condition | Symptom | Fix |
+|-----------|---------|-----|
+| Spinner animates SVG stroke dash properties | Spinner visibly stutters during model/GPU work | Use a static arc and animate `transform: rotate()` |
+| Stage callback updates text and immediately starts heavy work | Stage label changes but spinner freezes at transition | Await a content-layer paint barrier for major stages |
+| Normal pipeline draws full-size intermediate debug canvases | OCR/detect boundaries show 100ms+ long tasks on large images | Skip default preview canvases or move debug rendering behind an explicit debug path |
+| Worker calls show large output bytes and LoAFs with low blocking duration | Main-thread yielding does not fully fix spinner jank | Reduce worker payload, move postprocess into worker, or test provider/GPU contention |
+
+### 5. Good/Base/Bad Cases
+
+- Good: `[shinobu:jank]` shows UI render max under ~25ms and remaining spikes are attributed to specific stage/worker/canvas boundaries.
+- Base: rAF p95 stays near a normal frame interval while occasional spikes are documented and tied to model/canvas boundaries.
+- Bad: changing pill copy, disabling the spinner, or hiding animation to mask pipeline jank.
+- Bad: adding more `setTimeout` animation logic in `renderUi()` while long frames come from WebGPU or full-size canvas work.
+
+### 6. Tests Required
+
+- Run `npx tsc --noEmit`.
+- Run `npm run test`.
+- Run `npm run build`.
+- After content-script or worker-boundary changes, run `node --check dist/content.js`, `node --check dist/chunks/orchestrator.js`, `node --check dist/chunks/onnxWorkerBridge.js`, and `node --check dist/onnxWorker.js`.
+- Run a real-browser pipeline smoke or hover/context-image UI smoke and inspect `[shinobu:jank]` for frame stats, stage stats, UI render stats, worker calls, and long tasks.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```css
+.mt-x-spinner svg circle {
+  animation: mt-x-spin-arc 1.8s ease-in-out infinite;
+}
+
+@keyframes mt-x-spin-arc {
+  50% {
+    stroke-dasharray: 25, 37.7;
+    stroke-dashoffset: -12;
+  }
+}
+```
+
+#### Correct
+
+```css
+.mt-x-spinner {
+  will-change: transform;
+  animation: mt-x-spin-rotate 1.2s linear infinite;
+}
+
+.mt-x-spinner svg circle {
+  stroke-dasharray: 24, 37.7;
+  stroke-dashoffset: 0;
+}
+```
+
+---
+
 ## Testing Requirements
 
 ### Framework: Vitest

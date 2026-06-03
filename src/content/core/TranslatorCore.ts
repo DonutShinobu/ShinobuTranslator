@@ -15,6 +15,8 @@ import type {
   UrlTarget,
   OcrRegionLogItem,
   ModelRegionLogItem,
+  ProgressJankEntry,
+  ProgressJankReport,
 } from './types';
 import { sendRuntimeMessage } from '../../shared/messages';
 import {
@@ -40,8 +42,11 @@ import {
   scaleScreenshotRectAroundPoint,
 } from './screenshot';
 import type { ScreenshotRect, ScreenshotSelection } from './screenshot';
+import { ProgressJankMonitor } from './progressJank';
 
 const photoStateCacheLimit = 200;
+const loggedProgressJankReports = new Set<string>();
+const pipelineProgressPaintBarrierStages = new Set(['preload', 'detect', 'bubble', 'ocr', 'parallel', 'typeset']);
 
 const stageLabelMap: Record<string, string> = {
   load: '加载图片',
@@ -94,6 +99,7 @@ function toTypesetDebugDownloadData(
   pageUrl: string,
   sourceImageUrl: string,
   artifacts: PipelineArtifacts,
+  progressJank: ProgressJankReport | null,
 ): TypesetDebugDownloadData | undefined {
   if (!artifacts.typesetDebugLog) return undefined;
   const ocrRegions: OcrRegionLogItem[] = artifacts.detectedRegions.map((region) => ({
@@ -130,10 +136,29 @@ function toTypesetDebugDownloadData(
           colorFallbackRegions: artifacts.ocrDebug.colorFallbackRegions.map((r) => ({ ...r })),
         }
       : null,
+    progressJank,
     ocrRegions,
     modelRegions,
     typeset: artifacts.typesetDebugLog,
   };
+}
+
+function createProgressJankMonitor(entry: ProgressJankEntry): ProgressJankMonitor {
+  const monitor = new ProgressJankMonitor(entry);
+  monitor.start();
+  return monitor;
+}
+
+function finishProgressJankMonitor(monitor: ProgressJankMonitor | null): ProgressJankReport | null {
+  if (!monitor) {
+    return null;
+  }
+  const report = monitor.finish();
+  if (!loggedProgressJankReports.has(report.runId)) {
+    loggedProgressJankReports.add(report.runId);
+    console.info('[shinobu:jank]', report);
+  }
+  return report;
 }
 
 type MountedImage = {
@@ -161,12 +186,28 @@ async function getRunPipeline(): Promise<typeof import('../../pipeline/orchestra
   return module.runPipeline;
 }
 
-function waitForNextPaint(): Promise<void> {
+function waitForNextPaint(maxWaitMs = 80): Promise<void> {
   return new Promise((resolve) => {
+    let settled = false;
+    const timeout = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    }, maxWaitMs);
+    const finish = (): void => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      resolve();
+    };
     window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => resolve());
+      window.requestAnimationFrame(finish);
     });
   });
+}
+
+function shouldWaitForPipelineProgressPaint(progress: PipelineProgress): boolean {
+  return pipelineProgressPaintBarrierStages.has(progress.stage);
 }
 
 export class TranslatorCore {
@@ -352,6 +393,7 @@ export class TranslatorCore {
     state: PhotoState,
     progress: PipelineProgress,
     onProgress: (stageText: string) => void,
+    jankMonitor?: ProgressJankMonitor,
   ): void {
     const stageLabel = stageLabelMap[progress.stage] ?? progress.stage;
     if (progress.stage === 'parallel') {
@@ -361,6 +403,7 @@ export class TranslatorCore {
     } else {
       state.stageText = `${stageLabel}中`;
     }
+    jankMonitor?.setStage(progress.stage, progress.detail, state.stageText);
     onProgress(state.stageText);
   }
 
@@ -371,54 +414,80 @@ export class TranslatorCore {
     runStartAt: number;
     includeElapsedText: boolean;
     onProgress: (stageText: string) => void;
+    jankMonitor?: ProgressJankMonitor;
   }): Promise<void> {
-    const { state, file, runSettings, runStartAt, includeElapsedText, onProgress } = options;
-    const runPipeline = await getRunPipeline();
-    const artifacts = await runPipeline(file, toPipelineConfig(runSettings.settings), (progress: PipelineProgress) => {
-      this.updatePipelineProgress(state, progress, onProgress);
-    });
+    const { state, file, runSettings, runStartAt, includeElapsedText, onProgress, jankMonitor } = options;
+    let progressJank: ProgressJankReport | null = null;
+    try {
+      const runPipeline = await getRunPipeline();
+      const artifacts = await runPipeline(file, toPipelineConfig(runSettings.settings), async (progress: PipelineProgress) => {
+        this.updatePipelineProgress(state, progress, onProgress, jankMonitor);
+        if (shouldWaitForPipelineProgressPaint(progress)) {
+          await waitForNextPaint();
+        }
+      });
 
-    const translatedBlob = await canvasToBlob(artifacts.resultCanvas as HTMLCanvasElement);
-    const translatedUrl = URL.createObjectURL(translatedBlob);
-    if (state.translatedUrl) URL.revokeObjectURL(state.translatedUrl);
-    if (state.debugOriginalUrl) {
-      URL.revokeObjectURL(state.debugOriginalUrl);
-      state.debugOriginalUrl = undefined;
-    }
-    if (runSettings.showTypesetDebug && artifacts.debugOriginalCanvas) {
-      const debugBlob = await canvasToBlob(artifacts.debugOriginalCanvas as HTMLCanvasElement);
-      state.debugOriginalUrl = URL.createObjectURL(debugBlob);
-    }
-    const sourceImageDataUrl = runSettings.enableDebugLog
-      ? (() => {
-          const c = document.createElement('canvas');
-          c.width = artifacts.original.naturalWidth;
-          c.height = artifacts.original.naturalHeight;
-          const ctx = c.getContext('2d');
-          if (ctx) ctx.drawImage(artifacts.original as CanvasImageSource, 0, 0);
-          return c.toDataURL('image/png');
-        })()
-      : state.originalUrl;
-    state.debugLogData = runSettings.enableDebugLog
-      ? toTypesetDebugDownloadData(window.location.href, sourceImageDataUrl, artifacts)
-      : undefined;
+      const translatedBlob = jankMonitor
+        ? await jankMonitor.measureAsync('canvasToBlob:result', () => canvasToBlob(artifacts.resultCanvas as HTMLCanvasElement))
+        : await canvasToBlob(artifacts.resultCanvas as HTMLCanvasElement);
+      const translatedUrl = URL.createObjectURL(translatedBlob);
+      if (state.translatedUrl) URL.revokeObjectURL(state.translatedUrl);
+      if (state.debugOriginalUrl) {
+        URL.revokeObjectURL(state.debugOriginalUrl);
+        state.debugOriginalUrl = undefined;
+      }
+      if (runSettings.showTypesetDebug && artifacts.debugOriginalCanvas) {
+        const debugBlob = jankMonitor
+          ? await jankMonitor.measureAsync('canvasToBlob:debug-original', () => canvasToBlob(artifacts.debugOriginalCanvas as HTMLCanvasElement))
+          : await canvasToBlob(artifacts.debugOriginalCanvas as HTMLCanvasElement);
+        state.debugOriginalUrl = URL.createObjectURL(debugBlob);
+      }
+      const sourceImageDataUrl = runSettings.enableDebugLog
+        ? jankMonitor
+          ? jankMonitor.measureSync('debug:source-image-data-url', () => {
+              const c = document.createElement('canvas');
+              c.width = artifacts.original.naturalWidth;
+              c.height = artifacts.original.naturalHeight;
+              const ctx = c.getContext('2d');
+              if (ctx) ctx.drawImage(artifacts.original as CanvasImageSource, 0, 0);
+              return c.toDataURL('image/png');
+            })
+          : (() => {
+              const c = document.createElement('canvas');
+              c.width = artifacts.original.naturalWidth;
+              c.height = artifacts.original.naturalHeight;
+              const ctx = c.getContext('2d');
+              if (ctx) ctx.drawImage(artifacts.original as CanvasImageSource, 0, 0);
+              return c.toDataURL('image/png');
+            })()
+        : state.originalUrl;
+      progressJank = finishProgressJankMonitor(jankMonitor ?? null);
+      state.debugLogData = runSettings.enableDebugLog
+        ? toTypesetDebugDownloadData(window.location.href, sourceImageDataUrl, artifacts, progressJank)
+        : undefined;
 
-    state.translatedUrl = translatedUrl;
-    const totalDurationMs = performance.now() - runStartAt;
-    state.elapsedText = includeElapsedText && runSettings.showElapsedTime
-      ? formatElapsedText(
-          totalDurationMs,
-          artifacts.stageTimings,
-          artifacts.runtimeStages,
-          runSettings.showStageTimingDetails,
-          runSettings.showRuntimeStages,
-          artifacts.translationDebug,
-        )
-      : '';
-    state.stageText = '';
-    state.errorText = '';
-    state.mode = 'translated';
-    state.status = 'translated';
+      state.translatedUrl = translatedUrl;
+      const totalDurationMs = performance.now() - runStartAt;
+      state.elapsedText = includeElapsedText && runSettings.showElapsedTime
+        ? formatElapsedText(
+            totalDurationMs,
+            artifacts.stageTimings,
+            artifacts.runtimeStages,
+            runSettings.showStageTimingDetails,
+            runSettings.showRuntimeStages,
+            artifacts.translationDebug,
+          )
+        : '';
+      state.stageText = '';
+      state.errorText = '';
+      state.mode = 'translated';
+      state.status = 'translated';
+    } catch (error) {
+      if (!progressJank) {
+        finishProgressJankMonitor(jankMonitor ?? null);
+      }
+      throw error;
+    }
   }
 
   private async handleTranslateClick(target: ImageTarget): Promise<void> {
@@ -441,9 +510,10 @@ export class TranslatorCore {
       return;
     }
 
+    const jankMonitor = createProgressJankMonitor('image');
     this.resetStateForPipeline(state);
     const runStartAt = performance.now();
-    this.renderForKey(key);
+    jankMonitor.measureUiRender(() => this.renderForKey(key));
 
     try {
       const runSettings = await this.loadPipelineRunSettings(state);
@@ -455,12 +525,14 @@ export class TranslatorCore {
         runStartAt,
         includeElapsedText: true,
         onProgress: () => {
-          this.renderForKey(key);
+          jankMonitor.measureUiRender(() => this.renderForKey(key));
         },
+        jankMonitor,
       });
       if (state.translatedUrl) this.adapter.applyImage(target, state.translatedUrl);
       this.renderForKey(key);
     } catch (error) {
+      finishProgressJankMonitor(jankMonitor);
       state.status = 'error';
       state.errorText = toErrorMessage(error);
       state.stageText = '';
@@ -684,6 +756,7 @@ export class TranslatorCore {
     // Skip if already translated
     if (state.translatedUrl) return;
 
+    const jankMonitor = createProgressJankMonitor('reading-mode');
     this.resetStateForPipeline(state);
 
     let downloadedBlob: Blob | null = null;
@@ -698,10 +771,14 @@ export class TranslatorCore {
         runSettings,
         runStartAt: performance.now(),
         includeElapsedText: false,
-        onProgress,
+        onProgress: (stageText) => {
+          jankMonitor.measureUiRender(() => onProgress(stageText));
+        },
+        jankMonitor,
       });
       if (state.translatedUrl) this.adapter.applyImageByKey?.(key, state.translatedUrl);
     } catch (error) {
+      finishProgressJankMonitor(jankMonitor);
       const errorMsg = toErrorMessage(error);
       if (downloadedBlob && (errorMsg.includes('未找到文本') || errorMsg.includes('未返回有效识别结果'))) {
         state.translatedUrl = URL.createObjectURL(downloadedBlob);
@@ -744,8 +821,14 @@ export class TranslatorCore {
     let detachZoom: (() => void) | null = null;
     let sourceFile: File | null = null;
     let sourceOriginalUrl: string | null = null;
+    let activeJankMonitor: ProgressJankMonitor | null = null;
     const render = (): void => {
-      if (!disposed) renderScreenshotResultUi(ui, state);
+      if (disposed) return;
+      if (activeJankMonitor) {
+        activeJankMonitor.measureUiRender(() => renderScreenshotResultUi(ui, state));
+      } else {
+        renderScreenshotResultUi(ui, state);
+      }
     };
     const cleanup = (): void => {
       if (disposed) return;
@@ -800,6 +883,7 @@ export class TranslatorCore {
     };
 
     const runImagePipeline = async (): Promise<void> => {
+      activeJankMonitor = createProgressJankMonitor('context-image');
       this.resetStateForPipeline(state);
       state.stageText = sourceFile ? '准备中' : '下载原图中';
       render();
@@ -817,6 +901,7 @@ export class TranslatorCore {
           runStartAt: performance.now(),
           includeElapsedText: true,
           onProgress: render,
+          jankMonitor: activeJankMonitor,
         });
         if (disposed) {
           this.disposeState(state);
@@ -824,6 +909,7 @@ export class TranslatorCore {
         }
         render();
       } catch (error) {
+        finishProgressJankMonitor(activeJankMonitor);
         if (disposed) return;
         state.status = 'error';
         state.errorText = toErrorMessage(error);
@@ -831,6 +917,8 @@ export class TranslatorCore {
         state.elapsedText = '';
         state.debugLogData = undefined;
         render();
+      } finally {
+        activeJankMonitor = null;
       }
     };
 
@@ -848,8 +936,14 @@ export class TranslatorCore {
     let detachZoom: (() => void) | null = null;
     let screenshotFile: File | null = null;
     let screenshotOriginalUrl: string | null = null;
+    let activeJankMonitor: ProgressJankMonitor | null = null;
     const render = (): void => {
-      if (!disposed) renderScreenshotResultUi(ui, state);
+      if (disposed) return;
+      if (activeJankMonitor) {
+        activeJankMonitor.measureUiRender(() => renderScreenshotResultUi(ui, state));
+      } else {
+        renderScreenshotResultUi(ui, state);
+      }
     };
     const cleanup = (): void => {
       if (disposed) return;
@@ -917,6 +1011,7 @@ export class TranslatorCore {
     };
 
     const runScreenshotPipeline = async (): Promise<void> => {
+      activeJankMonitor = createProgressJankMonitor('screenshot');
       this.resetStateForPipeline(state);
       state.stageText = screenshotFile ? '准备中' : '截图中';
       render();
@@ -934,6 +1029,7 @@ export class TranslatorCore {
           runStartAt: performance.now(),
           includeElapsedText: true,
           onProgress: render,
+          jankMonitor: activeJankMonitor,
         });
         if (disposed) {
           this.disposeState(state);
@@ -942,6 +1038,7 @@ export class TranslatorCore {
         ui.host.style.visibility = '';
         render();
       } catch (error) {
+        finishProgressJankMonitor(activeJankMonitor);
         if (disposed) return;
         ui.host.style.visibility = '';
         state.status = 'error';
@@ -950,6 +1047,8 @@ export class TranslatorCore {
         state.elapsedText = '';
         state.debugLogData = undefined;
         render();
+      } finally {
+        activeJankMonitor = null;
       }
     };
 

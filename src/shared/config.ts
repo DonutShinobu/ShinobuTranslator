@@ -143,6 +143,7 @@ export type ExtensionSettings = {
   llmProfiles: Record<LlmProvider, LlmProviderProfile>;
   showElapsedTime: boolean;
   showStageTimingDetails: boolean;
+  stageTimingCardExpanded: boolean;
   showTypesetDebug: boolean;
   showEraseDebug: boolean;
   debugOptionsExpanded: boolean;
@@ -159,6 +160,7 @@ export const defaultExtensionSettings: ExtensionSettings = {
   llmProfiles: createDefaultLlmProfiles(),
   showElapsedTime: false,
   showStageTimingDetails: false,
+  stageTimingCardExpanded: true,
   showTypesetDebug: false,
   showEraseDebug: false,
   debugOptionsExpanded: false,
@@ -319,6 +321,7 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     showStageTimingDetails: showElapsedTime
       ? sanitizeBoolean(raw.showStageTimingDetails, defaultExtensionSettings.showStageTimingDetails)
       : false,
+    stageTimingCardExpanded: sanitizeBoolean(raw.stageTimingCardExpanded, defaultExtensionSettings.stageTimingCardExpanded),
     showTypesetDebug,
     showEraseDebug: sanitizeBoolean(raw.showEraseDebug, defaultExtensionSettings.showEraseDebug),
     debugOptionsExpanded: sanitizeBoolean(raw.debugOptionsExpanded, defaultExtensionSettings.debugOptionsExpanded),

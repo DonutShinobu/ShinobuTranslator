@@ -26,6 +26,14 @@ export type UiElements = {
   buttonSpinner: HTMLSpanElement;
   buttonLabel: HTMLSpanElement;
   detailLine: HTMLDivElement;
+  stageTimingCard: HTMLDivElement;
+  stageTimingCardToggleButton: HTMLButtonElement;
+  stageTimingCardTotal: HTMLSpanElement;
+  stageTimingCardMeta: HTMLSpanElement;
+  stageTimingCardChevron: HTMLSpanElement;
+  stageTimingCardBody: HTMLDivElement;
+  stageTimingStageList: HTMLDivElement;
+  stageTimingRuntimeList: HTMLDivElement;
   debugDownloadButton: HTMLButtonElement;
 };
 
@@ -38,6 +46,14 @@ export type ScreenshotResultUiElements = {
   buttonSpinner: HTMLSpanElement;
   buttonLabel: HTMLSpanElement;
   detailLine: HTMLDivElement;
+  stageTimingCard: HTMLDivElement;
+  stageTimingCardToggleButton: HTMLButtonElement;
+  stageTimingCardTotal: HTMLSpanElement;
+  stageTimingCardMeta: HTMLSpanElement;
+  stageTimingCardChevron: HTMLSpanElement;
+  stageTimingCardBody: HTMLDivElement;
+  stageTimingStageList: HTMLDivElement;
+  stageTimingRuntimeList: HTMLDivElement;
   debugDownloadButton: HTMLButtonElement;
   image: HTMLImageElement;
   closeButton: HTMLButtonElement;
@@ -134,6 +150,13 @@ export function injectStyles(): void {
       --mt-error-text: oklch(0.82 0.12 25 / 0.85);
       --mt-glow-center: oklch(0.95 0.03 250 / 0.22);
       --mt-glow-mid: oklch(0.95 0.03 250 / 0.04);
+      --mt-stage-bg: oklch(0.16 0.012 250 / 0.94);
+      --mt-stage-border: oklch(0.9 0.012 250 / 0.22);
+      --mt-stage-row: oklch(0.92 0.01 250 / 0.06);
+      --mt-stage-track: oklch(0.94 0.01 250 / 0.14);
+      --mt-stage-fill: oklch(0.72 0.12 350 / 0.96);
+      --mt-stage-chip-bg: oklch(0.92 0.01 250 / 0.1);
+      --mt-stage-chip-border: oklch(0.92 0.01 250 / 0.18);
     }
 
     /* Light theme (Pixiv) */
@@ -151,6 +174,13 @@ export function injectStyles(): void {
       --mt-error-text: oklch(0.45 0.12 25 / 0.85);
       --mt-glow-center: oklch(0.35 0.02 250 / 0.18);
       --mt-glow-mid: oklch(0.35 0.02 250 / 0.03);
+      --mt-stage-bg: oklch(0.98 0.006 250 / 0.96);
+      --mt-stage-border: oklch(0.55 0.012 250 / 0.22);
+      --mt-stage-row: oklch(0.82 0.012 250 / 0.12);
+      --mt-stage-track: oklch(0.72 0.012 250 / 0.16);
+      --mt-stage-fill: oklch(0.68 0.13 350 / 0.9);
+      --mt-stage-chip-bg: oklch(0.9 0.018 250 / 0.66);
+      --mt-stage-chip-border: oklch(0.55 0.012 250 / 0.18);
     }
 
     .mt-x-overlay-inline {
@@ -291,6 +321,178 @@ export function injectStyles(): void {
     }
     .mt-x-detail[data-variant='error'] {
       color: var(--mt-error-text, oklch(0.82 0.12 25 / 0.85));
+    }
+
+    .mt-x-stage-card {
+      display: none;
+      width: min(320px, calc(100vw - 24px));
+      max-width: 320px;
+      box-sizing: border-box;
+      border: 1px solid var(--mt-stage-border, oklch(0.9 0.012 250 / 0.22));
+      border-radius: 8px;
+      background: var(--mt-stage-bg, oklch(0.16 0.012 250 / 0.86));
+      color: var(--mt-text, oklch(0.94 0.01 250));
+      box-shadow: 0 10px 24px oklch(0 0 0 / 0.2);
+      overflow: hidden;
+      font-family: "MTX-SourceHanSans-CN", "MTX-SourceHanSans-TW", system-ui, sans-serif;
+      text-shadow: none;
+    }
+    .mt-x-stage-card[data-visible='true'] {
+      display: block;
+    }
+    .mt-x-stage-card-toggle {
+      width: 100%;
+      min-height: 42px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      align-items: center;
+      gap: 8px;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      padding: 8px 10px;
+      text-align: left;
+      font: inherit;
+      letter-spacing: 0;
+    }
+    .mt-x-stage-card-toggle:hover {
+      background: var(--mt-stage-row, oklch(0.92 0.01 250 / 0.06));
+    }
+    .mt-x-stage-card-toggle:focus-visible {
+      outline: 2px solid var(--mt-focus, oklch(0.6 0.15 250 / 0.8));
+      outline-offset: -2px;
+    }
+    .mt-x-stage-card-title {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .mt-x-stage-card-heading {
+      font-size: 12px;
+      line-height: 1.1;
+      font-weight: 650;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .mt-x-stage-card-meta {
+      color: var(--mt-text-detail, oklch(0.94 0.01 250 / 0.7));
+      font-size: 11px;
+      line-height: 1.15;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .mt-x-stage-card-total {
+      font-size: 12px;
+      font-weight: 650;
+      line-height: 1;
+      white-space: nowrap;
+    }
+    .mt-x-stage-card-chevron {
+      width: 7px;
+      height: 7px;
+      border-right: 1.5px solid currentColor;
+      border-bottom: 1.5px solid currentColor;
+      transform: rotate(45deg);
+      transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+      opacity: 0.72;
+    }
+    .mt-x-stage-card[data-expanded='true'] .mt-x-stage-card-chevron {
+      transform: rotate(225deg);
+    }
+    .mt-x-stage-card-body {
+      display: none;
+      padding: 0 10px 10px;
+      border-top: 1px solid var(--mt-stage-border, oklch(0.9 0.012 250 / 0.22));
+    }
+    .mt-x-stage-card[data-expanded='true'] .mt-x-stage-card-body {
+      display: block;
+    }
+    .mt-x-stage-list {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      padding-top: 9px;
+    }
+    .mt-x-stage-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 6px 10px;
+      align-items: center;
+    }
+    .mt-x-stage-name {
+      min-width: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      line-height: 1.2;
+      font-weight: 560;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .mt-x-stage-fallback {
+      flex: 0 0 auto;
+      border: 1px solid var(--mt-stage-chip-border, oklch(0.92 0.01 250 / 0.18));
+      border-radius: 999px;
+      padding: 1px 5px;
+      background: var(--mt-stage-chip-bg, oklch(0.92 0.01 250 / 0.1));
+      color: var(--mt-text-detail, oklch(0.94 0.01 250 / 0.7));
+      font-size: 10px;
+      line-height: 1.2;
+    }
+    .mt-x-stage-value {
+      color: var(--mt-text-detail, oklch(0.94 0.01 250 / 0.7));
+      font-size: 11px;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .mt-x-stage-track {
+      grid-column: 1 / -1;
+      height: 5px;
+      border-radius: 999px;
+      background: var(--mt-stage-track, oklch(0.94 0.01 250 / 0.14));
+      overflow: hidden;
+    }
+    .mt-x-stage-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: inherit;
+      background: var(--mt-stage-fill, oklch(0.72 0.12 350 / 0.96));
+      transition: width 180ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .mt-x-stage-runtime {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding-top: 10px;
+    }
+    .mt-x-stage-chip {
+      min-width: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      max-width: 100%;
+      border: 1px solid var(--mt-stage-chip-border, oklch(0.92 0.01 250 / 0.18));
+      border-radius: 999px;
+      padding: 3px 7px;
+      background: var(--mt-stage-chip-bg, oklch(0.92 0.01 250 / 0.1));
+      color: var(--mt-text-detail, oklch(0.94 0.01 250 / 0.7));
+      font-size: 10.5px;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .mt-x-stage-chip strong {
+      color: var(--mt-text, oklch(0.94 0.01 250));
+      font-weight: 650;
+    }
+    .mt-x-stage-chip[data-status='disabled'],
+    .mt-x-stage-chip[data-status='unknown'] {
+      opacity: 0.74;
     }
 
     /* Reading mode bottom bar */
@@ -647,6 +849,42 @@ export function createUiElements(): UiElements {
   detailLine.className = 'mt-x-detail';
   root.appendChild(detailLine);
 
+  const stageTimingCard = document.createElement('div');
+  stageTimingCard.className = 'mt-x-stage-card';
+  const stageTimingCardToggleButton = document.createElement('button');
+  stageTimingCardToggleButton.className = 'mt-x-stage-card-toggle';
+  stageTimingCardToggleButton.type = 'button';
+
+  const stageTimingCardTitle = document.createElement('span');
+  stageTimingCardTitle.className = 'mt-x-stage-card-title';
+  const stageTimingCardHeading = document.createElement('span');
+  stageTimingCardHeading.className = 'mt-x-stage-card-heading';
+  stageTimingCardHeading.textContent = '阶段明细';
+  const stageTimingCardMeta = document.createElement('span');
+  stageTimingCardMeta.className = 'mt-x-stage-card-meta';
+  stageTimingCardTitle.appendChild(stageTimingCardHeading);
+  stageTimingCardTitle.appendChild(stageTimingCardMeta);
+
+  const stageTimingCardTotal = document.createElement('span');
+  stageTimingCardTotal.className = 'mt-x-stage-card-total';
+  const stageTimingCardChevron = document.createElement('span');
+  stageTimingCardChevron.className = 'mt-x-stage-card-chevron';
+  stageTimingCardToggleButton.appendChild(stageTimingCardTitle);
+  stageTimingCardToggleButton.appendChild(stageTimingCardTotal);
+  stageTimingCardToggleButton.appendChild(stageTimingCardChevron);
+
+  const stageTimingCardBody = document.createElement('div');
+  stageTimingCardBody.className = 'mt-x-stage-card-body';
+  const stageTimingStageList = document.createElement('div');
+  stageTimingStageList.className = 'mt-x-stage-list';
+  const stageTimingRuntimeList = document.createElement('div');
+  stageTimingRuntimeList.className = 'mt-x-stage-runtime';
+  stageTimingCardBody.appendChild(stageTimingStageList);
+  stageTimingCardBody.appendChild(stageTimingRuntimeList);
+  stageTimingCard.appendChild(stageTimingCardToggleButton);
+  stageTimingCard.appendChild(stageTimingCardBody);
+  root.appendChild(stageTimingCard);
+
   const host = document.createElement('div');
   host.appendChild(root);
 
@@ -659,8 +897,89 @@ export function createUiElements(): UiElements {
     buttonSpinner,
     buttonLabel,
     detailLine,
+    stageTimingCard,
+    stageTimingCardToggleButton,
+    stageTimingCardTotal,
+    stageTimingCardMeta,
+    stageTimingCardChevron,
+    stageTimingCardBody,
+    stageTimingStageList,
+    stageTimingRuntimeList,
     debugDownloadButton,
   };
+}
+
+function clampPercent(percent: number): number {
+  if (!Number.isFinite(percent)) return 0;
+  return Math.min(100, Math.max(0, percent));
+}
+
+function renderStageTimingCard(ui: UiElements, state: PhotoState | null): void {
+  const card = state?.stageTimingCard;
+  const visible = !!card && (state.status === 'translated' || state.status === 'showingOriginal');
+  ui.stageTimingCard.dataset.visible = visible ? 'true' : 'false';
+  ui.stageTimingCardToggleButton.disabled = !visible;
+  if (!visible || !card) {
+    ui.stageTimingCardToggleButton.setAttribute('aria-expanded', 'false');
+    ui.stageTimingCardTotal.textContent = '';
+    ui.stageTimingCardMeta.textContent = '';
+    ui.stageTimingStageList.replaceChildren();
+    ui.stageTimingRuntimeList.replaceChildren();
+    return;
+  }
+
+  ui.stageTimingCard.dataset.expanded = card.expanded ? 'true' : 'false';
+  ui.stageTimingCardToggleButton.setAttribute('aria-expanded', card.expanded ? 'true' : 'false');
+  ui.stageTimingCardToggleButton.title = card.expanded ? '收起阶段明细' : '展开阶段明细';
+  ui.stageTimingCardTotal.textContent = card.totalText;
+  ui.stageTimingCardMeta.textContent = `${card.stages.length} 个阶段 / ${card.runtimes.length} 个模型`;
+
+  ui.stageTimingStageList.replaceChildren();
+  for (const stage of card.stages) {
+    const row = document.createElement('div');
+    row.className = 'mt-x-stage-row';
+
+    const name = document.createElement('span');
+    name.className = 'mt-x-stage-name';
+    const label = document.createElement('span');
+    label.textContent = stage.label;
+    name.appendChild(label);
+    if (stage.fallbackText) {
+      const fallback = document.createElement('span');
+      fallback.className = 'mt-x-stage-fallback';
+      fallback.textContent = stage.fallbackText;
+      name.appendChild(fallback);
+    }
+
+    const value = document.createElement('span');
+    value.className = 'mt-x-stage-value';
+    value.textContent = `${stage.durationText} / ${stage.percentText}`;
+
+    const track = document.createElement('div');
+    track.className = 'mt-x-stage-track';
+    const fill = document.createElement('div');
+    fill.className = 'mt-x-stage-fill';
+    fill.style.width = `${clampPercent(stage.percent)}%`;
+    track.appendChild(fill);
+
+    row.appendChild(name);
+    row.appendChild(value);
+    row.appendChild(track);
+    ui.stageTimingStageList.appendChild(row);
+  }
+
+  ui.stageTimingRuntimeList.replaceChildren();
+  for (const runtime of card.runtimes) {
+    const chip = document.createElement('span');
+    chip.className = 'mt-x-stage-chip';
+    chip.dataset.status = runtime.status;
+    chip.title = runtime.detail;
+    const label = document.createElement('strong');
+    label.textContent = runtime.label;
+    chip.appendChild(label);
+    chip.appendChild(document.createTextNode(runtime.providerText));
+    ui.stageTimingRuntimeList.appendChild(chip);
+  }
 }
 
 export function renderUi(ui: UiElements, state: PhotoState | null): void {
@@ -678,6 +997,7 @@ export function renderUi(ui: UiElements, state: PhotoState | null): void {
     buttonLabel.textContent = '翻译';
     updateStatusLine('');
     debugDownloadButton.style.display = 'none';
+    renderStageTimingCard(ui, null);
     clearTransitionTimers();
     return;
   }
@@ -713,11 +1033,11 @@ export function renderUi(ui: UiElements, state: PhotoState | null): void {
   } else if (state.status === 'translated') {
     nextText = '显示原图';
     nextIconKey = 'original';
-    nextDetailText = state.elapsedText ? `翻译完成\n${state.elapsedText}` : '';
+    nextDetailText = state.stageTimingCard ? '翻译完成' : state.elapsedText ? `翻译完成\n${state.elapsedText}` : '';
   } else if (state.status === 'showingOriginal') {
     nextText = '显示译图';
     nextIconKey = 'translated';
-    nextDetailText = state.elapsedText ? `当前显示原图\n${state.elapsedText}` : '';
+    nextDetailText = state.stageTimingCard ? '当前显示原图' : state.elapsedText ? `当前显示原图\n${state.elapsedText}` : '';
   } else if (state.status === 'error') {
     nextText = '重试';
     nextIconKey = 'retry';
@@ -730,6 +1050,7 @@ export function renderUi(ui: UiElements, state: PhotoState | null): void {
   }
 
   updateStatusLine(nextDetailText, nextDetailVariant);
+  renderStageTimingCard(ui, state);
 
   if (!isTransition) {
     buttonIcon.innerHTML = ICONS[nextIconKey];

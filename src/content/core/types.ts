@@ -51,6 +51,35 @@ export interface SiteAdapter {
 export type PhotoViewStatus = 'idle' | 'running' | 'translated' | 'showingOriginal' | 'error';
 export type PhotoDisplayMode = 'translated' | 'original';
 
+export type StageTimingCardStage = {
+  stage: string;
+  label: string;
+  durationMs: number;
+  durationText: string;
+  percent: number;
+  percentText: string;
+  fallbackText?: string;
+};
+
+export type StageTimingCardRuntimeStatus = 'enabled' | 'disabled' | 'unknown';
+
+export type StageTimingCardRuntime = {
+  model: RuntimeStageStatus['model'];
+  label: string;
+  providerText: string;
+  detail: string;
+  status: StageTimingCardRuntimeStatus;
+};
+
+export type StageTimingCardData = {
+  totalDurationMs: number;
+  totalText: string;
+  stageTotalMs: number;
+  expanded: boolean;
+  stages: StageTimingCardStage[];
+  runtimes: StageTimingCardRuntime[];
+};
+
 export type PhotoState = {
   status: PhotoViewStatus;
   mode: PhotoDisplayMode;
@@ -62,6 +91,7 @@ export type PhotoState = {
   showEraseDebug: boolean;
   stageText: string;
   elapsedText: string;
+  stageTimingCard?: StageTimingCardData;
   errorText: string;
 };
 

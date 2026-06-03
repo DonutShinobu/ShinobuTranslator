@@ -21,8 +21,10 @@ import type {
 import { sendRuntimeMessage } from '../../shared/messages';
 import {
   base64ToBlob,
+  buildStageTimingCardData,
   canvasToBlob,
   formatElapsedText,
+  getStageLabel,
   inferFileExtension,
   toErrorMessage,
 } from './utils';
@@ -47,22 +49,6 @@ import { ProgressJankMonitor } from './progressJank';
 const photoStateCacheLimit = 200;
 const loggedProgressJankReports = new Set<string>();
 
-const stageLabelMap: Record<string, string> = {
-  load: '加载图片',
-  preload: '加载模型',
-  detect: '文本检测',
-  ocr: '文字识别',
-  merge: '合并文本',
-  order: '文本排序',
-  parallel: '并行处理',
-  translate: '翻译文本',
-  mask_refine: '细化遮罩',
-  inpaint: '去除文字',
-  bubble: '气泡检测',
-  typeset: '文字排版',
-  done: '完成',
-};
-
 function validateActiveSettings(settings: ExtensionSettings): string | null {
   const baseError = validateSettings(settings);
   if (baseError) return baseError;
@@ -81,8 +67,14 @@ function createInitialState(originalUrl: string): PhotoState {
     showEraseDebug: false,
     stageText: '',
     elapsedText: '',
+    stageTimingCard: undefined,
     errorText: '',
   };
+}
+
+function clearTimingDisplay(state: PhotoState): void {
+  state.elapsedText = '';
+  state.stageTimingCard = undefined;
 }
 
 function cloneTextRegionBox(region: TextRegion): TextRegion['box'] {
@@ -171,6 +163,7 @@ type PipelineRunSettings = {
   showElapsedTime: boolean;
   showStageTimingDetails: boolean;
   showRuntimeStages: boolean;
+  stageTimingCardExpanded: boolean;
   showTypesetDebug: boolean;
   enableDebugLog: boolean;
 };
@@ -270,6 +263,10 @@ export class TranslatorCore {
         const state = this.states.get(target.key);
         if (state) handleDebugDownload(state);
       });
+      ui.stageTimingCardToggleButton.addEventListener('click', () => {
+        const state = this.states.get(target.key);
+        if (state) this.toggleStageTimingCard(state, () => this.renderForKey(target.key));
+      });
 
       this.mounted.set(target.key, { key: target.key, target, ui });
       const state = this.ensureState(target.key, target.originalUrl);
@@ -319,7 +316,7 @@ export class TranslatorCore {
     state.status = 'running';
     state.mode = 'original';
     state.errorText = '';
-    state.elapsedText = '';
+    clearTimingDisplay(state);
     state.debugLogData = undefined;
     state.stageText = '准备中';
   }
@@ -336,6 +333,7 @@ export class TranslatorCore {
     const showElapsedTime = settings.showElapsedTime === true;
     const showStageTimingDetails = showElapsedTime && settings.showStageTimingDetails === true;
     const showRuntimeStages = showStageTimingDetails;
+    const stageTimingCardExpanded = settings.stageTimingCardExpanded === true;
     const showTypesetDebug = settings.showTypesetDebug === true;
     const showEraseDebug = settings.showEraseDebug === true;
     const enableDebugLog = settings.enableDebugLog === true;
@@ -346,6 +344,7 @@ export class TranslatorCore {
       showElapsedTime,
       showStageTimingDetails,
       showRuntimeStages,
+      stageTimingCardExpanded,
       showTypesetDebug,
       enableDebugLog,
     };
@@ -378,7 +377,7 @@ export class TranslatorCore {
     onProgress: (stageText: string) => void,
     jankMonitor?: ProgressJankMonitor,
   ): void {
-    const stageLabel = stageLabelMap[progress.stage] ?? progress.stage;
+    const stageLabel = getStageLabel(progress.stage);
     if (progress.stage === 'parallel') {
       state.stageText = progress.detail;
     } else if (progress.stage === 'done') {
@@ -448,16 +447,28 @@ export class TranslatorCore {
 
       state.translatedUrl = translatedUrl;
       const totalDurationMs = performance.now() - runStartAt;
-      state.elapsedText = includeElapsedText && runSettings.showElapsedTime
-        ? formatElapsedText(
-            totalDurationMs,
-            artifacts.stageTimings,
-            artifacts.runtimeStages,
-            runSettings.showStageTimingDetails,
-            runSettings.showRuntimeStages,
-            artifacts.translationDebug,
-          )
-        : '';
+      if (includeElapsedText && runSettings.showElapsedTime) {
+        const showStageTimingCard = runSettings.showStageTimingDetails && artifacts.stageTimings.length > 0;
+        state.elapsedText = formatElapsedText(
+          totalDurationMs,
+          artifacts.stageTimings,
+          artifacts.runtimeStages,
+          !showStageTimingCard && runSettings.showStageTimingDetails,
+          !showStageTimingCard && runSettings.showRuntimeStages,
+          artifacts.translationDebug,
+        );
+        state.stageTimingCard = showStageTimingCard
+          ? buildStageTimingCardData(
+              totalDurationMs,
+              artifacts.stageTimings,
+              artifacts.runtimeStages,
+              runSettings.stageTimingCardExpanded,
+              artifacts.translationDebug,
+            )
+          : undefined;
+      } else {
+        clearTimingDisplay(state);
+      }
       state.stageText = '';
       state.errorText = '';
       state.mode = 'translated';
@@ -516,9 +527,38 @@ export class TranslatorCore {
       state.status = 'error';
       state.errorText = toErrorMessage(error);
       state.stageText = '';
-      state.elapsedText = '';
+      clearTimingDisplay(state);
       state.debugLogData = undefined;
       this.renderForKey(key);
+    }
+  }
+
+  private toggleStageTimingCard(state: PhotoState, render: () => void): void {
+    if (!state.stageTimingCard) return;
+    const expanded = !state.stageTimingCard.expanded;
+    state.stageTimingCard.expanded = expanded;
+    render();
+    void this.persistStageTimingCardExpanded(expanded);
+  }
+
+  private async persistStageTimingCardExpanded(expanded: boolean): Promise<void> {
+    try {
+      const settingsResponse = await sendRuntimeMessage({ type: 'mt:get-settings' });
+      if (!settingsResponse.ok || settingsResponse.type !== 'mt:get-settings') {
+        throw new Error(settingsResponse.ok ? '读取配置失败' : settingsResponse.error);
+      }
+      const response = await sendRuntimeMessage({
+        type: 'mt:set-settings',
+        settings: {
+          ...settingsResponse.settings,
+          stageTimingCardExpanded: expanded,
+        },
+      });
+      if (!response.ok || response.type !== 'mt:set-settings') {
+        throw new Error(response.ok ? '保存阶段明细状态失败' : response.error);
+      }
+    } catch (error) {
+      console.warn('[shinobu] 保存阶段明细展开状态失败', error);
     }
   }
 
@@ -770,7 +810,7 @@ export class TranslatorCore {
         state.status = 'error';
         state.errorText = toErrorMessage(error);
         state.stageText = '';
-        state.elapsedText = '';
+        clearTimingDisplay(state);
         state.debugLogData = undefined;
       }
       // Don't throw — continue with next page in translate-all loop
@@ -841,6 +881,9 @@ export class TranslatorCore {
       }
       render();
     });
+    ui.stageTimingCardToggleButton.addEventListener('click', () => {
+      this.toggleStageTimingCard(state, render);
+    });
     detachDrag = this.attachScreenshotResultDrag(ui);
     detachZoom = this.attachScreenshotResultZoom(ui, render);
 
@@ -894,7 +937,7 @@ export class TranslatorCore {
         state.status = 'error';
         state.errorText = toErrorMessage(error);
         state.stageText = '';
-        state.elapsedText = '';
+        clearTimingDisplay(state);
         state.debugLogData = undefined;
         render();
       } finally {
@@ -955,6 +998,9 @@ export class TranslatorCore {
         state.status = 'translated';
       }
       render();
+    });
+    ui.stageTimingCardToggleButton.addEventListener('click', () => {
+      this.toggleStageTimingCard(state, render);
     });
     detachDrag = this.attachScreenshotResultDrag(ui);
     detachZoom = this.attachScreenshotResultZoom(ui, render);
@@ -1024,7 +1070,7 @@ export class TranslatorCore {
         state.status = 'error';
         state.errorText = toErrorMessage(error);
         state.stageText = '';
-        state.elapsedText = '';
+        clearTimingDisplay(state);
         state.debugLogData = undefined;
         render();
       } finally {

@@ -26,12 +26,10 @@ import {
 } from './utils';
 import {
   createUiElements,
-  createContextMenuUi,
   createReadingModeBarUi,
   createScreenshotResultUi,
   handleDebugDownload,
   injectStyles,
-  positionUiAboveImage,
   renderScreenshotResultUi,
   renderUi,
   requestScreenshotSelection,
@@ -139,8 +137,6 @@ type MountedImage = {
   key: string;
   target: ImageTarget;
   ui: UiElements;
-  /** Context-menu generic entries should not be cleaned up by sync(). */
-  isContextMenu?: boolean;
 };
 
 type PipelineRunSettings = {
@@ -228,7 +224,7 @@ export class TranslatorCore {
     const currentKeys = new Set(targets.map((t) => t.key));
 
     for (const [key, mounted] of this.mounted) {
-      if (!currentKeys.has(key) && !mounted.isContextMenu) {
+      if (!currentKeys.has(key)) {
         mounted.ui.host.remove();
         this.mounted.delete(key);
       }
@@ -721,142 +717,6 @@ export class TranslatorCore {
     }
   }
 
-  // --- Context menu translation --------------------------------------------------
-
-  /**
-   * Translate a right-clicked image. If the image is already managed by an adapter,
-   * delegates to the existing adapter flow. Otherwise, runs a generic translation
-   * flow with a self-contained UI positioned above the image.
-   */
-  async contextMenuTranslate(imageElement: HTMLImageElement): Promise<void> {
-    // Check if adapter-managed (not a context-menu entry)
-    for (const [, mounted] of this.mounted) {
-      if (mounted.target.element === imageElement && !mounted.isContextMenu) {
-        const state = this.states.get(mounted.key);
-        if (state?.status === 'running') return;
-        await this.handleTranslateClick(mounted.target);
-        return;
-      }
-    }
-
-    const originalUrl = imageElement.src;
-    const key = `ctx-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    this.ensureState(key, originalUrl);
-
-    // Create and position UI
-    const ui = createContextMenuUi();
-    document.body.appendChild(ui.host);
-    const unposition = positionUiAboveImage(ui.host, imageElement);
-
-    // Full cleanup: restore original, remove UI, disconnect observer
-    const cleanupAll = () => {
-      unposition();
-      observer.disconnect();
-      ui.host.remove();
-      const s = this.states.get(key);
-      if (s) {
-        if (s.translatedUrl) {
-          imageElement.src = s.originalUrl;
-          URL.revokeObjectURL(s.translatedUrl);
-          s.translatedUrl = undefined;
-        }
-        if (s.debugOriginalUrl) {
-          URL.revokeObjectURL(s.debugOriginalUrl);
-          s.debugOriginalUrl = undefined;
-        }
-        s.debugLogData = undefined;
-        this.states.delete(key);
-      }
-      this.mounted.delete(key);
-    };
-
-    // Close button
-    ui.closeButton.addEventListener('click', cleanupAll);
-
-    // MutationObserver: auto-cleanup when image is removed from DOM
-    const observer = new MutationObserver(() => {
-      if (!imageElement.isConnected) {
-        cleanupAll();
-      }
-    });
-    const observeTarget: Node = imageElement.parentElement || document.body;
-    observer.observe(observeTarget, { childList: true, subtree: true });
-
-    // Register mounted entry (so sync() skips it)
-    const target: ImageTarget = { element: imageElement, key, originalUrl };
-    this.mounted.set(key, { key, target, ui, isContextMenu: true });
-
-    // Debug download button
-    ui.debugDownloadButton.addEventListener('click', () => {
-      const s = this.states.get(key);
-      if (s) handleDebugDownload(s);
-    });
-
-    // Button click handler: toggle translated/original, or retry on error
-    ui.button.addEventListener('click', () => {
-      const s = this.states.get(key);
-      if (!s || s.status === 'running') return;
-
-      if (s.translatedUrl) {
-        if (s.mode === 'translated') {
-          s.mode = 'original';
-          s.status = 'showingOriginal';
-          imageElement.src = s.originalUrl;
-        } else {
-          s.mode = 'translated';
-          s.status = 'translated';
-          imageElement.src = s.translatedUrl;
-        }
-        renderUi(ui, s);
-        return;
-      }
-
-      // Retry: run pipeline again
-      void this.runContextMenuPipeline(key, imageElement, ui);
-    });
-
-    // Auto-start translation
-    await this.runContextMenuPipeline(key, imageElement, ui);
-  }
-
-  /** Runs the full translation pipeline for a context-menu image and updates its src. */
-  private async runContextMenuPipeline(
-    key: string,
-    imageElement: HTMLImageElement,
-    ui: UiElements,
-  ): Promise<void> {
-    const state = this.states.get(key);
-    if (!state || state.status === 'running') return;
-
-    this.resetStateForPipeline(state);
-    const runStartAt = performance.now();
-    renderUi(ui, state);
-
-    try {
-      const runSettings = await this.loadPipelineRunSettings(state);
-      const source = await this.downloadImageFile(state.originalUrl);
-      await this.runPipelineFromFile({
-        state,
-        file: source.file,
-        runSettings,
-        runStartAt,
-        includeElapsedText: true,
-        onProgress: () => {
-          renderUi(ui, state);
-        },
-      });
-      if (state.translatedUrl) imageElement.src = state.translatedUrl;
-      renderUi(ui, state);
-    } catch (error) {
-      state.status = 'error';
-      state.errorText = toErrorMessage(error);
-      state.stageText = '';
-      state.elapsedText = '';
-      state.debugLogData = undefined;
-      renderUi(ui, state);
-    }
-  }
-
   async startScreenshotTranslate(): Promise<void> {
     if (this.screenshotSelectionRunning) return;
     this.screenshotSelectionRunning = true;
@@ -867,15 +727,19 @@ export class TranslatorCore {
       this.screenshotSelectionRunning = false;
     }
     if (!selection) return;
+    await this.translateScreenshotSelection(selection);
+  }
 
+  async translateScreenshotSelection(selection: ScreenshotSelection): Promise<void> {
     const key = `screenshot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const state = this.ensureState(key, `screenshot:${key}`);
     const ui = createScreenshotResultUi(selection.documentRect);
     document.body.appendChild(ui.host);
-    ui.host.style.visibility = 'hidden';
 
     let disposed = false;
     let detachDrag: (() => void) | null = null;
+    let screenshotFile: File | null = null;
+    let screenshotOriginalUrl: string | null = null;
     const render = (): void => {
       if (!disposed) renderScreenshotResultUi(ui, state);
     };
@@ -884,59 +748,102 @@ export class TranslatorCore {
       disposed = true;
       detachDrag?.();
       this.disposeState(state);
+      if (screenshotOriginalUrl) {
+        URL.revokeObjectURL(screenshotOriginalUrl);
+        screenshotOriginalUrl = null;
+      }
       this.states.delete(key);
       ui.host.remove();
     };
 
     ui.closeButton.addEventListener('click', cleanup);
+    ui.button.addEventListener('click', () => {
+      if (state.status === 'running') return;
+      if (state.status === 'error') {
+        void runScreenshotPipeline();
+        return;
+      }
+      if (!state.translatedUrl || !screenshotOriginalUrl) return;
+      if (state.mode === 'translated') {
+        state.mode = 'original';
+        state.status = 'showingOriginal';
+      } else {
+        state.mode = 'translated';
+        state.status = 'translated';
+      }
+      render();
+    });
     detachDrag = this.attachScreenshotResultDrag(ui);
-    this.resetStateForPipeline(state);
-    state.stageText = '截图中';
-    render();
 
-    try {
+    const ensureScreenshotFile = async (): Promise<File> => {
+      if (screenshotFile) return screenshotFile;
+      ui.host.style.visibility = '';
+      state.stageText = '截图中';
+      render();
+      await waitForNextPaint();
+      if (disposed) throw new Error('截图翻译已关闭');
+
+      ui.host.style.visibility = 'hidden';
       await waitForNextPaint();
       const captureResponse = await sendRuntimeMessage({ type: 'mt:capture-visible-tab' });
       if (!captureResponse.ok || captureResponse.type !== 'mt:capture-visible-tab') {
         throw new Error(captureResponse.ok ? '截图失败' : captureResponse.error);
       }
-      if (disposed) return;
+      if (disposed) throw new Error('截图翻译已关闭');
 
       ui.host.style.visibility = '';
       state.stageText = '裁剪截图中';
       render();
       const screenshotDataUrl = `data:${captureResponse.contentType};base64,${captureResponse.base64}`;
-      const screenshotFile = await cropScreenshotToFile(screenshotDataUrl, selection.viewportRect, {
+      screenshotFile = await cropScreenshotToFile(screenshotDataUrl, selection.viewportRect, {
         width: window.innerWidth,
         height: window.innerHeight,
       });
-      if (disposed) return;
+      if (screenshotOriginalUrl) URL.revokeObjectURL(screenshotOriginalUrl);
+      screenshotOriginalUrl = URL.createObjectURL(screenshotFile);
+      state.originalUrl = screenshotOriginalUrl;
+      render();
+      return screenshotFile;
+    };
 
-      const runSettings = await this.loadPipelineRunSettings(state);
-      if (disposed) return;
-      await this.runPipelineFromFile({
-        state,
-        file: screenshotFile,
-        runSettings,
-        runStartAt: performance.now(),
-        includeElapsedText: true,
-        onProgress: render,
-      });
-      if (disposed) {
-        this.disposeState(state);
-        return;
+    const runScreenshotPipeline = async (): Promise<void> => {
+      this.resetStateForPipeline(state);
+      state.stageText = screenshotFile ? '准备中' : '截图中';
+      render();
+
+      try {
+        const file = await ensureScreenshotFile();
+        if (disposed) return;
+
+        const runSettings = await this.loadPipelineRunSettings(state);
+        if (disposed) return;
+        await this.runPipelineFromFile({
+          state,
+          file,
+          runSettings,
+          runStartAt: performance.now(),
+          includeElapsedText: true,
+          onProgress: render,
+        });
+        if (disposed) {
+          this.disposeState(state);
+          return;
+        }
+        ui.host.style.visibility = '';
+        render();
+      } catch (error) {
+        if (disposed) return;
+        ui.host.style.visibility = '';
+        state.status = 'error';
+        state.errorText = toErrorMessage(error);
+        state.stageText = '';
+        state.elapsedText = '';
+        state.debugLogData = undefined;
+        render();
       }
-      render();
-    } catch (error) {
-      if (disposed) return;
-      ui.host.style.visibility = '';
-      state.status = 'error';
-      state.errorText = toErrorMessage(error);
-      state.stageText = '';
-      state.elapsedText = '';
-      state.debugLogData = undefined;
-      render();
-    }
+    };
+
+    await runScreenshotPipeline();
   }
 
   private attachScreenshotResultDrag(ui: ScreenshotResultUiElements): () => void {
@@ -949,7 +856,12 @@ export class TranslatorCore {
 
     const onPointerDown = (event: PointerEvent): void => {
       const target = event.target;
-      if (event.button !== 0 || (target instanceof Node && ui.closeButton.contains(target))) return;
+      if (
+        event.button !== 0 ||
+        (target instanceof Element && target.closest('button'))
+      ) {
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       dragging = true;

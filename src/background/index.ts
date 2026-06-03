@@ -827,7 +827,7 @@ function registerContextMenus(): void {
   chromeApi.contextMenus.create({
     id: 'translate-image',
     title: '翻译图片',
-    contexts: ['image'],
+    contexts: ['all'],
   });
   chromeApi.contextMenus.create({
     id: 'translate-screenshot',

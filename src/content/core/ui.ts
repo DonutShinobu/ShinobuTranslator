@@ -1,12 +1,25 @@
 import type { PhotoState, ReadingModeBarUi } from './types';
-import { normalizeScreenshotRect, toDocumentScreenshotRect } from './screenshot';
-import type { ScreenshotRect, ScreenshotSelection } from './screenshot';
+import {
+  buildScreenshotElementCandidates,
+  getNextScreenshotElementCandidateIndex,
+  moveScreenshotRect,
+  normalizeScreenshotRect,
+  resizeScreenshotRect,
+  toDocumentScreenshotRect,
+} from './screenshot';
+import type {
+  ScreenshotElementCandidate,
+  ScreenshotRect,
+  ScreenshotResizeHandle,
+  ScreenshotSelection,
+} from './screenshot';
 import { downloadJson } from './utils';
 
 const styleId = 'mt-overlay-style';
 
 export type UiElements = {
   host: HTMLElement;
+  primaryAction: HTMLDivElement;
   button: HTMLButtonElement;
   buttonIcon: HTMLSpanElement;
   buttonSpinner: HTMLSpanElement;
@@ -17,8 +30,14 @@ export type UiElements = {
 
 export type ScreenshotResultUiElements = {
   host: HTMLElement;
+  primaryAction: HTMLDivElement;
+  button: HTMLButtonElement;
+  buttonIcon: HTMLSpanElement;
+  buttonSpinner: HTMLSpanElement;
+  buttonLabel: HTMLSpanElement;
+  detailLine: HTMLDivElement;
+  debugDownloadButton: HTMLButtonElement;
   image: HTMLImageElement;
-  statusLine: HTMLDivElement;
   closeButton: HTMLButtonElement;
 };
 
@@ -27,6 +46,8 @@ const ICONS = {
   original: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="3" width="13" height="10" rx="1.5"/><circle cx="5" cy="6" r="1.5" fill="currentColor"/><path d="M1.5 11l4-3 2 2 3-2.5 3.5 2.5"/></svg>`,
   translated: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="3" width="13" height="10" rx="1.5"/><circle cx="5" cy="6" r="1.5" fill="currentColor"/><path d="M1.5 11l4-3 2 2 3-2.5 3.5 2.5"/><rect x="5" y="5.5" width="7.5" height="4" rx="1" fill="currentColor" opacity="0.75"/></svg>`,
   retry: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13 8A5 5 0 1 1 8 3"/><path d="M8 3l2.5 2.5"/></svg>`,
+  confirm: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`,
+  close: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`,
 };
 
 type IconKey = keyof typeof ICONS;
@@ -125,6 +146,11 @@ export function injectStyles(): void {
       display: flex;
       align-items: center;
       gap: 8px;
+      position: relative;
+    }
+    .mt-x-primary-action {
+      position: relative;
+      display: inline-flex;
     }
     .mt-x-control {
       display: inline-flex;
@@ -251,156 +277,246 @@ export function injectStyles(): void {
       gap: 8px;
     }
 
-    /* Context menu close button */
-    .mt-x-close-btn {
+    .mt-x-pill-close {
+      position: absolute;
+      right: -4px;
+      top: -4px;
+      z-index: 2;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 20px;
-      height: 20px;
-      border: none;
-      background: none;
-      color: var(--mt-text, inherit);
-      cursor: pointer;
-      font-size: 16px;
-      line-height: 1;
-      opacity: 0.5;
+      width: 15px;
+      height: 15px;
+      border: 1px solid var(--mt-border, oklch(0.55 0.01 250 / 0.7));
       border-radius: 50%;
-      transition: opacity 0.15s, background-color 0.15s;
+      background: var(--mt-bg-active, oklch(0.97 0.005 250 / 0.92));
+      color: oklch(0.38 0.006 250 / 0.94);
+      cursor: pointer;
+      font-size: 9px;
+      line-height: 1;
       padding: 0;
-      margin-left: 2px;
       flex: 0 0 auto;
+      overflow: hidden;
+      transition: transform 0.15s ease-out;
     }
-    .mt-x-close-btn:hover {
-      opacity: 0.8;
-      background-color: oklch(0 0 0 / 0.1);
+    .mt-x-pill-close::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: oklch(0 0 0 / 0.12);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s ease-out;
+    }
+    .mt-x-pill-close:hover::after {
+      opacity: 1;
+    }
+    .mt-x-pill-close:hover {
+      transform: scale(1.04);
+    }
+    .mt-x-pill-close svg {
+      position: relative;
+      z-index: 1;
+      width: 9px;
+      height: 9px;
+      display: block;
     }
 
     .mt-x-screenshot-select {
       position: fixed;
       inset: 0;
       z-index: 2147483647;
-      background: oklch(0 0 0 / 0.18);
+      background: oklch(0 0 0 / 0.1);
       cursor: crosshair;
       user-select: none;
       touch-action: none;
       font-family: "MTX-SourceHanSans-CN", "MTX-SourceHanSans-TW", system-ui, sans-serif;
     }
-    .mt-x-screenshot-select-hint {
-      position: fixed;
-      left: 50%;
-      top: 16px;
-      transform: translateX(-50%);
-      display: inline-flex;
-      align-items: center;
-      min-height: 34px;
-      padding: 0 14px;
-      border: 1px solid oklch(1 0 0 / 0.35);
-      border-radius: 999px;
-      background: oklch(0.14 0.01 250 / 0.78);
-      color: oklch(0.96 0.01 250);
-      font-size: 13px;
-      line-height: 1;
-      box-shadow: 0 8px 24px oklch(0 0 0 / 0.28);
-      pointer-events: none;
-    }
-    .mt-x-screenshot-select-cancel {
-      position: fixed;
-      right: 16px;
-      top: 16px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 56px;
-      height: 34px;
-      border: 1px solid oklch(1 0 0 / 0.35);
-      border-radius: 999px;
-      background: oklch(0.14 0.01 250 / 0.78);
-      color: oklch(0.96 0.01 250);
-      cursor: pointer;
-      font-size: 13px;
-      line-height: 1;
-      box-shadow: 0 8px 24px oklch(0 0 0 / 0.28);
-    }
-    .mt-x-screenshot-select-cancel:hover {
-      background: oklch(0.2 0.01 250 / 0.88);
-    }
     .mt-x-screenshot-select-rect {
       position: fixed;
       display: none;
-      border: 2px solid oklch(0.83 0.16 190);
-      background: oklch(0.83 0.16 190 / 0.12);
-      box-shadow:
-        0 0 0 1px oklch(1 0 0 / 0.75),
-        0 0 0 9999px oklch(0 0 0 / 0.22);
+      border: 5px solid oklch(0.38 0.006 250 / 0.94);
+      border-radius: 8px;
+      background: transparent;
+      box-shadow: 0 0 0 9999px oklch(0 0 0 / 0.34);
+      box-sizing: border-box;
       pointer-events: none;
+    }
+    .mt-x-screenshot-select-rect[data-mode='element'] {
+      border-style: solid;
+    }
+    .mt-x-screenshot-select-rect[data-mode='manual'] {
+      border-style: dashed;
+    }
+    .mt-x-screenshot-select[data-phase='confirming'] {
+      cursor: default;
+    }
+    .mt-x-screenshot-select[data-phase='confirming'] .mt-x-screenshot-select-rect {
+      pointer-events: auto;
+      cursor: move;
+    }
+    .mt-x-screenshot-select-handle {
+      position: absolute;
+      z-index: 2;
+      display: none;
+      width: 24px;
+      height: 24px;
+      border: 0;
+      background: transparent;
+      box-sizing: border-box;
+      pointer-events: auto;
+    }
+    .mt-x-screenshot-select[data-phase='confirming'] .mt-x-screenshot-select-handle {
+      display: block;
+    }
+    .mt-x-screenshot-select-handle[data-handle='n'] {
+      left: -12px;
+      top: -12px;
+      width: calc(100% + 24px);
+      height: 24px;
+      cursor: ns-resize;
+    }
+    .mt-x-screenshot-select-handle[data-handle='s'] {
+      left: -12px;
+      bottom: -12px;
+      width: calc(100% + 24px);
+      height: 24px;
+      cursor: ns-resize;
+    }
+    .mt-x-screenshot-select-handle[data-handle='e'] {
+      right: -12px;
+      top: -12px;
+      width: 24px;
+      height: calc(100% + 24px);
+      cursor: ew-resize;
+    }
+    .mt-x-screenshot-select-handle[data-handle='w'] {
+      left: -12px;
+      top: -12px;
+      width: 24px;
+      height: calc(100% + 24px);
+      cursor: ew-resize;
+    }
+    .mt-x-screenshot-select-handle[data-handle='nw'],
+    .mt-x-screenshot-select-handle[data-handle='ne'],
+    .mt-x-screenshot-select-handle[data-handle='sw'],
+    .mt-x-screenshot-select-handle[data-handle='se'] {
+      z-index: 3;
+      width: 30px;
+      height: 30px;
+    }
+    .mt-x-screenshot-select-handle[data-handle='nw'] { left: -15px; top: -15px; cursor: nwse-resize; }
+    .mt-x-screenshot-select-handle[data-handle='ne'] { right: -15px; top: -15px; cursor: nesw-resize; }
+    .mt-x-screenshot-select-handle[data-handle='sw'] { left: -15px; bottom: -15px; cursor: nesw-resize; }
+    .mt-x-screenshot-select-handle[data-handle='se'] { right: -15px; bottom: -15px; cursor: nwse-resize; }
+    .mt-x-screenshot-select-toolbar {
+      position: fixed;
+      z-index: 2147483647;
+      display: none;
+      gap: 6px;
+      align-items: center;
+      padding: 4px;
+      border: 1px solid oklch(0.55 0.01 250 / 0.46);
+      border-radius: 999px;
+      background: oklch(0.97 0.005 250 / 0.9);
+      box-shadow: 0 8px 24px oklch(0 0 0 / 0.18);
+      backdrop-filter: blur(16px) saturate(1.4);
+      -webkit-backdrop-filter: blur(16px) saturate(1.4);
+      pointer-events: auto;
+    }
+    .mt-x-screenshot-select[data-phase='confirming'] .mt-x-screenshot-select-toolbar {
+      display: inline-flex;
+    }
+    .mt-x-screenshot-select-action {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border: 0;
+      border-radius: 50%;
+      background: oklch(0.94 0.008 250 / 0.92);
+      color: oklch(0.16 0.006 250);
+      cursor: pointer;
+      font-size: 13px;
+      line-height: 1;
+      padding: 0;
+      transition: background-color 0.15s ease-out, transform 0.15s ease-out;
+    }
+    .mt-x-screenshot-select-action svg {
+      width: 15px;
+      height: 15px;
+      display: block;
+    }
+    .mt-x-screenshot-select-action:hover {
+      background: oklch(0.86 0.012 250 / 0.96);
+      transform: scale(1.04);
+    }
+    .mt-x-screenshot-select-action[data-action='confirm'] {
+      color: oklch(0.34 0.07 150);
+    }
+    .mt-x-screenshot-select-action[data-action='reset'] {
+      color: oklch(0.38 0.045 25);
     }
     .mt-x-screenshot-result {
       position: absolute;
       z-index: 2147483646;
-      min-width: 40px;
-      min-height: 40px;
-      border: 1px solid oklch(1 0 0 / 0.38);
-      background: oklch(0.12 0.01 250 / 0.74);
-      box-shadow: 0 12px 32px oklch(0 0 0 / 0.32);
+      min-width: 24px;
+      min-height: 24px;
       overflow: visible;
       cursor: move;
       user-select: none;
       touch-action: none;
       font-family: "MTX-SourceHanSans-CN", "MTX-SourceHanSans-TW", system-ui, sans-serif;
     }
+    .mt-x-screenshot-result::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      box-sizing: border-box;
+      border: 1px solid oklch(0.98 0.01 355 / 0.72);
+      background: oklch(0.92 0.06 355 / 0.08);
+      box-shadow:
+        0 12px 32px oklch(0 0 0 / 0.24),
+        inset 0 0 0 1px oklch(0.99 0.01 355 / 0.5);
+      pointer-events: none;
+      opacity: 1;
+      transition: opacity 0.16s ease-out;
+    }
+    .mt-x-screenshot-result[data-image='original']::before,
+    .mt-x-screenshot-result[data-image='translated']::before {
+      opacity: 0;
+    }
+    .mt-x-screenshot-result .mt-x-overlay-inline {
+      position: absolute;
+      right: 0;
+      bottom: calc(100% + 8px);
+      z-index: 2;
+      align-items: flex-end;
+      cursor: move;
+    }
     .mt-x-screenshot-result img {
+      position: relative;
+      z-index: 1;
       display: none;
       width: 100%;
       height: 100%;
+      box-sizing: border-box;
       object-fit: fill;
       pointer-events: none;
       user-select: none;
+      border: 1px solid oklch(0.98 0.01 355 / 0.72);
+      box-shadow: 0 12px 32px oklch(0 0 0 / 0.24);
+      transition: opacity 0.16s ease-out, filter 0.16s ease-out;
     }
-    .mt-x-screenshot-result[data-status='translated'] img {
+    .mt-x-screenshot-result[data-image='original'] img,
+    .mt-x-screenshot-result[data-image='translated'] img {
       display: block;
     }
-    .mt-x-screenshot-result[data-status='translated'] .mt-x-screenshot-status {
-      display: none;
-    }
-    .mt-x-screenshot-status {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 12px;
-      color: oklch(0.96 0.01 250);
-      font-size: 13px;
-      line-height: 1.4;
-      text-align: center;
-      white-space: pre-line;
-      pointer-events: none;
-    }
-    .mt-x-screenshot-status[data-variant='error'] {
-      color: oklch(0.84 0.14 25);
-    }
-    .mt-x-screenshot-result-close {
-      position: absolute;
-      right: -10px;
-      top: -10px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 22px;
-      height: 22px;
-      border: 1px solid oklch(1 0 0 / 0.42);
-      border-radius: 50%;
-      background: oklch(0.14 0.01 250 / 0.92);
-      color: oklch(0.96 0.01 250);
-      cursor: pointer;
-      font-size: 14px;
-      line-height: 1;
-      padding: 0;
-      box-shadow: 0 6px 18px oklch(0 0 0 / 0.28);
-    }
-    .mt-x-screenshot-result-close:hover {
-      background: oklch(0.22 0.01 250 / 0.96);
+    .mt-x-screenshot-result[data-status='running'][data-image='original'] img {
+      filter: saturate(0.96) brightness(0.99);
     }
 
     @keyframes mt-x-glow-sweep {
@@ -437,6 +553,9 @@ export function createUiElements(): UiElements {
   const actions = document.createElement('div');
   actions.className = 'mt-x-actions';
 
+  const primaryAction = document.createElement('div');
+  primaryAction.className = 'mt-x-primary-action';
+
   const button = document.createElement('button');
   button.className = 'mt-x-control';
   button.type = 'button';
@@ -452,7 +571,8 @@ export function createUiElements(): UiElements {
   button.appendChild(buttonIcon);
   button.appendChild(buttonSpinner);
   button.appendChild(buttonLabel);
-  actions.appendChild(button);
+  primaryAction.appendChild(button);
+  actions.appendChild(primaryAction);
 
   const debugDownloadButton = document.createElement('button');
   debugDownloadButton.className = 'mt-x-control mt-x-control-secondary';
@@ -470,7 +590,7 @@ export function createUiElements(): UiElements {
   const host = document.createElement('div');
   host.appendChild(root);
 
-  return { host, button, buttonIcon, buttonSpinner, buttonLabel, detailLine, debugDownloadButton };
+  return { host, primaryAction, button, buttonIcon, buttonSpinner, buttonLabel, detailLine, debugDownloadButton };
 }
 
 export function renderUi(ui: UiElements, state: PhotoState | null): void {
@@ -523,11 +643,11 @@ export function renderUi(ui: UiElements, state: PhotoState | null): void {
   } else if (state.status === 'translated') {
     nextText = '显示原图';
     nextIconKey = 'original';
-    nextDetailText = state.elapsedText ? `翻译完成\n${state.elapsedText}` : '翻译完成';
+    nextDetailText = state.elapsedText ? `翻译完成\n${state.elapsedText}` : '';
   } else if (state.status === 'showingOriginal') {
     nextText = '显示译图';
     nextIconKey = 'translated';
-    nextDetailText = state.elapsedText ? `当前显示原图\n${state.elapsedText}` : '当前显示原图';
+    nextDetailText = state.elapsedText ? `当前显示原图\n${state.elapsedText}` : '';
   } else if (state.status === 'error') {
     nextText = '重试';
     nextIconKey = 'retry';
@@ -684,73 +804,106 @@ export function handleDebugDownload(state: PhotoState): void {
   downloadJson(state.debugLogData, 'typeset-debug-log');
 }
 
-export interface ContextMenuUiElements extends UiElements {
-  closeButton: HTMLButtonElement;
-}
-
-/** Create UI elements for context-menu generic flow (light theme, with close button). */
-export function createContextMenuUi(): ContextMenuUiElements {
-  const base = createUiElements();
-  base.host.dataset.theme = 'light';
-
-  const closeButton = document.createElement('button');
-  closeButton.className = 'mt-x-close-btn';
-  closeButton.type = 'button';
-  closeButton.innerHTML = '&#xD7;';
-  closeButton.title = '关闭';
-
-  const actions = base.host.querySelector('.mt-x-actions');
-  if (actions) {
-    actions.appendChild(closeButton);
-  }
-
-  return { ...base, closeButton };
-}
-
-/**
- * Position a UI host element above an image using fixed positioning.
- * Returns a cleanup function that removes scroll/resize listeners.
- */
-export function positionUiAboveImage(host: HTMLElement, img: HTMLImageElement, gap = 8): () => void {
-  host.style.position = 'fixed';
-  host.style.zIndex = '99999';
-
-  const update = () => {
-    const rect = img.getBoundingClientRect();
-    if (rect.width === 0 && rect.height === 0) return;
-
-    const hostHeight = host.offsetHeight || 36;
-    const hostWidth = host.offsetWidth || 180;
-
-    // Try above the image; fall back below if not enough space
-    let top = rect.top - hostHeight - gap;
-    if (top < gap) {
-      top = rect.bottom + gap;
-    }
-
-    // Right-align with image, clamped to viewport
-    const left = Math.max(gap, Math.min(rect.right - hostWidth, window.innerWidth - hostWidth - gap));
-
-    host.style.top = `${top}px`;
-    host.style.left = `${left}px`;
-  };
-
-  requestAnimationFrame(() => update());
-
-  window.addEventListener('scroll', update, { passive: true });
-  window.addEventListener('resize', update, { passive: true });
-
-  return () => {
-    window.removeEventListener('scroll', update);
-    window.removeEventListener('resize', update);
-  };
-}
-
 function setRectStyle(element: HTMLElement, rect: ScreenshotRect): void {
   element.style.left = `${rect.left}px`;
   element.style.top = `${rect.top}px`;
   element.style.width = `${rect.width}px`;
   element.style.height = `${rect.height}px`;
+}
+
+function clampViewportX(value: number): number {
+  return Math.min(Math.max(value, 0), window.innerWidth);
+}
+
+function clampViewportY(value: number): number {
+  return Math.min(Math.max(value, 0), window.innerHeight);
+}
+
+function toSelection(rect: ScreenshotRect): ScreenshotSelection {
+  return {
+    viewportRect: rect,
+    documentRect: toDocumentScreenshotRect(rect, window.scrollX, window.scrollY),
+  };
+}
+
+function isSelectableScreenshotElement(element: Element, host: HTMLElement): boolean {
+  if (host.contains(element)) return false;
+  if (element === document.body || element === document.documentElement) return false;
+  const style = window.getComputedStyle(element);
+  return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+}
+
+function toElementScreenshotRect(element: Element): ScreenshotRect {
+  const rect = element.getBoundingClientRect();
+  return {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+function collectScreenshotElementCandidates(
+  host: HTMLElement,
+  clientX: number,
+  clientY: number,
+): Array<ScreenshotElementCandidate<Element>> {
+  const inputs: Array<{ element: Element; rect: ScreenshotRect }> = [];
+  const seen = new Set<Element>();
+  for (const element of document.elementsFromPoint(clientX, clientY)) {
+    let current: Element | null = element;
+    while (current && current !== document.body && current !== document.documentElement) {
+      if (!seen.has(current) && isSelectableScreenshotElement(current, host)) {
+        seen.add(current);
+        inputs.push({
+          element: current,
+          rect: toElementScreenshotRect(current),
+        });
+      }
+      current = current.parentElement;
+    }
+  }
+  return buildScreenshotElementCandidates(inputs, {
+    width: window.innerWidth,
+    height: window.innerHeight,
+  });
+}
+
+type ScreenshotSelectionPhase = 'selecting' | 'confirming';
+
+type ScreenshotSelectionAdjustOperation = {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  startRect: ScreenshotRect;
+  kind: 'move' | 'resize';
+  handle?: ScreenshotResizeHandle;
+};
+
+const screenshotResizeHandles: ScreenshotResizeHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
+
+function isScreenshotResizeHandle(value: string | undefined): value is ScreenshotResizeHandle {
+  return value === 'n' ||
+    value === 's' ||
+    value === 'e' ||
+    value === 'w' ||
+    value === 'nw' ||
+    value === 'ne' ||
+    value === 'sw' ||
+    value === 'se';
+}
+
+function getScreenshotResizeHandle(target: EventTarget | null): ScreenshotResizeHandle | null {
+  if (!(target instanceof Element)) return null;
+  const handle = target.closest<HTMLElement>('.mt-x-screenshot-select-handle')?.dataset.handle;
+  return isScreenshotResizeHandle(handle) ? handle : null;
+}
+
+function isPointInsideScreenshotRect(rect: ScreenshotRect, clientX: number, clientY: number): boolean {
+  return clientX >= rect.left &&
+    clientX <= rect.left + rect.width &&
+    clientY >= rect.top &&
+    clientY <= rect.top + rect.height;
 }
 
 export function requestScreenshotSelection(): Promise<ScreenshotSelection | null> {
@@ -759,28 +912,49 @@ export function requestScreenshotSelection(): Promise<ScreenshotSelection | null
     const host = document.createElement('div');
     host.className = 'mt-x-screenshot-select';
 
-    const hint = document.createElement('div');
-    hint.className = 'mt-x-screenshot-select-hint';
-    hint.textContent = '拖拽选择截图区域';
-
-    const cancelButton = document.createElement('button');
-    cancelButton.className = 'mt-x-screenshot-select-cancel';
-    cancelButton.type = 'button';
-    cancelButton.textContent = '取消';
-
     const selectionRect = document.createElement('div');
     selectionRect.className = 'mt-x-screenshot-select-rect';
+    for (const handle of screenshotResizeHandles) {
+      const handleElement = document.createElement('span');
+      handleElement.className = 'mt-x-screenshot-select-handle';
+      handleElement.dataset.handle = handle;
+      selectionRect.appendChild(handleElement);
+    }
 
-    host.appendChild(hint);
-    host.appendChild(cancelButton);
+    const toolbar = document.createElement('div');
+    toolbar.className = 'mt-x-screenshot-select-toolbar';
+    const confirmButton = document.createElement('button');
+    confirmButton.className = 'mt-x-screenshot-select-action';
+    confirmButton.type = 'button';
+    confirmButton.dataset.action = 'confirm';
+    confirmButton.innerHTML = ICONS.confirm;
+    confirmButton.title = '确认选区';
+    const resetButton = document.createElement('button');
+    resetButton.className = 'mt-x-screenshot-select-action';
+    resetButton.type = 'button';
+    resetButton.dataset.action = 'reset';
+    resetButton.innerHTML = ICONS.close;
+    resetButton.title = '重新框选';
+    toolbar.appendChild(confirmButton);
+    toolbar.appendChild(resetButton);
+
     host.appendChild(selectionRect);
+    host.appendChild(toolbar);
     document.body.appendChild(host);
 
     let active = false;
+    let dragged = false;
     let startX = 0;
     let startY = 0;
     let pointerId: number | null = null;
     let settled = false;
+    let elementCandidates: Array<ScreenshotElementCandidate<Element>> = [];
+    let elementCandidateIndex = -1;
+    let selectedElementRect: ScreenshotRect | null = null;
+    let phase: ScreenshotSelectionPhase = 'selecting';
+    let confirmedRect: ScreenshotRect | null = null;
+    let confirmedMode: 'element' | 'manual' = 'element';
+    let adjustOperation: ScreenshotSelectionAdjustOperation | null = null;
 
     const cleanup = (selection: ScreenshotSelection | null): void => {
       if (settled) return;
@@ -790,36 +964,175 @@ export function requestScreenshotSelection(): Promise<ScreenshotSelection | null
       resolve(selection);
     };
 
-    const updateSelectionRect = (currentX: number, currentY: number): ScreenshotRect => {
-      const rect = normalizeScreenshotRect(startX, startY, currentX, currentY, window.innerWidth, window.innerHeight);
+    const setPhase = (nextPhase: ScreenshotSelectionPhase): void => {
+      phase = nextPhase;
+      host.dataset.phase = nextPhase;
+    };
+
+    const positionToolbar = (rect: ScreenshotRect): void => {
+      const toolbarWidth = 64;
+      const toolbarHeight = 34;
+      const left = Math.min(
+        window.innerWidth - toolbarWidth - 8,
+        Math.max(8, rect.left + rect.width - toolbarWidth),
+      );
+      const top = rect.top >= toolbarHeight + 10
+        ? rect.top - toolbarHeight - 8
+        : Math.min(window.innerHeight - toolbarHeight - 8, rect.top + rect.height + 8);
+      toolbar.style.left = `${left}px`;
+      toolbar.style.top = `${Math.max(8, top)}px`;
+    };
+
+    const renderSelectionRect = (rect: ScreenshotRect, mode: 'element' | 'manual'): void => {
       selectionRect.style.display = 'block';
+      selectionRect.dataset.mode = mode;
       setRectStyle(selectionRect, rect);
+      positionToolbar(rect);
+    };
+
+    const hideSelectionRect = (): void => {
+      selectionRect.style.display = 'none';
+      selectedElementRect = null;
+      confirmedRect = null;
+    };
+
+    const resetSelection = (): void => {
+      active = false;
+      dragged = false;
+      pointerId = null;
+      adjustOperation = null;
+      elementCandidates = [];
+      elementCandidateIndex = -1;
+      selectedElementRect = null;
+      confirmedRect = null;
+      setPhase('selecting');
+      hideSelectionRect();
+    };
+
+    const confirmCurrentSelection = (): void => {
+      if (!confirmedRect) return;
+      cleanup(toSelection(confirmedRect));
+    };
+
+    const lockSelectionRect = (rect: ScreenshotRect, mode: 'element' | 'manual'): void => {
+      confirmedRect = rect;
+      confirmedMode = mode;
+      setPhase('confirming');
+      renderSelectionRect(rect, mode);
+    };
+
+    const renderElementCandidate = (index: number): void => {
+      const candidate = elementCandidates[index];
+      if (!candidate) {
+        hideSelectionRect();
+        return;
+      }
+      elementCandidateIndex = index;
+      selectedElementRect = candidate.rect;
+      renderSelectionRect(candidate.rect, 'element');
+    };
+
+    const refreshElementCandidates = (clientX: number, clientY: number): void => {
+      elementCandidates = collectScreenshotElementCandidates(host, clientX, clientY);
+      if (elementCandidates.length === 0) {
+        elementCandidateIndex = -1;
+        hideSelectionRect();
+        return;
+      }
+      renderElementCandidate(0);
+    };
+
+    const updateManualSelectionRect = (currentX: number, currentY: number): ScreenshotRect => {
+      const rect = normalizeScreenshotRect(startX, startY, currentX, currentY, window.innerWidth, window.innerHeight);
+      renderSelectionRect(rect, 'manual');
       return rect;
     };
 
     const onPointerDown = (event: PointerEvent): void => {
-      if (event.button !== 0 || event.target === cancelButton) return;
+      if (event.button !== 0) return;
+      if (phase === 'confirming') {
+        if (!confirmedRect) return;
+        const handle = getScreenshotResizeHandle(event.target);
+        if (!handle && !isPointInsideScreenshotRect(confirmedRect, event.clientX, event.clientY)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        adjustOperation = {
+          pointerId: event.pointerId,
+          startX: clampViewportX(event.clientX),
+          startY: clampViewportY(event.clientY),
+          startRect: confirmedRect,
+          kind: handle ? 'resize' : 'move',
+          handle: handle ?? undefined,
+        };
+        host.setPointerCapture(event.pointerId);
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       active = true;
+      dragged = false;
       pointerId = event.pointerId;
-      startX = Math.min(Math.max(event.clientX, 0), window.innerWidth);
-      startY = Math.min(Math.max(event.clientY, 0), window.innerHeight);
+      startX = clampViewportX(event.clientX);
+      startY = clampViewportY(event.clientY);
       host.setPointerCapture(event.pointerId);
-      hint.textContent = '松开鼠标开始翻译';
-      updateSelectionRect(startX, startY);
     };
 
     const onPointerMove = (event: PointerEvent): void => {
-      if (!active || pointerId !== event.pointerId) return;
+      if (adjustOperation) {
+        if (adjustOperation.pointerId !== event.pointerId) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const currentX = clampViewportX(event.clientX);
+        const currentY = clampViewportY(event.clientY);
+        const deltaX = currentX - adjustOperation.startX;
+        const deltaY = currentY - adjustOperation.startY;
+        confirmedRect = adjustOperation.kind === 'resize' && adjustOperation.handle
+          ? resizeScreenshotRect(
+              adjustOperation.startRect,
+              adjustOperation.handle,
+              deltaX,
+              deltaY,
+              { width: window.innerWidth, height: window.innerHeight },
+              minSelectionSize,
+            )
+          : moveScreenshotRect(
+              adjustOperation.startRect,
+              deltaX,
+              deltaY,
+              { width: window.innerWidth, height: window.innerHeight },
+            );
+        renderSelectionRect(confirmedRect, confirmedMode);
+        return;
+      }
+      if (phase === 'confirming') return;
+      if (!active) {
+        refreshElementCandidates(event.clientX, event.clientY);
+        return;
+      }
+      if (pointerId !== event.pointerId) return;
       event.preventDefault();
       event.stopPropagation();
-      const currentX = Math.min(Math.max(event.clientX, 0), window.innerWidth);
-      const currentY = Math.min(Math.max(event.clientY, 0), window.innerHeight);
-      updateSelectionRect(currentX, currentY);
+      const currentX = clampViewportX(event.clientX);
+      const currentY = clampViewportY(event.clientY);
+      if (Math.abs(currentX - startX) > 2 || Math.abs(currentY - startY) > 2) {
+        dragged = true;
+      }
+      if (dragged) {
+        updateManualSelectionRect(currentX, currentY);
+      }
     };
 
     const onPointerUp = (event: PointerEvent): void => {
+      if (adjustOperation) {
+        if (adjustOperation.pointerId !== event.pointerId) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (host.hasPointerCapture(event.pointerId)) {
+          host.releasePointerCapture(event.pointerId);
+        }
+        adjustOperation = null;
+        return;
+      }
       if (!active || pointerId !== event.pointerId) return;
       event.preventDefault();
       event.stopPropagation();
@@ -829,77 +1142,130 @@ export function requestScreenshotSelection(): Promise<ScreenshotSelection | null
       }
       pointerId = null;
 
-      const currentX = Math.min(Math.max(event.clientX, 0), window.innerWidth);
-      const currentY = Math.min(Math.max(event.clientY, 0), window.innerHeight);
-      const viewportRect = updateSelectionRect(currentX, currentY);
-      if (viewportRect.width < minSelectionSize || viewportRect.height < minSelectionSize) {
-        hint.textContent = '区域太小，请重新选择';
-        selectionRect.style.display = 'none';
+      if (!dragged) {
+        if (selectedElementRect) {
+          lockSelectionRect(selectedElementRect, 'element');
+        }
         return;
       }
 
-      cleanup({
-        viewportRect,
-        documentRect: toDocumentScreenshotRect(viewportRect, window.scrollX, window.scrollY),
-      });
+      const currentX = clampViewportX(event.clientX);
+      const currentY = clampViewportY(event.clientY);
+      const viewportRect = updateManualSelectionRect(currentX, currentY);
+      if (viewportRect.width < minSelectionSize || viewportRect.height < minSelectionSize) {
+        if (selectedElementRect) {
+          lockSelectionRect(selectedElementRect, 'element');
+        } else {
+          hideSelectionRect();
+        }
+        return;
+      }
+
+      lockSelectionRect(viewportRect, 'manual');
+    };
+
+    const onWheel = (event: WheelEvent): void => {
+      if (active) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (phase === 'confirming') return;
+      if (elementCandidates.length === 0) {
+        refreshElementCandidates(event.clientX, event.clientY);
+      }
+      const direction = event.deltaY < 0 ? 'larger' : 'smaller';
+      const nextIndex = getNextScreenshotElementCandidateIndex(
+        elementCandidateIndex,
+        elementCandidates.length,
+        direction,
+      );
+      renderElementCandidate(nextIndex);
+    };
+
+    const onDoubleClick = (event: MouseEvent): void => {
+      if (phase !== 'confirming' || !confirmedRect) return;
+      if (!isPointInsideScreenshotRect(confirmedRect, event.clientX, event.clientY)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      confirmCurrentSelection();
     };
 
     const onKeydown = (event: KeyboardEvent): void => {
+      if (event.key === 'Enter' && phase === 'confirming') {
+        event.preventDefault();
+        confirmCurrentSelection();
+        return;
+      }
       if (event.key !== 'Escape') return;
       event.preventDefault();
       cleanup(null);
     };
 
-    cancelButton.addEventListener('click', () => cleanup(null));
+    toolbar.addEventListener('pointerdown', (event) => {
+      event.stopPropagation();
+    });
+    confirmButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      confirmCurrentSelection();
+    });
+    resetButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      resetSelection();
+    });
+    setPhase('selecting');
     host.addEventListener('pointerdown', onPointerDown);
     host.addEventListener('pointermove', onPointerMove);
     host.addEventListener('pointerup', onPointerUp);
+    host.addEventListener('wheel', onWheel, { passive: false });
+    host.addEventListener('dblclick', onDoubleClick);
     document.addEventListener('keydown', onKeydown, true);
   });
 }
 
 export function createScreenshotResultUi(rect: ScreenshotRect): ScreenshotResultUiElements {
-  const host = document.createElement('div');
-  host.className = 'mt-x-screenshot-result';
-  host.dataset.status = 'running';
-  setRectStyle(host, rect);
+  const base = createUiElements();
+  base.host.className = 'mt-x-screenshot-result';
+  base.host.dataset.theme = 'light';
+  base.host.dataset.status = 'running';
+  setRectStyle(base.host, rect);
 
   const image = document.createElement('img');
   image.alt = '翻译截图';
   image.draggable = false;
 
-  const statusLine = document.createElement('div');
-  statusLine.className = 'mt-x-screenshot-status';
-  statusLine.textContent = '准备中';
-
   const closeButton = document.createElement('button');
-  closeButton.className = 'mt-x-screenshot-result-close';
+  closeButton.className = 'mt-x-pill-close';
   closeButton.type = 'button';
-  closeButton.textContent = 'x';
+  closeButton.innerHTML = ICONS.close;
   closeButton.title = '关闭';
 
-  host.appendChild(image);
-  host.appendChild(statusLine);
-  host.appendChild(closeButton);
-  return { host, image, statusLine, closeButton };
+  base.primaryAction.appendChild(closeButton);
+  base.host.appendChild(image);
+  return { ...base, image, closeButton };
 }
 
 export function renderScreenshotResultUi(
   ui: ScreenshotResultUiElements,
   state: PhotoState,
 ): void {
-  ui.host.dataset.status = state.status === 'translated' ? 'translated' : state.status;
-  ui.statusLine.dataset.variant = state.status === 'error' ? 'error' : 'normal';
-  if (state.status === 'running') {
-    ui.statusLine.textContent = state.stageText || '翻译中...';
-  } else if (state.status === 'error') {
-    ui.statusLine.textContent = state.errorText.includes('未找到文本') ? '未找到文本' : `翻译失败：${state.errorText}`;
-  } else if (state.status === 'translated') {
-    ui.statusLine.textContent = '';
+  renderUi(ui, state);
+  ui.host.dataset.status = state.status;
+  const originalUrl = state.originalUrl.startsWith('screenshot:') ? undefined : state.originalUrl;
+  const imageUrl = state.status === 'translated'
+    ? state.translatedUrl
+    : originalUrl ?? state.translatedUrl;
+  const imageKind = imageUrl
+    ? imageUrl === state.translatedUrl && state.status === 'translated'
+      ? 'translated'
+      : 'original'
+    : undefined;
+  if (imageKind) {
+    ui.host.dataset.image = imageKind;
   } else {
-    ui.statusLine.textContent = '准备中';
+    delete ui.host.dataset.image;
   }
-  if (state.translatedUrl && ui.image.src !== state.translatedUrl) {
-    ui.image.src = state.translatedUrl;
+  if (imageUrl && ui.image.src !== imageUrl) {
+    ui.image.src = imageUrl;
   }
 }

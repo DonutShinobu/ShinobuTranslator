@@ -67,6 +67,10 @@ Testing is minimal (3 test files). Linting relies on TypeScript strict mode. No 
 
 24. **Static imports for browser-side modules** — In `modelRegistry.ts`, `resolveAssetUrl` must be a static import (`import { resolveAssetUrl } from '../shared/assetUrl'`), not a `require()` call. `require` is undefined in the browser environment and will crash the Chrome extension. Node-specific imports (fs, path) use dynamic `await import()` since they're only called on the Node path.
 
+25. **Floating screenshot overlay for generic translation** — Screenshot translation and generic context-menu translation must capture a `ScreenshotSelection` and render both original and translated images through the floating overlay UI. Do not replace arbitrary host `<img>`, background-image, canvas, or nested media DOM in the generic path; site adapters own DOM replacement only when the target layout is known and controlled. The overlay close button owns the pill and floating image lifecycle together, and the running state should show the original capture immediately so users can visually compare original vs translated output.
+
+26. **Pure screenshot geometry helpers** — Keep screenshot element candidate ranking, wheel layer switching, viewport/crop conversion, move, and resize math in `src/content/core/screenshot.ts` as pure functions with Vitest coverage. `ui.ts` may read DOM rects and draw visual affordances, but the accepted `ScreenshotRect` stays rectangular in CSS pixels even when the selection border is visually rounded.
+
 ## Content Script Adapter Patterns
 
 ### SiteAdapter Optional Reading Mode Methods
@@ -120,6 +124,7 @@ wrapper.before(anchor); // anchor appears to the LEFT of direction toggle
 ### Current test coverage
 - `src/pipeline/geometry.test.ts` — Geometry utility functions (convexHull, sortMiniBoxPoints, minAreaRect — now imports from `./typeset/geometry`)
 - `src/pipeline/typesetGeometry.test.ts` — Typeset geometry calculations (queryMaskMaxY — now imports from `./typeset/index`)
+- `src/content/core/screenshot.test.ts` — Screenshot crop/viewport conversion, element candidate ordering, wheel layer switching, and move/resize geometry
 - `benchmark/typeset/src/metrics.test.ts` — Benchmark metrics
 
 ### Test patterns

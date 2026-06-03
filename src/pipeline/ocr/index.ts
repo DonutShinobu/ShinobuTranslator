@@ -29,7 +29,6 @@ import { registerOcrProvider, getOcrProvider, fillMissingOcrFields } from "./pro
 import type { OcrRecognizeResult } from "./provider";
 import { builtinOcrProvider } from "./builtinProvider";
 import { paddleocrProvider } from "./paddleocrProvider";
-import { createMainThreadYieldCheckpoint } from "../scheduler";
 
 registerOcrProvider(builtinOcrProvider);
 registerOcrProvider(paddleocrProvider);
@@ -74,15 +73,23 @@ type PreparedCandidate = {
   validEncoderLength: number;
 };
 
-type YieldCheckpoint = () => Promise<void>;
-
 const isNodeRuntime = typeof process !== "undefined" && !!process.versions?.node;
+let webGpuFixedBatchColdRunConsumed = false;
 
-function resolveCompactActiveBatch(_provider: RuntimeProvider, override?: boolean): boolean {
+function resolveCompactActiveBatch(provider: RuntimeProvider, override?: boolean): boolean {
   if (typeof override === "boolean") {
     return override;
   }
+  if (provider === "webgpu" && !webGpuFixedBatchColdRunConsumed) {
+    return false;
+  }
   return true;
+}
+
+function markFixedBatchColdRunConsumed(provider: RuntimeProvider, compactActiveBatch: boolean, override?: boolean): void {
+  if (provider === "webgpu" && !compactActiveBatch && typeof override !== "boolean") {
+    webGpuFixedBatchColdRunConsumed = true;
+  }
 }
 
 function createOcrDebugInfo(mode: "autoregressive" | "ctc"): OcrRunDebugInfo {
@@ -142,7 +149,7 @@ function createSplitInputNames(
 function getOcrProviderPlans(): RuntimeProvider[][] {
   return isNodeRuntime
     ? [["cuda", "cpu"], ["cpu"]]
-    : [["webnn", "wasm"], ["wasm"]];
+    : [["webgpu", "webnn", "wasm"], ["webnn", "wasm"], ["wasm"]];
 }
 
 async function disposeOcrSplitSessions(): Promise<void> {
@@ -224,8 +231,7 @@ async function decodeSplitChunk(
   chunk: PreparedCandidate[],
   options: OcrBatchDecodeOptions,
   chunkDebug: OcrRunDebugChunk,
-  decoded: DecodedCandidate[],
-  maybeYield?: YieldCheckpoint
+  decoded: DecodedCandidate[]
 ): Promise<void> {
   let chunkConfidenceSum = 0;
   const batchItems = createBatchItems(chunk);
@@ -237,9 +243,6 @@ async function decodeSplitChunk(
       batchItems,
       options
     );
-    if (maybeYield) {
-      await maybeYield();
-    }
     chunkDebug.encoderCache = true;
     addTelemetryToChunk(chunkDebug, batchDecode.telemetry);
     chunkConfidenceSum += acceptBatchResults(chunk, batchItems, batchDecode.items, chunkDebug, decoded);
@@ -260,9 +263,6 @@ async function decodeSplitChunk(
           singleItems,
           options
         );
-        if (maybeYield) {
-          await maybeYield();
-        }
         const fallbackDurationMs = performance.now() - fallbackT0;
         addTelemetryToChunk(chunkDebug, singleDecode.telemetry);
         const confidenceSum = acceptBatchResults([candidate], singleItems, singleDecode.items, chunkDebug, decoded);
@@ -319,7 +319,6 @@ async function runOcrByOnnxWithSplitSessions(
   const candidates = generateTextDirection(detectedRegions);
   debugInfo.candidateCount = candidates.length;
   const compactActiveBatch = resolveCompactActiveBatch(sessions.encoderHandle.provider, options?.compactActiveBatch);
-  const maybeYield = createMainThreadYieldCheckpoint();
 
   const prepared: PreparedCandidate[] = [];
   const preprocessT0 = performance.now();
@@ -337,7 +336,6 @@ async function runOcrByOnnxWithSplitSessions(
       regionId: region.id,
       durationMs: performance.now() - regionPreprocessT0,
     });
-    await maybeYield();
   }
   debugInfo.preprocessTotalMs = performance.now() - preprocessT0;
   debugInfo.preparedCount = prepared.length;
@@ -364,14 +362,16 @@ async function runOcrByOnnxWithSplitSessions(
       chunk,
       { seqLen, encoderLen, maxSteps, charset, inputHeight, inputWidth, compactActiveBatch },
       chunkDebug,
-      decoded,
-      maybeYield
+      decoded
     );
-    await maybeYield();
     if (chunkDebug.decodeMode === "fallback") {
       debugInfo.fallbackTriggerCount += 1;
     }
   }
+  if (prepared.length > 0) {
+    markFixedBatchColdRunConsumed(sessions.encoderHandle.provider, compactActiveBatch, options?.compactActiveBatch);
+  }
+
   if (decoded.length === 0) {
     return { results: [], debug: finalizeOcrDebugInfo(debugInfo) };
   }

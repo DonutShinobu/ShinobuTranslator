@@ -8,7 +8,6 @@ import { runInference, runDetectWithGpuPreprocess } from "../../runtime/onnxBrid
 import type { WorkerSessionHandle, TensorTransport } from "../../runtime/onnxWorkerTypes";
 import { toErrorMessage } from "../../shared/utils";
 import { clamp, polygonArea, nmsBoxes, convexHull, type ScoredBox } from "../utils";
-import { createMainThreadYieldCheckpoint } from "../scheduler";
 
 type LetterboxResult = {
   input: Float32Array;
@@ -21,8 +20,6 @@ type LetterboxResult = {
 type MaskComponent = {
   boundary: QuadPoint[];
 };
-
-type YieldCheckpoint = () => Promise<void>;
 
 export type DetectOutput = {
   regions: TextRegion[];
@@ -233,44 +230,25 @@ function makeRegionFromQuad(quad: Quad, imageWidth: number, imageHeight: number,
   };
 }
 
-async function binaryMaskToCanvas(
-  mask: Uint8Array,
-  width: number,
-  height: number,
-  platform: PlatformProvider,
-  maybeYield?: YieldCheckpoint
-): Promise<PipelineCanvas> {
+function binaryMaskToCanvas(mask: Uint8Array, width: number, height: number, platform: PlatformProvider): PipelineCanvas {
   const canvas = platform.createCanvas(width, height);
   const ctx = canvas.getContext("2d");
   if (!ctx) {
     throw new Error("文本检测遮罩输出无法创建画布上下文");
   }
   const image = ctx.createImageData(width, height);
-  for (let y = 0; y < height; y += 1) {
-    const rowOffset = y * width;
-    for (let x = 0; x < width; x += 1) {
-      const i = rowOffset + x;
-      const p = i * 4;
-      const value = mask[i] > 0 ? 255 : 0;
-      image.data[p] = value;
-      image.data[p + 1] = value;
-      image.data[p + 2] = value;
-      image.data[p + 3] = 255;
-    }
-    if (maybeYield) {
-      await maybeYield();
-    }
+  for (let i = 0, p = 0; i < mask.length; i += 1, p += 4) {
+    const value = mask[i] > 0 ? 255 : 0;
+    image.data[p] = value;
+    image.data[p + 1] = value;
+    image.data[p + 2] = value;
+    image.data[p + 3] = 255;
   }
   ctx.putImageData(image, 0, 0);
   return canvas;
 }
 
-async function scaleMaskToOriginal(
-  maskCanvas: PipelineCanvas,
-  image: PipelineImage,
-  platform: PlatformProvider,
-  maybeYield?: YieldCheckpoint
-): Promise<PipelineCanvas> {
+function scaleMaskToOriginal(maskCanvas: PipelineCanvas, image: PipelineImage, platform: PlatformProvider): PipelineCanvas {
   const out = platform.createCanvas(image.naturalWidth, image.naturalHeight);
   const ctx = out.getContext("2d", { willReadFrequently: true });
   if (!ctx) {
@@ -280,34 +258,19 @@ async function scaleMaskToOriginal(
   ctx.drawImage(maskCanvas, 0, 0, out.width, out.height);
   const imageData = ctx.getImageData(0, 0, out.width, out.height);
   const data = imageData.data;
-  for (let y = 0; y < out.height; y += 1) {
-    const rowOffset = y * out.width * 4;
-    for (let x = 0; x < out.width; x += 1) {
-      const p = rowOffset + x * 4;
-      const value = data[p] > 127 ? 255 : 0;
-      data[p] = value;
-      data[p + 1] = value;
-      data[p + 2] = value;
-      data[p + 3] = 255;
-    }
-    if (maybeYield) {
-      await maybeYield();
-    }
+  for (let p = 0; p < data.length; p += 4) {
+    const value = data[p] > 127 ? 255 : 0;
+    data[p] = value;
+    data[p + 1] = value;
+    data[p + 2] = value;
+    data[p + 3] = 255;
   }
   ctx.putImageData(imageData, 0, 0);
   return out;
 }
 
-async function buildMaskCanvasFromBinary(
-  mask: Uint8Array,
-  width: number,
-  height: number,
-  image: PipelineImage,
-  platform: PlatformProvider,
-  maybeYield?: YieldCheckpoint
-): Promise<PipelineCanvas> {
-  const maskCanvas = await binaryMaskToCanvas(mask, width, height, platform, maybeYield);
-  return scaleMaskToOriginal(maskCanvas, image, platform, maybeYield);
+function buildMaskCanvasFromBinary(mask: Uint8Array, width: number, height: number, image: PipelineImage, platform: PlatformProvider): PipelineCanvas {
+  return scaleMaskToOriginal(binaryMaskToCanvas(mask, width, height, platform), image, platform);
 }
 
 // --- connectedComponents (shared with heuristic path) ---
@@ -490,12 +453,7 @@ function boxesFromBlk(
   return picked;
 }
 
-async function preprocessLetterbox(
-  image: PipelineImage,
-  size: number,
-  platform: PlatformProvider,
-  maybeYield?: YieldCheckpoint
-): Promise<LetterboxResult> {
+function preprocessLetterbox(image: PipelineImage, size: number, platform: PlatformProvider): LetterboxResult {
   const width = image.naturalWidth;
   const height = image.naturalHeight;
   const ratio = Math.min(size / height, size / width);
@@ -514,18 +472,10 @@ async function preprocessLetterbox(
   const data = ctx.getImageData(0, 0, size, size).data;
   const input = new Float32Array(1 * 3 * size * size);
   const hw = size * size;
-  for (let y = 0; y < size; y += 1) {
-    const rowOffset = y * size;
-    for (let x = 0; x < size; x += 1) {
-      const i = rowOffset + x;
-      const p = i * 4;
-      input[i] = data[p] / 255;
-      input[hw + i] = data[p + 1] / 255;
-      input[2 * hw + i] = data[p + 2] / 255;
-    }
-    if (maybeYield) {
-      await maybeYield();
-    }
+  for (let i = 0, p = 0; i < hw; i += 1, p += 4) {
+    input[i] = data[p] / 255;
+    input[hw + i] = data[p + 1] / 255;
+    input[2 * hw + i] = data[p + 2] / 255;
   }
 
   return {
@@ -537,14 +487,13 @@ async function preprocessLetterbox(
   };
 }
 
-async function buildBinaryMaskFromTensor(
+function buildBinaryMaskFromTensor(
   tensor: TensorTransport,
   unpaddedWidth: number,
   unpaddedHeight: number,
   threshold: number,
-  channelIndex = 0,
-  maybeYield?: YieldCheckpoint
-): Promise<{ mask: Uint8Array; width: number; height: number } | null> {
+  channelIndex = 0
+): { mask: Uint8Array; width: number; height: number } | null {
   if (!(tensor.data instanceof Float32Array)) {
     return null;
   }
@@ -579,29 +528,18 @@ async function buildBinaryMaskFromTensor(
       const idx = destRow + x;
       mask[idx] = source[sourceRow + x] > threshold ? 1 : 0;
     }
-    if (maybeYield) {
-      await maybeYield();
-    }
   }
 
   return { mask, width, height };
 }
 
-async function extractMaskComponents(
-  mask: Uint8Array,
-  width: number,
-  height: number,
-  maybeYield?: YieldCheckpoint
-): Promise<MaskComponent[]> {
+function extractMaskComponents(mask: Uint8Array, width: number, height: number): MaskComponent[] {
   const total = width * height;
   const visited = new Uint8Array(total);
   const queue = new Int32Array(total);
   const out: MaskComponent[] = [];
 
   for (let idx = 0; idx < total; idx += 1) {
-    if (maybeYield && idx % width === 0) {
-      await maybeYield();
-    }
     if (mask[idx] === 0 || visited[idx] === 1) {
       continue;
     }
@@ -618,9 +556,6 @@ async function extractMaskComponents(
       const current = queue[head];
       head += 1;
       pixels.push(current);
-      if (maybeYield && head % 4096 === 0) {
-        await maybeYield();
-      }
 
       const x = current % width;
       const y = Math.floor(current / width);
@@ -649,11 +584,7 @@ async function extractMaskComponents(
     }
 
     const boundary: QuadPoint[] = [];
-    for (let i = 0; i < pixels.length; i += 1) {
-      if (maybeYield && i % 4096 === 0) {
-        await maybeYield();
-      }
-      const pixel = pixels[i];
+    for (const pixel of pixels) {
       const x = pixel % width;
       const y = Math.floor(pixel / width);
       let isBoundary = false;
@@ -702,12 +633,11 @@ function mapQuadToOriginal(
   return [mapped[0], mapped[1], mapped[2], mapped[3]];
 }
 
-async function detectCtdRegionsFromDetTensor(
+function detectCtdRegionsFromDetTensor(
   detTensor: TensorTransport,
   image: PipelineImage,
-  prep: LetterboxResult,
-  maybeYield?: YieldCheckpoint
-): Promise<TextRegion[]> {
+  prep: LetterboxResult
+): TextRegion[] {
   if (!(detTensor.data instanceof Float32Array)) {
     return [];
   }
@@ -742,19 +672,12 @@ async function detectCtdRegionsFromDetTensor(
       map[idx] = value;
       mask[idx] = value > 0.3 ? 1 : 0;
     }
-    if (maybeYield) {
-      await maybeYield();
-    }
   }
 
-  const components = await extractMaskComponents(mask, width, height, maybeYield);
+  const components = extractMaskComponents(mask, width, height);
   const regions: TextRegion[] = [];
 
-  for (let i = 0; i < components.length; i += 1) {
-    if (maybeYield) {
-      await maybeYield();
-    }
-    const component = components[i];
+  for (const component of components) {
     const contour = convexHull(component.boundary);
     const mini = minAreaRect(contour);
     if (!mini || mini.shortSide < 2) {
@@ -829,7 +752,6 @@ function mapBoxesToOriginal(
 export async function detectByOnnx(image: PipelineImage, platform: PlatformProvider): Promise<DetectOutput> {
   const primaryHandle = await getModelSession("detector");
   const inputSize = 1024;
-  const maybeYield = createMainThreadYieldCheckpoint();
 
   let actualProvider: RuntimeProvider = primaryHandle.provider;
   let actualWebnnDeviceType = primaryHandle.webnnDeviceType;
@@ -855,7 +777,7 @@ export async function detectByOnnx(image: PipelineImage, platform: PlatformProvi
       const message = toErrorMessage(error);
       console.warn(`[detector] WebGPU GPU预处理失败，回退到 CPU: ${message}`);
       // Fallback: try WebNN first, then WASM (matching original fallback order)
-      prep = await preprocessLetterbox(image, inputSize, platform, maybeYield);
+      prep = preprocessLetterbox(image, inputSize, platform);
 
       const fallbackPlans: RuntimeProvider[][] = [["webnn", "wasm"], ["wasm"]];
       let recovered = false;
@@ -888,7 +810,7 @@ export async function detectByOnnx(image: PipelineImage, platform: PlatformProvi
     }
   } else {
     // CPU path (webnn/wasm): existing letterbox preprocessing
-    prep = await preprocessLetterbox(image, inputSize, platform, maybeYield);
+    prep = preprocessLetterbox(image, inputSize, platform);
 
     const runWithHandle = async (handle: WorkerSessionHandle): Promise<Record<string, TensorTransport>> => {
       const inputName = handle.inputNames[0] ?? "images";
@@ -942,7 +864,7 @@ export async function detectByOnnx(image: PipelineImage, platform: PlatformProvi
 
   const detTensor = pickDetTensor(outputTensors);
   if (detTensor) {
-    const regions = await detectCtdRegionsFromDetTensor(detTensor, image, prep, maybeYield);
+    const regions = detectCtdRegionsFromDetTensor(detTensor, image, prep);
 
     let maskTensor: TensorTransport = detTensor;
     try {
@@ -954,14 +876,14 @@ export async function detectByOnnx(image: PipelineImage, platform: PlatformProvi
       // 当前模型无独立 seg 输出时，回退使用 det 通道 0 作为粗遮罩。
     }
 
-    const binaryMask = await buildBinaryMaskFromTensor(maskTensor, prep.unpaddedWidth, prep.unpaddedHeight, 0.3, 0, maybeYield);
+    const binaryMask = buildBinaryMaskFromTensor(maskTensor, prep.unpaddedWidth, prep.unpaddedHeight, 0.3, 0);
     if (!binaryMask) {
       return { regions, rawMaskCanvas: null, actualProvider, actualWebnnDeviceType };
     }
 
     return {
       regions,
-      rawMaskCanvas: await buildMaskCanvasFromBinary(binaryMask.mask, binaryMask.width, binaryMask.height, image, platform, maybeYield),
+      rawMaskCanvas: buildMaskCanvasFromBinary(binaryMask.mask, binaryMask.width, binaryMask.height, image, platform),
       actualProvider,
       actualWebnnDeviceType
     };
@@ -997,7 +919,7 @@ export async function detectByOnnx(image: PipelineImage, platform: PlatformProvi
   }
 
   const segTensor = pickSegTensor(outputTensors);
-  const binaryMask = await buildBinaryMaskFromTensor(segTensor, prep.unpaddedWidth, prep.unpaddedHeight, 0.46, 0, maybeYield);
+  const binaryMask = buildBinaryMaskFromTensor(segTensor, prep.unpaddedWidth, prep.unpaddedHeight, 0.46, 0);
   if (!binaryMask) {
     return { regions: [], rawMaskCanvas: null, actualProvider, actualWebnnDeviceType };
   }
@@ -1019,7 +941,7 @@ export async function detectByOnnx(image: PipelineImage, platform: PlatformProvi
   const regions = merged.map(makeRegion);
   return {
     regions,
-    rawMaskCanvas: await buildMaskCanvasFromBinary(mask, width, height, image, platform, maybeYield),
+    rawMaskCanvas: buildMaskCanvasFromBinary(mask, width, height, image, platform),
     actualProvider,
     actualWebnnDeviceType
   };

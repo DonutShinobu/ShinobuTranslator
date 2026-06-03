@@ -205,16 +205,15 @@ wrapper.before(anchor); // anchor appears to the LEFT of direction toggle
 
 ### 2. Signatures
 
-- Progress callback may be async so content UI can render before the next heavy stage:
+- Progress jank reports must preserve the existing top-level frame/UI/stage fields and may add diagnostic fields:
 
 ```typescript
-type ProgressCallback = (progress: PipelineProgress) => void | Promise<void>;
-```
-
-- Main-thread cooperative yielding uses:
-
-```typescript
-export function createMainThreadYieldCheckpoint(budgetMs?: number): () => Promise<void>;
+type ProgressJankReport = {
+  observerSupport: ProgressJankObserverSupport;
+  frame: ProgressJankFrameStats;
+  workerHeartbeat: ProgressJankWorkerHeartbeatStats;
+  longFrames: ProgressJankLongFrame[];
+};
 ```
 
 ### 3. Contracts
@@ -222,8 +221,10 @@ export function createMainThreadYieldCheckpoint(budgetMs?: number): () => Promis
 - The progress pill must keep its dimensions, Chinese labels, running state semantics, and `mt-x-` CSS namespace.
 - The running spinner should animate via compositor-friendly properties such as `transform`; do not animate SVG `stroke-dasharray` or `stroke-dashoffset` every frame in the normal running state.
 - Progress UI updates for major stages should get a paint opportunity before the stage starts expensive work. Use an async progress callback in the content layer, not a pipeline-global paint wait that affects Node/bake paths.
+- Diagnose before optimizing: capture `requestAnimationFrame`, Long Animation Frame, Long Task, UI render, worker roundtrip, and worker heartbeat data before changing detector/OCR/inpaint/typeset control flow.
+- Worker heartbeat is diagnostic-only. Use it to decide whether animation isolation such as OffscreenCanvas worker rendering is promising; do not treat it as proof that pipeline changes are safe.
 - Do not create full-size detection/OCR preview canvases during normal translation unless a visible feature or explicit debug output consumes them. Large `drawImage`/`getImageData`/`toBlob` work can produce long frames even when model inference is workerized.
-- For main-thread pixel/component loops that must stay in the browser pipeline, call `maybeYield()` at row/component/chunk boundaries, not per pixel.
+- If LoAF/heartbeat data proves a specific main-thread loop is the cause, cooperative yielding or worker offload may be tried in a narrow follow-up diff. Do not introduce broad pipeline yielding as a first response.
 - Treat WebGPU/worker boundaries as possible animation jank sources even when `longtask` counts are low. Long animation frames with low blocking duration can still make the spinner look choppy because rendering/compositing is delayed.
 
 ### 4. Validation & Error Matrix
@@ -233,6 +234,8 @@ export function createMainThreadYieldCheckpoint(budgetMs?: number): () => Promis
 | Spinner animates SVG stroke dash properties | Spinner visibly stutters during model/GPU work | Use a static arc and animate `transform: rotate()` |
 | Stage callback updates text and immediately starts heavy work | Stage label changes but spinner freezes at transition | Await a content-layer paint barrier for major stages |
 | Normal pipeline draws full-size intermediate debug canvases | OCR/detect boundaries show 100ms+ long tasks on large images | Skip default preview canvases or move debug rendering behind an explicit debug path |
+| Main rAF is choppy but worker heartbeat is smooth | DOM/main-thread work is likely starving visual updates | Try OffscreenCanvas worker spinner or a narrow main-thread offload experiment |
+| Main rAF and worker heartbeat are both choppy | Worker-only animation is unlikely to solve the root cause | Inspect WebGPU/ORT/browser scheduling and host-page/GPU contention |
 | Worker calls show large output bytes and LoAFs with low blocking duration | Main-thread yielding does not fully fix spinner jank | Reduce worker payload, move postprocess into worker, or test provider/GPU contention |
 
 ### 5. Good/Base/Bad Cases

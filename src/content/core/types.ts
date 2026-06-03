@@ -108,6 +108,10 @@ export type ProgressJankStageSummary = {
   maxFrameDeltaMs: number;
   longFrameCount: number;
   longTaskCount: number;
+  mainThreadTaskCount: number;
+  maxMainThreadTaskMs: number;
+  workerCallCount: number;
+  maxWorkerCallMs: number;
 };
 
 export type ProgressJankWorkerCall = {
@@ -118,19 +122,54 @@ export type ProgressJankWorkerCall = {
   outputBytes?: number;
   startMs: number;
   durationMs: number;
+  stage?: string;
 };
 
 export type ProgressJankMainThreadTask = {
   kind: string;
   startMs: number;
   durationMs: number;
+  stage?: string;
+};
+
+export type ProgressJankWorkerHeartbeatMode = 'worker-raf' | 'worker-timer' | 'unavailable' | 'error';
+
+export type ProgressJankWorkerHeartbeatStats = ProgressJankFrameStats & {
+  available: boolean;
+  mode: ProgressJankWorkerHeartbeatMode;
+  error?: string;
+};
+
+export type ProgressJankObserverSupport = {
+  longAnimationFrame: boolean;
+  longTask: boolean;
+  workerHeartbeat: boolean;
+  workerHeartbeatMode: ProgressJankWorkerHeartbeatMode;
+  workerHeartbeatError?: string;
+};
+
+export type ProgressJankLongFrameScript = {
+  durationMs: number;
+  executionStartMs?: number;
+  forcedStyleAndLayoutDurationMs?: number;
+  pauseDurationMs?: number;
+  invoker?: string;
+  invokerType?: string;
+  sourceURL?: string;
+  sourceFunctionName?: string;
+  sourceCharPosition?: number;
+  windowAttribution?: string;
 };
 
 export type ProgressJankLongFrame = {
   startMs: number;
   durationMs: number;
   blockingDurationMs?: number;
+  renderStartMs?: number;
+  styleAndLayoutStartMs?: number;
+  firstUIEventTimestampMs?: number;
   stage?: string;
+  scripts?: ProgressJankLongFrameScript[];
 };
 
 export type ProgressJankLongTask = {
@@ -143,7 +182,9 @@ export type ProgressJankReport = {
   runId: string;
   entry: ProgressJankEntry;
   totalMs: number;
+  observerSupport: ProgressJankObserverSupport;
   frame: ProgressJankFrameStats;
+  workerHeartbeat: ProgressJankWorkerHeartbeatStats;
   ui: ProgressJankUiStats;
   stages: ProgressJankStageSummary[];
   workerCalls: ProgressJankWorkerCall[];

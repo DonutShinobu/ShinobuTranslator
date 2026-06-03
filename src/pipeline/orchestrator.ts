@@ -16,6 +16,7 @@ import { runOcr } from "./ocr";
 import { runTranslate } from "./translate";
 import { runInpaint } from "./inpaint";
 import { drawTypeset } from "./typeset";
+import { drawRegions } from "./visualize";
 import { mergeTextLines } from "./textlineMerge";
 import { refineTextMask } from "./maskRefinement";
 import { sortRegionsForRender } from "./readingOrder";
@@ -23,7 +24,7 @@ import { detectBubbles, matchRegionsToBubbles, type BubbleDetection } from "./bu
 import { getModelSession } from "../runtime/modelRegistry";
 import type { WorkerSessionHandle } from "../runtime/onnxWorkerTypes";
 
-type ProgressCallback = (progress: PipelineProgress) => void | Promise<void>;
+type ProgressCallback = (progress: PipelineProgress) => void;
 
 function buildEraseDebugCanvas(
   originalCanvas: PipelineCanvas,
@@ -150,8 +151,8 @@ function buildEraseDebugCanvas(
   return canvas;
 }
 
-async function report(cb: ProgressCallback, stage: string, detail: string): Promise<void> {
-  await cb({ stage, detail });
+function report(cb: ProgressCallback, stage: string, detail: string): void {
+  cb({ stage, detail });
 }
 
 function toErrorDetail(error: unknown): string {
@@ -177,13 +178,11 @@ async function probeRuntime(model: "detector" | "ocr" | "inpaint"): Promise<Runt
   try {
     let handle: WorkerSessionHandle;
     if (model === "ocr") {
-      const encoderHandle = await getModelSession("ocr_encoder", ["webnn", "wasm"]);
+      const encoderHandle = await getModelSession("ocr_encoder");
       handle = await getModelSession("ocr_decoder", [encoderHandle.provider]);
       if (encoderHandle.provider !== handle.provider) {
         throw new Error(`ocr split provider 不一致: encoder=${encoderHandle.provider}, decoder=${handle.provider}`);
       }
-    } else if (model === "inpaint") {
-      handle = await getModelSession(model, ["webgpu", "webnn", "wasm"]);
     } else {
       handle = await getModelSession(model);
     }
@@ -215,7 +214,7 @@ export async function runPipeline(
 ): Promise<PipelineArtifacts> {
   const platform: PlatformProvider = browserPlatform;
 
-  await report(onProgress, "load", "加载图片");
+  report(onProgress, "load", "加载图片");
   const image = await fileToImage(file, platform);
   const originalCanvas = imageToCanvas(image, platform);
 
@@ -253,7 +252,7 @@ export async function runPipeline(
     stageTimings
   });
 
-  await report(onProgress, "preload", "加载检测模型");
+  report(onProgress, "preload", "加载检测模型");
   const preloadT0 = performance.now();
   runtimeStages[0] = await probeRuntime("detector");
   stageTimings.push({ stage: "preload", label: "加载检测模型", durationMs: performance.now() - preloadT0 });
@@ -275,13 +274,18 @@ export async function runPipeline(
     return inpaintRuntimeProbePromise;
   };
 
-  await report(onProgress, "detect", "文本检测");
+  report(onProgress, "detect", "文本检测");
   try {
+    startOcrRuntimeProbe();
     const t0 = performance.now();
     const detected = await detectTextRegionsWithMask(image, platform);
     latestRegions = detected.regions;
     detectionMaskCanvas = detected.rawMaskCanvas;
     segmentationCanvas = detected.rawMaskCanvas;
+    detectionCanvas = drawRegions(originalCanvas, detected.regions, "文本检测", () => "文本框", platform);
+    ocrCanvas = detectionCanvas;
+    cleanedCanvas = ocrCanvas;
+    resultCanvas = cleanedCanvas;
     if (detected.actualProvider && detected.actualProvider !== runtimeStages[0].provider) {
       const providerLabel = detected.actualProvider === "webnn"
         ? `${detected.actualProvider}/${detected.actualWebnnDeviceType ?? "default"}`
@@ -300,7 +304,7 @@ export async function runPipeline(
   }
 
   let detectedBubbles: BubbleDetection[] = [];
-  await report(onProgress, "bubble", "气泡检测");
+  report(onProgress, "bubble", "气泡检测");
   try {
     const t0 = performance.now();
     const bubbleResult = await detectBubbles(image, platform);
@@ -310,15 +314,19 @@ export async function runPipeline(
     throw new PipelineStageError("气泡检测", toErrorDetail(error), buildArtifacts());
   }
 
-  await report(onProgress, "ocr", "OCR 日文识别");
+  report(onProgress, "ocr", "OCR 日文识别");
   try {
     const t0 = performance.now();
     runtimeStages[1] = await startOcrRuntimeProbe();
+    startInpaintRuntimeProbe();
     const ocrResult = await runOcr(image, latestRegions, config.ocrEngine, platform, {
       compactActiveBatch: config.ocrCompactActiveBatch,
     });
     latestRegions = ocrResult.regions;
     ocrDebug = ocrResult.debug;
+    ocrCanvas = drawRegions(originalCanvas, ocrResult.regions, "OCR 识别", (region) => region.sourceText, platform);
+    cleanedCanvas = ocrCanvas;
+    resultCanvas = cleanedCanvas;
     if (ocrResult.actualProvider !== runtimeStages[1].provider) {
       const providerLabel = ocrResult.actualProvider === "webnn"
         ? `${ocrResult.actualProvider}/${ocrResult.actualWebnnDeviceType ?? "default"}`
@@ -332,11 +340,12 @@ export async function runPipeline(
       };
     }
     stageTimings.push({ stage: "ocr", label: "OCR 日文识别", durationMs: performance.now() - t0 });
+    runtimeStages[2] = await startInpaintRuntimeProbe();
   } catch (error) {
     throw new PipelineStageError("OCR", toErrorDetail(error), buildArtifacts());
   }
 
-  await report(onProgress, "merge", "合并文本行");
+  report(onProgress, "merge", "合并文本行");
   try {
     const t0 = performance.now();
     latestRegions = mergeTextLines(latestRegions, image.naturalWidth, image.naturalHeight);
@@ -355,7 +364,7 @@ export async function runPipeline(
     }
   }
 
-  await report(onProgress, "order", "文本顺序排序");
+  report(onProgress, "order", "文本顺序排序");
   try {
     const t0 = performance.now();
     latestRegions = sortRegionsForRender(latestRegions, originalCanvas, platform);
@@ -415,11 +424,11 @@ export async function runPipeline(
     return "\u53bb\u5b57\u5f85\u6267\u884c";
   };
 
-  const reportParallel = (): Promise<void> => {
-    return report(onProgress, "parallel", `${getTranslateDetail()} | ${getEraseDetail()}`);
+  const reportParallel = (): void => {
+    report(onProgress, "parallel", `${getTranslateDetail()} | ${getEraseDetail()}`);
   };
 
-  await reportParallel();
+  reportParallel();
   const parallelT0 = performance.now();
 
   const shouldSkipTranslate = config.processMode === 'erase' || config.processMode === 'original' || config.eraseDebug;
@@ -428,7 +437,7 @@ export async function runPipeline(
     ? Promise.resolve(orderedRegions)
     : (async (): Promise<PipelineArtifacts["detectedRegions"]> => {
         parallelTranslateStatus = "running";
-        await reportParallel();
+        reportParallel();
         try {
           const t0 = performance.now();
           const translated = await runTranslate(orderedRegions, config);
@@ -436,7 +445,7 @@ export async function runPipeline(
           translateTiming = { stage: "translate", label: "\u7ffb\u8bd1\u4e3a\u4e2d\u6587", durationMs: performance.now() - t0 };
           translationDebug = translated.translationDebug;
           parallelTranslateStatus = "done";
-          await reportParallel();
+          reportParallel();
           return translatedRegions;
         } catch (error) {
           throw new PipelineStageError("\u7ffb\u8bd1", toErrorDetail(error), buildArtifacts());
@@ -449,11 +458,11 @@ export async function runPipeline(
     }
 
     parallelEraseStatus = "mask_refine";
-    await reportParallel();
+    reportParallel();
     try {
       const t0 = performance.now();
       const regionsWithText = orderedRegions.filter(r => r.sourceText.trim() !== '');
-      const refineResult = await refineTextMask(originalCanvas, regionsWithText, detectionMaskCanvas, platform, {
+      const refineResult = refineTextMask(originalCanvas, regionsWithText, detectionMaskCanvas, platform, {
         method: "fit_text",
         kernelSize: 3
       }, config.eraseDebug);
@@ -468,13 +477,12 @@ export async function runPipeline(
     }
 
     parallelEraseStatus = "inpaint";
-    await reportParallel();
+    reportParallel();
     try {
       const t0 = performance.now();
       if (!refinedMaskCanvas) {
         throw new Error("\u53bb\u5b57\u524d\u7f3a\u5c11 refined mask\uff0c\u5df2\u7981\u7528\u6587\u672c\u6846\u906e\u7f69\u56de\u9000");
       }
-      runtimeStages[2] = await startInpaintRuntimeProbe();
       const inpaintResult = await runInpaint(originalCanvas, refinedMaskCanvas, platform);
       inpaintTiming = { stage: "inpaint", label: "\u53bb\u5b57", durationMs: performance.now() - t0 };
       if (inpaintResult.actualProvider !== runtimeStages[2].provider) {
@@ -490,7 +498,7 @@ export async function runPipeline(
         };
       }
       parallelEraseStatus = "done";
-      await reportParallel();
+      reportParallel();
       return inpaintResult.canvas;
     } catch (error) {
       throw new PipelineStageError("\u53bb\u5b57", toErrorDetail(error), buildArtifacts());
@@ -525,7 +533,7 @@ export async function runPipeline(
     }
   } else {
     const typesetLabel = config.processMode === 'original' ? "排版原文" : "排版和嵌字";
-    await report(onProgress, "typeset", typesetLabel);
+    report(onProgress, "typeset", typesetLabel);
     try {
       const t0 = performance.now();
       const typesetResult = await drawTypeset(cleanedCanvas, latestRegions, config.targetLang, {
@@ -555,6 +563,6 @@ export async function runPipeline(
     }
   }
 
-  await report(onProgress, "done", "完成");
+  report(onProgress, "done", "完成");
   return buildArtifacts();
 }

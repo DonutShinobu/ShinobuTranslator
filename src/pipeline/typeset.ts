@@ -27,7 +27,6 @@ import {
   KINSOKU_NSTART,
   KINSOKU_NEND,
 } from "./typeset/index";
-import { createMainThreadYieldCheckpoint } from "./scheduler";
 import type {
   VColumn,
   VerticalCellMetrics,
@@ -728,10 +727,8 @@ export async function drawTypeset(
 
   const renderRegions = regions.map(cloneRegionForTypeset);
   const debugRegions: TypesetDebugRegionLog[] = [];
-  const maybeYield = createMainThreadYieldCheckpoint();
 
   for (let regionIndex = 0; regionIndex < renderRegions.length; regionIndex += 1) {
-    await maybeYield();
     const inputRegion = renderRegions[regionIndex];
     const translatedRaw = inputRegion.translatedText;
     const translated = translatedRaw || inputRegion.sourceText;
@@ -1122,7 +1119,6 @@ export async function drawTypeset(
         columnCanvasQuads,
       });
     }
-    await maybeYield();
   }
 
   const debugLog: PipelineTypesetDebugLog | null = collectDebugLog

@@ -4,7 +4,6 @@ import { nmsBoxes, type ScoredBox } from "./utils";
 import { getModelSession } from "../runtime/modelRegistry";
 import { runInference } from "../runtime/onnxBridge";
 import type { TensorTransport } from "../runtime/onnxWorkerTypes";
-import { createMainThreadYieldCheckpoint } from "./scheduler";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -32,14 +31,7 @@ type LetterboxResult = {
   padY: number;
 };
 
-type YieldCheckpoint = () => Promise<void>;
-
-async function preprocessLetterbox(
-  image: PipelineImage,
-  size: number,
-  platform: PlatformProvider,
-  maybeYield?: YieldCheckpoint
-): Promise<LetterboxResult> {
+function preprocessLetterbox(image: PipelineImage, size: number, platform: PlatformProvider): LetterboxResult {
   const w = image.naturalWidth;
   const h = image.naturalHeight;
   const ratio = Math.min(size / w, size / h);
@@ -59,18 +51,10 @@ async function preprocessLetterbox(
   const data = ctx.getImageData(0, 0, size, size).data;
   const input = new Float32Array(3 * size * size);
   const hw = size * size;
-  for (let y = 0; y < size; y += 1) {
-    const rowOffset = y * size;
-    for (let x = 0; x < size; x += 1) {
-      const i = rowOffset + x;
-      const p = i * 4;
-      input[i] = data[p] / 255;
-      input[hw + i] = data[p + 1] / 255;
-      input[2 * hw + i] = data[p + 2] / 255;
-    }
-    if (maybeYield) {
-      await maybeYield();
-    }
+  for (let i = 0, p = 0; i < hw; i += 1, p += 4) {
+    input[i] = data[p] / 255;
+    input[hw + i] = data[p + 1] / 255;
+    input[2 * hw + i] = data[p + 2] / 255;
   }
   return { input, size, ratio, padX, padY };
 }
@@ -79,7 +63,7 @@ async function preprocessLetterbox(
 // Inference
 // ---------------------------------------------------------------------------
 
-async function runBubbleInference(image: PipelineImage, platform: PlatformProvider, maybeYield?: YieldCheckpoint): Promise<{
+async function runBubbleInference(image: PipelineImage, platform: PlatformProvider): Promise<{
   output0: Float32Array;
   output0Shape: readonly number[];
   output1: Float32Array;
@@ -88,7 +72,7 @@ async function runBubbleInference(image: PipelineImage, platform: PlatformProvid
 }> {
   const handle = await getModelSession("bubble");
   const size = 640;
-  const prep = await preprocessLetterbox(image, size, platform, maybeYield);
+  const prep = preprocessLetterbox(image, size, platform);
 
   const inputName = handle.inputNames[0] ?? "images";
   const feeds: Record<string, TensorTransport> = {
@@ -186,7 +170,7 @@ function decodeDetections(
 // Decode proto masks → per-instance PipelineImageData
 // ---------------------------------------------------------------------------
 
-async function decodeMasks(
+function decodeMasks(
   detections: RawDetection[],
   output1: Float32Array,
   output1Shape: readonly number[],
@@ -194,8 +178,7 @@ async function decodeMasks(
   imgW: number,
   imgH: number,
   platform: PlatformProvider,
-  maybeYield?: YieldCheckpoint,
-): Promise<PipelineImageData[]> {
+): PipelineImageData[] {
   const numProtos = output1Shape[1];
   const maskH = output1Shape[2];
   const maskW = output1Shape[3];
@@ -210,20 +193,10 @@ async function decodeMasks(
       for (let j = 0; j < maskH * maskW; j++) {
         combined[j] += coeff * output1[protoOffset + j];
       }
-      if (maybeYield) {
-        await maybeYield();
-      }
     }
 
-    for (let y = 0; y < maskH; y += 1) {
-      const rowOffset = y * maskW;
-      for (let x = 0; x < maskW; x += 1) {
-        const j = rowOffset + x;
-        combined[j] = 1 / (1 + Math.exp(-combined[j]));
-      }
-      if (maybeYield) {
-        await maybeYield();
-      }
+    for (let j = 0; j < combined.length; j++) {
+      combined[j] = 1 / (1 + Math.exp(-combined[j]));
     }
 
     const lbx1 = det.box.x * prep.ratio + prep.padX;
@@ -237,25 +210,16 @@ async function decodeMasks(
     const my1 = Math.max(0, Math.floor(lby1 * scaleY));
     const mx2 = Math.min(maskW, Math.ceil(lbx2 * scaleX));
     const my2 = Math.min(maskH, Math.ceil(lby2 * scaleY));
-    const pixelX1 = Math.max(0, Math.floor((mx1 / scaleX - prep.padX) / prep.ratio) - 1);
-    const pixelY1 = Math.max(0, Math.floor((my1 / scaleY - prep.padY) / prep.ratio) - 1);
-    const pixelX2 = Math.min(imgW, Math.ceil((mx2 / scaleX - prep.padX) / prep.ratio) + 1);
-    const pixelY2 = Math.min(imgH, Math.ceil((my2 / scaleY - prep.padY) / prep.ratio) + 1);
 
     const imageData = platform.createImageData(imgW, imgH) as ImageData;
     const pixels = imageData.data;
 
-    for (let iy = pixelY1; iy < pixelY2; iy++) {
+    for (let iy = 0; iy < imgH; iy++) {
       const mfy = (iy * prep.ratio + prep.padY) * scaleY;
       const miy = Math.floor(mfy);
-      if (miy < my1 || miy >= my2) {
-        if (maybeYield) {
-          await maybeYield();
-        }
-        continue;
-      }
+      if (miy < my1 || miy >= my2) continue;
 
-      for (let ix = pixelX1; ix < pixelX2; ix++) {
+      for (let ix = 0; ix < imgW; ix++) {
         const mfx = (ix * prep.ratio + prep.padX) * scaleX;
         const mix = Math.floor(mfx);
         if (mix < mx1 || mix >= mx2) continue;
@@ -269,15 +233,9 @@ async function decodeMasks(
           pixels[idx + 3] = 255;
         }
       }
-      if (maybeYield) {
-        await maybeYield();
-      }
     }
 
     masks.push(imageData);
-    if (maybeYield) {
-      await maybeYield();
-    }
   }
 
   return masks;
@@ -288,13 +246,12 @@ async function decodeMasks(
 // ---------------------------------------------------------------------------
 
 export async function detectBubbles(image: PipelineImage, platform: PlatformProvider): Promise<BubbleDetectResult> {
-  const maybeYield = createMainThreadYieldCheckpoint();
-  const { output0, output0Shape, output1, output1Shape, prep } = await runBubbleInference(image, platform, maybeYield);
+  const { output0, output0Shape, output1, output1Shape, prep } = await runBubbleInference(image, platform);
   const imgW = image.naturalWidth;
   const imgH = image.naturalHeight;
 
   const detections = decodeDetections(output0, output0Shape, prep, imgW, imgH);
-  const masks = await decodeMasks(detections, output1, output1Shape, prep, imgW, imgH, platform, maybeYield);
+  const masks = decodeMasks(detections, output1, output1Shape, prep, imgW, imgH, platform);
 
   const bubbles: BubbleDetection[] = detections.map((det, i) => ({
     box: det.box,

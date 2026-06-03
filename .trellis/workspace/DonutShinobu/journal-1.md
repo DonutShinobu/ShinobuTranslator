@@ -352,3 +352,36 @@ Implemented a generic right-click screenshot translation flow with in-page regio
 ### Next Steps
 
 - None - task complete
+
+
+## Session 12: Polish screenshot translation overlay
+
+**Date**: 2026-06-03
+**Task**: Polish screenshot translation overlay
+**Branch**: `codex/screenshot-context-translation`
+
+### Summary
+
+Unified generic context-menu translation through the screenshot floating overlay, polished pill close/selection confirmation visuals, added screenshot geometry helpers with tests, and recorded frontend overlay conventions.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fe64b99` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

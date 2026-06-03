@@ -19,6 +19,7 @@ const styleId = 'mt-overlay-style';
 
 export type UiElements = {
   host: HTMLElement;
+  overlay: HTMLDivElement;
   primaryAction: HTMLDivElement;
   button: HTMLButtonElement;
   buttonIcon: HTMLSpanElement;
@@ -30,6 +31,7 @@ export type UiElements = {
 
 export type ScreenshotResultUiElements = {
   host: HTMLElement;
+  overlay: HTMLDivElement;
   primaryAction: HTMLDivElement;
   button: HTMLButtonElement;
   buttonIcon: HTMLSpanElement;
@@ -141,6 +143,12 @@ export function injectStyles(): void {
       flex-direction: column;
       align-items: flex-end;
       gap: 4px;
+    }
+    .mt-x-overlay-inline[data-anchor-x='left'] {
+      align-items: flex-start;
+    }
+    .mt-x-overlay-inline[data-anchor-x='right'] {
+      align-items: flex-end;
     }
     .mt-x-actions {
       display: flex;
@@ -476,11 +484,8 @@ export function injectStyles(): void {
       inset: 0;
       z-index: 0;
       box-sizing: border-box;
-      border: 1px solid oklch(0.98 0.01 355 / 0.72);
       background: oklch(0.92 0.06 355 / 0.08);
-      box-shadow:
-        0 12px 32px oklch(0 0 0 / 0.24),
-        inset 0 0 0 1px oklch(0.99 0.01 355 / 0.5);
+      box-shadow: 0 12px 32px oklch(0 0 0 / 0.24);
       pointer-events: none;
       opacity: 1;
       transition: opacity 0.16s ease-out;
@@ -491,8 +496,8 @@ export function injectStyles(): void {
     }
     .mt-x-screenshot-result .mt-x-overlay-inline {
       position: absolute;
-      right: 0;
-      bottom: calc(100% + 8px);
+      left: 0;
+      top: 0;
       z-index: 2;
       align-items: flex-end;
       cursor: move;
@@ -507,7 +512,6 @@ export function injectStyles(): void {
       object-fit: fill;
       pointer-events: none;
       user-select: none;
-      border: 1px solid oklch(0.98 0.01 355 / 0.72);
       box-shadow: 0 12px 32px oklch(0 0 0 / 0.24);
       transition: opacity 0.16s ease-out, filter 0.16s ease-out;
     }
@@ -590,7 +594,17 @@ export function createUiElements(): UiElements {
   const host = document.createElement('div');
   host.appendChild(root);
 
-  return { host, primaryAction, button, buttonIcon, buttonSpinner, buttonLabel, detailLine, debugDownloadButton };
+  return {
+    host,
+    overlay: root,
+    primaryAction,
+    button,
+    buttonIcon,
+    buttonSpinner,
+    buttonLabel,
+    detailLine,
+    debugDownloadButton,
+  };
 }
 
 export function renderUi(ui: UiElements, state: PhotoState | null): void {
@@ -811,6 +825,76 @@ function setRectStyle(element: HTMLElement, rect: ScreenshotRect): void {
   element.style.height = `${rect.height}px`;
 }
 
+type FloatingControlPosition = {
+  left: number;
+  top: number;
+  anchorX: 'left' | 'right';
+};
+
+function clampViewportPosition(value: number, size: number, viewportSize: number, inset: number): number {
+  const max = Math.max(inset, viewportSize - size - inset);
+  return Math.min(max, Math.max(inset, value));
+}
+
+function getFloatingControlPosition(
+  rect: ScreenshotRect,
+  controlWidth: number,
+  controlHeight: number,
+): FloatingControlPosition {
+  const inset = 8;
+  const gap = 8;
+  const preferredLeft = rect.left + rect.width - controlWidth;
+  const left = clampViewportPosition(
+    preferredLeft,
+    controlWidth,
+    window.innerWidth,
+    inset,
+  );
+  const preferredTop = rect.top >= controlHeight + gap + inset
+    ? rect.top - controlHeight - gap
+    : rect.top + rect.height + gap;
+  const top = clampViewportPosition(preferredTop, controlHeight, window.innerHeight, inset);
+  const anchorX = left <= inset ? 'left' : 'right';
+  return { left, top, anchorX };
+}
+
+function positionElementNearViewportRect(element: HTMLElement, rect: ScreenshotRect): void {
+  const elementRect = element.getBoundingClientRect();
+  const position = getFloatingControlPosition(
+    rect,
+    elementRect.width || 64,
+    elementRect.height || 34,
+  );
+  element.style.left = `${position.left}px`;
+  element.style.top = `${position.top}px`;
+}
+
+function positionScreenshotResultOverlay(ui: ScreenshotResultUiElements): void {
+  const hostRect = ui.host.getBoundingClientRect();
+  if (hostRect.width <= 0 || hostRect.height <= 0) return;
+  const overlayRect = ui.overlay.getBoundingClientRect();
+  const overlayWidth = overlayRect.width || 64;
+  const position = getFloatingControlPosition(
+    {
+      left: hostRect.left,
+      top: hostRect.top,
+      width: hostRect.width,
+      height: hostRect.height,
+    },
+    overlayWidth,
+    overlayRect.height || 34,
+  );
+  ui.overlay.dataset.anchorX = position.anchorX;
+  if (position.anchorX === 'right') {
+    ui.overlay.style.left = 'auto';
+    ui.overlay.style.right = `${hostRect.right - position.left - overlayWidth}px`;
+  } else {
+    ui.overlay.style.left = `${position.left - hostRect.left}px`;
+    ui.overlay.style.right = 'auto';
+  }
+  ui.overlay.style.top = `${position.top - hostRect.top}px`;
+}
+
 function clampViewportX(value: number): number {
   return Math.min(Math.max(value, 0), window.innerWidth);
 }
@@ -970,17 +1054,7 @@ export function requestScreenshotSelection(): Promise<ScreenshotSelection | null
     };
 
     const positionToolbar = (rect: ScreenshotRect): void => {
-      const toolbarWidth = 64;
-      const toolbarHeight = 34;
-      const left = Math.min(
-        window.innerWidth - toolbarWidth - 8,
-        Math.max(8, rect.left + rect.width - toolbarWidth),
-      );
-      const top = rect.top >= toolbarHeight + 10
-        ? rect.top - toolbarHeight - 8
-        : Math.min(window.innerHeight - toolbarHeight - 8, rect.top + rect.height + 8);
-      toolbar.style.left = `${left}px`;
-      toolbar.style.top = `${Math.max(8, top)}px`;
+      positionElementNearViewportRect(toolbar, rect);
     };
 
     const renderSelectionRect = (rect: ScreenshotRect, mode: 'element' | 'manual'): void => {
@@ -1250,6 +1324,7 @@ export function renderScreenshotResultUi(
   state: PhotoState,
 ): void {
   renderUi(ui, state);
+  positionScreenshotResultOverlay(ui);
   ui.host.dataset.status = state.status;
   const originalUrl = state.originalUrl.startsWith('screenshot:') ? undefined : state.originalUrl;
   const imageUrl = state.status === 'translated'

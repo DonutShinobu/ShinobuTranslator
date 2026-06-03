@@ -26,6 +26,8 @@ export interface ReadingModeBarUi {
   host: HTMLElement;
   translateCurrentBtn: HTMLButtonElement;
   translateAllBtn: HTMLButtonElement;
+  syncSpinners: (currentActive: boolean, allActive: boolean) => void;
+  dispose: () => void;
 }
 
 export interface SiteAdapter {

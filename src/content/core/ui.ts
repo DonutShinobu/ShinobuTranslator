@@ -16,6 +16,13 @@ import type {
 import { downloadJson } from './utils';
 
 const styleId = 'mt-overlay-style';
+const spinnerSizePx = 16;
+const spinnerStrokePx = 2.5;
+
+type ProgressSpinnerBinding = {
+  sync: (active: boolean) => void;
+  dispose: () => void;
+};
 
 export type UiElements = {
   host: HTMLElement;
@@ -27,6 +34,7 @@ export type UiElements = {
   buttonLabel: HTMLSpanElement;
   detailLine: HTMLDivElement;
   debugDownloadButton: HTMLButtonElement;
+  dispose: () => void;
 };
 
 export type ScreenshotResultUiElements = {
@@ -39,6 +47,7 @@ export type ScreenshotResultUiElements = {
   buttonLabel: HTMLSpanElement;
   detailLine: HTMLDivElement;
   debugDownloadButton: HTMLButtonElement;
+  dispose: () => void;
   image: HTMLImageElement;
   closeButton: HTMLButtonElement;
   overlayPositioned: boolean;
@@ -73,6 +82,122 @@ type IconKey = keyof typeof ICONS;
 const animTimers: number[] = [];
 let widthCleanupTimer: number = 0;
 let transitionGen = 0;
+let nextSpinnerId = 1;
+let spinnerWorker: Worker | null = null;
+let spinnerWorkerFailed = false;
+
+const spinnerBindings = new WeakMap<HTMLSpanElement, ProgressSpinnerBinding>();
+const offscreenSpinners = new Set<HTMLSpanElement>();
+const spinnerWorkerScript = `
+const canvases = new Map();
+let rafId = 0;
+let timerId = 0;
+let running = false;
+const hasRaf = typeof self.requestAnimationFrame === "function" && typeof self.cancelAnimationFrame === "function";
+const spinPeriodMs = 1200;
+const arcRadians = Math.PI * 1.28;
+
+function postError(error) {
+  const message = error && error.message ? error.message : String(error);
+  self.postMessage({ type: "error", error: message });
+}
+
+function schedule() {
+  if (!running) return;
+  if (hasRaf) {
+    rafId = self.requestAnimationFrame(draw);
+  } else {
+    timerId = self.setTimeout(function () { draw(self.performance.now()); }, 16);
+  }
+}
+
+function hasActiveCanvas() {
+  for (const item of canvases.values()) {
+    if (item.active) return true;
+  }
+  return false;
+}
+
+function startLoopIfNeeded() {
+  if (running || !hasActiveCanvas()) return;
+  running = true;
+  schedule();
+}
+
+function stopLoopIfIdle() {
+  if (hasActiveCanvas()) return;
+  running = false;
+  if (hasRaf) {
+    self.cancelAnimationFrame(rafId);
+  } else {
+    self.clearTimeout(timerId);
+  }
+}
+
+function draw(time) {
+  if (!running) return;
+  const angle = (time % spinPeriodMs) / spinPeriodMs * Math.PI * 2;
+  for (const item of canvases.values()) {
+    if (item.active) renderSpinner(item, angle);
+  }
+  schedule();
+}
+
+function renderSpinner(item, angle) {
+  const size = item.size;
+  const dpr = Math.max(1, item.dpr || 1);
+  const pixelSize = Math.max(1, Math.round(size * dpr));
+  if (item.canvas.width !== pixelSize) item.canvas.width = pixelSize;
+  if (item.canvas.height !== pixelSize) item.canvas.height = pixelSize;
+
+  const ctx = item.ctx;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, size, size);
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, 6, -Math.PI / 2 + angle, -Math.PI / 2 + angle + arcRadians);
+  ctx.lineWidth = ${spinnerStrokePx};
+  ctx.lineCap = "round";
+  ctx.strokeStyle = item.color || "rgba(255,255,255,0.92)";
+  ctx.stroke();
+}
+
+self.addEventListener("message", function (event) {
+  const data = event.data;
+  if (!data || typeof data !== "object") return;
+  try {
+    if (data.type === "add") {
+      const ctx = data.canvas.getContext("2d");
+      if (!ctx) throw new Error("OffscreenCanvas 2D context is unavailable");
+      canvases.set(data.id, {
+        canvas: data.canvas,
+        ctx,
+        size: data.size,
+        dpr: data.dpr,
+        color: data.color,
+        active: Boolean(data.active),
+      });
+      startLoopIfNeeded();
+    } else if (data.type === "update") {
+      const item = canvases.get(data.id);
+      if (!item) return;
+      if (typeof data.color === "string" && data.color) item.color = data.color;
+      if (typeof data.dpr === "number" && Number.isFinite(data.dpr)) item.dpr = data.dpr;
+      if (typeof data.active === "boolean") item.active = data.active;
+      if (item.active) {
+        renderSpinner(item, self.performance.now());
+        startLoopIfNeeded();
+      } else {
+        stopLoopIfIdle();
+      }
+    } else if (data.type === "remove") {
+      canvases.delete(data.id);
+      stopLoopIfIdle();
+    }
+  } catch (error) {
+    postError(error);
+  }
+});
+`;
 
 function clearTransitionTimers(): void {
   for (const t of animTimers) clearTimeout(t);
@@ -82,6 +207,172 @@ function clearTransitionTimers(): void {
 
 function scheduleTimer(fn: () => void, ms: number): void {
   animTimers.push(window.setTimeout(fn, ms));
+}
+
+function failSpinnerWorker(): void {
+  spinnerWorkerFailed = true;
+  spinnerWorker?.terminate();
+  spinnerWorker = null;
+  for (const spinner of offscreenSpinners) {
+    spinner.dataset.renderer = 'css';
+  }
+  offscreenSpinners.clear();
+}
+
+function ensureSpinnerWorker(): Worker | null {
+  if (spinnerWorker) return spinnerWorker;
+  if (
+    spinnerWorkerFailed
+    || typeof Worker === 'undefined'
+    || typeof Blob === 'undefined'
+    || typeof URL === 'undefined'
+  ) {
+    return null;
+  }
+
+  let scriptUrl: string | null = null;
+  try {
+    const blob = new Blob([spinnerWorkerScript], { type: 'application/javascript' });
+    scriptUrl = URL.createObjectURL(blob);
+    spinnerWorker = new Worker(scriptUrl);
+    spinnerWorker.addEventListener('error', failSpinnerWorker);
+    spinnerWorker.addEventListener('message', (event: MessageEvent<unknown>) => {
+      const data = event.data as { type?: unknown } | null;
+      if (data && data.type === 'error') {
+        failSpinnerWorker();
+      }
+    });
+    return spinnerWorker;
+  } catch {
+    failSpinnerWorker();
+    return null;
+  } finally {
+    if (scriptUrl) URL.revokeObjectURL(scriptUrl);
+  }
+}
+
+function readSpinnerColor(spinner: HTMLSpanElement): string {
+  const color = window.getComputedStyle(spinner).color;
+  return color || 'rgba(255,255,255,0.92)';
+}
+
+function readSpinnerDpr(): number {
+  return Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+}
+
+function createSpinnerFallbackSvg(): SVGSVGElement {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.classList.add('mt-x-spinner-fallback');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  circle.setAttribute('cx', '8');
+  circle.setAttribute('cy', '8');
+  circle.setAttribute('r', '6');
+  svg.appendChild(circle);
+  return svg;
+}
+
+function attachOffscreenSpinner(spinner: HTMLSpanElement, canvas: HTMLCanvasElement): ProgressSpinnerBinding {
+  const fallbackBinding: ProgressSpinnerBinding = {
+    sync: () => {},
+    dispose: () => {},
+  };
+
+  if (
+    !('OffscreenCanvas' in globalThis)
+    || typeof canvas.transferControlToOffscreen !== 'function'
+  ) {
+    spinner.dataset.renderer = 'css';
+    return fallbackBinding;
+  }
+
+  const worker = ensureSpinnerWorker();
+  if (!worker) {
+    spinner.dataset.renderer = 'css';
+    return fallbackBinding;
+  }
+
+  const id = nextSpinnerId++;
+  let disposed = false;
+  let lastColor = '';
+  let lastDpr = 0;
+  let lastActive = false;
+
+  try {
+    const offscreen = canvas.transferControlToOffscreen();
+    spinner.dataset.renderer = 'offscreen';
+    offscreenSpinners.add(spinner);
+    worker.postMessage({
+      type: 'add',
+      id,
+      canvas: offscreen,
+      size: spinnerSizePx,
+      dpr: readSpinnerDpr(),
+      color: readSpinnerColor(spinner),
+      active: false,
+    }, [offscreen]);
+  } catch {
+    spinner.dataset.renderer = 'css';
+    offscreenSpinners.delete(spinner);
+    return fallbackBinding;
+  }
+
+  return {
+    sync: (active: boolean) => {
+      if (disposed || spinnerWorker !== worker || spinnerWorkerFailed || spinner.dataset.renderer !== 'offscreen') return;
+      const color = readSpinnerColor(spinner);
+      const dpr = readSpinnerDpr();
+      if (color === lastColor && dpr === lastDpr && active === lastActive) return;
+      lastColor = color;
+      lastDpr = dpr;
+      lastActive = active;
+      worker.postMessage({
+        type: 'update',
+        id,
+        color,
+        dpr,
+        active,
+      });
+    },
+    dispose: () => {
+      if (disposed) return;
+      disposed = true;
+      offscreenSpinners.delete(spinner);
+      if (spinnerWorker === worker && !spinnerWorkerFailed) {
+        worker.postMessage({ type: 'remove', id });
+      }
+    },
+  };
+}
+
+function createProgressSpinner(): HTMLSpanElement {
+  const spinner = document.createElement('span');
+  spinner.className = 'mt-x-spinner';
+  spinner.dataset.renderer = 'css';
+
+  const canvas = document.createElement('canvas');
+  canvas.className = 'mt-x-spinner-canvas';
+  canvas.width = spinnerSizePx;
+  canvas.height = spinnerSizePx;
+  canvas.setAttribute('aria-hidden', 'true');
+
+  spinner.appendChild(canvas);
+  spinner.appendChild(createSpinnerFallbackSvg());
+
+  const binding = attachOffscreenSpinner(spinner, canvas);
+  spinnerBindings.set(spinner, binding);
+  return spinner;
+}
+
+function syncProgressSpinner(spinner: HTMLSpanElement, active: boolean): void {
+  spinnerBindings.get(spinner)?.sync(active);
+}
+
+function disposeProgressSpinner(spinner: HTMLSpanElement): void {
+  const binding = spinnerBindings.get(spinner);
+  if (!binding) return;
+  binding.dispose();
+  spinnerBindings.delete(spinner);
 }
 
 export function resolveRuntimeAssetUrl(path: string): string | null {
@@ -219,14 +510,29 @@ export function injectStyles(): void {
       width: 16px;
       height: 16px;
       flex: 0 0 auto;
-      will-change: transform;
+      align-items: center;
+      justify-content: center;
+      contain: size paint;
       transform-origin: center;
+    }
+    .mt-x-spinner[data-renderer='css'] {
+      will-change: transform;
       animation: mt-x-spin-rotate 1.2s linear infinite;
     }
-    .mt-x-spinner svg {
+    .mt-x-spinner[data-renderer='offscreen'] {
+      animation: none;
+      will-change: auto;
+    }
+    .mt-x-spinner svg,
+    .mt-x-spinner canvas {
       width: 16px;
       height: 16px;
       display: block;
+      flex: 0 0 auto;
+    }
+    .mt-x-spinner[data-renderer='css'] .mt-x-spinner-canvas,
+    .mt-x-spinner[data-renderer='offscreen'] .mt-x-spinner-fallback {
+      display: none;
     }
     .mt-x-spinner svg circle {
       fill: none;
@@ -610,9 +916,7 @@ export function createUiElements(): UiElements {
   const buttonIcon = document.createElement('span');
   buttonIcon.className = 'mt-x-icon';
   buttonIcon.innerHTML = ICONS.translate;
-  const buttonSpinner = document.createElement('span');
-  buttonSpinner.className = 'mt-x-spinner';
-  buttonSpinner.innerHTML = '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/></svg>';
+  const buttonSpinner = createProgressSpinner();
   const buttonLabel = document.createElement('span');
   buttonLabel.className = 'mt-x-label';
   buttonLabel.textContent = '翻译';
@@ -648,11 +952,14 @@ export function createUiElements(): UiElements {
     buttonLabel,
     detailLine,
     debugDownloadButton,
+    dispose: () => {
+      disposeProgressSpinner(buttonSpinner);
+    },
   };
 }
 
 export function renderUi(ui: UiElements, state: PhotoState | null): void {
-  const { button, buttonIcon, buttonLabel, detailLine, debugDownloadButton } = ui;
+  const { button, buttonIcon, buttonLabel, buttonSpinner, detailLine, debugDownloadButton } = ui;
 
   const updateStatusLine = (text: string, variant: 'normal' | 'error' = 'normal'): void => {
     detailLine.textContent = text;
@@ -666,6 +973,7 @@ export function renderUi(ui: UiElements, state: PhotoState | null): void {
     buttonLabel.textContent = '翻译';
     updateStatusLine('');
     debugDownloadButton.style.display = 'none';
+    syncProgressSpinner(buttonSpinner, false);
     clearTransitionTimers();
     return;
   }
@@ -688,6 +996,7 @@ export function renderUi(ui: UiElements, state: PhotoState | null): void {
 
   button.dataset.status = state.status;
   button.disabled = state.status === 'running';
+  syncProgressSpinner(buttonSpinner, state.status === 'running');
 
   let nextText: string;
   let nextIconKey: IconKey;
@@ -825,9 +1134,7 @@ export function createReadingModeBarUi(): ReadingModeBarUi {
   const currentIcon = document.createElement('span');
   currentIcon.className = 'mt-x-icon';
   currentIcon.innerHTML = ICONS.translate;
-  const currentSpinner = document.createElement('span');
-  currentSpinner.className = 'mt-x-spinner';
-  currentSpinner.innerHTML = '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/></svg>';
+  const currentSpinner = createProgressSpinner();
   const currentLabel = document.createElement('span');
   currentLabel.className = 'mt-x-label';
   currentLabel.textContent = '翻译当前页';
@@ -843,9 +1150,7 @@ export function createReadingModeBarUi(): ReadingModeBarUi {
   const allIcon = document.createElement('span');
   allIcon.className = 'mt-x-icon';
   allIcon.innerHTML = ICONS.translate;
-  const allSpinner = document.createElement('span');
-  allSpinner.className = 'mt-x-spinner';
-  allSpinner.innerHTML = '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/></svg>';
+  const allSpinner = createProgressSpinner();
   const allLabel = document.createElement('span');
   allLabel.className = 'mt-x-label';
   allLabel.textContent = '翻译全部';
@@ -854,7 +1159,19 @@ export function createReadingModeBarUi(): ReadingModeBarUi {
   translateAllBtn.appendChild(allLabel);
   host.appendChild(translateAllBtn);
 
-  return { host, translateCurrentBtn, translateAllBtn };
+  return {
+    host,
+    translateCurrentBtn,
+    translateAllBtn,
+    syncSpinners: (currentActive: boolean, allActive: boolean) => {
+      syncProgressSpinner(currentSpinner, currentActive);
+      syncProgressSpinner(allSpinner, allActive);
+    },
+    dispose: () => {
+      disposeProgressSpinner(currentSpinner);
+      disposeProgressSpinner(allSpinner);
+    },
+  };
 }
 
 export function handleDebugDownload(state: PhotoState): void {

@@ -269,6 +269,7 @@ export class TranslatorCore {
 
     for (const [key, mounted] of this.mounted) {
       if (!currentKeys.has(key)) {
+        mounted.ui.dispose();
         mounted.ui.host.remove();
         this.mounted.delete(key);
       }
@@ -647,6 +648,8 @@ export class TranslatorCore {
         (bar.translateAllBtn.querySelector('.mt-x-label') as HTMLElement).textContent = '翻译全部';
       }
     }
+
+    bar.syncSpinners(this.translateCurrentRunning, this.translateAllRunning);
   }
 
   private async handleTranslateCurrentClick(): Promise<void> {
@@ -841,6 +844,7 @@ export class TranslatorCore {
         sourceOriginalUrl = null;
       }
       this.states.delete(key);
+      ui.dispose();
       ui.host.remove();
     };
 
@@ -956,6 +960,7 @@ export class TranslatorCore {
         screenshotOriginalUrl = null;
       }
       this.states.delete(key);
+      ui.dispose();
       ui.host.remove();
     };
 
@@ -1169,6 +1174,7 @@ export class TranslatorCore {
 
   private teardownReadingBar(): void {
     if (this.readingBarUi?.host) {
+      this.readingBarUi.dispose();
       this.readingBarUi.host.remove();
     }
     this.readingBarUi = null;

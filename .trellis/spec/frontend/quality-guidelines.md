@@ -253,13 +253,14 @@ type ProgressJankReport = {
 
 ### Framework: Vitest
 - Configured in `package.json`: `"test": "vitest run"`
-- Test files colocated with source: `*.test.ts` suffix
+- Vitest currently includes only `tests/**/*.test.ts`. Put new tests under `tests/`, mirroring the source path (for example, `src/content/core/utils.ts` -> `tests/content/core/utils.test.ts`).
+- Do not place new tests next to source files unless the Vitest include pattern is intentionally changed too; colocated `src/**/*.test.ts` files are type-checked by `tsc` but are not run by `npm run test`.
 
 ### Current test coverage
-- `src/pipeline/geometry.test.ts` — Geometry utility functions (convexHull, sortMiniBoxPoints, minAreaRect — now imports from `./typeset/geometry`)
-- `src/pipeline/typesetGeometry.test.ts` — Typeset geometry calculations (queryMaskMaxY — now imports from `./typeset/index`)
-- `src/content/core/screenshot.test.ts` — Screenshot crop/viewport conversion, element candidate ordering, wheel layer switching, and move/resize geometry
-- `benchmark/typeset/src/metrics.test.ts` — Benchmark metrics
+- `tests/pipeline/geometry.test.ts` — Geometry utility functions (convexHull, sortMiniBoxPoints, minAreaRect — now imports from `src/pipeline/typeset/geometry`)
+- `tests/pipeline/typeset/typesetGeometry.test.ts` — Typeset geometry calculations (queryMaskMaxY — now imports from `src/pipeline/typeset/index`)
+- `tests/content/core/screenshot.test.ts` — Screenshot crop/viewport conversion, element candidate ordering, wheel layer switching, and move/resize geometry
+- `tests/benchmark/metrics.test.ts` — Benchmark metrics
 
 ### Test patterns
 - Pure function testing — no DOM mocking, no React component testing

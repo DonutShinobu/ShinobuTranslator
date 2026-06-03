@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 12
+- **Total Sessions**: 13
 - **Last Active**: 2026-06-03
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~387 | Active |
+| `journal-1.md` | ~420 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 13 | 2026-06-03 | 快捷键与非线性动画 | `d697151` | `master` |
 | 12 | 2026-06-03 | Polish screenshot translation overlay | `fe64b99` | `codex/screenshot-context-translation` |
 | 11 | 2026-06-03 | Screenshot context translation | `372a4b4` | `codex/screenshot-context-translation` |
 | 10 | 2026-06-01 | OCR split-only model release | `37abbb0`, `7648dbd`, `0c96df2` | `master` |

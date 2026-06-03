@@ -385,3 +385,36 @@ Unified generic context-menu translation through the screenshot floating overlay
 ### Next Steps
 
 - None - task complete
+
+
+## Session 13: 快捷键与非线性动画
+
+**Date**: 2026-06-03
+**Task**: 快捷键与非线性动画
+**Branch**: `master`
+
+### Summary
+
+为截图翻译和悬停元素翻译接入 Chrome commands，在 popup 展示真实绑定并优化为标题行小字；补充截图候选切换与浮动译图缩放动画，并修复缩放时药丸右对齐。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d697151` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

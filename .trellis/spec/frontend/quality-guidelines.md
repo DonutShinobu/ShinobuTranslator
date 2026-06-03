@@ -71,6 +71,8 @@ Testing is minimal (3 test files). Linting relies on TypeScript strict mode. No 
 
 26. **Pure screenshot geometry helpers** — Keep screenshot element candidate ranking, wheel layer switching, viewport/crop conversion, move, and resize math in `src/content/core/screenshot.ts` as pure functions with Vitest coverage. `ui.ts` may read DOM rects and draw visual affordances, but the accepted `ScreenshotRect` stays rectangular in CSS pixels even when the selection border is visually rounded.
 
+27. **Content-script import rewriting must parse bindings** - The Vite content-script compatibility plugin rewrites static ESM imports into classic-script-safe dynamic imports. Never rewrite named imports with a blanket text replacement like `bindings.replace(/\bas\b/g, ':')`: minification can legally produce a local identifier named `as`, turning `b as as` into invalid code such as `b : :`. Parse each binding into `{ imported, local }`, generate namespace property reads, and run `node --check dist/content.js` after build changes that touch the plugin or content-script import graph.
+
 ## Content Script Adapter Patterns
 
 ### SiteAdapter Optional Reading Mode Methods

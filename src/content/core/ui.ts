@@ -41,6 +41,15 @@ export type ScreenshotResultUiElements = {
   debugDownloadButton: HTMLButtonElement;
   image: HTMLImageElement;
   closeButton: HTMLButtonElement;
+  overlayPositioned: boolean;
+  overlayAnchor: ScreenshotResultOverlayAnchor | null;
+};
+
+export type ScreenshotResultOverlayAnchor = {
+  anchorX: 'left' | 'right';
+  anchorY: 'top' | 'bottom';
+  offsetX: number;
+  offsetY: number;
 };
 
 const ICONS = {
@@ -829,6 +838,7 @@ type FloatingControlPosition = {
   left: number;
   top: number;
   anchorX: 'left' | 'right';
+  anchorY: 'top' | 'bottom';
 };
 
 function clampViewportPosition(value: number, size: number, viewportSize: number, inset: number): number {
@@ -850,12 +860,13 @@ function getFloatingControlPosition(
     window.innerWidth,
     inset,
   );
-  const preferredTop = rect.top >= controlHeight + gap + inset
+  const anchorY = rect.top >= controlHeight + gap + inset ? 'top' : 'bottom';
+  const preferredTop = anchorY === 'top'
     ? rect.top - controlHeight - gap
     : rect.top + rect.height + gap;
   const top = clampViewportPosition(preferredTop, controlHeight, window.innerHeight, inset);
   const anchorX = left <= inset ? 'left' : 'right';
-  return { left, top, anchorX };
+  return { left, top, anchorX, anchorY };
 }
 
 function positionElementNearViewportRect(element: HTMLElement, rect: ScreenshotRect): void {
@@ -869,9 +880,9 @@ function positionElementNearViewportRect(element: HTMLElement, rect: ScreenshotR
   element.style.top = `${position.top}px`;
 }
 
-function positionScreenshotResultOverlay(ui: ScreenshotResultUiElements): void {
+function positionScreenshotResultOverlay(ui: ScreenshotResultUiElements): boolean {
   const hostRect = ui.host.getBoundingClientRect();
-  if (hostRect.width <= 0 || hostRect.height <= 0) return;
+  if (hostRect.width <= 0 || hostRect.height <= 0) return false;
   const overlayRect = ui.overlay.getBoundingClientRect();
   const overlayWidth = overlayRect.width || 64;
   const position = getFloatingControlPosition(
@@ -884,15 +895,42 @@ function positionScreenshotResultOverlay(ui: ScreenshotResultUiElements): void {
     overlayWidth,
     overlayRect.height || 34,
   );
+  const overlayLeft = position.left - hostRect.left;
+  const overlayTop = position.top - hostRect.top;
+  ui.overlayAnchor = {
+    anchorX: position.anchorX,
+    anchorY: position.anchorY,
+    offsetX: position.anchorX === 'right' ? overlayLeft - hostRect.width : overlayLeft,
+    offsetY: position.anchorY === 'bottom' ? overlayTop - hostRect.height : overlayTop,
+  };
   ui.overlay.dataset.anchorX = position.anchorX;
-  if (position.anchorX === 'right') {
-    ui.overlay.style.left = 'auto';
-    ui.overlay.style.right = `${hostRect.right - position.left - overlayWidth}px`;
-  } else {
-    ui.overlay.style.left = `${position.left - hostRect.left}px`;
-    ui.overlay.style.right = 'auto';
-  }
-  ui.overlay.style.top = `${position.top - hostRect.top}px`;
+  ui.overlay.style.right = 'auto';
+  syncScreenshotResultOverlayPosition(ui);
+  return true;
+}
+
+export function getScreenshotResultOverlayOffset(
+  anchor: ScreenshotResultOverlayAnchor,
+  hostSize: { width: number; height: number },
+): { left: number; top: number } {
+  return {
+    left: anchor.anchorX === 'right' ? hostSize.width + anchor.offsetX : anchor.offsetX,
+    top: anchor.anchorY === 'bottom' ? hostSize.height + anchor.offsetY : anchor.offsetY,
+  };
+}
+
+function getScreenshotResultHostSize(ui: ScreenshotResultUiElements): { width: number; height: number } {
+  return {
+    width: Number.parseFloat(ui.host.style.width || `${ui.host.offsetWidth}`),
+    height: Number.parseFloat(ui.host.style.height || `${ui.host.offsetHeight}`),
+  };
+}
+
+function syncScreenshotResultOverlayPosition(ui: ScreenshotResultUiElements): void {
+  if (!ui.overlayAnchor) return;
+  const offset = getScreenshotResultOverlayOffset(ui.overlayAnchor, getScreenshotResultHostSize(ui));
+  ui.overlay.style.left = `${offset.left}px`;
+  ui.overlay.style.top = `${offset.top}px`;
 }
 
 function clampViewportX(value: number): number {
@@ -1316,7 +1354,7 @@ export function createScreenshotResultUi(rect: ScreenshotRect): ScreenshotResult
 
   base.primaryAction.appendChild(closeButton);
   base.host.appendChild(image);
-  return { ...base, image, closeButton };
+  return { ...base, image, closeButton, overlayPositioned: false, overlayAnchor: null };
 }
 
 export function renderScreenshotResultUi(
@@ -1324,7 +1362,11 @@ export function renderScreenshotResultUi(
   state: PhotoState,
 ): void {
   renderUi(ui, state);
-  positionScreenshotResultOverlay(ui);
+  if (!ui.overlayPositioned) {
+    ui.overlayPositioned = positionScreenshotResultOverlay(ui);
+  } else {
+    syncScreenshotResultOverlayPosition(ui);
+  }
   ui.host.dataset.status = state.status;
   const originalUrl = state.originalUrl.startsWith('screenshot:') ? undefined : state.originalUrl;
   const imageUrl = state.status === 'translated'

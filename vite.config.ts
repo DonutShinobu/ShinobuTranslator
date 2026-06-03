@@ -36,6 +36,33 @@ function modelReleaseUrlPlugin(): Plugin {
   };
 }
 
+function toSafeIdentifier(identifier: string): string {
+  return identifier.replace(/\$/g, '\\u0024');
+}
+
+function parseNamedImportBindings(bindings: string): Array<{ imported: string; local: string }> {
+  return bindings.split(',').map((binding) => {
+    const trimmed = binding.trim();
+    const aliasMatch = trimmed.match(/^(\S+)\s+as\s+(\S+)$/);
+    if (aliasMatch) {
+      return {
+        imported: aliasMatch[1],
+        local: aliasMatch[2],
+      };
+    }
+    return {
+      imported: trimmed,
+      local: trimmed,
+    };
+  });
+}
+
+function buildNamespaceAssignments(namespace: string, bindings: string): string {
+  return parseNamedImportBindings(bindings)
+    .map(({ imported, local }) => `const ${toSafeIdentifier(local)}=${namespace}[${JSON.stringify(imported)}];`)
+    .join('');
+}
+
 // Chrome extension compat: content scripts are classic scripts (no import/export).
 // This plugin bridges the gap between Vite's ES module output and Chrome's classic script injection:
 // 1. Replaces import.meta.url with a chrome.runtime.getURL polyfill
@@ -64,17 +91,12 @@ function chromeExtensionContentScriptPlugin(): Plugin {
         // Extract export mapping before stripping: export{Var1 as Name1, Var2 as Name2, ...}
         const exportMatch = chunk.code.match(/export\s*\{([^}]+)\}\s*;\s*$/);
         if (exportMatch) {
-          const mappings = exportMatch[1].split(',').map((s: string) => s.trim());
-          // Build: {Name1: Var1, Name2: Var2, ...} (or just {name} if no alias)
-          const pairs = mappings.map((m: string) => {
-            const aliasMatch = m.match(/^(\S+)\s+as\s+(\S+)$/);
-            if (aliasMatch) return `${aliasMatch[2]}:${aliasMatch[1]}`;
-            return `${m}:${m}`;
-          });
+          const pairs = parseNamedImportBindings(exportMatch[1])
+            .map(({ imported, local }) => `${JSON.stringify(local)}:${toSafeIdentifier(imported)}`);
           // Inject global bridge BEFORE stripping exports, so variables are still in scope
           chunk.code = chunk.code.replace(
             /export\s*\{[^}]+\}\s*;\s*$/,
-            `window.__shinobu_shared={${pairs.join(',')}};`,
+            () => `window.__shinobu_shared={${pairs.join(',')}};`,
           );
         }
 
@@ -87,13 +109,13 @@ function chromeExtensionContentScriptPlugin(): Plugin {
           staticImports.push({ full: m[0], bindings: m[1], path: m[2] });
         }
         if (staticImports.length > 0) {
-          for (const si of staticImports) {
-            const destructured = si.bindings.replace(/\bas\b/g, ':');
+          staticImports.forEach((si, index) => {
+            const namespace = `__shinobu_static_import_${index}`;
             chunk.code = chunk.code.replace(
               si.full,
-              `const {${destructured.trim()}}=await import(chrome.runtime.getURL("${si.path}"));`,
+              () => `const ${namespace}=await import(chrome.runtime.getURL("${si.path}"));${buildNamespaceAssignments(namespace, si.bindings)}`,
             );
-          }
+          });
           chunk.code = `(async()=>{${chunk.code}})();`;
         }
       }
@@ -108,8 +130,8 @@ function chromeExtensionContentScriptPlugin(): Plugin {
         chunk.code = chunk.code.replace(
           /import\s*\{([^}]+)\}\s*from\s*"(\.\.\/content\.js|\.\/content\.js)"\s*;?/,
           (_match: string, imports: string) => {
-            const converted = imports.replace(/\bas\b/g, ':');
-            return `const {${converted.trim()}}=window.__shinobu_shared;`;
+            const namespace = '__shinobu_shared_import';
+            return `const ${namespace}=window.__shinobu_shared;${buildNamespaceAssignments(namespace, imports)}`;
           },
         );
 

@@ -35,8 +35,11 @@ import {
   requestScreenshotSelection,
 } from './ui';
 import type { ScreenshotResultUiElements, UiElements } from './ui';
-import { cropScreenshotToFile } from './screenshot';
-import type { ScreenshotSelection } from './screenshot';
+import {
+  cropScreenshotToFile,
+  scaleScreenshotRectAroundPoint,
+} from './screenshot';
+import type { ScreenshotRect, ScreenshotSelection } from './screenshot';
 
 const photoStateCacheLimit = 200;
 
@@ -730,6 +733,110 @@ export class TranslatorCore {
     await this.translateScreenshotSelection(selection);
   }
 
+  async translateImageInFloatingOverlay(originalUrl: string, documentRect: ScreenshotRect): Promise<void> {
+    const key = `context-image-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const state = this.ensureState(key, originalUrl);
+    const ui = createScreenshotResultUi(documentRect);
+    document.body.appendChild(ui.host);
+
+    let disposed = false;
+    let detachDrag: (() => void) | null = null;
+    let detachZoom: (() => void) | null = null;
+    let sourceFile: File | null = null;
+    let sourceOriginalUrl: string | null = null;
+    const render = (): void => {
+      if (!disposed) renderScreenshotResultUi(ui, state);
+    };
+    const cleanup = (): void => {
+      if (disposed) return;
+      disposed = true;
+      detachDrag?.();
+      detachZoom?.();
+      this.disposeState(state);
+      if (sourceOriginalUrl) {
+        URL.revokeObjectURL(sourceOriginalUrl);
+        sourceOriginalUrl = null;
+      }
+      this.states.delete(key);
+      ui.host.remove();
+    };
+
+    ui.closeButton.addEventListener('click', cleanup);
+    ui.button.addEventListener('click', () => {
+      if (state.status === 'running') return;
+      if (state.status === 'error') {
+        void runImagePipeline();
+        return;
+      }
+      if (!state.translatedUrl || !sourceOriginalUrl) return;
+      if (state.mode === 'translated') {
+        state.mode = 'original';
+        state.status = 'showingOriginal';
+      } else {
+        state.mode = 'translated';
+        state.status = 'translated';
+      }
+      render();
+    });
+    detachDrag = this.attachScreenshotResultDrag(ui);
+    detachZoom = this.attachScreenshotResultZoom(ui, render);
+
+    const ensureSourceFile = async (): Promise<File> => {
+      if (sourceFile) return sourceFile;
+      state.stageText = '下载原图中';
+      render();
+      await waitForNextPaint();
+      if (disposed) throw new Error('图片翻译已关闭');
+
+      const source = await this.downloadImageFile(originalUrl);
+      if (disposed) throw new Error('图片翻译已关闭');
+
+      sourceFile = source.file;
+      if (sourceOriginalUrl) URL.revokeObjectURL(sourceOriginalUrl);
+      sourceOriginalUrl = URL.createObjectURL(source.blob);
+      state.originalUrl = sourceOriginalUrl;
+      render();
+      return sourceFile;
+    };
+
+    const runImagePipeline = async (): Promise<void> => {
+      this.resetStateForPipeline(state);
+      state.stageText = sourceFile ? '准备中' : '下载原图中';
+      render();
+
+      try {
+        const file = await ensureSourceFile();
+        if (disposed) return;
+
+        const runSettings = await this.loadPipelineRunSettings(state);
+        if (disposed) return;
+        await this.runPipelineFromFile({
+          state,
+          file,
+          runSettings,
+          runStartAt: performance.now(),
+          includeElapsedText: true,
+          onProgress: render,
+        });
+        if (disposed) {
+          this.disposeState(state);
+          return;
+        }
+        render();
+      } catch (error) {
+        if (disposed) return;
+        state.status = 'error';
+        state.errorText = toErrorMessage(error);
+        state.stageText = '';
+        state.elapsedText = '';
+        state.debugLogData = undefined;
+        render();
+      }
+    };
+
+    await runImagePipeline();
+  }
+
   async translateScreenshotSelection(selection: ScreenshotSelection): Promise<void> {
     const key = `screenshot-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const state = this.ensureState(key, `screenshot:${key}`);
@@ -738,6 +845,7 @@ export class TranslatorCore {
 
     let disposed = false;
     let detachDrag: (() => void) | null = null;
+    let detachZoom: (() => void) | null = null;
     let screenshotFile: File | null = null;
     let screenshotOriginalUrl: string | null = null;
     const render = (): void => {
@@ -747,6 +855,7 @@ export class TranslatorCore {
       if (disposed) return;
       disposed = true;
       detachDrag?.();
+      detachZoom?.();
       this.disposeState(state);
       if (screenshotOriginalUrl) {
         URL.revokeObjectURL(screenshotOriginalUrl);
@@ -774,6 +883,7 @@ export class TranslatorCore {
       render();
     });
     detachDrag = this.attachScreenshotResultDrag(ui);
+    detachZoom = this.attachScreenshotResultZoom(ui, render);
 
     const ensureScreenshotFile = async (): Promise<File> => {
       if (screenshotFile) return screenshotFile;
@@ -878,8 +988,8 @@ export class TranslatorCore {
       event.preventDefault();
       const nextLeft = startLeft + event.clientX - startClientX;
       const nextTop = startTop + event.clientY - startClientY;
-      ui.host.style.left = `${Math.max(0, nextLeft)}px`;
-      ui.host.style.top = `${Math.max(0, nextTop)}px`;
+      ui.host.style.left = `${nextLeft}px`;
+      ui.host.style.top = `${nextTop}px`;
     };
 
     const onPointerUp = (event: PointerEvent): void => {
@@ -899,6 +1009,45 @@ export class TranslatorCore {
       ui.host.removeEventListener('pointerdown', onPointerDown);
       ui.host.removeEventListener('pointermove', onPointerMove);
       ui.host.removeEventListener('pointerup', onPointerUp);
+    };
+  }
+
+  private attachScreenshotResultZoom(ui: ScreenshotResultUiElements, onZoom: () => void): () => void {
+    const minSize = 24;
+    const maxSize = 60000;
+    const zoomStep = 1.12;
+
+    const onWheel = (event: WheelEvent): void => {
+      if (event.deltaY === 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const currentRect: ScreenshotRect = {
+        left: Number.parseFloat(ui.host.style.left || '0'),
+        top: Number.parseFloat(ui.host.style.top || '0'),
+        width: Number.parseFloat(ui.host.style.width || `${ui.host.offsetWidth}`),
+        height: Number.parseFloat(ui.host.style.height || `${ui.host.offsetHeight}`),
+      };
+      const scale = event.deltaY < 0 ? zoomStep : 1 / zoomStep;
+      const nextRect = scaleScreenshotRectAroundPoint(
+        currentRect,
+        {
+          left: window.scrollX + event.clientX,
+          top: window.scrollY + event.clientY,
+        },
+        scale,
+        minSize,
+        maxSize,
+      );
+      ui.host.style.left = `${nextRect.left}px`;
+      ui.host.style.top = `${nextRect.top}px`;
+      ui.host.style.width = `${nextRect.width}px`;
+      ui.host.style.height = `${nextRect.height}px`;
+      onZoom();
+    };
+
+    ui.host.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      ui.host.removeEventListener('wheel', onWheel);
     };
   }
 

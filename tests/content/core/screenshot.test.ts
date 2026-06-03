@@ -5,6 +5,7 @@ import {
   moveScreenshotRect,
   normalizeScreenshotRect,
   resizeScreenshotRect,
+  scaleScreenshotRectAroundPoint,
   toDocumentScreenshotRect,
   toScreenshotCropRect,
   toViewportScreenshotRect,
@@ -128,6 +129,46 @@ describe("resizeScreenshotRect", () => {
       width: 24,
       height: 110,
     });
+  });
+});
+
+describe("scaleScreenshotRectAroundPoint", () => {
+  it("scales around the pointer position", () => {
+    expect(scaleScreenshotRectAroundPoint(
+      { left: 100, top: 50, width: 200, height: 100 },
+      { left: 150, top: 75 },
+      2,
+    )).toEqual({
+      left: 50,
+      top: 25,
+      width: 400,
+      height: 200,
+    });
+  });
+
+  it("allows negative positions while respecting size limits", () => {
+    expect(scaleScreenshotRectAroundPoint(
+      { left: -20, top: -10, width: 30, height: 20 },
+      { left: -20, top: -10 },
+      0.1,
+      24,
+      12000,
+    )).toEqual({
+      left: -20,
+      top: -10,
+      width: 36,
+      height: 24,
+    });
+  });
+
+  it("keeps the original aspect ratio after shrinking to the minimum size and zooming back in", () => {
+    const original = { left: 0, top: 0, width: 320, height: 180 };
+    const focus = { left: 160, top: 90 };
+    const tiny = scaleScreenshotRectAroundPoint(original, focus, 0.01, 24, 12000);
+    const enlarged = scaleScreenshotRectAroundPoint(tiny, focus, 10, 24, 12000);
+
+    expect(tiny.width / tiny.height).toBeCloseTo(original.width / original.height, 8);
+    expect(enlarged.width / enlarged.height).toBeCloseTo(original.width / original.height, 8);
   });
 });
 

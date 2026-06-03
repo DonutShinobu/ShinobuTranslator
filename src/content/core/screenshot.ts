@@ -196,6 +196,42 @@ export function resizeScreenshotRect(
   };
 }
 
+export function scaleScreenshotRectAroundPoint(
+  rect: ScreenshotRect,
+  point: { left: number; top: number },
+  scale: number,
+  minSize = 24,
+  maxSize = 60000,
+): ScreenshotRect {
+  const normalizedScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
+  const width = Math.max(1, rect.width);
+  const height = Math.max(1, rect.height);
+  const minLimit = Math.max(1, minSize);
+  const maxLimit = Math.max(minLimit, maxSize);
+  let nextWidth = width * normalizedScale;
+  let nextHeight = height * normalizedScale;
+  const minDimension = Math.min(nextWidth, nextHeight);
+  if (minDimension < minLimit) {
+    const correction = minLimit / minDimension;
+    nextWidth *= correction;
+    nextHeight *= correction;
+  }
+  const maxDimension = Math.max(nextWidth, nextHeight);
+  if (maxDimension > maxLimit) {
+    const correction = maxLimit / maxDimension;
+    nextWidth *= correction;
+    nextHeight *= correction;
+  }
+  const ratioX = clamp((point.left - rect.left) / width, 0, 1);
+  const ratioY = clamp((point.top - rect.top) / height, 0, 1);
+  return {
+    left: point.left - ratioX * nextWidth,
+    top: point.top - ratioY * nextHeight,
+    width: nextWidth,
+    height: nextHeight,
+  };
+}
+
 export function toScreenshotCropRect(
   viewportRect: ScreenshotRect,
   viewportSize: Size,

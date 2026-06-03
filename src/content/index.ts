@@ -63,8 +63,19 @@ core.start();
 
 // --- Context menu support ---
 
+type ContextMenuTranslateTarget =
+  | {
+      kind: 'image';
+      originalUrl: string;
+      documentRect: ScreenshotRect;
+    }
+  | {
+      kind: 'screenshot';
+      selection: ScreenshotSelection;
+    };
+
 /** The last right-click translation target. */
-let contextMenuSelection: ScreenshotSelection | null = null;
+let contextMenuTarget: ContextMenuTranslateTarget | null = null;
 
 function toElementScreenshotRect(element: Element): ScreenshotRect {
   const rect = element.getBoundingClientRect();
@@ -76,13 +87,61 @@ function toElementScreenshotRect(element: Element): ScreenshotRect {
   };
 }
 
+function toElementDocumentScreenshotRect(element: Element): ScreenshotRect {
+  return toDocumentScreenshotRect(toElementScreenshotRect(element), window.scrollX, window.scrollY);
+}
+
+function isUsableScreenshotRect(rect: ScreenshotRect): boolean {
+  return rect.width >= 12 && rect.height >= 12;
+}
+
 function toScreenshotSelection(rect: ScreenshotRect): ScreenshotSelection | null {
   const viewportRect = toViewportScreenshotRect(rect, window.innerWidth, window.innerHeight);
-  if (viewportRect.width < 12 || viewportRect.height < 12) return null;
+  if (!isUsableScreenshotRect(viewportRect)) return null;
   return {
     viewportRect,
     documentRect: toDocumentScreenshotRect(viewportRect, window.scrollX, window.scrollY),
   };
+}
+
+function isDirectImageResourceUrl(rawUrl: string): boolean {
+  try {
+    const url = new URL(rawUrl, location.href);
+    const hostname = url.hostname.toLowerCase();
+    const pathname = url.pathname.toLowerCase();
+    return hostname === 'pbs.twimg.com' ||
+      hostname === 'i.pximg.net' ||
+      hostname.endsWith('.pximg.net') ||
+      /\.(?:avif|gif|jpe?g|png|webp)$/u.test(pathname);
+  } catch {
+    return false;
+  }
+}
+
+function toAbsoluteUrl(rawUrl: string): string {
+  try {
+    return new URL(rawUrl, location.href).toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
+function readContextImageOriginalUrl(image: HTMLImageElement): string {
+  const storedOriginal = image.getAttribute('data-mt-original-src');
+  if (storedOriginal && isDirectImageResourceUrl(storedOriginal)) {
+    return toAbsoluteUrl(storedOriginal);
+  }
+
+  const directLink = image.closest<HTMLAnchorElement>('a[href]');
+  if (directLink?.href && isDirectImageResourceUrl(directLink.href)) {
+    return toAbsoluteUrl(directLink.href);
+  }
+
+  const imageUrl = image.currentSrc || image.src;
+  if (!imageUrl || imageUrl.startsWith('blob:') || imageUrl.startsWith('data:')) {
+    return '';
+  }
+  return toAbsoluteUrl(imageUrl);
 }
 
 function isShinobuUiElement(element: Element): boolean {
@@ -123,17 +182,26 @@ function findContextMenuScreenshotSelection(event: MouseEvent): ScreenshotSelect
   return candidate ? toScreenshotSelection(candidate.rect) : null;
 }
 
-function findContextMenuSelection(event: MouseEvent): ScreenshotSelection | null {
+function findContextMenuTarget(event: MouseEvent): ContextMenuTranslateTarget | null {
   const target = event.target;
   if (target instanceof Element && isShinobuUiElement(target)) return null;
   if (target instanceof HTMLImageElement) {
-    return toScreenshotSelection(toElementScreenshotRect(target));
+    const originalUrl = readContextImageOriginalUrl(target);
+    const documentRect = toElementDocumentScreenshotRect(target);
+    if (originalUrl && isUsableScreenshotRect(documentRect)) {
+      return {
+        kind: 'image',
+        originalUrl,
+        documentRect,
+      };
+    }
   }
-  return findContextMenuScreenshotSelection(event);
+  const selection = findContextMenuScreenshotSelection(event);
+  return selection ? { kind: 'screenshot', selection } : null;
 }
 
 document.addEventListener('contextmenu', (event) => {
-  contextMenuSelection = findContextMenuSelection(event);
+  contextMenuTarget = findContextMenuTarget(event);
 }, true);
 
 // Listen for context-menu translate requests from background
@@ -145,10 +213,13 @@ if (chromeApi?.runtime?.onMessage?.addListener) {
     }
 
     if (message.type === 'mt:context-menu-translate') {
-      const selection = contextMenuSelection;
-      contextMenuSelection = null;
-      if (selection) {
-        core.translateScreenshotSelection(selection).then(() => {
+      const target = contextMenuTarget;
+      contextMenuTarget = null;
+      if (target) {
+        const translatePromise = target.kind === 'image'
+          ? core.translateImageInFloatingOverlay(target.originalUrl, target.documentRect)
+          : core.translateScreenshotSelection(target.selection);
+        translatePromise.then(() => {
           sendResponse({ ok: true, type: 'mt:context-menu-translate' });
         }).catch((error: unknown) => {
           sendResponse({ ok: false, type: 'mt:context-menu-translate', error: toErrorMessage(error) });

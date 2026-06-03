@@ -451,3 +451,37 @@ Unified generic context-menu translation through the screenshot floating overlay
 ### Next Steps
 
 - None - task complete
+
+
+## Session 15: 阶段明细可视化卡片
+
+**Date**: 2026-06-04
+**Task**: 阶段明细可视化卡片
+**Branch**: `master`
+
+### Summary
+
+完成翻译完成态阶段明细可视化卡片：新增持久化展开状态、阶段占比条、模型运行时 chips、结构化卡片数据测试，并更新 frontend 测试目录规范。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `715efb8` | (see git log) |
+| `eedf84a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

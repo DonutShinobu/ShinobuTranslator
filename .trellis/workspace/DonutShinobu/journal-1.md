@@ -418,3 +418,36 @@ Unified generic context-menu translation through the screenshot floating overlay
 ### Next Steps
 
 - None - task complete
+
+
+## Session 14: 回退进度动画优化实验
+
+**Date**: 2026-06-03
+**Task**: 回退进度动画优化实验
+**Branch**: `master`
+
+### Summary
+
+按用户要求回退 spinner/阶段调度优化，仅保留进度卡顿观测代码、浏览器 jank smoke 和实验文档记录。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `21e8b48` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

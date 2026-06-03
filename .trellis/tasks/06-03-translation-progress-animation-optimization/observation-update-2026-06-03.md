@@ -4,7 +4,7 @@
 
 用户确认不使用 iframe 方案，并要求先回退会影响推理速度、检测精度或 pipeline 时序的检测流程优化。本轮已将上一轮引入的 pipeline cooperative yielding / detector、bubble、OCR、inpaint、mask refinement、typeset、orchestrator 流程调整回退到基线版本，并删除 `src/pipeline/scheduler.ts`。
 
-当前方向改为：先增强观测，再按数据决定是否尝试 `OffscreenCanvas + Worker spinner` 或更窄的 pipeline 子阶段迁移。
+当前方向改为：只保留观测增强、真实浏览器 smoke 和实验记录。转圈动画优化暂时停止，已尝试过的 `OffscreenCanvas + Worker spinner` 不再作为当前实现保留。
 
 ## 新增观测项
 
@@ -17,8 +17,8 @@
 
 ## 下一步判定
 
-- 如果真实翻译报告显示 `frame.maxDeltaMs/p95DeltaMs` 很差，但 `workerHeartbeat.maxDeltaMs/p95DeltaMs` 明显稳定，优先尝试 `OffscreenCanvas + Worker spinner`，只替换左侧 spinner 渲染，不改检测流程。
-- 如果主线程 rAF 和 worker heartbeat 都卡，优先分析 LoAF scripts、WebGPU/ORT worker boundary、host page/GPU contention；此时单纯把 spinner 放 worker 可能收益有限。
+- 先继续使用真实浏览器 smoke、`[shinobu:jank]` 和 debug log 记录卡顿，不再改药丸 spinner 外观或渲染方式。
+- 如果主线程 rAF 和 worker heartbeat 都卡，优先分析 LoAF scripts、WebGPU/ORT worker boundary、host page/GPU contention；此时单纯把 spinner 放 worker 收益有限。
 - 只有当 LoAF 明确指向某个纯主线程子循环时，才考虑小范围 cooperative yielding 或 worker offload；不得再一次性改多段检测流程。
 
 ## 验证

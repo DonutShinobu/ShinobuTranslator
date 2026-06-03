@@ -219,12 +219,8 @@ type ProgressJankReport = {
 ### 3. Contracts
 
 - The progress pill must keep its dimensions, Chinese labels, running state semantics, and `mt-x-` CSS namespace.
-- The running spinner should animate via compositor-friendly properties such as `transform`; do not animate SVG `stroke-dasharray` or `stroke-dashoffset` every frame in the normal running state.
-- Progress UI updates for major stages should get a paint opportunity before the stage starts expensive work. Use an async progress callback in the content layer, not a pipeline-global paint wait that affects Node/bake paths.
 - Diagnose before optimizing: capture `requestAnimationFrame`, Long Animation Frame, Long Task, UI render, worker roundtrip, and worker heartbeat data before changing detector/OCR/inpaint/typeset control flow.
-- Worker heartbeat is diagnostic-only. Use it to decide whether animation isolation such as OffscreenCanvas worker rendering is promising; do not treat it as proof that pipeline changes are safe.
-- 进度 spinner 如果使用 OffscreenCanvas + Worker 渲染，必须保留同视觉的 SVG/CSS fallback；不支持 OffscreenCanvas、Worker 创建失败、Worker 报错时都应自动回退，不改变按钮尺寸、状态语义或中文文案。
-- OffscreenCanvas spinner 只应在 `running` 状态绘制；浮层、截图结果和阅读栏销毁或移除时必须释放对应 Worker canvas 绑定，避免长页面滚动后残留动画实例。
+- Worker heartbeat is diagnostic-only. Use it to distinguish main-thread rAF stalls from broader browser/GPU scheduling stalls; do not treat it as proof that animation isolation or pipeline changes are safe.
 - Do not create full-size detection/OCR preview canvases during normal translation unless a visible feature or explicit debug output consumes them. Large `drawImage`/`getImageData`/`toBlob` work can produce long frames even when model inference is workerized.
 - If LoAF/heartbeat data proves a specific main-thread loop is the cause, cooperative yielding or worker offload may be tried in a narrow follow-up diff. Do not introduce broad pipeline yielding as a first response.
 - Treat WebGPU/worker boundaries as possible animation jank sources even when `longtask` counts are low. Long animation frames with low blocking duration can still make the spinner look choppy because rendering/compositing is delayed.
@@ -233,13 +229,9 @@ type ProgressJankReport = {
 
 | Condition | Symptom | Fix |
 |-----------|---------|-----|
-| Spinner animates SVG stroke dash properties | Spinner visibly stutters during model/GPU work | Use a static arc and animate `transform: rotate()` |
-| Stage callback updates text and immediately starts heavy work | Stage label changes but spinner freezes at transition | Await a content-layer paint barrier for major stages |
 | Normal pipeline draws full-size intermediate debug canvases | OCR/detect boundaries show 100ms+ long tasks on large images | Skip default preview canvases or move debug rendering behind an explicit debug path |
-| Main rAF is choppy but worker heartbeat is smooth | DOM/main-thread work is likely starving visual updates | Try OffscreenCanvas worker spinner or a narrow main-thread offload experiment |
+| Main rAF is choppy but worker heartbeat is smooth | DOM/main-thread work is likely starving visual updates | Inspect the correlated LoAF scripts and main-thread task markers before choosing a narrow experiment |
 | Main rAF and worker heartbeat are both choppy | Worker-only animation is unlikely to solve the root cause | Inspect WebGPU/ORT/browser scheduling and host-page/GPU contention |
-| OffscreenCanvas or Worker is unavailable | Spinner disappears or becomes blank if no fallback exists | Keep SVG/CSS fallback in the same `.mt-x-spinner` and switch with a renderer flag |
-| OffscreenCanvas spinner stays registered after overlay removal | Hidden tabs/pages keep drawing tiny canvases in the Worker | Provide `dispose()` on UI elements and call it before `host.remove()` |
 | Worker calls show large output bytes and LoAFs with low blocking duration | Main-thread yielding does not fully fix spinner jank | Reduce worker payload, move postprocess into worker, or test provider/GPU contention |
 
 ### 5. Good/Base/Bad Cases
@@ -256,40 +248,6 @@ type ProgressJankReport = {
 - Run `npm run build`.
 - After content-script or worker-boundary changes, run `node --check dist/content.js`, `node --check dist/chunks/orchestrator.js`, `node --check dist/chunks/onnxWorkerBridge.js`, and `node --check dist/onnxWorker.js`.
 - Run a real-browser pipeline smoke or hover/context-image UI smoke and inspect `[shinobu:jank]` for frame stats, stage stats, UI render stats, worker calls, and long tasks.
-- Spinner isolation changes should run `npm run bench:browser-ui-jank-smoke -- --process-mode=erase` and verify the smoke report records `spinner.renderer === "offscreen"` on supported Chrome.
-
-### 7. Wrong vs Correct
-
-#### Wrong
-
-```css
-.mt-x-spinner svg circle {
-  animation: mt-x-spin-arc 1.8s ease-in-out infinite;
-}
-
-@keyframes mt-x-spin-arc {
-  50% {
-    stroke-dasharray: 25, 37.7;
-    stroke-dashoffset: -12;
-  }
-}
-```
-
-#### Correct
-
-```css
-.mt-x-spinner {
-  will-change: transform;
-  animation: mt-x-spin-rotate 1.2s linear infinite;
-}
-
-.mt-x-spinner svg circle {
-  stroke-dasharray: 24, 37.7;
-  stroke-dashoffset: 0;
-}
-```
-
----
 
 ## Testing Requirements
 

@@ -46,7 +46,6 @@ import { ProgressJankMonitor } from './progressJank';
 
 const photoStateCacheLimit = 200;
 const loggedProgressJankReports = new Set<string>();
-const pipelineProgressPaintBarrierStages = new Set(['preload', 'detect', 'bubble', 'ocr', 'parallel', 'typeset']);
 
 const stageLabelMap: Record<string, string> = {
   load: '加载图片',
@@ -186,28 +185,12 @@ async function getRunPipeline(): Promise<typeof import('../../pipeline/orchestra
   return module.runPipeline;
 }
 
-function waitForNextPaint(maxWaitMs = 80): Promise<void> {
+function waitForNextPaint(): Promise<void> {
   return new Promise((resolve) => {
-    let settled = false;
-    const timeout = window.setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      resolve();
-    }, maxWaitMs);
-    const finish = (): void => {
-      if (settled) return;
-      settled = true;
-      window.clearTimeout(timeout);
-      resolve();
-    };
     window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(finish);
+      window.requestAnimationFrame(() => resolve());
     });
   });
-}
-
-function shouldWaitForPipelineProgressPaint(progress: PipelineProgress): boolean {
-  return pipelineProgressPaintBarrierStages.has(progress.stage);
 }
 
 export class TranslatorCore {
@@ -269,7 +252,6 @@ export class TranslatorCore {
 
     for (const [key, mounted] of this.mounted) {
       if (!currentKeys.has(key)) {
-        mounted.ui.dispose();
         mounted.ui.host.remove();
         this.mounted.delete(key);
       }
@@ -421,11 +403,8 @@ export class TranslatorCore {
     let progressJank: ProgressJankReport | null = null;
     try {
       const runPipeline = await getRunPipeline();
-      const artifacts = await runPipeline(file, toPipelineConfig(runSettings.settings), async (progress: PipelineProgress) => {
+      const artifacts = await runPipeline(file, toPipelineConfig(runSettings.settings), (progress: PipelineProgress) => {
         this.updatePipelineProgress(state, progress, onProgress, jankMonitor);
-        if (shouldWaitForPipelineProgressPaint(progress)) {
-          await waitForNextPaint();
-        }
       });
 
       const translatedBlob = jankMonitor
@@ -648,8 +627,6 @@ export class TranslatorCore {
         (bar.translateAllBtn.querySelector('.mt-x-label') as HTMLElement).textContent = '翻译全部';
       }
     }
-
-    bar.syncSpinners(this.translateCurrentRunning, this.translateAllRunning);
   }
 
   private async handleTranslateCurrentClick(): Promise<void> {
@@ -844,7 +821,6 @@ export class TranslatorCore {
         sourceOriginalUrl = null;
       }
       this.states.delete(key);
-      ui.dispose();
       ui.host.remove();
     };
 
@@ -960,7 +936,6 @@ export class TranslatorCore {
         screenshotOriginalUrl = null;
       }
       this.states.delete(key);
-      ui.dispose();
       ui.host.remove();
     };
 
@@ -1174,7 +1149,6 @@ export class TranslatorCore {
 
   private teardownReadingBar(): void {
     if (this.readingBarUi?.host) {
-      this.readingBarUi.dispose();
       this.readingBarUi.host.remove();
     }
     this.readingBarUi = null;

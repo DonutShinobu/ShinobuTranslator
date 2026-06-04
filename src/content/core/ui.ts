@@ -150,13 +150,17 @@ export function injectStyles(): void {
       --mt-error-text: oklch(0.82 0.12 25 / 0.85);
       --mt-glow-center: oklch(0.95 0.03 250 / 0.22);
       --mt-glow-mid: oklch(0.95 0.03 250 / 0.04);
-      --mt-stage-bg: oklch(0.16 0.012 250 / 0.94);
-      --mt-stage-border: oklch(0.9 0.012 250 / 0.22);
-      --mt-stage-row: oklch(0.92 0.01 250 / 0.06);
-      --mt-stage-track: oklch(0.94 0.01 250 / 0.14);
-      --mt-stage-fill: oklch(0.72 0.12 350 / 0.96);
-      --mt-stage-chip-bg: oklch(0.92 0.01 250 / 0.1);
-      --mt-stage-chip-border: oklch(0.92 0.01 250 / 0.18);
+      --mt-stage-bg: var(--mt-bg, oklch(0.14 0.01 250 / 0.72));
+      --mt-stage-bg-hover: var(--mt-bg-hover, oklch(0.14 0.01 250 / 0.85));
+      --mt-stage-bg-active: var(--mt-bg-active, oklch(0.14 0.01 250 / 0.92));
+      --mt-stage-border: var(--mt-border, oklch(0.92 0.01 250 / 0.85));
+      --mt-stage-border-soft: oklch(0.92 0.02 350 / 0.2);
+      --mt-stage-muted: var(--mt-text-detail, oklch(0.94 0.01 250 / 0.7));
+      --mt-stage-track: oklch(0.94 0.02 350 / 0.18);
+      --mt-stage-fill: oklch(0.77 0.1 350 / 0.94);
+      --mt-stage-fill-soft: oklch(0.83 0.07 350 / 0.5);
+      --mt-stage-node-bg: oklch(0.22 0.022 350 / 0.44);
+      --mt-stage-node-border: oklch(0.86 0.04 350 / 0.22);
     }
 
     /* Light theme (Pixiv) */
@@ -174,13 +178,17 @@ export function injectStyles(): void {
       --mt-error-text: oklch(0.45 0.12 25 / 0.85);
       --mt-glow-center: oklch(0.35 0.02 250 / 0.18);
       --mt-glow-mid: oklch(0.35 0.02 250 / 0.03);
-      --mt-stage-bg: oklch(0.98 0.006 250 / 0.96);
-      --mt-stage-border: oklch(0.55 0.012 250 / 0.22);
-      --mt-stage-row: oklch(0.82 0.012 250 / 0.12);
-      --mt-stage-track: oklch(0.72 0.012 250 / 0.16);
-      --mt-stage-fill: oklch(0.68 0.13 350 / 0.9);
-      --mt-stage-chip-bg: oklch(0.9 0.018 250 / 0.66);
-      --mt-stage-chip-border: oklch(0.55 0.012 250 / 0.18);
+      --mt-stage-bg: var(--mt-bg, oklch(0.97 0.005 250 / 0.82));
+      --mt-stage-bg-hover: var(--mt-bg-hover, oklch(0.97 0.005 250 / 0.88));
+      --mt-stage-bg-active: var(--mt-bg-active, oklch(0.97 0.005 250 / 0.92));
+      --mt-stage-border: var(--mt-border, oklch(0.55 0.01 250 / 0.7));
+      --mt-stage-border-soft: oklch(0.76 0.035 350 / 0.24);
+      --mt-stage-muted: var(--mt-text-detail, oklch(0.2 0.01 250 / 0.7));
+      --mt-stage-track: oklch(0.86 0.03 350 / 0.64);
+      --mt-stage-fill: oklch(0.7 0.105 350 / 0.9);
+      --mt-stage-fill-soft: oklch(0.82 0.055 350 / 0.62);
+      --mt-stage-node-bg: oklch(0.985 0.016 350 / 0.76);
+      --mt-stage-node-border: oklch(0.78 0.04 350 / 0.28);
     }
 
     .mt-x-overlay-inline {
@@ -325,24 +333,29 @@ export function injectStyles(): void {
 
     .mt-x-stage-card {
       display: none;
-      width: min(320px, calc(100vw - 24px));
-      max-width: 320px;
+      width: min(286px, calc(100vw - 24px));
+      max-width: 286px;
+      margin-top: 2px;
       box-sizing: border-box;
       border: 1px solid var(--mt-stage-border, oklch(0.9 0.012 250 / 0.22));
-      border-radius: 8px;
+      border-radius: 18px;
       background: var(--mt-stage-bg, oklch(0.16 0.012 250 / 0.86));
       color: var(--mt-text, oklch(0.94 0.01 250));
-      box-shadow: 0 10px 24px oklch(0 0 0 / 0.2);
+      box-shadow:
+        0 8px 22px oklch(0 0 0 / 0.14),
+        inset 0 1px 0 oklch(1 0 0 / 0.08);
       overflow: hidden;
       font-family: "MTX-SourceHanSans-CN", "MTX-SourceHanSans-TW", system-ui, sans-serif;
       text-shadow: none;
+      backdrop-filter: blur(14px) saturate(1.15);
+      -webkit-backdrop-filter: blur(14px) saturate(1.15);
     }
     .mt-x-stage-card[data-visible='true'] {
       display: block;
     }
     .mt-x-stage-card-toggle {
       width: 100%;
-      min-height: 42px;
+      min-height: 34px;
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto auto;
       align-items: center;
@@ -351,13 +364,13 @@ export function injectStyles(): void {
       background: transparent;
       color: inherit;
       cursor: pointer;
-      padding: 8px 10px;
+      padding: 6px 9px 6px 11px;
       text-align: left;
       font: inherit;
       letter-spacing: 0;
     }
     .mt-x-stage-card-toggle:hover {
-      background: var(--mt-stage-row, oklch(0.92 0.01 250 / 0.06));
+      background: var(--mt-stage-bg-hover, oklch(0.92 0.01 250 / 0.06));
     }
     .mt-x-stage-card-toggle:focus-visible {
       outline: 2px solid var(--mt-focus, oklch(0.6 0.15 250 / 0.8));
@@ -370,26 +383,40 @@ export function injectStyles(): void {
       gap: 2px;
     }
     .mt-x-stage-card-heading {
-      font-size: 12px;
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11.5px;
       line-height: 1.1;
-      font-weight: 650;
+      font-weight: 640;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    .mt-x-stage-card-heading::before {
+      width: 5px;
+      height: 5px;
+      flex: 0 0 auto;
+      border-radius: 50%;
+      background: var(--mt-stage-fill, oklch(0.72 0.12 350 / 0.96));
+      box-shadow: 0 0 0 3px oklch(0.78 0.08 350 / 0.12);
+      content: "";
+    }
     .mt-x-stage-card-meta {
-      color: var(--mt-text-detail, oklch(0.94 0.01 250 / 0.7));
-      font-size: 11px;
+      color: var(--mt-stage-muted, oklch(0.94 0.01 250 / 0.7));
+      font-size: 10.5px;
       line-height: 1.15;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
     .mt-x-stage-card-total {
-      font-size: 12px;
-      font-weight: 650;
+      font-size: 11.5px;
+      font-weight: 660;
       line-height: 1;
       white-space: nowrap;
+      color: var(--mt-stage-fill, oklch(0.72 0.12 350 / 0.96));
     }
     .mt-x-stage-card-chevron {
       width: 7px;
@@ -405,94 +432,102 @@ export function injectStyles(): void {
     }
     .mt-x-stage-card-body {
       display: none;
-      padding: 0 10px 10px;
-      border-top: 1px solid var(--mt-stage-border, oklch(0.9 0.012 250 / 0.22));
+      padding: 0 10px 9px;
+      border-top: 1px solid var(--mt-stage-border-soft, oklch(0.9 0.012 250 / 0.22));
     }
     .mt-x-stage-card[data-expanded='true'] .mt-x-stage-card-body {
       display: block;
     }
-    .mt-x-stage-list {
+    .mt-x-stage-timeline {
+      position: relative;
       display: flex;
-      flex-direction: column;
-      gap: 7px;
-      padding-top: 9px;
-    }
-    .mt-x-stage-row {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 6px 10px;
       align-items: center;
-    }
-    .mt-x-stage-name {
-      min-width: 0;
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      font-size: 11px;
-      line-height: 1.2;
-      font-weight: 560;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .mt-x-stage-fallback {
-      flex: 0 0 auto;
-      border: 1px solid var(--mt-stage-chip-border, oklch(0.92 0.01 250 / 0.18));
-      border-radius: 999px;
-      padding: 1px 5px;
-      background: var(--mt-stage-chip-bg, oklch(0.92 0.01 250 / 0.1));
-      color: var(--mt-text-detail, oklch(0.94 0.01 250 / 0.7));
-      font-size: 10px;
-      line-height: 1.2;
-    }
-    .mt-x-stage-value {
-      color: var(--mt-text-detail, oklch(0.94 0.01 250 / 0.7));
-      font-size: 11px;
-      line-height: 1.2;
-      white-space: nowrap;
-    }
-    .mt-x-stage-track {
-      grid-column: 1 / -1;
-      height: 5px;
+      gap: 2px;
+      height: 13px;
+      margin-top: 9px;
+      padding: 2px;
+      border: 1px solid var(--mt-stage-border-soft, oklch(0.9 0.012 250 / 0.18));
       border-radius: 999px;
       background: var(--mt-stage-track, oklch(0.94 0.01 250 / 0.14));
       overflow: hidden;
     }
-    .mt-x-stage-fill {
+    .mt-x-stage-segment {
+      position: relative;
+      min-width: 5px;
       height: 100%;
-      width: 0%;
-      border-radius: inherit;
-      background: var(--mt-stage-fill, oklch(0.72 0.12 350 / 0.96));
-      transition: width 180ms cubic-bezier(0.22, 1, 0.36, 1);
+      border-radius: 999px;
+      background: color-mix(in oklab, var(--mt-stage-fill, oklch(0.72 0.12 350 / 0.96)) var(--mt-stage-alpha, 76%), var(--mt-stage-fill-soft, oklch(0.83 0.07 350 / 0.5)));
+      cursor: help;
+      opacity: 0.9;
+      transition: opacity 0.15s ease-out, transform 0.15s ease-out, filter 0.15s ease-out;
+    }
+    .mt-x-stage-segment:hover {
+      opacity: 1;
+      filter: saturate(1.15);
+      transform: scaleY(1.28);
     }
     .mt-x-stage-runtime {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      padding-top: 10px;
-    }
-    .mt-x-stage-chip {
-      min-width: 0;
-      display: inline-flex;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       align-items: center;
-      gap: 4px;
-      max-width: 100%;
-      border: 1px solid var(--mt-stage-chip-border, oklch(0.92 0.01 250 / 0.18));
-      border-radius: 999px;
-      padding: 3px 7px;
-      background: var(--mt-stage-chip-bg, oklch(0.92 0.01 250 / 0.1));
-      color: var(--mt-text-detail, oklch(0.94 0.01 250 / 0.7));
-      font-size: 10.5px;
-      line-height: 1.2;
-      white-space: nowrap;
+      gap: 5px;
+      padding-top: 8px;
     }
-    .mt-x-stage-chip strong {
+    .mt-x-runtime-node {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      grid-template-areas:
+        "dot label"
+        "dot provider";
+      align-items: center;
+      column-gap: 5px;
+      min-height: 40px;
+      box-sizing: border-box;
+      border: 1px solid var(--mt-stage-node-border, oklch(0.85 0.05 175 / 0.7));
+      border-radius: 14px;
+      padding: 6px 8px;
+      background: var(--mt-stage-node-bg, oklch(0.16 0.03 175 / 0.72));
+      color: var(--mt-stage-muted, oklch(0.94 0.01 250 / 0.7));
+      box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.06);
+    }
+    .mt-x-runtime-dot {
+      grid-area: dot;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--mt-stage-fill, oklch(0.72 0.12 350 / 0.96));
+      box-shadow: 0 0 0 3px oklch(0.72 0.1 350 / 0.1);
+    }
+    .mt-x-runtime-node[data-status='disabled'] .mt-x-runtime-dot,
+    .mt-x-runtime-node[data-status='unknown'] .mt-x-runtime-dot {
+      background: var(--mt-stage-muted, oklch(0.94 0.01 250 / 0.7));
+      box-shadow: none;
+      opacity: 0.58;
+    }
+    .mt-x-runtime-node[data-status='enabled'] {
+      border-color: var(--mt-stage-border-soft, oklch(0.9 0.012 250 / 0.22));
+    }
+    .mt-x-runtime-label {
+      grid-area: label;
+      min-width: 0;
       color: var(--mt-text, oklch(0.94 0.01 250));
+      font-size: 10.5px;
       font-weight: 650;
+      line-height: 1.1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
-    .mt-x-stage-chip[data-status='disabled'],
-    .mt-x-stage-chip[data-status='unknown'] {
-      opacity: 0.74;
+    .mt-x-runtime-provider {
+      grid-area: provider;
+      min-width: 0;
+      margin-top: 2px;
+      font-size: 9.5px;
+      line-height: 1.15;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     /* Reading mode bottom bar */
@@ -741,8 +776,9 @@ export function injectStyles(): void {
       height: 100%;
       box-sizing: border-box;
       object-fit: fill;
-      pointer-events: none;
+      pointer-events: auto;
       user-select: none;
+      -webkit-user-drag: none;
       box-shadow: 0 12px 32px oklch(0 0 0 / 0.24);
       transition: opacity 0.16s ease-out, filter 0.16s ease-out;
     }
@@ -876,7 +912,7 @@ export function createUiElements(): UiElements {
   const stageTimingCardBody = document.createElement('div');
   stageTimingCardBody.className = 'mt-x-stage-card-body';
   const stageTimingStageList = document.createElement('div');
-  stageTimingStageList.className = 'mt-x-stage-list';
+  stageTimingStageList.className = 'mt-x-stage-timeline';
   const stageTimingRuntimeList = document.createElement('div');
   stageTimingRuntimeList.className = 'mt-x-stage-runtime';
   stageTimingCardBody.appendChild(stageTimingStageList);
@@ -914,6 +950,10 @@ function clampPercent(percent: number): number {
   return Math.min(100, Math.max(0, percent));
 }
 
+function formatStageTimingTotalBadge(totalText: string): string {
+  return totalText.replace(/^总耗时：/, '');
+}
+
 function renderStageTimingCard(ui: UiElements, state: PhotoState | null): void {
   const card = state?.stageTimingCard;
   const visible = !!card && (state.status === 'translated' || state.status === 'showingOriginal');
@@ -931,53 +971,41 @@ function renderStageTimingCard(ui: UiElements, state: PhotoState | null): void {
   ui.stageTimingCard.dataset.expanded = card.expanded ? 'true' : 'false';
   ui.stageTimingCardToggleButton.setAttribute('aria-expanded', card.expanded ? 'true' : 'false');
   ui.stageTimingCardToggleButton.title = card.expanded ? '收起阶段明细' : '展开阶段明细';
-  ui.stageTimingCardTotal.textContent = card.totalText;
-  ui.stageTimingCardMeta.textContent = `${card.stages.length} 个阶段 / ${card.runtimes.length} 个模型`;
+  ui.stageTimingCardTotal.textContent = formatStageTimingTotalBadge(card.totalText);
+  ui.stageTimingCardMeta.textContent = `${card.stages.length} 个阶段 · ${card.runtimes.length} 个模型`;
 
   ui.stageTimingStageList.replaceChildren();
+  ui.stageTimingStageList.className = 'mt-x-stage-timeline';
   for (const stage of card.stages) {
-    const row = document.createElement('div');
-    row.className = 'mt-x-stage-row';
-
-    const name = document.createElement('span');
-    name.className = 'mt-x-stage-name';
-    const label = document.createElement('span');
-    label.textContent = stage.label;
-    name.appendChild(label);
-    if (stage.fallbackText) {
-      const fallback = document.createElement('span');
-      fallback.className = 'mt-x-stage-fallback';
-      fallback.textContent = stage.fallbackText;
-      name.appendChild(fallback);
-    }
-
-    const value = document.createElement('span');
-    value.className = 'mt-x-stage-value';
-    value.textContent = `${stage.durationText} / ${stage.percentText}`;
-
-    const track = document.createElement('div');
-    track.className = 'mt-x-stage-track';
-    const fill = document.createElement('div');
-    fill.className = 'mt-x-stage-fill';
-    fill.style.width = `${clampPercent(stage.percent)}%`;
-    track.appendChild(fill);
-
-    row.appendChild(name);
-    row.appendChild(value);
-    row.appendChild(track);
-    ui.stageTimingStageList.appendChild(row);
+    const segment = document.createElement('span');
+    segment.className = 'mt-x-stage-segment';
+    const stagePercent = clampPercent(stage.percent);
+    segment.style.flexGrow = String(Math.max(1, stagePercent));
+    segment.style.setProperty('--mt-stage-alpha', `${Math.min(92, Math.max(44, Math.round(stagePercent + 48)))}%`);
+    const fallbackText = stage.fallbackText ? `，${stage.fallbackText}` : '';
+    const stageDescription = `${stage.label}：${stage.durationText}，${stage.percentText}${fallbackText}`;
+    segment.title = stageDescription;
+    segment.setAttribute('aria-label', stageDescription);
+    ui.stageTimingStageList.appendChild(segment);
   }
 
   ui.stageTimingRuntimeList.replaceChildren();
   for (const runtime of card.runtimes) {
     const chip = document.createElement('span');
-    chip.className = 'mt-x-stage-chip';
+    chip.className = 'mt-x-runtime-node';
     chip.dataset.status = runtime.status;
     chip.title = runtime.detail;
+    const dot = document.createElement('span');
+    dot.className = 'mt-x-runtime-dot';
     const label = document.createElement('strong');
+    label.className = 'mt-x-runtime-label';
     label.textContent = runtime.label;
+    const provider = document.createElement('span');
+    provider.className = 'mt-x-runtime-provider';
+    provider.textContent = runtime.providerText;
+    chip.appendChild(dot);
     chip.appendChild(label);
-    chip.appendChild(document.createTextNode(runtime.providerText));
+    chip.appendChild(provider);
     ui.stageTimingRuntimeList.appendChild(chip);
   }
 }
@@ -1033,11 +1061,11 @@ export function renderUi(ui: UiElements, state: PhotoState | null): void {
   } else if (state.status === 'translated') {
     nextText = '显示原图';
     nextIconKey = 'original';
-    nextDetailText = state.stageTimingCard ? '翻译完成' : state.elapsedText ? `翻译完成\n${state.elapsedText}` : '';
+    nextDetailText = state.stageTimingCard ? '' : state.elapsedText;
   } else if (state.status === 'showingOriginal') {
     nextText = '显示译图';
     nextIconKey = 'translated';
-    nextDetailText = state.stageTimingCard ? '当前显示原图' : state.elapsedText ? `当前显示原图\n${state.elapsedText}` : '';
+    nextDetailText = state.stageTimingCard ? '' : state.elapsedText;
   } else if (state.status === 'error') {
     nextText = '重试';
     nextIconKey = 'retry';

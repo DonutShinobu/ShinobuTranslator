@@ -59,6 +59,9 @@ export type ScreenshotResultUiElements = {
   closeButton: HTMLButtonElement;
   overlayPositioned: boolean;
   overlayAnchor: ScreenshotResultOverlayAnchor | null;
+  contextImageNormalLockY: 'top' | 'bottom' | null;
+  contextImageOverlayMode: string | null;
+  overlayMotionTimer: number | null;
 };
 
 export type ScreenshotResultOverlayAnchor = {
@@ -768,6 +771,12 @@ export function injectStyles(): void {
       align-items: flex-end;
       cursor: move;
     }
+    .mt-x-screenshot-result[data-overlay-motion='smooth'] .mt-x-overlay-inline {
+      transition:
+        left var(--mt-overlay-motion-ms, 240ms) cubic-bezier(0.16, 0.92, 0.18, 1),
+        right var(--mt-overlay-motion-ms, 240ms) cubic-bezier(0.16, 0.92, 0.18, 1),
+        top var(--mt-overlay-motion-ms, 240ms) cubic-bezier(0.16, 0.92, 0.18, 1);
+    }
     .mt-x-screenshot-result img {
       position: relative;
       z-index: 1;
@@ -1237,6 +1246,15 @@ type FloatingControlPosition = {
   anchorY: 'top' | 'bottom';
 };
 
+type ScreenshotResultOverlayPositionOptions = {
+  placement?: 'normal' | 'contextImage';
+  lockNormalWhenReachable?: boolean;
+  preferOutsideFallback?: boolean;
+};
+
+const floatingControlInset = 8;
+const floatingControlGap = 8;
+
 function clampViewportPosition(value: number, size: number, viewportSize: number, inset: number): number {
   const max = Math.max(inset, viewportSize - size - inset);
   return Math.min(max, Math.max(inset, value));
@@ -1247,22 +1265,31 @@ function getFloatingControlPosition(
   controlWidth: number,
   controlHeight: number,
 ): FloatingControlPosition {
-  const inset = 8;
-  const gap = 8;
   const preferredLeft = rect.left + rect.width - controlWidth;
   const left = clampViewportPosition(
     preferredLeft,
     controlWidth,
     window.innerWidth,
-    inset,
+    floatingControlInset,
   );
-  const anchorY = rect.top >= controlHeight + gap + inset ? 'top' : 'bottom';
+  const anchorY = rect.top >= controlHeight + floatingControlGap + floatingControlInset ? 'top' : 'bottom';
   const preferredTop = anchorY === 'top'
-    ? rect.top - controlHeight - gap
-    : rect.top + rect.height + gap;
-  const top = clampViewportPosition(preferredTop, controlHeight, window.innerHeight, inset);
-  const anchorX = left <= inset ? 'left' : 'right';
+    ? rect.top - controlHeight - floatingControlGap
+    : rect.top + rect.height + floatingControlGap;
+  const top = clampViewportPosition(preferredTop, controlHeight, window.innerHeight, floatingControlInset);
+  const anchorX = left <= floatingControlInset ? 'left' : 'right';
   return { left, top, anchorX, anchorY };
+}
+
+function getReachableNormalAnchorY(
+  rect: ScreenshotRect,
+  controlHeight: number,
+): 'top' | 'bottom' | null {
+  const topAvailable = rect.top >= controlHeight + floatingControlGap + floatingControlInset;
+  if (topAvailable) return 'top';
+  const bottomAvailable = rect.top + rect.height + floatingControlGap + controlHeight <=
+    window.innerHeight - floatingControlInset;
+  return bottomAvailable ? 'bottom' : null;
 }
 
 function positionElementNearViewportRect(element: HTMLElement, rect: ScreenshotRect): void {
@@ -1276,20 +1303,204 @@ function positionElementNearViewportRect(element: HTMLElement, rect: ScreenshotR
   element.style.top = `${position.top}px`;
 }
 
-function positionScreenshotResultOverlay(ui: ScreenshotResultUiElements): boolean {
+function isUsableViewportAnchorRect(rect: ScreenshotRect | undefined): rect is ScreenshotRect {
+  return rect !== undefined && rect.width > 0 && rect.height > 0;
+}
+
+function getStickyInsideRightContextImageAnchor(
+  hostRect: DOMRect,
+  visibleRect: ScreenshotRect,
+  overlayWidth: number,
+): ScreenshotResultOverlayAnchor {
+  const visibleLeft = Math.max(0, visibleRect.left);
+  const visibleRight = Math.min(window.innerWidth, visibleRect.left + visibleRect.width);
+  const visibleTop = Math.max(0, visibleRect.top);
+  const minLeft = visibleLeft + floatingControlInset;
+  const maxLeft = Math.max(minLeft, visibleRight - overlayWidth - floatingControlInset);
+  const overlayLeft = maxLeft;
+  const overlayTop = visibleTop + floatingControlInset;
+  return {
+    anchorX: 'right',
+    anchorY: 'top',
+    offsetX: hostRect.right - overlayLeft - overlayWidth,
+    offsetY: overlayTop - hostRect.top,
+  };
+}
+
+function getOutsideRightContextImageAnchor(
+  hostRect: DOMRect,
+  visibleRect: ScreenshotRect,
+  overlayWidth: number,
+  overlayHeight: number,
+): ScreenshotResultOverlayAnchor {
+  const visibleLeft = Math.max(0, visibleRect.left);
+  const visibleRight = Math.min(window.innerWidth, visibleRect.left + visibleRect.width);
+  const visibleTop = Math.max(0, visibleRect.top);
+  const minLeft = visibleLeft + floatingControlInset;
+  const maxLeft = Math.max(minLeft, visibleRight - overlayWidth - floatingControlInset);
+  const overlayLeft = maxLeft;
+  let overlayTop = visibleTop + floatingControlInset;
+
+  const topEdgeVisible = hostRect.top > 0 && hostRect.top < overlayHeight + floatingControlGap + floatingControlInset;
+  if (topEdgeVisible) {
+    overlayTop = Math.max(floatingControlInset, hostRect.top - overlayHeight - floatingControlGap);
+  }
+
+  return {
+    anchorX: 'right',
+    anchorY: 'top',
+    offsetX: hostRect.right - overlayLeft - overlayWidth,
+    offsetY: overlayTop - hostRect.top,
+  };
+}
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function getOverlayMotionDurationMs(distancePx: number): number {
+  if (!Number.isFinite(distancePx) || distancePx <= 0) return 180;
+  const normalized = Math.sqrt(distancePx);
+  return Math.round(clampNumber(180 + normalized * 22, 260, 820));
+}
+
+function getOverlayAnchorViewportPosition(
+  hostRect: DOMRect,
+  anchor: ScreenshotResultOverlayAnchor,
+  overlayWidth: number,
+): { left: number; top: number } {
+  return {
+    left: anchor.anchorX === 'right'
+      ? hostRect.right - anchor.offsetX - overlayWidth
+      : hostRect.left + anchor.offsetX,
+    top: anchor.anchorY === 'bottom'
+      ? hostRect.bottom + anchor.offsetY
+      : hostRect.top + anchor.offsetY,
+  };
+}
+
+function prepareContextImageOverlayMotion(
+  ui: ScreenshotResultUiElements,
+  mode: string,
+  previousOverlayRect: DOMRect | null,
+  hostRect: DOMRect,
+  anchor: ScreenshotResultOverlayAnchor,
+  overlayWidth: number,
+): void {
+  const previousMode = ui.contextImageOverlayMode;
+  if (previousMode === mode) return;
+  ui.contextImageOverlayMode = mode;
+  if (previousMode === null) return;
+  const nextOverlayPosition = getOverlayAnchorViewportPosition(hostRect, anchor, overlayWidth);
+  const distancePx = previousOverlayRect
+    ? Math.hypot(
+        nextOverlayPosition.left - previousOverlayRect.left,
+        nextOverlayPosition.top - previousOverlayRect.top,
+      )
+    : 0;
+  const durationMs = getOverlayMotionDurationMs(distancePx);
+  ui.host.style.setProperty('--mt-overlay-motion-ms', `${durationMs}ms`);
+  ui.host.dataset.overlayMotion = 'smooth';
+  if (ui.overlayMotionTimer !== null) {
+    window.clearTimeout(ui.overlayMotionTimer);
+  }
+  ui.overlayMotionTimer = window.setTimeout(() => {
+    delete ui.host.dataset.overlayMotion;
+    ui.overlayMotionTimer = null;
+  }, durationMs + 80);
+}
+
+function applyLockedNormalContextImageOverlayPosition(
+  ui: ScreenshotResultUiElements,
+  hostRect: DOMRect,
+  overlayWidth: number,
+  overlayHeight: number,
+  anchorY: 'top' | 'bottom',
+): void {
+  const previousOverlayRect = ui.overlay.getBoundingClientRect();
+  const anchor: ScreenshotResultOverlayAnchor = {
+    anchorX: 'right',
+    anchorY,
+    offsetX: 0,
+    offsetY: anchorY === 'top'
+      ? -overlayHeight - floatingControlGap
+      : floatingControlGap,
+  };
+  prepareContextImageOverlayMotion(ui, `normal-${anchorY}`, previousOverlayRect, hostRect, anchor, overlayWidth);
+  ui.overlayAnchor = anchor;
+  ui.overlay.dataset.anchorX = 'right';
+  syncScreenshotResultOverlayPosition(ui);
+}
+
+function syncContextImageOverlayPosition(
+  ui: ScreenshotResultUiElements,
+  hostRect: DOMRect,
+  visibleRect: ScreenshotRect,
+  overlayWidth: number,
+  overlayHeight: number,
+  options: ScreenshotResultOverlayPositionOptions,
+): boolean {
+  if (ui.contextImageNormalLockY) {
+    applyLockedNormalContextImageOverlayPosition(
+      ui,
+      hostRect,
+      overlayWidth,
+      overlayHeight,
+      ui.contextImageNormalLockY,
+    );
+    return true;
+  }
+
+  const reachableAnchorY = getReachableNormalAnchorY(hostRect, overlayHeight);
+  if (reachableAnchorY && options.lockNormalWhenReachable) {
+    ui.contextImageNormalLockY = reachableAnchorY;
+    applyLockedNormalContextImageOverlayPosition(ui, hostRect, overlayWidth, overlayHeight, reachableAnchorY);
+    return true;
+  }
+
+  if (reachableAnchorY) {
+    return positionScreenshotResultOverlay(ui);
+  }
+
+  const anchor = options.preferOutsideFallback
+    ? getOutsideRightContextImageAnchor(hostRect, visibleRect, overlayWidth, overlayHeight)
+    : getStickyInsideRightContextImageAnchor(hostRect, visibleRect, overlayWidth);
+  const previousOverlayRect = ui.overlay.getBoundingClientRect();
+  prepareContextImageOverlayMotion(ui, 'sticky', previousOverlayRect, hostRect, anchor, overlayWidth);
+  ui.overlayAnchor = anchor;
+  ui.overlay.dataset.anchorX = anchor.anchorX;
+  syncScreenshotResultOverlayPosition(ui);
+  return true;
+}
+
+function positionScreenshotResultOverlay(
+  ui: ScreenshotResultUiElements,
+  anchorViewportRect?: ScreenshotRect,
+  options: ScreenshotResultOverlayPositionOptions = {},
+): boolean {
   const hostRect = ui.host.getBoundingClientRect();
   if (hostRect.width <= 0 || hostRect.height <= 0) return false;
   const overlayRect = ui.overlay.getBoundingClientRect();
   const overlayWidth = overlayRect.width || 64;
+  const overlayHeight = overlayRect.height || 34;
+  const targetRect = isUsableViewportAnchorRect(anchorViewportRect)
+    ? anchorViewportRect
+    : {
+        left: hostRect.left,
+        top: hostRect.top,
+        width: hostRect.width,
+        height: hostRect.height,
+      };
+  if (options.placement === 'contextImage') {
+    return syncContextImageOverlayPosition(ui, hostRect, targetRect, overlayWidth, overlayHeight, options);
+  }
+
+  ui.contextImageNormalLockY = null;
+  ui.contextImageOverlayMode = null;
   const position = getFloatingControlPosition(
-    {
-      left: hostRect.left,
-      top: hostRect.top,
-      width: hostRect.width,
-      height: hostRect.height,
-    },
+    targetRect,
     overlayWidth,
-    overlayRect.height || 34,
+    overlayHeight,
   );
   const overlayLeft = position.left - hostRect.left;
   const overlayTop = position.top - hostRect.top;
@@ -1302,6 +1513,41 @@ function positionScreenshotResultOverlay(ui: ScreenshotResultUiElements): boolea
   ui.overlay.dataset.anchorX = position.anchorX;
   syncScreenshotResultOverlayPosition(ui);
   return true;
+}
+
+export function setScreenshotResultRect(ui: ScreenshotResultUiElements, rect: ScreenshotRect): void {
+  setRectStyle(ui.host, rect);
+}
+
+export function repositionScreenshotResultOverlay(
+  ui: ScreenshotResultUiElements,
+  anchorViewportRect?: ScreenshotRect,
+  options: ScreenshotResultOverlayPositionOptions = {},
+): void {
+  ui.overlayPositioned = positionScreenshotResultOverlay(ui, anchorViewportRect, options);
+}
+
+export function freezeScreenshotResultOverlayPosition(ui: ScreenshotResultUiElements): void {
+  const hostRect = ui.host.getBoundingClientRect();
+  const overlayRect = ui.overlay.getBoundingClientRect();
+  if (hostRect.width <= 0 || hostRect.height <= 0 || overlayRect.width <= 0 || overlayRect.height <= 0) {
+    return;
+  }
+  const leftOffset = overlayRect.left - hostRect.left;
+  const rightOffset = hostRect.right - overlayRect.right;
+  const topOffset = overlayRect.top - hostRect.top;
+  const bottomOffset = overlayRect.top - hostRect.bottom;
+  const anchorX = Math.abs(rightOffset) <= Math.abs(leftOffset) ? 'right' : 'left';
+  const anchorY = Math.abs(bottomOffset) <= Math.abs(topOffset) ? 'bottom' : 'top';
+  ui.overlayAnchor = {
+    anchorX,
+    anchorY,
+    offsetX: anchorX === 'right' ? rightOffset : leftOffset,
+    offsetY: anchorY === 'bottom' ? bottomOffset : topOffset,
+  };
+  ui.overlay.dataset.anchorX = anchorX;
+  ui.overlayPositioned = true;
+  syncScreenshotResultOverlayPosition(ui);
 }
 
 function formatCssCalcFromFullSize(offset: number): string {
@@ -1748,7 +1994,16 @@ export function createScreenshotResultUi(rect: ScreenshotRect): ScreenshotResult
 
   base.primaryAction.appendChild(closeButton);
   base.host.appendChild(image);
-  return { ...base, image, closeButton, overlayPositioned: false, overlayAnchor: null };
+  return {
+    ...base,
+    image,
+    closeButton,
+    overlayPositioned: false,
+    overlayAnchor: null,
+    contextImageNormalLockY: null,
+    contextImageOverlayMode: null,
+    overlayMotionTimer: null,
+  };
 }
 
 export function renderScreenshotResultUi(

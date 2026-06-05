@@ -66,6 +66,7 @@ core.start();
 type ContextMenuTranslateTarget =
   | {
       kind: 'image';
+      element: HTMLImageElement;
       originalUrl: string;
       documentRect: ScreenshotRect;
     }
@@ -208,6 +209,7 @@ function findContextMenuTarget(event: MouseEvent): ContextMenuTranslateTarget | 
     if (originalUrl && isUsableScreenshotRect(documentRect)) {
       return {
         kind: 'image',
+        element: target,
         originalUrl,
         documentRect,
       };
@@ -284,6 +286,7 @@ function findHoverTranslateTarget(): ContextMenuTranslateTarget | null {
     if (originalUrl && isUsableScreenshotRect(documentRect)) {
       return {
         kind: 'image',
+        element: hoverElement,
         originalUrl,
         documentRect,
       };
@@ -296,7 +299,7 @@ function findHoverTranslateTarget(): ContextMenuTranslateTarget | null {
 
 async function translateTarget(target: ContextMenuTranslateTarget): Promise<void> {
   if (target.kind === 'image') {
-    await core.translateImageInFloatingOverlay(target.originalUrl, target.documentRect);
+    await core.translateImageInFloatingOverlay(target.originalUrl, target.element, target.documentRect);
     return;
   }
   await core.translateScreenshotSelection(target.selection);

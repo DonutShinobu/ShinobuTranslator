@@ -37,14 +37,18 @@ import {
   createScreenshotResultUi,
   handleDebugDownload,
   injectStyles,
+  repositionScreenshotResultOverlay,
   renderScreenshotResultUi,
   renderUi,
   requestScreenshotSelection,
+  setScreenshotResultRect,
 } from './ui';
 import type { ScreenshotResultUiElements, UiElements } from './ui';
 import {
   cropScreenshotToFile,
   scaleScreenshotRectAroundPoint,
+  toDocumentScreenshotRect,
+  toViewportScreenshotRect,
 } from './screenshot';
 import type { ScreenshotRect, ScreenshotSelection } from './screenshot';
 import { ProgressJankMonitor } from './progressJank';
@@ -187,6 +191,43 @@ function waitForNextPaint(): Promise<void> {
       window.requestAnimationFrame(() => resolve());
     });
   });
+}
+
+type ContextImageAnchorRects = {
+  documentRect: ScreenshotRect;
+  visibleViewportRect: ScreenshotRect;
+};
+
+function toViewportRectFromDocumentRect(rect: ScreenshotRect): ScreenshotRect {
+  return {
+    left: rect.left - window.scrollX,
+    top: rect.top - window.scrollY,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+function toElementViewportRect(element: HTMLElement, fallbackDocumentRect: ScreenshotRect): ScreenshotRect {
+  if (!element.isConnected) return toViewportRectFromDocumentRect(fallbackDocumentRect);
+  const rect = element.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return toViewportRectFromDocumentRect(fallbackDocumentRect);
+  return {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height,
+  };
+}
+
+function resolveContextImageAnchorRects(
+  element: HTMLImageElement,
+  fallbackDocumentRect: ScreenshotRect,
+): ContextImageAnchorRects {
+  const viewportRect = toElementViewportRect(element, fallbackDocumentRect);
+  return {
+    documentRect: toDocumentScreenshotRect(viewportRect, window.scrollX, window.scrollY),
+    visibleViewportRect: toViewportScreenshotRect(viewportRect, window.innerWidth, window.innerHeight),
+  };
 }
 
 export class TranslatorCore {
@@ -906,18 +947,104 @@ export class TranslatorCore {
     await this.translateScreenshotSelection(selection);
   }
 
-  async translateImageInFloatingOverlay(originalUrl: string, documentRect: ScreenshotRect): Promise<void> {
+  async translateImageInFloatingOverlay(
+    originalUrl: string,
+    imageElement: HTMLImageElement,
+    fallbackDocumentRect: ScreenshotRect,
+  ): Promise<void> {
     const key = `context-image-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const state = this.ensureState(key, originalUrl);
-    const ui = createScreenshotResultUi(documentRect);
+    const ui = createScreenshotResultUi(fallbackDocumentRect);
     document.body.appendChild(ui.host);
 
     let disposed = false;
+    let imageAnchorDetached = false;
+    let anchorFrame: number | null = null;
+    let manualResultAnchorTracking = false;
     let detachDrag: (() => void) | null = null;
     let detachZoom: (() => void) | null = null;
     let sourceFile: File | null = null;
     let sourceOriginalUrl: string | null = null;
     let activeJankMonitor: ProgressJankMonitor | null = null;
+    let lastImageAnchorKey = '';
+    const toAnchorRectKey = (rect: ScreenshotRect): string => [
+      Math.round(rect.left * 10),
+      Math.round(rect.top * 10),
+      Math.round(rect.width * 10),
+      Math.round(rect.height * 10),
+    ].join(':');
+    const syncImageAnchor = (force = false): void => {
+      if (disposed || imageAnchorDetached) return;
+      const anchorRects = resolveContextImageAnchorRects(imageElement, fallbackDocumentRect);
+      const anchorKey = [
+        toAnchorRectKey(anchorRects.documentRect),
+        toAnchorRectKey(anchorRects.visibleViewportRect),
+        window.innerWidth,
+        window.innerHeight,
+      ].join('|');
+      if (!force && anchorKey === lastImageAnchorKey) return;
+      lastImageAnchorKey = anchorKey;
+      setScreenshotResultRect(ui, anchorRects.documentRect);
+      repositionScreenshotResultOverlay(ui, anchorRects.visibleViewportRect, { placement: 'contextImage' });
+    };
+    const syncManualResultAnchor = (force = false): void => {
+      if (disposed || !manualResultAnchorTracking) return;
+      const hostRect = ui.host.getBoundingClientRect();
+      if (hostRect.width <= 0 || hostRect.height <= 0) return;
+      const viewportRect: ScreenshotRect = {
+        left: hostRect.left,
+        top: hostRect.top,
+        width: hostRect.width,
+        height: hostRect.height,
+      };
+      const visibleViewportRect = toViewportScreenshotRect(
+        viewportRect,
+        window.innerWidth,
+        window.innerHeight,
+      );
+      const anchorKey = [
+        toAnchorRectKey(viewportRect),
+        toAnchorRectKey(visibleViewportRect),
+        window.innerWidth,
+        window.innerHeight,
+      ].join('|');
+      if (!force && anchorKey === lastImageAnchorKey) return;
+      lastImageAnchorKey = anchorKey;
+      repositionScreenshotResultOverlay(ui, visibleViewportRect, {
+        placement: 'contextImage',
+        lockNormalWhenReachable: true,
+        preferOutsideFallback: true,
+      });
+    };
+    const syncActiveAnchor = (force = false): void => {
+      if (manualResultAnchorTracking) {
+        syncManualResultAnchor(force);
+        return;
+      }
+      syncImageAnchor(force);
+    };
+    const scheduleAnchorSync = (): void => {
+      if (disposed || anchorFrame !== null) return;
+      anchorFrame = window.requestAnimationFrame(() => {
+        anchorFrame = null;
+        syncActiveAnchor();
+        scheduleAnchorSync();
+      });
+    };
+    const stopAnchorTracking = (): void => {
+      if (anchorFrame !== null) {
+        window.cancelAnimationFrame(anchorFrame);
+        anchorFrame = null;
+      }
+    };
+    const switchToManualResultAnchor = (): void => {
+      if (disposed || manualResultAnchorTracking) return;
+      syncImageAnchor(true);
+      imageAnchorDetached = true;
+      manualResultAnchorTracking = true;
+      lastImageAnchorKey = '';
+      syncManualResultAnchor(true);
+    };
     const render = (): void => {
       if (disposed) return;
       if (activeJankMonitor) {
@@ -925,10 +1052,12 @@ export class TranslatorCore {
       } else {
         renderScreenshotResultUi(ui, state);
       }
+      syncActiveAnchor(true);
     };
     const cleanup = (): void => {
       if (disposed) return;
       disposed = true;
+      stopAnchorTracking();
       detachDrag?.();
       detachZoom?.();
       this.disposeState(state);
@@ -960,8 +1089,10 @@ export class TranslatorCore {
     ui.stageTimingCardToggleButton.addEventListener('click', () => {
       this.toggleStageTimingCard(state, render);
     });
-    detachDrag = this.attachScreenshotResultDrag(ui);
-    detachZoom = this.attachScreenshotResultZoom(ui, render);
+    detachDrag = this.attachScreenshotResultDrag(ui, switchToManualResultAnchor);
+    detachZoom = this.attachScreenshotResultZoom(ui, render, switchToManualResultAnchor);
+    syncActiveAnchor(true);
+    scheduleAnchorSync();
 
     const ensureSourceFile = async (): Promise<File> => {
       if (sourceFile) return sourceFile;
@@ -1157,7 +1288,7 @@ export class TranslatorCore {
     await runScreenshotPipeline();
   }
 
-  private attachScreenshotResultDrag(ui: ScreenshotResultUiElements): () => void {
+  private attachScreenshotResultDrag(ui: ScreenshotResultUiElements, onDetach?: () => void): () => void {
     let dragging = false;
     let pointerId: number | null = null;
     let startClientX = 0;
@@ -1175,6 +1306,7 @@ export class TranslatorCore {
       }
       event.preventDefault();
       event.stopPropagation();
+      onDetach?.();
       dragging = true;
       pointerId = event.pointerId;
       startClientX = event.clientX;
@@ -1213,7 +1345,11 @@ export class TranslatorCore {
     };
   }
 
-  private attachScreenshotResultZoom(ui: ScreenshotResultUiElements, onZoom: () => void): () => void {
+  private attachScreenshotResultZoom(
+    ui: ScreenshotResultUiElements,
+    onZoom: () => void,
+    onDetach?: () => void,
+  ): () => void {
     const minSize = 24;
     const maxSize = 60000;
     const zoomStep = 1.12;
@@ -1233,6 +1369,7 @@ export class TranslatorCore {
       if (event.deltaY === 0) return;
       event.preventDefault();
       event.stopPropagation();
+      onDetach?.();
       ui.host.classList.add('mt-x-screenshot-result-zooming');
       const currentRect: ScreenshotRect = {
         left: Number.parseFloat(ui.host.style.left || '0'),

@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   defaultExtensionSettings,
+  geminiAppModelOptions,
   llmBuiltInProviderDefinitions,
   llmProviderOptions,
   normalizeSettings,
+  optimizedGeminiAppPromptTemplate,
+  usesGeminiAppImagePipeline,
   type LlmAuthMode,
   type LlmProviderProfile,
   type LlmProvider,
@@ -94,6 +97,15 @@ const IconDebug = () => (
   </svg>
 );
 
+const IconRefresh = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 12a9 9 0 0 1-15.5 6.2" />
+    <path d="M3 12A9 9 0 0 1 18.5 5.8" />
+    <path d="M18 3v6h-6" />
+    <path d="M6 21v-6h6" />
+  </svg>
+);
+
 const shortcutCommandDefinitions = [
   { name: 'start-screenshot-translate', label: '截图翻译' },
   { name: 'translate-hover-target', label: '翻译悬停元素' },
@@ -110,6 +122,24 @@ const defaultShortcutState: ShortcutState = {
   'start-screenshot-translate': '',
   'translate-hover-target': '',
 };
+
+const geminiAppAuthCacheKey = 'shinobu.geminiApp.authenticated';
+
+function readGeminiAppAuthCache(): boolean {
+  try {
+    return window.localStorage.getItem(geminiAppAuthCacheKey) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function writeGeminiAppAuthCache(authenticated: boolean): void {
+  try {
+    window.localStorage.setItem(geminiAppAuthCacheKey, authenticated ? 'true' : 'false');
+  } catch {
+    // Cache is a UI hint only; failure should not block login or settings.
+  }
+}
 
 function SegmentedControl<T extends string>({
   options,
@@ -162,7 +192,15 @@ export function App() {
     pending: false,
     error: '',
   });
+  const [geminiAppStatus, setGeminiAppStatus] = useState<OpenAiOAuthViewState>({
+    loading: false,
+    busy: false,
+    authenticated: readGeminiAppAuthCache(),
+    pending: false,
+    error: '',
+  });
   const hasHydratedRef = useRef(false);
+  const geminiAppAutoCheckAttemptedRef = useRef(false);
   const nextSaveShowsStatusRef = useRef(false);
   const saveRequestIdRef = useRef(0);
 
@@ -243,7 +281,7 @@ export function App() {
     setSettings((prev) => ({
       ...prev,
       showElapsedTime: checked,
-      showStageTimingDetails: checked ? prev.showStageTimingDetails : false,
+      showStageTimingDetails: checked && !usesGeminiAppImagePipeline(prev) ? prev.showStageTimingDetails : false,
     }));
   }
 
@@ -262,15 +300,29 @@ export function App() {
   }
 
   function updateTranslator(translator: ExtensionSettings['translator']): void {
-    updateField('translator', translator);
+    queueSaveStatus();
+    setSettings((prev) => ({
+      ...prev,
+      translator,
+      showStageTimingDetails: translator === 'llm' && prev.llmProvider === 'gemini' ? false : prev.showStageTimingDetails,
+    }));
   }
 
   function updateLlmProvider(provider: LlmProvider): void {
-    updateField('llmProvider', provider);
+    queueSaveStatus();
+    setSettings((prev) => ({
+      ...prev,
+      llmProvider: provider,
+      showStageTimingDetails: prev.translator === 'llm' && provider === 'gemini' ? false : prev.showStageTimingDetails,
+    }));
   }
 
   function updateUseCustomModel(checked: boolean): void {
     updateActiveLlmProfile({ useCustomModel: checked });
+  }
+
+  function resetGeminiAppPromptTemplate(): void {
+    updateField('geminiAppPromptTemplate', optimizedGeminiAppPromptTemplate, { showSaveStatus: true });
   }
 
   function applyOpenAiStatus(next: {
@@ -349,11 +401,71 @@ export function App() {
     }
   }
 
+  function applyGeminiAppStatus(next: {
+    authenticated: boolean;
+    pending?: boolean;
+    error?: string;
+  }): void {
+    writeGeminiAppAuthCache(next.authenticated);
+    setGeminiAppStatus({
+      loading: false,
+      busy: false,
+      authenticated: next.authenticated,
+      pending: next.pending ?? false,
+      error: next.error ?? '',
+    });
+  }
+
+  async function refreshGeminiAppAuthStatus(): Promise<void> {
+    geminiAppAutoCheckAttemptedRef.current = true;
+    setGeminiAppStatus((prev) => ({ ...prev, loading: true, error: '' }));
+    try {
+      const response = await sendRuntimeMessage({ type: 'mt:gemini-app-auth-status' });
+      if (!response.ok || response.type !== 'mt:gemini-app-auth-status') {
+        throw new Error(response.ok ? '读取 Gemini 登录状态失败' : response.error);
+      }
+      applyGeminiAppStatus(response.status);
+    } catch (error) {
+      setGeminiAppStatus({
+        loading: false,
+        busy: false,
+        authenticated: false,
+        pending: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  async function loginGeminiApp(): Promise<void> {
+    setGeminiAppStatus((prev) => ({ ...prev, busy: true, error: '' }));
+    try {
+      const response = await sendRuntimeMessage({ type: 'mt:gemini-app-auth-login' });
+      if (!response.ok || response.type !== 'mt:gemini-app-auth-login') {
+        throw new Error(response.ok ? 'Gemini 登录失败' : response.error);
+      }
+      applyGeminiAppStatus(response.status);
+      setStatus({
+        kind: 'success',
+        message: response.status.authenticated ? '登录状态已更新' : 'Gemini 登录页已打开，请在新标签页完成登录',
+      });
+    } catch (error) {
+      setGeminiAppStatus((prev) => ({
+        ...prev,
+        busy: false,
+        error: error instanceof Error ? error.message : String(error),
+      }));
+    }
+  }
+
   const currentProfile = settings.llmProfiles[settings.llmProvider];
+  const usesGeminiApp = usesGeminiAppImagePipeline(settings);
   const currentProviderModels =
-    settings.llmProvider === 'custom' ? [] : llmBuiltInProviderDefinitions[settings.llmProvider].models;
+    settings.llmProvider === 'custom' || usesGeminiApp ? [] : llmBuiltInProviderDefinitions[settings.llmProvider].models;
   const builtInCustomModelPlaceholder = currentProviderModels[0] ?? currentProfile.modelPreset;
   const usesOpenAiOAuth = settings.llmProvider === 'openai' && currentProfile.authMode === 'openai_oauth';
+  const showLocalPipelineOptions = !usesGeminiApp;
+  const stageTimingDetailsLocked = usesGeminiApp;
+  const stageTimingDetailsDisabled = loading || !settings.showElapsedTime || stageTimingDetailsLocked;
   const openAiStatusLabel = openAiStatus.loading
     ? '正在检查 OpenAI 登录'
     : openAiStatus.authenticated
@@ -363,6 +475,16 @@ export function App() {
         : openAiStatus.pending
           ? '等待 OpenAI 授权完成'
           : '未登录 OpenAI';
+  const geminiStatusLabel = geminiAppStatus.loading
+    ? '正在检查'
+    : geminiAppStatus.authenticated
+      ? 'Gemini已登录'
+      : geminiAppStatus.error
+        ? geminiAppStatus.error
+        : geminiAppStatus.pending
+          ? '未登录'
+          : '未登录';
+
   function openShortcutManager(): void {
     const chromeApi = getChromeApi();
     if (!chromeApi?.tabs?.create) {
@@ -421,13 +543,6 @@ export function App() {
   }, [loading, settings]);
 
   useEffect(() => {
-    if (loading || !usesOpenAiOAuth) {
-      return;
-    }
-    void refreshOpenAiOAuthStatus();
-  }, [loading, usesOpenAiOAuth]);
-
-  useEffect(() => {
     if (!usesOpenAiOAuth || !openAiStatus.pending) {
       return;
     }
@@ -438,6 +553,46 @@ export function App() {
     }, 2_000);
     return () => window.clearInterval(intervalId);
   }, [usesOpenAiOAuth, openAiStatus.pending, openAiStatus.loading, openAiStatus.busy]);
+
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
+    if (!usesGeminiApp) {
+      geminiAppAutoCheckAttemptedRef.current = false;
+      return;
+    }
+    if (
+      geminiAppStatus.authenticated ||
+      geminiAppStatus.loading ||
+      geminiAppStatus.busy ||
+      geminiAppStatus.pending ||
+      geminiAppAutoCheckAttemptedRef.current
+    ) {
+      return;
+    }
+    geminiAppAutoCheckAttemptedRef.current = true;
+    void refreshGeminiAppAuthStatus();
+  }, [
+    loading,
+    usesGeminiApp,
+    geminiAppStatus.authenticated,
+    geminiAppStatus.loading,
+    geminiAppStatus.busy,
+    geminiAppStatus.pending,
+  ]);
+
+  useEffect(() => {
+    if (!usesGeminiApp || !geminiAppStatus.pending) {
+      return;
+    }
+    const intervalId = window.setInterval(() => {
+      if (!geminiAppStatus.loading && !geminiAppStatus.busy) {
+        void refreshGeminiAppAuthStatus();
+      }
+    }, 2_000);
+    return () => window.clearInterval(intervalId);
+  }, [usesGeminiApp, geminiAppStatus.pending, geminiAppStatus.loading, geminiAppStatus.busy]);
 
   return (
     <main className="popup">
@@ -519,38 +674,42 @@ export function App() {
               </div>
             </section>
 
-            <section className="panel option-panel">
-              <div className="panel-title">
-                <IconOCR />
-                OCR 引擎
-              </div>
-              <SegmentedControl
-                options={[
-                  { value: 'builtin', label: 'MangaOCR' },
-                  { value: 'paddleocr', label: 'PaddleOCR' },
-                ]}
-                value={settings.ocrEngine}
-                onChange={(v) => updateField('ocrEngine', v as ExtensionSettings['ocrEngine'])}
-                disabled={loading}
-              />
-            </section>
+            {showLocalPipelineOptions ? (
+              <>
+                <section className="panel option-panel">
+                  <div className="panel-title">
+                    <IconOCR />
+                    OCR 引擎
+                  </div>
+                  <SegmentedControl
+                    options={[
+                      { value: '48px', label: '48px' },
+                      { value: 'paddleocr', label: 'Paddle' },
+                    ]}
+                    value={settings.ocrEngine}
+                    onChange={(v) => updateField('ocrEngine', v as ExtensionSettings['ocrEngine'])}
+                    disabled={loading}
+                  />
+                </section>
 
-            <section className="panel option-panel">
-              <div className="panel-title">
-                <IconMode />
-                模式
-              </div>
-              <SegmentedControl
-                options={[
-                  { value: 'translate', label: '翻译' },
-                  { value: 'original', label: '原文' },
-                  { value: 'erase', label: '去字' },
-                ]}
-                value={settings.processMode}
-                onChange={(v) => updateField('processMode', v as ExtensionSettings['processMode'])}
-                disabled={loading}
-              />
-            </section>
+                <section className="panel option-panel">
+                  <div className="panel-title">
+                    <IconMode />
+                    模式
+                  </div>
+                  <SegmentedControl
+                    options={[
+                      { value: 'translate', label: '翻译' },
+                      { value: 'original', label: '原文' },
+                      { value: 'erase', label: '去字' },
+                    ]}
+                    value={settings.processMode}
+                    onChange={(v) => updateField('processMode', v as ExtensionSettings['processMode'])}
+                    disabled={loading}
+                  />
+                </section>
+              </>
+            ) : null}
 
             {settings.translator === 'llm' ? (
               <section className="panel panel-llm">
@@ -573,7 +732,69 @@ export function App() {
                   </select>
                 </label>
 
-                {settings.llmProvider === 'custom' ? (
+                {usesGeminiApp ? (
+                  <>
+                    <div className="auth-mode-field">
+                      <span className="field-label">模型</span>
+                      <SegmentedControl<ExtensionSettings['geminiAppModel']>
+                        options={geminiAppModelOptions}
+                        value={settings.geminiAppModel}
+                        onChange={(value) => updateField('geminiAppModel', value)}
+                        disabled={loading}
+                      />
+                    </div>
+                    <div className="auth-status-row">
+                      <span className="field-label">登录状态</span>
+                      <div className="auth-status-control">
+                        <div className="oauth-copy">
+                          <span className={`oauth-dot${geminiAppStatus.authenticated ? ' oauth-dot-authed' : ''}`} />
+                          <div className="oauth-title">{geminiStatusLabel}</div>
+                        </div>
+                        <button
+                          className="oauth-action"
+                          type="button"
+                          onClick={() => {
+                            void (
+                              geminiAppStatus.authenticated || geminiAppStatus.pending
+                                ? refreshGeminiAppAuthStatus()
+                                : loginGeminiApp()
+                            );
+                          }}
+                          disabled={loading || geminiAppStatus.loading || geminiAppStatus.busy}
+                        >
+                          {geminiAppStatus.busy
+                            ? '处理中...'
+                            : geminiAppStatus.authenticated || geminiAppStatus.pending
+                              ? '检查状态'
+                              : '登录 Gemini'}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="field">
+                      <span className="field-label field-label-action">
+                        <span>提示词</span>
+                        <button
+                          className="field-label-icon-button"
+                          type="button"
+                          onClick={resetGeminiAppPromptTemplate}
+                          disabled={loading}
+                          title="重置提示词"
+                          aria-label="重置提示词"
+                        >
+                          <IconRefresh />
+                        </button>
+                      </span>
+                      <textarea
+                        value={settings.geminiAppPromptTemplate}
+                        onChange={(event) =>
+                          updateField('geminiAppPromptTemplate', event.target.value, { showSaveStatus: true })
+                        }
+                        disabled={loading}
+                        rows={5}
+                      />
+                    </div>
+                  </>
+                ) : settings.llmProvider === 'custom' ? (
                   <>
                     <label className="field">
                       <span className="field-label">Base URL</span>
@@ -729,12 +950,12 @@ export function App() {
                       />
                       <span className="checkbox-label">显示耗时</span>
                     </label>
-                    <label className={`checkbox-row${!settings.showElapsedTime ? ' checkbox-disabled' : ''}`}>
+                    <label className={`checkbox-row${stageTimingDetailsDisabled ? ' checkbox-disabled' : ''}`}>
                       <input
                         type="checkbox"
-                        checked={settings.showStageTimingDetails}
+                        checked={!stageTimingDetailsLocked && settings.showStageTimingDetails}
                         onChange={(event) => updateField('showStageTimingDetails', event.target.checked)}
-                        disabled={loading || !settings.showElapsedTime}
+                        disabled={stageTimingDetailsDisabled}
                       />
                       <span className="checkbox-label">阶段明细</span>
                     </label>

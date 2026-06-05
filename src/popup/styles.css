@@ -271,9 +271,55 @@ html, body {
   white-space: nowrap;
 }
 
+.field-label-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.field-label-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  transition: background 0.15s ease-out, color 0.15s ease-out, opacity 0.15s ease-out;
+}
+
+.field-label-icon-button svg {
+  width: 12.5px;
+  height: 12.5px;
+}
+
+.field-label-icon-button:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+
+.field-label-icon-button:active:not(:disabled) {
+  background: var(--accent-muted);
+}
+
+.field-label-icon-button:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 1px;
+}
+
+.field-label-icon-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .panel input[type='text'],
 .panel input[type='password'],
 .panel input[type='number'],
+.panel textarea,
 .panel select {
   width: 100%;
   min-height: 31px;
@@ -289,22 +335,32 @@ html, body {
   outline: none;
 }
 
+.panel textarea {
+  min-height: 96px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
 .panel input:focus,
+.panel textarea:focus,
 .panel select:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 2.5px var(--accent-focus);
 }
 
 .panel input:hover:not(:focus):not(:disabled),
+.panel textarea:hover:not(:focus):not(:disabled),
 .panel select:hover:not(:focus):not(:disabled) {
   border-color: var(--border-hover);
 }
 
-.panel input::placeholder {
+.panel input::placeholder,
+.panel textarea::placeholder {
   color: var(--text-tertiary);
 }
 
 .panel input:disabled,
+.panel textarea:disabled,
 .panel select:disabled {
   opacity: 0.4;
   cursor: not-allowed;
@@ -613,7 +669,7 @@ html, body {
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--accent-hover);
   font-size: 11.5px;
   font-family: inherit;
   font-weight: 600;
@@ -621,10 +677,18 @@ html, body {
   transition: background 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out;
 }
 
+.custom-model-toggle {
+  color: var(--text-secondary);
+}
+
 .oauth-action:hover:not(:disabled),
 .custom-model-toggle:hover:not(.custom-model-toggle-disabled) {
   border-color: var(--accent-muted);
   background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+
+.custom-model-toggle:hover:not(.custom-model-toggle-disabled) {
   color: var(--text-primary);
 }
 

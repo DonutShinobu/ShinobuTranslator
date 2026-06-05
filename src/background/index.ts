@@ -2,6 +2,8 @@ import {
   defaultExtensionSettings,
   extensionSettingsStorageKey,
   normalizeSettings,
+  usesGeminiAppImagePipeline,
+  validateSettings,
   type ExtensionSettings,
 } from '../shared/config';
 import { getChromeApi } from '../shared/chrome';
@@ -36,7 +38,8 @@ import {
   extractOpenAiResponsesJsonText,
   extractOpenAiResponsesSseText,
 } from '../shared/openaiResponses';
-import { toErrorMessage } from '../shared/utils';
+import { arrayBufferToBase64, toErrorMessage } from '../shared/utils';
+import { getGeminiAppAuthStatus, runGeminiAppImageTranslate } from './geminiAppClient';
 
 const openAiOAuthStorageKey = 'mangaTranslate.openaiOAuth';
 const openAiOAuthPendingStorageKey = 'mangaTranslate.openaiOAuthPending';
@@ -44,6 +47,7 @@ const openAiOAuthLastErrorStorageKey = 'mangaTranslate.openaiOAuthLastError';
 const openAiOAuthInstallationIdStorageKey = 'mangaTranslate.openaiOAuthInstallationId';
 const openAiOAuthPendingTtlMs = 10 * 60 * 1000;
 const openAiCodexResponsesEndpoint = 'https://chatgpt.com/backend-api/codex/responses';
+const geminiAppUrl = 'https://gemini.google.com/app';
 const startScreenshotTranslateCommand = 'start-screenshot-translate';
 const translateHoverTargetCommand = 'translate-hover-target';
 
@@ -690,17 +694,6 @@ async function downloadImage(imageUrl: string): Promise<{
   throw new Error(`下载图片失败: ${errors.join(' | ') || '未知错误'}`);
 }
 
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  const chunkSize = 0x8000;
-  let binary = '';
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-  return btoa(binary);
-}
-
 function parseImageDataUrl(dataUrl: string): {
   base64: string;
   contentType: string;
@@ -742,6 +735,24 @@ function captureVisibleTab(sender: ChromeMessageSender): Promise<{
         ...parsed,
         sourceUrl: sender.tab?.url ?? '',
       });
+    });
+  });
+}
+
+function openGeminiAppAuthTab(): Promise<void> {
+  const chromeApi = getChromeApi();
+  if (!chromeApi?.tabs?.create) {
+    return Promise.reject(new Error('当前浏览器不支持打开 Gemini 登录页，请确认扩展已授予 tabs 权限'));
+  }
+
+  return new Promise((resolve, reject) => {
+    chromeApi.tabs?.create?.({ url: geminiAppUrl, active: true }, () => {
+      const lastError = chromeApi.runtime?.lastError;
+      if (lastError?.message) {
+        reject(new Error(lastError.message));
+        return;
+      }
+      resolve();
     });
   });
 }
@@ -807,11 +818,59 @@ async function handleMessage(message: RuntimeMessage, sender: ChromeMessageSende
     };
   }
 
+  if (message.type === 'mt:gemini-app-auth-status') {
+    const settings = await getSettings();
+    return {
+      ok: true,
+      type: 'mt:gemini-app-auth-status',
+      status: await getGeminiAppAuthStatus(settings),
+    };
+  }
+
+  if (message.type === 'mt:gemini-app-auth-login') {
+    const settings = await getSettings();
+    const status = await getGeminiAppAuthStatus(settings);
+    if (status.authenticated) {
+      return {
+        ok: true,
+        type: 'mt:gemini-app-auth-login',
+        status,
+      };
+    }
+    await openGeminiAppAuthTab();
+    return {
+      ok: true,
+      type: 'mt:gemini-app-auth-login',
+      status: { authenticated: false, pending: true },
+    };
+  }
+
   if (message.type === 'mt:llm-chat-completions') {
     return {
       ok: true,
       type: 'mt:llm-chat-completions',
       data: await proxyOpenAiChatCompletions(message.body),
+    };
+  }
+
+  if (message.type === 'mt:gemini-app-image-translate') {
+    const settings = await getSettings();
+    const validationError = usesGeminiAppImagePipeline(settings)
+      ? validateSettings(settings)
+      : '请先在扩展弹窗中选择“大模型”并将 LLM 提供商设为 Nano Banana';
+    if (validationError) {
+      throw new Error(validationError);
+    }
+    const translated = await runGeminiAppImageTranslate({
+      imageBase64: message.image.base64,
+      contentType: message.image.contentType,
+      filename: message.image.filename,
+      settings,
+    });
+    return {
+      ok: true,
+      type: 'mt:gemini-app-image-translate',
+      ...translated,
     };
   }
 

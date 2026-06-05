@@ -1,5 +1,6 @@
 import type { ExtensionSettings } from './config';
 import type { OpenAiOAuthStatusInfo } from './openaiOAuth';
+import type { StageTiming } from '../types';
 import { requireChromeApi } from './chrome';
 import { toErrorMessage } from './utils';
 
@@ -33,6 +34,20 @@ export type OpenAiOAuthLogoutMessage = {
   type: 'mt:openai-oauth-logout';
 };
 
+export type GeminiAppAuthStatusInfo = {
+  authenticated: boolean;
+  pending?: boolean;
+  error?: string;
+};
+
+export type GeminiAppAuthStatusMessage = {
+  type: 'mt:gemini-app-auth-status';
+};
+
+export type GeminiAppAuthLoginMessage = {
+  type: 'mt:gemini-app-auth-login';
+};
+
 export type LlmChatMessage = {
   role: 'system' | 'user' | 'assistant';
   content: string;
@@ -49,6 +64,21 @@ export type LlmChatCompletionRequestBody = {
 export type LlmChatCompletionsMessage = {
   type: 'mt:llm-chat-completions';
   body: LlmChatCompletionRequestBody;
+};
+
+export type GeminiAppImageTranslateMessage = {
+  type: 'mt:gemini-app-image-translate';
+  image: {
+    base64: string;
+    contentType: string;
+    filename: string;
+  };
+};
+
+export type GeminiAppImageTranslateMetadata = {
+  modelLabel: string;
+  imageUrl?: string;
+  stageTimings: StageTiming[];
 };
 
 /** Sent from background to content script when user clicks "翻译图片" in context menu. */
@@ -74,7 +104,10 @@ export type RuntimeMessage =
   | OpenAiOAuthStatusMessage
   | OpenAiOAuthLoginMessage
   | OpenAiOAuthLogoutMessage
+  | GeminiAppAuthStatusMessage
+  | GeminiAppAuthLoginMessage
   | LlmChatCompletionsMessage
+  | GeminiAppImageTranslateMessage
   | ContextMenuTranslateMessage
   | StartScreenshotTranslateMessage
   | ShortcutTranslateHoverMessage;
@@ -121,8 +154,25 @@ export type RuntimeSuccessResponse =
     }
   | {
       ok: true;
+      type: 'mt:gemini-app-auth-status';
+      status: GeminiAppAuthStatusInfo;
+    }
+  | {
+      ok: true;
+      type: 'mt:gemini-app-auth-login';
+      status: GeminiAppAuthStatusInfo;
+    }
+  | {
+      ok: true;
       type: 'mt:llm-chat-completions';
       data: unknown;
+    }
+  | {
+      ok: true;
+      type: 'mt:gemini-app-image-translate';
+      base64: string;
+      contentType: string;
+      metadata: GeminiAppImageTranslateMetadata;
     }
   | {
       ok: true;
@@ -156,6 +206,17 @@ function isLlmChatCompletionsMessage(value: Record<string, unknown>): value is L
   return typeof value.body.model === 'string' && Array.isArray(value.body.messages);
 }
 
+function isGeminiAppImageTranslateMessage(value: Record<string, unknown>): value is GeminiAppImageTranslateMessage {
+  if (value.type !== 'mt:gemini-app-image-translate' || !isRecord(value.image)) {
+    return false;
+  }
+  return (
+    typeof value.image.base64 === 'string' &&
+    typeof value.image.contentType === 'string' &&
+    typeof value.image.filename === 'string'
+  );
+}
+
 export function isRuntimeMessage(value: unknown): value is RuntimeMessage {
   if (!isRecord(value)) {
     return false;
@@ -169,9 +230,12 @@ export function isRuntimeMessage(value: unknown): value is RuntimeMessage {
     type === 'mt:openai-oauth-status' ||
     type === 'mt:openai-oauth-login' ||
     type === 'mt:openai-oauth-logout' ||
+    type === 'mt:gemini-app-auth-status' ||
+    type === 'mt:gemini-app-auth-login' ||
     type === 'mt:context-menu-translate' ||
     type === 'mt:start-screenshot-translate' ||
     type === 'mt:shortcut-translate-hover' ||
+    isGeminiAppImageTranslateMessage(value) ||
     isLlmChatCompletionsMessage(value)
   );
 }

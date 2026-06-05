@@ -249,6 +249,93 @@ type ProgressJankReport = {
 - After content-script or worker-boundary changes, run `node --check dist/content.js`, `node --check dist/chunks/orchestrator.js`, `node --check dist/chunks/onnxWorkerBridge.js`, and `node --check dist/onnxWorker.js`.
 - Run a real-browser pipeline smoke or hover/context-image UI smoke and inspect `[shinobu:jank]` for frame stats, stage stats, UI render stats, worker calls, and long tasks.
 
+## Scenario: Nano Banana Full-Image Translation
+
+### 1. Scope / Trigger
+
+- Trigger: changing the Nano Banana/Gemini App image pipeline, popup provider UI, model selection, prompt handling, or image replacement behavior.
+- Applies to `src/shared/config.ts`, `src/popup/App.tsx`, `src/content/core/TranslatorCore.ts`, `src/background/geminiAppClient.ts`, `src/shared/messages.ts`, and related tests.
+
+### 2. Signatures
+
+```typescript
+type GeminiAppImageTranslateMessage = {
+  type: 'mt:gemini-app-image-translate';
+  image: {
+    base64: string;
+    contentType: string;
+    filename: string;
+  };
+};
+```
+
+### 3. Contracts
+
+- The Gemini-backed LLM provider is labeled `Nano Banana` in the popup provider selector.
+- Nano Banana has exactly one image translation path: full-image end-to-end translation.
+- Popup may expose a Nano Banana model segmented control for supported Gemini App image models, currently `Nano Banana 2` and `Nano Banana Pro`.
+- Do not add a full/local range toggle in popup settings.
+- Popup caches the last successful Gemini App login check as a boolean UI hint only. Do not store cookies, tokens, or account identifiers.
+- When the cached Gemini App status is unauthenticated and the user has selected Nano Banana, opening the popup auto-checks Gemini App login status once.
+- When the cached Gemini App status is authenticated, opening the popup does not auto-check again; the user can refresh it with the explicit check button.
+- The Nano Banana prompt field is labeled `提示词` and exposes a compact refresh icon button that resets it to `optimizedGeminiAppPromptTemplate`.
+- The default Nano Banana prompt must constrain edits to dialogue text and sound-effect text, not all text-like regions broadly.
+- Stage timing details must be locked off for Nano Banana because the web-app image path cannot provide reliable local stage details.
+- Content sends the complete original image to Nano Banana and uses the returned image directly.
+- Content must not run local text detection, bubble detection, OCR, local translation, mask compositing, transparent overlay generation, or paste-back logic for Nano Banana.
+- The background prompt is always `geminiAppPromptTemplate` with `{targetLang}` replacement.
+- Background model headers and returned metadata must reflect `geminiAppModel`; do not keep a hard-coded Pro label when `Nano Banana 2` is selected.
+- Reading-mode batch translation remains blocked for Nano Banana unless explicit rate limiting and user confirmation are added.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+|-----------|-------------------|
+| Prompt template normalizes to blank | `validateSettings()` returns a Chinese Gemini prompt error |
+| Gemini message fails or returns no image | Content surfaces the Chinese background error and preserves the original image |
+| User selects Nano Banana in reading-mode batch | Content rejects the run with a Chinese single-image/other-provider hint |
+| User selects Nano Banana 2 | Background does not send the Pro-only model header and metadata labels the run as Nano Banana 2 |
+| User selects Nano Banana Pro | Background sends the Pro model header and metadata labels the run as Nano Banana Pro |
+| User selects Nano Banana with saved stage details enabled | Settings normalization and popup UI force stage details off |
+| User opens popup on Nano Banana with cached unauthenticated status | Popup checks Gemini App login status once |
+| User opens popup on Nano Banana with cached authenticated status | The login-status row shows `Gemini已登录` without checking again; the top save/status bubble does not show that label |
+
+### 5. Good/Base/Bad Cases
+
+- Good: Nano Banana sends one complete source image request and displays the single complete translated image returned by Gemini.
+- Base: popup provider selection controls authentication, model selection, and prompt settings only; OCR engine and process mode are hidden and do not affect Nano Banana execution.
+- Bad: sending per-bubble crops or multiple requests for one image.
+- Bad: adding local paste-back, crop compositing, transparent overlay, or OCR-assisted postprocessing to Nano Banana.
+- Bad: letting OCR engine or process mode controls affect Nano Banana execution after the provider is selected.
+
+### 6. Tests Required
+
+- Add/update `tests/shared/config.test.ts` for Gemini prompt defaults, provider normalization, and model selection normalization.
+- Add/update `tests/shared/messages.test.ts` when new `mt:` messages are added.
+- Run `npx tsc --noEmit`.
+- Run `npm run test`.
+- Run `npm run build`.
+- After content-script changes, run `node --check dist/content.js`, `node --check dist/background.js`, `node --check dist/chunks/orchestrator.js`, `node --check dist/chunks/onnxWorkerBridge.js`, and `node --check dist/onnxWorker.js`.
+- Run a browser smoke test when possible: select Nano Banana, choose each available model, log in, translate one manga image, and confirm the returned full image is displayed.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+function buildPrompt(settings: ExtensionSettings): string {
+  return settings.geminiAppPromptTemplate;
+}
+```
+
+#### Correct
+
+```typescript
+const prompt = settings.geminiAppPromptTemplate.replace(/\{targetLang\}/g, targetLanguageLabel(settings.targetLang));
+const requestImageBase64 = await blobToBase64(originalFile);
+const finalBlob = returnedBlob;
+```
+
 ## Testing Requirements
 
 ### Framework: Vitest

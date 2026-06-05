@@ -33,6 +33,13 @@ export function registerOcrProvider(provider: OcrProvider): void {
   ocrProviders[provider.name] = provider;
 }
 
+export function registerOcrProviderAlias(alias: string, providerName: string): void {
+  const provider = ocrProviders[providerName];
+  if (provider) {
+    ocrProviders[alias] = provider;
+  }
+}
+
 export function getOcrProvider(name: string): OcrProvider | undefined {
   return ocrProviders[name];
 }

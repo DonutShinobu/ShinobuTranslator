@@ -3,7 +3,13 @@ import { LlmColumnsParseError, llmTranslate, llmTranslateRegions } from '../tran
 import { googleWebTranslate } from '../translators/googleWeb';
 
 function requiresPipelineLlmApiKey(config: PipelineConfig): boolean {
-  return !(config.llmProvider === 'openai' && config.llmAuthMode === 'openai_oauth');
+  return config.llmProvider !== 'gemini' && !(config.llmProvider === 'openai' && config.llmAuthMode === 'openai_oauth');
+}
+
+function assertTextTranslationProvider(config: PipelineConfig): void {
+  if (config.llmProvider === 'gemini') {
+    throw new Error('Nano Banana 使用端到端译图流程，不支持 OCR 文本翻译流程');
+  }
 }
 
 async function translateOne(text: string, config: PipelineConfig): Promise<string> {
@@ -14,6 +20,8 @@ async function translateOne(text: string, config: PipelineConfig): Promise<strin
   if (config.translator === 'google_web') {
     return googleWebTranslate(text, config.sourceLang, config.targetLang);
   }
+
+  assertTextTranslationProvider(config);
 
   if (requiresPipelineLlmApiKey(config) && !config.llmApiKey.trim()) {
     throw new Error('LLM 模式需要填写 API Key');
@@ -45,6 +53,8 @@ export async function runTranslate(regions: TextRegion[], config: PipelineConfig
   }
 
   if (config.translator === 'llm') {
+    assertTextTranslationProvider(config);
+
     if (requiresPipelineLlmApiKey(config) && !config.llmApiKey.trim()) {
       throw new Error('LLM 模式需要填写 API Key');
     }

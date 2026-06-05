@@ -1,5 +1,4 @@
 import type { SiteAdapter } from '../core/types';
-
 const imageDialogSelector = '[aria-labelledby="modal-header"][role="dialog"]';
 const originalSrcAttr = 'data-mt-original-src';
 

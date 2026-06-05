@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  defaultGeminiAppPromptTemplate,
+  getGeminiAppModelLabel,
+  llmProviderOptions,
   normalizeSettings,
+  optimizedGeminiAppPromptTemplate,
+  requiresLlmApiKey,
   resolveLlmBaseUrl,
   toPipelineConfig,
+  usesGeminiAppImagePipeline,
   validateSettings,
 } from "../../src/shared/config";
 
@@ -68,5 +74,124 @@ describe("OpenAI provider settings", () => {
 
     expect(settings.debugOptionsExpanded).toBe(true);
     expect(toPipelineConfig(settings)).not.toHaveProperty("debugOptionsExpanded");
+  });
+
+  it("normalizes Gemini as a login-backed LLM provider without requiring an API key", () => {
+    const settings = normalizeSettings({
+      translator: "llm",
+      llmProvider: "gemini",
+    });
+
+    expect(settings.llmProvider).toBe("gemini");
+    expect(usesGeminiAppImagePipeline(settings)).toBe(true);
+    expect(requiresLlmApiKey(settings)).toBe(false);
+    expect(validateSettings(settings)).toBeNull();
+  });
+
+  it("labels the Gemini-backed provider as Nano Banana", () => {
+    expect(llmProviderOptions.find((option) => option.value === "gemini")?.label).toBe("Nano Banana");
+  });
+
+  it("keeps Nano Banana Pro as the default Gemini App model", () => {
+    const settings = normalizeSettings({
+      translator: "llm",
+      llmProvider: "gemini",
+    });
+
+    expect(settings.geminiAppModel).toBe("nano_banana_pro");
+    expect(getGeminiAppModelLabel(settings.geminiAppModel)).toBe("Nano Banana Pro");
+  });
+
+  it("locks stage timing details off for Nano Banana", () => {
+    const settings = normalizeSettings({
+      translator: "llm",
+      llmProvider: "gemini",
+      showElapsedTime: true,
+      showStageTimingDetails: true,
+    });
+
+    expect(settings.showElapsedTime).toBe(true);
+    expect(settings.showStageTimingDetails).toBe(false);
+  });
+
+  it("normalizes Nano Banana model aliases", () => {
+    expect(normalizeSettings({ geminiAppModel: "nano-banana-2" }).geminiAppModel).toBe("nano_banana_2");
+    expect(normalizeSettings({ geminiAppModel: "gemini-3.1-flash-image" }).geminiAppModel).toBe("nano_banana_2");
+    expect(normalizeSettings({ geminiAppModel: "gemini-3-pro-image" }).geminiAppModel).toBe("nano_banana_pro");
+  });
+
+  it("migrates the legacy Gemini App image engine setting to the Gemini LLM provider", () => {
+    const settings = normalizeSettings({
+      imageEngine: "gemini_app",
+      geminiAppExperimentalEnabled: true,
+      geminiAppPromptTemplate: "翻译成{targetLang}",
+      geminiAppAuthMode: "browser_session",
+    });
+
+    expect(settings.translator).toBe("llm");
+    expect(settings.llmProvider).toBe("gemini");
+    expect(settings.imageEngine).toBe("local");
+    expect(settings.geminiAppAuthMode).toBe("cookies_permission");
+    expect(usesGeminiAppImagePipeline(settings)).toBe(true);
+    expect(validateSettings(settings)).toBeNull();
+  });
+
+  it("uses the default Gemini App prompt when the saved template is blank", () => {
+    const settings = normalizeSettings({
+      geminiAppExperimentalEnabled: true,
+      imageEngine: "gemini_app",
+      geminiAppPromptTemplate: "   ",
+    });
+
+    expect(settings.geminiAppPromptTemplate).toBe(optimizedGeminiAppPromptTemplate);
+    expect(validateSettings(settings)).toBeNull();
+  });
+
+  it("migrates the previous Gemini App default prompt to the optimized full-image prompt", () => {
+    const settings = normalizeSettings({
+      geminiAppPromptTemplate: defaultGeminiAppPromptTemplate,
+    });
+
+    expect(settings.geminiAppPromptTemplate).toBe(optimizedGeminiAppPromptTemplate);
+  });
+
+  it("uses the updated dialogue and sound-effect-only wording in the default Gemini App prompt", () => {
+    const settings = normalizeSettings({
+      geminiAppPromptTemplate: "   ",
+    });
+
+    expect(settings.geminiAppPromptTemplate).toContain("只修改台词文字/音效文字");
+  });
+
+  it("migrates the previous optimized Gemini App prompt to the current default prompt", () => {
+    const previousOptimizedPrompt = [
+      "任务：把这张漫画/插画页面中的所有原文翻译为{targetLang}，擦除原字，并把译文自然嵌回原位置。",
+      "严格限制：只修改文字以及文字所在的气泡、标牌、字幕区域。",
+      "不要改变人物、表情、姿势、服装、道具、背景、分镜、线条、色彩、构图、画布尺寸和阅读顺序。",
+      "不要新增、删除、替换任何非文字内容。看不清的文字请保留原状或留空，不要猜测剧情、台词、人名或音效。",
+      "译文要自然、简洁、适合漫画气泡，必要时自动换行排版。",
+      "输出要求：只输出完成后的译图，不要解释、不要对比图、不要额外文字。",
+    ].join("\n");
+
+    const settings = normalizeSettings({
+      geminiAppPromptTemplate: previousOptimizedPrompt,
+    });
+
+    expect(settings.geminiAppPromptTemplate).toBe(optimizedGeminiAppPromptTemplate);
+  });
+
+});
+
+describe("OCR engine settings", () => {
+  it("uses 48px as the default OCR engine in settings and pipeline config", () => {
+    const settings = normalizeSettings({});
+
+    expect(settings.ocrEngine).toBe("48px");
+    expect(toPipelineConfig(settings).ocrEngine).toBe("48px");
+  });
+
+  it("normalizes the legacy built-in OCR name to 48px without renaming PaddleOCR internally", () => {
+    expect(normalizeSettings({ ocrEngine: "builtin" }).ocrEngine).toBe("48px");
+    expect(normalizeSettings({ ocrEngine: "paddleocr" }).ocrEngine).toBe("paddleocr");
   });
 });

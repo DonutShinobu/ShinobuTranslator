@@ -14,9 +14,15 @@ export type QuadPoint = {
 
 export type TextDirection = "h" | "v";
 
-export type LlmProvider = 'deepseek' | 'glm' | 'kimi' | 'minimax' | 'mimo' | 'openai' | 'custom';
+export type LlmProvider = 'deepseek' | 'gemini' | 'glm' | 'kimi' | 'minimax' | 'mimo' | 'openai' | 'custom';
 
 export type LlmAuthMode = 'api_key' | 'openai_oauth';
+
+export type ImageEngine = 'local' | 'gemini_app';
+
+export type GeminiAppAuthMode = 'browser_session' | 'cookies_permission';
+
+export type GeminiAppModel = 'nano_banana_2' | 'nano_banana_pro';
 
 export type TextRegion = {
   id: string;
@@ -49,7 +55,7 @@ export type PipelineConfig = {
   typesetDebug: boolean;
   eraseDebug: boolean;
   collectDebugLog: boolean;
-  ocrEngine: 'builtin' | 'paddleocr';
+  ocrEngine: '48px' | 'paddleocr';
   /** Internal benchmark override; production OCR picks its batch compaction policy automatically. */
   ocrCompactActiveBatch?: boolean;
   processMode: 'translate' | 'erase' | 'original';

@@ -1,6 +1,8 @@
 import {
+  getGeminiAppModelLabel,
   validateSettings,
   toPipelineConfig,
+  usesGeminiAppImagePipeline,
 } from '../../shared/config';
 import type { ExtensionSettings } from '../../shared/config';
 import type {
@@ -21,6 +23,7 @@ import type {
 import { sendRuntimeMessage } from '../../shared/messages';
 import {
   base64ToBlob,
+  blobToBase64,
   buildStageTimingCardData,
   canvasToBlob,
   formatElapsedText,
@@ -389,6 +392,70 @@ export class TranslatorCore {
     onProgress(state.stageText);
   }
 
+  private async runGeminiAppImageTranslateFromFile(options: {
+    state: PhotoState;
+    file: File;
+    runSettings: PipelineRunSettings;
+    runStartAt: number;
+    includeElapsedText: boolean;
+    onProgress: (stageText: string) => void;
+    jankMonitor?: ProgressJankMonitor;
+  }): Promise<void> {
+    const { state, file, runSettings, runStartAt, includeElapsedText, onProgress, jankMonitor } = options;
+    const modelLabel = getGeminiAppModelLabel(runSettings.settings.geminiAppModel);
+    state.stageText = `${modelLabel} 全图翻译中`;
+    jankMonitor?.setStage('gemini_app', `${modelLabel} 生成译图`, state.stageText);
+    onProgress(state.stageText);
+
+    const imageBase64 = await blobToBase64(file);
+    const response = await sendRuntimeMessage({
+      type: 'mt:gemini-app-image-translate',
+      image: {
+        base64: imageBase64,
+        contentType: file.type || 'image/png',
+        filename: file.name || 'source.png',
+      },
+    });
+    if (!response.ok || response.type !== 'mt:gemini-app-image-translate') {
+      throw new Error(response.ok ? 'Gemini App 翻译失败' : response.error);
+    }
+
+    const stageTimings = response.metadata.stageTimings;
+    const translatedBlob = base64ToBlob(response.base64, response.contentType);
+    const translatedUrl = URL.createObjectURL(translatedBlob);
+    if (state.translatedUrl) URL.revokeObjectURL(state.translatedUrl);
+    if (state.debugOriginalUrl) {
+      URL.revokeObjectURL(state.debugOriginalUrl);
+      state.debugOriginalUrl = undefined;
+    }
+
+    const totalDurationMs = performance.now() - runStartAt;
+    if (includeElapsedText && runSettings.showElapsedTime) {
+      const showStageTimingCard = runSettings.showStageTimingDetails && stageTimings.length > 0;
+      state.elapsedText = formatElapsedText(
+        totalDurationMs,
+        stageTimings,
+        [],
+        !showStageTimingCard && runSettings.showStageTimingDetails,
+        false,
+        null,
+      );
+      state.stageTimingCard = showStageTimingCard
+        ? buildStageTimingCardData(totalDurationMs, stageTimings, [], runSettings.stageTimingCardExpanded, null)
+        : undefined;
+    } else {
+      clearTimingDisplay(state);
+    }
+
+    state.debugOriginalUrl = undefined;
+    state.debugLogData = undefined;
+    state.translatedUrl = translatedUrl;
+    state.stageText = '';
+    state.errorText = '';
+    state.mode = 'translated';
+    state.status = 'translated';
+  }
+
   private async runPipelineFromFile(options: {
     state: PhotoState;
     file: File;
@@ -401,6 +468,12 @@ export class TranslatorCore {
     const { state, file, runSettings, runStartAt, includeElapsedText, onProgress, jankMonitor } = options;
     let progressJank: ProgressJankReport | null = null;
     try {
+      if (usesGeminiAppImagePipeline(runSettings.settings)) {
+        await this.runGeminiAppImageTranslateFromFile(options);
+        progressJank = finishProgressJankMonitor(jankMonitor ?? null);
+        return;
+      }
+
       const runPipeline = await getRunPipeline();
       const artifacts = await runPipeline(file, toPipelineConfig(runSettings.settings), (progress: PipelineProgress) => {
         this.updatePipelineProgress(state, progress, onProgress, jankMonitor);
@@ -783,6 +856,9 @@ export class TranslatorCore {
 
     try {
       const runSettings = await this.loadPipelineRunSettings(state);
+      if (usesGeminiAppImagePipeline(runSettings.settings)) {
+        throw new Error('阅读模式批量暂不支持 Gemini，请使用单张图片翻译或切回其他大模型供应商');
+      }
       const source = await this.downloadImageFile(originalUrl);
       downloadedBlob = source.blob;
       await this.runPipelineFromFile({

@@ -44,7 +44,8 @@
     "storage",
     "tabs",
     "contextMenus",
-    "declarativeNetRequest"
+    "declarativeNetRequest",
+    "cookies"
   ],
   "host_permissions": [
     "<all_urls>"

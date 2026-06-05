@@ -15,6 +15,16 @@ type ChromeCommand = {
   shortcut?: string;
 };
 
+type ChromeCookie = {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  secure?: boolean;
+  httpOnly?: boolean;
+  expirationDate?: number;
+};
+
 export type ChromeMessageSender = {
   tab?: {
     id?: number;
@@ -125,6 +135,16 @@ type ChromeLike = {
       removeRuleIds: number[];
       addRules: Array<Record<string, unknown>>;
     }) => Promise<void>;
+  };
+  cookies?: {
+    getAll?: (
+      details: {
+        url?: string;
+        domain?: string;
+        name?: string;
+      },
+      callback: (cookies: ChromeCookie[]) => void
+    ) => void;
   };
 };
 

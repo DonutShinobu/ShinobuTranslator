@@ -20,8 +20,29 @@ describe("isRuntimeMessage", () => {
     })).toBe(true);
   });
 
+  it("accepts Gemini App image translation messages", () => {
+    expect(isRuntimeMessage({ type: "mt:gemini-app-auth-status" })).toBe(true);
+    expect(isRuntimeMessage({ type: "mt:gemini-app-auth-login" })).toBe(true);
+    expect(isRuntimeMessage({
+      type: "mt:gemini-app-image-translate",
+      image: {
+        base64: "abc",
+        contentType: "image/png",
+        filename: "source.png",
+      },
+    })).toBe(true);
+  });
+
   it("rejects malformed LLM proxy messages", () => {
     expect(isRuntimeMessage({ type: "mt:llm-chat-completions" })).toBe(false);
     expect(isRuntimeMessage({ type: "mt:llm-chat-completions", body: { model: "gpt-5.4-mini" } })).toBe(false);
+  });
+
+  it("rejects malformed Gemini App image translation messages", () => {
+    expect(isRuntimeMessage({ type: "mt:gemini-app-image-translate" })).toBe(false);
+    expect(isRuntimeMessage({
+      type: "mt:gemini-app-image-translate",
+      image: { base64: "abc", contentType: "image/png" },
+    })).toBe(false);
   });
 });

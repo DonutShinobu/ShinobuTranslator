@@ -1,4 +1,5 @@
 import type { PipelineConfig } from '../types';
+import type { GeminiAppAuthMode, GeminiAppModel, ImageEngine } from '../types';
 
 export const extensionSettingsStorageKey = 'mangaTranslate.settings';
 
@@ -25,6 +26,11 @@ export const llmBuiltInProviderDefinitions: Record<BuiltInLlmProvider, BuiltInPr
     label: 'DeepSeek',
     baseUrl: 'https://api.deepseek.com',
     models: ['deepseek-v4-flash', 'deepseek-v4-pro'],
+  },
+  gemini: {
+    label: 'Nano Banana',
+    baseUrl: 'https://gemini.google.com',
+    models: ['nano-banana-2', 'nano-banana-pro'],
   },
   glm: {
     label: 'GLM (Z.AI)',
@@ -55,6 +61,7 @@ export const llmBuiltInProviderDefinitions: Record<BuiltInLlmProvider, BuiltInPr
 
 export const llmProviderOptions: Array<{ value: LlmProvider; label: string }> = [
   { value: 'deepseek', label: 'DeepSeek' },
+  { value: 'gemini', label: 'Nano Banana' },
   { value: 'glm', label: 'GLM (Z.AI)' },
   { value: 'kimi', label: 'Kimi (Moonshot)' },
   { value: 'minimax', label: 'MiniMax' },
@@ -68,6 +75,7 @@ const builtInProviders = Object.keys(llmBuiltInProviderDefinitions) as BuiltInLl
 function isLlmProvider(value: unknown): value is LlmProvider {
   return (
     value === 'deepseek' ||
+    value === 'gemini' ||
     value === 'glm' ||
     value === 'kimi' ||
     value === 'minimax' ||
@@ -123,6 +131,7 @@ function createDefaultProviderProfile(provider: LlmProvider): LlmProviderProfile
 function createDefaultLlmProfiles(): Record<LlmProvider, LlmProviderProfile> {
   return {
     deepseek: createDefaultProviderProfile('deepseek'),
+    gemini: createDefaultProviderProfile('gemini'),
     glm: createDefaultProviderProfile('glm'),
     kimi: createDefaultProviderProfile('kimi'),
     minimax: createDefaultProviderProfile('minimax'),
@@ -132,12 +141,47 @@ function createDefaultLlmProfiles(): Record<LlmProvider, LlmProviderProfile> {
   };
 }
 
-export type OcrEngine = 'builtin' | 'paddleocr';
+export type OcrEngine = '48px' | 'paddleocr';
 export type ProcessMode = 'translate' | 'erase' | 'original';
+
+export const geminiAppModelOptions: Array<{ value: GeminiAppModel; label: string }> = [
+  { value: 'nano_banana_2', label: 'Nano Banana 2' },
+  { value: 'nano_banana_pro', label: 'Nano Banana Pro' },
+];
+
+export const defaultGeminiAppPromptTemplate = [
+  '请使用 Nano Banana Pro 对这张漫画图片进行端到端翻译和嵌字。',
+  '将所有原文翻译为{targetLang}，擦除原字，并在原位置嵌入自然的中文译文。',
+  '保持原图画风、分镜、气泡、人物、背景、线稿和颜色不变。',
+  '只输出完成后的译图，不要输出解释、前后对比或额外文字。',
+].join('\n');
+
+export const optimizedGeminiAppPromptTemplate = [
+  '任务：把这张漫画/插画页面中的所有原文翻译为{targetLang}，擦除原字，并把译文自然嵌回原位置。',
+  '严格限制：只修改台词文字/音效文字以及它们所在的气泡、标牌、字幕区域。',
+  '不要改变人物、表情、姿势、服装、道具、背景、分镜、线条、色彩、构图、画布尺寸和阅读顺序。',
+  '不要新增、删除、替换任何非文字内容。看不清的文字请保留原状或留空，不要猜测剧情、台词、人名或音效。',
+  '译文要自然、简洁、适合漫画气泡，必要时自动换行排版。',
+  '输出要求：只输出完成后的译图，不要解释、不要对比图、不要额外文字。',
+].join('\n');
+
+const previousOptimizedGeminiAppPromptTemplate = [
+  '任务：把这张漫画/插画页面中的所有原文翻译为{targetLang}，擦除原字，并把译文自然嵌回原位置。',
+  '严格限制：只修改文字以及文字所在的气泡、标牌、字幕区域。',
+  '不要改变人物、表情、姿势、服装、道具、背景、分镜、线条、色彩、构图、画布尺寸和阅读顺序。',
+  '不要新增、删除、替换任何非文字内容。看不清的文字请保留原状或留空，不要猜测剧情、台词、人名或音效。',
+  '译文要自然、简洁、适合漫画气泡，必要时自动换行排版。',
+  '输出要求：只输出完成后的译图，不要解释、不要对比图、不要额外文字。',
+].join('\n');
 
 export type ExtensionSettings = {
   sourceLang: string;
   targetLang: string;
+  imageEngine: ImageEngine;
+  geminiAppExperimentalEnabled: boolean;
+  geminiAppModel: GeminiAppModel;
+  geminiAppPromptTemplate: string;
+  geminiAppAuthMode: GeminiAppAuthMode;
   translator: PipelineConfig['translator'];
   llmProvider: LlmProvider;
   llmProfiles: Record<LlmProvider, LlmProviderProfile>;
@@ -155,6 +199,11 @@ export type ExtensionSettings = {
 export const defaultExtensionSettings: ExtensionSettings = {
   sourceLang: 'ja',
   targetLang: 'zh-CHS',
+  imageEngine: 'local',
+  geminiAppExperimentalEnabled: false,
+  geminiAppModel: 'nano_banana_pro',
+  geminiAppPromptTemplate: optimizedGeminiAppPromptTemplate,
+  geminiAppAuthMode: 'cookies_permission',
   translator: 'google_web',
   llmProvider: 'deepseek',
   llmProfiles: createDefaultLlmProfiles(),
@@ -164,7 +213,7 @@ export const defaultExtensionSettings: ExtensionSettings = {
   showTypesetDebug: false,
   showEraseDebug: false,
   debugOptionsExpanded: false,
-  ocrEngine: 'builtin',
+  ocrEngine: '48px',
   processMode: 'translate',
   enableDebugLog: false,
 };
@@ -178,13 +227,35 @@ function sanitizeBoolean(value: unknown, fallback: boolean): boolean {
 
 function normalizeOcrEngine(value: unknown): OcrEngine {
   if (value === 'paddleocr') return 'paddleocr';
-  return 'builtin';
+  return '48px';
 }
 
 function normalizeProcessMode(value: unknown): ProcessMode {
   if (value === 'erase') return 'erase';
   if (value === 'original') return 'original';
   return 'translate';
+}
+
+function normalizeImageEngine(): ImageEngine {
+  return 'local';
+}
+
+function normalizeGeminiAppAuthMode(): GeminiAppAuthMode {
+  return 'cookies_permission';
+}
+
+function normalizeGeminiAppModel(value: unknown): GeminiAppModel {
+  if (value === 'nano_banana_2' || value === 'nano-banana-2' || value === 'gemini-3.1-flash-image') {
+    return 'nano_banana_2';
+  }
+  if (value === 'nano_banana_pro' || value === 'nano-banana-pro' || value === 'gemini-3-pro-image') {
+    return 'nano_banana_pro';
+  }
+  return defaultExtensionSettings.geminiAppModel;
+}
+
+export function getGeminiAppModelLabel(model: GeminiAppModel): string {
+  return geminiAppModelOptions.find((option) => option.value === model)?.label ?? 'Nano Banana Pro';
 }
 
 function normalizeTargetLang(value: unknown): string {
@@ -206,6 +277,20 @@ function normalizeProfileString(value: unknown, fallback: string): string {
     return fallback;
   }
   return value.trim();
+}
+
+function normalizeGeminiAppPromptTemplate(value: unknown): string {
+  const normalized = normalizeProfileString(value, optimizedGeminiAppPromptTemplate);
+  if (!normalized) {
+    return optimizedGeminiAppPromptTemplate;
+  }
+  if (normalized === defaultGeminiAppPromptTemplate) {
+    return optimizedGeminiAppPromptTemplate;
+  }
+  if (normalized === previousOptimizedGeminiAppPromptTemplate) {
+    return optimizedGeminiAppPromptTemplate;
+  }
+  return normalized;
 }
 
 function normalizeAuthMode(provider: LlmProvider, value: unknown): LlmAuthMode {
@@ -280,14 +365,17 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
   }
   const raw = value as Record<string, unknown>;
   const legacyTranslator = raw.translator;
-  const translator = legacyTranslator === 'llm' ? 'llm' : 'google_web';
+  const legacyGeminiAppEnabled = raw.imageEngine === 'gemini_app' && raw.geminiAppExperimentalEnabled === true;
+  const translator = legacyGeminiAppEnabled || legacyTranslator === 'llm' ? 'llm' : 'google_web';
   const legacyBaseUrl = typeof raw.llmBaseUrl === 'string' ? raw.llmBaseUrl.trim() : '';
   const providerFromBaseUrl = detectBuiltInProviderByBaseUrl(legacyBaseUrl);
   const provider = isLlmProvider(raw.llmProvider)
     ? raw.llmProvider
-    : providerFromBaseUrl
-      ? providerFromBaseUrl
-      : defaultExtensionSettings.llmProvider;
+    : legacyGeminiAppEnabled
+      ? 'gemini'
+      : providerFromBaseUrl
+        ? providerFromBaseUrl
+        : defaultExtensionSettings.llmProvider;
 
   const legacy = {
     modelFromLegacy: typeof raw.llmModel === 'string' ? raw.llmModel.trim() : '',
@@ -302,6 +390,7 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
 
   const llmProfiles: Record<LlmProvider, LlmProviderProfile> = {
     deepseek: normalizeProviderProfile('deepseek', rawProfiles.deepseek, provider === 'deepseek' ? legacy : null),
+    gemini: normalizeProviderProfile('gemini', rawProfiles.gemini, provider === 'gemini' ? legacy : null),
     glm: normalizeProviderProfile('glm', rawProfiles.glm, provider === 'glm' ? legacy : null),
     kimi: normalizeProviderProfile('kimi', rawProfiles.kimi, provider === 'kimi' ? legacy : null),
     minimax: normalizeProviderProfile('minimax', rawProfiles.minimax, provider === 'minimax' ? legacy : null),
@@ -311,16 +400,28 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
   };
   const showElapsedTime = sanitizeBoolean(raw.showElapsedTime, defaultExtensionSettings.showElapsedTime);
   const showTypesetDebug = sanitizeBoolean(raw.showTypesetDebug, defaultExtensionSettings.showTypesetDebug);
+  const geminiAppExperimentalEnabled = sanitizeBoolean(
+    raw.geminiAppExperimentalEnabled,
+    defaultExtensionSettings.geminiAppExperimentalEnabled,
+  );
   return {
     sourceLang: defaultExtensionSettings.sourceLang,
     targetLang: normalizeTargetLang(raw.targetLang),
+    imageEngine: normalizeImageEngine(),
+    geminiAppExperimentalEnabled,
+    geminiAppModel: normalizeGeminiAppModel(raw.geminiAppModel),
+    geminiAppPromptTemplate: normalizeGeminiAppPromptTemplate(raw.geminiAppPromptTemplate),
+    geminiAppAuthMode: normalizeGeminiAppAuthMode(),
     translator,
     llmProvider: provider,
     llmProfiles,
     showElapsedTime,
-    showStageTimingDetails: showElapsedTime
-      ? sanitizeBoolean(raw.showStageTimingDetails, defaultExtensionSettings.showStageTimingDetails)
-      : false,
+    showStageTimingDetails:
+      translator === 'llm' && provider === 'gemini'
+        ? false
+        : showElapsedTime
+          ? sanitizeBoolean(raw.showStageTimingDetails, defaultExtensionSettings.showStageTimingDetails)
+          : false,
     stageTimingCardExpanded: sanitizeBoolean(raw.stageTimingCardExpanded, defaultExtensionSettings.stageTimingCardExpanded),
     showTypesetDebug,
     showEraseDebug: sanitizeBoolean(raw.showEraseDebug, defaultExtensionSettings.showEraseDebug),
@@ -353,10 +454,21 @@ export function resolveLlmModel(settings: ExtensionSettings): string {
 
 export function requiresLlmApiKey(settings: ExtensionSettings): boolean {
   const profile = settings.llmProfiles[settings.llmProvider];
-  return !(settings.llmProvider === 'openai' && profile.authMode === 'openai_oauth');
+  return settings.llmProvider !== 'gemini' && !(settings.llmProvider === 'openai' && profile.authMode === 'openai_oauth');
+}
+
+export function usesGeminiAppImagePipeline(settings: Pick<ExtensionSettings, 'translator' | 'llmProvider'>): boolean {
+  return settings.translator === 'llm' && settings.llmProvider === 'gemini';
 }
 
 export function validateSettings(settings: ExtensionSettings): string | null {
+  if (usesGeminiAppImagePipeline(settings)) {
+    if (!settings.geminiAppPromptTemplate.trim()) {
+      return 'Gemini App 提示词不能为空';
+    }
+    return null;
+  }
+
   if (settings.translator !== 'llm') {
     return null;
   }

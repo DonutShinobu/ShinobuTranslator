@@ -25,13 +25,14 @@ import {
   generateTextDirection,
   buildOcrInput,
 } from "./preprocess";
-import { registerOcrProvider, getOcrProvider, fillMissingOcrFields } from "./provider";
+import { registerOcrProvider, registerOcrProviderAlias, getOcrProvider, fillMissingOcrFields } from "./provider";
 import type { OcrRecognizeResult } from "./provider";
-import { builtinOcrProvider } from "./builtinProvider";
+import { ocr48pxProvider } from "./ocr48pxProvider";
 import { paddleocrProvider } from "./paddleocrProvider";
 
-registerOcrProvider(builtinOcrProvider);
+registerOcrProvider(ocr48pxProvider);
 registerOcrProvider(paddleocrProvider);
+registerOcrProviderAlias("builtin", "48px");
 
 export type OcrResult = {
   regions: TextRegion[];
@@ -479,6 +480,13 @@ function createDefaultDebug(resultCount: number): OcrRunDebugInfo {
   };
 }
 
+function normalizeOcrProviderName(providerName?: string): string {
+  if (!providerName || providerName === "builtin") {
+    return "48px";
+  }
+  return providerName;
+}
+
 export async function runOcr(
   image: PipelineImage,
   detectedRegions: TextRegion[],
@@ -488,11 +496,11 @@ export async function runOcr(
     compactActiveBatch?: boolean;
   }
 ): Promise<OcrResult> {
-  const providerNameResolved = providerName ?? "builtin";
+  const providerNameResolved = normalizeOcrProviderName(providerName);
   const provider = getOcrProvider(providerNameResolved);
   if (!provider) throw new Error(`OCR 引擎未注册: ${providerNameResolved}`);
 
-  if (providerNameResolved === "builtin") {
+  if (providerNameResolved === "48px") {
     const internal = await runOcrByOnnxInternal(image, detectedRegions, platform!, options);
     const filled = fillMissingOcrFields(internal.results, image, platform);
     const regions = mapResultsToRegions(filled, detectedRegions);

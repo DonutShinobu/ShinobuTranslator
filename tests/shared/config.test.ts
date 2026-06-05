@@ -6,9 +6,12 @@ import {
   normalizeSettings,
   optimizedGeminiAppPromptTemplate,
   requiresLlmApiKey,
+  resolveGeminiApiImageModel,
   resolveLlmBaseUrl,
   toPipelineConfig,
+  usesGeminiApiImagePipeline,
   usesGeminiAppImagePipeline,
+  usesNanoBananaImagePipeline,
   validateSettings,
 } from "../../src/shared/config";
 
@@ -83,6 +86,8 @@ describe("OpenAI provider settings", () => {
     });
 
     expect(settings.llmProvider).toBe("gemini");
+    expect(settings.llmProfiles.gemini.authMode).toBe("gemini_app");
+    expect(usesNanoBananaImagePipeline(settings)).toBe(true);
     expect(usesGeminiAppImagePipeline(settings)).toBe(true);
     expect(requiresLlmApiKey(settings)).toBe(false);
     expect(validateSettings(settings)).toBeNull();
@@ -100,6 +105,57 @@ describe("OpenAI provider settings", () => {
 
     expect(settings.geminiAppModel).toBe("nano_banana_pro");
     expect(getGeminiAppModelLabel(settings.geminiAppModel)).toBe("Nano Banana Pro");
+  });
+
+  it("supports the Gemini API key auth mode under the same Nano Banana provider", () => {
+    const settings = normalizeSettings({
+      translator: "llm",
+      llmProvider: "gemini",
+      geminiAppModel: "nano_banana_2",
+      llmProfiles: {
+        gemini: {
+          apiKey: "AIza-test",
+          authMode: "api_key",
+          modelPreset: "",
+          modelCustom: "",
+          useCustomModel: false,
+          customBaseUrl: "",
+        },
+      },
+    });
+
+    expect(settings.llmProvider).toBe("gemini");
+    expect(settings.geminiAppModel).toBe("nano_banana_2");
+    expect(settings.llmProfiles.gemini.authMode).toBe("api_key");
+    expect(resolveGeminiApiImageModel(settings.geminiAppModel)).toBe("gemini-3.1-flash-image");
+    expect(usesNanoBananaImagePipeline(settings)).toBe(true);
+    expect(usesGeminiApiImagePipeline(settings)).toBe(true);
+    expect(usesGeminiAppImagePipeline(settings)).toBe(false);
+    expect(requiresLlmApiKey(settings)).toBe(true);
+    expect(resolveLlmBaseUrl(settings)).toBe("https://generativelanguage.googleapis.com/v1");
+    expect(validateSettings(settings)).toBeNull();
+  });
+
+  it("requires an API key when Nano Banana uses API key auth", () => {
+    const settings = normalizeSettings({
+      translator: "llm",
+      llmProvider: "gemini",
+      geminiAppModel: "nano_banana_pro",
+      llmProfiles: {
+        gemini: {
+          apiKey: "",
+          authMode: "api_key",
+          modelPreset: "",
+          modelCustom: "",
+          useCustomModel: false,
+          customBaseUrl: "",
+        },
+      },
+    });
+
+    expect(usesGeminiApiImagePipeline(settings)).toBe(true);
+    expect(resolveGeminiApiImageModel(settings.geminiAppModel)).toBe("gemini-3-pro-image");
+    expect(validateSettings(settings)).toBe("Nano Banana API Key 不能为空");
   });
 
   it("locks stage timing details off for Nano Banana", () => {
@@ -132,8 +188,29 @@ describe("OpenAI provider settings", () => {
     expect(settings.llmProvider).toBe("gemini");
     expect(settings.imageEngine).toBe("local");
     expect(settings.geminiAppAuthMode).toBe("cookies_permission");
+    expect(settings.llmProfiles.gemini.authMode).toBe("gemini_app");
     expect(usesGeminiAppImagePipeline(settings)).toBe(true);
     expect(validateSettings(settings)).toBeNull();
+  });
+
+  it("keeps legacy saved Nano Banana App profiles on Gemini login auth", () => {
+    const settings = normalizeSettings({
+      translator: "llm",
+      llmProvider: "gemini",
+      llmProfiles: {
+        gemini: {
+          apiKey: "",
+          authMode: "api_key",
+          modelPreset: "nano-banana-pro",
+          modelCustom: "",
+          useCustomModel: false,
+          customBaseUrl: "",
+        },
+      },
+    });
+
+    expect(settings.llmProfiles.gemini.authMode).toBe("gemini_app");
+    expect(usesGeminiAppImagePipeline(settings)).toBe(true);
   });
 
   it("uses the default Gemini App prompt when the saved template is blank", () => {

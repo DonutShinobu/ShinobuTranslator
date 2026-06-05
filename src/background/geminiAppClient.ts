@@ -1,4 +1,4 @@
-import { getGeminiAppModelLabel } from '../shared/config';
+import { buildGeminiImagePrompt, getGeminiAppModelLabel } from '../shared/config';
 import type { ExtensionSettings } from '../shared/config';
 import type { GeminiAppAuthStatusInfo, GeminiAppImageTranslateMetadata } from '../shared/messages';
 import type { StageTiming } from '../types';
@@ -311,12 +311,8 @@ function base64ToBlob(base64: string, contentType: string): Blob {
   return new Blob([bytes], { type: contentType || 'image/png' });
 }
 
-function targetLanguageLabel(targetLang: string): string {
-  return targetLang === 'zh-CHT' ? '繁体中文' : '简体中文';
-}
-
 function buildPrompt(settings: ExtensionSettings): string {
-  return settings.geminiAppPromptTemplate.replace(/\{targetLang\}/g, targetLanguageLabel(settings.targetLang));
+  return buildGeminiImagePrompt(settings);
 }
 
 export function getGeminiAppModelMetadataLabel(model: GeminiAppModel): string {

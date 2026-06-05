@@ -269,24 +269,40 @@ type GeminiAppImageTranslateMessage = {
     filename: string;
   };
 };
+
+type GeminiApiImageTranslateMessage = {
+  type: 'mt:gemini-api-image-translate';
+  image: {
+    base64: string;
+    contentType: string;
+    filename: string;
+  };
+};
 ```
 
 ### 3. Contracts
 
-- The Gemini-backed LLM provider is labeled `Nano Banana` in the popup provider selector.
+- The Gemini-backed LLM provider is labeled `Nano Banana` in the popup provider selector. Do not split Gemini App and official Gemini API into separate providers in the selector.
+- Nano Banana exposes auth as a segmented control on the same provider: `Gemini 登录` maps to `llmProfiles.gemini.authMode === 'gemini_app'`, and `API Key` maps to `llmProfiles.gemini.authMode === 'api_key'`.
+- `usesNanoBananaImagePipeline(settings)` is true for every `translator === 'llm' && llmProvider === 'gemini'` full-image path. `usesGeminiAppImagePipeline(settings)` is only the Gemini App/login path. `usesGeminiApiImagePipeline(settings)` is only the official API key path.
 - Nano Banana has exactly one image translation path: full-image end-to-end translation.
 - Popup may expose a Nano Banana model segmented control for supported Gemini App image models, currently `Nano Banana 2` and `Nano Banana Pro`.
+- Popup shows the same Nano Banana model segmented control (`Nano Banana 2` / `Nano Banana Pro`) in both `gemini_app` and `api_key` auth modes.
+- Popup shows Gemini App login status only in `gemini_app` auth mode.
+- Popup shows the API Key field only in `api_key` auth mode.
 - Do not add a full/local range toggle in popup settings.
 - Popup caches the last successful Gemini App login check as a boolean UI hint only. Do not store cookies, tokens, or account identifiers.
-- When the cached Gemini App status is unauthenticated and the user has selected Nano Banana, opening the popup auto-checks Gemini App login status once.
+- When the cached Gemini App status is unauthenticated and the user has selected Nano Banana with `gemini_app` auth mode, opening the popup auto-checks Gemini App login status once.
 - When the cached Gemini App status is authenticated, opening the popup does not auto-check again; the user can refresh it with the explicit check button.
+- Auto-check Gemini App login status only for `gemini_app` auth mode; API Key mode must not open or check Gemini App.
 - The Nano Banana prompt field is labeled `提示词` and exposes a compact refresh icon button that resets it to `optimizedGeminiAppPromptTemplate`.
 - The default Nano Banana prompt must constrain edits to dialogue text and sound-effect text, not all text-like regions broadly.
 - Stage timing details must be locked off for Nano Banana because the web-app image path cannot provide reliable local stage details.
 - Content sends the complete original image to Nano Banana and uses the returned image directly.
 - Content must not run local text detection, bubble detection, OCR, local translation, mask compositing, transparent overlay generation, or paste-back logic for Nano Banana.
-- The background prompt is always `geminiAppPromptTemplate` with `{targetLang}` replacement.
+- The background prompt is always `geminiAppPromptTemplate` with `{targetLang}` replacement for both Gemini App and Gemini API auth modes.
 - Background model headers and returned metadata must reflect `geminiAppModel`; do not keep a hard-coded Pro label when `Nano Banana 2` is selected.
+- Official API mode maps the shared Nano Banana model selection to official model ids before sending `generateContent`: `Nano Banana 2` -> `gemini-3.1-flash-image`, `Nano Banana Pro` -> `gemini-3-pro-image`. It uses `x-goog-api-key`, passes the original image as `inlineData`, and extracts the first returned `inlineData` image.
 - Reading-mode batch translation remains blocked for Nano Banana unless explicit rate limiting and user confirmation are added.
 
 ### 4. Validation & Error Matrix
@@ -294,6 +310,11 @@ type GeminiAppImageTranslateMessage = {
 | Condition | Required behavior |
 |-----------|-------------------|
 | Prompt template normalizes to blank | `validateSettings()` returns a Chinese Gemini prompt error |
+| Nano Banana auth mode is `api_key` and API key is blank | `validateSettings()` returns a Chinese Nano Banana API Key error |
+| Nano Banana auth mode is `api_key` | Content sends `mt:gemini-api-image-translate`; background must not call Gemini App auth/status/upload endpoints |
+| Nano Banana auth mode is `gemini_app` | Content sends `mt:gemini-app-image-translate`; popup may show login status and login/check actions |
+| User selects Nano Banana 2 in API Key mode | Background calls `gemini-3.1-flash-image` and metadata labels the run as `Nano Banana API / Nano Banana 2` |
+| User selects Nano Banana Pro in API Key mode | Background calls `gemini-3-pro-image` and metadata labels the run as `Nano Banana API / Nano Banana Pro` |
 | Gemini message fails or returns no image | Content surfaces the Chinese background error and preserves the original image |
 | User selects Nano Banana in reading-mode batch | Content rejects the run with a Chinese single-image/other-provider hint |
 | User selects Nano Banana 2 | Background does not send the Pro-only model header and metadata labels the run as Nano Banana 2 |
@@ -301,19 +322,26 @@ type GeminiAppImageTranslateMessage = {
 | User selects Nano Banana with saved stage details enabled | Settings normalization and popup UI force stage details off |
 | User opens popup on Nano Banana with cached unauthenticated status | Popup checks Gemini App login status once |
 | User opens popup on Nano Banana with cached authenticated status | The login-status row shows `Gemini已登录` without checking again; the top save/status bubble does not show that label |
+| User switches Nano Banana to API Key mode | Popup stops Gemini App login auto-checks and shows API Key/model fields instead |
 
 ### 5. Good/Base/Bad Cases
 
-- Good: Nano Banana sends one complete source image request and displays the single complete translated image returned by Gemini.
+- Good: Nano Banana sends one complete source image request and displays the single complete translated image returned by Gemini, regardless of auth mode.
 - Base: popup provider selection controls authentication, model selection, and prompt settings only; OCR engine and process mode are hidden and do not affect Nano Banana execution.
+- Base: Gemini App and Gemini API are auth modes under the same `gemini` provider, not separate popup providers.
+- Base: The UI uses product labels (`Nano Banana 2` / `Nano Banana Pro`); official API model ids stay in config/background mapping and tests.
 - Bad: sending per-bubble crops or multiple requests for one image.
 - Bad: adding local paste-back, crop compositing, transparent overlay, or OCR-assisted postprocessing to Nano Banana.
 - Bad: letting OCR engine or process mode controls affect Nano Banana execution after the provider is selected.
+- Bad: adding a second visible provider such as `Nano Banana Pro API` for official API access.
+- Bad: exposing raw official API model ids as the primary Nano Banana model selector in popup.
 
 ### 6. Tests Required
 
 - Add/update `tests/shared/config.test.ts` for Gemini prompt defaults, provider normalization, and model selection normalization.
+- Add/update `tests/shared/config.test.ts` for Nano Banana `gemini_app` vs `api_key` auth normalization and validation.
 - Add/update `tests/shared/messages.test.ts` when new `mt:` messages are added.
+- Add/update background pure-function tests for Gemini API `inlineData` extraction and error mapping.
 - Run `npx tsc --noEmit`.
 - Run `npm run test`.
 - Run `npm run build`.

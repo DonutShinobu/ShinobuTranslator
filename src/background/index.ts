@@ -2,6 +2,7 @@ import {
   defaultExtensionSettings,
   extensionSettingsStorageKey,
   normalizeSettings,
+  usesGeminiApiImagePipeline,
   usesGeminiAppImagePipeline,
   validateSettings,
   type ExtensionSettings,
@@ -39,6 +40,7 @@ import {
   extractOpenAiResponsesSseText,
 } from '../shared/openaiResponses';
 import { arrayBufferToBase64, toErrorMessage } from '../shared/utils';
+import { runGeminiApiImageTranslate } from './geminiApiImageClient';
 import { getGeminiAppAuthStatus, runGeminiAppImageTranslate } from './geminiAppClient';
 
 const openAiOAuthStorageKey = 'mangaTranslate.openaiOAuth';
@@ -857,7 +859,7 @@ async function handleMessage(message: RuntimeMessage, sender: ChromeMessageSende
     const settings = await getSettings();
     const validationError = usesGeminiAppImagePipeline(settings)
       ? validateSettings(settings)
-      : '请先在扩展弹窗中选择“大模型”并将 LLM 提供商设为 Nano Banana';
+      : '请先在扩展弹窗中选择“大模型”，将 LLM 提供商设为 Nano Banana，并选择 Gemini 登录认证';
     if (validationError) {
       throw new Error(validationError);
     }
@@ -870,6 +872,27 @@ async function handleMessage(message: RuntimeMessage, sender: ChromeMessageSende
     return {
       ok: true,
       type: 'mt:gemini-app-image-translate',
+      ...translated,
+    };
+  }
+
+  if (message.type === 'mt:gemini-api-image-translate') {
+    const settings = await getSettings();
+    const validationError = usesGeminiApiImagePipeline(settings)
+      ? validateSettings(settings)
+      : '请先在扩展弹窗中选择“大模型”，将 LLM 提供商设为 Nano Banana，并选择 API Key 认证';
+    if (validationError) {
+      throw new Error(validationError);
+    }
+    const translated = await runGeminiApiImageTranslate({
+      imageBase64: message.image.base64,
+      contentType: message.image.contentType,
+      filename: message.image.filename,
+      settings,
+    });
+    return {
+      ok: true,
+      type: 'mt:gemini-api-image-translate',
       ...translated,
     };
   }

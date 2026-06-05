@@ -66,19 +66,44 @@ export type LlmChatCompletionsMessage = {
   body: LlmChatCompletionRequestBody;
 };
 
+type ImageTranslateMessageImage = {
+  base64: string;
+  contentType: string;
+  filename: string;
+};
+
 export type GeminiAppImageTranslateMessage = {
   type: 'mt:gemini-app-image-translate';
+  image: ImageTranslateMessageImage;
+};
+
+export type GeminiApiImageTranslateMessage = {
+  type: 'mt:gemini-api-image-translate';
+  image: ImageTranslateMessageImage;
+};
+
+export type CloudImageTranslateMetadata = {
+  modelLabel: string;
+  imageUrl?: string;
+  stageTimings: StageTiming[];
+};
+
+export type GeminiAppImageTranslateMetadata = CloudImageTranslateMetadata;
+
+export type GeminiApiImageTranslateMetadata = CloudImageTranslateMetadata;
+
+export type CloudImageTranslateSuccess = {
+  base64: string;
+  contentType: string;
+  metadata: CloudImageTranslateMetadata;
+};
+
+export type CloudImageTranslateRequest = {
   image: {
     base64: string;
     contentType: string;
     filename: string;
   };
-};
-
-export type GeminiAppImageTranslateMetadata = {
-  modelLabel: string;
-  imageUrl?: string;
-  stageTimings: StageTiming[];
 };
 
 /** Sent from background to content script when user clicks "翻译图片" in context menu. */
@@ -108,6 +133,7 @@ export type RuntimeMessage =
   | GeminiAppAuthLoginMessage
   | LlmChatCompletionsMessage
   | GeminiAppImageTranslateMessage
+  | GeminiApiImageTranslateMessage
   | ContextMenuTranslateMessage
   | StartScreenshotTranslateMessage
   | ShortcutTranslateHoverMessage;
@@ -176,6 +202,13 @@ export type RuntimeSuccessResponse =
     }
   | {
       ok: true;
+      type: 'mt:gemini-api-image-translate';
+      base64: string;
+      contentType: string;
+      metadata: GeminiApiImageTranslateMetadata;
+    }
+  | {
+      ok: true;
       type: 'mt:context-menu-translate';
     }
   | {
@@ -217,6 +250,17 @@ function isGeminiAppImageTranslateMessage(value: Record<string, unknown>): value
   );
 }
 
+function isGeminiApiImageTranslateMessage(value: Record<string, unknown>): value is GeminiApiImageTranslateMessage {
+  if (value.type !== 'mt:gemini-api-image-translate' || !isRecord(value.image)) {
+    return false;
+  }
+  return (
+    typeof value.image.base64 === 'string' &&
+    typeof value.image.contentType === 'string' &&
+    typeof value.image.filename === 'string'
+  );
+}
+
 export function isRuntimeMessage(value: unknown): value is RuntimeMessage {
   if (!isRecord(value)) {
     return false;
@@ -236,6 +280,7 @@ export function isRuntimeMessage(value: unknown): value is RuntimeMessage {
     type === 'mt:start-screenshot-translate' ||
     type === 'mt:shortcut-translate-hover' ||
     isGeminiAppImageTranslateMessage(value) ||
+    isGeminiApiImageTranslateMessage(value) ||
     isLlmChatCompletionsMessage(value)
   );
 }

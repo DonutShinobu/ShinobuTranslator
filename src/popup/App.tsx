@@ -6,7 +6,9 @@ import {
   llmProviderOptions,
   normalizeSettings,
   optimizedGeminiAppPromptTemplate,
+  usesGeminiApiImagePipeline,
   usesGeminiAppImagePipeline,
+  usesNanoBananaImagePipeline,
   type LlmAuthMode,
   type LlmProviderProfile,
   type LlmProvider,
@@ -281,7 +283,7 @@ export function App() {
     setSettings((prev) => ({
       ...prev,
       showElapsedTime: checked,
-      showStageTimingDetails: checked && !usesGeminiAppImagePipeline(prev) ? prev.showStageTimingDetails : false,
+      showStageTimingDetails: checked && !usesNanoBananaImagePipeline(prev) ? prev.showStageTimingDetails : false,
     }));
   }
 
@@ -304,7 +306,9 @@ export function App() {
     setSettings((prev) => ({
       ...prev,
       translator,
-      showStageTimingDetails: translator === 'llm' && prev.llmProvider === 'gemini' ? false : prev.showStageTimingDetails,
+      showStageTimingDetails: usesNanoBananaImagePipeline({ translator, llmProvider: prev.llmProvider })
+        ? false
+        : prev.showStageTimingDetails,
     }));
   }
 
@@ -313,7 +317,9 @@ export function App() {
     setSettings((prev) => ({
       ...prev,
       llmProvider: provider,
-      showStageTimingDetails: prev.translator === 'llm' && provider === 'gemini' ? false : prev.showStageTimingDetails,
+      showStageTimingDetails: usesNanoBananaImagePipeline({ translator: prev.translator, llmProvider: provider })
+        ? false
+        : prev.showStageTimingDetails,
     }));
   }
 
@@ -458,13 +464,15 @@ export function App() {
   }
 
   const currentProfile = settings.llmProfiles[settings.llmProvider];
+  const usesNanoBanana = usesNanoBananaImagePipeline(settings);
   const usesGeminiApp = usesGeminiAppImagePipeline(settings);
+  const usesGeminiApi = usesGeminiApiImagePipeline(settings);
   const currentProviderModels =
     settings.llmProvider === 'custom' || usesGeminiApp ? [] : llmBuiltInProviderDefinitions[settings.llmProvider].models;
   const builtInCustomModelPlaceholder = currentProviderModels[0] ?? currentProfile.modelPreset;
   const usesOpenAiOAuth = settings.llmProvider === 'openai' && currentProfile.authMode === 'openai_oauth';
-  const showLocalPipelineOptions = !usesGeminiApp;
-  const stageTimingDetailsLocked = usesGeminiApp;
+  const showLocalPipelineOptions = !usesNanoBanana;
+  const stageTimingDetailsLocked = usesNanoBanana;
   const stageTimingDetailsDisabled = loading || !settings.showElapsedTime || stageTimingDetailsLocked;
   const openAiStatusLabel = openAiStatus.loading
     ? '正在检查 OpenAI 登录'
@@ -732,8 +740,20 @@ export function App() {
                   </select>
                 </label>
 
-                {usesGeminiApp ? (
+                {settings.llmProvider === 'gemini' ? (
                   <>
+                    <div className="auth-mode-field">
+                      <span className="field-label">认证方式</span>
+                      <SegmentedControl<LlmAuthMode>
+                        options={[
+                          { value: 'gemini_app', label: 'Gemini 登录' },
+                          { value: 'api_key', label: 'API Key' },
+                        ]}
+                        value={currentProfile.authMode}
+                        onChange={(value) => updateActiveLlmProfile({ authMode: value })}
+                        disabled={loading}
+                      />
+                    </div>
                     <div className="auth-mode-field">
                       <span className="field-label">模型</span>
                       <SegmentedControl<ExtensionSettings['geminiAppModel']>
@@ -743,33 +763,51 @@ export function App() {
                         disabled={loading}
                       />
                     </div>
-                    <div className="auth-status-row">
-                      <span className="field-label">登录状态</span>
-                      <div className="auth-status-control">
-                        <div className="oauth-copy">
-                          <span className={`oauth-dot${geminiAppStatus.authenticated ? ' oauth-dot-authed' : ''}`} />
-                          <div className="oauth-title">{geminiStatusLabel}</div>
+                    {usesGeminiApp ? (
+                      <>
+                        <div className="auth-status-row">
+                          <span className="field-label">登录状态</span>
+                          <div className="auth-status-control">
+                            <div className="oauth-copy">
+                              <span className={`oauth-dot${geminiAppStatus.authenticated ? ' oauth-dot-authed' : ''}`} />
+                              <div className="oauth-title">{geminiStatusLabel}</div>
+                            </div>
+                            <button
+                              className="oauth-action"
+                              type="button"
+                              onClick={() => {
+                                void (
+                                  geminiAppStatus.authenticated || geminiAppStatus.pending
+                                    ? refreshGeminiAppAuthStatus()
+                                    : loginGeminiApp()
+                                );
+                              }}
+                              disabled={loading || geminiAppStatus.loading || geminiAppStatus.busy}
+                            >
+                              {geminiAppStatus.busy
+                                ? '处理中...'
+                                : geminiAppStatus.authenticated || geminiAppStatus.pending
+                                  ? '检查状态'
+                                  : '登录 Gemini'}
+                            </button>
+                          </div>
                         </div>
-                        <button
-                          className="oauth-action"
-                          type="button"
-                          onClick={() => {
-                            void (
-                              geminiAppStatus.authenticated || geminiAppStatus.pending
-                                ? refreshGeminiAppAuthStatus()
-                                : loginGeminiApp()
-                            );
-                          }}
-                          disabled={loading || geminiAppStatus.loading || geminiAppStatus.busy}
-                        >
-                          {geminiAppStatus.busy
-                            ? '处理中...'
-                            : geminiAppStatus.authenticated || geminiAppStatus.pending
-                              ? '检查状态'
-                              : '登录 Gemini'}
-                        </button>
-                      </div>
-                    </div>
+                      </>
+                    ) : null}
+                    {usesGeminiApi ? (
+                      <label className="field">
+                        <span className="field-label">API Key</span>
+                        <input
+                          type="password"
+                          value={currentProfile.apiKey}
+                          onChange={(event) =>
+                            updateActiveLlmProfile({ apiKey: event.target.value }, { showSaveStatus: true })
+                          }
+                          disabled={loading}
+                          placeholder="AIza..."
+                        />
+                      </label>
+                    ) : null}
                     <div className="field">
                       <span className="field-label field-label-action">
                         <span>提示词</span>

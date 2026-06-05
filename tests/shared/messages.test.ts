@@ -31,6 +31,14 @@ describe("isRuntimeMessage", () => {
         filename: "source.png",
       },
     })).toBe(true);
+    expect(isRuntimeMessage({
+      type: "mt:gemini-api-image-translate",
+      image: {
+        base64: "abc",
+        contentType: "image/png",
+        filename: "source.png",
+      },
+    })).toBe(true);
   });
 
   it("rejects malformed LLM proxy messages", () => {
@@ -43,6 +51,10 @@ describe("isRuntimeMessage", () => {
     expect(isRuntimeMessage({
       type: "mt:gemini-app-image-translate",
       image: { base64: "abc", contentType: "image/png" },
+    })).toBe(false);
+    expect(isRuntimeMessage({
+      type: "mt:gemini-api-image-translate",
+      image: { base64: "abc", filename: "source.png" },
     })).toBe(false);
   });
 });

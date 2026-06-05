@@ -1,8 +1,9 @@
 import {
   getGeminiAppModelLabel,
+  usesGeminiApiImagePipeline,
   validateSettings,
   toPipelineConfig,
-  usesGeminiAppImagePipeline,
+  usesNanoBananaImagePipeline,
 } from '../../shared/config';
 import type { ExtensionSettings } from '../../shared/config';
 import type {
@@ -433,7 +434,12 @@ export class TranslatorCore {
     onProgress(state.stageText);
   }
 
-  private async runGeminiAppImageTranslateFromFile(options: {
+  private getNanoBananaModelLabel(settings: ExtensionSettings): string {
+    const modelLabel = getGeminiAppModelLabel(settings.geminiAppModel);
+    return usesGeminiApiImagePipeline(settings) ? `Nano Banana API / ${modelLabel}` : modelLabel;
+  }
+
+  private async runNanoBananaImageTranslateFromFile(options: {
     state: PhotoState;
     file: File;
     runSettings: PipelineRunSettings;
@@ -443,22 +449,34 @@ export class TranslatorCore {
     jankMonitor?: ProgressJankMonitor;
   }): Promise<void> {
     const { state, file, runSettings, runStartAt, includeElapsedText, onProgress, jankMonitor } = options;
-    const modelLabel = getGeminiAppModelLabel(runSettings.settings.geminiAppModel);
+    const modelLabel = this.getNanoBananaModelLabel(runSettings.settings);
     state.stageText = `${modelLabel} 全图翻译中`;
-    jankMonitor?.setStage('gemini_app', `${modelLabel} 生成译图`, state.stageText);
+    jankMonitor?.setStage(usesGeminiApiImagePipeline(runSettings.settings) ? 'gemini_api' : 'gemini_app', `${modelLabel} 生成译图`, state.stageText);
     onProgress(state.stageText);
 
     const imageBase64 = await blobToBase64(file);
-    const response = await sendRuntimeMessage({
-      type: 'mt:gemini-app-image-translate',
-      image: {
-        base64: imageBase64,
-        contentType: file.type || 'image/png',
-        filename: file.name || 'source.png',
-      },
-    });
-    if (!response.ok || response.type !== 'mt:gemini-app-image-translate') {
-      throw new Error(response.ok ? 'Gemini App 翻译失败' : response.error);
+    const image = {
+      base64: imageBase64,
+      contentType: file.type || 'image/png',
+      filename: file.name || 'source.png',
+    };
+    const response = usesGeminiApiImagePipeline(runSettings.settings)
+      ? await sendRuntimeMessage({
+          type: 'mt:gemini-api-image-translate',
+          image,
+        })
+      : await sendRuntimeMessage({
+          type: 'mt:gemini-app-image-translate',
+          image,
+        });
+    if (!response.ok) {
+      throw new Error(response.error);
+    }
+    if (
+      response.type !== 'mt:gemini-app-image-translate' &&
+      response.type !== 'mt:gemini-api-image-translate'
+    ) {
+      throw new Error('Nano Banana 翻译失败');
     }
 
     const stageTimings = response.metadata.stageTimings;
@@ -509,8 +527,8 @@ export class TranslatorCore {
     const { state, file, runSettings, runStartAt, includeElapsedText, onProgress, jankMonitor } = options;
     let progressJank: ProgressJankReport | null = null;
     try {
-      if (usesGeminiAppImagePipeline(runSettings.settings)) {
-        await this.runGeminiAppImageTranslateFromFile(options);
+      if (usesNanoBananaImagePipeline(runSettings.settings)) {
+        await this.runNanoBananaImageTranslateFromFile(options);
         progressJank = finishProgressJankMonitor(jankMonitor ?? null);
         return;
       }
@@ -897,8 +915,8 @@ export class TranslatorCore {
 
     try {
       const runSettings = await this.loadPipelineRunSettings(state);
-      if (usesGeminiAppImagePipeline(runSettings.settings)) {
-        throw new Error('阅读模式批量暂不支持 Gemini，请使用单张图片翻译或切回其他大模型供应商');
+      if (usesNanoBananaImagePipeline(runSettings.settings)) {
+        throw new Error('阅读模式批量暂不支持 Nano Banana，请使用单张图片翻译或切回其他大模型供应商');
       }
       const source = await this.downloadImageFile(originalUrl);
       downloadedBlob = source.blob;

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ShinobuTranslator",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "用于 X / Pixiv 的漫画翻译器（支持谷歌翻译和大模型翻译）",
   "action": {
     "default_title": "ShinobuTranslator",

@@ -16,7 +16,7 @@ export type TextDirection = "h" | "v";
 
 export type LlmProvider = 'deepseek' | 'gemini' | 'glm' | 'kimi' | 'minimax' | 'mimo' | 'openai' | 'custom';
 
-export type LlmAuthMode = 'api_key' | 'openai_oauth';
+export type LlmAuthMode = 'api_key' | 'openai_oauth' | 'gemini_app';
 
 export type ImageEngine = 'local' | 'gemini_app';
 

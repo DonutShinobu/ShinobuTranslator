@@ -438,6 +438,7 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
   };
   const showElapsedTime = sanitizeBoolean(raw.showElapsedTime, defaultExtensionSettings.showElapsedTime);
   const showTypesetDebug = sanitizeBoolean(raw.showTypesetDebug, defaultExtensionSettings.showTypesetDebug);
+  const usesNanoBanana = usesNanoBananaImagePipeline({ translator, llmProvider: provider });
   const geminiAppExperimentalEnabled = sanitizeBoolean(
     raw.geminiAppExperimentalEnabled,
     defaultExtensionSettings.geminiAppExperimentalEnabled,
@@ -455,18 +456,22 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     llmProfiles,
     showElapsedTime,
     showStageTimingDetails:
-      usesNanoBananaImagePipeline({ translator, llmProvider: provider })
+      usesNanoBanana
         ? false
         : showElapsedTime
           ? sanitizeBoolean(raw.showStageTimingDetails, defaultExtensionSettings.showStageTimingDetails)
           : false,
     stageTimingCardExpanded: sanitizeBoolean(raw.stageTimingCardExpanded, defaultExtensionSettings.stageTimingCardExpanded),
-    showTypesetDebug,
-    showEraseDebug: sanitizeBoolean(raw.showEraseDebug, defaultExtensionSettings.showEraseDebug),
+    showTypesetDebug: usesNanoBanana ? false : showTypesetDebug,
+    showEraseDebug: usesNanoBanana
+      ? false
+      : sanitizeBoolean(raw.showEraseDebug, defaultExtensionSettings.showEraseDebug),
     debugOptionsExpanded: sanitizeBoolean(raw.debugOptionsExpanded, defaultExtensionSettings.debugOptionsExpanded),
     ocrEngine: normalizeOcrEngine(raw.ocrEngine),
     processMode: normalizeProcessMode(raw.processMode),
-    enableDebugLog: sanitizeBoolean(raw.enableDebugLog, defaultExtensionSettings.enableDebugLog),
+    enableDebugLog: usesNanoBanana
+      ? false
+      : sanitizeBoolean(raw.enableDebugLog, defaultExtensionSettings.enableDebugLog),
   };
 }
 

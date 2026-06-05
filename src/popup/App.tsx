@@ -266,13 +266,24 @@ export function App() {
     nextSaveShowsStatusRef.current = nextSaveShowsStatusRef.current || options.showSaveStatus === true;
   }
 
+  function applyNanoBananaDebugLocks(next: ExtensionSettings): ExtensionSettings {
+    if (!usesNanoBananaImagePipeline(next)) return next;
+    return {
+      ...next,
+      showStageTimingDetails: false,
+      showTypesetDebug: false,
+      showEraseDebug: false,
+      enableDebugLog: false,
+    };
+  }
+
   function updateField<K extends keyof ExtensionSettings>(
     key: K,
     value: ExtensionSettings[K],
     options?: SettingsUpdateOptions,
   ): void {
     queueSaveStatus(options);
-    setSettings((prev) => ({
+    setSettings((prev) => applyNanoBananaDebugLocks({
       ...prev,
       [key]: value,
     }));
@@ -280,7 +291,7 @@ export function App() {
 
   function updateElapsedTime(checked: boolean, options?: SettingsUpdateOptions): void {
     queueSaveStatus(options);
-    setSettings((prev) => ({
+    setSettings((prev) => applyNanoBananaDebugLocks({
       ...prev,
       showElapsedTime: checked,
       showStageTimingDetails: checked && !usesNanoBananaImagePipeline(prev) ? prev.showStageTimingDetails : false,
@@ -303,7 +314,7 @@ export function App() {
 
   function updateTranslator(translator: ExtensionSettings['translator']): void {
     queueSaveStatus();
-    setSettings((prev) => ({
+    setSettings((prev) => applyNanoBananaDebugLocks({
       ...prev,
       translator,
       showStageTimingDetails: usesNanoBananaImagePipeline({ translator, llmProvider: prev.llmProvider })
@@ -314,7 +325,7 @@ export function App() {
 
   function updateLlmProvider(provider: LlmProvider): void {
     queueSaveStatus();
-    setSettings((prev) => ({
+    setSettings((prev) => applyNanoBananaDebugLocks({
       ...prev,
       llmProvider: provider,
       showStageTimingDetails: usesNanoBananaImagePipeline({ translator: prev.translator, llmProvider: provider })
@@ -474,6 +485,8 @@ export function App() {
   const showLocalPipelineOptions = !usesNanoBanana;
   const stageTimingDetailsLocked = usesNanoBanana;
   const stageTimingDetailsDisabled = loading || !settings.showElapsedTime || stageTimingDetailsLocked;
+  const localDebugOptionsLocked = usesNanoBanana;
+  const localDebugOptionsDisabled = loading || localDebugOptionsLocked;
   const openAiStatusLabel = openAiStatus.loading
     ? '正在检查 OpenAI 登录'
     : openAiStatus.authenticated
@@ -997,30 +1010,30 @@ export function App() {
                       />
                       <span className="checkbox-label">阶段明细</span>
                     </label>
-                    <label className="checkbox-row">
+                    <label className={`checkbox-row${localDebugOptionsDisabled ? ' checkbox-disabled' : ''}`}>
                       <input
                         type="checkbox"
-                        checked={settings.showTypesetDebug}
+                        checked={!localDebugOptionsLocked && settings.showTypesetDebug}
                         onChange={(event) => updateField('showTypesetDebug', event.target.checked)}
-                        disabled={loading}
+                        disabled={localDebugOptionsDisabled}
                       />
                       <span className="checkbox-label">排版调试</span>
                     </label>
-                    <label className="checkbox-row">
+                    <label className={`checkbox-row${localDebugOptionsDisabled ? ' checkbox-disabled' : ''}`}>
                       <input
                         type="checkbox"
-                        checked={settings.showEraseDebug}
+                        checked={!localDebugOptionsLocked && settings.showEraseDebug}
                         onChange={(event) => updateField('showEraseDebug', event.target.checked)}
-                        disabled={loading}
+                        disabled={localDebugOptionsDisabled}
                       />
                       <span className="checkbox-label">去字调试</span>
                     </label>
-                    <label className="checkbox-row">
+                    <label className={`checkbox-row${localDebugOptionsDisabled ? ' checkbox-disabled' : ''}`}>
                       <input
                         type="checkbox"
-                        checked={settings.enableDebugLog}
+                        checked={!localDebugOptionsLocked && settings.enableDebugLog}
                         onChange={(event) => updateField('enableDebugLog', event.target.checked)}
-                        disabled={loading}
+                        disabled={localDebugOptionsDisabled}
                       />
                       <span className="checkbox-label">日志记录</span>
                     </label>

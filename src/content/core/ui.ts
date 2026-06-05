@@ -485,11 +485,11 @@ export function injectStyles(): void {
         "dot provider";
       align-items: center;
       column-gap: 5px;
-      min-height: 40px;
+      min-height: 42px;
       box-sizing: border-box;
       border: 1px solid var(--mt-stage-node-border, oklch(0.85 0.05 175 / 0.7));
       border-radius: 14px;
-      padding: 6px 8px;
+      padding: 7px 8px 6px;
       background: var(--mt-stage-node-bg, oklch(0.16 0.03 175 / 0.72));
       color: var(--mt-stage-muted, oklch(0.94 0.01 250 / 0.7));
       box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.06);
@@ -527,7 +527,7 @@ export function injectStyles(): void {
       min-width: 0;
       margin-top: 2px;
       font-size: 9.5px;
-      line-height: 1.15;
+      line-height: 1.32;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -1316,8 +1316,7 @@ function getStickyInsideRightContextImageAnchor(
   const visibleRight = Math.min(window.innerWidth, visibleRect.left + visibleRect.width);
   const visibleTop = Math.max(0, visibleRect.top);
   const minLeft = visibleLeft + floatingControlInset;
-  const maxLeft = Math.max(minLeft, visibleRight - overlayWidth - floatingControlInset);
-  const overlayLeft = maxLeft;
+  const overlayLeft = Math.max(minLeft, visibleRight - overlayWidth);
   const overlayTop = visibleTop + floatingControlInset;
   return {
     anchorX: 'right',
@@ -1337,8 +1336,7 @@ function getOutsideRightContextImageAnchor(
   const visibleRight = Math.min(window.innerWidth, visibleRect.left + visibleRect.width);
   const visibleTop = Math.max(0, visibleRect.top);
   const minLeft = visibleLeft + floatingControlInset;
-  const maxLeft = Math.max(minLeft, visibleRight - overlayWidth - floatingControlInset);
-  const overlayLeft = maxLeft;
+  const overlayLeft = Math.max(minLeft, visibleRight - overlayWidth);
   let overlayTop = visibleTop + floatingControlInset;
 
   const topEdgeVisible = hostRect.top > 0 && hostRect.top < overlayHeight + floatingControlGap + floatingControlInset;

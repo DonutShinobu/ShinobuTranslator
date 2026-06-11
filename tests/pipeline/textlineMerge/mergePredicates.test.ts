@@ -1,4 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
+import { mergeTextLines } from "../../../src/pipeline/textlineMerge";
 import {
   buildInternalQuad,
   canMergeRegion,
@@ -250,5 +251,45 @@ describe("mergeTextRegions", () => {
     const result = mergeTextRegions(quads, 300, 300);
     // Too far apart to merge → two separate groups
     expect(result.length).toBe(2);
+  });
+});
+
+describe("mergeTextLines sourceLineGeometries", () => {
+  it("preserves vertical source column geometry in right-to-left order", () => {
+    const regions: TextRegion[] = [
+      makeRegion({
+        id: "left-column",
+        box: { x: 40, y: 10, width: 20, height: 100 },
+        sourceText: "L",
+        fontSize: 20,
+      }),
+      makeRegion({
+        id: "right-column",
+        box: { x: 65, y: 10, width: 20, height: 100 },
+        sourceText: "R",
+        fontSize: 20,
+      }),
+    ];
+
+    const [merged] = mergeTextLines(regions, 200, 200);
+
+    expect(merged.sourceText).toBe("R\nL");
+    expect(merged.originalLineCount).toBe(2);
+    expect(merged.sourceLineGeometries).toHaveLength(2);
+    expect(merged.sourceLineGeometries?.[0]).toMatchObject({
+      text: "R",
+      direction: "v",
+      centerX: 75,
+      centerY: 60,
+      width: 20,
+      height: 100,
+      fontSize: 20,
+    });
+    expect(merged.sourceLineGeometries?.[1]).toMatchObject({
+      text: "L",
+      direction: "v",
+      centerX: 50,
+      centerY: 60,
+    });
   });
 });

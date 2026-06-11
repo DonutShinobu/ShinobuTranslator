@@ -104,11 +104,13 @@ export function computeRegionMetrics(
   const columnCountMatch = gtN === predN ? 1 : 0;
   const columnCountDiff = predN - gtN;
   const pairCount = Math.max(gtN, predN);
+  const gtSpatialColumns = columnsRightToLeft(gtColumns);
+  const predSpatialColumns = columnsRightToLeft(predColumns);
 
   const ious: number[] = [];
   for (let i = 0; i < pairCount; i++) {
     if (i < gtN && i < predN) {
-      ious.push(columnIoU(gtColumns[i], predColumns[i]));
+      ious.push(columnIoU(gtSpatialColumns[i], predSpatialColumns[i]));
     } else {
       ious.push(0);
     }
@@ -128,8 +130,8 @@ export function computeRegionMetrics(
   const signedDxNorms: number[] = [];
   const dxNorms: number[] = [];
   for (let i = 0; i < Math.min(gtN, predN); i++) {
-    const dx = predColumns[i].centerX - gtColumns[i].centerX;
-    const norm = gtColumns[i].width > 0 ? dx / gtColumns[i].width : 0;
+    const dx = predSpatialColumns[i].centerX - gtSpatialColumns[i].centerX;
+    const norm = gtSpatialColumns[i].width > 0 ? dx / gtSpatialColumns[i].width : 0;
     signedDxNorms.push(norm);
     dxNorms.push(Math.abs(norm));
   }
@@ -138,8 +140,6 @@ export function computeRegionMetrics(
   const columnDxNormMax = dxNorms.length > 0 ? Math.max(...dxNorms) : 0;
 
   const gapNormBase = positiveMedian(gtColumns.map((c) => c.width), gtFont || predFontSize || 1);
-  const gtSpatialColumns = columnsRightToLeft(gtColumns);
-  const predSpatialColumns = columnsRightToLeft(predColumns);
   const signedColumnGapNorms: number[] = [];
   const columnPitchRatios: number[] = [];
   for (let i = 0; i < Math.min(gtSpatialColumns.length, predSpatialColumns.length) - 1; i++) {
@@ -159,11 +159,11 @@ export function computeRegionMetrics(
   const dBottoms: number[] = [];
   const heightRatios: number[] = [];
   for (let i = 0; i < Math.min(gtN, predN); i++) {
-    const gtH = gtColumns[i].height;
+    const gtH = gtSpatialColumns[i].height;
     if (gtH > 0) {
-      dTops.push((predColumns[i].topY - gtColumns[i].topY) / gtH);
-      dBottoms.push((predColumns[i].bottomY - gtColumns[i].bottomY) / gtH);
-      heightRatios.push(predColumns[i].height / gtH);
+      dTops.push((predSpatialColumns[i].topY - gtSpatialColumns[i].topY) / gtH);
+      dBottoms.push((predSpatialColumns[i].bottomY - gtSpatialColumns[i].bottomY) / gtH);
+      heightRatios.push(predSpatialColumns[i].height / gtH);
     }
   }
   const dTopNormMean = dTops.length > 0
@@ -195,8 +195,8 @@ export function computeRegionMetrics(
   }
 
   for (let i = 0; i < Math.min(gtN, predN); i++) {
-    const gtCenters = gtColumns[i].charCenters;
-    const predCenters = predColumns[i].charCenters;
+    const gtCenters = gtSpatialColumns[i].charCenters;
+    const predCenters = predSpatialColumns[i].charCenters;
     const gtLen = gtCenters.length;
     const predLen = predCenters.length;
     if (gtLen === 0 || predLen === 0) continue;

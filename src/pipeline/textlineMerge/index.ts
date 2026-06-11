@@ -8,7 +8,7 @@
  * 4. Post-process: majority-vote direction, sort lines, average colors, merge text.
  */
 
-import type { TextRegion, TextDirection, QuadPoint, Rect } from "../../types";
+import type { SourceTextLineGeometry, TextRegion, TextDirection, QuadPoint, Rect } from "../../types";
 import { minAreaRect } from "../typeset/geometry";
 import type { InternalQuad, MergedGroup } from "./mergePredicates";
 import { buildInternalQuad, mergeTextRegions } from "./mergePredicates";
@@ -16,6 +16,36 @@ import { buildInternalQuad, mergeTextRegions } from "./mergePredicates";
 // ---------------------------------------------------------------------------
 // Build merged TextRegion from a group of InternalQuads
 // ---------------------------------------------------------------------------
+
+function internalQuadToSourceGeometry(q: InternalQuad): SourceTextLineGeometry {
+  const xs = q.pts.map((p) => p.x);
+  const ys = q.pts.map((p) => p.y);
+  const minX = Math.min(...xs);
+  const minY = Math.min(...ys);
+  const maxX = Math.max(...xs);
+  const maxY = Math.max(...ys);
+  const topW = Math.hypot(q.pts[1].x - q.pts[0].x, q.pts[1].y - q.pts[0].y);
+  const bottomW = Math.hypot(q.pts[2].x - q.pts[3].x, q.pts[2].y - q.pts[3].y);
+  const leftH = Math.hypot(q.pts[3].x - q.pts[0].x, q.pts[3].y - q.pts[0].y);
+  const rightH = Math.hypot(q.pts[2].x - q.pts[1].x, q.pts[2].y - q.pts[1].y);
+
+  return {
+    text: q.text,
+    direction: q.direction,
+    box: {
+      x: Math.round(minX),
+      y: Math.round(minY),
+      width: Math.round(maxX - minX),
+      height: Math.round(maxY - minY),
+    },
+    quad: q.pts.map((p) => ({ x: p.x, y: p.y })) as [QuadPoint, QuadPoint, QuadPoint, QuadPoint],
+    centerX: q.centroid.x,
+    centerY: q.centroid.y,
+    width: (topW + bottomW) / 2,
+    height: (leftH + rightH) / 2,
+    fontSize: q.fontSize,
+  };
+}
 
 function buildMergedRegion(group: MergedGroup, allQuads: InternalQuad[]): TextRegion {
   const { quads: txtlns, fgColor, bgColor } = group;
@@ -114,6 +144,7 @@ function buildMergedRegion(group: MergedGroup, allQuads: InternalQuad[]): TextRe
     originalLineCount: txtlns.length,
     sourceText,
     translatedText: "",
+    sourceLineGeometries: txtlns.map(internalQuadToSourceGeometry),
   };
 }
 

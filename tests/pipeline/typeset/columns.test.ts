@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   countTextLength,
+  countTextGlyphs,
   charLength,
   splitColumns,
   splitByTextLength,
@@ -448,5 +449,16 @@ describe("resolveVerticalPreferredColumns", () => {
     // Single translated column "HelloWorld" length ~10, exceeds baseline
     // Should be split across columns
     expect(result.columns.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("countTextGlyphs", () => {
+  it("counts real glyphs without half-width kana weighting", () => {
+    expect(countTextGlyphs("っあ")).toBe(2);
+    expect(countTextGlyphs("へぇ")).toBe(2);
+  });
+
+  it("ignores whitespace for layout glyph count", () => {
+    expect(countTextGlyphs("  あ\nい  ")).toBe(2);
   });
 });

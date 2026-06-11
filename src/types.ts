@@ -14,6 +14,18 @@ export type QuadPoint = {
 
 export type TextDirection = "h" | "v";
 
+export type SourceTextLineGeometry = {
+  text: string;
+  direction: TextDirection;
+  box: Rect;
+  quad?: [QuadPoint, QuadPoint, QuadPoint, QuadPoint];
+  centerX: number;
+  centerY: number;
+  width: number;
+  height: number;
+  fontSize?: number;
+};
+
 export type LlmProvider = 'deepseek' | 'gemini' | 'glm' | 'kimi' | 'minimax' | 'mimo' | 'openai' | 'custom';
 
 export type LlmAuthMode = 'api_key' | 'openai_oauth' | 'gemini_app';
@@ -39,6 +51,8 @@ export type TextRegion = {
   translatedText: string;
   /** Optional LLM-provided vertical columns, ordered right-to-left. */
   translatedColumns?: string[];
+  /** Pre-merge source line/column geometries in reading order. */
+  sourceLineGeometries?: SourceTextLineGeometry[];
   bubbleBox?: Rect;
   bubbleMask?: PipelineImageData;
 };
@@ -86,6 +100,16 @@ export type TypesetDebugGlyphCenter = {
   y: number;
 };
 
+export type TypesetLayoutDiagnostics = {
+  sourceGeometryProfileUsed: boolean;
+  advanceScale: number;
+  colSpacingScale: number;
+  actualBoxScale?: number;
+  useDefaultAdvanceBase: boolean;
+  layoutContentHeight: number;
+  renderContentHeight: number;
+};
+
 export type TypesetDebugRegionLog = {
   regionId: string;
   regionIndex: number;
@@ -111,6 +135,7 @@ export type TypesetDebugRegionLog = {
   columnBreakReasons: TypesetDebugColumnBreakReason[];
   columnSegmentIds: number[];
   columnSegmentSources: TypesetDebugColumnSegmentSource[];
+  layoutDiagnostics?: TypesetLayoutDiagnostics;
   columnBoxes: TypesetDebugColumnBox[];
   columnCanvasQuads: [QuadPoint, QuadPoint, QuadPoint, QuadPoint][];
   columnGlyphCenters: TypesetDebugGlyphCenter[][];

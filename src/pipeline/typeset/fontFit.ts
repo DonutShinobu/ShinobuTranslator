@@ -1,4 +1,4 @@
-import type { TextRegion } from "../../types";
+import type { TextRegion, TypesetLayoutDiagnostics } from "../../types";
 import type { PipelineRenderingContext, PipelineImageData } from "../../runtime/platform";
 import { clamp } from "../utils";
 import {
@@ -6,6 +6,7 @@ import {
   KINSOKU_NSTART,
   KINSOKU_NEND,
   countTextLength,
+  countTextGlyphs,
   resolveSourceColumns,
   type ColumnSegmentSource,
   type PreferredColumnSegment,
@@ -29,6 +30,9 @@ import {
 export const verticalAdvanceTightenRatio = 1.0;
 export const verticalColumnSpacingRatio = 0.1;
 export const minVerticalAdvanceScale = 0.75;
+export const minSourceGeometryAdvanceScale = 0.6;
+export const sourceGeometryActualBoxScale = 0.65;
+export const sourceGeometryAdvanceQuantizationBiasPx = 0.15;
 export const minVerticalColSpacingScale = 0.5;
 export const verticalContentHeightExpandBaseRatio = 0.007;
 export const verticalContentHeightExpandFontRatio = 0.0;
@@ -41,6 +45,8 @@ export const offscreenGuardPaddingByFontRatio = 0.35;
 export const minHorizontalLetterSpacingScale = 0.85;
 export const maxHorizontalLetterSpacingScale = 1.5;
 export const minHorizontalLineHeightScale = 0.85;
+export const maxSourceGeometryAnchorAngleRad = 0.052;
+export const maxVerticalSourceColumnOverlapRatio = 0.45;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -65,6 +71,9 @@ export type VerticalCellMetrics = {
 export type BuildVerticalLayoutOptions = {
   colSpacingScale?: number;
   advanceScale?: number;
+  actualBoxScale?: number;
+  useDefaultAdvanceBase?: boolean;
+  columnAnchor?: VerticalColumnAnchor;
   preferredColumns?: string[];
   preferredColumnSources?: ColumnSegmentSource[];
   perColumnMaxHeight?: (columnIndex: number) => number;
@@ -111,6 +120,28 @@ export type DebugColumnBox = {
   height: number;
 };
 
+export type VerticalColumnAnchor = {
+  contentCenterX: number;
+};
+
+export type VerticalColumnPositions = {
+  totalWidth: number;
+  groupLeftX: number;
+  groupCenterX: number;
+  firstCenterX: number;
+  centers: number[];
+};
+
+export type VerticalSourceGeometryProfile = {
+  columnCount: number;
+  groupCenterX: number;
+  medianPitch: number | null;
+  medianGap: number | null;
+  medianWidth: number;
+  medianHeight: number;
+  perColumnAdvance: number[];
+};
+
 export type RegionTypesetDebug = {
   fittedFontSize: number;
   columnBoxes: DebugColumnBox[];
@@ -118,6 +149,7 @@ export type RegionTypesetDebug = {
   columnBreakReasons: ColumnBreakReason[];
   columnSegmentIds: number[];
   columnSegmentSources: ColumnSegmentSource[];
+  layoutDiagnostics?: TypesetLayoutDiagnostics;
   offscreenWidth: number;
   offscreenHeight: number;
   boxPadding: number;
@@ -227,18 +259,26 @@ export function resolveGlyphVerticalAdvance(
   fontSize: number,
   defaultAdvanceY: number,
   advanceScale = 1,
+  actualBoxScale?: number,
+  useDefaultAdvanceBase = false,
 ): number {
   const metrics = ctx.measureText(ch);
   const fontBox = metricAbs(metrics.fontBoundingBoxAscent ?? 0) + metricAbs(metrics.fontBoundingBoxDescent ?? 0);
   const actualBox = metricAbs(metrics.actualBoundingBoxAscent ?? 0) + metricAbs(metrics.actualBoundingBoxDescent ?? 0);
-  const baseAdvance = fontBox > 0
+  const glyphAdvanceBase = fontBox > 0
     ? fontBox
     : defaultAdvanceY;
+  const baseAdvance = useDefaultAdvanceBase ? defaultAdvanceY : glyphAdvanceBase;
   const stabilizedAdvance = Math.max(baseAdvance, fontSize * 0.9);
   const resolvedAdvance = stabilizedAdvance * verticalAdvanceTightenRatio * advanceScale;
 
-  const scaledActualBox = actualBox * Math.max(advanceScale, minVerticalAdvanceScale);
-  return Math.max(1, Math.round(Math.max(scaledActualBox, resolvedAdvance)));
+  const resolvedActualBoxScale = actualBoxScale ?? Math.max(advanceScale, minVerticalAdvanceScale);
+  const scaledActualBox = actualBox * resolvedActualBoxScale;
+  const advance = Math.max(scaledActualBox, resolvedAdvance);
+  const quantizedAdvance = useDefaultAdvanceBase
+    ? advance - sourceGeometryAdvanceQuantizationBiasPx
+    : advance;
+  return Math.max(1, Math.round(quantizedAdvance));
 }
 
 /**
@@ -274,6 +314,140 @@ export function computeVerticalTotalWidth(columnCount: number, metrics: Vertical
   return columnCount * metrics.colWidth + Math.max(0, columnCount - 1) * metrics.colSpacing;
 }
 
+function medianNumber(values: number[]): number | null {
+  const finite = values.filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
+  if (finite.length === 0) {
+    return null;
+  }
+  const middle = Math.floor(finite.length / 2);
+  if (finite.length % 2 === 1) {
+    return finite[middle];
+  }
+  return (finite[middle - 1] + finite[middle]) / 2;
+}
+
+export function resolveVerticalColumnPositions(
+  columnCount: number,
+  contentWidth: number,
+  metrics: VerticalCellMetrics,
+  padding: number = 0,
+  anchor?: VerticalColumnAnchor,
+): VerticalColumnPositions {
+  const totalWidth = computeVerticalTotalWidth(columnCount, metrics);
+  let contentCenterX = anchor?.contentCenterX ?? contentWidth / 2;
+  if (anchor && totalWidth > 0 && totalWidth <= contentWidth) {
+    contentCenterX = clampNumber(
+      contentCenterX,
+      totalWidth / 2,
+      contentWidth - totalWidth / 2,
+    );
+  }
+  const groupCenterX = padding + contentCenterX;
+  const groupLeftX = groupCenterX - totalWidth / 2;
+  const firstCenterX = groupLeftX + totalWidth - metrics.colWidth / 2;
+  const centers = Array.from({ length: Math.max(0, columnCount) }, (_, index) =>
+    firstCenterX - index * (metrics.colWidth + metrics.colSpacing),
+  );
+
+  return {
+    totalWidth,
+    groupLeftX,
+    groupCenterX,
+    firstCenterX,
+    centers,
+  };
+}
+
+export function resolveVerticalSourceGeometryProfile(
+  region: TextRegion,
+  targetColumnCount: number,
+): VerticalSourceGeometryProfile | undefined {
+  const sourceColumns = (region.sourceLineGeometries ?? [])
+    .filter((line) =>
+      line.direction === "v" &&
+      Number.isFinite(line.centerX) &&
+      Number.isFinite(line.width) &&
+      Number.isFinite(line.height) &&
+      line.width > 0 &&
+      line.height > 0,
+    )
+    .sort((a, b) => b.centerX - a.centerX);
+
+  if (
+    targetColumnCount <= 0 ||
+    sourceColumns.length === 0 ||
+    sourceColumns.length !== targetColumnCount
+  ) {
+    return undefined;
+  }
+
+  const widths = sourceColumns.map((line) => line.width);
+  const heights = sourceColumns.map((line) => line.height);
+  const medianWidth = medianNumber(widths);
+  const medianHeight = medianNumber(heights);
+  if (medianWidth === null || medianHeight === null) {
+    return undefined;
+  }
+
+  const pitches: number[] = [];
+  const gaps: number[] = [];
+  for (let index = 0; index < sourceColumns.length - 1; index += 1) {
+    const right = sourceColumns[index];
+    const left = sourceColumns[index + 1];
+    const pitch = right.centerX - left.centerX;
+    if (!Number.isFinite(pitch) || pitch <= 1) {
+      return undefined;
+    }
+    pitches.push(pitch);
+    gaps.push(pitch - (right.width + left.width) / 2);
+  }
+
+  const medianPitch = pitches.length > 0 ? medianNumber(pitches) : null;
+  const medianGap = gaps.length > 0 ? medianNumber(gaps) : null;
+  if (
+    medianPitch !== null &&
+    (medianPitch < medianWidth * 0.75 || medianPitch > Math.max(region.box.width, medianWidth) * 1.25)
+  ) {
+    return undefined;
+  }
+
+  const leftEdge = Math.min(...sourceColumns.map((line) => line.centerX - line.width / 2));
+  const rightEdge = Math.max(...sourceColumns.map((line) => line.centerX + line.width / 2));
+  const perColumnAdvance = sourceColumns.map((line) => {
+    const length = Math.max(1, countTextGlyphs(line.text));
+    return line.height / length;
+  });
+
+  return {
+    columnCount: sourceColumns.length,
+    groupCenterX: (leftEdge + rightEdge) / 2,
+    medianPitch,
+    medianGap,
+    medianWidth,
+    medianHeight,
+    perColumnAdvance,
+  };
+}
+
+export function resolveVerticalSourceColumnAnchor(
+  region: TextRegion,
+  boxPadding: number,
+  profile?: VerticalSourceGeometryProfile,
+): VerticalColumnAnchor | undefined {
+  if (!profile) {
+    return undefined;
+  }
+  const angle = quadAngle(getRegionQuad(region));
+  if (Math.abs(angle) > maxSourceGeometryAnchorAngleRad) {
+    return undefined;
+  }
+  const contentCenterX = profile.groupCenterX - region.box.x - boxPadding;
+  if (!Number.isFinite(contentCenterX)) {
+    return undefined;
+  }
+  return { contentCenterX };
+}
+
 // ---------------------------------------------------------------------------
 // Vertical calc
 // ---------------------------------------------------------------------------
@@ -291,6 +465,8 @@ export function calcVertical(
   defaultAdvanceY: number,
   advanceScale = 1,
   perColumnMaxHeight?: (columnIndex: number) => number,
+  actualBoxScale?: number,
+  useDefaultAdvanceBase = false,
 ): VColumn[] {
   const chars = [...text.replace(/\s+/g, "")];
   if (chars.length === 0) return [];
@@ -301,7 +477,15 @@ export function calcVertical(
     if (cached !== undefined) {
       return cached;
     }
-    const resolved = resolveGlyphVerticalAdvance(ctx, ch, fontSize, defaultAdvanceY, advanceScale);
+    const resolved = resolveGlyphVerticalAdvance(
+      ctx,
+      ch,
+      fontSize,
+      defaultAdvanceY,
+      advanceScale,
+      actualBoxScale,
+      useDefaultAdvanceBase,
+    );
     advanceCache.set(ch, resolved);
     return resolved;
   };
@@ -365,6 +549,8 @@ export function calcVerticalFromColumns(
   defaultAdvanceY: number,
   advanceScale = 1,
   perColumnMaxHeight?: (columnIndex: number) => number,
+  actualBoxScale?: number,
+  useDefaultAdvanceBase = false,
 ): {
   columns: VColumn[];
   columnBreakReasons: ColumnBreakReason[];
@@ -422,6 +608,8 @@ export function calcVerticalFromColumns(
       defaultAdvanceY,
       advanceScale,
       perColumnMaxHeight ? (ci) => perColumnMaxHeight(columns.length + ci) : undefined,
+      actualBoxScale,
+      useDefaultAdvanceBase,
     );
     const segmentMaxGlyphCount = Math.max(1, ...segmentColumns.map((column) => column.glyphs.length));
     if (segmentColumns.length === 0) {
@@ -837,18 +1025,17 @@ export function buildVerticalDebugColumnBoxes(
   padding: number,
   ctx?: PipelineRenderingContext,
   fontSize?: number,
+  anchor?: VerticalColumnAnchor,
 ): DebugColumnBox[] {
   if (columns.length === 0) {
     return [];
   }
-  const totalColW = columns.length * metrics.colWidth + Math.max(0, columns.length - 1) * metrics.colSpacing;
-  const offsetX = padding + (contentWidth - totalColW) / 2;
-  const colStartX = offsetX + totalColW - metrics.colWidth / 2;
+  const positions = resolveVerticalColumnPositions(columns.length, contentWidth, metrics, padding, anchor);
 
   const boxes: DebugColumnBox[] = [];
   for (let c = 0; c < columns.length; c += 1) {
     const col = columns[c];
-    const cx = colStartX - c * (metrics.colWidth + metrics.colSpacing);
+    const cx = positions.centers[c];
     const startY = resolveVerticalStartY(contentHeight, col.height, alignment, padding);
     let boxWidth = metrics.colWidth;
     if (ctx && fontSize) {
@@ -906,9 +1093,13 @@ export function buildVerticalLayout(
   const baseMetrics = resolveVerticalCellMetrics(ctx, text, fontSize, sw);
   const colSpacingScale = options?.colSpacingScale ?? 1;
   const advanceScale = options?.advanceScale ?? 1;
+  const actualBoxScale = options?.actualBoxScale;
+  const useDefaultAdvanceBase = options?.useDefaultAdvanceBase ?? false;
+  const scaledColSpacing = baseMetrics.colSpacing * colSpacingScale;
+  const minColSpacing = -baseMetrics.colWidth * maxVerticalSourceColumnOverlapRatio;
   const metrics = {
     ...baseMetrics,
-    colSpacing: Math.max(0, Math.round(baseMetrics.colSpacing * colSpacingScale)),
+    colSpacing: Math.round(clampNumber(scaledColSpacing, minColSpacing, Number.MAX_SAFE_INTEGER)),
   };
 
   let columns: VColumn[];
@@ -925,6 +1116,8 @@ export function buildVerticalLayout(
       metrics.defaultAdvanceY,
       advanceScale,
       options.perColumnMaxHeight,
+      actualBoxScale,
+      useDefaultAdvanceBase,
     );
     columns = detailed.columns;
     columnBreakReasons = detailed.columnBreakReasons;
@@ -939,6 +1132,8 @@ export function buildVerticalLayout(
       metrics.defaultAdvanceY,
       advanceScale,
       options?.perColumnMaxHeight,
+      actualBoxScale,
+      useDefaultAdvanceBase,
     );
     columnBreakReasons = columns.map((_, index) => (index === 0 ? 'start' : 'wrap'));
     columnSegmentIds = columns.map(() => 1);
@@ -1047,21 +1242,29 @@ export function estimateVerticalPreferredProfile(
   fontFamily: string,
   preferredColumns?: string[],
   originalContentWidth?: number,
+  sourceGeometryProfile?: VerticalSourceGeometryProfile,
 ): { advanceScale: number; colSpacingScale: number } {
   ctx.font = `${fontSize}px ${fontFamily}`;
   const sw = strokeWidth(fontSize);
   const metrics = resolveVerticalCellMetrics(ctx, text, fontSize, sw);
   const sourceColumns = resolveSourceColumns(region);
-  const sourceLengths = sourceColumns.map((column) => countTextLength(column));
+  const sourceLengths = sourceColumns.map((column) => countTextGlyphs(column));
   const translatedColumnTexts = preferredColumns ?? [text];
-  const translatedLengths = translatedColumnTexts.map((c) => countTextLength(c));
+  const translatedLengths = translatedColumnTexts.map((c) => countTextGlyphs(c));
   const baselineLength = Math.max(1, ...sourceLengths, ...translatedLengths);
 
-  const targetAdvance = contentHeight / baselineLength;
+  const contentAdvanceTarget = contentHeight / baselineLength;
+  const sourceAdvanceTarget = sourceGeometryProfile
+    ? medianNumber(sourceGeometryProfile.perColumnAdvance)
+    : null;
+  const targetAdvance = sourceAdvanceTarget !== null
+    ? Math.min(contentAdvanceTarget, sourceAdvanceTarget)
+    : contentAdvanceTarget;
   const baseAdvance = Math.max(1, metrics.defaultAdvanceY * verticalAdvanceTightenRatio);
+  const minAdvanceScale = sourceGeometryProfile ? minSourceGeometryAdvanceScale : minVerticalAdvanceScale;
   const advanceScale = clampNumber(
     targetAdvance / baseAdvance,
-    minVerticalAdvanceScale,
+    minAdvanceScale,
     1.1,
   );
 
@@ -1074,13 +1277,27 @@ export function estimateVerticalPreferredProfile(
   let colSpacingScale = 1;
   if (targetColumnCount > 1) {
     const spacingWidth = originalContentWidth ?? contentWidth;
-    const rawSpacing = (spacingWidth - targetColumnCount * metrics.colWidth) / (targetColumnCount - 1);
-    const targetSpacing = Math.max(0, rawSpacing);
-    colSpacingScale = clampNumber(
-      targetSpacing / Math.max(1, metrics.colSpacing),
-      minVerticalColSpacingScale,
-      2.5,
-    );
+    const fallbackSpacing = (spacingWidth - targetColumnCount * metrics.colWidth) / (targetColumnCount - 1);
+    const sourcePitch = sourceGeometryProfile?.medianPitch ?? undefined;
+    const sourceSpacing = sourcePitch !== undefined ? sourcePitch - metrics.colWidth : undefined;
+    const baseSpacing = Math.max(1, metrics.colSpacing);
+    if (sourceSpacing !== undefined) {
+      const minSourceSpacing = -metrics.colWidth * maxVerticalSourceColumnOverlapRatio;
+      const maxSourceSpacing = metrics.colWidth * 2.5;
+      const targetSpacing = clampNumber(sourceSpacing, minSourceSpacing, maxSourceSpacing);
+      colSpacingScale = clampNumber(
+        targetSpacing / baseSpacing,
+        minSourceSpacing / baseSpacing,
+        maxSourceSpacing / baseSpacing,
+      );
+    } else {
+      const targetSpacing = Math.max(0, fallbackSpacing);
+      colSpacingScale = clampNumber(
+        targetSpacing / baseSpacing,
+        minVerticalColSpacingScale,
+        2.5,
+      );
+    }
   }
 
   return { advanceScale, colSpacingScale };

@@ -1,4 +1,4 @@
-import type { TextRegion } from "../types";
+import type { SourceTextLineGeometry, TextRegion } from "../types";
 import type { PipelineTypesetDebugLog } from "../types";
 import type { PlatformProvider, PipelineImage } from "../runtime/platform";
 import { imageToCanvas } from "./image";
@@ -64,6 +64,7 @@ export type RenderFixtureRegion = {
   bgColor?: [number, number, number];
   originalLineCount?: number;
   translatedColumns?: string[];
+  sourceLineGeometries?: SourceTextLineGeometry[];
 };
 
 export type RenderDebugResult = {
@@ -152,6 +153,11 @@ function fixtureRegionToTextRegion(region: RenderFixtureRegion): TextRegion {
     sourceText: region.sourceText,
     translatedText: region.sourceText,
     translatedColumns: region.translatedColumns,
+    sourceLineGeometries: region.sourceLineGeometries?.map((line) => ({
+      ...line,
+      box: { ...line.box },
+      quad: line.quad?.map((point) => ({ ...point })) as SourceTextLineGeometry["quad"],
+    })),
   };
 }
 
@@ -163,6 +169,11 @@ export async function shinobuRenderFixtureDebug(
   const image = await loadImage(dataUrl, platform);
   const canvas = imageToCanvas(image, platform);
   const regions = fixtureRegions.map(fixtureRegionToTextRegion);
+
+  const bubbleResult = await detectBubbles(image, platform);
+  if (bubbleResult.bubbles.length > 0) {
+    matchRegionsToBubbles(regions, bubbleResult.bubbles);
+  }
 
   const typesetResult = await drawTypeset(canvas, regions, "ja", {
     renderText: true,

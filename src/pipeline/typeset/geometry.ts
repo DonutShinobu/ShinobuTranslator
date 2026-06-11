@@ -179,6 +179,11 @@ export function cloneRegionForTypeset(region: TextRegion): TextRegion {
     ...region,
     box: { ...region.box },
     quad: region.quad ? cloneQuad(region.quad) : undefined,
+    sourceLineGeometries: region.sourceLineGeometries?.map((line) => ({
+      ...line,
+      box: { ...line.box },
+      quad: line.quad ? cloneQuad(line.quad) : undefined,
+    })),
   };
 }
 

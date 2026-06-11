@@ -5,6 +5,9 @@ import {
   resolveInitialFontSize,
   metricAbs,
   computeVerticalTotalWidth,
+  resolveVerticalColumnPositions,
+  resolveVerticalSourceColumnAnchor,
+  resolveVerticalSourceGeometryProfile,
   strokeWidth,
   resolveOffscreenGuardPadding,
   resolveVerticalStartY,
@@ -12,6 +15,11 @@ import {
   resolveBoxPadding,
   resolveVerticalContentHeight,
   hasMinorOverflowWrap,
+  resolveGlyphVerticalAdvance,
+  sourceGeometryActualBoxScale,
+  estimateVerticalPreferredProfile,
+  minSourceGeometryAdvanceScale,
+  minVerticalAdvanceScale,
 } from "../../../src/pipeline/typeset/fontFit";
 import type { VerticalCellMetrics, VerticalLayoutResult, VColumn } from "../../../src/pipeline/typeset/fontFit";
 
@@ -156,6 +164,61 @@ describe("metricAbs", () => {
 });
 
 // ---------------------------------------------------------------------------
+// resolveGlyphVerticalAdvance
+// ---------------------------------------------------------------------------
+
+describe("resolveGlyphVerticalAdvance", () => {
+  const ctx = {
+    measureText: () => ({
+      fontBoundingBoxAscent: 10,
+      fontBoundingBoxDescent: 10,
+      actualBoundingBoxAscent: 12,
+      actualBoundingBoxDescent: 12,
+    }),
+  };
+
+  it("keeps the scaled actual box as the default advance lower bound", () => {
+    expect(resolveGlyphVerticalAdvance(ctx as never, "A", 20, 20, 0.9)).toBe(22);
+  });
+
+  it("allows source geometry to use a tighter actual box lower bound", () => {
+    expect(resolveGlyphVerticalAdvance(ctx as never, "A", 20, 20, 0.9, sourceGeometryActualBoxScale)).toBe(18);
+  });
+
+  it("can use default advance as the source-geometry step base", () => {
+    const wideFontBoxCtx = {
+      measureText: () => ({
+        fontBoundingBoxAscent: 12,
+        fontBoundingBoxDescent: 12,
+        actualBoundingBoxAscent: 8,
+        actualBoundingBoxDescent: 8,
+      }),
+    };
+
+    expect(resolveGlyphVerticalAdvance(wideFontBoxCtx as never, "A", 20, 20, 1)).toBe(24);
+    expect(
+      resolveGlyphVerticalAdvance(wideFontBoxCtx as never, "A", 20, 20, 1, sourceGeometryActualBoxScale, true),
+    ).toBe(20);
+  });
+
+  it("biases fractional source-geometry advance to avoid per-glyph accumulation overflow", () => {
+    const ctx = {
+      measureText: () => ({
+        fontBoundingBoxAscent: 0,
+        fontBoundingBoxDescent: 0,
+        actualBoundingBoxAscent: 0,
+        actualBoundingBoxDescent: 0,
+      }),
+    };
+
+    expect(resolveGlyphVerticalAdvance(ctx as never, "A", 62, 90, 0.6955555555555556)).toBe(63);
+    expect(
+      resolveGlyphVerticalAdvance(ctx as never, "A", 62, 90, 0.6955555555555556, sourceGeometryActualBoxScale, true),
+    ).toBe(62);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // computeVerticalTotalWidth
 // ---------------------------------------------------------------------------
 
@@ -180,6 +243,233 @@ describe("computeVerticalTotalWidth", () => {
 
   it("handles zero colSpacing", () => {
     expect(computeVerticalTotalWidth(3, makeMetrics({ colWidth: 20, colSpacing: 0 }))).toBe(60);
+  });
+
+  it("supports limited overlapping columns from source geometry", () => {
+    expect(computeVerticalTotalWidth(3, makeMetrics({ colWidth: 20, colSpacing: -4 }))).toBe(52);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveVerticalColumnPositions
+// ---------------------------------------------------------------------------
+
+describe("resolveVerticalColumnPositions", () => {
+  it("centers columns by default in right-to-left order", () => {
+    const positions = resolveVerticalColumnPositions(
+      3,
+      100,
+      makeMetrics({ colWidth: 20, colSpacing: 5 }),
+      10,
+    );
+
+    expect(positions.totalWidth).toBe(70);
+    expect(positions.groupCenterX).toBe(60);
+    expect(positions.centers).toEqual([85, 60, 35]);
+  });
+
+  it("uses an explicit content-space group center anchor", () => {
+    const positions = resolveVerticalColumnPositions(
+      2,
+      100,
+      makeMetrics({ colWidth: 20, colSpacing: 5 }),
+      10,
+      { contentCenterX: 40 },
+    );
+
+    expect(positions.groupCenterX).toBe(50);
+    expect(positions.centers).toEqual([62.5, 37.5]);
+  });
+
+  it("clamps anchored columns inside content bounds when possible", () => {
+    const positions = resolveVerticalColumnPositions(
+      3,
+      100,
+      makeMetrics({ colWidth: 20, colSpacing: 5 }),
+      10,
+      { contentCenterX: 5 },
+    );
+
+    expect(positions.groupCenterX).toBe(45);
+    expect(positions.centers).toEqual([70, 45, 20]);
+  });
+
+  it("keeps right-to-left center pitch when spacing is negative", () => {
+    const positions = resolveVerticalColumnPositions(
+      3,
+      100,
+      makeMetrics({ colWidth: 20, colSpacing: -4 }),
+      10,
+    );
+
+    expect(positions.totalWidth).toBe(52);
+    expect(positions.centers).toEqual([76, 60, 44]);
+  });
+
+});
+
+// ---------------------------------------------------------------------------
+// Source geometry profile
+// ---------------------------------------------------------------------------
+
+describe("resolveVerticalSourceGeometryProfile", () => {
+  it("extracts source pitch and content-space anchor from original columns", () => {
+    const region = makeRegion({
+      box: { x: 30, y: 20, width: 90, height: 100 },
+      sourceLineGeometries: [
+        {
+          text: "ABCD",
+          direction: "v",
+          box: { x: 80, y: 25, width: 20, height: 80 },
+          centerX: 90,
+          centerY: 65,
+          width: 20,
+          height: 80,
+        },
+        {
+          text: "EFG",
+          direction: "v",
+          box: { x: 50, y: 25, width: 20, height: 60 },
+          centerX: 60,
+          centerY: 55,
+          width: 20,
+          height: 60,
+        },
+      ],
+    });
+
+    const profile = resolveVerticalSourceGeometryProfile(region, 2);
+    expect(profile).toMatchObject({
+      columnCount: 2,
+      groupCenterX: 75,
+      medianPitch: 30,
+      medianGap: 10,
+      medianWidth: 20,
+      medianHeight: 70,
+      perColumnAdvance: [20, 20],
+    });
+
+    expect(resolveVerticalSourceColumnAnchor(region, 5, profile)).toEqual({ contentCenterX: 40 });
+  });
+
+  it("rejects profiles when source column count no longer matches layout target", () => {
+    const region = makeRegion({
+      sourceLineGeometries: [
+        {
+          text: "A",
+          direction: "v",
+          box: { x: 10, y: 0, width: 10, height: 20 },
+          centerX: 15,
+          centerY: 10,
+          width: 10,
+          height: 20,
+        },
+      ],
+    });
+
+    expect(resolveVerticalSourceGeometryProfile(region, 2)).toBeUndefined();
+  });
+
+  it("uses real glyph count for source advance instead of half-width text length", () => {
+    const region = makeRegion({
+      box: { x: 0, y: 0, width: 80, height: 118 },
+      sourceLineGeometries: [
+        {
+          text: "へぇ",
+          direction: "v",
+          box: { x: 0, y: 0, width: 80, height: 118 },
+          centerX: 40,
+          centerY: 59,
+          width: 80,
+          height: 118,
+        },
+      ],
+    });
+
+    const profile = resolveVerticalSourceGeometryProfile(region, 1);
+    expect(profile?.perColumnAdvance).toEqual([59]);
+  });
+});
+
+describe("estimateVerticalPreferredProfile", () => {
+  const ctx = {
+    font: "",
+    measureText: () => ({
+      width: 20,
+      actualBoundingBoxLeft: 0,
+      actualBoundingBoxRight: 20,
+      actualBoundingBoxAscent: 20,
+      actualBoundingBoxDescent: 20,
+      fontBoundingBoxAscent: 25,
+      fontBoundingBoxDescent: 25,
+    }),
+  };
+
+  it("uses a lower advance-scale floor only when source geometry is available", () => {
+    const region = makeRegion({
+      direction: "v",
+      sourceText: "A",
+      translatedText: "A",
+      originalLineCount: 1,
+    });
+
+    const withoutSource = estimateVerticalPreferredProfile(
+      ctx as never,
+      region,
+      "A",
+      80,
+      30,
+      20,
+      "sans-serif",
+      ["A"],
+      80,
+    );
+    const withSource = estimateVerticalPreferredProfile(
+      ctx as never,
+      region,
+      "A",
+      80,
+      30,
+      20,
+      "sans-serif",
+      ["A"],
+      80,
+      {
+        columnCount: 1,
+        groupCenterX: 40,
+        medianPitch: null,
+        medianGap: null,
+        medianWidth: 20,
+        medianHeight: 30,
+        perColumnAdvance: [30],
+      },
+    );
+
+    expect(withoutSource.advanceScale).toBe(minVerticalAdvanceScale);
+    expect(withSource.advanceScale).toBe(minSourceGeometryAdvanceScale);
+  });
+
+  it("uses real glyph count, not weighted text length, for vertical advance targets", () => {
+    const region = makeRegion({
+      direction: "v",
+      sourceText: "ちょっと物憂げな",
+      translatedText: "ちょっと物憂げな",
+      originalLineCount: 1,
+    });
+
+    const profile = estimateVerticalPreferredProfile(
+      ctx as never,
+      region,
+      "ちょっと物憂げな",
+      120,
+      400,
+      20,
+      "sans-serif",
+      ["ちょっと物憂げな"],
+      120,
+    );
+
+    expect(profile.advanceScale).toBe(1);
   });
 });
 

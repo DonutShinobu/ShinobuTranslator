@@ -153,6 +153,31 @@ describe("cloneRegionForTypeset", () => {
     expect(region.box.width).toBe(60);
   });
 
+  it("deep-clones source line geometry", () => {
+    const region = makeRegion({
+      sourceLineGeometries: [
+        {
+          text: "右",
+          direction: "v",
+          box: { x: 10, y: 20, width: 30, height: 80 },
+          quad: makeQuad([10, 20], [40, 20], [40, 100], [10, 100]),
+          centerX: 25,
+          centerY: 60,
+          width: 30,
+          height: 80,
+          fontSize: 24,
+        },
+      ],
+    });
+
+    const cloned = cloneRegionForTypeset(region);
+    cloned.sourceLineGeometries![0].box.x = 999;
+    cloned.sourceLineGeometries![0].quad![0].x = 888;
+
+    expect(region.sourceLineGeometries![0].box.x).toBe(10);
+    expect(region.sourceLineGeometries![0].quad![0].x).toBe(10);
+  });
+
   it("handles region without quad", () => {
     const region = makeRegion(); // no quad
     const cloned = cloneRegionForTypeset(region);

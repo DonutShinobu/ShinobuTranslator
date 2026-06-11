@@ -7,9 +7,9 @@ import { fileURLToPath } from "url";
 import { execSync } from "child_process";
 import { createServer } from "http";
 import type { AddressInfo } from "net";
-import type { Fixture } from "./types";
+import type { Fixture, GroundTruthColumn } from "./types";
 import type { RenderFixtureRegion } from "../../../src/pipeline/bake";
-import type { PipelineTypesetDebugLog, QuadPoint } from "../../../src/types";
+import type { PipelineTypesetDebugLog, QuadPoint, SourceTextLineGeometry } from "../../../src/types";
 
 const ROOT = resolve(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "../../..");
 const IMAGES_DIR = join(ROOT, "benchmark/typeset/images");
@@ -46,6 +46,35 @@ function drawQuad(
   ctx.closePath();
 }
 
+function groundTruthColumnToSourceGeometry(column: GroundTruthColumn): SourceTextLineGeometry {
+  const left = column.centerX - column.width / 2;
+  const right = column.centerX + column.width / 2;
+  const top = column.topY;
+  const bottom = column.bottomY;
+
+  return {
+    text: column.text,
+    direction: "v",
+    box: {
+      x: left,
+      y: top,
+      width: column.width,
+      height: column.height,
+    },
+    quad: [
+      { x: left, y: top },
+      { x: right, y: top },
+      { x: right, y: bottom },
+      { x: left, y: bottom },
+    ],
+    centerX: column.centerX,
+    centerY: (top + bottom) / 2,
+    width: column.width,
+    height: column.height,
+    fontSize: column.estimatedFontSize,
+  };
+}
+
 function toRenderFixtureRegions(fixture: Fixture): RenderFixtureRegion[] {
   return fixture.regions.map((region) => ({
     id: region.id,
@@ -58,6 +87,7 @@ function toRenderFixtureRegions(fixture: Fixture): RenderFixtureRegion[] {
     bgColor: region.bgColor,
     originalLineCount: region.originalLineCount,
     translatedColumns: region.translatedColumns,
+    sourceLineGeometries: region.groundTruth.columns.map(groundTruthColumnToSourceGeometry),
   }));
 }
 

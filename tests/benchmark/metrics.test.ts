@@ -127,6 +127,22 @@ describe("computeRegionMetrics", () => {
       expect(result.signedColumnDxNormMean).toBeCloseTo(-0.5, 4);
       expect(result.columnDxNormMean).toBeCloseTo(0.5, 4);
     });
+
+    it("matches columns by right-to-left spatial order for geometry metrics", () => {
+      const gt = [
+        makeColumn({ index: 0, centerX: 70, width: 20, topY: 0, bottomY: 100, height: 100 }),
+        makeColumn({ index: 1, centerX: 100, width: 20, topY: 0, bottomY: 100, height: 100 }),
+      ];
+      const pred = [
+        makeColumn({ index: 0, centerX: 100, width: 20, topY: 0, bottomY: 100, height: 100 }),
+        makeColumn({ index: 1, centerX: 70, width: 20, topY: 0, bottomY: 100, height: 100 }),
+      ];
+      const result = computeRegionMetrics(gt, pred, 30, defaultWeights);
+      expect(result.columnDxNormMean).toBeCloseTo(0, 4);
+      expect(result.columnIouMean).toBeCloseTo(1, 4);
+      expect(result.dTopNormMean).toBeCloseTo(0, 4);
+      expect(result.charDyNormMean).toBeCloseTo(0, 4);
+    });
   });
 
   describe("column gap direction", () => {

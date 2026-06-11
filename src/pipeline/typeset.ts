@@ -25,12 +25,14 @@ import {
   calcHorizontalFromLines,
   minFontSafetySize,
   getRegionQuad,
+  resolveVerticalColumnPositions,
   KINSOKU_NSTART,
   KINSOKU_NEND,
 } from "./typeset/index";
 import type {
   VColumn,
   VerticalCellMetrics,
+  VerticalColumnAnchor,
   DebugColumnBox,
   RegionTypesetDebug,
   ResolvedColors,
@@ -540,10 +542,10 @@ function renderVertical(
   alignment: "left" | "center" | "right",
   metrics: VerticalCellMetrics,
   padding: number,
+  columnAnchor?: VerticalColumnAnchor,
   platform?: PlatformProvider,
 ): PipelineCanvas {
   const sw = strokeWidth(fontSize);
-  const { colWidth, colSpacing } = metrics;
 
   const canvasW = Math.ceil(contentWidth + padding * 2);
   const canvasH = Math.ceil(contentHeight + padding * 2);
@@ -555,12 +557,7 @@ function renderVertical(
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
-  // Total width occupied by all columns + gaps
-  const totalColW = columns.length * colWidth + Math.max(0, columns.length - 1) * colSpacing;
-  const offsetX = padding + (contentWidth - totalColW) / 2;
-
-  // Columns flow right-to-left: first column is rightmost
-  const colStartX = offsetX + totalColW - colWidth / 2;
+  const positions = resolveVerticalColumnPositions(columns.length, contentWidth, metrics, padding, columnAnchor);
 
   // Pass 1: stroke
   ctx.lineWidth = sw * 2;
@@ -570,7 +567,7 @@ function renderVertical(
 
   for (let c = 0; c < columns.length; c++) {
     const col = columns[c];
-    const cx = colStartX - c * (colWidth + colSpacing);
+    const cx = positions.centers[c];
 
     // Vertical alignment within column
     let startY: number;
@@ -593,7 +590,7 @@ function renderVertical(
   ctx.fillStyle = colors.fg;
   for (let c = 0; c < columns.length; c++) {
     const col = columns[c];
-    const cx = colStartX - c * (colWidth + colSpacing);
+    const cx = positions.centers[c];
 
     let startY: number;
     if (alignment === "center") {
@@ -773,6 +770,7 @@ export async function drawTypeset(
           vResult.alignment,
           vResult.metrics,
           vResult.strokePadding,
+          vResult.columnAnchor,
           platform,
         );
       }
@@ -796,6 +794,7 @@ export async function drawTypeset(
         columnBreakReasons: vResult.columnBreakReasons,
         columnSegmentIds: vResult.columnSegmentIds,
         columnSegmentSources: vResult.columnSegmentSources,
+        layoutDiagnostics: vResult.layoutDiagnostics,
         offscreenWidth: vResult.offscreenWidth,
         offscreenHeight: vResult.offscreenHeight,
         boxPadding: vResult.boxPadding,
@@ -1148,6 +1147,7 @@ export async function drawTypeset(
         columnBreakReasons: [...debug.columnBreakReasons],
         columnSegmentIds: [...debug.columnSegmentIds],
         columnSegmentSources: [...debug.columnSegmentSources],
+        layoutDiagnostics: debug.layoutDiagnostics ? { ...debug.layoutDiagnostics } : undefined,
         columnBoxes: debug.columnBoxes.map((box) => ({ ...box })),
         columnCanvasQuads,
         columnGlyphCenters,

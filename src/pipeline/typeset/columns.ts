@@ -105,6 +105,10 @@ export function countTextLength(text: string): number {
   return length;
 }
 
+export function countTextGlyphs(text: string): number {
+  return [...text.replace(/\s+/g, "")].length;
+}
+
 export function charLength(ch: string): number {
   return halfWidthKana.has(ch) ? 0.5 : 1;
 }

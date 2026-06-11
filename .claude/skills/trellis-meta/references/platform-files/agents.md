@@ -49,7 +49,7 @@ Common on platforms that support agent hooks.
 
 The agent file instructs the agent to read after startup:
 
-- `python3 ./.trellis/scripts/task.py current --source`
+- `python ./.trellis/scripts/task.py current --source`
 - `implement.jsonl` or `check.jsonl`
 - spec/research files referenced by JSONL
 - current task `prd.md`

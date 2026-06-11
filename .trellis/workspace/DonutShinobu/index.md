@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 15
-- **Last Active**: 2026-06-04
+- **Total Sessions**: 16
+- **Last Active**: 2026-06-11
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~487 | Active |
+| `journal-1.md` | ~523 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 16 | 2026-06-11 | Nano Banana 图片翻译任务收尾 | `ce84dcc`, `a0f4bd0`, `8696a6c`, `4cab5ec` | `master` |
 | 15 | 2026-06-04 | 阶段明细可视化卡片 | `715efb8`, `eedf84a` | `master` |
 | 14 | 2026-06-03 | 回退进度动画优化实验 | `21e8b48` | `master` |
 | 13 | 2026-06-03 | 快捷键与非线性动画 | `d697151` | `master` |

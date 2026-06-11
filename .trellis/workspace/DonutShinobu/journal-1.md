@@ -485,3 +485,39 @@ Unified generic context-menu translation through the screenshot floating overlay
 ### Next Steps
 
 - None - task complete
+
+
+## Session 16: Nano Banana 图片翻译任务收尾
+
+**Date**: 2026-06-11
+**Task**: Nano Banana 图片翻译任务收尾
+**Branch**: `master`
+
+### Summary
+
+完成 Nano Banana/Gemini 图片端到端翻译任务收尾：确认配置、消息、Gemini App/API 图像路径、popup 控件、content 展示路径和相关测试；本轮复跑 npm run test、npx tsc --noEmit、npm run build 以及 dist 入口 node --check。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ce84dcc` | (see git log) |
+| `a0f4bd0` | (see git log) |
+| `8696a6c` | (see git log) |
+| `4cab5ec` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -114,6 +114,7 @@ export type DebugColumnBox = {
 export type RegionTypesetDebug = {
   fittedFontSize: number;
   columnBoxes: DebugColumnBox[];
+  columnGlyphCenters?: Array<Array<{ ch: string; x: number; y: number }>>;
   columnBreakReasons: ColumnBreakReason[];
   columnSegmentIds: number[];
   columnSegmentSources: ColumnSegmentSource[];

@@ -1,62 +1,74 @@
-import { execSync } from "child_process";
-import { chromium, type Browser } from "playwright";
+import { existsSync, mkdirSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join, resolve } from "path";
+import { chromium, type BrowserContext } from "playwright";
 
-const CHROME_PATH_WIN = "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe";
-const POWERSHELL = "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe";
-const CMD = "/mnt/c/Windows/System32/cmd.exe";
-const TASKKILL = "/mnt/c/Windows/System32/taskkill.exe";
-const CDP_PORT = 9222;
+const USER_DATA_DIR = process.env.SHINOBU_BENCH_PROFILE_DIR
+  ? resolve(process.env.SHINOBU_BENCH_PROFILE_DIR)
+  : join(tmpdir(), "shinobu-bench-profile");
+const BROWSER_MODE = process.env.SHINOBU_BENCH_BROWSER === "chrome" ? "chrome" : "chromium";
 
-const EXT_DIR_WIN = "D:\\Downloads\\ShinobuTranslator";
-const USER_DATA_DIR_WIN = "D:\\Downloads\\shinobu-bench-profile";
+const WINDOWS_CHROME_CANDIDATES = [
+  process.env.CHROME_PATH,
+  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+  "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+].filter((path): path is string => Boolean(path));
 
 export interface ChromeCDP {
-  browser: Browser;
+  context: BrowserContext;
   close(): Promise<void>;
 }
 
-async function waitForCDP(port: number, timeoutMs = 15000): Promise<void> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    try {
-      const res = await fetch(`http://localhost:${port}/json/version`);
-      if (res.ok) return;
-    } catch {}
-    await new Promise((r) => setTimeout(r, 500));
+function resolveChromeExecutable(): string | undefined {
+  if (process.platform !== "win32") {
+    return process.env.CHROME_PATH;
   }
-  throw new Error(`CDP not ready on port ${port} after ${timeoutMs}ms`);
+  return WINDOWS_CHROME_CANDIDATES.find((candidate) => existsSync(candidate));
 }
 
 export async function launchWindowsChrome(distDir: string): Promise<ChromeCDP> {
-  // Sync build output to the fixed extension directory
-  const extDirWsl = execSync(`wslpath -u "${EXT_DIR_WIN}"`, { encoding: "utf-8" }).trim();
-  execSync(`rsync -a --delete "${distDir}/" "${extDirWsl}/"`);
+  const extensionDir = resolve(distDir);
+  if (!existsSync(extensionDir)) {
+    throw new Error(`Extension dist directory not found: ${extensionDir}`);
+  }
 
-  const pidOutput = execSync(
-    `${POWERSHELL} -Command "` +
-      `\\$p = Start-Process -FilePath '${CHROME_PATH_WIN}' -PassThru -ArgumentList ` +
-      `'--remote-debugging-port=${CDP_PORT}',` +
-      `'--user-data-dir=${USER_DATA_DIR_WIN}',` +
-      `'--no-first-run',` +
-      `'--no-default-browser-check'; ` +
-      `\\$p.Id"`,
-    { encoding: "utf-8" },
-  ).trim();
-  const pid = parseInt(pidOutput, 10);
-  if (isNaN(pid)) throw new Error(`Failed to get Chrome PID: ${pidOutput}`);
-  console.log(`Chrome started (PID ${pid}), waiting for CDP...`);
+  if (process.env.SHINOBU_BENCH_KEEP_PROFILE !== "1") {
+    rmSync(USER_DATA_DIR, { recursive: true, force: true });
+  }
+  mkdirSync(USER_DATA_DIR, { recursive: true });
 
-  await waitForCDP(CDP_PORT);
-  const browser = await chromium.connectOverCDP(`http://localhost:${CDP_PORT}`);
-  console.log("Connected to Chrome via CDP.");
+  const executablePath = BROWSER_MODE === "chrome" ? resolveChromeExecutable() : undefined;
+  if (BROWSER_MODE === "chrome" && !executablePath) {
+    throw new Error("Chrome executable not found. Set CHROME_PATH or use SHINOBU_BENCH_BROWSER=chromium.");
+  }
+  if (BROWSER_MODE === "chrome") {
+    console.warn(
+      "Warning: branded Google Chrome 137+ ignores --load-extension. " +
+      "Set CHROME_PATH to Chrome for Testing/Chromium, or use the default SHINOBU_BENCH_BROWSER=chromium.",
+    );
+  }
+  const context = await chromium.launchPersistentContext(USER_DATA_DIR, {
+    ...(BROWSER_MODE === "chromium" ? { channel: "chromium" as const } : { executablePath }),
+    headless: false,
+    ignoreDefaultArgs: ["--disable-extensions"],
+    args: [
+      `--disable-extensions-except=${extensionDir}`,
+      `--load-extension=${extensionDir}`,
+      "--no-first-run",
+      "--no-default-browser-check",
+    ],
+  });
+
+  console.log(
+    `Benchmark browser started with ${
+      BROWSER_MODE === "chromium" ? "Playwright Chromium" : executablePath
+    }; profile: ${USER_DATA_DIR}`,
+  );
 
   return {
-    browser,
+    context,
     async close() {
-      await browser.close();
-      try {
-        execSync(`${TASKKILL} /PID ${pid} /T /F`, { stdio: "ignore" });
-      } catch {}
+      await context.close();
     },
   };
 }

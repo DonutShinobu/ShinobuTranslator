@@ -7,6 +7,7 @@ import {
   resolveBoxPadding,
   resolveColors,
   resolveAlignment,
+  mapOffscreenPointToCanvas,
   mapOffscreenRectToCanvasQuad,
   cloneQuad,
   cloneRegionForTypeset,
@@ -778,6 +779,20 @@ export async function drawTypeset(
       debug = {
         fittedFontSize: vResult.fittedFontSize,
         columnBoxes: vResult.debugColumnBoxes,
+        columnGlyphCenters: vResult.columns.map((col, i) => {
+          const box = vResult.debugColumnBoxes[i];
+          if (!box) return [];
+          let penY = box.y;
+          return col.glyphs.map((glyph) => {
+            const center = {
+              ch: glyph.ch,
+              x: box.x + box.width / 2,
+              y: penY + glyph.advanceY / 2,
+            };
+            penY += glyph.advanceY;
+            return center;
+          });
+        }),
         columnBreakReasons: vResult.columnBreakReasons,
         columnSegmentIds: vResult.columnSegmentIds,
         columnSegmentSources: vResult.columnSegmentSources,
@@ -1089,6 +1104,24 @@ export async function drawTypeset(
           transform,
         )
       );
+      const columnGlyphCenters = (debug.columnGlyphCenters ?? []).map((column) =>
+        column.map((center) => {
+          const mapped = mapOffscreenPointToCanvas(
+            region,
+            center,
+            debug.offscreenWidth,
+            debug.offscreenHeight,
+            debug.boxPadding,
+            debug.strokePadding,
+            transform,
+          );
+          return {
+            ch: center.ch,
+            x: mapped.x,
+            y: mapped.y,
+          };
+        })
+      );
       const direction: TextDirection = region.direction === "h" ? "h" : "v";
       debugRegions.push({
         regionId: inputRegion.id,
@@ -1117,6 +1150,7 @@ export async function drawTypeset(
         columnSegmentSources: [...debug.columnSegmentSources],
         columnBoxes: debug.columnBoxes.map((box) => ({ ...box })),
         columnCanvasQuads,
+        columnGlyphCenters,
       });
     }
   }

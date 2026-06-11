@@ -106,6 +106,7 @@ describe("computeRegionMetrics", () => {
     it("returns 0 for aligned columns", () => {
       const col = makeColumn();
       const result = computeRegionMetrics([col], [col], 30, defaultWeights);
+      expect(result.signedColumnDxNormMean).toBeCloseTo(0, 4);
       expect(result.columnDxNormMean).toBeCloseTo(0, 4);
       expect(result.columnDxNormMax).toBeCloseTo(0, 4);
     });
@@ -115,7 +116,69 @@ describe("computeRegionMetrics", () => {
       const pred = makeColumn({ centerX: 115, width: 30 });
       const result = computeRegionMetrics([gt], [pred], 30, defaultWeights);
       // |115 - 100| / 30 = 0.5
+      expect(result.signedColumnDxNormMean).toBeCloseTo(0.5, 4);
       expect(result.columnDxNormMean).toBeCloseTo(0.5, 4);
+    });
+
+    it("keeps the signed horizontal direction", () => {
+      const gt = makeColumn({ centerX: 100, width: 30 });
+      const pred = makeColumn({ centerX: 85, width: 30 });
+      const result = computeRegionMetrics([gt], [pred], 30, defaultWeights);
+      expect(result.signedColumnDxNormMean).toBeCloseTo(-0.5, 4);
+      expect(result.columnDxNormMean).toBeCloseTo(0.5, 4);
+    });
+  });
+
+  describe("column gap direction", () => {
+    it("returns neutral gap diagnostics for a single column", () => {
+      const col = makeColumn();
+      const result = computeRegionMetrics([col], [col], 30, defaultWeights);
+      expect(result.signedColumnGapNormMean).toBeCloseTo(0, 4);
+      expect(result.columnPitchRatioMean).toBeCloseTo(1, 4);
+    });
+
+    it("reports positive signed gap when predicted columns are farther apart", () => {
+      const gt = [
+        makeColumn({ index: 0, centerX: 100, width: 20 }),
+        makeColumn({ index: 1, centerX: 70, width: 20 }),
+      ];
+      const pred = [
+        makeColumn({ index: 0, centerX: 115, width: 20 }),
+        makeColumn({ index: 1, centerX: 55, width: 20 }),
+      ];
+      const result = computeRegionMetrics(gt, pred, 30, defaultWeights);
+      expect(result.signedColumnGapNormMean).toBeCloseTo(1.5, 4);
+      expect(result.columnPitchRatioMean).toBeCloseTo(2, 4);
+    });
+
+    it("reports negative signed gap when predicted columns are tighter", () => {
+      const gt = [
+        makeColumn({ index: 0, centerX: 100, width: 20 }),
+        makeColumn({ index: 1, centerX: 70, width: 20 }),
+      ];
+      const pred = [
+        makeColumn({ index: 0, centerX: 95, width: 20 }),
+        makeColumn({ index: 1, centerX: 75, width: 20 }),
+      ];
+      const result = computeRegionMetrics(gt, pred, 30, defaultWeights);
+      expect(result.signedColumnGapNormMean).toBeCloseTo(-0.5, 4);
+      expect(result.columnPitchRatioMean).toBeCloseTo(20 / 30, 4);
+    });
+
+    it("uses spatial right-to-left order for adjacent gap diagnostics", () => {
+      const gt = [
+        makeColumn({ index: 0, centerX: 100, width: 20 }),
+        makeColumn({ index: 1, centerX: 40, width: 20 }),
+        makeColumn({ index: 2, centerX: 70, width: 20 }),
+      ];
+      const pred = [
+        makeColumn({ index: 0, centerX: 110, width: 20 }),
+        makeColumn({ index: 1, centerX: 30, width: 20 }),
+        makeColumn({ index: 2, centerX: 70, width: 20 }),
+      ];
+      const result = computeRegionMetrics(gt, pred, 30, defaultWeights);
+      expect(result.signedColumnGapNormMean).toBeCloseTo(0.5, 4);
+      expect(result.columnPitchRatioMean).toBeCloseTo(40 / 30, 4);
     });
   });
 
@@ -143,6 +206,7 @@ describe("computeRegionMetrics", () => {
     it("returns 0 for identical char positions", () => {
       const col = makeColumn();
       const result = computeRegionMetrics([col], [col], 30, defaultWeights);
+      expect(result.signedCharDyNormMean).toBeCloseTo(0, 4);
       expect(result.charDyNormMean).toBeCloseTo(0, 4);
       expect(result.charDyNormMax).toBeCloseTo(0, 4);
     });
@@ -152,6 +216,7 @@ describe("computeRegionMetrics", () => {
       const pred = makeColumn({ charCenters: [{ y: 80 }, { y: 135 }, { y: 175 }] });
       const result = computeRegionMetrics([gt], [pred], 30, defaultWeights);
       // deltas: |5|/30=0.167, |10|/30=0.333, |0|/30=0
+      expect(result.signedCharDyNormMean).toBeCloseTo((5 / 30 + 10 / 30 + 0) / 3, 4);
       expect(result.charDyNormMean).toBeCloseTo((5 / 30 + 10 / 30 + 0) / 3, 4);
       expect(result.charDyNormMax).toBeCloseTo(10 / 30, 4);
     });
@@ -171,6 +236,31 @@ describe("computeRegionMetrics", () => {
       // j=3: predIdx=round(3*2/4)=round(1.5)=2 → >= predLen(2), skip
       // mean of [0, 50/30, 0] = (50/30)/3
       expect(result.charDyNormMean).toBeCloseTo((50 / 30) / 3, 4);
+    });
+  });
+
+  describe("per-char advance direction", () => {
+    it("returns neutral advance diagnostics when spacing matches", () => {
+      const col = makeColumn();
+      const result = computeRegionMetrics([col], [col], 30, defaultWeights);
+      expect(result.signedCharAdvanceNormMean).toBeCloseTo(0, 4);
+      expect(result.charAdvanceRatioMean).toBeCloseTo(1, 4);
+    });
+
+    it("reports positive signed advance when predicted chars are farther apart", () => {
+      const gt = makeColumn({ charCenters: [{ y: 50 }, { y: 80 }, { y: 110 }] });
+      const pred = makeColumn({ charCenters: [{ y: 50 }, { y: 90 }, { y: 130 }] });
+      const result = computeRegionMetrics([gt], [pred], 30, defaultWeights);
+      expect(result.signedCharAdvanceNormMean).toBeCloseTo(10 / 30, 4);
+      expect(result.charAdvanceRatioMean).toBeCloseTo(40 / 30, 4);
+    });
+
+    it("reports negative signed advance when predicted chars are tighter", () => {
+      const gt = makeColumn({ charCenters: [{ y: 50 }, { y: 80 }, { y: 110 }] });
+      const pred = makeColumn({ charCenters: [{ y: 50 }, { y: 70 }, { y: 90 }] });
+      const result = computeRegionMetrics([gt], [pred], 30, defaultWeights);
+      expect(result.signedCharAdvanceNormMean).toBeCloseTo(-10 / 30, 4);
+      expect(result.charAdvanceRatioMean).toBeCloseTo(20 / 30, 4);
     });
   });
 

@@ -1,4 +1,5 @@
 import type { TextRegion } from "../types";
+import type { PipelineTypesetDebugLog } from "../types";
 import type { PlatformProvider, PipelineImage } from "../runtime/platform";
 import { imageToCanvas } from "./image";
 import { detectTextRegionsWithMask } from "./detect";
@@ -47,6 +48,29 @@ export type BakeResult = {
   regions: BakeResultRegion[];
 };
 
+export type RenderFixtureRegion = {
+  id: string;
+  direction: "v" | "h";
+  box: { x: number; y: number; width: number; height: number };
+  quad?: [
+    { x: number; y: number },
+    { x: number; y: number },
+    { x: number; y: number },
+    { x: number; y: number },
+  ];
+  sourceText: string;
+  fontSize?: number;
+  fgColor?: [number, number, number];
+  bgColor?: [number, number, number];
+  originalLineCount?: number;
+  translatedColumns?: string[];
+};
+
+export type RenderDebugResult = {
+  dataUrl: string;
+  debugLog: PipelineTypesetDebugLog | null;
+};
+
 function loadImage(dataUrl: string, platform: PlatformProvider): Promise<PipelineImage> {
   return platform.loadImage(dataUrl);
 }
@@ -78,6 +102,11 @@ function toDetectedColumn(region: TextRegion): DetectedColumn {
 }
 
 export async function shinobuRender(dataUrl: string, platform: PlatformProvider): Promise<string> {
+  const result = await shinobuRenderDebug(dataUrl, platform);
+  return result.dataUrl;
+}
+
+export async function shinobuRenderDebug(dataUrl: string, platform: PlatformProvider): Promise<RenderDebugResult> {
   const image = await loadImage(dataUrl, platform);
   const canvas = imageToCanvas(image, platform);
   const w = image.naturalWidth;
@@ -101,9 +130,49 @@ export async function shinobuRender(dataUrl: string, platform: PlatformProvider)
 
   const typesetResult = await drawTypeset(canvas, regions, "ja", {
     renderText: true,
+    collectDebugLog: true,
   }, platform);
 
-  return typesetResult.canvas.toDataURL("image/png");
+  return {
+    dataUrl: typesetResult.canvas.toDataURL("image/png"),
+    debugLog: typesetResult.debugLog,
+  };
+}
+
+function fixtureRegionToTextRegion(region: RenderFixtureRegion): TextRegion {
+  return {
+    id: region.id,
+    box: region.box,
+    quad: region.quad,
+    direction: region.direction,
+    fontSize: region.fontSize,
+    fgColor: [0, 80, 255],
+    bgColor: region.bgColor,
+    originalLineCount: region.originalLineCount,
+    sourceText: region.sourceText,
+    translatedText: region.sourceText,
+    translatedColumns: region.translatedColumns,
+  };
+}
+
+export async function shinobuRenderFixtureDebug(
+  dataUrl: string,
+  fixtureRegions: RenderFixtureRegion[],
+  platform: PlatformProvider,
+): Promise<RenderDebugResult> {
+  const image = await loadImage(dataUrl, platform);
+  const canvas = imageToCanvas(image, platform);
+  const regions = fixtureRegions.map(fixtureRegionToTextRegion);
+
+  const typesetResult = await drawTypeset(canvas, regions, "ja", {
+    renderText: true,
+    collectDebugLog: true,
+  }, platform);
+
+  return {
+    dataUrl: typesetResult.canvas.toDataURL("image/png"),
+    debugLog: typesetResult.debugLog,
+  };
 }
 
 export async function shinobuBake(dataUrl: string, platform: PlatformProvider): Promise<BakeResult> {

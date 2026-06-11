@@ -44,8 +44,53 @@ function median(values: number[]): number {
   return percentile(values, 50);
 }
 
+function mean(values: number[]): number {
+  return values.length > 0
+    ? values.reduce((a, b) => a + b, 0) / values.length
+    : 0;
+}
+
+function meanOr(values: number[], fallback: number): number {
+  return values.length > 0 ? mean(values) : fallback;
+}
+
+function positiveMedian(values: number[], fallback: number): number {
+  const positives = values.filter((v) => v > 0);
+  return positives.length > 0 ? median(positives) : fallback;
+}
+
 function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v));
+}
+
+function columnLeft(column: GroundTruthColumn): number {
+  return column.centerX - column.width / 2;
+}
+
+function columnRight(column: GroundTruthColumn): number {
+  return column.centerX + column.width / 2;
+}
+
+function columnGap(rightColumn: GroundTruthColumn, leftColumn: GroundTruthColumn): number {
+  return columnLeft(rightColumn) - columnRight(leftColumn);
+}
+
+function columnPitch(rightColumn: GroundTruthColumn, leftColumn: GroundTruthColumn): number {
+  return Math.abs(rightColumn.centerX - leftColumn.centerX);
+}
+
+function columnsRightToLeft(columns: GroundTruthColumn[]): GroundTruthColumn[] {
+  return [...columns].sort((a, b) => b.centerX - a.centerX);
+}
+
+function averageCharAdvance(column: GroundTruthColumn): number | undefined {
+  if (column.charCenters.length < 2) return undefined;
+  const deltas: number[] = [];
+  for (let i = 0; i < column.charCenters.length - 1; i++) {
+    const dy = column.charCenters[i + 1].y - column.charCenters[i].y;
+    if (Number.isFinite(dy)) deltas.push(dy);
+  }
+  return deltas.length > 0 ? mean(deltas) : undefined;
 }
 
 export function computeRegionMetrics(
@@ -80,16 +125,35 @@ export function computeRegionMetrics(
     ? Math.abs(predFontSize - gtFont) / gtFont
     : 0;
 
+  const signedDxNorms: number[] = [];
   const dxNorms: number[] = [];
   for (let i = 0; i < Math.min(gtN, predN); i++) {
     const dx = predColumns[i].centerX - gtColumns[i].centerX;
     const norm = gtColumns[i].width > 0 ? dx / gtColumns[i].width : 0;
+    signedDxNorms.push(norm);
     dxNorms.push(Math.abs(norm));
   }
-  const columnDxNormMean = dxNorms.length > 0
-    ? dxNorms.reduce((a, b) => a + b, 0) / dxNorms.length
-    : 0;
+  const signedColumnDxNormMean = mean(signedDxNorms);
+  const columnDxNormMean = mean(dxNorms);
   const columnDxNormMax = dxNorms.length > 0 ? Math.max(...dxNorms) : 0;
+
+  const gapNormBase = positiveMedian(gtColumns.map((c) => c.width), gtFont || predFontSize || 1);
+  const gtSpatialColumns = columnsRightToLeft(gtColumns);
+  const predSpatialColumns = columnsRightToLeft(predColumns);
+  const signedColumnGapNorms: number[] = [];
+  const columnPitchRatios: number[] = [];
+  for (let i = 0; i < Math.min(gtSpatialColumns.length, predSpatialColumns.length) - 1; i++) {
+    const gtGap = columnGap(gtSpatialColumns[i], gtSpatialColumns[i + 1]);
+    const predGap = columnGap(predSpatialColumns[i], predSpatialColumns[i + 1]);
+    const gtPitch = columnPitch(gtSpatialColumns[i], gtSpatialColumns[i + 1]);
+    const predPitch = columnPitch(predSpatialColumns[i], predSpatialColumns[i + 1]);
+    signedColumnGapNorms.push((predGap - gtGap) / gapNormBase);
+    if (gtPitch > 1e-6) {
+      columnPitchRatios.push(predPitch / gtPitch);
+    }
+  }
+  const signedColumnGapNormMean = mean(signedColumnGapNorms);
+  const columnPitchRatioMean = meanOr(columnPitchRatios, 1);
 
   const dTops: number[] = [];
   const dBottoms: number[] = [];
@@ -112,7 +176,24 @@ export function computeRegionMetrics(
     ? heightRatios.reduce((a, b) => a + b, 0) / heightRatios.length
     : 0;
 
+  const signedDyNorms: number[] = [];
   const allDyNorms: number[] = [];
+  const signedCharAdvanceNorms: number[] = [];
+  const charAdvanceRatios: number[] = [];
+  for (let i = 0; i < Math.min(gtSpatialColumns.length, predSpatialColumns.length); i++) {
+    const gtAdvance = averageCharAdvance(gtSpatialColumns[i]);
+    const predAdvance = averageCharAdvance(predSpatialColumns[i]);
+    if (
+      gtAdvance !== undefined &&
+      predAdvance !== undefined &&
+      Math.abs(gtAdvance) > 1e-6
+    ) {
+      const advanceNormBase = predFontSize > 0 ? predFontSize : Math.abs(gtAdvance);
+      signedCharAdvanceNorms.push((predAdvance - gtAdvance) / advanceNormBase);
+      charAdvanceRatios.push(predAdvance / gtAdvance);
+    }
+  }
+
   for (let i = 0; i < Math.min(gtN, predN); i++) {
     const gtCenters = gtColumns[i].charCenters;
     const predCenters = predColumns[i].charCenters;
@@ -126,14 +207,16 @@ export function computeRegionMetrics(
       if (predIdx >= predLen) continue;
       const dy = predCenters[predIdx].y - gtCenters[j].y;
       const norm = predFontSize > 0 ? dy / predFontSize : 0;
+      signedDyNorms.push(norm);
       allDyNorms.push(Math.abs(norm));
     }
   }
-  const charDyNormMean = allDyNorms.length > 0
-    ? allDyNorms.reduce((a, b) => a + b, 0) / allDyNorms.length
-    : 0;
+  const signedCharDyNormMean = mean(signedDyNorms);
+  const charDyNormMean = mean(allDyNorms);
   const charDyNormMax = allDyNorms.length > 0 ? Math.max(...allDyNorms) : 0;
   const charDyNormP95 = percentile(allDyNorms, 95);
+  const signedCharAdvanceNormMean = mean(signedCharAdvanceNorms);
+  const charAdvanceRatioMean = meanOr(charAdvanceRatios, 1);
 
   const compositeScore =
     weights.columnCountMatch * columnCountMatch +
@@ -149,14 +232,20 @@ export function computeRegionMetrics(
     columnIouMin,
     fontSizeRatio,
     fontSizeError,
+    signedColumnDxNormMean,
     columnDxNormMean,
     columnDxNormMax,
+    signedColumnGapNormMean,
+    columnPitchRatioMean,
     dTopNormMean,
     dBottomNormMean,
     heightRatioMean,
+    signedCharDyNormMean,
     charDyNormMean,
     charDyNormMax,
     charDyNormP95,
+    signedCharAdvanceNormMean,
+    charAdvanceRatioMean,
     compositeScore,
   };
 }

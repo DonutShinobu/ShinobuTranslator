@@ -5,7 +5,9 @@ import { dirname, extname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { execSync } from "child_process";
 import { createServer } from "http";
+import type { AddressInfo } from "net";
 import type { BakeInfo, Fixture, FixtureRegion, GroundTruthColumn } from "./types";
+import type { BakeResult, BakeResultRegion } from "../../../src/pipeline/bake";
 
 const ROOT = resolve(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "../../..");
 const IMAGES_DIR = join(ROOT, "benchmark/typeset/images");
@@ -140,7 +142,11 @@ async function main(): Promise<void> {
     res.end("<html><body></body></html>");
   });
   await new Promise<void>((resolve) => server.listen(0, "0.0.0.0", resolve));
-  const port = (server.address() as any).port;
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Failed to resolve benchmark server port.");
+  }
+  const port = (address as AddressInfo).port;
   const localUrl = `http://localhost:${port}/`;
 
   const imageFiles = readdirSync(IMAGES_DIR).filter((f) =>
@@ -153,8 +159,7 @@ async function main(): Promise<void> {
 
   mkdirSync(FIXTURES_DIR, { recursive: true });
 
-  const { browser, close: closeBrowser } = await launchWindowsChrome(DIST_DIR);
-  const context = browser.contexts()[0];
+  const { context, close: closeBrowser } = await launchWindowsChrome(DIST_DIR);
 
   const bakeInfo: BakeInfo = {
     gitCommit: gitCommit(),
@@ -190,8 +195,10 @@ async function main(): Promise<void> {
       .catch(() => console.log("  Bridge NOT ready after 15s"));
 
     // Use postMessage bridge to call shinobuBake in the content script world
-    await page.evaluate((du: string) => { (window as any).__bake_dataUrl__ = du; }, dataUrl);
-    const result = await page.evaluate(`
+    await page.evaluate((du: string) => {
+      (window as typeof window & { __bake_dataUrl__?: string }).__bake_dataUrl__ = du;
+    }, dataUrl);
+    const result = await page.evaluate<BakeResult>(`
       new Promise((resolve, reject) => {
         const timeout = setTimeout(() => reject(new Error("Bake timeout")), 120000);
         const handler = (e) => {
@@ -206,7 +213,7 @@ async function main(): Promise<void> {
       })
     `);
 
-    const regions: FixtureRegion[] = result.regions.map((r: any) => ({
+    const regions: FixtureRegion[] = result.regions.map((r: BakeResultRegion) => ({
       id: r.id,
       direction: r.direction as "v" | "h",
       box: r.box,

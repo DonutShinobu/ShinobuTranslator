@@ -36,8 +36,14 @@ function main(): void {
       avgCompositeScore: current.avgCompositeScore,
       avgColumnIouMean: current.avgColumnIouMean,
       avgFontSizeError: current.avgFontSizeError,
+      avgSignedColumnDxNorm: current.avgSignedColumnDxNorm,
       avgColumnDxNorm: current.avgColumnDxNorm,
+      avgSignedColumnGapNorm: current.avgSignedColumnGapNorm,
+      avgColumnPitchRatio: current.avgColumnPitchRatio,
+      avgSignedCharDyNorm: current.avgSignedCharDyNorm,
       avgCharDyNorm: current.avgCharDyNorm,
+      avgSignedCharAdvanceNorm: current.avgSignedCharAdvanceNorm,
+      avgCharAdvanceRatio: current.avgCharAdvanceRatio,
       columnCountMatchRate: current.columnCountMatchRate,
     };
     writeFileSync(baselinePath, JSON.stringify(baseline, null, 2));

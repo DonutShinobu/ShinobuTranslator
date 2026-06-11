@@ -75,14 +75,20 @@ export type RegionMetrics = {
   columnIouMin: number;
   fontSizeRatio: number;
   fontSizeError: number;
+  signedColumnDxNormMean: number;
   columnDxNormMean: number;
   columnDxNormMax: number;
+  signedColumnGapNormMean: number;
+  columnPitchRatioMean: number;
   dTopNormMean: number;
   dBottomNormMean: number;
   heightRatioMean: number;
+  signedCharDyNormMean: number;
   charDyNormMean: number;
   charDyNormMax: number;
   charDyNormP95: number;
+  signedCharAdvanceNormMean: number;
+  charAdvanceRatioMean: number;
   compositeScore: number;
 };
 
@@ -102,8 +108,14 @@ export type BenchmarkSummary = {
   avgCompositeScore: number;
   avgColumnIouMean: number;
   avgFontSizeError: number;
+  avgSignedColumnDxNorm: number;
   avgColumnDxNorm: number;
+  avgSignedColumnGapNorm: number;
+  avgColumnPitchRatio: number;
+  avgSignedCharDyNorm: number;
   avgCharDyNorm: number;
+  avgSignedCharAdvanceNorm: number;
+  avgCharAdvanceRatio: number;
   columnCountMatchRate: number;
   images: ImageMetrics[];
 };

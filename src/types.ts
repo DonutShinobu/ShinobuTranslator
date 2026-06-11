@@ -80,6 +80,12 @@ export type TypesetDebugColumnBox = {
   height: number;
 };
 
+export type TypesetDebugGlyphCenter = {
+  ch: string;
+  x: number;
+  y: number;
+};
+
 export type TypesetDebugRegionLog = {
   regionId: string;
   regionIndex: number;
@@ -107,6 +113,7 @@ export type TypesetDebugRegionLog = {
   columnSegmentSources: TypesetDebugColumnSegmentSource[];
   columnBoxes: TypesetDebugColumnBox[];
   columnCanvasQuads: [QuadPoint, QuadPoint, QuadPoint, QuadPoint][];
+  columnGlyphCenters: TypesetDebugGlyphCenter[][];
 };
 
 export type PipelineTypesetDebugLog = {

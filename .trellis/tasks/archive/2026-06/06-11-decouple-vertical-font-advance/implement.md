@@ -71,3 +71,15 @@ npm run bench:bake-node
 - 最新报告：`benchmark/reports/2026-06-11T07-58-54-834Z`。
 - 关键指标：Column IoU `0.8216`、Column Dx Norm `0.0307`、Font Size Error `0.0533`、Signed Column Gap Norm `+0.0197`、Char Dy Norm `0.1613`、Signed Char Advance Norm `-0.0119`、Column Count Match `97.8%`。
 - Overlay 拼图：`benchmark/reports/2026-06-11T07-58-54-834Z/overlay-contact-sheet.png`。
+
+## 2026-06-11 Fixture Rebake / Audit Update
+
+- 确认旧 fixtures 的根因不是 renderer 顺序，而是 bake 时 `groundTruth.columns` 来自 pre-merge center-in-box 匹配，未绑定 merge group 的 `sourceLineGeometries`。
+- 新增 `bench:audit-fixtures`，默认报告 fixture 健康状况，`--strict` 将 `text_mismatch`、`column_count_mismatch`、`spatial_order_mismatch` 都视为失败。
+- `bench:bake-node` / `bench:bake` 支持 `--out-dir`，用于先把新 fixture 写到报告目录，再审计、备份、复制到正式目录。
+- 旧正式 fixtures 审计：`total=45 clean=26 nonClean=19 usable=42 rejected=3`，问题为 `column_count_mismatch=1 text_mismatch=5 spatial_order_mismatch=13`。
+- 非破坏性 rebake 输出：`benchmark/reports/2026-06-11T21-55-36-330-fixtures-rebake`；严格审计 `total=45 clean=45 nonClean=0 usable=45 rejected=0`。
+- 覆盖前备份：`benchmark/reports/2026-06-11T21-55-36-330-fixtures-backup`；正式目录覆盖后严格审计同样 `45/45 clean`。注意 `benchmark/typeset/fixtures/` 被 `.gitignore` 忽略，这是本地数据修复。
+- 最新报告：`benchmark/reports/2026-06-11T13-57-06-879Z`；Composite `0.9257`、Column IoU `0.8507`、Font Size Error `0.0355`、Signed Column Gap Norm `+0.0083`、Signed Char Advance Norm `-0.0028`、Column Count Match `97.8%`、Source Geometry `45/0`、Spatial mismatches `0`。
+- 裁剪检查表：`benchmark/reports/2026-06-11T13-57-06-879Z/region-crops.png`。
+- 验证：`npm run bench:audit-fixtures -- --strict`、`npm run bench:render`、`npm run bench`、`npx tsc --noEmit`、目标 Vitest、`npm run test` 均通过。

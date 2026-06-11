@@ -10,6 +10,7 @@
     "test": "vitest run",
     "bench:bake": "tsx benchmark/typeset/src/bake-fixtures.ts",
     "bench:bake-node": "tsx benchmark/typeset/src/bake-node.ts",
+    "bench:audit-fixtures": "tsx benchmark/typeset/src/audit-fixtures.ts",
     "bench": "tsx benchmark/typeset/src/run-bench.ts",
     "bench:render": "tsx benchmark/typeset/src/render-result.ts",
     "bench:baseline": "tsx benchmark/typeset/src/diff-baseline.ts --update-baseline",

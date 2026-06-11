@@ -316,6 +316,7 @@ describe("resolveVerticalSourceGeometryProfile", () => {
   it("extracts source pitch and content-space anchor from original columns", () => {
     const region = makeRegion({
       box: { x: 30, y: 20, width: 90, height: 100 },
+      sourceText: "ABCD\nEFG",
       sourceLineGeometries: [
         {
           text: "ABCD",
@@ -346,10 +347,143 @@ describe("resolveVerticalSourceGeometryProfile", () => {
       medianGap: 10,
       medianWidth: 20,
       medianHeight: 70,
+      medianAdvance: 20,
       perColumnAdvance: [20, 20],
     });
 
     expect(resolveVerticalSourceColumnAnchor(region, 5, profile)).toEqual({ contentCenterX: 40 });
+  });
+
+  it("keeps pitch targets in spatial order and advance targets in source order", () => {
+    const region = makeRegion({
+      box: { x: 0, y: 0, width: 160, height: 160 },
+      sourceText: "short\nlonger",
+      sourceLineGeometries: [
+        {
+          text: "short",
+          direction: "v",
+          box: { x: 100, y: 0, width: 20, height: 100 },
+          centerX: 110,
+          centerY: 50,
+          width: 20,
+          height: 100,
+        },
+        {
+          text: "longer",
+          direction: "v",
+          box: { x: 20, y: 0, width: 20, height: 180 },
+          centerX: 30,
+          centerY: 90,
+          width: 20,
+          height: 180,
+        },
+      ],
+    });
+
+    const profile = resolveVerticalSourceGeometryProfile(region, 2);
+
+    expect(profile?.medianPitch).toBe(80);
+    expect(profile?.medianAdvance).toBe(25);
+    expect(profile?.perColumnAdvance).toEqual([20, 30]);
+  });
+
+  it("does not expose per-column advance when source order is not spatially monotonic", () => {
+    const region = makeRegion({
+      box: { x: 0, y: 0, width: 160, height: 160 },
+      sourceText: "short\nlonger",
+      sourceLineGeometries: [
+        {
+          text: "short",
+          direction: "v",
+          box: { x: 20, y: 0, width: 20, height: 100 },
+          centerX: 30,
+          centerY: 50,
+          width: 20,
+          height: 100,
+        },
+        {
+          text: "longer",
+          direction: "v",
+          box: { x: 100, y: 0, width: 20, height: 180 },
+          centerX: 110,
+          centerY: 90,
+          width: 20,
+          height: 180,
+        },
+      ],
+    });
+
+    const profile = resolveVerticalSourceGeometryProfile(region, 2);
+
+    expect(profile?.medianPitch).toBe(80);
+    expect(profile?.medianAdvance).toBe(25);
+    expect(profile?.perColumnAdvance).toEqual([]);
+  });
+
+  it("matches source advance by text when geometry array order is not source order", () => {
+    const region = makeRegion({
+      box: { x: 0, y: 0, width: 160, height: 160 },
+      sourceText: "right\nleft",
+      sourceLineGeometries: [
+        {
+          text: "left",
+          direction: "v",
+          box: { x: 20, y: 0, width: 20, height: 120 },
+          centerX: 30,
+          centerY: 60,
+          width: 20,
+          height: 120,
+        },
+        {
+          text: "right",
+          direction: "v",
+          box: { x: 100, y: 0, width: 20, height: 250 },
+          centerX: 110,
+          centerY: 125,
+          width: 20,
+          height: 250,
+        },
+      ],
+    });
+
+    const profile = resolveVerticalSourceGeometryProfile(region, 2);
+
+    expect(profile?.medianPitch).toBe(80);
+    expect(profile?.medianAdvance).toBe(40);
+    expect(profile?.perColumnAdvance).toEqual([50, 30]);
+  });
+
+  it("does not expose per-column advance when source text cannot be matched", () => {
+    const region = makeRegion({
+      box: { x: 0, y: 0, width: 160, height: 160 },
+      sourceText: "right\nleft",
+      sourceLineGeometries: [
+        {
+          text: "other",
+          direction: "v",
+          box: { x: 20, y: 0, width: 20, height: 120 },
+          centerX: 30,
+          centerY: 60,
+          width: 20,
+          height: 120,
+        },
+        {
+          text: "right",
+          direction: "v",
+          box: { x: 100, y: 0, width: 20, height: 250 },
+          centerX: 110,
+          centerY: 125,
+          width: 20,
+          height: 250,
+        },
+      ],
+    });
+
+    const profile = resolveVerticalSourceGeometryProfile(region, 2);
+
+    expect(profile?.medianPitch).toBe(80);
+    expect(profile?.medianAdvance).toBe(37);
+    expect(profile?.perColumnAdvance).toEqual([]);
   });
 
   it("rejects profiles when source column count no longer matches layout target", () => {
@@ -373,6 +507,7 @@ describe("resolveVerticalSourceGeometryProfile", () => {
   it("uses real glyph count for source advance instead of half-width text length", () => {
     const region = makeRegion({
       box: { x: 0, y: 0, width: 80, height: 118 },
+      sourceText: "へぇ",
       sourceLineGeometries: [
         {
           text: "へぇ",
@@ -441,6 +576,7 @@ describe("estimateVerticalPreferredProfile", () => {
         medianGap: null,
         medianWidth: 20,
         medianHeight: 30,
+        medianAdvance: 30,
         perColumnAdvance: [30],
       },
     );
@@ -470,6 +606,40 @@ describe("estimateVerticalPreferredProfile", () => {
     );
 
     expect(profile.advanceScale).toBe(1);
+  });
+
+  it("derives per-column advance scales from matched source geometry", () => {
+    const region = makeRegion({
+      direction: "v",
+      sourceText: "AA\nBBBB",
+      translatedText: "AA\nBBBB",
+      originalLineCount: 2,
+    });
+
+    const profile = estimateVerticalPreferredProfile(
+      ctx as never,
+      region,
+      "AABBBB",
+      120,
+      200,
+      20,
+      "sans-serif",
+      ["AA", "BBBB"],
+      120,
+      {
+        columnCount: 2,
+        groupCenterX: 60,
+        medianPitch: 60,
+        medianGap: 30,
+        medianWidth: 20,
+        medianHeight: 100,
+        medianAdvance: 55,
+        perColumnAdvance: [80, 30],
+      },
+    );
+
+    expect(profile.advanceScale).toBe(1);
+    expect(profile.perColumnAdvanceScale).toEqual([1.1, minSourceGeometryAdvanceScale]);
   });
 });
 

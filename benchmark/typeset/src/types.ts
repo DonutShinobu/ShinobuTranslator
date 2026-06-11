@@ -69,6 +69,7 @@ export type RegionMetrics = {
   regionId: string;
   skipped: boolean;
   skipReason?: string;
+  sourceGeometryStatus?: string;
   columnCountMatch: number;
   columnCountDiff: number;
   columnIouMean: number;
@@ -117,6 +118,10 @@ export type BenchmarkSummary = {
   avgSignedCharAdvanceNorm: number;
   avgCharAdvanceRatio: number;
   columnCountMatchRate: number;
+  sourceGeometryUsableRegionCount: number;
+  sourceGeometryRejectedRegionCount: number;
+  sourceGeometrySpatialOrderMismatchCount: number;
+  sourceGeometryRejectedReasons: Record<string, number>;
   images: ImageMetrics[];
 };
 

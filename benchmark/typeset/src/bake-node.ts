@@ -7,7 +7,7 @@
  * benchmark infrastructure.
  *
  * Usage:
- *   npx tsx benchmark/typeset/src/bake-node.ts [image1.png image2.jpg ...]
+ *   npx tsx benchmark/typeset/src/bake-node.ts [--out-dir path] [image1.png image2.jpg ...]
  *   npm run bench:bake-node
  *
  * If no image paths are given, scans benchmark/typeset/images/ directory.
@@ -32,6 +32,11 @@ const IMAGES_DIR = join(ROOT, "benchmark/typeset/images");
 const FIXTURES_DIR = join(ROOT, "benchmark/typeset/fixtures");
 const MODELS_DIR = join(ROOT, "public/models");
 
+type BakeNodeOptions = {
+  imagePaths: string[];
+  fixturesDir: string;
+};
+
 // ---------------------------------------------------------------------------
 // Utility functions (from bake-fixtures.ts)
 // ---------------------------------------------------------------------------
@@ -55,6 +60,40 @@ function imageToDataUrl(path: string): string {
   return `data:${mime};base64,${buf.toString("base64")}`;
 }
 
+function resolveCliPath(path: string): string {
+  return resolve(ROOT, path);
+}
+
+function parseArgs(args: string[]): BakeNodeOptions {
+  const imagePaths: string[] = [];
+  let fixturesDir = FIXTURES_DIR;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--out-dir") {
+      const outDir = args[i + 1];
+      if (!outDir) {
+        console.error("--out-dir requires a path.");
+        process.exit(1);
+      }
+      fixturesDir = resolveCliPath(outDir);
+      i++;
+      continue;
+    }
+    if (arg.startsWith("--out-dir=")) {
+      fixturesDir = resolveCliPath(arg.slice("--out-dir=".length));
+      continue;
+    }
+    if (arg.startsWith("--")) {
+      console.error(`Unknown option: ${arg}`);
+      process.exit(1);
+    }
+    imagePaths.push(resolveCliPath(arg));
+  }
+
+  return { imagePaths, fixturesDir };
+}
+
 // ---------------------------------------------------------------------------
 // Fixture format converters (from bake-fixtures.ts)
 // ---------------------------------------------------------------------------
@@ -68,7 +107,7 @@ function buildGroundTruthColumns(
   if (detected.length === 0) return [];
 
   return detected.map((col, i) => {
-    const chars = [...col.text];
+    const chars = [...col.text.replace(/\s+/g, "")];
     const charCenters: { y: number }[] = [];
     if (chars.length > 0) {
       const step = col.height / chars.length;
@@ -226,13 +265,13 @@ function checkModelFiles(): void {
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+  const options = parseArgs(process.argv.slice(2));
 
   // Determine image files: from CLI args or scan IMAGES_DIR
   let imageFiles: string[];
-  if (args.length > 0) {
+  if (options.imagePaths.length > 0) {
     // Absolute or relative paths provided via CLI
-    imageFiles = args.map((p) => resolve(p));
+    imageFiles = options.imagePaths;
     // Verify all files exist
     for (const imgPath of imageFiles) {
       if (!existsSync(imgPath)) {
@@ -258,13 +297,14 @@ async function main(): Promise<void> {
   }
 
   console.log(`Found ${imageFiles.length} images to bake`);
+  console.log(`Writing fixtures to ${options.fixturesDir}`);
 
   // Pre-flight checks
   checkModelFiles();
   registerFonts();
 
   // Ensure fixtures output directory exists
-  mkdirSync(FIXTURES_DIR, { recursive: true });
+  mkdirSync(options.fixturesDir, { recursive: true });
 
   const bakeInfo: BakeInfo = {
     gitCommit: gitCommit(),
@@ -302,7 +342,7 @@ async function main(): Promise<void> {
       };
 
       const fixtureName = imgFile.replace(/\.[^.]+$/, "") + ".fixture.json";
-      const fixturePath = join(FIXTURES_DIR, fixtureName);
+      const fixturePath = join(options.fixturesDir, fixtureName);
       writeFileSync(fixturePath, JSON.stringify(fixture, null, 2));
       console.log(`  -> ${fixtureName} (${fixtureRegions.length} regions)`);
       successCount++;

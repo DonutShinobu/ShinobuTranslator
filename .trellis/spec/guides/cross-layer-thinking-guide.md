@@ -68,6 +68,18 @@ For each boundary:
 
 **Good**: Each layer only knows its neighbors
 
+### Mistake 4: Feeding Diagnostics Back Into Runtime Input
+
+**Bad**: A benchmark or diagnostic helper detects a mismatch, then rewrites render/runtime input to match the diagnostic order.
+
+**Good**: Keep runtime input unchanged, emit diagnostics separately, and fix the upstream data contract or fixture regeneration path.
+
+**Project example**: Typeset benchmark fixtures can contain three different orders: `sourceText` order, `groundTruth.columns` array order, and spatial right-to-left order. The renderer must receive fixture `sourceText` unchanged. Source geometry mismatch diagnostics may be counted in reports, but must not rewrite `sourceText`, `translatedColumns`, or source column order in `render-result.ts`.
+
+**Project example**: Vertical source geometry is also split by responsibility. Spatial pitch/anchor can use right-to-left geometry, but per-column glyph advance is runtime layout input and must be mapped to the source/render text column. If the matched geometry is not right-to-left monotonic, keep only a global median advance fallback and do not feed per-column diagnostic/GT data into layout.
+
+**Project example**: When a benchmark fixture is suspected to be corrupt, regenerate fixtures to a report-scoped output directory first, then run strict fixture audit before copying them into the official fixture directory. Do not tune runtime layout against a fixture until `sourceText`, source geometry, and `groundTruth.columns` pass the source-order/spatial-order contract.
+
 ---
 
 ## Checklist for Cross-Layer Features

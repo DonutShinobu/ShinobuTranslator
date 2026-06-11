@@ -91,6 +91,7 @@ function centerInBox(
 }
 
 function toDetectedColumn(region: TextRegion): DetectedColumn {
+  const text = region.sourceText.replace(/\s+/g, "");
   return {
     centerX: region.box.x + region.box.width / 2,
     topY: region.box.y,
@@ -98,7 +99,20 @@ function toDetectedColumn(region: TextRegion): DetectedColumn {
     width: region.box.width,
     height: region.box.height,
     text: region.sourceText,
-    charCount: [...region.sourceText].length,
+    charCount: [...text].length,
+  };
+}
+
+function sourceGeometryToDetectedColumn(line: SourceTextLineGeometry): DetectedColumn {
+  const text = line.text.replace(/\s+/g, "");
+  return {
+    centerX: line.centerX,
+    topY: line.box.y,
+    bottomY: line.box.y + line.box.height,
+    width: line.width,
+    height: line.height,
+    text: line.text,
+    charCount: [...text].length,
   };
 }
 
@@ -221,9 +235,11 @@ export async function shinobuBake(dataUrl: string, platform: PlatformProvider): 
   const verticalRegions = regions.filter((r) => r.direction === "v");
 
   const resultRegions: BakeResultRegion[] = verticalRegions.map((merged) => {
-    const detectedColumns = preMergeRegions
-      .filter((pre) => centerInBox(pre.box, merged.box))
-      .map(toDetectedColumn);
+    const detectedColumns = merged.sourceLineGeometries && merged.sourceLineGeometries.length > 0
+      ? merged.sourceLineGeometries.map(sourceGeometryToDetectedColumn)
+      : preMergeRegions
+          .filter((pre) => centerInBox(pre.box, merged.box))
+          .map(toDetectedColumn);
 
     const debugEntry = debugRegions.find((d) => d.regionId === merged.id);
 

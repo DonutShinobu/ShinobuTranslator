@@ -103,6 +103,7 @@ export type TypesetDebugGlyphCenter = {
 export type TypesetLayoutDiagnostics = {
   sourceGeometryProfileUsed: boolean;
   advanceScale: number;
+  perColumnAdvanceScales?: number[];
   colSpacingScale: number;
   actualBoxScale?: number;
   useDefaultAdvanceBase: boolean;

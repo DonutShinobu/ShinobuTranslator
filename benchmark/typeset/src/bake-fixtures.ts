@@ -14,6 +14,10 @@ const IMAGES_DIR = join(ROOT, "benchmark/typeset/images");
 const FIXTURES_DIR = join(ROOT, "benchmark/typeset/fixtures");
 const DIST_DIR = join(ROOT, "dist");
 
+type BakeFixturesOptions = {
+  fixturesDir: string;
+};
+
 function sha256File(path: string): string {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
@@ -33,6 +37,32 @@ function imageToDataUrl(path: string): string {
   return `data:${mime};base64,${buf.toString("base64")}`;
 }
 
+function parseArgs(args: string[]): BakeFixturesOptions {
+  let fixturesDir = FIXTURES_DIR;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === "--out-dir") {
+      const outDir = args[i + 1];
+      if (!outDir) {
+        console.error("--out-dir requires a path.");
+        process.exit(1);
+      }
+      fixturesDir = resolve(ROOT, outDir);
+      i++;
+      continue;
+    }
+    if (arg.startsWith("--out-dir=")) {
+      fixturesDir = resolve(ROOT, arg.slice("--out-dir=".length));
+      continue;
+    }
+    console.error(`Unknown option: ${arg}`);
+    process.exit(1);
+  }
+
+  return { fixturesDir };
+}
+
 function buildGroundTruthColumns(
   detected: Array<{
     centerX: number; topY: number; bottomY: number;
@@ -42,7 +72,7 @@ function buildGroundTruthColumns(
   if (detected.length === 0) return [];
 
   return detected.map((col, i) => {
-    const chars = [...col.text];
+    const chars = [...col.text.replace(/\s+/g, "")];
     const charCenters: { y: number }[] = [];
     if (chars.length > 0) {
       const step = col.height / chars.length;
@@ -111,6 +141,8 @@ function buildTypesetSnapshotColumns(
 }
 
 async function main(): Promise<void> {
+  const options = parseArgs(process.argv.slice(2));
+
   console.log("Building extension...");
   execSync("npm run build", { cwd: ROOT, stdio: "inherit" });
 
@@ -157,7 +189,8 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  mkdirSync(FIXTURES_DIR, { recursive: true });
+  console.log(`Writing fixtures to ${options.fixturesDir}`);
+  mkdirSync(options.fixturesDir, { recursive: true });
 
   const { context, close: closeBrowser } = await launchWindowsChrome(DIST_DIR);
 
@@ -252,7 +285,7 @@ async function main(): Promise<void> {
 
     const fixtureName = imgFile.replace(/\.[^.]+$/, "") + ".fixture.json";
     writeFileSync(
-      join(FIXTURES_DIR, fixtureName),
+      join(options.fixturesDir, fixtureName),
       JSON.stringify(fixture, null, 2),
     );
     console.log(`  -> ${fixtureName} (${regions.length} regions)`);

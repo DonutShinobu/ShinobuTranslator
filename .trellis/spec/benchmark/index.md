@@ -31,7 +31,7 @@
 
 - **Benchmark 脚本运行在 Node.js** — 不依赖浏览器环境，使用 `@napi-rs/canvas` 替代 DOM Canvas
 - **运行方式** — `tsx benchmark/typeset/src/*.ts` / `tsx benchmark/color/src/*.ts`，或通过 `package.json` 中的 npm scripts
-- **bake-node** — `npx tsx benchmark/typeset/src/bake-node.ts [image1.png ...]` 或 `npm run bench:bake-node`，使用 `nodePlatform` + `onnxNodeBridge`（CUDA EP），输出 Fixture JSON
+- **bake-node** — `npx tsx benchmark/typeset/src/bake-node.ts [--out-dir path] [image1.png ...]` 或 `npm run bench:bake-node`，使用 `nodePlatform` + `onnxNodeBridge`（CUDA EP），输出 Fixture JSON
 - **bake-node 字体限制** — node-canvas 的 `registerFont()` 只支持 `.ttf/.otf/.ttc`，不支持 `.woff2`。若项目字体只有 `.woff2` 格式，需安装系统 CJK 字体作为 fallback
 - **Fixture 数据** — JSON 注解文件 git 追踪，实际图片文件 gitignore（用户手动添加）
 - **报告输出** — `benchmark/reports/` 目录，gitignore，每次运行生成带时间戳的子目录
@@ -49,6 +49,96 @@ Before modifying benchmark scripts, verify:
 - [ ] 新算法实现不修改浏览器端 `src/pipeline/` 代码（仅建立测试框架）
 - [ ] 重复逻辑提取到 `color-utils.ts`（共享工具优于各脚本内复制）
 - [ ] 颜色算法脚本放在 `benchmark/color/src/`，排版脚本放在 `benchmark/typeset/src/`
+
+---
+
+## 场景：Typeset Fixture 源列几何契约
+
+### 1. Scope / Trigger
+
+- 触发：修改 `benchmark/typeset/` 的 bake、render、metrics/report 脚本，或修改 `src/pipeline/bake.ts` 输出给 fixture 的字段。
+- 目标：`sourceText`、`sourceLineGeometries`、`groundTruth.columns` 必须来自同一组 OCR/merge 源列，避免把旧 fixture 的列顺序错配误判成 typeset 字间距问题。
+
+### 2. Signatures
+
+- `BakeResultRegion.detectedColumns?: DetectedColumn[]`
+- `FixtureRegion.sourceText: string`
+- `FixtureRegion.groundTruth.columns: GroundTruthColumn[]`
+- `RenderFixtureRegion.sourceLineGeometries?: SourceTextLineGeometry[]`
+- `BenchmarkSummary.sourceGeometryUsableRegionCount: number`
+- `BenchmarkSummary.sourceGeometryRejectedRegionCount: number`
+- `BenchmarkSummary.sourceGeometrySpatialOrderMismatchCount: number`
+- `BenchmarkSummary.sourceGeometryRejectedReasons: Record<string, number>`
+- `npm run bench:audit-fixtures -- [--fixtures-dir path] [--strict]`
+- `npm run bench:bake-node -- --out-dir <report-fixtures-dir>`
+
+### 3. Contracts
+
+- 新 bake 优先从 `merged.sourceLineGeometries` 生成 `detectedColumns`；只有缺失时才回退到 pre-merge `centerInBox` 匹配。
+- `detectedColumns.charCount` 和 fixture `charCenters` 必须按 `text.replace(/\s+/g, "")` 的字形数计算，不能把换行/空白当成竖排字符。
+- `bake-node.ts` 和 `bake-fixtures.ts` 必须支持 `--out-dir`，用于先把重 bake 产物写到 `benchmark/reports/` 下的临时目录；不要把未经审计的新 fixture 直接覆盖正式 `benchmark/typeset/fixtures/`。
+- 替换正式 fixture 前，必须对临时输出执行 `npm run bench:audit-fixtures -- --fixtures-dir <dir> --strict`；替换后必须再对正式目录执行 `npm run bench:audit-fixtures -- --strict`。
+- benchmark render 只能复现 fixture 输入：`sourceText` 保持不变，`sourceLineGeometries` 可由旧 fixture 的 GT 几何近似，但不得在 render adapter 中按诊断结果重写或重排。
+- 旧 fixture 若文本能匹配但空间右到左顺序不同，允许继续用全局几何统计稳定视觉，但必须报告 `spatial_order_mismatch`；这类区域不能作为逐列字距拟合的真值。
+
+### 4. Validation & Error Matrix
+
+- `sourceText` 列数为 0 -> `empty_source_text`，不传 `sourceLineGeometries`。
+- `sourceText` 列数 != `groundTruth.columns.length` -> `column_count_mismatch`，不传 `sourceLineGeometries`。
+- 任一 `sourceText` 列文本无法在 GT 中找到未使用匹配 -> `text_mismatch`，不传 `sourceLineGeometries`。
+- 文本集合可匹配但 `sourceText` 顺序 != GT 空间右到左顺序 -> `spatial_order_mismatch`，可传几何但报告计数。
+
+### 5. Good/Base/Bad Cases
+
+- Good：新 bake 的 `sourceText`、`sourceLineGeometries`、`groundTruth.columns` 都来自 `merged.sourceLineGeometries`，列顺序一致。
+- Base：旧 fixture 文本可匹配但空间顺序不同，报告标出 `spatial_order_mismatch`，视觉仍可用几何锚点。
+- Bad：直接把 `groundTruth.columns` 空间排序后重写 `sourceText`，会造成列文本错位。
+
+### 6. Tests Required
+
+- 单测 `benchmark/typeset/src/source-geometry.ts`：覆盖文本匹配、文本失败、列数失败、空间顺序不一致。
+- 单测/回归 `fontFit`：源几何 profile 的 pitch/anchor 按空间右到左统计；`medianAdvance` 保留全局 fallback；per-column advance 必须按源文本列匹配，且匹配后的几何顺序不单调时返回空数组。
+- Fixture 变更流程：先 `bench:bake-node -- --out-dir <report-fixtures-dir>`，再 `bench:audit-fixtures -- --fixtures-dir <report-fixtures-dir> --strict`；审计通过后才能备份并复制到正式目录。
+- 端到端验证：`npm run bench:render` 后执行 `npm run bench`，确认 summary 输出 source geometry 诊断字段。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+// Diagnostic/GT order must not rewrite benchmark render input.
+sourceText: resolveFixtureRenderSourceText(region) ?? region.sourceText
+```
+
+```typescript
+// Do not feed source-order diagnostics back into renderer geometry.
+sourceLineGeometries: resolveFixtureSourceLineGeometries(region)
+```
+
+#### Correct
+
+```typescript
+// Render should reproduce the fixture input; diagnostics are reported separately.
+sourceText: region.sourceText
+sourceLineGeometries: region.groundTruth.columns.map(groundTruthColumnToSourceGeometry)
+```
+
+#### Cross-Layer Rule
+
+- `groundTruth.columns` is the evaluation/annotation layer.
+- `sourceText` and `translatedColumns` are render input layer.
+- `sourceGeometryStatus` is diagnostic layer.
+- Never let evaluation or diagnostic ordering rewrite render text order. Old fixtures may have `sourceText`, GT array order, and GT spatial order disagreeing; report that mismatch, but do not "fix" render input inside `render-result.ts`.
+
+### Vertical Source Advance Contract
+
+- Source geometry has two separate consumers:
+  - spatial geometry (`medianPitch`, anchor, group center) is resolved from right-to-left column positions;
+  - glyph advance targets must be aligned to source text/render column order.
+- Keep a global `medianAdvance` fallback derived from spatial source columns. This preserves stable behavior when per-column mapping is unsafe.
+- Enable per-column advance only when source geometry text can be matched to `sourceText` columns and the matched geometry is right-to-left monotonic.
+- If source text, GT array order, and spatial order disagree, do not use per-column advance. Using a per-column advance from a mismatched column moves height/spacing from one visual column to another and creates the same class of position regressions as rewriting `sourceText`.
+- Benchmark diagnostics may report `spatial_order_mismatch` or `text_mismatch`; those statuses are evidence to avoid per-column runtime feedback, not permission to reorder render input.
 
 ---
 

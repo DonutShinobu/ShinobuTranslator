@@ -4,6 +4,7 @@ import { basename, dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { debugRegionToColumns } from "./debug-columns";
 import { computeRegionMetrics } from "./metrics";
+import { assessFixtureSourceGeometry } from "./source-geometry";
 import type {
   BenchConfig,
   BenchmarkSummary,
@@ -59,6 +60,7 @@ function emptySkippedRegion(regionId: string, reason: string): RegionMetrics {
     regionId,
     skipped: true,
     skipReason: reason,
+    sourceGeometryStatus: "skipped",
     columnCountMatch: 0,
     columnCountDiff: 0,
     columnIouMean: 0,
@@ -91,7 +93,7 @@ function meanMetric(regions: RegionMetrics[], getter: (region: RegionMetrics) =>
 
 function formatCsv(images: ImageMetrics[]): string {
   const header = [
-    "image", "regionId", "skipped", "skipReason",
+    "image", "regionId", "skipped", "skipReason", "sourceGeometryStatus",
     "columnCountMatch", "columnCountDiff",
     "columnIouMean", "columnIouMin",
     "fontSizeRatio", "fontSizeError",
@@ -107,6 +109,7 @@ function formatCsv(images: ImageMetrics[]): string {
     for (const r of img.regions) {
       rows.push([
         img.imageFile, r.regionId, r.skipped, r.skipReason ?? "",
+        r.sourceGeometryStatus ?? "",
         r.columnCountMatch, r.columnCountDiff,
         r.columnIouMean.toFixed(4), r.columnIouMin.toFixed(4),
         r.fontSizeRatio.toFixed(4), r.fontSizeError.toFixed(4),
@@ -150,10 +153,31 @@ function formatSummaryMd(summary: BenchmarkSummary, reportDir: string): string {
     `| Signed Char Advance Norm (avg) | ${summary.avgSignedCharAdvanceNorm.toFixed(4)} |`,
     `| Char Advance Ratio (avg) | ${summary.avgCharAdvanceRatio.toFixed(4)} |`,
     `| Column Count Match Rate | ${(summary.columnCountMatchRate * 100).toFixed(1)}% |`,
+    `| Source Geometry Usable Regions | ${summary.sourceGeometryUsableRegionCount} |`,
+    `| Source Geometry Rejected Regions | ${summary.sourceGeometryRejectedRegionCount} |`,
+    `| Source Geometry Spatial Order Mismatches | ${summary.sourceGeometrySpatialOrderMismatchCount} |`,
+    ``,
+    `## Source Geometry Diagnostics`,
+    ``,
+  ];
+
+  const rejectedReasons = Object.entries(summary.sourceGeometryRejectedReasons)
+    .sort((a, b) => b[1] - a[1]);
+  if (rejectedReasons.length > 0) {
+    lines.push(`| Reason | Regions |`);
+    lines.push(`|--------|---------|`);
+    for (const [reason, count] of rejectedReasons) {
+      lines.push(`| ${reason} | ${count} |`);
+    }
+  } else {
+    lines.push(`No rejected vertical source geometry.`);
+  }
+
+  lines.push(
     ``,
     `## Worst Regions`,
     ``,
-  ];
+  );
 
   const allRegions: (RegionMetrics & { imageFile: string })[] = [];
   for (const img of summary.images) {
@@ -198,6 +222,10 @@ async function main(): Promise<void> {
   }
 
   const imageMetrics: ImageMetrics[] = [];
+  let sourceGeometryUsableRegionCount = 0;
+  let sourceGeometryRejectedRegionCount = 0;
+  let sourceGeometrySpatialOrderMismatchCount = 0;
+  const sourceGeometryRejectedReasons = new Map<string, number>();
 
   for (const file of fixtureFiles) {
     const fixture = JSON.parse(readFileSync(join(fixturesDir, file), "utf-8")) as Fixture;
@@ -219,6 +247,20 @@ async function main(): Promise<void> {
         continue;
       }
 
+      const sourceGeometry = assessFixtureSourceGeometry(region);
+      if (sourceGeometry.usable) {
+        sourceGeometryUsableRegionCount += 1;
+        if (sourceGeometry.status === "spatial_order_mismatch") {
+          sourceGeometrySpatialOrderMismatchCount += 1;
+        }
+      } else {
+        sourceGeometryRejectedRegionCount += 1;
+        sourceGeometryRejectedReasons.set(
+          sourceGeometry.status,
+          (sourceGeometryRejectedReasons.get(sourceGeometry.status) ?? 0) + 1,
+        );
+      }
+
       const debugRegion = debugByRegionId.get(region.id);
       if (!debugRegion) {
         throw new Error(
@@ -236,6 +278,7 @@ async function main(): Promise<void> {
       regionResults.push({
         regionId: region.id,
         skipped: false,
+        sourceGeometryStatus: sourceGeometry.status,
         ...metrics,
       });
     }
@@ -273,6 +316,12 @@ async function main(): Promise<void> {
       allScored.length > 0
         ? allScored.filter((r) => r.columnCountMatch === 1).length / allScored.length
         : 0,
+    sourceGeometryUsableRegionCount,
+    sourceGeometryRejectedRegionCount,
+    sourceGeometrySpatialOrderMismatchCount,
+    sourceGeometryRejectedReasons: Object.fromEntries(
+      [...sourceGeometryRejectedReasons.entries()].sort((a, b) => a[0].localeCompare(b[0])),
+    ),
     images: imageMetrics,
   };
 
@@ -288,6 +337,8 @@ async function main(): Promise<void> {
   console.log(`  Signed column gap norm: ${summary.avgSignedColumnGapNorm.toFixed(4)}`);
   console.log(`  Signed char advance norm: ${summary.avgSignedCharAdvanceNorm.toFixed(4)}`);
   console.log(`  Column count match: ${(summary.columnCountMatchRate * 100).toFixed(1)}%`);
+  console.log(`  Source geometry usable/rejected: ${sourceGeometryUsableRegionCount}/${sourceGeometryRejectedRegionCount}`);
+  console.log(`  Source geometry spatial order mismatches: ${sourceGeometrySpatialOrderMismatchCount}`);
 }
 
 main();

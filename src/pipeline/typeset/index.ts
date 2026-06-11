@@ -166,10 +166,14 @@ export function computeFullVerticalTypeset(
     originalContentWidth,
     sourceGeometryProfile,
   );
+  let activePerColumnAdvanceScales = preferredProfile.perColumnAdvanceScale;
 
   const verticalLayoutOptions: BuildVerticalLayoutOptions = {
     colSpacingScale: preferredProfile.colSpacingScale,
     advanceScale: preferredProfile.advanceScale,
+    perColumnAdvanceScale: preferredProfile.perColumnAdvanceScale
+      ? (columnIndex: number) => preferredProfile.perColumnAdvanceScale?.[columnIndex]
+      : undefined,
     actualBoxScale: sourceGeometryProfile ? sourceGeometryActualBoxScale : undefined,
     useDefaultAdvanceBase: Boolean(sourceGeometryProfile),
     columnAnchor,
@@ -225,6 +229,9 @@ export function computeFullVerticalTypeset(
       ...verticalLayoutOptions,
       colSpacingScale: extendedProfile.colSpacingScale,
       advanceScale: extendedProfile.advanceScale,
+      perColumnAdvanceScale: extendedProfile.perColumnAdvanceScale
+        ? (columnIndex: number) => extendedProfile.perColumnAdvanceScale?.[columnIndex]
+        : undefined,
       perColumnMaxHeight,
     };
     const extendedLayout = buildVerticalLayout(
@@ -233,7 +240,9 @@ export function computeFullVerticalTypeset(
     layout = extendedLayout;
     verticalLayoutOptions.colSpacingScale = extendedOptions.colSpacingScale;
     verticalLayoutOptions.advanceScale = extendedOptions.advanceScale;
+    verticalLayoutOptions.perColumnAdvanceScale = extendedOptions.perColumnAdvanceScale;
     verticalLayoutOptions.perColumnMaxHeight = perColumnMaxHeight;
+    activePerColumnAdvanceScales = extendedProfile.perColumnAdvanceScale;
   }
 
   const shrunk = tryShrinkVerticalForMinorOverflow(
@@ -254,6 +263,7 @@ export function computeFullVerticalTypeset(
     let hi = fontSize - 1;
     let bestFs = fontSize;
     let bestLayout = layout;
+    let bestProfile: ReturnType<typeof estimateVerticalPreferredProfile> | undefined;
     while (lo <= hi) {
       const mid = Math.floor((lo + hi) / 2);
       const profile = estimateVerticalPreferredProfile(
@@ -265,12 +275,16 @@ export function computeFullVerticalTypeset(
         ...verticalLayoutOptions,
         colSpacingScale: profile.colSpacingScale,
         advanceScale: profile.advanceScale,
+        perColumnAdvanceScale: profile.perColumnAdvanceScale
+          ? (columnIndex: number) => profile.perColumnAdvanceScale?.[columnIndex]
+          : undefined,
         perColumnMaxHeight,
       };
       const candidate = buildVerticalLayout(measureCtx, text, layoutContentHeight, mid, ff, opts);
       if (candidate.columns.length <= targetColumnCount) {
         bestFs = mid;
         bestLayout = candidate;
+        bestProfile = profile;
         lo = mid + 1;
       } else {
         hi = mid - 1;
@@ -279,6 +293,14 @@ export function computeFullVerticalTypeset(
     if (bestFs !== fontSize) {
       fontSize = bestFs;
       layout = bestLayout;
+      if (bestProfile) {
+        verticalLayoutOptions.colSpacingScale = bestProfile.colSpacingScale;
+        verticalLayoutOptions.advanceScale = bestProfile.advanceScale;
+        verticalLayoutOptions.perColumnAdvanceScale = bestProfile.perColumnAdvanceScale
+          ? (columnIndex: number) => bestProfile?.perColumnAdvanceScale?.[columnIndex]
+          : undefined;
+        activePerColumnAdvanceScales = bestProfile.perColumnAdvanceScale;
+      }
     }
   }
 
@@ -326,6 +348,7 @@ export function computeFullVerticalTypeset(
     layoutDiagnostics: {
       sourceGeometryProfileUsed: Boolean(sourceGeometryProfile),
       advanceScale: verticalLayoutOptions.advanceScale ?? 1,
+      perColumnAdvanceScales: activePerColumnAdvanceScales,
       colSpacingScale: verticalLayoutOptions.colSpacingScale ?? 1,
       actualBoxScale: verticalLayoutOptions.actualBoxScale,
       useDefaultAdvanceBase: verticalLayoutOptions.useDefaultAdvanceBase ?? false,

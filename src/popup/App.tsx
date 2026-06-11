@@ -505,6 +505,7 @@ export function App() {
         : geminiAppStatus.pending
           ? '未登录'
           : '未登录';
+  const extensionVersion = getChromeApi()?.runtime?.getManifest?.().version ?? '';
 
   function openShortcutManager(): void {
     const chromeApi = getChromeApi();
@@ -621,19 +622,27 @@ export function App() {
         <div className={`status-bubble status-${status.kind}`}>{status.message}</div>
       ) : null}
       <header className="popup-header">
-        <div className="popup-header-text">
-          <h1>ShinobuTranslator</h1>
-          <p className="subtitle">漫画图片翻译助手</p>
+        <div className="popup-header-brand">
+          <img className="popup-header-logo" src="icons/icon128.png" alt="" aria-hidden="true" />
+          <div className="popup-header-text">
+            <h1>
+              <img className="popup-header-wordmark" src="brand/shinobu-wordmark.svg" alt="ShinobuTranslator" />
+            </h1>
+            <p className="subtitle">漫画图片翻译助手</p>
+          </div>
         </div>
-        <a
-          className="popup-header-github"
-          href="https://github.com/DonutShinobu/ShinobuTranslator"
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="GitHub"
-        >
-          <IconGitHub />
-        </a>
+        <div className="popup-header-meta">
+          <a
+            className="popup-header-github"
+            href="https://github.com/DonutShinobu/ShinobuTranslator"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="GitHub"
+          >
+            <IconGitHub />
+          </a>
+          {extensionVersion ? <span className="popup-header-version">v{extensionVersion}</span> : null}
+        </div>
       </header>
 
       <div className="popup-body">

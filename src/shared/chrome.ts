@@ -35,6 +35,9 @@ export type ChromeMessageSender = {
 
 type ChromeLike = {
   runtime?: {
+    getManifest?: () => {
+      version?: string;
+    };
     getURL?: (path: string) => string;
     sendMessage?: (message: unknown, callback?: (response: unknown) => void) => void;
     onMessage?: {

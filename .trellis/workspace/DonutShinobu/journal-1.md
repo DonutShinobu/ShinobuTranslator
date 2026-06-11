@@ -521,3 +521,36 @@ Unified generic context-menu translation through the screenshot floating overlay
 ### Next Steps
 
 - None - task complete
+
+
+## Session 17: Stabilize vertical source geometry
+
+**Date**: 2026-06-11
+**Task**: Stabilize vertical source geometry
+**Branch**: `master`
+
+### Summary
+
+Fixed vertical typeset source geometry ordering and per-column advance safety, added fixture audit and non-destructive rebake workflow, rebuilt local fixtures cleanly, and verified build, tests, benchmark, and fixture audit.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8373d80` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

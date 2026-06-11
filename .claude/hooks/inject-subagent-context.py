@@ -494,7 +494,7 @@ def get_research_context(repo_root: str, task_dir: str | None) -> str:
 {spec_tree}
 ```
 
-To get structured package info, run: `python ./{DIR_WORKFLOW}/scripts/get_context.py --mode packages`
+To get structured package info, run: `python3 ./{DIR_WORKFLOW}/scripts/get_context.py --mode packages`
 
 ## Search Tips
 

@@ -106,10 +106,13 @@
     ".claude/skills/trellis-meta/references/local-architecture/task-system.md": "25dbd2be6a2271591274b56616b853b16e6fd9f44f43073350688e89e87295a6",
     ".claude/skills/trellis-meta/references/local-architecture/workspace-memory.md": "79786a1ca2980b1785a36aba8142f9d879459c47dc000c999f638e5c864d04d3",
     ".claude/skills/trellis-meta/references/platform-files/agents.md": "8af9722fa637bd0cd8addd28ae5da6812a5413711924259fd4af0c2ebb447c5b",
-    ".claude/agents/trellis-research.md": "f95e69d638266056713e79c884ead1e99d376d70284f66255b6dd139a3e712be",
+    ".claude/agents/trellis-research.md": "10aecdd3d0777746a516e23cd2a55c9e9c8a015dc98c63ffbac36be21b7a7bb0",
     ".claude/hooks/inject-subagent-context.py": "4e7889074f93d668c6a312a7e9ddc65c8c619b17c2454bf72e5c563371c6bb98",
     ".claude/hooks/session-start.py": "922691b5df26f6e9482796776dcd9d50ff3ea0aa9d0c8aa9abd2d7254b7ea38c",
     ".claude/settings.json": "01226db3027908dac1260955e205877ee46c1d410912172d8bae9c53527b3b0f",
-    ".trellis/.gitignore": "3bc42434cbe61c937a1c26ea3c880b496bfad4e7d683750169e27ade509aa798"
+    ".trellis/.gitignore": "3bc42434cbe61c937a1c26ea3c880b496bfad4e7d683750169e27ade509aa798",
+    ".claude/agents/trellis-check.md": "9e48342243f311d55386f8fb42933945e87aba73d5ade547133aa98345a06128",
+    ".claude/agents/trellis-implement.md": "73b56b3047c0e852382c4630aa181fb847d1e5ea1f63459dac4bf728f43fd097",
+    ".claude/hooks/inject-workflow-state.py": "f7fa9389ed7aa264597fff5de6277bec186e89a3ef539192997c6d026d88d5ec"
   }
 }

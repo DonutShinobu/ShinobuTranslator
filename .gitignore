@@ -5,6 +5,13 @@ node_modules/
 dist/
 docs/*
 !docs/superpowers/
+!docs/shinobu-readme-banner-soft.png
+!docs/popup-settings-deepseek-rounded.png
+!docs/popup-settings-nano-banana-rounded.png
+!docs/pill-dark-llm-progress.mov
+!docs/pill-dark-nano-banana-progress.mov
+!docs/pill-light-llm-progress.mov
+!docs/pill-light-nano-banana-progress.mov
 !docs/translated*.png
 
 # Python

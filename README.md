@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/shinobu-readme-banner-soft.png" alt="ShinobuTranslator - 浏览器中的漫画翻译扩展">
+</p>
+
 # ShinobuTranslator
 
 浏览器中的漫画翻译扩展——在 X/Twitter 和 Pixiv 上一键翻译漫画图片。

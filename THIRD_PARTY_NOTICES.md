@@ -46,6 +46,15 @@
 - 本项目用途：浏览器扩展应用图标
 - 署名要求：须注明 "Designed by smashingstocks from Flaticon"
 
-## 7) 免责声明
+## 7) 应用字标（Sour Gummy outline）
+
+- 字体来源：`https://github.com/eifetx/Sour-Gummy-Fonts`
+- Google Fonts 分发：`https://github.com/google/fonts/tree/main/ofl/sourgummy`
+- 设计者：Stefie Justprince
+- 许可证：SIL Open Font License 1.1（OFL）
+- 本项目用途：将 `ShinobuTranslator` 文字转换为 SVG outline，用于 README 头图与扩展弹窗标题；不分发完整字体文件。
+- 版权声明：Copyright 2018 The Sour Gummy Project Authors (`https://github.com/eifetx/Sour-Gummy-Fonts`)
+
+## 8) 免责声明
 
 - 本文件仅用于工程合规记录，不构成法律意见。

@@ -34,4 +34,4 @@ This project is a Chrome Manifest V3 browser extension for translating manga/com
 
 ---
 
-**Language**: All documentation written in **English**.
+**Language**: Trellis 文档默认使用中文；新增或大幅更新 `.trellis/` 文档时遵循 [Trellis 文档语言约定](../guides/documentation-conventions.md)。历史英文规范不需要仅因语言迁移而重写。

@@ -157,6 +157,7 @@ Phase 3: Finish  → verify, update spec, commit, and wrap up
 
 ### Planning Artifacts
 
+- Trellis 任务文档默认使用中文；除非用户明确要求其他语言，`prd.md`、`design.md`、`implement.md` 和 `research/*.md` 的新增内容都应以中文撰写。文件名、命令、API、类型名、模型名等技术标识保留原文。
 - `prd.md` — requirements, constraints, and acceptance criteria. Do not put technical design or execution checklists here.
 - `design.md` — technical design for complex tasks: boundaries, contracts, data flow, tradeoffs, compatibility, rollout / rollback shape.
 - `implement.md` — execution plan for complex tasks: ordered checklist, validation commands, review gates, and rollback points.

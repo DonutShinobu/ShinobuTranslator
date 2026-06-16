@@ -24,6 +24,7 @@ These guides help you **ask the right questions before coding**.
 | [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md) | Identify patterns and reduce duplication | When you notice repeated patterns |
 | [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md) | Think through data flow across layers | Features spanning multiple layers |
 | [Browser Automation](./browser-automation.md) | Use agent-browser with Windows Chrome profile from WSL2 | Testing the extension in a real browser |
+| [Trellis 文档语言约定](./documentation-conventions.md) | 默认用中文撰写 Trellis 任务、规范和研究文档 | 新建或更新 `.trellis/` 文档时 |
 
 ---
 
@@ -68,6 +69,7 @@ This single habit prevents most "forgot to update X" bugs.
 1. **Before coding**: Skim the relevant thinking guide
 2. **During coding**: If something feels repetitive or complex, check the guides
 3. **After bugs**: Add new insights to the relevant guide (learn from mistakes)
+4. **When writing Trellis docs**: Follow [Trellis 文档语言约定](./documentation-conventions.md); new Trellis documents default to Chinese.
 
 ---
 

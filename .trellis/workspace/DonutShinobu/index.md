@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 17
-- **Last Active**: 2026-06-11
+- **Total Sessions**: 18
+- **Last Active**: 2026-06-16
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~556 | Active |
+| `journal-1.md` | ~592 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 18 | 2026-06-16 | PaddleOCR v6 medium 收敛与任务收尾 | `69ec023`, `1179750`, `4a170f4`, `67c38e0` | `master` |
 | 17 | 2026-06-11 | Stabilize vertical source geometry | `8373d80` | `master` |
 | 16 | 2026-06-11 | Nano Banana 图片翻译任务收尾 | `ce84dcc`, `a0f4bd0`, `8696a6c`, `4cab5ec` | `master` |
 | 15 | 2026-06-04 | 阶段明细可视化卡片 | `715efb8`, `eedf84a` | `master` |

@@ -554,3 +554,39 @@ Fixed vertical typeset source geometry ordering and per-column advance safety, a
 ### Next Steps
 
 - None - task complete
+
+
+## Session 18: PaddleOCR v6 medium 收敛与任务收尾
+
+**Date**: 2026-06-16
+**Task**: PaddleOCR v6 medium 收敛与任务收尾
+**Branch**: `master`
+
+### Summary
+
+完成 OCR 冷启动和全流程基准记录，插件侧 Paddle 选项收敛到 paddleocr_v6_medium，新增 v6 medium 字典与模型校验/benchmark 支持，记录 Trellis 规范并归档 PaddleOCR v6 replacement 任务。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `69ec023` | (see git log) |
+| `1179750` | (see git log) |
+| `4a170f4` | (see git log) |
+| `67c38e0` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

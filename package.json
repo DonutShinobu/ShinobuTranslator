@@ -23,6 +23,7 @@
     "bench:browser-x-current": "tsx benchmark/perf/src/run-browser-x-compare.ts --current-only",
     "bench:browser-x-compare": "tsx benchmark/perf/src/run-browser-x-compare.ts",
     "models:split-ocr": "node scripts/split-ocr-encoder-decoder.mjs",
+    "models:check-paddle-ocr": "node scripts/check-paddle-ocr-model.mjs",
     "models:download": "node scripts/download-models.mjs",
     "models:upload": "node scripts/upload-models.mjs",
     "color:diagnostic": "tsx benchmark/color/src/color-diagnostic.ts",

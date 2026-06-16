@@ -9,6 +9,8 @@ export type PaddleOcrInputData = {
   resizedWidth: number;
 };
 
+export type PaddleOcrChannelOrder = 'rgb' | 'bgr';
+
 /**
  * 从 image 裁剪 region 区域，对竖排文字做透视变换+90度旋转，
  * resize 到 inputHeight 高度，宽度按比例缩放（不超过 maxInputWidth），归一化后输出 NCHW Float32Array。
@@ -21,6 +23,7 @@ export function buildPaddleOcrInput(
   maxInputWidth: number,
   normalize: 'zero_to_one' | 'minus_one_to_one',
   platform: PlatformProvider,
+  channelOrder: PaddleOcrChannelOrder = 'rgb',
 ): PaddleOcrInputData {
   // 使用 getTransformedRegion 处理透视变换和竖排旋转
   const source = getTransformedRegion(image, region, direction, inputHeight, platform);
@@ -46,15 +49,17 @@ export function buildPaddleOcrInput(
     const r = pixels[srcIdx];
     const g = pixels[srcIdx + 1];
     const b = pixels[srcIdx + 2];
+    const first = channelOrder === 'bgr' ? b : r;
+    const third = channelOrder === 'bgr' ? r : b;
 
     if (normalize === 'minus_one_to_one') {
-      floatData[i] = r / 127.5 - 1;
+      floatData[i] = first / 127.5 - 1;
       floatData[pixelCount + i] = g / 127.5 - 1;
-      floatData[2 * pixelCount + i] = b / 127.5 - 1;
+      floatData[2 * pixelCount + i] = third / 127.5 - 1;
     } else {
-      floatData[i] = r / 255;
+      floatData[i] = first / 255;
       floatData[pixelCount + i] = g / 255;
-      floatData[2 * pixelCount + i] = b / 255;
+      floatData[2 * pixelCount + i] = third / 255;
     }
   }
 

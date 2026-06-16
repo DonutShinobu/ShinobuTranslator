@@ -12,9 +12,32 @@ import { fileURLToPath } from "url";
 import { detectTextRegionsWithMask } from "../../../src/pipeline/detect";
 import { runOcr } from "../../../src/pipeline/ocr";
 import { nodePlatform } from "../../../src/runtime/nodePlatform";
+import type { OcrEngine } from "../../../src/shared/config";
 
 const ROOT = resolve(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "../../..");
 const DEFAULT_IMAGE = join(ROOT, "benchmark/color/fixtures/typeset-debug-log-2026-05-23T06-03-39-877Z.png");
+const DEFAULT_ENGINES: OcrEngine[] = ["48px", "paddleocr_v6_medium"];
+
+type EngineRunResult = {
+  runIndex: number;
+  isColdStart: boolean;
+  ocrMs: number;
+  ocrRegions: number;
+  provider: string;
+  samples: Array<{
+    id: string;
+    text: string;
+    fgColor?: [number, number, number];
+    bgColor?: [number, number, number];
+  }>;
+  debug: ReturnType<typeof summarizeDebug>;
+};
+
+type EngineResult = {
+  engine: OcrEngine;
+  runs: EngineRunResult[];
+  error?: string;
+};
 
 function imageToDataUrl(path: string): string {
   const buf = readFileSync(path);
@@ -30,30 +53,50 @@ function pickImagePath(): string {
   return path;
 }
 
-async function main(): Promise<void> {
-  const imagePath = pickImagePath();
-  const image = await nodePlatform.loadImage(imageToDataUrl(imagePath));
+function parseRunCount(): number {
+  const arg = process.argv.find((value) => value.startsWith("--runs="));
+  if (!arg) return 1;
+  const count = Number(arg.slice("--runs=".length));
+  if (!Number.isInteger(count) || count <= 0) {
+    throw new Error(`--runs 必须是正整数: ${arg}`);
+  }
+  return count;
+}
 
-  const detectT0 = performance.now();
-  const detected = await detectTextRegionsWithMask(image, nodePlatform);
-  const detectMs = performance.now() - detectT0;
+function normalizeEngineArg(value: string): OcrEngine | "all" {
+  switch (value) {
+    case "all":
+    case "matrix":
+      return "all";
+    case "48px":
+    case "builtin":
+      return "48px";
+    case "paddle":
+    case "paddleocr":
+    case "paddleocr_v6_medium":
+    case "v6-medium":
+    case "paddle-v6-medium":
+      return "paddleocr_v6_medium";
+    default:
+      throw new Error(`未知 OCR 引擎: ${value}`);
+  }
+}
 
-  const ocrT0 = performance.now();
-  const ocr = await runOcr(image, detected.regions, "builtin", nodePlatform);
-  const ocrMs = performance.now() - ocrT0;
-  const debug = ocr.debug;
+function pickOcrEngines(): OcrEngine[] {
+  const arg = process.argv.find((value) => value.startsWith("--ocr-engine="));
+  if (!arg) {
+    return ["48px"];
+  }
+  const parsed = normalizeEngineArg(arg.slice("--ocr-engine=".length));
+  return parsed === "all" ? DEFAULT_ENGINES : [parsed];
+}
 
+function summarizeDebug(debug: Awaited<ReturnType<typeof runOcr>>["debug"]) {
   const decodeSessionRunCount = debug.chunks.reduce((acc, chunk) => acc + chunk.decodeSessionRunCount, 0);
   const decodeSessionRunTotalMs = debug.chunks.reduce((acc, chunk) => acc + chunk.decodeSessionRunTotalMs, 0);
   const decodeStepCount = debug.chunks.reduce((acc, chunk) => acc + chunk.decodeSteps.length, 0);
 
-  console.log(JSON.stringify({
-    image: imagePath,
-    detectedRegions: detected.regions.length,
-    ocrRegions: ocr.regions.length,
-    provider: ocr.actualProvider,
-    detectMs: Math.round(detectMs * 100) / 100,
-    ocrMs: Math.round(ocrMs * 100) / 100,
+  return {
     mode: debug.mode,
     candidateCount: debug.candidateCount,
     preparedCount: debug.preparedCount,
@@ -62,26 +105,6 @@ async function main(): Promise<void> {
     decodeSessionRunCount,
     decodeSessionRunTotalMs: Math.round(decodeSessionRunTotalMs * 100) / 100,
     decodeStepCount,
-    chunks: debug.chunks.map((chunk) => ({
-      chunkIndex: chunk.chunkIndex,
-      chunkSize: chunk.chunkSize,
-      decodeAccepted: chunk.decodeAccepted,
-      encoderCache: chunk.encoderCache,
-      encoderRunMs: chunk.encoderRunMs === undefined ? undefined : Math.round(chunk.encoderRunMs * 100) / 100,
-      decoderRunMs: chunk.decoderRunMs === undefined ? undefined : Math.round(chunk.decoderRunMs * 100) / 100,
-      decodeSessionRunCount: chunk.decodeSessionRunCount,
-      decodeSessionRunTotalMs: Math.round(chunk.decodeSessionRunTotalMs * 100) / 100,
-      decodeSteps: chunk.decodeSteps.map((step) => ({
-        step: step.step,
-        activeCount: step.activeCount,
-        batchSize: step.batchSize,
-        compactFallback: step.compactFallback,
-        durationMs: Math.round(step.durationMs * 100) / 100,
-        postprocessMode: step.postprocessMode,
-        postprocessMs: step.postprocessMs === undefined ? undefined : Math.round(step.postprocessMs * 100) / 100,
-      })),
-      fallbackRegions: chunk.fallbackRegions,
-    })),
     colorDecodeMode: debug.colorDecodeMode,
     colorBatchSize: debug.colorBatchSize,
     colorSessionRunCount: debug.colorSessionRunCount,
@@ -90,12 +113,64 @@ async function main(): Promise<void> {
     fallbackTriggerCount: debug.fallbackTriggerCount,
     totalSessionRunCount: debug.totalSessionRunCount,
     totalSessionRunMs: Math.round(debug.totalSessionRunMs * 100) / 100,
-    samples: ocr.regions.slice(0, 5).map((region) => ({
-      id: region.id,
-      text: region.sourceText,
-      fgColor: region.fgColor,
-      bgColor: region.bgColor,
-    })),
+  };
+}
+
+async function runEngine(
+  image: Awaited<ReturnType<typeof nodePlatform.loadImage>>,
+  regions: Awaited<ReturnType<typeof detectTextRegionsWithMask>>["regions"],
+  engine: OcrEngine,
+  runCount: number,
+): Promise<EngineResult> {
+  const runs: EngineRunResult[] = [];
+  try {
+    for (let i = 0; i < runCount; i += 1) {
+      const ocrT0 = performance.now();
+      const ocr = await runOcr(image, regions, engine, nodePlatform);
+      const ocrMs = performance.now() - ocrT0;
+      runs.push({
+        runIndex: i,
+        isColdStart: i === 0,
+        ocrMs: Math.round(ocrMs * 100) / 100,
+        ocrRegions: ocr.regions.length,
+        provider: ocr.actualProvider,
+        samples: ocr.regions.slice(0, 5).map((region) => ({
+          id: region.id,
+          text: region.sourceText,
+          fgColor: region.fgColor,
+          bgColor: region.bgColor,
+        })),
+        debug: summarizeDebug(ocr.debug),
+      });
+    }
+    return { engine, runs };
+  } catch (error) {
+    return { engine, runs, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+async function main(): Promise<void> {
+  const imagePath = pickImagePath();
+  const engines = pickOcrEngines();
+  const runCount = parseRunCount();
+  const image = await nodePlatform.loadImage(imageToDataUrl(imagePath));
+
+  const detectT0 = performance.now();
+  const detected = await detectTextRegionsWithMask(image, nodePlatform);
+  const detectMs = performance.now() - detectT0;
+
+  const engineResults: EngineResult[] = [];
+  for (const engine of engines) {
+    engineResults.push(await runEngine(image, detected.regions, engine, runCount));
+  }
+
+  console.log(JSON.stringify({
+    image: imagePath,
+    engines,
+    runsPerEngine: runCount,
+    detectedRegions: detected.regions.length,
+    detectMs: Math.round(detectMs * 100) / 100,
+    results: engineResults,
   }, null, 2));
 }
 

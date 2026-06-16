@@ -43,6 +43,18 @@ type SmokeResult = {
     confidence: number[];
     telemetry: unknown;
   };
+  paddle: Array<{
+    modelKey: string;
+    provider: string;
+    inputNames: string[];
+    outputNames: string[];
+    outputDims: number[];
+    outputClasses: number;
+    outputLength: number;
+    dictSize: number;
+    expectedClasses: number;
+    ok: boolean;
+  }>;
 };
 
 function requireFile(relativePath: string): void {
@@ -73,6 +85,8 @@ async function main(): Promise<void> {
   requireFile("models/models.json");
   requireFile("models/ocr_encoder.onnx");
   requireFile("models/ocr_decoder.onnx");
+  requireFile("models/PP-OCRv6_medium_rec.onnx");
+  requireFile("models/paddleocr_v6_dict.txt");
   mkdirSync(USER_DATA_DIR, { recursive: true });
 
   const chromePath = findChromeExecutable();
@@ -130,6 +144,13 @@ async function main(): Promise<void> {
       };
       type Bridge = {
         createSession(modelKey: string, modelUrl: string, preferred: RuntimeProvider[]): Promise<SessionHandle>;
+        runInference(
+          sessionId: string,
+          feeds: Record<string, { data: Float32Array | BigInt64Array | Uint8Array; dims: number[]; type: "float32" | "int64" | "bool" }>
+        ): Promise<{
+          outputs: Record<string, { data: Float32Array | BigInt64Array | Uint8Array; dims: number[]; type: "float32" | "int64" | "bool" }>;
+          error?: string;
+        }>;
         runOcrSplitBatchDecode(
           encoderSessionId: string,
           decoderSessionId: string,
@@ -182,6 +203,57 @@ async function main(): Promise<void> {
         const lines = text.split(/\r?\n/g).filter((line) => line.length > 0);
         return lines.length > 0 ? lines : null;
       };
+      const loadDictSize = async (path: string): Promise<number> => {
+        const response = await fetch(toExtensionUrl(path));
+        if (!response.ok) {
+          throw new Error(`Failed to load dict ${path}: ${response.status}`);
+        }
+        const text = await response.text();
+        return text.split(/\r?\n/g).filter((line) => line.length > 0).length;
+      };
+      const runPaddleSmoke = async (
+        modelKey: string,
+        modelPath: string,
+        dictPath: string,
+      ): Promise<SmokeResult["paddle"][number]> => {
+        const session = await bridge.createSession(modelKey, toExtensionUrl(modelPath), preferred);
+        const inputName = session.inputNames[0];
+        const outputName = session.outputNames[0];
+        if (!inputName || !outputName) {
+          throw new Error(`Paddle smoke missing names for ${modelKey}`);
+        }
+        const inputHeight = 48;
+        const inputWidth = 320;
+        const inference = await bridge.runInference(session.sessionId, {
+          [inputName]: {
+            data: new Float32Array(3 * inputHeight * inputWidth),
+            dims: [1, 3, inputHeight, inputWidth],
+            type: "float32",
+          },
+        });
+        if (inference.error) {
+          throw new Error(`${modelKey} inference failed: ${inference.error}`);
+        }
+        const output = inference.outputs[outputName];
+        if (!output) {
+          throw new Error(`${modelKey} did not return ${outputName}`);
+        }
+        const dictSize = await loadDictSize(dictPath);
+        const outputClasses = output.dims[output.dims.length - 1] ?? 0;
+        const expectedClasses = dictSize + 2;
+        return {
+          modelKey,
+          provider: session.provider,
+          inputNames: session.inputNames,
+          outputNames: session.outputNames,
+          outputDims: output.dims,
+          outputClasses,
+          outputLength: output.data.length,
+          dictSize,
+          expectedClasses,
+          ok: outputClasses === expectedClasses,
+        };
+      };
 
       const bridge = await import(toExtensionUrl("chunks/onnxWorkerBridge.js")) as Bridge;
       const preferred: RuntimeProvider[] = ["webgpu", "wasm"];
@@ -197,6 +269,12 @@ async function main(): Promise<void> {
       imageData.fill(0);
 
       try {
+        const paddle: SmokeResult["paddle"] = [];
+        for (const item of [
+          ["paddleocr_v6_medium_rec", "models/PP-OCRv6_medium_rec.onnx", "models/paddleocr_v6_dict.txt"],
+        ] as const) {
+          paddle.push(await runPaddleSmoke(item[0], item[1], item[2]));
+        }
         const decode = await bridge.runOcrSplitBatchDecode(
           encoder.sessionId,
           decoder.sessionId,
@@ -250,6 +328,7 @@ async function main(): Promise<void> {
             confidence: decode.items.map((item) => Math.round(item.confidence * 10000) / 10000),
             telemetry: decode.telemetry,
           },
+          paddle,
         };
       } finally {
         await bridge.disposeAll();

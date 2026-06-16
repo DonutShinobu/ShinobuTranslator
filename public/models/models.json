@@ -51,6 +51,16 @@
       "runtime": ["webgpu", "webnn", "wasm"],
       "dictUrl": "/models/paddleocr_v5_dict.txt",
       "normalize": "minus_one_to_one"
+    },
+    "paddleocr_v6_medium_rec": {
+      "name": "paddleocr_v6_medium_rec",
+      "task": "paddleocr-recognition",
+      "url": "/models/PP-OCRv6_medium_rec.onnx",
+      "input": [48, 320],
+      "runtime": ["webgpu", "webnn", "wasm"],
+      "dictUrl": "/models/paddleocr_v6_dict.txt",
+      "normalize": "minus_one_to_one",
+      "channelOrder": "bgr"
     }
   }
 }

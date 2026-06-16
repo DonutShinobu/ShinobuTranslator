@@ -144,7 +144,7 @@ function createDefaultLlmProfiles(): Record<LlmProvider, LlmProviderProfile> {
   };
 }
 
-export type OcrEngine = '48px' | 'paddleocr';
+export type OcrEngine = '48px' | 'paddleocr_v6_medium';
 export type ProcessMode = 'translate' | 'erase' | 'original';
 
 export const geminiAppModelOptions: Array<{ value: GeminiAppModel; label: string }> = [
@@ -239,7 +239,9 @@ function sanitizeBoolean(value: unknown, fallback: boolean): boolean {
 }
 
 function normalizeOcrEngine(value: unknown): OcrEngine {
-  if (value === 'paddleocr') return 'paddleocr';
+  if (value === 'paddleocr' || value === 'paddleocr_v6_small' || value === 'paddleocr_v6_medium') {
+    return 'paddleocr_v6_medium';
+  }
   return '48px';
 }
 

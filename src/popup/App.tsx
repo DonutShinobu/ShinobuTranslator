@@ -714,7 +714,7 @@ export function App() {
                   <SegmentedControl
                     options={[
                       { value: '48px', label: '48px' },
-                      { value: 'paddleocr', label: 'Paddle' },
+                      { value: 'paddleocr_v6_medium', label: 'Paddle' },
                     ]}
                     value={settings.ocrEngine}
                     onChange={(v) => updateField('ocrEngine', v as ExtensionSettings['ocrEngine'])}

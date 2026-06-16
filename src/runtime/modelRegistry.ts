@@ -11,6 +11,7 @@ type ManifestModel = {
   runtime?: RuntimeProvider[];
   dictUrl?: string;
   normalize?: 'zero_to_one' | 'minus_one_to_one';
+  channelOrder?: 'rgb' | 'bgr';
   outputNormalize?: 'zero_to_one' | 'minus_one_to_one' | 'zero_to_255';
   maskInputName?: string;
 };
@@ -116,7 +117,13 @@ async function resolveModelFilePath(modelUrl: string): Promise<string> {
   return resolve(modelUrl);
 }
 
-export type ModelName = 'detector' | 'ocr_encoder' | 'ocr_decoder' | 'inpaint' | 'bubble' | 'paddleocr_rec';
+export type ModelName =
+  | 'detector'
+  | 'ocr_encoder'
+  | 'ocr_decoder'
+  | 'inpaint'
+  | 'bubble'
+  | 'paddleocr_v6_medium_rec';
 
 export async function getModel(name: ModelName): Promise<ManifestModel> {
   const manifest = await loadManifest();

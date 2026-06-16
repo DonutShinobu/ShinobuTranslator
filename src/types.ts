@@ -69,7 +69,7 @@ export type PipelineConfig = {
   typesetDebug: boolean;
   eraseDebug: boolean;
   collectDebugLog: boolean;
-  ocrEngine: '48px' | 'paddleocr';
+  ocrEngine: '48px' | 'paddleocr_v6_medium';
   /** Internal benchmark override; production OCR picks its batch compaction policy automatically. */
   ocrCompactActiveBatch?: boolean;
   processMode: 'translate' | 'erase' | 'original';

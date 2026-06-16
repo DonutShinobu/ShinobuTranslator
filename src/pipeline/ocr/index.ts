@@ -28,11 +28,13 @@ import {
 import { registerOcrProvider, registerOcrProviderAlias, getOcrProvider, fillMissingOcrFields } from "./provider";
 import type { OcrRecognizeResult } from "./provider";
 import { ocr48pxProvider } from "./ocr48pxProvider";
-import { paddleocrProvider } from "./paddleocrProvider";
+import { paddleocrV6MediumProvider } from "./paddleocrProvider";
 
 registerOcrProvider(ocr48pxProvider);
-registerOcrProvider(paddleocrProvider);
+registerOcrProvider(paddleocrV6MediumProvider);
 registerOcrProviderAlias("builtin", "48px");
+registerOcrProviderAlias("paddleocr", "paddleocr_v6_medium");
+registerOcrProviderAlias("paddleocr_v6_small", "paddleocr_v6_medium");
 
 export type OcrResult = {
   regions: TextRegion[];

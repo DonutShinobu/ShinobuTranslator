@@ -273,8 +273,20 @@ describe("OCR engine settings", () => {
     expect(toPipelineConfig(settings).ocrEngine).toBe("48px");
   });
 
-  it("normalizes the legacy built-in OCR name to 48px without renaming PaddleOCR internally", () => {
+  it("normalizes the legacy built-in OCR name to 48px", () => {
     expect(normalizeSettings({ ocrEngine: "builtin" }).ocrEngine).toBe("48px");
-    expect(normalizeSettings({ ocrEngine: "paddleocr" }).ocrEngine).toBe("paddleocr");
+  });
+
+  it("normalizes Paddle OCR choices to the medium v6 model", () => {
+    const legacy = normalizeSettings({ ocrEngine: "paddleocr" });
+    const small = normalizeSettings({ ocrEngine: "paddleocr_v6_small" });
+    const medium = normalizeSettings({ ocrEngine: "paddleocr_v6_medium" });
+
+    expect(legacy.ocrEngine).toBe("paddleocr_v6_medium");
+    expect(toPipelineConfig(legacy).ocrEngine).toBe("paddleocr_v6_medium");
+    expect(small.ocrEngine).toBe("paddleocr_v6_medium");
+    expect(toPipelineConfig(small).ocrEngine).toBe("paddleocr_v6_medium");
+    expect(medium.ocrEngine).toBe("paddleocr_v6_medium");
+    expect(toPipelineConfig(medium).ocrEngine).toBe("paddleocr_v6_medium");
   });
 });

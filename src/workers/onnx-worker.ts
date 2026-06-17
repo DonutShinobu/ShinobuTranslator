@@ -1,6 +1,8 @@
 import * as ortAll from "onnxruntime-web/all";
 import * as Comlink from "comlink";
 import type { InferenceSession } from "onnxruntime-common";
+import type { OnnxSessionOptions } from "../runtime/onnxSessionOptions";
+import { serializeOnnxSessionOptions } from "../runtime/onnxSessionOptions";
 import { toErrorMessage } from "../shared/utils";
 import { isContextLostRuntimeError, isCreateTimeoutError } from "../runtime/onnxTypes";
 import type { RuntimeProvider, WebNnDeviceType } from "../runtime/onnxTypes";
@@ -173,12 +175,14 @@ async function createSessionWithTimeout(
 async function createSession(
   modelKey: string,
   modelUrl: string,
-  preferred: RuntimeProvider[]
+  preferred: RuntimeProvider[],
+  experimentalSessionOptions?: OnnxSessionOptions
 ): Promise<WorkerSessionHandle> {
   return withPerModelLock(modelUrl, async () => {
     ensureOrtEnv();
     const normalized = preferred.filter((item, idx) => preferred.indexOf(item) === idx);
-    const sessionId = `${modelKey}:${normalized.join(",")}`;
+    const sessionOptionsKey = serializeOnnxSessionOptions(experimentalSessionOptions);
+    const sessionId = `${modelKey}:${normalized.join(",")}:${sessionOptionsKey}`;
 
     // Check if session already cached
     const existing = sessions.get(sessionId);
@@ -233,6 +237,17 @@ async function createSession(
               executionProviders: [ep],
               graphOptimizationLevel: "all",
             };
+            if (provider === "webgpu" && experimentalSessionOptions) {
+              if (typeof experimentalSessionOptions.enableGraphCapture === "boolean") {
+                sessionOptions.enableGraphCapture = experimentalSessionOptions.enableGraphCapture;
+              }
+              if (experimentalSessionOptions.preferredOutputLocation !== undefined) {
+                sessionOptions.preferredOutputLocation = experimentalSessionOptions.preferredOutputLocation;
+              }
+              if (experimentalSessionOptions.freeDimensionOverrides) {
+                sessionOptions.freeDimensionOverrides = experimentalSessionOptions.freeDimensionOverrides;
+              }
+            }
             if (provider === "webgpu" && modelKey === "detector") {
               sessionOptions.preferredOutputLocation = "gpu-buffer";
             } else if (provider === "webgpu" && modelKey === "ocr_decoder") {

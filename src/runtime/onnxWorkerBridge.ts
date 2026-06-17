@@ -1,5 +1,6 @@
 import * as Comlink from "comlink";
 import type { RuntimeProvider } from "./onnxTypes";
+import type { OnnxSessionOptions } from "./onnxSessionOptions";
 import type {
   TensorTransport,
   WorkerSessionHandle,
@@ -156,12 +157,13 @@ function getProxy(): Promise<Comlink.Remote<OnnxWorkerApi>> {
 export async function createSession(
   modelKey: string,
   modelUrl: string,
-  preferred: RuntimeProvider[]
+  preferred: RuntimeProvider[],
+  sessionOptions?: OnnxSessionOptions
 ): Promise<WorkerSessionHandle> {
   const startedAt = performance.now();
   let handle: WorkerSessionHandle | null = null;
   try {
-    handle = await (await getProxy()).createSession(modelKey, modelUrl, preferred);
+    handle = await (await getProxy()).createSession(modelKey, modelUrl, preferred, sessionOptions);
     return handle;
   } finally {
     recordPerfWorkerCall({

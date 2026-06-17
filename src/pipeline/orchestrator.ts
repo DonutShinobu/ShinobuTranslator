@@ -13,6 +13,7 @@ import { browserPlatform } from "../runtime/browserPlatform";
 import { fileToImage, imageToCanvas } from "./image";
 import { detectTextRegionsWithMask } from "./detect";
 import { runOcr } from "./ocr";
+import { preparePaddleOcrRuntime, warmupPaddleOcrRuntime } from "./ocr/paddleocrProvider";
 import { runTranslate } from "./translate";
 import { runInpaint } from "./inpaint";
 import { drawTypeset } from "./typeset";
@@ -25,6 +26,52 @@ import { getModelSession } from "../runtime/modelRegistry";
 import type { WorkerSessionHandle } from "../runtime/onnxWorkerTypes";
 
 type ProgressCallback = (progress: PipelineProgress) => void;
+
+type PaddleOcrRuntimeProbeMode = "legacy" | "prepare" | "warmup";
+
+type PipelineRuntimeFlags = typeof globalThis & {
+  __shinobuPaddleOcrRuntimeProbe?: PaddleOcrRuntimeProbeMode;
+  __shinobuPaddleOcrWarmupInputWidth?: number;
+  __shinobuPaddleOcrWarmupBatchSize?: number;
+};
+
+function getPaddleOcrRuntimeProbeMode(): PaddleOcrRuntimeProbeMode {
+  return (globalThis as PipelineRuntimeFlags).__shinobuPaddleOcrRuntimeProbe ?? "legacy";
+}
+
+async function probePaddleOcrRuntime(): Promise<RuntimeStageStatus> {
+  const mode = getPaddleOcrRuntimeProbeMode();
+  if (mode === "warmup") {
+    const flags = globalThis as PipelineRuntimeFlags;
+    const warmup = await warmupPaddleOcrRuntime({
+      inputWidth: flags.__shinobuPaddleOcrWarmupInputWidth,
+      batchSize: flags.__shinobuPaddleOcrWarmupBatchSize,
+    });
+    const providerLabel = warmup.provider === "webnn"
+      ? `${warmup.provider}/${warmup.webnnDeviceType ?? "default"}`
+      : warmup.provider;
+    return {
+      model: "ocr",
+      enabled: true,
+      provider: warmup.provider,
+      webnnDeviceType: warmup.provider === "webnn" ? warmup.webnnDeviceType ?? "default" : undefined,
+      detail: `Paddle OCR warmup 完成 (${providerLabel}, ${warmup.inputDims.join("x")}, run=${Math.round(warmup.runMs)}ms)`,
+    };
+  }
+
+  const runtime = await preparePaddleOcrRuntime();
+  const webnnDeviceType = runtime.sessionHandle.provider === "webnn" ? runtime.sessionHandle.webnnDeviceType ?? "default" : undefined;
+  const providerLabel = runtime.sessionHandle.provider === "webnn"
+    ? `${runtime.sessionHandle.provider}/${webnnDeviceType}`
+    : runtime.sessionHandle.provider;
+  return {
+    model: "ocr",
+    enabled: true,
+    provider: runtime.sessionHandle.provider,
+    webnnDeviceType,
+    detail: `Paddle OCR 模型已加载 (${runtime.modelName}, ${providerLabel})`,
+  };
+}
 
 function buildEraseDebugCanvas(
   originalCanvas: PipelineCanvas,
@@ -174,10 +221,13 @@ export class PipelineStageError extends Error {
   }
 }
 
-async function probeRuntime(model: "detector" | "ocr" | "inpaint"): Promise<RuntimeStageStatus> {
+async function probeRuntime(model: "detector" | "ocr" | "inpaint", config?: PipelineConfig): Promise<RuntimeStageStatus> {
   try {
     let handle: WorkerSessionHandle;
     if (model === "ocr") {
+      if (config?.ocrEngine === "paddleocr_v6_medium" && getPaddleOcrRuntimeProbeMode() !== "legacy") {
+        return await probePaddleOcrRuntime();
+      }
       const encoderHandle = await getModelSession("ocr_encoder");
       handle = await getModelSession("ocr_decoder", [encoderHandle.provider]);
       if (encoderHandle.provider !== handle.provider) {
@@ -262,7 +312,7 @@ export async function runPipeline(
 
   const startOcrRuntimeProbe = (): Promise<RuntimeStageStatus> => {
     if (!ocrRuntimeProbePromise) {
-      ocrRuntimeProbePromise = probeRuntime("ocr");
+      ocrRuntimeProbePromise = probeRuntime("ocr", config);
     }
     return ocrRuntimeProbePromise;
   };

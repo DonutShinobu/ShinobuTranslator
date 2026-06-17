@@ -150,7 +150,7 @@ sourceLineGeometries: region.groundTruth.columns.map(groundTruthColumnToSourceGe
 ### 2. Signatures
 
 ```bash
-npm run bench:browser-paddle-profile -- [--image=<local-image>] [--runs=3] [--process-mode=erase|original|translate] [--paddle-batch|--paddle-serial] [--paddle-provider=default|webgpu|webnn|wasm] [--paddle-cold-first-serial|--paddle-no-cold-first-serial]
+npm run bench:browser-paddle-profile -- [--image=<local-image>] [--runs=3] [--process-mode=erase|original|translate] [--paddle-batch|--paddle-serial] [--paddle-provider=default|webgpu|webnn|wasm] [--paddle-cold-first-serial|--paddle-no-cold-first-serial] [--paddle-model=medium|small] [--paddle-runtime-probe=legacy|prepare|warmup] [--paddle-prepare|--paddle-warmup] [--paddle-fixed-width=<px>] [--paddle-graph-capture]
 npm run bench:browser-x-current -- --ocr-engine=paddleocr_v6_medium [--image=<local-image>] [--runs=3]
 ```
 
@@ -159,13 +159,20 @@ npm run bench:browser-x-current -- --ocr-engine=paddleocr_v6_medium [--image=<lo
 - `--paddle-batch` 强制 width-bucket；`--paddle-serial` 强制逐 region；未传时使用 runtime 默认 provider-aware 策略。
 - `--paddle-provider` 只用于 benchmark 内临时覆盖 Paddle recognition provider，用于回答 WebGPU/WebNN/WASM 对照问题；正式 pipeline 默认 fallback 不变。
 - `--paddle-cold-first-serial`/`--paddle-no-cold-first-serial` 只用于 benchmark 对照 WebGPU cold session 的首个 inference 分组策略；默认策略由 Paddle provider 决定。
+- `--paddle-model=small` 只注册并选择 `paddleocr_v6_small_rec` 作为 benchmark 候选；不得把 small 暴露为用户可见默认选项，除非另有产品任务。
+- `--paddle-runtime-probe=prepare` 在用户触发 pipeline 后的 runtime probe 中准备 Paddle session/字典；`--paddle-warmup` 进一步执行固定 shape warmup inference。
+- `--paddle-fixed-width=<px>` 把 Paddle 输入 padding 到固定宽度，用于静态 shape/warmup 对照；实际运行宽度不得小于本轮任一 OCR crop 的 `resizedWidth`，需要自动抬高并在报告中保留最终 `fixedInputWidth`，因为它会影响输出 time steps 和识别文本。
+- `--paddle-graph-capture` 为 ORT WebGPU 实验开关，只能与固定 shape 一起验证；当前 Paddle CPU 输入和 CPU CTC decode 路径不满足外部 GPU buffer 合约。
 
 ### 3. Contracts
 
 - Paddle profile report 必须包含 `stageTimings`、`ocrSummary.paddle` 和完整 `ocrDebug.paddle`。
-- `ocrSummary.paddle` 至少包含 provider、batchMode、inferenceRunCount、accepted/rejected/missing 计数、preprocess/inference/CTC/color 耗时、input/output bytes 和 width 分布。
+- `ocrSummary.paddle` 至少包含 modelName、provider、batchMode、sessionOptionsKey、fixedInputWidth（如有）、inferenceRunCount、accepted/rejected/missing 计数、preprocess/inference/CTC/color 耗时、input/output bytes 和 width 分布。
+- `ocrDebug.paddle.inferenceRuns[0]` 必须保留首个 inference 的 `inputDims`、`durationMs`、`outputDims`、`timeSteps` 和文本，cold-start 结论不能只看 OCR stage 总数。
 - Browser profile 必须区分 cold run（`runIndex=0`）和 warm runs；性能结论优先使用 warm median，cold 结论单独说明 session/shape 编译成本。
 - `processMode=erase` 覆盖本地检测、气泡、Paddle OCR、mask refine、inpaint；`processMode=original` 额外覆盖 typeset，不包含网络翻译。
+- `paddleRuntimeProbeMode`、`paddleModelMode`、`paddleFixedInputWidth`、`paddleGraphCapture` 必须写入 mode-level report，避免多个实验报告混淆。
+- Paddle prepare/warmup 只能在用户触发翻译后的 pipeline 内启动，不得改成页面加载时预加载。
 
 ### 4. Validation & Error Matrix
 
@@ -175,13 +182,19 @@ npm run bench:browser-x-current -- --ocr-engine=paddleocr_v6_medium [--image=<lo
 | 在非 current-only 模式传 Paddle engine | 旧 AR 对比语义混乱 | 抛错，要求使用 `bench:browser-paddle-profile` 或 `--current-only` |
 | 同名 CLI 参数由 npm script 默认值和用户 override 同时提供 | 用户 override 被忽略 | 参数解析取最后一个 `--name=value` |
 | 只看 Node CPU profile | WebGPU shape/session 行为被误判 | 必须补浏览器 WebGPU profile，再决定默认策略 |
+| `--paddle-graph-capture` 仍使用 CPU input/output | `External buffer must be provided for input/output index 0 when enableGraphCapture is true` | 记录为当前架构不支持；除非先实现 GPU external input/output 和 decode/readback 设计 |
+| warmup 后 detect/bubble stage 异常变慢 | OCR stage 变快但 total 变差 | 以 cold total/warm median 作为净收益判断，不把 OCR 局部收益直接产品化 |
+| fixed width 改变样本文本 | 速度可比但质量不可比 | 报告样本文本并标注 `fixedInputWidth`；质量退化时不推荐默认启用 |
 
 ### 5. Good/Base/Bad Cases
 
 - Good：本地 fixture 用 `--runs=3` 跑默认 Paddle WebGPU，报告 cold OCR、warm median、Paddle inference/preprocess 和全流程 stage timings。
+- Good：用 `--paddle-model=small` 与 medium baseline 同图同 runs 对照，报告 cold total、warm median 和样本文本差异，再决定是否进入产品验证。
+- Good：用 `--paddle-prepare` 验证用户触发后的懒准备收益，同时检查 detect/bubble 是否被 worker/GPU 争用拖慢。
 - Base：用 `--paddle-serial` 跑对照，只比较 OCR 内部 inference/run count，不把 inpaint/detect 抖动误读为 batch 策略收益。
 - Bad：用旧 `run-browser-x-compare` 默认 `ocrEngine=builtin` 的结果回答 Paddle 瓶颈。
 - Bad：把 cold run 的首次 WebGPU shape 编译成本混进 warm median，并据此判断热运行瓶颈。
+- Bad：`--paddle-graph-capture` 报外部 buffer 错误后继续把它当作可上线优化；当前 Paddle logits 需要 CPU CTC decode，必须先补 GPU buffer/readback 设计。
 
 ### 6. Tests Required
 
@@ -189,6 +202,10 @@ npm run bench:browser-x-current -- --ocr-engine=paddleocr_v6_medium [--image=<lo
 - `npm run test`
 - `npm run build`
 - `npm run bench:browser-paddle-profile -- --image=<fixture> --runs=3`
+- `npm run bench:browser-paddle-profile -- --image=<fixture> --runs=3 --paddle-model=small`
+- `npm run bench:browser-paddle-profile -- --image=<fixture> --runs=3 --paddle-prepare`
+- 如新增 Paddle 模型候选，先运行 `npm run models:check-paddle-ocr -- public/models/<model>.onnx public/models/paddleocr_v6_dict.txt`。
+- 如验证 graph capture，失败也要记录原始错误；只有实现 GPU external input/output 后才把它列为通过项。
 - 如改动 content/worker bundle 边界，再运行 `node --check dist/content.js dist/background.js dist/chunks/orchestrator.js dist/chunks/onnxWorkerBridge.js dist/onnxWorker.js`。
 
 ### 7. Wrong vs Correct
@@ -208,6 +225,14 @@ npm run bench:browser-paddle-profile -- --image=benchmark/color/fixtures/typeset
 ```
 
 报告中检查 `ocrSummary.paddle.provider === "webgpu"`、`batchMode`、`inferenceRunCount` 和各 stage median 后再下结论。
+
+#### Correct: small 候选验证
+
+```bash
+npm run bench:browser-paddle-profile -- --image=benchmark/color/fixtures/typeset-debug-log-2026-05-23T06-03-39-877Z.png --runs=3 --paddle-model=small
+```
+
+报告中同时检查 `ocrSummary.paddle.modelName === "paddleocr_v6_small_rec"`、cold total、warm median 和 `sampleTexts`，不要只用模型体积推断收益。
 
 ---
 

@@ -231,6 +231,8 @@ export type PaddleOcrRunDebug = {
   batchMode: 'serial' | 'width-bucket';
   batchBucketWidth?: number;
   coldFirstSerial?: boolean;
+  fixedInputWidth?: number;
+  sessionOptionsKey?: string;
   inputHeight: number;
   maxInputWidth: number;
   normalize: 'zero_to_one' | 'minus_one_to_one';

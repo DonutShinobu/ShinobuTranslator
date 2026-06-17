@@ -12,6 +12,7 @@
  */
 
 import type { RuntimeProvider } from "./onnxTypes";
+import type { OnnxSessionOptions } from "./onnxSessionOptions";
 import type {
   TensorTransport,
   WorkerSessionHandle,
@@ -109,7 +110,8 @@ async function tryCreateSession(
 export async function createSession(
   modelKey: string,
   modelUrl: string,
-  preferred: RuntimeProvider[]
+  preferred: RuntimeProvider[],
+  _sessionOptions?: OnnxSessionOptions
 ): Promise<WorkerSessionHandle> {
   // In Node context, modelUrl is a local file path (absolute).
   const existing = sessions.get(modelKey);

@@ -12,6 +12,7 @@
  */
 
 import type { RuntimeProvider } from "./onnxTypes";
+import type { OnnxSessionOptions } from "./onnxSessionOptions";
 import type {
   TensorTransport,
   WorkerSessionHandle,
@@ -58,9 +59,10 @@ async function loadBridge() {
 export async function createSession(
   modelKey: string,
   modelUrl: string,
-  preferred: RuntimeProvider[]
+  preferred: RuntimeProvider[],
+  sessionOptions?: OnnxSessionOptions
 ): Promise<WorkerSessionHandle> {
-  return (await loadBridge()).createSession(modelKey, modelUrl, preferred);
+  return (await loadBridge()).createSession(modelKey, modelUrl, preferred, sessionOptions);
 }
 
 export async function runInference(

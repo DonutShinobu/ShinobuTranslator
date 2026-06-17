@@ -1,4 +1,5 @@
 import type { RuntimeProvider, WebNnDeviceType } from "./onnxTypes";
+import type { OnnxSessionOptions } from "./onnxSessionOptions";
 import type { RuntimeSelfCheckReport } from "./selfCheck";
 
 // ---------------------------------------------------------------------------
@@ -174,7 +175,8 @@ export interface OnnxWorkerApi {
   createSession(
     modelKey: string,
     modelUrl: string,
-    preferred: RuntimeProvider[]
+    preferred: RuntimeProvider[],
+    sessionOptions?: OnnxSessionOptions
   ): Promise<WorkerSessionHandle>;
   runInference(
     sessionId: string,

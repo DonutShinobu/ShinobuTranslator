@@ -28,6 +28,8 @@ type RuntimeProvider = "webnn" | "webgpu" | "wasm" | "cuda" | "cpu";
 type PaddleBatchCliMode = "default" | "serial" | "width-bucket";
 type PaddleProviderCliMode = "default" | "webgpu" | "webnn" | "wasm";
 type PaddleColdFirstCliMode = "default" | "on" | "off";
+type PaddleModelCliMode = "medium" | "small";
+type PaddleRuntimeProbeCliMode = "legacy" | "prepare" | "warmup";
 
 type StageTiming = {
   stage: string;
@@ -64,6 +66,8 @@ type PaddleSummary = {
   batchMode: PaddleOcrRunDebug["batchMode"];
   batchBucketWidth?: number;
   coldFirstSerial?: boolean;
+  fixedInputWidth?: number;
+  sessionOptionsKey?: string;
   inferenceRunCount: number;
   acceptedCount: number;
   rejectedCount: number;
@@ -122,6 +126,10 @@ type ModeResult = {
   paddleBatchMode?: PaddleBatchCliMode;
   paddleProviderMode?: PaddleProviderCliMode;
   paddleColdFirstMode?: PaddleColdFirstCliMode;
+  paddleModelMode?: PaddleModelCliMode;
+  paddleRuntimeProbeMode?: PaddleRuntimeProbeCliMode;
+  paddleFixedInputWidth?: number;
+  paddleGraphCapture?: boolean;
   runs: PipelineRun[];
   warmMedian: {
     totalMs: number;
@@ -269,6 +277,47 @@ function pickPaddleColdFirstMode(): PaddleColdFirstCliMode {
   throw new Error(`Invalid --paddle-cold-first-serial value: ${raw}`);
 }
 
+function pickPaddleModelMode(): PaddleModelCliMode {
+  const raw = argValue("paddle-model");
+  if (!raw) return "medium";
+  if (raw === "medium" || raw === "v6-medium" || raw === "paddleocr_v6_medium") {
+    return "medium";
+  }
+  if (raw === "small" || raw === "v6-small" || raw === "paddleocr_v6_small") {
+    return "small";
+  }
+  throw new Error(`Invalid --paddle-model value: ${raw}`);
+}
+
+function pickPaddleRuntimeProbeMode(): PaddleRuntimeProbeCliMode {
+  if (process.argv.includes("--paddle-prepare")) {
+    return "prepare";
+  }
+  if (process.argv.includes("--paddle-warmup")) {
+    return "warmup";
+  }
+  const raw = argValue("paddle-runtime-probe");
+  if (!raw) return "legacy";
+  if (raw === "legacy" || raw === "prepare" || raw === "warmup") {
+    return raw;
+  }
+  throw new Error(`Invalid --paddle-runtime-probe value: ${raw}`);
+}
+
+function pickPaddleFixedInputWidth(): number | undefined {
+  const raw = argValue("paddle-fixed-width");
+  if (!raw) return undefined;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`Invalid --paddle-fixed-width value: ${raw}`);
+  }
+  return parsed;
+}
+
+function pickPaddleGraphCapture(): boolean {
+  return process.argv.includes("--paddle-graph-capture");
+}
+
 function pickPrewarmOcrBatch(): number {
   const raw = argValue("prewarm-ocr-batch");
   if (!raw) return 0;
@@ -310,7 +359,11 @@ function requireDistAsset(relativePath: string): void {
   }
 }
 
-function ensureDistReady(options: { includeLegacyOcr: boolean; ocrEngine: OcrEngine }): void {
+function ensureDistReady(options: {
+  includeLegacyOcr: boolean;
+  ocrEngine: OcrEngine;
+  paddleModelMode: PaddleModelCliMode;
+}): void {
   const required = [
     "manifest.json",
     "content.js",
@@ -329,7 +382,12 @@ function ensureDistReady(options: { includeLegacyOcr: boolean; ocrEngine: OcrEng
     required.push("models/ocr.onnx");
   }
   if (options.ocrEngine === "paddleocr_v6_medium") {
-    required.push("models/PP-OCRv6_medium_rec.onnx", "models/paddleocr_v6_dict.txt");
+    required.push("models/paddleocr_v6_dict.txt");
+    if (options.paddleModelMode === "small") {
+      required.push("models/PP-OCRv6_small_rec.onnx");
+    } else {
+      required.push("models/PP-OCRv6_medium_rec.onnx");
+    }
   }
   for (const item of required) {
     requireDistAsset(item);
@@ -558,6 +616,8 @@ function summarizePaddleDebug(paddle: PaddleOcrRunDebug | undefined): PaddleSumm
     batchMode: paddle.batchMode,
     batchBucketWidth: paddle.batchBucketWidth,
     coldFirstSerial: paddle.coldFirstSerial,
+    fixedInputWidth: paddle.fixedInputWidth,
+    sessionOptionsKey: paddle.sessionOptionsKey,
     inferenceRunCount: paddle.inferenceRuns.length,
     acceptedCount: paddle.acceptedCount,
     rejectedCount: paddle.rejectedCount,
@@ -791,6 +851,10 @@ async function runCurrentWebMode(
   paddleBatchMode: PaddleBatchCliMode,
   paddleProviderMode: PaddleProviderCliMode,
   paddleColdFirstMode: PaddleColdFirstCliMode,
+  paddleModelMode: PaddleModelCliMode,
+  paddleRuntimeProbeMode: PaddleRuntimeProbeCliMode,
+  paddleFixedInputWidth: number | undefined,
+  paddleGraphCapture: boolean,
 ): Promise<ModeResult> {
   const mode: ModeResult["mode"] = "current";
   const userDataDir = join(TMP_DIR, `x-current-web-${Date.now()}`);
@@ -958,12 +1022,40 @@ async function runCurrentWebMode(
         paddleBatchMode: PaddleBatchCliMode;
         paddleProviderMode: PaddleProviderCliMode;
         paddleColdFirstMode: PaddleColdFirstCliMode;
+        paddleModelMode: PaddleModelCliMode;
+        paddleRuntimeProbeMode: PaddleRuntimeProbeCliMode;
+        paddleFixedInputWidth?: number;
+        paddleGraphCapture: boolean;
       }>(
-        async ({ dataUrl, contentType, runIndex, ocrCompactActiveBatch, ocrEngine, processMode, paddleBatchMode, paddleProviderMode, paddleColdFirstMode }) => {
+        async ({
+          dataUrl,
+          contentType,
+          runIndex,
+          ocrCompactActiveBatch,
+          ocrEngine,
+          processMode,
+          paddleBatchMode,
+          paddleProviderMode,
+          paddleColdFirstMode,
+          paddleModelMode,
+          paddleRuntimeProbeMode,
+          paddleFixedInputWidth,
+          paddleGraphCapture,
+        }) => {
           type PaddleRuntimeFlags = typeof globalThis & {
             __shinobuPaddleOcrWidthBucketBatch?: boolean;
             __shinobuPaddleOcrProviders?: RuntimeProvider[];
             __shinobuPaddleOcrColdFirstSerial?: boolean;
+            __shinobuPaddleOcrModelName?: "paddleocr_v6_small_rec" | "paddleocr_v6_medium_rec";
+            __shinobuPaddleOcrRuntimeProbe?: "legacy" | "prepare" | "warmup";
+            __shinobuPaddleOcrFixedInputWidth?: number;
+            __shinobuPaddleOcrSessionOptions?: {
+              enableGraphCapture?: boolean;
+              preferredOutputLocation?: "gpu-buffer";
+              freeDimensionOverrides?: Record<string, number>;
+            };
+            __shinobuPaddleOcrWarmupInputWidth?: number;
+            __shinobuPaddleOcrWarmupBatchSize?: number;
           };
           type Orchestrator = {
             runPipeline(file: File, config: Record<string, unknown>, onProgress: () => void): Promise<{
@@ -991,6 +1083,31 @@ async function runCurrentWebMode(
             delete runtimeFlags.__shinobuPaddleOcrColdFirstSerial;
           } else {
             runtimeFlags.__shinobuPaddleOcrColdFirstSerial = paddleColdFirstMode === "on";
+          }
+          runtimeFlags.__shinobuPaddleOcrModelName = paddleModelMode === "small"
+            ? "paddleocr_v6_small_rec"
+            : "paddleocr_v6_medium_rec";
+          runtimeFlags.__shinobuPaddleOcrRuntimeProbe = paddleRuntimeProbeMode;
+          if (typeof paddleFixedInputWidth === "number") {
+            runtimeFlags.__shinobuPaddleOcrFixedInputWidth = paddleFixedInputWidth;
+            runtimeFlags.__shinobuPaddleOcrWarmupInputWidth = paddleFixedInputWidth;
+          } else {
+            delete runtimeFlags.__shinobuPaddleOcrFixedInputWidth;
+            delete runtimeFlags.__shinobuPaddleOcrWarmupInputWidth;
+          }
+          runtimeFlags.__shinobuPaddleOcrWarmupBatchSize = 1;
+          if (paddleGraphCapture) {
+            const fixedWidth = paddleFixedInputWidth ?? 320;
+            runtimeFlags.__shinobuPaddleOcrSessionOptions = {
+              enableGraphCapture: true,
+              preferredOutputLocation: "gpu-buffer",
+              freeDimensionOverrides: {
+                "DynamicDimension.0": 1,
+                "DynamicDimension.1": fixedWidth,
+              },
+            };
+          } else {
+            delete runtimeFlags.__shinobuPaddleOcrSessionOptions;
           }
           const module = await import("/chunks/orchestrator.js") as Orchestrator;
           const blob = await (await fetch(dataUrl)).blob();
@@ -1053,6 +1170,10 @@ async function runCurrentWebMode(
           paddleBatchMode,
           paddleProviderMode,
           paddleColdFirstMode,
+          paddleModelMode,
+          paddleRuntimeProbeMode,
+          paddleFixedInputWidth,
+          paddleGraphCapture,
         }
       );
       run.ocrSummary = summarizeOcr(run);
@@ -1068,6 +1189,10 @@ async function runCurrentWebMode(
       paddleBatchMode,
       paddleProviderMode,
       paddleColdFirstMode,
+      paddleModelMode,
+      paddleRuntimeProbeMode,
+      paddleFixedInputWidth,
+      paddleGraphCapture,
       runs: results,
       warmMedian: computeWarmMedian(results),
     };
@@ -1117,6 +1242,18 @@ function printSummary(report: CompareReport): void {
     if (mode.paddleColdFirstMode) {
       console.log(`  Paddle cold-first: ${mode.paddleColdFirstMode}`);
     }
+    if (mode.paddleModelMode) {
+      console.log(`  Paddle model:      ${mode.paddleModelMode}`);
+    }
+    if (mode.paddleRuntimeProbeMode) {
+      console.log(`  Paddle probe:      ${mode.paddleRuntimeProbeMode}`);
+    }
+    if (typeof mode.paddleFixedInputWidth === "number") {
+      console.log(`  Paddle fixed W:    ${mode.paddleFixedInputWidth}`);
+    }
+    if (mode.paddleGraphCapture) {
+      console.log("  Paddle graph cap:  true");
+    }
     console.log(`  warm median total: ${formatMs(mode.warmMedian.totalMs)}`);
     console.log(`  warm median OCR:   ${formatMs(mode.warmMedian.ocrStageMs)}`);
     console.log(`  warm median decode:${formatMs(mode.warmMedian.decodeSessionRunTotalMs)}`);
@@ -1128,6 +1265,9 @@ function printSummary(report: CompareReport): void {
         const paddle = latestWarm.ocrSummary.paddle;
         console.log(`  Paddle provider:   ${paddle.provider ?? "unknown"}${paddle.webnnDeviceType ? `/${paddle.webnnDeviceType}` : ""}`);
         console.log(`  Paddle batch:      ${paddle.batchMode}${paddle.batchBucketWidth ? ` ${paddle.batchBucketWidth}px` : ""}, coldFirst=${paddle.coldFirstSerial === true}, runs=${paddle.inferenceRunCount}`);
+        if (typeof paddle.fixedInputWidth === "number" || paddle.sessionOptionsKey) {
+          console.log(`  Paddle options:    fixedW=${paddle.fixedInputWidth ?? "default"}, session=${paddle.sessionOptionsKey ?? "default"}`);
+        }
         console.log(`  Paddle OCR split:  preprocess=${formatMs(paddle.preprocessTotalMs)}, inference=${formatMs(paddle.inferenceTotalMs)}, ctc=${formatMs(paddle.decodeTotalMs)}, color=${formatMs(paddle.colorFillMs)}`);
         console.log(`  Paddle widths:     min=${paddle.widthSummary.min}, max=${paddle.widthSummary.max}, avg=${paddle.widthSummary.avg}`);
       }
@@ -1148,6 +1288,10 @@ async function main(): Promise<void> {
   const paddleBatchMode = pickPaddleBatchMode();
   const paddleProviderMode = pickPaddleProviderMode();
   const paddleColdFirstMode = pickPaddleColdFirstMode();
+  const paddleModelMode = pickPaddleModelMode();
+  const paddleRuntimeProbeMode = pickPaddleRuntimeProbeMode();
+  const paddleFixedInputWidth = pickPaddleFixedInputWidth();
+  const paddleGraphCapture = pickPaddleGraphCapture();
   if (!currentOnly && ocrEngine !== "48px") {
     throw new Error("--ocr-engine=paddleocr_v6_medium is supported in --current-only mode only");
   }
@@ -1157,7 +1301,19 @@ async function main(): Promise<void> {
   if (!currentOnly && paddleColdFirstMode !== "default") {
     throw new Error("--paddle-cold-first-serial is supported in --current-only mode only");
   }
-  ensureDistReady({ includeLegacyOcr: !currentOnly, ocrEngine });
+  if (!currentOnly && paddleModelMode !== "medium") {
+    throw new Error("--paddle-model is supported in --current-only mode only");
+  }
+  if (!currentOnly && paddleRuntimeProbeMode !== "legacy") {
+    throw new Error("--paddle-runtime-probe is supported in --current-only mode only");
+  }
+  if (!currentOnly && typeof paddleFixedInputWidth === "number") {
+    throw new Error("--paddle-fixed-width is supported in --current-only mode only");
+  }
+  if (!currentOnly && paddleGraphCapture) {
+    throw new Error("--paddle-graph-capture is supported in --current-only mode only");
+  }
+  ensureDistReady({ includeLegacyOcr: !currentOnly, ocrEngine, paddleModelMode });
   mkdirSync(TMP_DIR, { recursive: true });
   mkdirSync(REPORTS_DIR, { recursive: true });
   const xUrl = pickUrl();
@@ -1166,7 +1322,7 @@ async function main(): Promise<void> {
   const runs = pickRunCount();
   const prewarmOcrBatch = pickPrewarmOcrBatch();
   const ocrCompactActiveBatch = pickOcrCompactActiveBatch();
-  console.log(`Browser profile config: ocr=${ocrEngine}, process=${processMode}, paddleBatch=${paddleBatchMode}, paddleProvider=${paddleProviderMode}, paddleColdFirst=${paddleColdFirstMode}, runs=${runs}`);
+  console.log(`Browser profile config: ocr=${ocrEngine}, process=${processMode}, paddleBatch=${paddleBatchMode}, paddleProvider=${paddleProviderMode}, paddleColdFirst=${paddleColdFirstMode}, paddleModel=${paddleModelMode}, paddleProbe=${paddleRuntimeProbeMode}, paddleFixedW=${paddleFixedInputWidth ?? "default"}, paddleGraphCapture=${paddleGraphCapture}, runs=${runs}`);
   console.log(imagePathOverride ? `Loading local image: ${imagePathOverride}` : `Resolving X image: ${xUrl}`);
   const image = imagePathOverride ? loadImageFromFile(imagePathOverride) : await resolveXImage(xUrl, imageUrlOverride);
   console.log(`Resolved image: ${image.imageUrl} (${image.contentType}, ${image.bytes} bytes)`);
@@ -1187,6 +1343,10 @@ async function main(): Promise<void> {
         paddleBatchMode,
         paddleProviderMode,
         paddleColdFirstMode,
+        paddleModelMode,
+        paddleRuntimeProbeMode,
+        paddleFixedInputWidth,
+        paddleGraphCapture,
       );
       const report: CompareReport = {
         createdAt: new Date().toISOString(),

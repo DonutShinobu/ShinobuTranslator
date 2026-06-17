@@ -1,6 +1,8 @@
 import type { RuntimeProvider } from './onnxTypes';
+import type { OnnxSessionOptions } from './onnxSessionOptions';
 import type { WorkerSessionHandle } from './onnxWorkerTypes';
 import { createSession, disposeSession } from './onnxBridge';
+import { serializeOnnxSessionOptions } from './onnxSessionOptions';
 import { resolveAssetUrl } from '../shared/assetUrl';
 
 type ManifestModel = {
@@ -123,6 +125,7 @@ export type ModelName =
   | 'ocr_decoder'
   | 'inpaint'
   | 'bubble'
+  | 'paddleocr_v6_small_rec'
   | 'paddleocr_v6_medium_rec';
 
 export async function getModel(name: ModelName): Promise<ManifestModel> {
@@ -149,16 +152,18 @@ const sessionCache = new Map<string, WorkerSessionHandle>();
 
 export async function getModelSession(
   name: ModelName,
-  preferred?: RuntimeProvider[]
+  preferred?: RuntimeProvider[],
+  sessionOptions?: OnnxSessionOptions
 ): Promise<WorkerSessionHandle> {
   const model = await getModel(name);
   const runtime = preferred && preferred.length > 0 ? preferred : model.runtime ?? (isNode ? ['cuda'] : ['wasm']);
-  const cacheKey = `${name}:${runtime.join(',')}`;
+  const sessionOptionsKey = serializeOnnxSessionOptions(sessionOptions);
+  const cacheKey = `${name}:${runtime.join(',')}:${sessionOptionsKey}`;
   const cached = sessionCache.get(cacheKey);
   if (cached) {
     return cached;
   }
-  const handle = await createSession(name, model.url, runtime);
+  const handle = await createSession(name, model.url, runtime, sessionOptions);
   sessionCache.set(cacheKey, handle);
   return handle;
 }

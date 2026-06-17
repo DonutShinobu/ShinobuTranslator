@@ -590,3 +590,36 @@ Fixed vertical typeset source geometry ordering and per-column advance safety, a
 ### Next Steps
 
 - None - task complete
+
+
+## Session 19: Paddle pipeline profiling and optimization
+
+**Date**: 2026-06-17
+**Task**: Paddle pipeline profiling and optimization
+**Branch**: `master`
+
+### Summary
+
+Added Paddle OCR sub-stage debug, browser/Node Paddle profiling tools, WebGPU width-bucket batching, provider experiments, and recorded WASM/WebGPU cold-start findings.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `918f947` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

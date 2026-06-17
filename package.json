@@ -22,6 +22,7 @@
     "bench:browser-ui-jank-smoke": "tsx benchmark/perf/src/run-browser-ui-jank-smoke.ts",
     "bench:browser-x-current": "tsx benchmark/perf/src/run-browser-x-compare.ts --current-only",
     "bench:browser-x-compare": "tsx benchmark/perf/src/run-browser-x-compare.ts",
+    "bench:browser-paddle-profile": "tsx benchmark/perf/src/run-browser-x-compare.ts --current-only --ocr-engine=paddleocr_v6_medium --process-mode=erase",
     "models:split-ocr": "node scripts/split-ocr-encoder-decoder.mjs",
     "models:check-paddle-ocr": "node scripts/check-paddle-ocr-model.mjs",
     "models:download": "node scripts/download-models.mjs",

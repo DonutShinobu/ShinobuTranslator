@@ -194,6 +194,63 @@ export type OcrRunDebugChunk = {
   fallbackRegions: OcrRunDebugRegionFallback[];
 };
 
+export type PaddleOcrRegionDebug = {
+  regionId: string;
+  direction: TextDirection;
+  box: Rect;
+  inputDims: number[];
+  resizedWidth: number;
+  inputBytes: number;
+  preprocessMs: number;
+};
+
+export type PaddleOcrInferenceDebug = {
+  runIndex: number;
+  regionIds: string[];
+  inputDims: number[];
+  outputDims?: number[];
+  inputBytes: number;
+  outputBytes: number;
+  durationMs: number;
+  decodeMs: number;
+  timeSteps?: number;
+  numClasses?: number;
+  accepted: boolean;
+  acceptedCount?: number;
+  rejectedCount?: number;
+  text?: string;
+  texts?: string[];
+  confidence?: number;
+  error?: string;
+};
+
+export type PaddleOcrRunDebug = {
+  modelName: string;
+  provider?: RuntimeStageStatus["provider"];
+  webnnDeviceType?: RuntimeStageStatus["webnnDeviceType"];
+  batchMode: 'serial' | 'width-bucket';
+  batchBucketWidth?: number;
+  coldFirstSerial?: boolean;
+  inputHeight: number;
+  maxInputWidth: number;
+  normalize: 'zero_to_one' | 'minus_one_to_one';
+  channelOrder: 'rgb' | 'bgr';
+  modelLoadMs: number;
+  sessionLoadMs: number;
+  charsetLoadMs: number;
+  preprocessTotalMs: number;
+  inferenceTotalMs: number;
+  decodeTotalMs: number;
+  inputBytesTotal: number;
+  outputBytesTotal: number;
+  acceptedCount: number;
+  rejectedCount: number;
+  missingOutputCount: number;
+  regions: PaddleOcrRegionDebug[];
+  inferenceRuns: PaddleOcrInferenceDebug[];
+  colorFillMs?: number;
+};
+
 export type OcrRunDebugInfo = {
   mode: 'autoregressive' | 'ctc';
   candidateCount: number;
@@ -211,6 +268,7 @@ export type OcrRunDebugInfo = {
   fallbackTriggerCount: number;
   totalSessionRunCount: number;
   totalSessionRunMs: number;
+  paddle?: PaddleOcrRunDebug;
 };
 
 export type MaskDebugLayers = {

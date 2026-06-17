@@ -482,6 +482,32 @@ function createDefaultDebug(resultCount: number): OcrRunDebugInfo {
   };
 }
 
+function addExternalColorFillDebug(
+  debugInfo: OcrRunDebugInfo,
+  results: OcrRecognizeResult[],
+  detectedRegions: TextRegion[],
+  durationMs: number
+): OcrRunDebugInfo {
+  const missingColorResults = results.filter((result) => result.fgColor === undefined || result.bgColor === undefined);
+  debugInfo.colorBatchSize = results.length;
+  debugInfo.colorTotalMs += durationMs;
+  if (debugInfo.paddle) {
+    debugInfo.paddle.colorFillMs = (debugInfo.paddle.colorFillMs ?? 0) + durationMs;
+  }
+  if (missingColorResults.length > 0) {
+    debugInfo.colorDecodeMode = "fallback";
+    debugInfo.colorFallbackRegions = missingColorResults.map((result, index) => ({
+      regionId: detectedRegions[results.indexOf(result)]?.id ?? `ocr-${index}`,
+      durationMs: 0,
+      accepted: true,
+      error: "模型未返回颜色，使用图像采样补齐",
+    }));
+  } else if (results.length > 0 && debugInfo.colorDecodeMode === "none") {
+    debugInfo.colorDecodeMode = "reuse";
+  }
+  return debugInfo;
+}
+
 function normalizeOcrProviderName(providerName?: string): string {
   if (!providerName || providerName === "builtin") {
     return "48px";
@@ -518,14 +544,22 @@ export async function runOcr(
   }
 
   const output = await provider.recognize(image, detectedRegions, platform);
+  const colorFillT0 = performance.now();
   const filled = fillMissingOcrFields(output.results, image, platform);
+  const colorFillMs = performance.now() - colorFillT0;
+  const debug = addExternalColorFillDebug(
+    output.debug ?? createDefaultDebug(output.results.length),
+    output.results,
+    detectedRegions,
+    colorFillMs
+  );
   const regions = mapResultsToRegions(filled, detectedRegions);
   if (regions.length > 0) {
     return {
       regions,
       actualProvider: output.provider,
       actualWebnnDeviceType: output.webnnDeviceType,
-      debug: createDefaultDebug(regions.length),
+      debug,
     };
   }
   throw new Error("OCR 未返回有效识别结果");

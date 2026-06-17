@@ -1,4 +1,4 @@
-import type { QuadPoint, TextDirection, TextRegion } from "../../types";
+import type { OcrRunDebugInfo, QuadPoint, TextDirection, TextRegion } from "../../types";
 import type { PlatformProvider, PipelineImage } from "../../runtime/platform";
 import { sampleEdgeColors, sampleCornerBgColor, histogramBimodal } from "./colorSampling";
 import { colorDistance } from "../typeset/color";
@@ -16,6 +16,7 @@ export type OcrRecognizeOutput = {
   results: OcrRecognizeResult[];
   provider: import('../../runtime/onnxTypes').RuntimeProvider;
   webnnDeviceType?: import('../../runtime/onnxTypes').WebNnDeviceType;
+  debug?: OcrRunDebugInfo;
 };
 
 export type OcrProvider = {

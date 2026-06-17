@@ -39,6 +39,15 @@ type EngineResult = {
   error?: string;
 };
 
+type OcrDebug = Awaited<ReturnType<typeof runOcr>>["debug"];
+type PaddleDebug = NonNullable<OcrDebug["paddle"]>;
+
+type PaddleOcrRuntimeFlags = typeof globalThis & {
+  __shinobuPaddleOcrWidthBucketBatch?: boolean;
+};
+
+type PaddleBatchCliMode = "default" | "serial" | "width-bucket";
+
 function imageToDataUrl(path: string): string {
   const buf = readFileSync(path);
   return `data:image/png;base64,${buf.toString("base64")}`;
@@ -61,6 +70,19 @@ function parseRunCount(): number {
     throw new Error(`--runs 必须是正整数: ${arg}`);
   }
   return count;
+}
+
+function configurePaddleBatchMode(): PaddleBatchCliMode {
+  if (process.argv.includes("--paddle-serial")) {
+    (globalThis as PaddleOcrRuntimeFlags).__shinobuPaddleOcrWidthBucketBatch = false;
+    return "serial";
+  }
+  if (process.argv.includes("--paddle-batch")) {
+    (globalThis as PaddleOcrRuntimeFlags).__shinobuPaddleOcrWidthBucketBatch = true;
+    return "width-bucket";
+  }
+  delete (globalThis as PaddleOcrRuntimeFlags).__shinobuPaddleOcrWidthBucketBatch;
+  return "default";
 }
 
 function normalizeEngineArg(value: string): OcrEngine | "all" {
@@ -91,7 +113,74 @@ function pickOcrEngines(): OcrEngine[] {
   return parsed === "all" ? DEFAULT_ENGINES : [parsed];
 }
 
-function summarizeDebug(debug: Awaited<ReturnType<typeof runOcr>>["debug"]) {
+function roundMetric(value: number | undefined): number | undefined {
+  return value === undefined ? undefined : Math.round(value * 100) / 100;
+}
+
+function summarizePaddleDebug(paddle: PaddleDebug | undefined) {
+  if (!paddle) {
+    return undefined;
+  }
+  const widths = paddle.regions.map((region) => region.resizedWidth);
+  const widthSummary = widths.length > 0
+    ? {
+        min: Math.min(...widths),
+        max: Math.max(...widths),
+        avg: roundMetric(widths.reduce((sum, width) => sum + width, 0) / widths.length),
+        values: widths,
+      }
+    : {
+        min: 0,
+        max: 0,
+        avg: 0,
+        values: [],
+      };
+  return {
+    modelName: paddle.modelName,
+    provider: paddle.provider,
+    webnnDeviceType: paddle.webnnDeviceType,
+    batchMode: paddle.batchMode,
+    batchBucketWidth: paddle.batchBucketWidth,
+    inputHeight: paddle.inputHeight,
+    maxInputWidth: paddle.maxInputWidth,
+    normalize: paddle.normalize,
+    channelOrder: paddle.channelOrder,
+    modelLoadMs: roundMetric(paddle.modelLoadMs),
+    sessionLoadMs: roundMetric(paddle.sessionLoadMs),
+    charsetLoadMs: roundMetric(paddle.charsetLoadMs),
+    preprocessTotalMs: roundMetric(paddle.preprocessTotalMs),
+    inferenceTotalMs: roundMetric(paddle.inferenceTotalMs),
+    decodeTotalMs: roundMetric(paddle.decodeTotalMs),
+    colorFillMs: roundMetric(paddle.colorFillMs),
+    inputBytesTotal: paddle.inputBytesTotal,
+    outputBytesTotal: paddle.outputBytesTotal,
+    acceptedCount: paddle.acceptedCount,
+    rejectedCount: paddle.rejectedCount,
+    missingOutputCount: paddle.missingOutputCount,
+    widthSummary,
+    inferenceRuns: paddle.inferenceRuns.map((run) => ({
+      runIndex: run.runIndex,
+      regionIds: run.regionIds,
+      inputDims: run.inputDims,
+      outputDims: run.outputDims,
+      inputBytes: run.inputBytes,
+      outputBytes: run.outputBytes,
+      durationMs: roundMetric(run.durationMs),
+      decodeMs: roundMetric(run.decodeMs),
+      timeSteps: run.timeSteps,
+      numClasses: run.numClasses,
+      accepted: run.accepted,
+      acceptedCount: run.acceptedCount,
+      rejectedCount: run.rejectedCount,
+      text: run.text,
+      texts: run.texts,
+      confidence: roundMetric(run.confidence),
+      error: run.error,
+    })),
+  };
+}
+
+function summarizeDebug(debug: OcrDebug) {
   const decodeSessionRunCount = debug.chunks.reduce((acc, chunk) => acc + chunk.decodeSessionRunCount, 0);
   const decodeSessionRunTotalMs = debug.chunks.reduce((acc, chunk) => acc + chunk.decodeSessionRunTotalMs, 0);
   const decodeStepCount = debug.chunks.reduce((acc, chunk) => acc + chunk.decodeSteps.length, 0);
@@ -113,6 +202,7 @@ function summarizeDebug(debug: Awaited<ReturnType<typeof runOcr>>["debug"]) {
     fallbackTriggerCount: debug.fallbackTriggerCount,
     totalSessionRunCount: debug.totalSessionRunCount,
     totalSessionRunMs: Math.round(debug.totalSessionRunMs * 100) / 100,
+    paddle: summarizePaddleDebug(debug.paddle),
   };
 }
 
@@ -153,6 +243,7 @@ async function main(): Promise<void> {
   const imagePath = pickImagePath();
   const engines = pickOcrEngines();
   const runCount = parseRunCount();
+  const paddleBatchMode = configurePaddleBatchMode();
   const image = await nodePlatform.loadImage(imageToDataUrl(imagePath));
 
   const detectT0 = performance.now();
@@ -168,6 +259,7 @@ async function main(): Promise<void> {
     image: imagePath,
     engines,
     runsPerEngine: runCount,
+    paddleBatchMode,
     detectedRegions: detected.regions.length,
     detectMs: Math.round(detectMs * 100) / 100,
     results: engineResults,

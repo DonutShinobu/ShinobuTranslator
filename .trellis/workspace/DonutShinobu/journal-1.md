@@ -623,3 +623,36 @@ Added Paddle OCR sub-stage debug, browser/Node Paddle profiling tools, WebGPU wi
 ### Next Steps
 
 - None - task complete
+
+
+## Session 20: Paddle cold-start validation
+
+**Date**: 2026-06-17
+**Task**: Paddle cold-start validation
+**Branch**: `codex/paddle-cold-start-validation`
+
+### Summary
+
+Validated Paddle OCR cold-start routes on branch codex/paddle-cold-start-validation. Added benchmark-only controls for small model, prepare/warmup, fixed width, and ORT graph capture; recorded reports showing small legacy as the best current candidate, prepare as promising but contention-prone, and graph capture blocked by GPU external buffer requirements.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cff16fd` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

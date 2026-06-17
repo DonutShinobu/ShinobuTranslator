@@ -28,15 +28,27 @@ import type { WorkerSessionHandle } from "../runtime/onnxWorkerTypes";
 type ProgressCallback = (progress: PipelineProgress) => void;
 
 type PaddleOcrRuntimeProbeMode = "legacy" | "prepare" | "warmup";
+type PaddleOcrRuntimeProbeSchedule = "detect-start" | "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
+type InpaintRuntimeProbeSchedule = "current" | "detect-start" | "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
 
 type PipelineRuntimeFlags = typeof globalThis & {
   __shinobuPaddleOcrRuntimeProbe?: PaddleOcrRuntimeProbeMode;
+  __shinobuPaddleOcrRuntimeProbeSchedule?: PaddleOcrRuntimeProbeSchedule;
+  __shinobuInpaintRuntimeProbeSchedule?: InpaintRuntimeProbeSchedule;
   __shinobuPaddleOcrWarmupInputWidth?: number;
   __shinobuPaddleOcrWarmupBatchSize?: number;
 };
 
 function getPaddleOcrRuntimeProbeMode(): PaddleOcrRuntimeProbeMode {
   return (globalThis as PipelineRuntimeFlags).__shinobuPaddleOcrRuntimeProbe ?? "legacy";
+}
+
+function getPaddleOcrRuntimeProbeSchedule(): PaddleOcrRuntimeProbeSchedule {
+  return (globalThis as PipelineRuntimeFlags).__shinobuPaddleOcrRuntimeProbeSchedule ?? "detect-start";
+}
+
+function getInpaintRuntimeProbeSchedule(): InpaintRuntimeProbeSchedule {
+  return (globalThis as PipelineRuntimeFlags).__shinobuInpaintRuntimeProbeSchedule ?? "current";
 }
 
 async function probePaddleOcrRuntime(): Promise<RuntimeStageStatus> {
@@ -309,6 +321,8 @@ export async function runPipeline(
 
   let ocrRuntimeProbePromise: Promise<RuntimeStageStatus> | null = null;
   let inpaintRuntimeProbePromise: Promise<RuntimeStageStatus> | null = null;
+  const ocrRuntimeProbeSchedule = getPaddleOcrRuntimeProbeSchedule();
+  const inpaintRuntimeProbeSchedule = getInpaintRuntimeProbeSchedule();
 
   const startOcrRuntimeProbe = (): Promise<RuntimeStageStatus> => {
     if (!ocrRuntimeProbePromise) {
@@ -326,7 +340,12 @@ export async function runPipeline(
 
   report(onProgress, "detect", "文本检测");
   try {
-    startOcrRuntimeProbe();
+    if (ocrRuntimeProbeSchedule === "detect-start") {
+      startOcrRuntimeProbe();
+    }
+    if (inpaintRuntimeProbeSchedule === "detect-start") {
+      startInpaintRuntimeProbe();
+    }
     const t0 = performance.now();
     const detected = await detectTextRegionsWithMask(image, platform);
     latestRegions = detected.regions;
@@ -349,6 +368,12 @@ export async function runPipeline(
       };
     }
     stageTimings.push({ stage: "detect", label: "文本检测", durationMs: performance.now() - t0 });
+    if (ocrRuntimeProbeSchedule === "after-detect") {
+      startOcrRuntimeProbe();
+    }
+    if (inpaintRuntimeProbeSchedule === "after-detect") {
+      startInpaintRuntimeProbe();
+    }
   } catch (error) {
     throw new PipelineStageError("文本检测", toErrorDetail(error), buildArtifacts());
   }
@@ -356,19 +381,36 @@ export async function runPipeline(
   let detectedBubbles: BubbleDetection[] = [];
   report(onProgress, "bubble", "气泡检测");
   try {
+    if (ocrRuntimeProbeSchedule === "bubble-start") {
+      startOcrRuntimeProbe();
+    }
+    if (inpaintRuntimeProbeSchedule === "bubble-start") {
+      startInpaintRuntimeProbe();
+    }
     const t0 = performance.now();
     const bubbleResult = await detectBubbles(image, platform);
     detectedBubbles = bubbleResult.bubbles;
     stageTimings.push({ stage: "bubble", label: "气泡检测", durationMs: performance.now() - t0 });
+    if (ocrRuntimeProbeSchedule === "after-bubble") {
+      startOcrRuntimeProbe();
+    }
+    if (inpaintRuntimeProbeSchedule === "after-bubble") {
+      startInpaintRuntimeProbe();
+    }
   } catch (error) {
     throw new PipelineStageError("气泡检测", toErrorDetail(error), buildArtifacts());
   }
 
   report(onProgress, "ocr", "OCR 日文识别");
   try {
+    if (inpaintRuntimeProbeSchedule === "ocr-start") {
+      startInpaintRuntimeProbe();
+    }
     const t0 = performance.now();
     runtimeStages[1] = await startOcrRuntimeProbe();
-    startInpaintRuntimeProbe();
+    if (inpaintRuntimeProbeSchedule === "current") {
+      startInpaintRuntimeProbe();
+    }
     const ocrResult = await runOcr(image, latestRegions, config.ocrEngine, platform, {
       compactActiveBatch: config.ocrCompactActiveBatch,
     });

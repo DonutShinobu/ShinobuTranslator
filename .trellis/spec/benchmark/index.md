@@ -150,7 +150,7 @@ sourceLineGeometries: region.groundTruth.columns.map(groundTruthColumnToSourceGe
 ### 2. Signatures
 
 ```bash
-npm run bench:browser-paddle-profile -- [--image=<local-image>] [--runs=3] [--process-mode=erase|original|translate] [--paddle-batch|--paddle-serial] [--paddle-provider=default|webgpu|webnn|wasm] [--paddle-cold-first-serial|--paddle-no-cold-first-serial] [--paddle-model=medium|small] [--paddle-runtime-probe=legacy|prepare|warmup] [--paddle-prepare|--paddle-warmup] [--paddle-fixed-width=<px>] [--paddle-graph-capture]
+npm run bench:browser-paddle-profile -- [--image=<local-image>] [--runs=3] [--process-mode=erase|original|translate] [--paddle-batch|--paddle-serial] [--paddle-provider=default|webgpu|webnn|wasm] [--paddle-cold-first-serial|--paddle-no-cold-first-serial] [--paddle-model=medium|small] [--paddle-runtime-probe=legacy|prepare|warmup] [--paddle-prepare|--paddle-warmup] [--paddle-probe-schedule=detect-start|after-detect|bubble-start|after-bubble|ocr-start] [--inpaint-probe-schedule=current|detect-start|after-detect|bubble-start|after-bubble|ocr-start] [--paddle-fixed-width=<px>] [--paddle-graph-capture]
 npm run bench:browser-x-current -- --ocr-engine=paddleocr_v6_medium [--image=<local-image>] [--runs=3]
 ```
 
@@ -161,6 +161,8 @@ npm run bench:browser-x-current -- --ocr-engine=paddleocr_v6_medium [--image=<lo
 - `--paddle-cold-first-serial`/`--paddle-no-cold-first-serial` 只用于 benchmark 对照 WebGPU cold session 的首个 inference 分组策略；默认策略由 Paddle provider 决定。
 - `--paddle-model=small` 只注册并选择 `paddleocr_v6_small_rec` 作为 benchmark 候选；不得把 small 暴露为用户可见默认选项，除非另有产品任务。
 - `--paddle-runtime-probe=prepare` 在用户触发 pipeline 后的 runtime probe 中准备 Paddle session/字典；`--paddle-warmup` 进一步执行固定 shape warmup inference。
+- `--paddle-probe-schedule` 只用于 benchmark 调度实验，控制 Paddle OCR runtime probe 的启动点；默认 `detect-start` 保持既有行为。
+- `--inpaint-probe-schedule` 只用于 benchmark 调度实验，控制 inpaint runtime probe 的启动点；默认 `current` 保持既有行为，即 OCR runtime probe 完成后、OCR inference 前启动。
 - `--paddle-fixed-width=<px>` 把 Paddle 输入 padding 到固定宽度，用于静态 shape/warmup 对照；实际运行宽度不得小于本轮任一 OCR crop 的 `resizedWidth`，需要自动抬高并在报告中保留最终 `fixedInputWidth`，因为它会影响输出 time steps 和识别文本。
 - `--paddle-graph-capture` 为 ORT WebGPU 实验开关，只能与固定 shape 一起验证；当前 Paddle CPU 输入和 CPU CTC decode 路径不满足外部 GPU buffer 合约。
 
@@ -172,6 +174,7 @@ npm run bench:browser-x-current -- --ocr-engine=paddleocr_v6_medium [--image=<lo
 - Browser profile 必须区分 cold run（`runIndex=0`）和 warm runs；性能结论优先使用 warm median，cold 结论单独说明 session/shape 编译成本。
 - `processMode=erase` 覆盖本地检测、气泡、Paddle OCR、mask refine、inpaint；`processMode=original` 额外覆盖 typeset，不包含网络翻译。
 - `paddleRuntimeProbeMode`、`paddleModelMode`、`paddleFixedInputWidth`、`paddleGraphCapture` 必须写入 mode-level report，避免多个实验报告混淆。
+- `paddleRuntimeProbeSchedule` 和 `inpaintRuntimeProbeSchedule` 必须写入 mode-level report。分析 prepare 净收益时必须同时看 cold total、cold OCR、detect/bubble/inpaint stage；不能只看 OCR stage 变短。
 - Paddle prepare/warmup 只能在用户触发翻译后的 pipeline 内启动，不得改成页面加载时预加载。
 
 ### 4. Validation & Error Matrix
@@ -185,16 +188,20 @@ npm run bench:browser-x-current -- --ocr-engine=paddleocr_v6_medium [--image=<lo
 | `--paddle-graph-capture` 仍使用 CPU input/output | `External buffer must be provided for input/output index 0 when enableGraphCapture is true` | 记录为当前架构不支持；除非先实现 GPU external input/output 和 decode/readback 设计 |
 | warmup 后 detect/bubble stage 异常变慢 | OCR stage 变快但 total 变差 | 以 cold total/warm median 作为净收益判断，不把 OCR 局部收益直接产品化 |
 | fixed width 改变样本文本 | 速度可比但质量不可比 | 报告样本文本并标注 `fixedInputWidth`；质量退化时不推荐默认启用 |
+| Paddle prepare 放在 `bubble-start` 后 cold OCR 很短但 total 变差 | prepare 与 bubble/WebGPU 初始化抢资源 | 不把 OCR 局部收益当作端到端收益；改测 `detect-start` 或 `ocr-start` |
+| inpaint probe 过早启动导致 cold total 变差 | inpaint session 与 detector/Paddle session 争用 Worker/WebGPU | 保持 `--inpaint-probe-schedule=current`，除非 report 证明端到端净收益 |
 
 ### 5. Good/Base/Bad Cases
 
 - Good：本地 fixture 用 `--runs=3` 跑默认 Paddle WebGPU，报告 cold OCR、warm median、Paddle inference/preprocess 和全流程 stage timings。
 - Good：用 `--paddle-model=small` 与 medium baseline 同图同 runs 对照，报告 cold total、warm median 和样本文本差异，再决定是否进入产品验证。
 - Good：用 `--paddle-prepare` 验证用户触发后的懒准备收益，同时检查 detect/bubble 是否被 worker/GPU 争用拖慢。
+- Good：对 prepare 调度实验使用同一图片、同一 runs，对比 `detect-start` / `after-detect` / `bubble-start` / `after-bubble` / `ocr-start`，并记录 `inpaintRuntimeProbeSchedule` 是否为默认。
 - Base：用 `--paddle-serial` 跑对照，只比较 OCR 内部 inference/run count，不把 inpaint/detect 抖动误读为 batch 策略收益。
 - Bad：用旧 `run-browser-x-compare` 默认 `ocrEngine=builtin` 的结果回答 Paddle 瓶颈。
 - Bad：把 cold run 的首次 WebGPU shape 编译成本混进 warm median，并据此判断热运行瓶颈。
 - Bad：`--paddle-graph-capture` 报外部 buffer 错误后继续把它当作可上线优化；当前 Paddle logits 需要 CPU CTC decode，必须先补 GPU buffer/readback 设计。
+- Bad：把 inpaint probe 提前到 detect-start 后只看 OCR 缩短；如果 cold total 或 detect/bubble 变差，应判定为调度争用。
 
 ### 6. Tests Required
 
@@ -204,6 +211,7 @@ npm run bench:browser-x-current -- --ocr-engine=paddleocr_v6_medium [--image=<lo
 - `npm run bench:browser-paddle-profile -- --image=<fixture> --runs=3`
 - `npm run bench:browser-paddle-profile -- --image=<fixture> --runs=3 --paddle-model=small`
 - `npm run bench:browser-paddle-profile -- --image=<fixture> --runs=3 --paddle-prepare`
+- 调度实验：`npm run bench:browser-paddle-profile -- --image=<fixture> --runs=3 --paddle-prepare --paddle-probe-schedule=<schedule> [--inpaint-probe-schedule=<schedule>]`
 - 如新增 Paddle 模型候选，先运行 `npm run models:check-paddle-ocr -- public/models/<model>.onnx public/models/paddleocr_v6_dict.txt`。
 - 如验证 graph capture，失败也要记录原始错误；只有实现 GPU external input/output 后才把它列为通过项。
 - 如改动 content/worker bundle 边界，再运行 `node --check dist/content.js dist/background.js dist/chunks/orchestrator.js dist/chunks/onnxWorkerBridge.js dist/onnxWorker.js`。
@@ -233,6 +241,14 @@ npm run bench:browser-paddle-profile -- --image=benchmark/color/fixtures/typeset
 ```
 
 报告中同时检查 `ocrSummary.paddle.modelName === "paddleocr_v6_small_rec"`、cold total、warm median 和 `sampleTexts`，不要只用模型体积推断收益。
+
+#### Correct: prepare 调度验证
+
+```bash
+npm run bench:browser-paddle-profile -- --image=benchmark/color/fixtures/typeset-debug-log-2026-05-23T06-03-39-877Z.png --runs=3 --paddle-prepare --paddle-probe-schedule=detect-start
+```
+
+对比同图同 runs 的其他 `--paddle-probe-schedule` 报告；只有 cold total 和 warm median 都不退化时，才把 prepare 调度视为可产品化候选。
 
 ---
 

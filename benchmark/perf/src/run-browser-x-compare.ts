@@ -30,6 +30,8 @@ type PaddleProviderCliMode = "default" | "webgpu" | "webnn" | "wasm";
 type PaddleColdFirstCliMode = "default" | "on" | "off";
 type PaddleModelCliMode = "medium" | "small";
 type PaddleRuntimeProbeCliMode = "legacy" | "prepare" | "warmup";
+type PaddleRuntimeProbeScheduleCliMode = "detect-start" | "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
+type InpaintRuntimeProbeScheduleCliMode = "current" | "detect-start" | "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
 
 type StageTiming = {
   stage: string;
@@ -128,6 +130,8 @@ type ModeResult = {
   paddleColdFirstMode?: PaddleColdFirstCliMode;
   paddleModelMode?: PaddleModelCliMode;
   paddleRuntimeProbeMode?: PaddleRuntimeProbeCliMode;
+  paddleRuntimeProbeSchedule?: PaddleRuntimeProbeScheduleCliMode;
+  inpaintRuntimeProbeSchedule?: InpaintRuntimeProbeScheduleCliMode;
   paddleFixedInputWidth?: number;
   paddleGraphCapture?: boolean;
   runs: PipelineRun[];
@@ -302,6 +306,24 @@ function pickPaddleRuntimeProbeMode(): PaddleRuntimeProbeCliMode {
     return raw;
   }
   throw new Error(`Invalid --paddle-runtime-probe value: ${raw}`);
+}
+
+function pickPaddleRuntimeProbeSchedule(): PaddleRuntimeProbeScheduleCliMode {
+  const raw = argValue("paddle-probe-schedule") ?? argValue("paddle-prepare-schedule");
+  if (!raw) return "detect-start";
+  if (raw === "detect-start" || raw === "after-detect" || raw === "bubble-start" || raw === "after-bubble" || raw === "ocr-start") {
+    return raw;
+  }
+  throw new Error(`Invalid --paddle-probe-schedule value: ${raw}`);
+}
+
+function pickInpaintRuntimeProbeSchedule(): InpaintRuntimeProbeScheduleCliMode {
+  const raw = argValue("inpaint-probe-schedule");
+  if (!raw) return "current";
+  if (raw === "current" || raw === "detect-start" || raw === "after-detect" || raw === "bubble-start" || raw === "after-bubble" || raw === "ocr-start") {
+    return raw;
+  }
+  throw new Error(`Invalid --inpaint-probe-schedule value: ${raw}`);
 }
 
 function pickPaddleFixedInputWidth(): number | undefined {
@@ -853,6 +875,8 @@ async function runCurrentWebMode(
   paddleColdFirstMode: PaddleColdFirstCliMode,
   paddleModelMode: PaddleModelCliMode,
   paddleRuntimeProbeMode: PaddleRuntimeProbeCliMode,
+  paddleRuntimeProbeSchedule: PaddleRuntimeProbeScheduleCliMode,
+  inpaintRuntimeProbeSchedule: InpaintRuntimeProbeScheduleCliMode,
   paddleFixedInputWidth: number | undefined,
   paddleGraphCapture: boolean,
 ): Promise<ModeResult> {
@@ -1024,6 +1048,8 @@ async function runCurrentWebMode(
         paddleColdFirstMode: PaddleColdFirstCliMode;
         paddleModelMode: PaddleModelCliMode;
         paddleRuntimeProbeMode: PaddleRuntimeProbeCliMode;
+        paddleRuntimeProbeSchedule: PaddleRuntimeProbeScheduleCliMode;
+        inpaintRuntimeProbeSchedule: InpaintRuntimeProbeScheduleCliMode;
         paddleFixedInputWidth?: number;
         paddleGraphCapture: boolean;
       }>(
@@ -1039,6 +1065,8 @@ async function runCurrentWebMode(
           paddleColdFirstMode,
           paddleModelMode,
           paddleRuntimeProbeMode,
+          paddleRuntimeProbeSchedule,
+          inpaintRuntimeProbeSchedule,
           paddleFixedInputWidth,
           paddleGraphCapture,
         }) => {
@@ -1048,6 +1076,8 @@ async function runCurrentWebMode(
             __shinobuPaddleOcrColdFirstSerial?: boolean;
             __shinobuPaddleOcrModelName?: "paddleocr_v6_small_rec" | "paddleocr_v6_medium_rec";
             __shinobuPaddleOcrRuntimeProbe?: "legacy" | "prepare" | "warmup";
+            __shinobuPaddleOcrRuntimeProbeSchedule?: "detect-start" | "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
+            __shinobuInpaintRuntimeProbeSchedule?: "current" | "detect-start" | "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
             __shinobuPaddleOcrFixedInputWidth?: number;
             __shinobuPaddleOcrSessionOptions?: {
               enableGraphCapture?: boolean;
@@ -1088,6 +1118,8 @@ async function runCurrentWebMode(
             ? "paddleocr_v6_small_rec"
             : "paddleocr_v6_medium_rec";
           runtimeFlags.__shinobuPaddleOcrRuntimeProbe = paddleRuntimeProbeMode;
+          runtimeFlags.__shinobuPaddleOcrRuntimeProbeSchedule = paddleRuntimeProbeSchedule;
+          runtimeFlags.__shinobuInpaintRuntimeProbeSchedule = inpaintRuntimeProbeSchedule;
           if (typeof paddleFixedInputWidth === "number") {
             runtimeFlags.__shinobuPaddleOcrFixedInputWidth = paddleFixedInputWidth;
             runtimeFlags.__shinobuPaddleOcrWarmupInputWidth = paddleFixedInputWidth;
@@ -1172,6 +1204,8 @@ async function runCurrentWebMode(
           paddleColdFirstMode,
           paddleModelMode,
           paddleRuntimeProbeMode,
+          paddleRuntimeProbeSchedule,
+          inpaintRuntimeProbeSchedule,
           paddleFixedInputWidth,
           paddleGraphCapture,
         }
@@ -1191,6 +1225,8 @@ async function runCurrentWebMode(
       paddleColdFirstMode,
       paddleModelMode,
       paddleRuntimeProbeMode,
+      paddleRuntimeProbeSchedule,
+      inpaintRuntimeProbeSchedule,
       paddleFixedInputWidth,
       paddleGraphCapture,
       runs: results,
@@ -1248,6 +1284,12 @@ function printSummary(report: CompareReport): void {
     if (mode.paddleRuntimeProbeMode) {
       console.log(`  Paddle probe:      ${mode.paddleRuntimeProbeMode}`);
     }
+    if (mode.paddleRuntimeProbeSchedule) {
+      console.log(`  Paddle schedule:   ${mode.paddleRuntimeProbeSchedule}`);
+    }
+    if (mode.inpaintRuntimeProbeSchedule) {
+      console.log(`  Inpaint schedule:  ${mode.inpaintRuntimeProbeSchedule}`);
+    }
     if (typeof mode.paddleFixedInputWidth === "number") {
       console.log(`  Paddle fixed W:    ${mode.paddleFixedInputWidth}`);
     }
@@ -1290,6 +1332,8 @@ async function main(): Promise<void> {
   const paddleColdFirstMode = pickPaddleColdFirstMode();
   const paddleModelMode = pickPaddleModelMode();
   const paddleRuntimeProbeMode = pickPaddleRuntimeProbeMode();
+  const paddleRuntimeProbeSchedule = pickPaddleRuntimeProbeSchedule();
+  const inpaintRuntimeProbeSchedule = pickInpaintRuntimeProbeSchedule();
   const paddleFixedInputWidth = pickPaddleFixedInputWidth();
   const paddleGraphCapture = pickPaddleGraphCapture();
   if (!currentOnly && ocrEngine !== "48px") {
@@ -1307,6 +1351,12 @@ async function main(): Promise<void> {
   if (!currentOnly && paddleRuntimeProbeMode !== "legacy") {
     throw new Error("--paddle-runtime-probe is supported in --current-only mode only");
   }
+  if (!currentOnly && paddleRuntimeProbeSchedule !== "detect-start") {
+    throw new Error("--paddle-probe-schedule is supported in --current-only mode only");
+  }
+  if (!currentOnly && inpaintRuntimeProbeSchedule !== "current") {
+    throw new Error("--inpaint-probe-schedule is supported in --current-only mode only");
+  }
   if (!currentOnly && typeof paddleFixedInputWidth === "number") {
     throw new Error("--paddle-fixed-width is supported in --current-only mode only");
   }
@@ -1322,7 +1372,7 @@ async function main(): Promise<void> {
   const runs = pickRunCount();
   const prewarmOcrBatch = pickPrewarmOcrBatch();
   const ocrCompactActiveBatch = pickOcrCompactActiveBatch();
-  console.log(`Browser profile config: ocr=${ocrEngine}, process=${processMode}, paddleBatch=${paddleBatchMode}, paddleProvider=${paddleProviderMode}, paddleColdFirst=${paddleColdFirstMode}, paddleModel=${paddleModelMode}, paddleProbe=${paddleRuntimeProbeMode}, paddleFixedW=${paddleFixedInputWidth ?? "default"}, paddleGraphCapture=${paddleGraphCapture}, runs=${runs}`);
+  console.log(`Browser profile config: ocr=${ocrEngine}, process=${processMode}, paddleBatch=${paddleBatchMode}, paddleProvider=${paddleProviderMode}, paddleColdFirst=${paddleColdFirstMode}, paddleModel=${paddleModelMode}, paddleProbe=${paddleRuntimeProbeMode}, paddleSchedule=${paddleRuntimeProbeSchedule}, inpaintSchedule=${inpaintRuntimeProbeSchedule}, paddleFixedW=${paddleFixedInputWidth ?? "default"}, paddleGraphCapture=${paddleGraphCapture}, runs=${runs}`);
   console.log(imagePathOverride ? `Loading local image: ${imagePathOverride}` : `Resolving X image: ${xUrl}`);
   const image = imagePathOverride ? loadImageFromFile(imagePathOverride) : await resolveXImage(xUrl, imageUrlOverride);
   console.log(`Resolved image: ${image.imageUrl} (${image.contentType}, ${image.bytes} bytes)`);
@@ -1345,6 +1395,8 @@ async function main(): Promise<void> {
         paddleColdFirstMode,
         paddleModelMode,
         paddleRuntimeProbeMode,
+        paddleRuntimeProbeSchedule,
+        inpaintRuntimeProbeSchedule,
         paddleFixedInputWidth,
         paddleGraphCapture,
       );

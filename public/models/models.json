@@ -29,12 +29,13 @@
     "inpaint": {
       "name": "inpaint",
       "task": "text-removal",
-      "url": "/models/lama_fp32.onnx",
+      "url": "/models/aot_inpaint_512.onnx",
       "input": [512, 512],
       "runtime": ["webgpu", "webnn", "wasm"],
-      "normalize": "zero_to_one",
-      "outputNormalize": "zero_to_255",
-      "maskInputName": "mask"
+      "normalize": "minus_one_to_one",
+      "outputNormalize": "minus_one_to_one",
+      "maskInputName": "mask",
+      "maskFill": "zero_after_normalize"
     },
     "bubble": {
       "name": "bubble",

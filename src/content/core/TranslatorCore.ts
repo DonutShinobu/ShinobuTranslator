@@ -538,9 +538,15 @@ export class TranslatorCore {
         this.updatePipelineProgress(state, progress, onProgress, jankMonitor);
       });
 
+      const finalizeT0 = performance.now();
       const translatedBlob = jankMonitor
         ? await jankMonitor.measureAsync('canvasToBlob:result', () => canvasToBlob(artifacts.resultCanvas as HTMLCanvasElement))
         : await canvasToBlob(artifacts.resultCanvas as HTMLCanvasElement);
+      artifacts.stageTimings.push({
+        stage: 'finalize',
+        label: '生成结果图片',
+        durationMs: performance.now() - finalizeT0,
+      });
       const translatedUrl = URL.createObjectURL(translatedBlob);
       if (state.translatedUrl) URL.revokeObjectURL(state.translatedUrl);
       if (state.debugOriginalUrl) {

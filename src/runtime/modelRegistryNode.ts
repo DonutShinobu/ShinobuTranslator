@@ -17,6 +17,7 @@ type ManifestModel = {
   dictUrl?: string;
   normalize?: 'zero_to_one' | 'minus_one_to_one';
   outputNormalize?: 'zero_to_one' | 'minus_one_to_one' | 'zero_to_255';
+  maskFill?: 'zero_before_normalize' | 'zero_after_normalize';
   maskInputName?: string;
 };
 

@@ -15,6 +15,7 @@ export type InpaintResult = {
 
 type InpaintInputNormalize = "zero_to_one" | "minus_one_to_one";
 type InpaintOutputNormalize = InpaintInputNormalize | "zero_to_255";
+type InpaintMaskFill = "zero_before_normalize" | "zero_after_normalize";
 
 function pickInpaintTensor(outputs: Record<string, TensorTransport>): TensorTransport | null {
   for (const value of Object.values(outputs)) {
@@ -30,6 +31,7 @@ function preprocessInpaintImage(
   mask: PipelineCanvas,
   size: number,
   normalize: InpaintInputNormalize,
+  maskFill: InpaintMaskFill,
   platform: PlatformProvider,
 ): {
   image: TensorTransport;
@@ -63,17 +65,24 @@ function preprocessInpaintImage(
     const sourceR = imageData[p];
     const sourceG = imageData[p + 1];
     const sourceB = imageData[p + 2];
-    const r = maskValue === 1 ? 0 : sourceR;
-    const g = maskValue === 1 ? 0 : sourceG;
-    const b = maskValue === 1 ? 0 : sourceB;
     if (normalize === "minus_one_to_one") {
-      imageOut[i] = r / 127.5 - 1;
-      imageOut[area + i] = g / 127.5 - 1;
-      imageOut[2 * area + i] = b / 127.5 - 1;
+      const r = sourceR / 127.5 - 1;
+      const g = sourceG / 127.5 - 1;
+      const b = sourceB / 127.5 - 1;
+      if (maskValue === 1) {
+        const fill = maskFill === "zero_after_normalize" ? 0 : -1;
+        imageOut[i] = fill;
+        imageOut[area + i] = fill;
+        imageOut[2 * area + i] = fill;
+      } else {
+        imageOut[i] = r;
+        imageOut[area + i] = g;
+        imageOut[2 * area + i] = b;
+      }
     } else {
-      imageOut[i] = r / 255;
-      imageOut[area + i] = g / 255;
-      imageOut[2 * area + i] = b / 255;
+      imageOut[i] = maskValue === 1 ? 0 : sourceR / 255;
+      imageOut[area + i] = maskValue === 1 ? 0 : sourceG / 255;
+      imageOut[2 * area + i] = maskValue === 1 ? 0 : sourceB / 255;
     }
   }
   return {
@@ -240,10 +249,11 @@ async function runInpaintByOnnx(
   const size = model.input?.[0] ?? 512;
   const normalize = model.normalize ?? "zero_to_one";
   const outputNormalize = model.outputNormalize ?? normalize;
+  const maskFill = model.maskFill ?? "zero_before_normalize";
   if (refinedMaskCanvas.width <= 0 || refinedMaskCanvas.height <= 0) {
     throw new Error("去字 ONNX 缺少有效 refined mask，已禁用文本框遮罩回退");
   }
-  const feeds = preprocessInpaintImage(originalCanvas, refinedMaskCanvas, size, normalize, platform);
+  const feeds = preprocessInpaintImage(originalCanvas, refinedMaskCanvas, size, normalize, maskFill, platform);
   const runWithHandle = async (handle: WorkerSessionHandle): Promise<Record<string, TensorTransport>> => {
     const imageName = handle.inputNames[0];
     const maskName = model.maskInputName ?? handle.inputNames[1];

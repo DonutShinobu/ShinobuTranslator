@@ -22,6 +22,8 @@ import type {
   OcrColorSingleResult,
   OnnxWorkerApi,
   GpuDetectResult,
+  PaddleGraphCaptureProbeOptions,
+  PaddleGraphCaptureProbeResult,
 } from "../runtime/onnxWorkerTypes";
 import type { RuntimeSelfCheckReport } from "../runtime/selfCheck";
 import type { OcrRunDebugChunk } from "../types";
@@ -901,6 +903,100 @@ async function runDetectWithGpuPreprocess(
   return Comlink.transfer(result, outTransferables);
 }
 
+async function probePaddleGraphCapture(
+  options: PaddleGraphCaptureProbeOptions
+): Promise<PaddleGraphCaptureProbeResult> {
+  ensureOrtEnv();
+  const inputWidth = Math.max(1, Math.round(options.inputWidth ?? 320));
+  const batchSize = Math.max(1, Math.round(options.batchSize ?? 1));
+  const classCount = Math.max(1, Math.round(options.classCount ?? 18710));
+  const runs = Math.max(1, Math.round(options.runs ?? 3));
+  const inputDims = [batchSize, 3, 48, inputWidth];
+  const outputDims = [batchSize, Math.max(1, Math.floor(inputWidth / 8)), classCount];
+  const inputBytes = inputDims.reduce((size, dim) => size * dim, 4);
+  const outputBytes = outputDims.reduce((size, dim) => size * dim, 4);
+  const baseResult = {
+    ok: false,
+    modelUrl: options.modelUrl,
+    inputDims,
+    outputDims,
+    inputBytes,
+    outputBytes,
+    runMs: [],
+  };
+
+  let session: InferenceSession | null = null;
+  let inputBuffer: GPUBuffer | null = null;
+  let outputBuffer: GPUBuffer | null = null;
+  let createSessionMs: number | undefined;
+  try {
+    const createT0 = performance.now();
+    session = await createSessionWithTimeout(
+      options.modelUrl,
+      {
+        executionProviders: ["webgpu"],
+        graphOptimizationLevel: "all",
+        enableGraphCapture: true,
+        preferredOutputLocation: "gpu-buffer",
+        freeDimensionOverrides: {
+          "DynamicDimension.0": batchSize,
+          "DynamicDimension.1": inputWidth,
+        },
+      },
+      SESSION_CREATE_TIMEOUT_MS
+    );
+    createSessionMs = performance.now() - createT0;
+
+    const device = getWebGpuDevice();
+    if (!device) {
+      throw new Error("ort.env.webgpu.device 不可用");
+    }
+    const usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST;
+    inputBuffer = device.createBuffer({ size: inputBytes, usage });
+    outputBuffer = device.createBuffer({ size: outputBytes, usage });
+    const inputName = session.inputNames[0];
+    const outputName = session.outputNames[0];
+    if (!inputName || !outputName) {
+      throw new Error("PaddleOCR 模型缺少输入或输出名称");
+    }
+    const inputTensor = ortAll.Tensor.fromGpuBuffer(inputBuffer, {
+      dataType: "float32",
+      dims: inputDims,
+    });
+    const outputTensor = ortAll.Tensor.fromGpuBuffer(outputBuffer, {
+      dataType: "float32",
+      dims: outputDims,
+    });
+    const feeds = { [inputName]: inputTensor };
+    const fetches = { [outputName]: outputTensor };
+    const runMs: number[] = [];
+    for (let i = 0; i < runs; i += 1) {
+      const runT0 = performance.now();
+      await session.run(feeds, fetches);
+      await device.queue.onSubmittedWorkDone();
+      runMs.push(performance.now() - runT0);
+    }
+    return {
+      ...baseResult,
+      ok: true,
+      createSessionMs,
+      runMs,
+    };
+  } catch (error) {
+    return {
+      ...baseResult,
+      createSessionMs,
+      error: toErrorMessage(error),
+    };
+  } finally {
+    if (session) {
+      await session.release();
+    }
+    inputBuffer?.destroy();
+    outputBuffer?.destroy();
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Dispose
 // ---------------------------------------------------------------------------
@@ -949,6 +1045,7 @@ const api: OnnxWorkerApi = {
   runOcrColorBatch,
   runOcrColorSingle,
   probeRuntime,
+  probePaddleGraphCapture,
   runDetectWithGpuPreprocess,
   disposeSession,
   disposeAll,

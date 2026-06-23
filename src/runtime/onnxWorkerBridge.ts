@@ -16,6 +16,8 @@ import type {
   OcrColorSingleResult,
   OnnxWorkerApi,
   GpuDetectResult,
+  PaddleGraphCaptureProbeOptions,
+  PaddleGraphCaptureProbeResult,
 } from "./onnxWorkerTypes";
 import type { RuntimeSelfCheckReport } from "./selfCheck";
 import { resolveAssetUrl } from "../shared/assetUrl";
@@ -337,6 +339,26 @@ export async function probeRuntime(modelUrl: string): Promise<RuntimeSelfCheckRe
     recordPerfWorkerCall({
       kind: "probeRuntime",
       model: modelUrl,
+      startedAt,
+      durationMs: performance.now() - startedAt,
+    });
+  }
+}
+
+export async function probePaddleGraphCapture(
+  options: PaddleGraphCaptureProbeOptions
+): Promise<PaddleGraphCaptureProbeResult> {
+  const startedAt = performance.now();
+  let result: PaddleGraphCaptureProbeResult | null = null;
+  try {
+    result = await (await getProxy()).probePaddleGraphCapture(options);
+    return result;
+  } finally {
+    recordPerfWorkerCall({
+      kind: "probePaddleGraphCapture",
+      model: options.modelUrl,
+      inputBytes: result?.inputBytes,
+      outputBytes: result?.outputBytes,
       startedAt,
       durationMs: performance.now() - startedAt,
     });

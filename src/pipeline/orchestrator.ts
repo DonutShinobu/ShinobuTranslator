@@ -30,11 +30,13 @@ type ProgressCallback = (progress: PipelineProgress) => void;
 type PaddleOcrRuntimeProbeMode = "legacy" | "prepare" | "warmup";
 type PaddleOcrRuntimeProbeSchedule = "detect-start" | "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
 type InpaintRuntimeProbeSchedule = "current" | "detect-start" | "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
+type BubbleRuntimeProbeSchedule = "current" | "detect-start" | "after-detect";
 
 type PipelineRuntimeFlags = typeof globalThis & {
   __shinobuPaddleOcrRuntimeProbe?: PaddleOcrRuntimeProbeMode;
   __shinobuPaddleOcrRuntimeProbeSchedule?: PaddleOcrRuntimeProbeSchedule;
   __shinobuInpaintRuntimeProbeSchedule?: InpaintRuntimeProbeSchedule;
+  __shinobuBubbleRuntimeProbeSchedule?: BubbleRuntimeProbeSchedule;
   __shinobuPaddleOcrWarmupInputWidth?: number;
   __shinobuPaddleOcrWarmupBatchSize?: number;
 };
@@ -49,6 +51,10 @@ function getPaddleOcrRuntimeProbeSchedule(): PaddleOcrRuntimeProbeSchedule {
 
 function getInpaintRuntimeProbeSchedule(): InpaintRuntimeProbeSchedule {
   return (globalThis as PipelineRuntimeFlags).__shinobuInpaintRuntimeProbeSchedule ?? "current";
+}
+
+function getBubbleRuntimeProbeSchedule(): BubbleRuntimeProbeSchedule {
+  return (globalThis as PipelineRuntimeFlags).__shinobuBubbleRuntimeProbeSchedule ?? "current";
 }
 
 async function probePaddleOcrRuntime(): Promise<RuntimeStageStatus> {
@@ -275,10 +281,13 @@ export async function runPipeline(
   onProgress: ProgressCallback
 ): Promise<PipelineArtifacts> {
   const platform: PlatformProvider = browserPlatform;
+  const stageTimings: StageTiming[] = [];
 
   report(onProgress, "load", "加载图片");
+  const loadT0 = performance.now();
   const image = await fileToImage(file, platform);
   const originalCanvas = imageToCanvas(image, platform);
+  stageTimings.push({ stage: "load", label: "加载图片", durationMs: performance.now() - loadT0 });
 
   const runtimeStages: RuntimeStageStatus[] = [];
 
@@ -296,7 +305,6 @@ export async function runPipeline(
   let detectionMaskCanvas: PipelineCanvas | null = null;
   let refinedMaskCanvas: PipelineCanvas | null = null;
   let debugLayers: MaskDebugLayers | null = null;
-  const stageTimings: StageTiming[] = [];
 
   const buildArtifacts = (): PipelineArtifacts => ({
     original: image,
@@ -321,8 +329,10 @@ export async function runPipeline(
 
   let ocrRuntimeProbePromise: Promise<RuntimeStageStatus> | null = null;
   let inpaintRuntimeProbePromise: Promise<RuntimeStageStatus> | null = null;
+  let bubbleRuntimeProbePromise: Promise<WorkerSessionHandle> | null = null;
   const ocrRuntimeProbeSchedule = getPaddleOcrRuntimeProbeSchedule();
   const inpaintRuntimeProbeSchedule = getInpaintRuntimeProbeSchedule();
+  const bubbleRuntimeProbeSchedule = getBubbleRuntimeProbeSchedule();
 
   const startOcrRuntimeProbe = (): Promise<RuntimeStageStatus> => {
     if (!ocrRuntimeProbePromise) {
@@ -338,6 +348,13 @@ export async function runPipeline(
     return inpaintRuntimeProbePromise;
   };
 
+  const startBubbleRuntimeProbe = (): Promise<WorkerSessionHandle> => {
+    if (!bubbleRuntimeProbePromise) {
+      bubbleRuntimeProbePromise = getModelSession("bubble");
+    }
+    return bubbleRuntimeProbePromise;
+  };
+
   report(onProgress, "detect", "文本检测");
   try {
     if (ocrRuntimeProbeSchedule === "detect-start") {
@@ -345,6 +362,9 @@ export async function runPipeline(
     }
     if (inpaintRuntimeProbeSchedule === "detect-start") {
       startInpaintRuntimeProbe();
+    }
+    if (bubbleRuntimeProbeSchedule === "detect-start") {
+      startBubbleRuntimeProbe();
     }
     const t0 = performance.now();
     const detected = await detectTextRegionsWithMask(image, platform);
@@ -374,18 +394,30 @@ export async function runPipeline(
     if (inpaintRuntimeProbeSchedule === "after-detect") {
       startInpaintRuntimeProbe();
     }
+    if (bubbleRuntimeProbeSchedule === "after-detect") {
+      startBubbleRuntimeProbe();
+    }
   } catch (error) {
     throw new PipelineStageError("文本检测", toErrorDetail(error), buildArtifacts());
   }
 
   let detectedBubbles: BubbleDetection[] = [];
-  report(onProgress, "bubble", "气泡检测");
   try {
     if (ocrRuntimeProbeSchedule === "bubble-start") {
       startOcrRuntimeProbe();
     }
     if (inpaintRuntimeProbeSchedule === "bubble-start") {
       startInpaintRuntimeProbe();
+    }
+    report(onProgress, "bubble", "气泡检测");
+    if (bubbleRuntimeProbeSchedule !== "current") {
+      const bubblePreloadT0 = performance.now();
+      await startBubbleRuntimeProbe();
+      stageTimings.push({
+        stage: "preload_bubble",
+        label: "加载气泡模型",
+        durationMs: performance.now() - bubblePreloadT0,
+      });
     }
     const t0 = performance.now();
     const bubbleResult = await detectBubbles(image, platform);
@@ -432,7 +464,13 @@ export async function runPipeline(
       };
     }
     stageTimings.push({ stage: "ocr", label: "OCR 日文识别", durationMs: performance.now() - t0 });
+    const inpaintPreloadT0 = performance.now();
     runtimeStages[2] = await startInpaintRuntimeProbe();
+    stageTimings.push({
+      stage: "preload_inpaint",
+      label: "加载去字模型",
+      durationMs: performance.now() - inpaintPreloadT0,
+    });
   } catch (error) {
     throw new PipelineStageError("OCR", toErrorDetail(error), buildArtifacts());
   }

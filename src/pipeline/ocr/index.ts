@@ -25,7 +25,12 @@ import {
   generateTextDirection,
   buildOcrInput,
 } from "./preprocess";
-import { registerOcrProvider, registerOcrProviderAlias, getOcrProvider, fillMissingOcrFields } from "./provider";
+import {
+  registerOcrProvider,
+  registerOcrProviderAlias,
+  getOcrProvider,
+  fillMissingOcrFields,
+} from "./provider";
 import type { OcrRecognizeResult } from "./provider";
 import { ocr48pxProvider } from "./ocr48pxProvider";
 import { paddleocrV6MediumProvider } from "./paddleocrProvider";
@@ -56,6 +61,10 @@ type OcrSplitSessionPair = {
   encoderHandle: WorkerSessionHandle;
   decoderHandle: WorkerSessionHandle;
   inputNames: OcrSplitInputNameSet;
+};
+
+type RunOcrOptions = {
+  compactActiveBatch?: boolean;
 };
 
 type DecodedCandidate = {
@@ -520,9 +529,7 @@ export async function runOcr(
   detectedRegions: TextRegion[],
   providerName?: string,
   platform?: PlatformProvider,
-  options?: {
-    compactActiveBatch?: boolean;
-  }
+  options?: RunOcrOptions
 ): Promise<OcrResult> {
   const providerNameResolved = normalizeOcrProviderName(providerName);
   const provider = getOcrProvider(providerNameResolved);

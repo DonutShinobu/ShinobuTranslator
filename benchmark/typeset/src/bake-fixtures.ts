@@ -197,7 +197,7 @@ async function main(): Promise<void> {
   const bakeInfo: BakeInfo = {
     gitCommit: gitCommit(),
     detectorModel: "detector.onnx",
-    ocrModel: "ocr.onnx",
+    ocrModel: "PP-OCRv6_medium_rec.onnx",
   };
 
   for (const imgFile of imageFiles) {

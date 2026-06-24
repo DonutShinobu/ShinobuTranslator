@@ -266,15 +266,21 @@ describe("OpenAI provider settings", () => {
 });
 
 describe("OCR engine settings", () => {
-  it("uses 48px as the default OCR engine in settings and pipeline config", () => {
+  it("uses PaddleOCR v6 medium as the default OCR engine in settings and pipeline config", () => {
     const settings = normalizeSettings({});
 
-    expect(settings.ocrEngine).toBe("48px");
-    expect(toPipelineConfig(settings).ocrEngine).toBe("48px");
+    expect(settings.ocrEngine).toBe("paddleocr_v6_medium");
+    expect(toPipelineConfig(settings).ocrEngine).toBe("paddleocr_v6_medium");
   });
 
-  it("normalizes the legacy built-in OCR name to 48px", () => {
-    expect(normalizeSettings({ ocrEngine: "builtin" }).ocrEngine).toBe("48px");
+  it("normalizes legacy OCR names to the medium v6 model", () => {
+    const builtin = normalizeSettings({ ocrEngine: "builtin" });
+    const old48px = normalizeSettings({ ocrEngine: "48px" });
+
+    expect(builtin.ocrEngine).toBe("paddleocr_v6_medium");
+    expect(toPipelineConfig(builtin).ocrEngine).toBe("paddleocr_v6_medium");
+    expect(old48px.ocrEngine).toBe("paddleocr_v6_medium");
+    expect(toPipelineConfig(old48px).ocrEngine).toBe("paddleocr_v6_medium");
   });
 
   it("normalizes Paddle OCR choices to the medium v6 model", () => {

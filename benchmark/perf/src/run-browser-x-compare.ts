@@ -28,7 +28,7 @@ type RuntimeProvider = "webnn" | "webgpu" | "wasm" | "cuda" | "cpu";
 type PaddleBatchCliMode = "default" | "serial" | "width-bucket";
 type PaddleProviderCliMode = "default" | "webgpu" | "webnn" | "wasm";
 type PaddleColdFirstCliMode = "default" | "on" | "off";
-type PaddleModelCliMode = "medium" | "small";
+type PaddleModelCliMode = "medium";
 type PaddleRuntimeProbeCliMode = "legacy" | "prepare" | "warmup";
 type PaddleRuntimeProbeScheduleCliMode = "detect-start" | "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
 type InpaintRuntimeProbeScheduleCliMode = "current" | "detect-start" | "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
@@ -210,9 +210,11 @@ function normalizeOcrEngine(value: string): OcrEngine {
   switch (value) {
     case "48px":
     case "builtin":
-      return "48px";
     case "paddle":
     case "paddleocr":
+    case "paddleocr_v6_small":
+    case "v6-small":
+    case "paddle-v6-small":
     case "paddleocr_v6_medium":
     case "v6-medium":
     case "paddle-v6-medium":
@@ -224,7 +226,7 @@ function normalizeOcrEngine(value: string): OcrEngine {
 
 function pickOcrEngine(): OcrEngine {
   const raw = argValue("ocr-engine");
-  return raw ? normalizeOcrEngine(raw) : "48px";
+  return raw ? normalizeOcrEngine(raw) : "paddleocr_v6_medium";
 }
 
 function pickProcessMode(): ProcessMode {
@@ -291,7 +293,7 @@ function pickPaddleModelMode(): PaddleModelCliMode {
     return "medium";
   }
   if (raw === "small" || raw === "v6-small" || raw === "paddleocr_v6_small") {
-    return "small";
+    throw new Error("--paddle-model=small was removed from the current runtime model set");
   }
   throw new Error(`Invalid --paddle-model value: ${raw}`);
 }
@@ -393,36 +395,21 @@ function requireDistAsset(relativePath: string): void {
   }
 }
 
-function ensureDistReady(options: {
-  includeLegacyOcr: boolean;
-  ocrEngine: OcrEngine;
-  paddleModelMode: PaddleModelCliMode;
-}): void {
+function ensureDistReady(): void {
   const required = [
     "manifest.json",
     "content.js",
     "chunks/orchestrator.js",
     "onnxWorker.js",
     "models/models.json",
-    "models/ocr_encoder.onnx",
-    "models/ocr_decoder.onnx",
     "models/detector.onnx",
-    "models/lama_fp32.onnx",
+    "models/aot_inpaint_512.onnx",
     "models/bubble.onnx",
+    "models/PP-OCRv6_medium_rec.onnx",
+    "models/paddleocr_v6_dict.txt",
     "ort/ort-wasm-simd-threaded.jsep.mjs",
     "ort/ort-wasm-simd-threaded.jsep.wasm",
   ];
-  if (options.includeLegacyOcr) {
-    required.push("models/ocr.onnx");
-  }
-  if (options.ocrEngine === "paddleocr_v6_medium") {
-    required.push("models/paddleocr_v6_dict.txt");
-    if (options.paddleModelMode === "small") {
-      required.push("models/PP-OCRv6_small_rec.onnx");
-    } else {
-      required.push("models/PP-OCRv6_medium_rec.onnx");
-    }
-  }
   for (const item of required) {
     requireDistAsset(item);
   }
@@ -940,112 +927,8 @@ async function runCurrentWebMode(
     await page.addScriptTag({ url: "/content.js" });
     await page.waitForFunction(() => Boolean((window as any).__shinobu_shared), undefined, { timeout: 30000 });
     await page.evaluate("var __name = (target) => target;");
-    if (prewarmOcrBatch > 0 && ocrEngine !== "48px") {
-      console.log(`current OCR prewarm skipped: --prewarm-ocr-batch is only for 48px OCR, current engine=${ocrEngine}`);
-    }
-    if (prewarmOcrBatch > 0 && ocrEngine === "48px") {
-      const warmup = await page.evaluate(async ({ batchSize, compactActiveBatch }) => {
-        type RuntimeProvider = "webnn" | "webgpu" | "wasm";
-        type SessionHandle = {
-          sessionId: string;
-          provider: RuntimeProvider;
-          inputNames: string[];
-          outputNames: string[];
-        };
-        type DecodeItem = {
-          regionId: string;
-          imageData: Float32Array;
-          imageDims: number[];
-          validEncoderLength: number;
-        };
-        type Bridge = {
-          createSession(modelKey: string, modelUrl: string, preferred: RuntimeProvider[]): Promise<SessionHandle>;
-          runOcrSplitBatchDecode(
-            encoderSessionId: string,
-            decoderSessionId: string,
-            inputNames: {
-              encoderImageInput: string;
-              encoderMaskInput: string;
-              memoryOutput: string;
-              decoderMemoryInput: string;
-              decoderCharIdxInput: string;
-              decoderMaskInput: string;
-              decoderEncoderMaskInput: string;
-            },
-            items: DecodeItem[],
-            options: {
-              seqLen: number;
-              encoderLen: number;
-              maxSteps: number;
-              charset: string[] | null;
-              inputHeight: number;
-              inputWidth: number;
-              compactActiveBatch?: boolean;
-            }
-          ): Promise<{ telemetry: { sessionRunCount: number; sessionRunTotalMs: number; encoderRunMs?: number; decoderRunMs?: number } }>;
-        };
-
-        const pickName = (names: string[], candidates: string[], fallbackIndex = 0): string => {
-          for (const candidate of candidates) {
-            const exact = names.find((name) => name.toLowerCase() === candidate.toLowerCase());
-            if (exact) return exact;
-          }
-          for (const candidate of candidates) {
-            const fuzzy = names.find((name) => name.toLowerCase().includes(candidate.toLowerCase()));
-            if (fuzzy) return fuzzy;
-          }
-          const fallback = names[fallbackIndex];
-          if (!fallback) throw new Error(`No input/output name available. candidates=${candidates.join(",")}`);
-          return fallback;
-        };
-
-        const bridge = await import("/chunks/onnxWorkerBridge.js") as Bridge;
-        const assetUrl = (path: string) => new URL(path.replace(/^\/+/, ""), `${location.origin}/`).toString();
-        const createT0 = performance.now();
-        const encoder = await bridge.createSession("ocr_encoder", assetUrl("/models/ocr_encoder.onnx"), ["webgpu", "wasm"]);
-        const decoder = await bridge.createSession("ocr_decoder", assetUrl("/models/ocr_decoder.onnx"), [encoder.provider]);
-        const createMs = performance.now() - createT0;
-        const dictResponse = await fetch(assetUrl("/models/ocr_dict.txt"));
-        const charset = dictResponse.ok ? (await dictResponse.text()).split(/\r?\n/g).filter((line) => line.length > 0) : null;
-        const inputHeight = 48;
-        const inputWidth = 320;
-        const encoderLen = 80;
-        const seqLen = 64;
-        const pixels = 3 * inputHeight * inputWidth;
-        const items = Array.from({ length: batchSize }, (_, index) => ({
-          regionId: `prewarm-${index}`,
-          imageData: new Float32Array(pixels),
-          imageDims: [1, 3, inputHeight, inputWidth],
-          validEncoderLength: encoderLen,
-        }));
-        const runT0 = performance.now();
-        const decode = await bridge.runOcrSplitBatchDecode(
-          encoder.sessionId,
-          decoder.sessionId,
-          {
-            encoderImageInput: pickName(encoder.inputNames, ["image", "input"], 0),
-            encoderMaskInput: pickName(encoder.inputNames, ["encoder_mask", "mask"], 1),
-            memoryOutput: pickName(encoder.outputNames, ["memory", "encoder"], 0),
-            decoderMemoryInput: pickName(decoder.inputNames, ["memory", "encoder"], 0),
-            decoderCharIdxInput: pickName(decoder.inputNames, ["char_idx", "char"], 1),
-            decoderMaskInput: pickName(decoder.inputNames, ["decoder_mask"], 2),
-            decoderEncoderMaskInput: pickName(decoder.inputNames, ["encoder_mask"], 3),
-          },
-          items,
-          { seqLen, encoderLen, maxSteps: 1, charset, inputHeight, inputWidth, compactActiveBatch }
-        );
-        return {
-          batchSize,
-          compactActiveBatch,
-          provider: encoder.provider,
-          createMs,
-          runMs: performance.now() - runT0,
-          telemetry: decode.telemetry,
-        };
-      }, { batchSize: prewarmOcrBatch, compactActiveBatch: ocrCompactActiveBatch });
-      console.log(
-        `current OCR prewarm: batch=${warmup.batchSize}, compact=${warmup.compactActiveBatch}, provider=${warmup.provider}, create=${formatMs(warmup.createMs)}, run=${formatMs(warmup.runMs)}, session=${formatMs(warmup.telemetry.sessionRunTotalMs)}`
-      );
+    if (prewarmOcrBatch > 0) {
+      throw new Error("--prewarm-ocr-batch targeted the removed 48px OCR path and is no longer supported.");
     }
 
     const results: PipelineRun[] = [];
@@ -1090,7 +973,7 @@ async function runCurrentWebMode(
             __shinobuPaddleOcrWidthBucketBatch?: boolean;
             __shinobuPaddleOcrProviders?: RuntimeProvider[];
             __shinobuPaddleOcrColdFirstSerial?: boolean;
-            __shinobuPaddleOcrModelName?: "paddleocr_v6_small_rec" | "paddleocr_v6_medium_rec";
+            __shinobuPaddleOcrModelName?: "paddleocr_v6_medium_rec";
             __shinobuPaddleOcrRuntimeProbe?: "legacy" | "prepare" | "warmup";
             __shinobuPaddleOcrRuntimeProbeSchedule?: "detect-start" | "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
             __shinobuInpaintRuntimeProbeSchedule?: "current" | "detect-start" | "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
@@ -1131,9 +1014,7 @@ async function runCurrentWebMode(
           } else {
             runtimeFlags.__shinobuPaddleOcrColdFirstSerial = paddleColdFirstMode === "on";
           }
-          runtimeFlags.__shinobuPaddleOcrModelName = paddleModelMode === "small"
-            ? "paddleocr_v6_small_rec"
-            : "paddleocr_v6_medium_rec";
+          runtimeFlags.__shinobuPaddleOcrModelName = "paddleocr_v6_medium_rec";
           runtimeFlags.__shinobuPaddleOcrRuntimeProbe = paddleRuntimeProbeMode;
           runtimeFlags.__shinobuPaddleOcrRuntimeProbeSchedule = paddleRuntimeProbeSchedule;
           runtimeFlags.__shinobuInpaintRuntimeProbeSchedule = inpaintRuntimeProbeSchedule;
@@ -1361,37 +1242,10 @@ async function main(): Promise<void> {
   const bubbleRuntimeProbeSchedule = pickBubbleRuntimeProbeSchedule();
   const paddleFixedInputWidth = pickPaddleFixedInputWidth();
   const paddleGraphCapture = pickPaddleGraphCapture();
-  if (!currentOnly && ocrEngine !== "48px") {
-    throw new Error("--ocr-engine=paddleocr_v6_medium is supported in --current-only mode only");
+  if (!currentOnly) {
+    throw new Error("Legacy 48px browser compare is no longer supported; use --current-only or npm run bench:browser-paddle-profile.");
   }
-  if (!currentOnly && paddleProviderMode !== "default") {
-    throw new Error("--paddle-provider is supported in --current-only mode only");
-  }
-  if (!currentOnly && paddleColdFirstMode !== "default") {
-    throw new Error("--paddle-cold-first-serial is supported in --current-only mode only");
-  }
-  if (!currentOnly && paddleModelMode !== "medium") {
-    throw new Error("--paddle-model is supported in --current-only mode only");
-  }
-  if (!currentOnly && paddleRuntimeProbeMode !== "legacy") {
-    throw new Error("--paddle-runtime-probe is supported in --current-only mode only");
-  }
-  if (!currentOnly && paddleRuntimeProbeSchedule !== "detect-start") {
-    throw new Error("--paddle-probe-schedule is supported in --current-only mode only");
-  }
-  if (!currentOnly && inpaintRuntimeProbeSchedule !== "current") {
-    throw new Error("--inpaint-probe-schedule is supported in --current-only mode only");
-  }
-  if (!currentOnly && bubbleRuntimeProbeSchedule !== "current") {
-    throw new Error("--bubble-probe-schedule is supported in --current-only mode only");
-  }
-  if (!currentOnly && typeof paddleFixedInputWidth === "number") {
-    throw new Error("--paddle-fixed-width is supported in --current-only mode only");
-  }
-  if (!currentOnly && paddleGraphCapture) {
-    throw new Error("--paddle-graph-capture is supported in --current-only mode only");
-  }
-  ensureDistReady({ includeLegacyOcr: !currentOnly, ocrEngine, paddleModelMode });
+  ensureDistReady();
   mkdirSync(TMP_DIR, { recursive: true });
   mkdirSync(REPORTS_DIR, { recursive: true });
   const xUrl = pickUrl();

@@ -103,7 +103,7 @@ async function verifyWebnnSession(modelUrl: string): Promise<{ ok: boolean; erro
   return { ok: false, error: errors.join(" || ") };
 }
 
-export async function runRuntimeSelfCheck(modelUrl = "/models/ocr_decoder.onnx"): Promise<RuntimeSelfCheckReport> {
+export async function runRuntimeSelfCheck(modelUrl = "/models/PP-OCRv6_medium_rec.onnx"): Promise<RuntimeSelfCheckReport> {
   ensureOrtEnv();
 
   const checks: RuntimeCheckItem[] = [];

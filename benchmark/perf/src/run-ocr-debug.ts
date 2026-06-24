@@ -1,8 +1,8 @@
 /**
  * OCR substage benchmark/debug runner.
  *
- * Runs detect + builtin OCR on a single image and prints the OCR debug summary
- * as JSON. This is intentionally narrower than run-perf.ts so AR decode
+ * Runs detect + Paddle OCR on a single image and prints the OCR debug summary
+ * as JSON. This is intentionally narrower than run-perf.ts so OCR recognition
  * changes can be measured quickly.
  */
 
@@ -16,7 +16,7 @@ import type { OcrEngine } from "../../../src/shared/config";
 
 const ROOT = resolve(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "../../..");
 const DEFAULT_IMAGE = join(ROOT, "benchmark/color/fixtures/typeset-debug-log-2026-05-23T06-03-39-877Z.png");
-const DEFAULT_ENGINES: OcrEngine[] = ["48px", "paddleocr_v6_medium"];
+const DEFAULT_ENGINES: OcrEngine[] = ["paddleocr_v6_medium"];
 
 type EngineRunResult = {
   runIndex: number;
@@ -92,7 +92,10 @@ function normalizeEngineArg(value: string): OcrEngine | "all" {
       return "all";
     case "48px":
     case "builtin":
-      return "48px";
+    case "paddleocr_v6_small":
+    case "v6-small":
+    case "paddle-v6-small":
+      return "paddleocr_v6_medium";
     case "paddle":
     case "paddleocr":
     case "paddleocr_v6_medium":
@@ -107,7 +110,7 @@ function normalizeEngineArg(value: string): OcrEngine | "all" {
 function pickOcrEngines(): OcrEngine[] {
   const arg = process.argv.find((value) => value.startsWith("--ocr-engine="));
   if (!arg) {
-    return ["48px"];
+    return DEFAULT_ENGINES;
   }
   const parsed = normalizeEngineArg(arg.slice("--ocr-engine=".length));
   return parsed === "all" ? DEFAULT_ENGINES : [parsed];

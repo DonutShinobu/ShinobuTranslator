@@ -88,10 +88,10 @@ function ensureDistReady(): void {
     "onnxWorker.js",
     "models/models.json",
     "models/detector.onnx",
-    "models/ocr_encoder.onnx",
-    "models/ocr_decoder.onnx",
-    "models/lama_fp32.onnx",
     "models/bubble.onnx",
+    "models/aot_inpaint_512.onnx",
+    "models/PP-OCRv6_medium_rec.onnx",
+    "models/paddleocr_v6_dict.txt",
     "ort/ort-wasm-simd-threaded.jsep.mjs",
     "ort/ort-wasm-simd-threaded.jsep.wasm",
   ].forEach(requireDistAsset);

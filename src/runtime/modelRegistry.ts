@@ -122,11 +122,8 @@ async function resolveModelFilePath(modelUrl: string): Promise<string> {
 
 export type ModelName =
   | 'detector'
-  | 'ocr_encoder'
-  | 'ocr_decoder'
   | 'inpaint'
   | 'bubble'
-  | 'paddleocr_v6_small_rec'
   | 'paddleocr_v6_medium_rec';
 
 export async function getModel(name: ModelName): Promise<ManifestModel> {

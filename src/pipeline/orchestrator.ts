@@ -239,18 +239,15 @@ export class PipelineStageError extends Error {
   }
 }
 
-async function probeRuntime(model: "detector" | "ocr" | "inpaint", config?: PipelineConfig): Promise<RuntimeStageStatus> {
+async function probeRuntime(model: "detector" | "ocr" | "inpaint"): Promise<RuntimeStageStatus> {
   try {
     let handle: WorkerSessionHandle;
     if (model === "ocr") {
-      if (config?.ocrEngine === "paddleocr_v6_medium" && getPaddleOcrRuntimeProbeMode() !== "legacy") {
+      if (getPaddleOcrRuntimeProbeMode() !== "legacy") {
         return await probePaddleOcrRuntime();
       }
-      const encoderHandle = await getModelSession("ocr_encoder");
-      handle = await getModelSession("ocr_decoder", [encoderHandle.provider]);
-      if (encoderHandle.provider !== handle.provider) {
-        throw new Error(`ocr split provider 不一致: encoder=${encoderHandle.provider}, decoder=${handle.provider}`);
-      }
+      const paddleRuntime = await preparePaddleOcrRuntime();
+      handle = paddleRuntime.sessionHandle;
     } else {
       handle = await getModelSession(model);
     }
@@ -336,7 +333,7 @@ export async function runPipeline(
 
   const startOcrRuntimeProbe = (): Promise<RuntimeStageStatus> => {
     if (!ocrRuntimeProbePromise) {
-      ocrRuntimeProbePromise = probeRuntime("ocr", config);
+      ocrRuntimeProbePromise = probeRuntime("ocr");
     }
     return ocrRuntimeProbePromise;
   };

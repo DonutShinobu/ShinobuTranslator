@@ -247,7 +247,7 @@ function registerFonts(): void {
 // ---------------------------------------------------------------------------
 
 function checkModelFiles(): void {
-  const requiredModels = ["detector.onnx", "ocr.onnx"];
+  const requiredModels = ["detector.onnx", "bubble.onnx", "aot_inpaint_512.onnx", "PP-OCRv6_medium_rec.onnx", "paddleocr_v6_dict.txt"];
   const missing = requiredModels.filter((m) => !existsSync(join(MODELS_DIR, m)));
   if (missing.length > 0) {
     console.error(`Missing model files in ${MODELS_DIR}:`);
@@ -309,7 +309,7 @@ async function main(): Promise<void> {
   const bakeInfo: BakeInfo = {
     gitCommit: gitCommit(),
     detectorModel: "detector.onnx",
-    ocrModel: "ocr.onnx",
+    ocrModel: "PP-OCRv6_medium_rec.onnx",
   };
 
   let successCount = 0;

@@ -21,6 +21,7 @@ This project is a Chrome Manifest V3 browser extension for translating manga/com
 | [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | Filled |
 | [Type Safety](./type-safety.md) | Type patterns, validation | Filled |
 | [WebGPU Dataflow](./webgpu-dataflow.md) | GPU-accelerated preprocessing and IO Binding contracts | Filled |
+| [Runtime Models](./runtime-models.md) | 本地模型来源、用途、发布包文件集和 OCR 引擎固定策略 | Filled |
 
 ---
 
@@ -29,6 +30,7 @@ This project is a Chrome Manifest V3 browser extension for translating manga/com
 - **React is only in the popup** — content scripts use imperative DOM (`document.createElement`)
 - **No external state library** — `useState` in popup, `Map` in content script, `storage.local` in background
 - **Pipeline is lazy-loaded** — `import('../../pipeline/orchestrator')` only when user clicks translate
+- **本地模型固定清单** — 发布包只包含 detector、PP-OCRv6 medium、AOT inpaint、YOLO11n bubble；前端不提供 OCR 引擎切换
 - **Three separate entry points** — content.js, background.js, popup.js (Vite rollup)
 - **Custom Vite plugin** bridges ES module output to Chrome's classic script injection for content scripts
 

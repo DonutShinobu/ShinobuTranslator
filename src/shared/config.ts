@@ -144,7 +144,7 @@ function createDefaultLlmProfiles(): Record<LlmProvider, LlmProviderProfile> {
   };
 }
 
-export type OcrEngine = '48px' | 'paddleocr_v6_medium';
+export type OcrEngine = 'paddleocr_v6_medium';
 export type ProcessMode = 'translate' | 'erase' | 'original';
 
 export const geminiAppModelOptions: Array<{ value: GeminiAppModel; label: string }> = [
@@ -216,7 +216,7 @@ export const defaultExtensionSettings: ExtensionSettings = {
   showTypesetDebug: false,
   showEraseDebug: false,
   debugOptionsExpanded: false,
-  ocrEngine: '48px',
+  ocrEngine: 'paddleocr_v6_medium',
   processMode: 'translate',
   enableDebugLog: false,
 };
@@ -238,11 +238,8 @@ function sanitizeBoolean(value: unknown, fallback: boolean): boolean {
   return value;
 }
 
-function normalizeOcrEngine(value: unknown): OcrEngine {
-  if (value === 'paddleocr' || value === 'paddleocr_v6_small' || value === 'paddleocr_v6_medium') {
-    return 'paddleocr_v6_medium';
-  }
-  return '48px';
+function normalizeOcrEngine(_value: unknown): OcrEngine {
+  return 'paddleocr_v6_medium';
 }
 
 function normalizeProcessMode(value: unknown): ProcessMode {

@@ -301,7 +301,7 @@ const outputItems = batchResults.map((result, i) => ({
 ### 1. Scope / Trigger
 
 - 触发：新增或修改 PaddleOCR recognition 模型、字典、manifest 字段、OCR engine 设置项，或浏览器/Node PaddleOCR 冒烟测试。
-- 目标：用户可见和运行时注册的 Paddle 路径只保留 `paddleocr_v6_medium`，并保持 `48px` 默认 OCR 不受影响。
+- 目标：用户可见和运行时注册的 OCR 路径只保留 `paddleocr_v6_medium`，前端不再暴露 OCR 引擎切换。
 - 兼容：旧设置值 `paddleocr`、`paddleocr_v6_small`、`paddleocr_v6_medium` 都归一化到 `paddleocr_v6_medium`；不要再注册 v5/small provider。
 
 ### 2. Signatures
@@ -324,12 +324,13 @@ const outputItems = batchResults.map((result, i) => ({
   ```
 - `OcrEngine`
   ```typescript
-  type OcrEngine = "48px" | "paddleocr_v6_medium";
+  type OcrEngine = "paddleocr_v6_medium";
   ```
 - Provider registration:
   ```typescript
-  registerOcrProvider(ocr48pxProvider);
   registerOcrProvider(paddleocrV6MediumProvider);
+  registerOcrProviderAlias("builtin", "paddleocr_v6_medium");
+  registerOcrProviderAlias("48px", "paddleocr_v6_medium");
   registerOcrProviderAlias("paddleocr", "paddleocr_v6_medium");
   registerOcrProviderAlias("paddleocr_v6_small", "paddleocr_v6_medium");
   ```
@@ -340,10 +341,10 @@ const outputItems = batchResults.map((result, i) => ({
 
 ### 3. Contracts
 
-- `48px` remains the default and must not be renamed, repointed, or removed when changing Paddle settings.
-- The product Paddle provider name is `paddleocr_v6_medium`; popup label is `Paddle`.
+- The product OCR provider name is `paddleocr_v6_medium`; popup no longer shows OCR engine choices.
+- Legacy user setting values `48px` and `builtin` are aliases only. They exist to migrate saved settings, not to run the old 48px model.
 - The legacy user setting value `paddleocr` is an alias only. It exists to migrate saved settings, not to run the old v5 model.
-- `paddleocr_v6_small` is an alias only. Do not add it back to popup choices or provider registration without a new explicit product decision.
+- `paddleocr_v6_small` is an alias only. Do not add it back to popup choices or provider registration without a new explicit product decision and `.trellis/spec/frontend/runtime-models.md` update.
 - v6 medium uses `paddleocr_v6_dict.txt`. The dict was generated from v6 `inference.yml` and must preserve token order.
 - v6 official `inference.yml` declares `img_mode: BGR`, so the medium manifest entry must set `"channelOrder": "bgr"`.
 - CTC decode class count must satisfy `outputClasses === dictionaryEntries + 2` for blank plus appended half-width space.
@@ -357,14 +358,14 @@ const outputItems = batchResults.map((result, i) => ({
 | v6 dict generated with `trimEnd()` | Full-width space becomes an empty line; class count appears as 18709 instead of 18710 | Preserve raw scalar content when parsing `character_dict` |
 | v6 manifest omits `channelOrder: "bgr"` | Model runs but recognition quality is suspicious or unstable | Read `inference.yml` and set channel order per model |
 | `OcrEngine` accepts a new value but provider/model manifest is missing | User selection reaches `manifest 缺少模型定义` | Add provider registration, `ModelName`, manifest entry, and popup/config normalization together |
-| Popup shows multiple Paddle options | Users can select removed variants and saved settings drift | Keep only `48px` and `Paddle`; normalize old Paddle values to medium |
+| Popup shows OCR engine options | Users can select removed variants and saved settings drift | Remove the OCR engine switch; normalize legacy values to medium |
 | Browser smoke runs Paddle sessions concurrently | ONNX Worker can throw `Session already started` | Run Paddle smoke sessions sequentially |
 | Model output classes differ from dict size + 2 | CTC token ids are misaligned | Stop before UI exposure; regenerate dict or verify the matching model/dict pair |
 
 ### 5. Good/Base/Bad Cases
 
-- Good: Popup shows `48px` and `Paddle`; `Paddle` stores `paddleocr_v6_medium`.
-- Good: Old saved `paddleocr` and `paddleocr_v6_small` settings still run by aliasing to `paddleocr_v6_medium`.
+- Good: Popup has no OCR engine switch; the pipeline always stores and runs `paddleocr_v6_medium`.
+- Good: Old saved `48px`, `builtin`, `paddleocr`, and `paddleocr_v6_small` settings still run by aliasing to `paddleocr_v6_medium`.
 - Base: Historical v5/small benchmark data may stay in task research, but product runtime registration remains medium-only.
 - Bad: Reintroducing v5 or small as user-selectable OCR engines while the product decision is medium-only.
 - Bad: overwriting `paddleocr_rec` with a v6 ONNX URL; if the old manifest entry remains for historical/local baseline use, keep it distinct from medium.
@@ -376,8 +377,7 @@ const outputItems = batchResults.map((result, i) => ({
 - `npm run test -- tests/shared/config.test.ts tests/pipeline/ocr/paddleocrDecode.test.ts`
 - `npx tsc --noEmit --pretty false`
 - `npm run build`
-- `npm run bench:ocr-debug -- --ocr-engine=all --runs=2`
-- `npm run bench:browser-ocr-smoke`
+- `npm run bench:browser-paddle-profile -- --current-only --runs=3`
 
 ### 7. Wrong vs Correct
 

@@ -41,8 +41,8 @@
 ```markdown
 ## 已确认决策
 
-- 先接入 `PP-OCRv6_small_rec`。
-- small 通过浏览器冒烟测试后，再接入 `PP-OCRv6_medium_rec`。
+- 主分支 OCR 固定使用 `PP-OCRv6_medium_rec`。
+- 新增模型候选前，先更新 `.trellis/spec/frontend/runtime-models.md`。
 ```
 
 不推荐：
@@ -50,7 +50,6 @@
 ```markdown
 ## Confirmed Decisions
 
-- Try small first.
-- Try medium after small works.
+- Use the medium model.
+- Update the model docs first.
 ```
-

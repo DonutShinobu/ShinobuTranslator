@@ -26,10 +26,7 @@ const PADDLEOCR_CONFIDENCE_THRESHOLD = 0.2;
 const PADDLEOCR_BATCH_BUCKET_WIDTH = 32;
 const warmedPaddleSessionIds = new Set<string>();
 
-type PaddleOcrModelName = Extract<
-  ModelName,
-  'paddleocr_v6_small_rec' | 'paddleocr_v6_medium_rec'
->;
+type PaddleOcrModelName = Extract<ModelName, 'paddleocr_v6_medium_rec'>;
 
 type PaddleOcrRuntimeFlags = typeof globalThis & {
   __shinobuPaddleOcrWidthBucketBatch?: boolean;
@@ -116,7 +113,7 @@ function shouldUsePaddleColdFirstSerial(
 
 function resolvePaddleOcrModelName(defaultModelName: PaddleOcrModelName): PaddleOcrModelName {
   const configured = (globalThis as PaddleOcrRuntimeFlags).__shinobuPaddleOcrModelName;
-  return configured ?? defaultModelName;
+  return configured === 'paddleocr_v6_medium_rec' ? configured : defaultModelName;
 }
 
 function resolvePaddleSessionOptions(): OnnxSessionOptions | undefined {

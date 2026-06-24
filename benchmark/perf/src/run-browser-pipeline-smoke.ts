@@ -110,9 +110,10 @@ async function main(): Promise<void> {
   requireFile("onnxWorker.js");
   requireFile("models/models.json");
   requireFile("models/detector.onnx");
-  requireFile("models/ocr_encoder.onnx");
-  requireFile("models/ocr_decoder.onnx");
   requireFile("models/bubble.onnx");
+  requireFile("models/aot_inpaint_512.onnx");
+  requireFile("models/PP-OCRv6_medium_rec.onnx");
+  requireFile("models/paddleocr_v6_dict.txt");
   mkdirSync(USER_DATA_DIR, { recursive: true });
 
   const imagePath = pickImagePath();

@@ -56,18 +56,6 @@ const IconTranslate = () => (
   </svg>
 );
 
-const IconOCR = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M3 7V5a2 2 0 0 1 2-2h2" />
-    <path d="M17 3h2a2 2 0 0 1 2 2v2" />
-    <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
-    <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
-    <path d="M7 8h8" />
-    <path d="M7 12h10" />
-    <path d="M7 16h6" />
-  </svg>
-);
-
 const IconLLM = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M12 8V4H8" />
@@ -705,40 +693,22 @@ export function App() {
             </section>
 
             {showLocalPipelineOptions ? (
-              <>
-                <section className="panel option-panel">
-                  <div className="panel-title">
-                    <IconOCR />
-                    OCR 引擎
-                  </div>
-                  <SegmentedControl
-                    options={[
-                      { value: '48px', label: '48px' },
-                      { value: 'paddleocr_v6_medium', label: 'Paddle' },
-                    ]}
-                    value={settings.ocrEngine}
-                    onChange={(v) => updateField('ocrEngine', v as ExtensionSettings['ocrEngine'])}
-                    disabled={loading}
-                  />
-                </section>
-
-                <section className="panel option-panel">
-                  <div className="panel-title">
-                    <IconMode />
-                    模式
-                  </div>
-                  <SegmentedControl
-                    options={[
-                      { value: 'translate', label: '翻译' },
-                      { value: 'original', label: '原文' },
-                      { value: 'erase', label: '去字' },
-                    ]}
-                    value={settings.processMode}
-                    onChange={(v) => updateField('processMode', v as ExtensionSettings['processMode'])}
-                    disabled={loading}
-                  />
-                </section>
-              </>
+              <section className="panel option-panel">
+                <div className="panel-title">
+                  <IconMode />
+                  模式
+                </div>
+                <SegmentedControl
+                  options={[
+                    { value: 'translate', label: '翻译' },
+                    { value: 'original', label: '原文' },
+                    { value: 'erase', label: '去字' },
+                  ]}
+                  value={settings.processMode}
+                  onChange={(v) => updateField('processMode', v as ExtensionSettings['processMode'])}
+                  disabled={loading}
+                />
+              </section>
             ) : null}
 
             {settings.translator === 'llm' ? (

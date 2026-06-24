@@ -150,16 +150,16 @@ sourceLineGeometries: region.groundTruth.columns.map(groundTruthColumnToSourceGe
 ### 2. Signatures
 
 ```bash
-npm run bench:browser-paddle-profile -- [--image=<local-image>] [--runs=3] [--process-mode=erase|original|translate] [--paddle-batch|--paddle-serial] [--paddle-provider=default|webgpu|webnn|wasm] [--paddle-cold-first-serial|--paddle-no-cold-first-serial] [--paddle-model=medium|small] [--paddle-runtime-probe=legacy|prepare|warmup] [--paddle-prepare|--paddle-warmup] [--paddle-probe-schedule=detect-start|after-detect|bubble-start|after-bubble|ocr-start] [--inpaint-probe-schedule=current|detect-start|after-detect|bubble-start|after-bubble|ocr-start] [--paddle-fixed-width=<px>] [--paddle-graph-capture]
+npm run bench:browser-paddle-profile -- [--image=<local-image>] [--runs=3] [--process-mode=erase|original|translate] [--paddle-batch|--paddle-serial] [--paddle-provider=default|webgpu|webnn|wasm] [--paddle-cold-first-serial|--paddle-no-cold-first-serial] [--paddle-model=medium] [--paddle-runtime-probe=legacy|prepare|warmup] [--paddle-prepare|--paddle-warmup] [--paddle-probe-schedule=detect-start|after-detect|bubble-start|after-bubble|ocr-start] [--inpaint-probe-schedule=current|detect-start|after-detect|bubble-start|after-bubble|ocr-start] [--paddle-fixed-width=<px>] [--paddle-graph-capture]
 npm run bench:browser-x-current -- --ocr-engine=paddleocr_v6_medium [--image=<local-image>] [--runs=3]
 ```
 
-- `--ocr-engine=paddleocr_v6_medium` 仅支持 `--current-only`/`bench:browser-x-current` 语义；旧 AR 对比模式只用于 `48px`。
+- `--ocr-engine=paddleocr_v6_medium` 是当前浏览器 profile 的唯一 OCR 语义；旧 AR 对比模式不再用于当前发布包。
 - `--image` 读取本地 fixture 并转为 data URL，避免 X 页面登录/网络状态影响性能判断。
 - `--paddle-batch` 强制 width-bucket；`--paddle-serial` 强制逐 region；未传时使用 runtime 默认 provider-aware 策略。
 - `--paddle-provider` 只用于 benchmark 内临时覆盖 Paddle recognition provider，用于回答 WebGPU/WebNN/WASM 对照问题；正式 pipeline 默认 fallback 不变。
 - `--paddle-cold-first-serial`/`--paddle-no-cold-first-serial` 只用于 benchmark 对照 WebGPU cold session 的首个 inference 分组策略；默认策略由 Paddle provider 决定。
-- `--paddle-model=small` 只注册并选择 `paddleocr_v6_small_rec` 作为 benchmark 候选；不得把 small 暴露为用户可见默认选项，除非另有产品任务。
+- `--paddle-model` 当前只允许 `medium`；`small` 属于历史实验候选，当前主分支不发布对应模型文件，也不提供前端模型选项。
 - `--paddle-runtime-probe=prepare` 在用户触发 pipeline 后的 runtime probe 中准备 Paddle session/字典；`--paddle-warmup` 进一步执行固定 shape warmup inference。
 - `--paddle-probe-schedule` 只用于 benchmark 调度实验，控制 Paddle OCR runtime probe 的启动点；默认 `detect-start` 保持既有行为。
 - `--inpaint-probe-schedule` 只用于 benchmark 调度实验，控制 inpaint runtime probe 的启动点；默认 `current` 保持既有行为，即 OCR runtime probe 完成后、OCR inference 前启动。
@@ -181,7 +181,8 @@ npm run bench:browser-x-current -- --ocr-engine=paddleocr_v6_medium [--image=<lo
 
 | Condition | Symptom | Fix |
 | --- | --- | --- |
-| `dist` 未 build 或 Paddle 模型缺失 | benchmark 启动时报 missing dist asset | 先运行 `npm run build`，确认 `PP-OCRv6_medium_rec.onnx` 和 `paddleocr_v6_dict.txt` 存在 |
+| `dist` 未 build 或当前发布模型缺失 | benchmark 启动时报 missing dist asset | 先运行 `npm run build`，确认 `detector.onnx`、`bubble.onnx`、`aot_inpaint_512.onnx`、`PP-OCRv6_medium_rec.onnx` 和 `paddleocr_v6_dict.txt` 存在 |
+| 传入 `--paddle-model=small` | benchmark 试图引用已删除模型 | 使用默认 medium；如需重新评估 small，先按 frontend runtime-models spec 重新引入候选 |
 | 在非 current-only 模式传 Paddle engine | 旧 AR 对比语义混乱 | 抛错，要求使用 `bench:browser-paddle-profile` 或 `--current-only` |
 | 同名 CLI 参数由 npm script 默认值和用户 override 同时提供 | 用户 override 被忽略 | 参数解析取最后一个 `--name=value` |
 | 只看 Node CPU profile | WebGPU shape/session 行为被误判 | 必须补浏览器 WebGPU profile，再决定默认策略 |
@@ -194,7 +195,6 @@ npm run bench:browser-x-current -- --ocr-engine=paddleocr_v6_medium [--image=<lo
 ### 5. Good/Base/Bad Cases
 
 - Good：本地 fixture 用 `--runs=3` 跑默认 Paddle WebGPU，报告 cold OCR、warm median、Paddle inference/preprocess 和全流程 stage timings。
-- Good：用 `--paddle-model=small` 与 medium baseline 同图同 runs 对照，报告 cold total、warm median 和样本文本差异，再决定是否进入产品验证。
 - Good：用 `--paddle-prepare` 验证用户触发后的懒准备收益，同时检查 detect/bubble 是否被 worker/GPU 争用拖慢。
 - Good：对 prepare 调度实验使用同一图片、同一 runs，对比 `detect-start` / `after-detect` / `bubble-start` / `after-bubble` / `ocr-start`，并记录 `inpaintRuntimeProbeSchedule` 是否为默认。
 - Base：用 `--paddle-serial` 跑对照，只比较 OCR 内部 inference/run count，不把 inpaint/detect 抖动误读为 batch 策略收益。
@@ -209,10 +209,9 @@ npm run bench:browser-x-current -- --ocr-engine=paddleocr_v6_medium [--image=<lo
 - `npm run test`
 - `npm run build`
 - `npm run bench:browser-paddle-profile -- --image=<fixture> --runs=3`
-- `npm run bench:browser-paddle-profile -- --image=<fixture> --runs=3 --paddle-model=small`
 - `npm run bench:browser-paddle-profile -- --image=<fixture> --runs=3 --paddle-prepare`
 - 调度实验：`npm run bench:browser-paddle-profile -- --image=<fixture> --runs=3 --paddle-prepare --paddle-probe-schedule=<schedule> [--inpaint-probe-schedule=<schedule>]`
-- 如新增 Paddle 模型候选，先运行 `npm run models:check-paddle-ocr -- public/models/<model>.onnx public/models/paddleocr_v6_dict.txt`。
+- 如新增 Paddle 模型候选，先更新 `.trellis/spec/frontend/runtime-models.md`，再运行 `npm run models:check-paddle-ocr -- public/models/<model>.onnx public/models/paddleocr_v6_dict.txt`。
 - 如验证 graph capture，失败也要记录原始错误；只有实现 GPU external input/output 后才把它列为通过项。
 - 如改动 content/worker bundle 边界，再运行 `node --check dist/content.js dist/background.js dist/chunks/orchestrator.js dist/chunks/onnxWorkerBridge.js dist/onnxWorker.js`。
 
@@ -224,7 +223,7 @@ npm run bench:browser-x-current -- --ocr-engine=paddleocr_v6_medium [--image=<lo
 npm run bench:browser-x-current -- --runs=3
 ```
 
-这会使用默认 `48px`，不能回答 Paddle OCR/WebGPU 瓶颈。
+这会混用历史 X 对比入口的默认参数，不能作为当前 Paddle OCR/WebGPU profile 结论。
 
 #### Correct
 
@@ -233,14 +232,6 @@ npm run bench:browser-paddle-profile -- --image=benchmark/color/fixtures/typeset
 ```
 
 报告中检查 `ocrSummary.paddle.provider === "webgpu"`、`batchMode`、`inferenceRunCount` 和各 stage median 后再下结论。
-
-#### Correct: small 候选验证
-
-```bash
-npm run bench:browser-paddle-profile -- --image=benchmark/color/fixtures/typeset-debug-log-2026-05-23T06-03-39-877Z.png --runs=3 --paddle-model=small
-```
-
-报告中同时检查 `ocrSummary.paddle.modelName === "paddleocr_v6_small_rec"`、cold total、warm median 和 `sampleTexts`，不要只用模型体积推断收益。
 
 #### Correct: prepare 调度验证
 

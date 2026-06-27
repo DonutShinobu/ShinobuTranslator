@@ -17,6 +17,7 @@ describe("isRuntimeMessage", () => {
     expect(isRuntimeMessage({
       type: "mt:llm-chat-completions",
       body: { model: "gpt-5.4-mini", messages: [] },
+      diagnosticRunId: "run-1",
     })).toBe(true);
   });
 
@@ -30,6 +31,7 @@ describe("isRuntimeMessage", () => {
         contentType: "image/png",
         filename: "source.png",
       },
+      diagnosticRunId: "run-1",
     })).toBe(true);
     expect(isRuntimeMessage({
       type: "mt:gemini-api-image-translate",
@@ -38,12 +40,35 @@ describe("isRuntimeMessage", () => {
         contentType: "image/png",
         filename: "source.png",
       },
+      diagnosticRunId: "run-1",
+    })).toBe(true);
+  });
+
+  it("accepts diagnostic log messages", () => {
+    expect(isRuntimeMessage({ type: "mt:diagnostic-log-export" })).toBe(true);
+    expect(isRuntimeMessage({ type: "mt:diagnostic-log-clear" })).toBe(true);
+    expect(isRuntimeMessage({
+      type: "mt:diagnostic-log-event",
+      event: {
+        id: "event-1",
+        sessionId: "session-1",
+        timestamp: "2026-06-27T09:28:22.875Z",
+        level: "info",
+        category: "llm.api",
+        source: { context: "content", module: "translators/llm.ts" },
+        message: "DeepSeek 请求开始",
+      },
     })).toBe(true);
   });
 
   it("rejects malformed LLM proxy messages", () => {
     expect(isRuntimeMessage({ type: "mt:llm-chat-completions" })).toBe(false);
     expect(isRuntimeMessage({ type: "mt:llm-chat-completions", body: { model: "gpt-5.4-mini" } })).toBe(false);
+    expect(isRuntimeMessage({
+      type: "mt:llm-chat-completions",
+      body: { model: "gpt-5.4-mini", messages: [] },
+      diagnosticRunId: 1,
+    })).toBe(false);
   });
 
   it("rejects malformed Gemini App image translation messages", () => {
@@ -53,8 +78,23 @@ describe("isRuntimeMessage", () => {
       image: { base64: "abc", contentType: "image/png" },
     })).toBe(false);
     expect(isRuntimeMessage({
+      type: "mt:gemini-app-image-translate",
+      image: { base64: "abc", contentType: "image/png", filename: "source.png" },
+      diagnosticRunId: 1,
+    })).toBe(false);
+    expect(isRuntimeMessage({
       type: "mt:gemini-api-image-translate",
       image: { base64: "abc", filename: "source.png" },
+    })).toBe(false);
+  });
+
+  it("rejects malformed diagnostic log events", () => {
+    expect(isRuntimeMessage({
+      type: "mt:diagnostic-log-event",
+      event: {
+        id: "event-1",
+        sessionId: "session-1",
+      },
     })).toBe(false);
   });
 });

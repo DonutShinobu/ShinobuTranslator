@@ -1,4 +1,5 @@
 import type { ExtensionSettings } from './config';
+import type { DiagnosticLogEvent, DiagnosticLogTextExport } from './diagnosticLog';
 import type { OpenAiOAuthStatusInfo } from './openaiOAuth';
 import type { StageTiming } from '../types';
 import { requireChromeApi } from './chrome';
@@ -64,6 +65,7 @@ export type LlmChatCompletionRequestBody = {
 export type LlmChatCompletionsMessage = {
   type: 'mt:llm-chat-completions';
   body: LlmChatCompletionRequestBody;
+  diagnosticRunId?: string;
 };
 
 type ImageTranslateMessageImage = {
@@ -75,11 +77,13 @@ type ImageTranslateMessageImage = {
 export type GeminiAppImageTranslateMessage = {
   type: 'mt:gemini-app-image-translate';
   image: ImageTranslateMessageImage;
+  diagnosticRunId?: string;
 };
 
 export type GeminiApiImageTranslateMessage = {
   type: 'mt:gemini-api-image-translate';
   image: ImageTranslateMessageImage;
+  diagnosticRunId?: string;
 };
 
 export type CloudImageTranslateMetadata = {
@@ -121,6 +125,19 @@ export type ShortcutTranslateHoverMessage = {
   type: 'mt:shortcut-translate-hover';
 };
 
+export type DiagnosticLogEventMessage = {
+  type: 'mt:diagnostic-log-event';
+  event: DiagnosticLogEvent;
+};
+
+export type DiagnosticLogExportMessage = {
+  type: 'mt:diagnostic-log-export';
+};
+
+export type DiagnosticLogClearMessage = {
+  type: 'mt:diagnostic-log-clear';
+};
+
 export type RuntimeMessage =
   | GetSettingsMessage
   | SetSettingsMessage
@@ -134,6 +151,9 @@ export type RuntimeMessage =
   | LlmChatCompletionsMessage
   | GeminiAppImageTranslateMessage
   | GeminiApiImageTranslateMessage
+  | DiagnosticLogEventMessage
+  | DiagnosticLogExportMessage
+  | DiagnosticLogClearMessage
   | ContextMenuTranslateMessage
   | StartScreenshotTranslateMessage
   | ShortcutTranslateHoverMessage;
@@ -219,6 +239,19 @@ export type RuntimeSuccessResponse =
       ok: true;
       type: 'mt:shortcut-translate-hover';
     }
+  | {
+      ok: true;
+      type: 'mt:diagnostic-log-event';
+    }
+  | {
+      ok: true;
+      type: 'mt:diagnostic-log-export';
+      log: DiagnosticLogTextExport;
+    }
+  | {
+      ok: true;
+      type: 'mt:diagnostic-log-clear';
+    }
 
 export type RuntimeErrorDetail = {
   title: string;
@@ -242,7 +275,11 @@ function isLlmChatCompletionsMessage(value: Record<string, unknown>): value is L
   if (value.type !== 'mt:llm-chat-completions' || !isRecord(value.body)) {
     return false;
   }
-  return typeof value.body.model === 'string' && Array.isArray(value.body.messages);
+  return (
+    typeof value.body.model === 'string' &&
+    Array.isArray(value.body.messages) &&
+    (value.diagnosticRunId === undefined || typeof value.diagnosticRunId === 'string')
+  );
 }
 
 function isGeminiAppImageTranslateMessage(value: Record<string, unknown>): value is GeminiAppImageTranslateMessage {
@@ -252,7 +289,8 @@ function isGeminiAppImageTranslateMessage(value: Record<string, unknown>): value
   return (
     typeof value.image.base64 === 'string' &&
     typeof value.image.contentType === 'string' &&
-    typeof value.image.filename === 'string'
+    typeof value.image.filename === 'string' &&
+    (value.diagnosticRunId === undefined || typeof value.diagnosticRunId === 'string')
   );
 }
 
@@ -263,7 +301,25 @@ function isGeminiApiImageTranslateMessage(value: Record<string, unknown>): value
   return (
     typeof value.image.base64 === 'string' &&
     typeof value.image.contentType === 'string' &&
-    typeof value.image.filename === 'string'
+    typeof value.image.filename === 'string' &&
+    (value.diagnosticRunId === undefined || typeof value.diagnosticRunId === 'string')
+  );
+}
+
+function isDiagnosticLogEventMessage(value: Record<string, unknown>): value is DiagnosticLogEventMessage {
+  if (value.type !== 'mt:diagnostic-log-event' || !isRecord(value.event)) {
+    return false;
+  }
+  const event = value.event;
+  return (
+    typeof event.id === 'string' &&
+    typeof event.sessionId === 'string' &&
+    typeof event.timestamp === 'string' &&
+    typeof event.level === 'string' &&
+    typeof event.category === 'string' &&
+    isRecord(event.source) &&
+    typeof event.source.context === 'string' &&
+    typeof event.message === 'string'
   );
 }
 
@@ -282,11 +338,14 @@ export function isRuntimeMessage(value: unknown): value is RuntimeMessage {
     type === 'mt:openai-oauth-logout' ||
     type === 'mt:gemini-app-auth-status' ||
     type === 'mt:gemini-app-auth-login' ||
+    type === 'mt:diagnostic-log-export' ||
+    type === 'mt:diagnostic-log-clear' ||
     type === 'mt:context-menu-translate' ||
     type === 'mt:start-screenshot-translate' ||
     type === 'mt:shortcut-translate-hover' ||
     isGeminiAppImageTranslateMessage(value) ||
     isGeminiApiImageTranslateMessage(value) ||
+    isDiagnosticLogEventMessage(value) ||
     isLlmChatCompletionsMessage(value)
   );
 }

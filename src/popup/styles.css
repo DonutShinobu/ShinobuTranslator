@@ -537,6 +537,47 @@ html, body {
   line-height: 1.2;
 }
 
+.debug-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 6px;
+  animation: debugRowIn 0.2s ease-out;
+}
+
+.debug-download-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-label);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.debug-download-button svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+.debug-download-button:hover:not(:disabled) {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.debug-download-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 @keyframes debugRowIn {
   from { opacity: 0; transform: translateY(-3px); }
   to { opacity: 1; transform: translateY(0); }

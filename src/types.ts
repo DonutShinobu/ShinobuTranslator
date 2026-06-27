@@ -73,6 +73,7 @@ export type PipelineConfig = {
   /** Internal benchmark override; production OCR picks its batch compaction policy automatically. */
   ocrCompactActiveBatch?: boolean;
   processMode: 'translate' | 'erase' | 'original';
+  diagnosticRunId?: string;
 };
 
 export type RuntimeStageStatus = {

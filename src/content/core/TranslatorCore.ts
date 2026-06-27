@@ -6,6 +6,13 @@ import {
   usesNanoBananaImagePipeline,
 } from '../../shared/config';
 import type { ExtensionSettings } from '../../shared/config';
+import {
+  sanitizeDiagnosticUrl,
+  sanitizeExtensionSettings,
+  sanitizePipelineConfig,
+  toDiagnosticError,
+} from '../../shared/diagnosticLog';
+import { createDiagnosticRunId, emitDiagnosticLog } from '../../shared/diagnosticLogClient';
 import type {
   ErrorDetailCardData,
   ImageTarget,
@@ -14,11 +21,7 @@ import type {
   PipelineProgress,
   ReadingModeBarUi,
   SiteAdapter,
-  TextRegion,
-  TypesetDebugDownloadData,
   UrlTarget,
-  OcrRegionLogItem,
-  ModelRegionLogItem,
   ProgressJankEntry,
   ProgressJankReport,
 } from './types';
@@ -38,7 +41,6 @@ import {
   createUiElements,
   createReadingModeBarUi,
   createScreenshotResultUi,
-  handleDebugDownload,
   injectStyles,
   repositionScreenshotResultOverlay,
   renderScreenshotResultUi,
@@ -97,70 +99,13 @@ function clearTimingDisplay(state: PhotoState): void {
   state.stageTimingCard = undefined;
 }
 
-function cloneTextRegionBox(region: TextRegion): TextRegion['box'] {
-  return { ...region.box };
-}
-
-function cloneTextRegionQuad(region: TextRegion): TextRegion['quad'] {
-  if (!region.quad) return undefined;
-  return region.quad.map((point) => ({ x: point.x, y: point.y })) as TextRegion['quad'];
-}
-
-function toTypesetDebugDownloadData(
-  pageUrl: string,
-  sourceImageUrl: string,
-  artifacts: PipelineArtifacts,
-  progressJank: ProgressJankReport | null,
-): TypesetDebugDownloadData | undefined {
-  if (!artifacts.typesetDebugLog) return undefined;
-  const ocrRegions: OcrRegionLogItem[] = artifacts.detectedRegions.map((region) => ({
-    regionId: region.id,
-    direction: region.direction,
-    box: cloneTextRegionBox(region),
-    quad: cloneTextRegionQuad(region),
-    sourceText: region.sourceText,
-    fgColor: region.fgColor,
-    bgColor: region.bgColor,
-  }));
-  const modelRegions: ModelRegionLogItem[] = artifacts.detectedRegions.map((region) => ({
-    regionId: region.id,
-    translatedTextRaw: region.translatedText,
-    translatedColumnsRaw: region.translatedColumns ? [...region.translatedColumns] : [],
-  }));
-  return {
-    exportedAt: new Date().toISOString(),
-    pageUrl,
-    sourceImageUrl,
-    stageTimings: artifacts.stageTimings.map((t) => ({ ...t })),
-    runtimeStages: artifacts.runtimeStages.map((s) => ({ ...s })),
-    translationDebug: artifacts.translationDebug ? { ...artifacts.translationDebug } : null,
-    ocrDebug: artifacts.ocrDebug
-      ? {
-          ...artifacts.ocrDebug,
-          preprocessPerRegionMs: artifacts.ocrDebug.preprocessPerRegionMs.map((i) => ({ ...i })),
-          chunks: artifacts.ocrDebug.chunks.map((chunk) => ({
-            ...chunk,
-            regionIds: [...chunk.regionIds],
-            decodeSteps: chunk.decodeSteps.map((s) => ({ ...s })),
-            fallbackRegions: chunk.fallbackRegions.map((r) => ({ ...r })),
-          })),
-          colorFallbackRegions: artifacts.ocrDebug.colorFallbackRegions.map((r) => ({ ...r })),
-        }
-      : null,
-    progressJank,
-    ocrRegions,
-    modelRegions,
-    typeset: artifacts.typesetDebugLog,
-  };
-}
-
 function createProgressJankMonitor(entry: ProgressJankEntry): ProgressJankMonitor {
   const monitor = new ProgressJankMonitor(entry);
   monitor.start();
   return monitor;
 }
 
-function finishProgressJankMonitor(monitor: ProgressJankMonitor | null): ProgressJankReport | null {
+function finishProgressJankMonitor(monitor: ProgressJankMonitor | null, diagnosticRunId?: string): ProgressJankReport | null {
   if (!monitor) {
     return null;
   }
@@ -168,8 +113,59 @@ function finishProgressJankMonitor(monitor: ProgressJankMonitor | null): Progres
   if (!loggedProgressJankReports.has(report.runId)) {
     loggedProgressJankReports.add(report.runId);
     console.info('[shinobu:jank]', report);
+    emitDiagnosticLog({
+      runId: diagnosticRunId ?? report.runId,
+      level: 'info',
+      category: 'ui.perf',
+      source: { context: 'content', module: 'progressJank.ts' },
+      message: `进度 UI 卡顿报告：${report.entry}`,
+      data: { progressJank: report },
+    });
   }
   return report;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function getPipelineArtifactsFromError(error: unknown): PipelineArtifacts | null {
+  if (!isRecord(error) || !('artifacts' in error)) {
+    return null;
+  }
+  const artifacts = error.artifacts;
+  if (!isRecord(artifacts) || !Array.isArray(artifacts.stageTimings)) {
+    return null;
+  }
+  return artifacts as PipelineArtifacts;
+}
+
+function toFileDiagnosticData(file: File): Record<string, unknown> {
+  return {
+    name: file.name,
+    type: file.type,
+    size: file.size,
+    lastModified: file.lastModified,
+  };
+}
+
+function toPipelineArtifactsDiagnosticData(
+  artifacts: PipelineArtifacts,
+  progressJank: ProgressJankReport | null,
+): Record<string, unknown> {
+  return {
+    image: {
+      width: artifacts.original.naturalWidth,
+      height: artifacts.original.naturalHeight,
+    },
+    detectedRegionCount: artifacts.detectedRegions.length,
+    stageTimings: artifacts.stageTimings,
+    runtimeStages: artifacts.runtimeStages,
+    translationDebug: artifacts.translationDebug,
+    ocrDebug: artifacts.ocrDebug,
+    progressJank,
+    typesetDebug: artifacts.typesetDebugLog,
+  };
 }
 
 type MountedImage = {
@@ -186,6 +182,17 @@ type PipelineRunSettings = {
   stageTimingCardExpanded: boolean;
   showTypesetDebug: boolean;
   enableDebugLog: boolean;
+};
+
+type PipelineRunFileOptions = {
+  state: PhotoState;
+  file: File;
+  runSettings: PipelineRunSettings;
+  runStartAt: number;
+  includeElapsedText: boolean;
+  onProgress: (stageText: string) => void;
+  jankMonitor?: ProgressJankMonitor;
+  diagnosticRunId?: string;
 };
 
 let runPipelineLoader: Promise<typeof import('../../pipeline/orchestrator')> | null = null;
@@ -328,10 +335,6 @@ export class TranslatorCore {
         const currentTarget = this.mounted.get(key)?.target ?? target;
         void this.handleTranslateClick(currentTarget);
       });
-      ui.debugDownloadButton.addEventListener('click', () => {
-        const state = this.states.get(key);
-        if (state) handleDebugDownload(state);
-      });
       ui.stageTimingCardToggleButton.addEventListener('click', () => {
         const state = this.states.get(key);
         if (state) this.toggleStageTimingCard(state, () => this.renderForKey(key));
@@ -432,25 +435,73 @@ export class TranslatorCore {
     };
   }
 
-  private async downloadImageFile(originalUrl: string): Promise<{
+  private async downloadImageFile(originalUrl: string, diagnosticRunId?: string): Promise<{
     file: File;
     blob: Blob;
   }> {
-    const downloadResponse = await sendRuntimeMessage({
-      type: 'mt:download-image',
-      imageUrl: originalUrl,
-    });
-    if (!downloadResponse.ok || downloadResponse.type !== 'mt:download-image') {
-      throw new Error(downloadResponse.ok ? '下载图片失败' : downloadResponse.error);
+    const startedAt = performance.now();
+    if (diagnosticRunId) {
+      emitDiagnosticLog({
+        runId: diagnosticRunId,
+        level: 'info',
+        category: 'image.io',
+        source: { context: 'content', module: 'TranslatorCore.ts' },
+        message: '开始下载原图',
+        data: {
+          originalUrl: sanitizeDiagnosticUrl(originalUrl),
+        },
+      });
     }
+    try {
+      const downloadResponse = await sendRuntimeMessage({
+        type: 'mt:download-image',
+        imageUrl: originalUrl,
+      });
+      if (!downloadResponse.ok || downloadResponse.type !== 'mt:download-image') {
+        throw new Error(downloadResponse.ok ? '下载图片失败' : downloadResponse.error);
+      }
 
-    const blob = base64ToBlob(downloadResponse.base64, downloadResponse.contentType);
-    const suffix = inferFileExtension(downloadResponse.contentType, downloadResponse.sourceUrl);
-    const file = new File([blob], `source.${suffix}`, { type: blob.type || 'image/jpeg' });
-    return {
-      file,
-      blob,
-    };
+      const blob = base64ToBlob(downloadResponse.base64, downloadResponse.contentType);
+      const suffix = inferFileExtension(downloadResponse.contentType, downloadResponse.sourceUrl);
+      const file = new File([blob], `source.${suffix}`, { type: blob.type || 'image/jpeg' });
+      if (diagnosticRunId) {
+        emitDiagnosticLog({
+          runId: diagnosticRunId,
+          level: 'info',
+          category: 'image.io',
+          source: { context: 'content', module: 'TranslatorCore.ts' },
+          message: '原图下载完成',
+          data: {
+            originalUrl: sanitizeDiagnosticUrl(originalUrl),
+            sourceUrl: sanitizeDiagnosticUrl(downloadResponse.sourceUrl),
+            contentType: downloadResponse.contentType,
+            blobSize: blob.size,
+            base64Length: downloadResponse.base64.length,
+            durationMs: performance.now() - startedAt,
+          },
+        });
+      }
+      return {
+        file,
+        blob,
+      };
+    } catch (error) {
+      if (diagnosticRunId) {
+        emitDiagnosticLog({
+          runId: diagnosticRunId,
+          level: 'error',
+          category: 'image.io',
+          source: { context: 'content', module: 'TranslatorCore.ts' },
+          message: `原图下载失败：${toErrorMessage(error)}`,
+          data: {
+            originalUrl: sanitizeDiagnosticUrl(originalUrl),
+            durationMs: performance.now() - startedAt,
+          },
+          error: toDiagnosticError(error),
+        });
+      }
+      throw error;
+    }
   }
 
   private updatePipelineProgress(
@@ -484,8 +535,9 @@ export class TranslatorCore {
     includeElapsedText: boolean;
     onProgress: (stageText: string) => void;
     jankMonitor?: ProgressJankMonitor;
+    diagnosticRunId?: string;
   }): Promise<void> {
-    const { state, file, runSettings, runStartAt, includeElapsedText, onProgress, jankMonitor } = options;
+    const { state, file, runSettings, runStartAt, includeElapsedText, onProgress, jankMonitor, diagnosticRunId } = options;
     const modelLabel = this.getNanoBananaModelLabel(runSettings.settings);
     state.stageText = `${modelLabel} 全图翻译中`;
     jankMonitor?.setStage(usesGeminiApiImagePipeline(runSettings.settings) ? 'gemini_api' : 'gemini_app', `${modelLabel} 生成译图`, state.stageText);
@@ -501,10 +553,12 @@ export class TranslatorCore {
       ? await sendRuntimeMessage({
           type: 'mt:gemini-api-image-translate',
           image,
+          diagnosticRunId,
         })
       : await sendRuntimeMessage({
           type: 'mt:gemini-app-image-translate',
           image,
+          diagnosticRunId,
         });
     if (!response.ok) {
       state.errorDetailCard = toErrorDetailCard(response.errorDetail);
@@ -554,26 +608,68 @@ export class TranslatorCore {
     state.status = 'translated';
   }
 
-  private async runPipelineFromFile(options: {
-    state: PhotoState;
-    file: File;
-    runSettings: PipelineRunSettings;
-    runStartAt: number;
-    includeElapsedText: boolean;
-    onProgress: (stageText: string) => void;
-    jankMonitor?: ProgressJankMonitor;
-  }): Promise<void> {
+  private async runPipelineFromFile(options: PipelineRunFileOptions): Promise<void> {
     const { state, file, runSettings, runStartAt, includeElapsedText, onProgress, jankMonitor } = options;
+    const diagnosticRunId = options.diagnosticRunId ?? (runSettings.enableDebugLog ? createDiagnosticRunId('run') : undefined);
     let progressJank: ProgressJankReport | null = null;
+    const pipelineConfig = toPipelineConfig(runSettings.settings);
+    if (diagnosticRunId) {
+      pipelineConfig.diagnosticRunId = diagnosticRunId;
+    }
+    if (diagnosticRunId) {
+      emitDiagnosticLog({
+        runId: diagnosticRunId,
+        level: 'info',
+        category: 'app.config',
+        source: { context: 'content', module: 'TranslatorCore.ts' },
+        message: '开始翻译 run',
+        data: {
+          runStatus: 'running',
+          label: '图片翻译',
+          settings: sanitizeExtensionSettings(runSettings.settings),
+          pipelineConfig: sanitizePipelineConfig(pipelineConfig),
+          pageUrl: sanitizeDiagnosticUrl(window.location.href),
+          originalUrl: sanitizeDiagnosticUrl(state.originalUrl),
+          file: toFileDiagnosticData(file),
+        },
+      });
+    }
     try {
       if (usesNanoBananaImagePipeline(runSettings.settings)) {
-        await this.runNanoBananaImageTranslateFromFile(options);
-        progressJank = finishProgressJankMonitor(jankMonitor ?? null);
+        await this.runNanoBananaImageTranslateFromFile({ ...options, diagnosticRunId });
+        progressJank = finishProgressJankMonitor(jankMonitor ?? null, diagnosticRunId);
+        if (diagnosticRunId) {
+          emitDiagnosticLog({
+            runId: diagnosticRunId,
+            level: 'info',
+            category: 'pipeline.stage',
+            source: { context: 'content', module: 'TranslatorCore.ts' },
+            message: 'Nano Banana 全图翻译完成',
+            data: {
+              runStatus: 'success',
+              durationMs: performance.now() - runStartAt,
+              progressJank,
+            },
+          });
+        }
         return;
       }
 
       const runPipeline = await getRunPipeline();
-      const artifacts = await runPipeline(file, toPipelineConfig(runSettings.settings), (progress: PipelineProgress) => {
+      const artifacts = await runPipeline(file, pipelineConfig, (progress: PipelineProgress) => {
+        if (diagnosticRunId) {
+          emitDiagnosticLog({
+            runId: diagnosticRunId,
+            level: 'info',
+            category: 'pipeline.stage',
+            source: { context: 'content', module: 'orchestrator.ts' },
+            message: `进入阶段：${getStageLabel(progress.stage)}`,
+            data: {
+              stage: progress.stage,
+              detail: progress.detail,
+            },
+          });
+        }
         this.updatePipelineProgress(state, progress, onProgress, jankMonitor);
       });
 
@@ -598,29 +694,29 @@ export class TranslatorCore {
           : await canvasToBlob(artifacts.debugOriginalCanvas as HTMLCanvasElement);
         state.debugOriginalUrl = URL.createObjectURL(debugBlob);
       }
-      const sourceImageDataUrl = runSettings.enableDebugLog
-        ? jankMonitor
-          ? jankMonitor.measureSync('debug:source-image-data-url', () => {
-              const c = document.createElement('canvas');
-              c.width = artifacts.original.naturalWidth;
-              c.height = artifacts.original.naturalHeight;
-              const ctx = c.getContext('2d');
-              if (ctx) ctx.drawImage(artifacts.original as CanvasImageSource, 0, 0);
-              return c.toDataURL('image/png');
-            })
-          : (() => {
-              const c = document.createElement('canvas');
-              c.width = artifacts.original.naturalWidth;
-              c.height = artifacts.original.naturalHeight;
-              const ctx = c.getContext('2d');
-              if (ctx) ctx.drawImage(artifacts.original as CanvasImageSource, 0, 0);
-              return c.toDataURL('image/png');
-            })()
-        : state.originalUrl;
-      progressJank = finishProgressJankMonitor(jankMonitor ?? null);
-      state.debugLogData = runSettings.enableDebugLog
-        ? toTypesetDebugDownloadData(window.location.href, sourceImageDataUrl, artifacts, progressJank)
-        : undefined;
+      progressJank = finishProgressJankMonitor(jankMonitor ?? null, diagnosticRunId);
+      state.debugLogData = undefined;
+      if (diagnosticRunId) {
+        emitDiagnosticLog({
+          runId: diagnosticRunId,
+          level: 'info',
+          category: 'pipeline.typeset',
+          source: { context: 'content', module: 'TranslatorCore.ts' },
+          message: '本地 pipeline artifacts 已汇总',
+          data: toPipelineArtifactsDiagnosticData(artifacts, progressJank),
+        });
+        emitDiagnosticLog({
+          runId: diagnosticRunId,
+          level: 'info',
+          category: 'pipeline.stage',
+          source: { context: 'content', module: 'TranslatorCore.ts' },
+          message: '翻译 run 完成',
+          data: {
+            runStatus: 'success',
+            durationMs: performance.now() - runStartAt,
+          },
+        });
+      }
 
       state.translatedUrl = translatedUrl;
       const totalDurationMs = performance.now() - runStartAt;
@@ -653,7 +749,25 @@ export class TranslatorCore {
       state.status = 'translated';
     } catch (error) {
       if (!progressJank) {
-        finishProgressJankMonitor(jankMonitor ?? null);
+        progressJank = finishProgressJankMonitor(jankMonitor ?? null, diagnosticRunId);
+      }
+      if (diagnosticRunId) {
+        const artifacts = getPipelineArtifactsFromError(error);
+        const diagnosticError = toDiagnosticError(error);
+        emitDiagnosticLog({
+          runId: diagnosticRunId,
+          level: 'error',
+          category: 'error',
+          source: { context: 'content', module: 'TranslatorCore.ts' },
+          message: `翻译 run 失败：${diagnosticError.message}`,
+          data: {
+            runStatus: 'failed',
+            durationMs: performance.now() - runStartAt,
+            progressJank,
+            artifacts: artifacts ? toPipelineArtifactsDiagnosticData(artifacts, progressJank) : undefined,
+          },
+          error: diagnosticError,
+        });
       }
       throw error;
     }
@@ -686,7 +800,8 @@ export class TranslatorCore {
 
     try {
       const runSettings = await this.loadPipelineRunSettings(state);
-      const source = await this.downloadImageFile(state.originalUrl);
+      const diagnosticRunId = runSettings.enableDebugLog ? createDiagnosticRunId('run') : undefined;
+      const source = await this.downloadImageFile(state.originalUrl, diagnosticRunId);
       await this.runPipelineFromFile({
         state,
         file: source.file,
@@ -697,6 +812,7 @@ export class TranslatorCore {
           jankMonitor.measureUiRender(() => this.renderForKey(key));
         },
         jankMonitor,
+        diagnosticRunId,
       });
       const currentTarget = this.mounted.get(key)?.target ?? target;
       this.applyStateImage(currentTarget, state);
@@ -971,7 +1087,8 @@ export class TranslatorCore {
       if (usesNanoBananaImagePipeline(runSettings.settings)) {
         throw new Error('阅读模式批量暂不支持 Nano Banana，请使用单张图片翻译或切回其他大模型供应商');
       }
-      const source = await this.downloadImageFile(originalUrl);
+      const diagnosticRunId = runSettings.enableDebugLog ? createDiagnosticRunId('run') : undefined;
+      const source = await this.downloadImageFile(originalUrl, diagnosticRunId);
       downloadedBlob = source.blob;
       await this.runPipelineFromFile({
         state,
@@ -983,6 +1100,7 @@ export class TranslatorCore {
           jankMonitor.measureUiRender(() => onProgress(stageText));
         },
         jankMonitor,
+        diagnosticRunId,
       });
       if (state.translatedUrl) this.adapter.applyImageByKey?.(key, state.translatedUrl);
     } catch (error) {
@@ -1169,14 +1287,14 @@ export class TranslatorCore {
     syncActiveAnchor(true);
     scheduleAnchorSync();
 
-    const ensureSourceFile = async (): Promise<File> => {
+    const ensureSourceFile = async (diagnosticRunId?: string): Promise<File> => {
       if (sourceFile) return sourceFile;
       state.stageText = '下载原图中';
       render();
       await waitForNextPaint();
       if (disposed) throw new Error('图片翻译已关闭');
 
-      const source = await this.downloadImageFile(originalUrl);
+      const source = await this.downloadImageFile(originalUrl, diagnosticRunId);
       if (disposed) throw new Error('图片翻译已关闭');
 
       sourceFile = source.file;
@@ -1194,10 +1312,9 @@ export class TranslatorCore {
       render();
 
       try {
-        const file = await ensureSourceFile();
-        if (disposed) return;
-
         const runSettings = await this.loadPipelineRunSettings(state);
+        const diagnosticRunId = runSettings.enableDebugLog ? createDiagnosticRunId('run') : undefined;
+        const file = await ensureSourceFile(diagnosticRunId);
         if (disposed) return;
         await this.runPipelineFromFile({
           state,
@@ -1207,6 +1324,7 @@ export class TranslatorCore {
           includeElapsedText: true,
           onProgress: render,
           jankMonitor: activeJankMonitor,
+          diagnosticRunId,
         });
         if (disposed) {
           this.disposeState(state);

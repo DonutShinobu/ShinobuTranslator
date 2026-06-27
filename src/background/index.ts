@@ -1,7 +1,10 @@
 import {
   defaultExtensionSettings,
   extensionSettingsStorageKey,
+  getGeminiAppModelLabel,
   normalizeSettings,
+  resolveGeminiApiImageModel,
+  resolveLlmBaseUrl,
   usesGeminiApiImagePipeline,
   usesGeminiAppImagePipeline,
   validateSettings,
@@ -9,6 +12,21 @@ import {
 } from '../shared/config';
 import { getChromeApi } from '../shared/chrome';
 import type { ChromeMessageSender } from '../shared/chrome';
+import {
+  classifyLlmFetchError,
+  createDiagnosticEvent,
+  createDiagnosticId,
+  formatDiagnosticTextLog,
+  normalizeDiagnosticTimestamp,
+  redactDiagnosticValue,
+  sanitizeDiagnosticUrl,
+  sanitizeExtensionSettings,
+  toDiagnosticError,
+  type DiagnosticLogEvent,
+  type DiagnosticLogEventInput,
+  type DiagnosticLogRun,
+  type DiagnosticLogTextExport,
+} from '../shared/diagnosticLog';
 import {
   isRuntimeMessage,
   type LlmChatCompletionRequestBody,
@@ -47,6 +65,8 @@ const openAiOAuthStorageKey = 'mangaTranslate.openaiOAuth';
 const openAiOAuthPendingStorageKey = 'mangaTranslate.openaiOAuthPending';
 const openAiOAuthLastErrorStorageKey = 'mangaTranslate.openaiOAuthLastError';
 const openAiOAuthInstallationIdStorageKey = 'mangaTranslate.openaiOAuthInstallationId';
+const diagnosticLogStorageKey = 'mangaTranslate.diagnosticLog';
+const backgroundDiagnosticSessionId = createDiagnosticId('background-session');
 const openAiOAuthPendingTtlMs = 10 * 60 * 1000;
 const openAiCodexResponsesEndpoint = 'https://chatgpt.com/backend-api/codex/responses';
 const geminiAppUrl = 'https://gemini.google.com/app';
@@ -57,6 +77,7 @@ let openAiRefreshPromise: {
   refreshToken: string;
   promise: Promise<StoredOpenAiOAuthTokens>;
 } | null = null;
+let diagnosticLogWriteQueue: Promise<void> = Promise.resolve();
 
 class OpenAiOAuthRefreshError extends Error {
   constructor(message: string, readonly permanent: boolean) {
@@ -77,6 +98,14 @@ type PendingOpenAiOAuthLogin = {
   tabId?: number;
   createdAt: number;
 };
+
+type DiagnosticLogStore = {
+  events: DiagnosticLogEvent[];
+  truncated?: boolean;
+  truncationReason?: string;
+};
+
+const diagnosticLogMaxEvents = 2000;
 
 function storageGet(key: string): Promise<unknown> {
   const chromeApi = getChromeApi();
@@ -156,6 +185,147 @@ function isPendingOpenAiOAuthLogin(value: unknown): value is PendingOpenAiOAuthL
     Number.isFinite(value.createdAt) &&
     (value.tabId === undefined || typeof value.tabId === 'number')
   );
+}
+
+function isDiagnosticLogEvent(value: unknown): value is DiagnosticLogEvent {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === 'string' &&
+    typeof value.sessionId === 'string' &&
+    typeof value.timestamp === 'string' &&
+    typeof value.level === 'string' &&
+    typeof value.category === 'string' &&
+    isRecord(value.source) &&
+    typeof value.source.context === 'string' &&
+    typeof value.message === 'string'
+  );
+}
+
+function isDiagnosticLogStore(value: unknown): value is DiagnosticLogStore {
+  if (!isRecord(value) || !Array.isArray(value.events)) return false;
+  return value.events.every(isDiagnosticLogEvent);
+}
+
+async function readDiagnosticLogStore(): Promise<DiagnosticLogStore> {
+  const saved = await storageGet(diagnosticLogStorageKey);
+  if (isDiagnosticLogStore(saved)) {
+    return saved;
+  }
+  return { events: [] };
+}
+
+async function writeDiagnosticLogStore(store: DiagnosticLogStore): Promise<void> {
+  await storageSet(diagnosticLogStorageKey, store);
+}
+
+async function appendDiagnosticLogEvent(event: DiagnosticLogEvent): Promise<void> {
+  const store = await readDiagnosticLogStore();
+  const normalized = createDiagnosticEvent(event, event.sessionId);
+  const events = [...store.events, normalized];
+  const overflow = Math.max(0, events.length - diagnosticLogMaxEvents);
+  const nextEvents = overflow > 0 ? events.slice(overflow) : events;
+  await writeDiagnosticLogStore({
+    events: nextEvents,
+    truncated: store.truncated || overflow > 0,
+    truncationReason: overflow > 0 ? `事件数量超过 ${diagnosticLogMaxEvents}，已丢弃最早的 ${overflow} 条` : store.truncationReason,
+  });
+}
+
+function recordDiagnosticLogEvent(event: DiagnosticLogEvent): Promise<void> {
+  const write = diagnosticLogWriteQueue.then(
+    () => appendDiagnosticLogEvent(event),
+    () => appendDiagnosticLogEvent(event),
+  );
+  diagnosticLogWriteQueue = write.catch(() => undefined);
+  return write;
+}
+
+function toImageTranslateDiagnosticData(image: { base64: string; contentType: string; filename: string }): Record<string, unknown> {
+  return {
+    contentType: image.contentType,
+    filename: image.filename,
+    base64Length: image.base64.length,
+  };
+}
+
+async function recordBackgroundDiagnosticLog(
+  settings: ExtensionSettings,
+  event: DiagnosticLogEventInput,
+): Promise<void> {
+  if (!settings.enableDebugLog || !event.runId) {
+    return;
+  }
+  try {
+    await recordDiagnosticLogEvent(createDiagnosticEvent(event, event.sessionId ?? backgroundDiagnosticSessionId));
+  } catch {
+    // Diagnostic writes are best-effort and must not affect API requests.
+  }
+}
+
+function deriveDiagnosticRuns(events: DiagnosticLogEvent[]): DiagnosticLogRun[] {
+  const runs = new Map<string, DiagnosticLogRun>();
+  for (const event of events) {
+    if (!event.runId) continue;
+    const timestamp = normalizeDiagnosticTimestamp(event.timestamp);
+    const existing = runs.get(event.runId);
+    if (!existing) {
+      runs.set(event.runId, {
+        runId: event.runId,
+        startedAt: timestamp,
+        status: 'running',
+        label: typeof event.data?.label === 'string' ? event.data.label : undefined,
+      });
+      continue;
+    }
+    if (timestamp < existing.startedAt) {
+      existing.startedAt = timestamp;
+    }
+    const runStatus = event.data?.runStatus;
+    if (runStatus === 'success' || runStatus === 'failed') {
+      existing.status = runStatus;
+      existing.finishedAt = timestamp;
+      existing.error = event.error?.message ?? (typeof event.data?.error === 'string' ? event.data.error : existing.error);
+    }
+  }
+  return [...runs.values()].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+}
+
+async function exportDiagnosticLog(): Promise<DiagnosticLogTextExport> {
+  await diagnosticLogWriteQueue.catch(() => undefined);
+  const store = await readDiagnosticLogStore();
+  const settings = await getSettings();
+  const chromeApi = getChromeApi();
+  const manifest = chromeApi?.runtime?.getManifest?.();
+  const events = redactDiagnosticValue(store.events) as DiagnosticLogEvent[];
+  const exportedAt = new Date().toISOString();
+  const extension = {
+    version: manifest?.version,
+    manifestVersion: 3,
+  };
+  const environment = {
+    userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+    language: typeof navigator !== 'undefined' ? navigator.language : undefined,
+    platform: typeof navigator !== 'undefined' ? navigator.platform : undefined,
+    crossOriginIsolated: typeof crossOriginIsolated === 'boolean' ? crossOriginIsolated : undefined,
+  };
+  const activeSettings = sanitizeExtensionSettings(settings);
+  const runs = deriveDiagnosticRuns(events);
+  return {
+    schemaVersion: 1,
+    exportedAt,
+    filenamePrefix: 'shinobu-diagnostic-log',
+    contentType: 'text/plain;charset=utf-8',
+    eventCount: events.length,
+    text: formatDiagnosticTextLog(events, {
+      exportedAt,
+      extension,
+      environment,
+      activeSettings,
+      runs,
+      truncated: store.truncated,
+      truncationReason: store.truncationReason,
+    }),
+  };
 }
 
 async function readJsonResponse(response: Response): Promise<unknown> {
@@ -760,6 +930,37 @@ function openGeminiAppAuthTab(): Promise<void> {
 }
 
 async function handleMessage(message: RuntimeMessage, sender: ChromeMessageSender): Promise<RuntimeResponse> {
+  if (message.type === 'mt:diagnostic-log-event') {
+    try {
+      const settings = await getSettings();
+      if (settings.enableDebugLog) {
+        await recordDiagnosticLogEvent(message.event);
+      }
+    } catch {
+      // Diagnostic writes are best-effort and must not affect callers.
+    }
+    return {
+      ok: true,
+      type: 'mt:diagnostic-log-event',
+    };
+  }
+
+  if (message.type === 'mt:diagnostic-log-export') {
+    return {
+      ok: true,
+      type: 'mt:diagnostic-log-export',
+      log: await exportDiagnosticLog(),
+    };
+  }
+
+  if (message.type === 'mt:diagnostic-log-clear') {
+    await storageRemove(diagnosticLogStorageKey);
+    return {
+      ok: true,
+      type: 'mt:diagnostic-log-clear',
+    };
+  }
+
   if (message.type === 'mt:get-settings') {
     const settings = await getSettings();
     return {
@@ -848,11 +1049,63 @@ async function handleMessage(message: RuntimeMessage, sender: ChromeMessageSende
   }
 
   if (message.type === 'mt:llm-chat-completions') {
-    return {
-      ok: true,
-      type: 'mt:llm-chat-completions',
-      data: await proxyOpenAiChatCompletions(message.body),
+    const settings = await getSettings();
+    const startedAt = Date.now();
+    const baseLogData = {
+      provider: 'openai',
+      authMode: 'openai_oauth',
+      endpoint: sanitizeDiagnosticUrl(openAiCodexResponsesEndpoint),
+      model: message.body.model,
+      messageCount: message.body.messages.length,
+      responseFormat: message.body.response_format?.type ?? 'default',
+      requestBody: message.body,
+      backgroundDirectFetch: true,
+      contentDirectFetch: false,
     };
+    await recordBackgroundDiagnosticLog(settings, {
+      runId: message.diagnosticRunId,
+      level: 'info',
+      category: 'llm.api',
+      source: { context: 'background', module: 'background/index.ts' },
+      message: 'OpenAI OAuth 代理请求开始',
+      data: baseLogData,
+    });
+    try {
+      const data = await proxyOpenAiChatCompletions(message.body);
+      await recordBackgroundDiagnosticLog(settings, {
+        runId: message.diagnosticRunId,
+        level: 'info',
+        category: 'llm.api',
+        source: { context: 'background', module: 'background/index.ts' },
+        message: 'OpenAI OAuth 代理请求完成',
+        data: {
+          ...baseLogData,
+          durationMs: Date.now() - startedAt,
+          responseData: data,
+        },
+      });
+      return {
+        ok: true,
+        type: 'mt:llm-chat-completions',
+        data,
+      };
+    } catch (error) {
+      const classification = classifyLlmFetchError(error);
+      await recordBackgroundDiagnosticLog(settings, {
+        runId: message.diagnosticRunId,
+        level: 'error',
+        category: 'llm.api',
+        source: { context: 'background', module: 'background/index.ts' },
+        message: `OpenAI OAuth 代理请求失败：${classification.reason}`,
+        data: {
+          ...baseLogData,
+          durationMs: Date.now() - startedAt,
+          classification,
+        },
+        error: toDiagnosticError(error),
+      });
+      throw error;
+    }
   }
 
   if (message.type === 'mt:gemini-app-image-translate') {
@@ -863,17 +1116,74 @@ async function handleMessage(message: RuntimeMessage, sender: ChromeMessageSende
     if (validationError) {
       throw new Error(validationError);
     }
-    const translated = await runGeminiAppImageTranslate({
-      imageBase64: message.image.base64,
-      contentType: message.image.contentType,
-      filename: message.image.filename,
-      settings,
-    });
-    return {
-      ok: true,
-      type: 'mt:gemini-app-image-translate',
-      ...translated,
+    const startedAt = Date.now();
+    const baseLogData = {
+      provider: 'gemini',
+      authMode: 'gemini_app',
+      endpoint: sanitizeDiagnosticUrl(geminiAppUrl),
+      modelLabel: getGeminiAppModelLabel(settings.geminiAppModel),
+      image: toImageTranslateDiagnosticData(message.image),
+      backgroundDirectFetch: true,
+      contentDirectFetch: false,
     };
+    await recordBackgroundDiagnosticLog(settings, {
+      runId: message.diagnosticRunId,
+      level: 'info',
+      category: 'llm.api',
+      source: { context: 'background', module: 'geminiAppClient.ts' },
+      message: 'Gemini App 全图翻译请求开始',
+      data: baseLogData,
+    });
+    try {
+      const translated = await runGeminiAppImageTranslate({
+        imageBase64: message.image.base64,
+        contentType: message.image.contentType,
+        filename: message.image.filename,
+        settings,
+      });
+      await recordBackgroundDiagnosticLog(settings, {
+        runId: message.diagnosticRunId,
+        level: 'info',
+        category: 'llm.api',
+        source: { context: 'background', module: 'geminiAppClient.ts' },
+        message: 'Gemini App 全图翻译请求完成',
+        data: {
+          ...baseLogData,
+          durationMs: Date.now() - startedAt,
+          output: {
+            contentType: translated.contentType,
+            base64Length: translated.base64.length,
+          },
+          metadata: {
+            ...translated.metadata,
+            imageUrl: translated.metadata.imageUrl ? sanitizeDiagnosticUrl(translated.metadata.imageUrl) : undefined,
+          },
+        },
+      });
+      return {
+        ok: true,
+        type: 'mt:gemini-app-image-translate',
+        ...translated,
+      };
+    } catch (error) {
+      const classification = classifyLlmFetchError(error);
+      const rawResponse = getGeminiAppRawResponse(error);
+      await recordBackgroundDiagnosticLog(settings, {
+        runId: message.diagnosticRunId,
+        level: 'error',
+        category: 'llm.api',
+        source: { context: 'background', module: 'geminiAppClient.ts' },
+        message: `Gemini App 全图翻译请求失败：${classification.reason}`,
+        data: {
+          ...baseLogData,
+          durationMs: Date.now() - startedAt,
+          classification,
+          rawResponse: rawResponse ?? undefined,
+        },
+        error: toDiagnosticError(error),
+      });
+      throw error;
+    }
   }
 
   if (message.type === 'mt:gemini-api-image-translate') {
@@ -884,17 +1194,72 @@ async function handleMessage(message: RuntimeMessage, sender: ChromeMessageSende
     if (validationError) {
       throw new Error(validationError);
     }
-    const translated = await runGeminiApiImageTranslate({
-      imageBase64: message.image.base64,
-      contentType: message.image.contentType,
-      filename: message.image.filename,
-      settings,
-    });
-    return {
-      ok: true,
-      type: 'mt:gemini-api-image-translate',
-      ...translated,
+    const startedAt = Date.now();
+    const model = resolveGeminiApiImageModel(settings.geminiAppModel);
+    const endpoint = `${resolveLlmBaseUrl(settings).replace(/\/+$/u, '')}/models/${encodeURIComponent(model)}:generateContent`;
+    const baseLogData = {
+      provider: 'gemini',
+      authMode: 'api_key',
+      endpoint: sanitizeDiagnosticUrl(endpoint),
+      model,
+      modelLabel: getGeminiAppModelLabel(settings.geminiAppModel),
+      image: toImageTranslateDiagnosticData(message.image),
+      backgroundDirectFetch: true,
+      contentDirectFetch: false,
     };
+    await recordBackgroundDiagnosticLog(settings, {
+      runId: message.diagnosticRunId,
+      level: 'info',
+      category: 'llm.api',
+      source: { context: 'background', module: 'geminiApiImageClient.ts' },
+      message: 'Gemini API 全图翻译请求开始',
+      data: baseLogData,
+    });
+    try {
+      const translated = await runGeminiApiImageTranslate({
+        imageBase64: message.image.base64,
+        contentType: message.image.contentType,
+        filename: message.image.filename,
+        settings,
+      });
+      await recordBackgroundDiagnosticLog(settings, {
+        runId: message.diagnosticRunId,
+        level: 'info',
+        category: 'llm.api',
+        source: { context: 'background', module: 'geminiApiImageClient.ts' },
+        message: 'Gemini API 全图翻译请求完成',
+        data: {
+          ...baseLogData,
+          durationMs: Date.now() - startedAt,
+          output: {
+            contentType: translated.contentType,
+            base64Length: translated.base64.length,
+          },
+          metadata: translated.metadata,
+        },
+      });
+      return {
+        ok: true,
+        type: 'mt:gemini-api-image-translate',
+        ...translated,
+      };
+    } catch (error) {
+      const classification = classifyLlmFetchError(error);
+      await recordBackgroundDiagnosticLog(settings, {
+        runId: message.diagnosticRunId,
+        level: 'error',
+        category: 'llm.api',
+        source: { context: 'background', module: 'geminiApiImageClient.ts' },
+        message: `Gemini API 全图翻译请求失败：${classification.reason}`,
+        data: {
+          ...baseLogData,
+          durationMs: Date.now() - startedAt,
+          classification,
+        },
+        error: toDiagnosticError(error),
+      });
+      throw error;
+    }
   }
 
   return {

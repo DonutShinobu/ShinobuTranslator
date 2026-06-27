@@ -13,7 +13,6 @@ import type {
   ScreenshotResizeHandle,
   ScreenshotSelection,
 } from './screenshot';
-import { downloadJson } from './utils';
 
 const styleId = 'mt-overlay-style';
 
@@ -1145,7 +1144,7 @@ export function renderUi(ui: UiElements, state: PhotoState | null): void {
     return;
   }
 
-  const canShowDebugDownload = !!state.debugLogData;
+  const canShowDebugDownload = false;
   debugDownloadButton.style.display = canShowDebugDownload ? 'inline-flex' : 'none';
   debugDownloadButton.disabled = !canShowDebugDownload || state.status === 'running';
 
@@ -1332,11 +1331,6 @@ export function createReadingModeBarUi(): ReadingModeBarUi {
   host.appendChild(translateAllBtn);
 
   return { host, translateCurrentBtn, translateAllBtn };
-}
-
-export function handleDebugDownload(state: PhotoState): void {
-  if (!state.debugLogData) return;
-  downloadJson(state.debugLogData, 'typeset-debug-log');
 }
 
 function setRectStyle(element: HTMLElement, rect: ScreenshotRect): void {

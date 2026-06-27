@@ -60,6 +60,7 @@ async function translateOne(text: string, config: PipelineConfig): Promise<strin
     from: config.sourceLang,
     to: config.targetLang,
     text,
+    diagnosticRunId: config.diagnosticRunId,
   });
 }
 
@@ -73,6 +74,7 @@ async function translateOneStructured(region: TextRegion, config: PipelineConfig
     from: config.sourceLang,
     to: config.targetLang,
     regions: [buildLlmRegionRequest(region)],
+    diagnosticRunId: config.diagnosticRunId,
   });
   const translated = result.byId.get(region.id);
   if (!translated?.translatedText) {
@@ -116,6 +118,7 @@ export async function runTranslate(regions: TextRegion[], config: PipelineConfig
         from: config.sourceLang,
         to: config.targetLang,
         regions: regions.map(buildLlmRegionRequest),
+        diagnosticRunId: config.diagnosticRunId,
       });
       batched = batchedResult.byId;
       translationDebug.llmBatchRawResponse = batchedResult.rawContent;

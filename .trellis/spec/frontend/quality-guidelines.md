@@ -368,6 +368,88 @@ const requestImageBase64 = await blobToBase64(originalFile);
 const finalBlob = returnedBlob;
 ```
 
+## Scenario: Diagnostic Log Export
+
+### 1. Scope / Trigger
+
+- Trigger: changing diagnostic logging, popup log download UI, background log storage/export, or `mt:diagnostic-log-*` messages.
+- Applies to `src/shared/diagnosticLog.ts`, `src/shared/diagnosticLogClient.ts`, `src/shared/messages.ts`, `src/background/index.ts`, `src/popup/App.tsx`, and diagnostic tests.
+
+### 2. Signatures
+
+```typescript
+type DiagnosticLogEvent = {
+  id: string;
+  sessionId: string;
+  runId?: string;
+  timestamp: string;
+  level: 'debug' | 'info' | 'warn' | 'error';
+  category: 'app.config' | 'runtime.message' | 'pipeline.stage' | 'model.runtime' | 'pipeline.detect' | 'pipeline.ocr' | 'pipeline.inpaint' | 'pipeline.typeset' | 'llm.api' | 'image.io' | 'chrome.api' | 'ui.perf' | 'error';
+  source: { context: 'popup' | 'content' | 'background' | 'worker'; module?: string };
+  message: string;
+  data?: Record<string, unknown>;
+  error?: { name?: string; message: string; stack?: string; cause?: unknown };
+};
+
+type DiagnosticLogTextExport = {
+  schemaVersion: 1;
+  exportedAt: string;
+  filenamePrefix: string;
+  contentType: 'text/plain;charset=utf-8';
+  eventCount: number;
+  text: string;
+};
+```
+
+### 3. Contracts
+
+- Runtime collection uses structured `DiagnosticLogEvent` objects and persists them through `chrome.storage.local`; do not rely on background in-memory state for durability.
+- Popup default download must be `.log` text from `DiagnosticLogTextExport.text`, not a JSON dump with a top-level `events` array.
+- Text lines are generated from the same stored events and use the fixed prefix `[time][level][context][runId][category] module | message details`.
+- `event.data` and `event.error` may appear as compact one-line JSON at the end of a log line, but must pass through shared redaction/truncation first.
+- Logging is best-effort. Logging failures must not break translation, image download, auth proxy, or popup settings.
+- `enableDebugLog` gates detailed event persistence; the clear button removes the stored diagnostic log through `mt:diagnostic-log-clear`.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| No stored events | Popup shows a Chinese “暂无可下载日志” status and does not download an empty file |
+| Export requested while writes are pending | Background waits for the diagnostic write queue before reading storage |
+| Storage contains more than the event limit | Oldest events are dropped, text export contains a truncation warning line |
+| Event data contains API key/token/Authorization/cookie | Exported text contains `[REDACTED]`, never the secret |
+| Event data contains image data URL | Exported text contains `[IMAGE_DATA_URL_REDACTED:length]` |
+| LLM fetch fails before HTTP status | `llm.api` line includes provider, endpoint, duration/classification if available, and `error="Failed to fetch"` |
+| Persisted event is missing `timestamp` | Text export must not throw; line formatter uses `unknown-time` or a normalized fallback |
+
+### 5. Good/Base/Bad Cases
+
+- Good: popup downloads `shinobu-diagnostic-log-<timestamp>.log` with readable lines and compact JSON details.
+- Good: internal storage keeps structured events so export formatting can evolve without changing every producer.
+- Base: `events` are not exposed in the default popup download, but every visible line is derived from them.
+- Bad: every producer hand-builds free-form log strings, causing missing `runId`, inconsistent categories, or skipped redaction.
+- Bad: popup downloads the raw diagnostic JSON object as the primary user-facing log.
+
+### 6. Tests Required
+
+- `tests/shared/diagnosticLog.test.ts` must cover readable line format, compact detail JSON, redaction, URL sanitization, and LLM fetch classification.
+- `tests/shared/messages.test.ts` must cover every new `mt:diagnostic-log-*` discriminant and malformed diagnostic events.
+- Run `npx tsc --noEmit --pretty false`, `npm run test -- --run`, and `npm run build` after changing export contracts.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+downloadJson(response.log, 'shinobu-diagnostic-log');
+```
+
+#### Correct
+
+```typescript
+downloadText(response.log.text, response.log.filenamePrefix);
+```
+
 ## Testing Requirements
 
 ### Framework: Vitest

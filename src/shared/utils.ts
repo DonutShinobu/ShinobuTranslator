@@ -15,3 +15,28 @@ export function arrayBufferToBase64(buffer: ArrayBuffer): string {
   }
   return btoa(binary);
 }
+
+export function downloadJson(data: unknown, filenamePrefix: string): void {
+  const json = JSON.stringify(data, null, 2);
+  const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+  downloadBlob(blob, filenamePrefix, 'json');
+}
+
+export function downloadText(text: string, filenamePrefix: string): void {
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  downloadBlob(blob, filenamePrefix, 'log');
+}
+
+function downloadBlob(blob: Blob, filenamePrefix: string, extension: string): void {
+  const url = URL.createObjectURL(blob);
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const filename = `${filenamePrefix}-${timestamp}.${extension}`;
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.rel = 'noopener';
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}

@@ -1,6 +1,6 @@
 import type { RuntimeStageStatus, StageTiming, StageTimingCardData, StageTimingCardRuntime, TranslationDebugInfo } from './types';
 
-export { toErrorMessage } from '../../shared/utils';
+export { downloadJson, toErrorMessage } from '../../shared/utils';
 
 export function base64ToBlob(base64: string, contentType: string): Blob {
   const binary = atob(base64);
@@ -204,20 +204,4 @@ export function wait(ms: number): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms);
   });
-}
-
-export function downloadJson(data: unknown, filenamePrefix: string): void {
-  const json = JSON.stringify(data, null, 2);
-  const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const filename = `${filenamePrefix}-${timestamp}.json`;
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.rel = 'noopener';
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

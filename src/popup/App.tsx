@@ -16,6 +16,7 @@ import {
 } from '../shared/config';
 import { getChromeApi } from '../shared/chrome';
 import { sendRuntimeMessage } from '../shared/messages';
+import { downloadText } from '../shared/utils';
 
 type SaveStatus = {
   kind: 'idle' | 'saving' | 'success' | 'error';
@@ -78,6 +79,24 @@ const IconMode = () => (
     <circle cx="12" cy="4" r="2" />
     <circle cx="10" cy="12" r="2" />
     <circle cx="14" cy="20" r="2" />
+  </svg>
+);
+
+const IconDownload = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <path d="M7 10l5 5 5-5" />
+    <path d="M12 15V3" />
+  </svg>
+);
+
+const IconTrash = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 6h18" />
+    <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+    <path d="M10 11v6" />
+    <path d="M14 11v6" />
   </svg>
 );
 
@@ -261,7 +280,6 @@ export function App() {
       showStageTimingDetails: false,
       showTypesetDebug: false,
       showEraseDebug: false,
-      enableDebugLog: false,
     };
   }
 
@@ -535,6 +553,47 @@ export function App() {
           message: error instanceof Error ? error.message : String(error),
         });
       }
+    }
+  }
+
+  async function downloadDiagnosticLog(): Promise<void> {
+    setStatus({ kind: 'saving', message: '正在准备日志...' });
+    try {
+      const response = await sendRuntimeMessage({ type: 'mt:diagnostic-log-export' });
+      if (!response.ok || response.type !== 'mt:diagnostic-log-export') {
+        throw new Error(response.ok ? '导出日志失败' : response.error);
+      }
+      if (response.log.eventCount === 0) {
+        setStatus({ kind: 'error', message: '暂无可下载日志，请先开启日志记录并执行一次翻译' });
+        return;
+      }
+      downloadText(response.log.text, response.log.filenamePrefix);
+      setStatus({ kind: 'success', message: '日志已下载' });
+    } catch (error) {
+      setStatus({
+        kind: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  async function clearDiagnosticLog(): Promise<void> {
+    if (!window.confirm('确定要清空已保存的诊断日志吗？')) {
+      return;
+    }
+
+    setStatus({ kind: 'saving', message: '正在清空日志...' });
+    try {
+      const response = await sendRuntimeMessage({ type: 'mt:diagnostic-log-clear' });
+      if (!response.ok || response.type !== 'mt:diagnostic-log-clear') {
+        throw new Error(response.ok ? '清空日志失败' : response.error);
+      }
+      setStatus({ kind: 'success', message: '日志已清空' });
+    } catch (error) {
+      setStatus({
+        kind: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -1007,15 +1066,37 @@ export function App() {
                       />
                       <span className="checkbox-label">去字调试</span>
                     </label>
-                    <label className={`checkbox-row${localDebugOptionsDisabled ? ' checkbox-disabled' : ''}`}>
+                    <label className={`checkbox-row${loading ? ' checkbox-disabled' : ''}`}>
                       <input
                         type="checkbox"
-                        checked={!localDebugOptionsLocked && settings.enableDebugLog}
+                        checked={settings.enableDebugLog}
                         onChange={(event) => updateField('enableDebugLog', event.target.checked)}
-                        disabled={localDebugOptionsDisabled}
+                        disabled={loading}
                       />
                       <span className="checkbox-label">日志记录</span>
                     </label>
+                  </div>
+                )}
+                {settings.debugOptionsExpanded && settings.enableDebugLog && (
+                  <div className="debug-actions">
+                    <button
+                      className="debug-download-button"
+                      type="button"
+                      onClick={() => void downloadDiagnosticLog()}
+                      disabled={loading}
+                    >
+                      <IconDownload />
+                      下载日志
+                    </button>
+                    <button
+                      className="debug-download-button"
+                      type="button"
+                      onClick={() => void clearDiagnosticLog()}
+                      disabled={loading}
+                    >
+                      <IconTrash />
+                      清空日志
+                    </button>
                   </div>
                 )}
               </div>

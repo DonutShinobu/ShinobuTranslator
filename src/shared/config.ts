@@ -468,9 +468,7 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     debugOptionsExpanded: sanitizeBoolean(raw.debugOptionsExpanded, defaultExtensionSettings.debugOptionsExpanded),
     ocrEngine: normalizeOcrEngine(raw.ocrEngine),
     processMode: normalizeProcessMode(raw.processMode),
-    enableDebugLog: usesNanoBanana
-      ? false
-      : sanitizeBoolean(raw.enableDebugLog, defaultExtensionSettings.enableDebugLog),
+    enableDebugLog: sanitizeBoolean(raw.enableDebugLog, defaultExtensionSettings.enableDebugLog),
   };
 }
 

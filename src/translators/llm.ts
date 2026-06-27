@@ -1,5 +1,11 @@
 import type { LlmAuthMode, LlmProvider } from '../types';
 import { sendRuntimeMessage, type LlmChatCompletionRequestBody } from '../shared/messages';
+import {
+  classifyLlmFetchError,
+  sanitizeDiagnosticUrl,
+  toDiagnosticError,
+} from '../shared/diagnosticLog';
+import { emitDiagnosticLog } from '../shared/diagnosticLogClient';
 
 type LlmTranslateOptions = {
   provider: LlmProvider;
@@ -10,6 +16,7 @@ type LlmTranslateOptions = {
   from: string;
   to: string;
   text: string;
+  diagnosticRunId?: string;
 };
 
 type LlmRegionInput = {
@@ -43,6 +50,7 @@ type LlmTranslateRegionsOptions = {
   from: string;
   to: string;
   regions: LlmRegionInput[];
+  diagnosticRunId?: string;
 };
 
 type RegionTranslationResult = {
@@ -55,6 +63,7 @@ type ChatCompletionRequestOptions = {
   authMode: LlmAuthMode;
   baseUrl: string;
   apiKey: string;
+  diagnosticRunId?: string;
 };
 
 export type LlmRegionBatchResult = {
@@ -179,32 +188,167 @@ async function requestChatCompletion(
   options: ChatCompletionRequestOptions,
   body: LlmChatCompletionRequestBody,
 ): Promise<ChatCompletionResponse> {
-  if (options.provider === 'openai' && options.authMode === 'openai_oauth') {
-    const response = await sendRuntimeMessage({
-      type: 'mt:llm-chat-completions',
-      body,
-    });
-    if (!response.ok || response.type !== 'mt:llm-chat-completions') {
-      throw new Error(response.ok ? 'OpenAI 翻译请求失败' : response.error);
-    }
-    return response.data as ChatCompletionResponse;
-  }
-
+  const startedAt = Date.now();
   const endpoint = `${options.baseUrl.replace(/\/$/, '')}/chat/completions`;
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${options.apiKey}`,
+  const bodyJson = JSON.stringify(body);
+  const baseLogData = {
+    provider: options.provider,
+    authMode: options.authMode,
+    model: body.model,
+    endpoint: sanitizeDiagnosticUrl(endpoint),
+    messageCount: body.messages.length,
+    responseFormat: body.response_format?.type ?? 'default',
+    requestBodyBytes: bodyJson.length,
+    requestBody: body,
+  };
+  emitDiagnosticLog({
+    runId: options.diagnosticRunId,
+    level: 'info',
+    category: 'llm.api',
+    source: { context: 'content', module: 'translators/llm.ts' },
+    message: `${options.provider} LLM 请求开始`,
+    data: {
+      ...baseLogData,
+      contentDirectFetch: !(options.provider === 'openai' && options.authMode === 'openai_oauth'),
     },
-    body: JSON.stringify(body),
   });
 
+  if (options.provider === 'openai' && options.authMode === 'openai_oauth') {
+    try {
+      const response = await sendRuntimeMessage({
+        type: 'mt:llm-chat-completions',
+        body,
+        diagnosticRunId: options.diagnosticRunId,
+      });
+      if (!response.ok || response.type !== 'mt:llm-chat-completions') {
+        throw new Error(response.ok ? 'OpenAI 翻译请求失败' : response.error);
+      }
+      emitDiagnosticLog({
+        runId: options.diagnosticRunId,
+        level: 'info',
+        category: 'llm.api',
+        source: { context: 'content', module: 'translators/llm.ts' },
+        message: 'OpenAI OAuth LLM 请求完成',
+        data: {
+          ...baseLogData,
+          contentDirectFetch: false,
+          durationMs: Date.now() - startedAt,
+          responseData: response.data,
+        },
+      });
+      return response.data as ChatCompletionResponse;
+    } catch (error) {
+      const classification = classifyLlmFetchError(error);
+      emitDiagnosticLog({
+        runId: options.diagnosticRunId,
+        level: 'error',
+        category: 'llm.api',
+        source: { context: 'content', module: 'translators/llm.ts' },
+        message: `OpenAI OAuth LLM 请求失败：${classification.reason}`,
+        data: {
+          ...baseLogData,
+          contentDirectFetch: false,
+          durationMs: Date.now() - startedAt,
+          classification,
+        },
+        error: toDiagnosticError(error),
+      });
+      throw error;
+    }
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${options.apiKey}`,
+      },
+      body: bodyJson,
+    });
+  } catch (error) {
+    const classification = classifyLlmFetchError(error);
+    emitDiagnosticLog({
+      runId: options.diagnosticRunId,
+      level: 'error',
+      category: 'llm.api',
+      source: { context: 'content', module: 'translators/llm.ts' },
+      message: `${options.provider} LLM 请求失败：${classification.reason}`,
+      data: {
+        ...baseLogData,
+        contentDirectFetch: true,
+        durationMs: Date.now() - startedAt,
+        classification,
+      },
+      error: toDiagnosticError(error),
+    });
+    throw error;
+  }
+
+  const responseText = await res.text();
+
   if (!res.ok) {
+    const classification = classifyLlmFetchError(new Error(`HTTP ${res.status}`), res.status);
+    emitDiagnosticLog({
+      runId: options.diagnosticRunId,
+      level: 'error',
+      category: 'llm.api',
+      source: { context: 'content', module: 'translators/llm.ts' },
+      message: `${options.provider} LLM HTTP 请求失败：${res.status}`,
+      data: {
+        ...baseLogData,
+        contentDirectFetch: true,
+        durationMs: Date.now() - startedAt,
+        status: res.status,
+        statusText: res.statusText,
+        contentType: res.headers.get('content-type') ?? '',
+        responseText,
+        classification,
+      },
+    });
     throw new Error(`LLM 翻译请求失败: ${res.status}`);
   }
 
-  return (await res.json()) as ChatCompletionResponse;
+  try {
+    const parsed = JSON.parse(responseText) as ChatCompletionResponse;
+    emitDiagnosticLog({
+      runId: options.diagnosticRunId,
+      level: 'info',
+      category: 'llm.api',
+      source: { context: 'content', module: 'translators/llm.ts' },
+      message: `${options.provider} LLM 请求完成`,
+      data: {
+        ...baseLogData,
+        contentDirectFetch: true,
+        durationMs: Date.now() - startedAt,
+        status: res.status,
+        contentType: res.headers.get('content-type') ?? '',
+        responseText,
+      },
+    });
+    return parsed;
+  } catch (error) {
+    const classification = classifyLlmFetchError(error);
+    emitDiagnosticLog({
+      runId: options.diagnosticRunId,
+      level: 'error',
+      category: 'llm.api',
+      source: { context: 'content', module: 'translators/llm.ts' },
+      message: `${options.provider} LLM 响应解析失败：${classification.reason}`,
+      data: {
+        ...baseLogData,
+        contentDirectFetch: true,
+        durationMs: Date.now() - startedAt,
+        status: res.status,
+        contentType: res.headers.get('content-type') ?? '',
+        responseText,
+        classification,
+      },
+      error: toDiagnosticError(error),
+    });
+    throw error;
+  }
 }
 
 export async function llmTranslate(options: LlmTranslateOptions): Promise<string> {

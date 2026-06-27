@@ -59,11 +59,11 @@ afterEach(() => {
 
 describe('llmTranslate', () => {
   it('proxies OpenAI OAuth chat completion requests through runtime messaging', async () => {
-    let sentMessage: unknown;
+    const sentMessages: unknown[] = [];
     testGlobal.chrome = {
       runtime: {
         sendMessage(message: unknown, callback?: (response: unknown) => void): void {
-          sentMessage = message;
+          sentMessages.push(message);
           callback?.({
             ok: true,
             type: 'mt:llm-chat-completions',
@@ -87,7 +87,10 @@ describe('llmTranslate', () => {
     });
 
     expect(translated).toBe('译文');
-    expect(sentMessage).toMatchObject({
+    const chatMessage = sentMessages.find(
+      (message) => typeof message === 'object' && message !== null && (message as { type?: unknown }).type === 'mt:llm-chat-completions',
+    );
+    expect(chatMessage).toMatchObject({
       type: 'mt:llm-chat-completions',
       body: {
         model: 'gpt-5.4-mini',

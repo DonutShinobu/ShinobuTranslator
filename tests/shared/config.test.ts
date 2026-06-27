@@ -158,7 +158,7 @@ describe("OpenAI provider settings", () => {
     expect(validateSettings(settings)).toBe("Nano Banana API Key 不能为空");
   });
 
-  it("locks local debug options off for Nano Banana", () => {
+  it("locks local visual debug options off for Nano Banana but keeps diagnostic logging available", () => {
     const settings = normalizeSettings({
       translator: "llm",
       llmProvider: "gemini",
@@ -173,7 +173,7 @@ describe("OpenAI provider settings", () => {
     expect(settings.showStageTimingDetails).toBe(false);
     expect(settings.showTypesetDebug).toBe(false);
     expect(settings.showEraseDebug).toBe(false);
-    expect(settings.enableDebugLog).toBe(false);
+    expect(settings.enableDebugLog).toBe(true);
   });
 
   it("normalizes Nano Banana model aliases", () => {

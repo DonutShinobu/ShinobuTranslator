@@ -689,3 +689,36 @@ Implemented structured diagnostic logging with popup download and clear actions,
 ### Next Steps
 
 - None - task complete
+
+
+## Session 22: Manga translation coherence
+
+**Date**: 2026-06-27
+**Task**: Manga translation coherence
+**Branch**: `master`
+
+### Summary
+
+Completed the translation coherence task: improved LLM prompt and structured payloads for natural Chinese wording, added structured single-region fallback after batch misses, improved semantic column splitting, and covered the behavior with translator, pipeline, and typeset tests.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ad52490` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

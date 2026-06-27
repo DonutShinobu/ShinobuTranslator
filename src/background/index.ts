@@ -41,7 +41,7 @@ import {
 } from '../shared/openaiResponses';
 import { arrayBufferToBase64, toErrorMessage } from '../shared/utils';
 import { runGeminiApiImageTranslate } from './geminiApiImageClient';
-import { getGeminiAppAuthStatus, runGeminiAppImageTranslate } from './geminiAppClient';
+import { getGeminiAppAuthStatus, getGeminiAppRawResponse, runGeminiAppImageTranslate } from './geminiAppClient';
 
 const openAiOAuthStorageKey = 'mangaTranslate.openaiOAuth';
 const openAiOAuthPendingStorageKey = 'mangaTranslate.openaiOAuthPending';
@@ -944,10 +944,19 @@ function initializeBackground(): void {
         sendResponse(response);
       })
       .catch((error: unknown) => {
+        const geminiRawResponse = getGeminiAppRawResponse(error);
         sendResponse({
           ok: false,
           type: message.type,
           error: toErrorMessage(error),
+          ...(geminiRawResponse !== null
+            ? {
+                errorDetail: {
+                  title: 'Gemini 实际回复',
+                  content: geminiRawResponse,
+                },
+              }
+            : {}),
         } satisfies RuntimeResponse);
       });
     return true;

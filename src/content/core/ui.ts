@@ -26,6 +26,14 @@ export type UiElements = {
   buttonSpinner: HTMLSpanElement;
   buttonLabel: HTMLSpanElement;
   detailLine: HTMLDivElement;
+  errorDetailCard: HTMLDivElement;
+  errorDetailCardToggleButton: HTMLButtonElement;
+  errorDetailCardHeading: HTMLSpanElement;
+  errorDetailCardMeta: HTMLSpanElement;
+  errorDetailCardTotal: HTMLSpanElement;
+  errorDetailCardChevron: HTMLSpanElement;
+  errorDetailCardBody: HTMLDivElement;
+  errorDetailContent: HTMLPreElement;
   stageTimingCard: HTMLDivElement;
   stageTimingCardToggleButton: HTMLButtonElement;
   stageTimingCardTotal: HTMLSpanElement;
@@ -46,6 +54,14 @@ export type ScreenshotResultUiElements = {
   buttonSpinner: HTMLSpanElement;
   buttonLabel: HTMLSpanElement;
   detailLine: HTMLDivElement;
+  errorDetailCard: HTMLDivElement;
+  errorDetailCardToggleButton: HTMLButtonElement;
+  errorDetailCardHeading: HTMLSpanElement;
+  errorDetailCardMeta: HTMLSpanElement;
+  errorDetailCardTotal: HTMLSpanElement;
+  errorDetailCardChevron: HTMLSpanElement;
+  errorDetailCardBody: HTMLDivElement;
+  errorDetailContent: HTMLPreElement;
   stageTimingCard: HTMLDivElement;
   stageTimingCardToggleButton: HTMLButtonElement;
   stageTimingCardTotal: HTMLSpanElement;
@@ -440,6 +456,29 @@ export function injectStyles(): void {
     }
     .mt-x-stage-card[data-expanded='true'] .mt-x-stage-card-body {
       display: block;
+    }
+    .mt-x-error-detail-card .mt-x-stage-card-heading::before {
+      background: var(--mt-error-text, oklch(0.82 0.12 25 / 0.85));
+      box-shadow: 0 0 0 3px oklch(0.72 0.12 25 / 0.12);
+    }
+    .mt-x-error-detail-card .mt-x-stage-card-total {
+      color: var(--mt-error-text, oklch(0.82 0.12 25 / 0.85));
+    }
+    .mt-x-error-detail-content {
+      max-height: 220px;
+      margin: 9px 0 0;
+      box-sizing: border-box;
+      border: 1px solid var(--mt-stage-border-soft, oklch(0.9 0.012 250 / 0.22));
+      border-radius: 12px;
+      padding: 8px;
+      overflow: auto;
+      background: oklch(0 0 0 / 0.18);
+      color: var(--mt-stage-muted, oklch(0.94 0.01 250 / 0.7));
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 10.5px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
     }
     .mt-x-stage-timeline {
       position: relative;
@@ -894,6 +933,39 @@ export function createUiElements(): UiElements {
   detailLine.className = 'mt-x-detail';
   root.appendChild(detailLine);
 
+  const errorDetailCard = document.createElement('div');
+  errorDetailCard.className = 'mt-x-stage-card mt-x-error-detail-card';
+  const errorDetailCardToggleButton = document.createElement('button');
+  errorDetailCardToggleButton.className = 'mt-x-stage-card-toggle';
+  errorDetailCardToggleButton.type = 'button';
+
+  const errorDetailCardTitle = document.createElement('span');
+  errorDetailCardTitle.className = 'mt-x-stage-card-title';
+  const errorDetailCardHeading = document.createElement('span');
+  errorDetailCardHeading.className = 'mt-x-stage-card-heading';
+  errorDetailCardHeading.textContent = 'Gemini 回复';
+  const errorDetailCardMeta = document.createElement('span');
+  errorDetailCardMeta.className = 'mt-x-stage-card-meta';
+  errorDetailCardTitle.appendChild(errorDetailCardHeading);
+  errorDetailCardTitle.appendChild(errorDetailCardMeta);
+
+  const errorDetailCardTotal = document.createElement('span');
+  errorDetailCardTotal.className = 'mt-x-stage-card-total';
+  const errorDetailCardChevron = document.createElement('span');
+  errorDetailCardChevron.className = 'mt-x-stage-card-chevron';
+  errorDetailCardToggleButton.appendChild(errorDetailCardTitle);
+  errorDetailCardToggleButton.appendChild(errorDetailCardTotal);
+  errorDetailCardToggleButton.appendChild(errorDetailCardChevron);
+
+  const errorDetailCardBody = document.createElement('div');
+  errorDetailCardBody.className = 'mt-x-stage-card-body';
+  const errorDetailContent = document.createElement('pre');
+  errorDetailContent.className = 'mt-x-error-detail-content';
+  errorDetailCardBody.appendChild(errorDetailContent);
+  errorDetailCard.appendChild(errorDetailCardToggleButton);
+  errorDetailCard.appendChild(errorDetailCardBody);
+  root.appendChild(errorDetailCard);
+
   const stageTimingCard = document.createElement('div');
   stageTimingCard.className = 'mt-x-stage-card';
   const stageTimingCardToggleButton = document.createElement('button');
@@ -942,6 +1014,14 @@ export function createUiElements(): UiElements {
     buttonSpinner,
     buttonLabel,
     detailLine,
+    errorDetailCard,
+    errorDetailCardToggleButton,
+    errorDetailCardHeading,
+    errorDetailCardMeta,
+    errorDetailCardTotal,
+    errorDetailCardChevron,
+    errorDetailCardBody,
+    errorDetailContent,
     stageTimingCard,
     stageTimingCardToggleButton,
     stageTimingCardTotal,
@@ -961,6 +1041,31 @@ function clampPercent(percent: number): number {
 
 function formatStageTimingTotalBadge(totalText: string): string {
   return totalText.replace(/^总耗时：/, '');
+}
+
+function renderErrorDetailCard(ui: UiElements, state: PhotoState | null): void {
+  const card = state?.errorDetailCard;
+  const visible = !!card && state.status === 'error';
+  ui.errorDetailCard.dataset.visible = visible ? 'true' : 'false';
+  ui.errorDetailCardToggleButton.disabled = !visible;
+  if (!visible || !card) {
+    ui.errorDetailCard.dataset.expanded = 'false';
+    ui.errorDetailCardToggleButton.setAttribute('aria-expanded', 'false');
+    ui.errorDetailCardToggleButton.title = '';
+    ui.errorDetailCardHeading.textContent = 'Gemini 回复';
+    ui.errorDetailCardMeta.textContent = '';
+    ui.errorDetailCardTotal.textContent = '';
+    ui.errorDetailContent.textContent = '';
+    return;
+  }
+
+  ui.errorDetailCard.dataset.expanded = card.expanded ? 'true' : 'false';
+  ui.errorDetailCardToggleButton.setAttribute('aria-expanded', card.expanded ? 'true' : 'false');
+  ui.errorDetailCardToggleButton.title = card.expanded ? '收起 Gemini 回复' : '展开 Gemini 回复';
+  ui.errorDetailCardHeading.textContent = card.title;
+  ui.errorDetailCardMeta.textContent = `${card.content.length} 字符`;
+  ui.errorDetailCardTotal.textContent = card.expanded ? '收起' : '查看';
+  ui.errorDetailContent.textContent = card.content;
 }
 
 function renderStageTimingCard(ui: UiElements, state: PhotoState | null): void {
@@ -1034,6 +1139,7 @@ export function renderUi(ui: UiElements, state: PhotoState | null): void {
     buttonLabel.textContent = '翻译';
     updateStatusLine('');
     debugDownloadButton.style.display = 'none';
+    renderErrorDetailCard(ui, null);
     renderStageTimingCard(ui, null);
     clearTransitionTimers();
     return;
@@ -1087,6 +1193,7 @@ export function renderUi(ui: UiElements, state: PhotoState | null): void {
   }
 
   updateStatusLine(nextDetailText, nextDetailVariant);
+  renderErrorDetailCard(ui, state);
   renderStageTimingCard(ui, state);
 
   if (!isTransition) {

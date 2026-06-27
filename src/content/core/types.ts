@@ -80,6 +80,12 @@ export type StageTimingCardData = {
   runtimes: StageTimingCardRuntime[];
 };
 
+export type ErrorDetailCardData = {
+  title: string;
+  content: string;
+  expanded: boolean;
+};
+
 export type PhotoState = {
   status: PhotoViewStatus;
   mode: PhotoDisplayMode;
@@ -93,6 +99,7 @@ export type PhotoState = {
   elapsedText: string;
   stageTimingCard?: StageTimingCardData;
   errorText: string;
+  errorDetailCard?: ErrorDetailCardData;
 };
 
 export type OcrRegionLogItem = {

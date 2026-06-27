@@ -220,10 +220,16 @@ export type RuntimeSuccessResponse =
       type: 'mt:shortcut-translate-hover';
     }
 
+export type RuntimeErrorDetail = {
+  title: string;
+  content: string;
+};
+
 export type RuntimeErrorResponse = {
   ok: false;
   type: RuntimeMessage['type'];
   error: string;
+  errorDetail?: RuntimeErrorDetail;
 };
 
 export type RuntimeResponse = RuntimeSuccessResponse | RuntimeErrorResponse;

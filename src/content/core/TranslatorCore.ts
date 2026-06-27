@@ -7,6 +7,7 @@ import {
 } from '../../shared/config';
 import type { ExtensionSettings } from '../../shared/config';
 import type {
+  ErrorDetailCardData,
   ImageTarget,
   PhotoState,
   PipelineArtifacts,
@@ -22,6 +23,7 @@ import type {
   ProgressJankReport,
 } from './types';
 import { sendRuntimeMessage } from '../../shared/messages';
+import type { RuntimeErrorDetail } from '../../shared/messages';
 import {
   base64ToBlob,
   blobToBase64,
@@ -77,6 +79,16 @@ function createInitialState(originalUrl: string): PhotoState {
     elapsedText: '',
     stageTimingCard: undefined,
     errorText: '',
+    errorDetailCard: undefined,
+  };
+}
+
+function toErrorDetailCard(errorDetail: RuntimeErrorDetail | undefined): ErrorDetailCardData | undefined {
+  if (!errorDetail) return undefined;
+  return {
+    title: errorDetail.title || 'Gemini 回复',
+    content: errorDetail.content,
+    expanded: false,
   };
 }
 
@@ -324,6 +336,10 @@ export class TranslatorCore {
         const state = this.states.get(key);
         if (state) this.toggleStageTimingCard(state, () => this.renderForKey(key));
       });
+      ui.errorDetailCardToggleButton.addEventListener('click', () => {
+        const state = this.states.get(key);
+        if (state) this.toggleErrorDetailCard(state, () => this.renderForKey(key));
+      });
 
       this.mounted.set(key, { key, target, ui });
       const state = this.ensureState(key, target.originalUrl);
@@ -361,6 +377,7 @@ export class TranslatorCore {
       state.debugOriginalUrl = undefined;
     }
     state.debugLogData = undefined;
+    state.errorDetailCard = undefined;
   }
 
   private renderForKey(key: string): void {
@@ -380,6 +397,7 @@ export class TranslatorCore {
     state.status = 'running';
     state.mode = 'original';
     state.errorText = '';
+    state.errorDetailCard = undefined;
     clearTimingDisplay(state);
     state.debugLogData = undefined;
     state.stageText = '准备中';
@@ -489,6 +507,7 @@ export class TranslatorCore {
           image,
         });
     if (!response.ok) {
+      state.errorDetailCard = toErrorDetailCard(response.errorDetail);
       throw new Error(response.error);
     }
     if (
@@ -530,6 +549,7 @@ export class TranslatorCore {
     state.translatedUrl = translatedUrl;
     state.stageText = '';
     state.errorText = '';
+    state.errorDetailCard = undefined;
     state.mode = 'translated';
     state.status = 'translated';
   }
@@ -628,6 +648,7 @@ export class TranslatorCore {
       }
       state.stageText = '';
       state.errorText = '';
+      state.errorDetailCard = undefined;
       state.mode = 'translated';
       state.status = 'translated';
     } catch (error) {
@@ -697,6 +718,12 @@ export class TranslatorCore {
     state.stageTimingCard.expanded = expanded;
     render();
     void this.persistStageTimingCardExpanded(expanded);
+  }
+
+  private toggleErrorDetailCard(state: PhotoState, render: () => void): void {
+    if (!state.errorDetailCard) return;
+    state.errorDetailCard.expanded = !state.errorDetailCard.expanded;
+    render();
   }
 
   private async persistStageTimingCardExpanded(expanded: boolean): Promise<void> {
@@ -965,6 +992,7 @@ export class TranslatorCore {
         state.translatedUrl = URL.createObjectURL(downloadedBlob);
         state.stageText = '';
         state.errorText = '';
+        state.errorDetailCard = undefined;
         state.mode = 'translated';
         state.status = 'translated';
       } else {
@@ -1133,6 +1161,9 @@ export class TranslatorCore {
     ui.stageTimingCardToggleButton.addEventListener('click', () => {
       this.toggleStageTimingCard(state, render);
     });
+    ui.errorDetailCardToggleButton.addEventListener('click', () => {
+      this.toggleErrorDetailCard(state, render);
+    });
     detachDrag = this.attachScreenshotResultDrag(ui, switchToManualResultAnchor);
     detachZoom = this.attachScreenshotResultZoom(ui, render, switchToManualResultAnchor);
     syncActiveAnchor(true);
@@ -1252,6 +1283,9 @@ export class TranslatorCore {
     });
     ui.stageTimingCardToggleButton.addEventListener('click', () => {
       this.toggleStageTimingCard(state, render);
+    });
+    ui.errorDetailCardToggleButton.addEventListener('click', () => {
+      this.toggleErrorDetailCard(state, render);
     });
     detachDrag = this.attachScreenshotResultDrag(ui);
     detachZoom = this.attachScreenshotResultZoom(ui, render);

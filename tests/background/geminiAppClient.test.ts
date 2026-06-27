@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  GeminiAppRawResponseError,
   extractGeminiGeneratedImages,
   extractGeminiResponseErrorCode,
   getGeminiAppModelMetadataLabel,
   getGeminiAppModelRequestHeaders,
+  getGeminiAppRawResponse,
   parseGeminiAccountStatus,
 } from "../../src/background/geminiAppClient";
 
@@ -79,6 +81,14 @@ describe("Gemini App response parsing", () => {
     body[14] = 1016;
 
     expect(parseGeminiAccountStatus(JSON.stringify([createGeminiPart(body)]))).toBe(1016);
+  });
+
+  it("keeps the raw response on empty image response errors", () => {
+    const rawResponse = "raw Gemini StreamGenerate response";
+    const error = new GeminiAppRawResponseError("Gemini App 未返回可用译图", rawResponse);
+
+    expect(getGeminiAppRawResponse(error)).toBe(rawResponse);
+    expect(getGeminiAppRawResponse(new Error("other"))).toBeNull();
   });
 });
 

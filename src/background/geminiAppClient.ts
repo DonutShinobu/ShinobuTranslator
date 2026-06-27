@@ -19,6 +19,17 @@ export type GeminiAppImageTranslateResult = {
   metadata: GeminiAppImageTranslateMetadata;
 };
 
+export class GeminiAppRawResponseError extends Error {
+  constructor(message: string, readonly rawResponse: string) {
+    super(message);
+    this.name = 'GeminiAppRawResponseError';
+  }
+}
+
+export function getGeminiAppRawResponse(error: unknown): string | null {
+  return error instanceof GeminiAppRawResponseError ? error.rawResponse : null;
+}
+
 type GeminiInitContext = {
   accessToken: string;
   buildLabel: string | null;
@@ -637,7 +648,7 @@ async function executeGeminiAppImageTranslate(
   const generated = extractGeminiGeneratedImages(responseText);
   const firstImage = generated[0];
   if (!firstImage) {
-    throw new Error('Gemini App 未返回可用译图');
+    throw new GeminiAppRawResponseError('Gemini App 未返回可用译图', responseText);
   }
   const downloaded = await timeStage('gemini_download', 'Gemini App 下载译图', () =>
     downloadGeneratedImage(firstImage.url, context.cookieHeader),

@@ -1,0 +1,4 @@
+{"file":".trellis/spec/frontend/index.md","reason":"检查前端运行时代码和测试是否符合项目规范。"}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"质量检查时对照测试、错误处理和禁止模式。"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"质量检查时确认没有引入 any 或不安全类型绕过。"}
+{"file":".trellis/spec/guides/documentation-conventions.md","reason":"确认 Trellis 任务文档语言约定被遵守。"}

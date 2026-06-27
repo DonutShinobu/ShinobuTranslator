@@ -20,10 +20,18 @@ type LlmRegionInput = {
   targetLines?: number;
 };
 
+type LlmSourceTextSegment = {
+  index: number;
+  label: string;
+  text: string;
+};
+
 type LlmSourceTextPayload = {
   plainText: string;
-  columns?: Array<Record<string, string>>;
-  lines?: Array<Record<string, string>>;
+  textWithBreaks: string;
+  readingOrder: 'right-to-left' | 'top-to-bottom';
+  columns?: LlmSourceTextSegment[];
+  lines?: LlmSourceTextSegment[];
 };
 
 type LlmTranslateRegionsOptions = {
@@ -82,26 +90,46 @@ function extractJsonObject(text: string): string {
   return text.slice(start, end + 1).trim();
 }
 
-function buildSourceTextPayload(text: string, direction: 'h' | 'v'): LlmSourceTextPayload {
-  const plainText = text.replace(/\n+/g, '').trim();
-  if (direction !== 'v') {
-    const lines = text
-      .split(/\n+/)
-      .map((segment) => segment.trim())
-      .filter(Boolean)
-      .map((segment, index) => ({ [`line${index + 1}`]: segment }));
-    if (lines.length > 1) {
-      return { plainText, lines };
-    }
-    return { plainText };
-  }
-  const columns = text
+function splitSourceSegments(text: string, labelPrefix: 'column' | 'line'): LlmSourceTextSegment[] {
+  return text
     .split(/\n+/)
     .map((segment) => segment.trim())
     .filter(Boolean)
-    .map((segment, index) => ({ [`column${index + 1}`]: segment }));
+    .map((segment, index) => ({
+      index: index + 1,
+      label: `${labelPrefix}${index + 1}`,
+      text: segment,
+    }));
+}
+
+function buildSourceTextPayload(text: string, direction: 'h' | 'v'): LlmSourceTextPayload {
+  const plainText = text.replace(/\n+/g, '').trim();
+  const textWithBreaks = text
+    .split(/\n+/)
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .join('\n');
+  if (direction !== 'v') {
+    const lines = splitSourceSegments(text, 'line');
+    if (lines.length > 1) {
+      return {
+        plainText,
+        textWithBreaks,
+        readingOrder: 'top-to-bottom',
+        lines,
+      };
+    }
+    return {
+      plainText,
+      textWithBreaks,
+      readingOrder: 'top-to-bottom',
+    };
+  }
+  const columns = splitSourceSegments(text, 'column');
   return {
     plainText,
+    textWithBreaks,
+    readingOrder: 'right-to-left',
     columns,
   };
 }
@@ -186,11 +214,22 @@ export async function llmTranslate(options: LlmTranslateOptions): Promise<string
     messages: [
       {
         role: 'system',
-        content: '你是漫画翻译助手，只输出翻译文本，不输出解释。',
+        content: [
+          '你是专业漫画本地化译者和中文润色编辑。',
+          '你的目标是把台词改写成自然、口语化、符合中文漫画阅读习惯的译文。',
+          '不要保留日语倒装语序，不要逐词直译，只输出译文，不输出解释。',
+        ].join('\n'),
       },
       {
         role: 'user',
-        content: `请把以下文本从 ${from} 翻译成 ${to}：\n${text}`,
+        content: [
+          `请把以下文本从 ${from} 翻译成 ${to}。`,
+          '请先理解完整语义，再用自然中文表达；必要时可以调整语序、合并或拆分短句。',
+          '如果原文包含换行，它可能只是漫画竖排或横排的视觉断列；请把它当作同一段语义处理，不要逐行逐列直译。',
+          '只输出最终译文，不要输出注释、括号说明或原文。',
+          '原文：',
+          text,
+        ].join('\n'),
       },
     ],
   });
@@ -219,27 +258,32 @@ export async function llmTranslateRegions(
       {
         role: 'system',
         content: [
-          '你是漫画翻译助手。',
-          '你会在理解整页上下文的前提下逐框翻译。',
+          '你是专业漫画本地化译者和中文润色编辑。',
+          '你会先理解整页上下文和每个文本框的完整语义，再写出自然中文译文。',
+          '不要按日语列顺序逐列直译，不要保留日语倒装语序。',
+          'columns/lines 是排版分段，不是逐列逐句对应原文。',
           '必须严格输出 JSON，不得输出解释。',
-        ].join(''),
+        ].join('\n'),
       },
       {
         role: 'user',
         content: [
-          `请把以下文本从 ${from} 翻译成 ${to}，并基于整段上下文保持语气一致。`,
-          '输入是多个文本框。对竖排框你会收到 targetColumns（期望列数），对横排框你会收到 targetLines（期望行数）。',
-          'sourceText.plainText 是去掉换行后的完整原文。',
-          'sourceText.columns 是竖排拆列信息，格式类似 [{"column1":"..."},{"column2":"..."}]。',
-          'sourceText.lines 是横排拆行信息，格式类似 [{"line1":"..."},{"line2":"..."}]。',
+          `请把以下文本从 ${from} 翻译成 ${to}，并基于整页上下文保持语气、称呼和情绪一致。`,
+          '输入是多个文本框。请按输入顺序理解上下文，但每个 region 仍独立返回。',
+          'sourceText.plainText 是去掉换行后的完整原文，用于理解整句语义。',
+          'sourceText.textWithBreaks 保留 OCR/视觉换行，用于参考原始断列或断行。',
+          'sourceText.readingOrder 描述视觉阅读顺序：right-to-left 表示竖排从右到左，top-to-bottom 表示横排行从上到下。',
+          'sourceText.columns/sourceText.lines 是结构化分段数组，格式为 [{"index":1,"label":"column1","text":"..."}]。',
           '返回格式必须是：',
           '{"regions":[{"id":"...","translation":"...","columns":["..."]}]}',
           '规则：',
           '1. regions 数组必须覆盖所有输入 id。',
-          '2. translation 为完整译文。',
-          '3. direction=v 时，columns 必须严格按 sourceText.columns 的顺序返回（不得反转），优先接近 targetColumns。',
-          '4. direction=h 时，columns 表示行分段，优先接近 targetLines。',
-          '5. 除 JSON 外不要输出任何内容。',
+          '2. translation 必须是自然流畅的完整中文译文，优先符合中文语序和中文漫画台词习惯。',
+          '3. 翻译时必须允许跨 column/line 重组语义；不要把每个 column/line 当成必须逐字对应的独立句子。',
+          '4. direction=v 时，先写完整中文译文，再按 targetColumns 拆成 columns；columns 按最终竖排显示的阅读顺序返回。',
+          '5. direction=h 时，columns 表示最终横排行分段，优先接近 targetLines。',
+          '6. columns 每段都应是自然中文片段，尽量在标点、语气停顿或短语边界断开。',
+          '7. 除 JSON 外不要输出任何内容。',
           `输入数据：${JSON.stringify(payload)}`,
         ].join('\n'),
       },

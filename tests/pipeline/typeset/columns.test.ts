@@ -139,6 +139,18 @@ describe("splitByTextLength", () => {
     expect(result.overflow).toBe("う");
   });
 
+  it("prefers Chinese punctuation boundaries over the maximum hard split", () => {
+    const result = splitByTextLength("别哭了，真的没事", 6);
+    expect(result.kept).toBe("别哭了，");
+    expect(result.overflow).toBe("真的没事");
+  });
+
+  it("prefers stronger sentence boundaries when they fit", () => {
+    const result = splitByTextLength("快走吧，危险来了！别回头", 9);
+    expect(result.kept).toBe("快走吧，危险来了！");
+    expect(result.overflow).toBe("别回头");
+  });
+
   it("handles small kana in length calculation", () => {
     // "っあいう" length = 0.5+1+1+1 = 3.5, maxLength 2
     // "っ" (0.5) + "あ" (1) = 1.5 <= 2

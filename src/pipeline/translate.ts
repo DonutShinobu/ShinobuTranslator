@@ -2,6 +2,19 @@ import type { PipelineConfig, TextRegion, TranslationDebugInfo } from '../types'
 import { LlmColumnsParseError, llmTranslate, llmTranslateRegions } from '../translators/llm';
 import { googleWebTranslate } from '../translators/googleWeb';
 
+type LlmRegionRequest = {
+  id: string;
+  text: string;
+  direction: 'h' | 'v';
+  targetColumns?: number;
+  targetLines?: number;
+};
+
+type StructuredTranslationResult = {
+  translatedText: string;
+  translatedColumns?: string[];
+};
+
 function requiresPipelineLlmApiKey(config: PipelineConfig): boolean {
   return config.llmProvider !== 'gemini' && !(config.llmProvider === 'openai' && config.llmAuthMode === 'openai_oauth');
 }
@@ -10,6 +23,17 @@ function assertTextTranslationProvider(config: PipelineConfig): void {
   if (config.llmProvider === 'gemini') {
     throw new Error('Nano Banana 使用端到端译图流程，不支持 OCR 文本翻译流程');
   }
+}
+
+function buildLlmRegionRequest(region: TextRegion): LlmRegionRequest {
+  const direction = region.direction ?? 'h';
+  return {
+    id: region.id,
+    text: region.sourceText,
+    direction,
+    targetColumns: direction === 'v' ? Math.max(1, region.originalLineCount ?? 1) : undefined,
+    targetLines: direction === 'h' ? Math.max(1, region.originalLineCount ?? 1) : undefined,
+  };
 }
 
 async function translateOne(text: string, config: PipelineConfig): Promise<string> {
@@ -37,6 +61,24 @@ async function translateOne(text: string, config: PipelineConfig): Promise<strin
     to: config.targetLang,
     text,
   });
+}
+
+async function translateOneStructured(region: TextRegion, config: PipelineConfig): Promise<StructuredTranslationResult> {
+  const result = await llmTranslateRegions({
+    provider: config.llmProvider,
+    authMode: config.llmAuthMode,
+    baseUrl: config.llmBaseUrl,
+    apiKey: config.llmApiKey,
+    model: config.llmModel,
+    from: config.sourceLang,
+    to: config.targetLang,
+    regions: [buildLlmRegionRequest(region)],
+  });
+  const translated = result.byId.get(region.id);
+  if (!translated?.translatedText) {
+    throw new Error('LLM 单框结构化翻译未返回译文');
+  }
+  return translated;
 }
 
 export type RunTranslateResult = {
@@ -73,13 +115,7 @@ export async function runTranslate(regions: TextRegion[], config: PipelineConfig
         model: config.llmModel,
         from: config.sourceLang,
         to: config.targetLang,
-        regions: regions.map((region) => ({
-          id: region.id,
-          text: region.sourceText,
-          direction: region.direction ?? 'h',
-          targetColumns: region.direction === 'v' ? Math.max(1, region.originalLineCount ?? 1) : undefined,
-          targetLines: region.direction === 'h' ? Math.max(1, region.originalLineCount ?? 1) : undefined,
-        })),
+        regions: regions.map(buildLlmRegionRequest),
       });
       batched = batchedResult.byId;
       translationDebug.llmBatchRawResponse = batchedResult.rawContent;
@@ -112,6 +148,17 @@ export async function runTranslate(regions: TextRegion[], config: PipelineConfig
       llmFallbackRegionCount += 1;
       if (region.sourceText.trim()) {
         llmFallbackRequestCount += 1;
+        try {
+          const translated = await translateOneStructured(region, config);
+          next.push({
+            ...region,
+            translatedText: translated.translatedText,
+            translatedColumns: translated.translatedColumns,
+          });
+          continue;
+        } catch {
+          llmFallbackRequestCount += 1;
+        }
       }
       const translatedText = await translateOne(region.sourceText, config);
       next.push({ ...region, translatedText, translatedColumns: undefined });

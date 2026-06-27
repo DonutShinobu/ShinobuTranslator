@@ -135,6 +135,75 @@ export function splitColumns(text: string): string[] {
     .filter(Boolean);
 }
 
+const strongSplitBoundaryChars = new Set([
+  "。", "！", "？", "!", "?", "；", ";",
+]);
+
+const softSplitBoundaryChars = new Set([
+  "，", "、", ",", "：", ":", "…", "⋮", "︙",
+]);
+
+const conversationalPauseChars = new Set([
+  "啊", "呀", "吧", "呢", "吗", "啦", "哦", "喔", "嘛", "了", "呐", "哟",
+]);
+
+type SplitCandidate = {
+  index: number;
+  consumed: number;
+  score: number;
+};
+
+function naturalSplitScore(ch: string): number {
+  if (strongSplitBoundaryChars.has(ch)) {
+    return 3;
+  }
+  if (softSplitBoundaryChars.has(ch)) {
+    return 2;
+  }
+  if (conversationalPauseChars.has(ch)) {
+    return 1;
+  }
+  return 0;
+}
+
+function findNaturalSplitIndex(chars: string[], maxLength: number): number | null {
+  let consumed = 0;
+  let best: SplitCandidate | null = null;
+
+  for (let i = 0; i < chars.length; i++) {
+    consumed += charLength(chars[i]);
+    if (consumed > maxLength) {
+      break;
+    }
+
+    const splitIndex = i + 1;
+    if (splitIndex >= chars.length) {
+      continue;
+    }
+
+    const ch = chars[i];
+    const next = chars[splitIndex];
+    if (KINSOKU_NEND.has(ch) || KINSOKU_NSTART.has(next)) {
+      continue;
+    }
+
+    const score = naturalSplitScore(ch);
+    if (score === 0) {
+      continue;
+    }
+
+    if (!best || score > best.score || (score === best.score && consumed > best.consumed)) {
+      best = {
+        index: splitIndex,
+        consumed,
+        score,
+      };
+    }
+  }
+
+  return best?.index ?? null;
+}
+
 export function splitByTextLength(text: string, maxLength: number): { kept: string; overflow: string } {
   const chars = [...text];
   let consumed = 0;
@@ -147,6 +216,10 @@ export function splitByTextLength(text: string, maxLength: number): { kept: stri
       break;
     }
     consumed = next;
+  }
+
+  if (splitIndex < chars.length) {
+    splitIndex = findNaturalSplitIndex(chars, maxLength) ?? splitIndex;
   }
 
   return {

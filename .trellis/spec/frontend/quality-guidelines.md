@@ -410,3 +410,85 @@ const finalBlob = returnedBlob;
 - [ ] No `Comlink.transfer()` on input data to Workers (only on outputs)
 - [ ] Worker-extracted shared files don't import heavy libraries (e.g., onnxruntime-web)
 - [ ] Memory cleanup: `trimStateCache()` / `URL.revokeObjectURL()` called where needed
+
+## Scenario: LLM 文本翻译列契约
+
+### 1. Scope / Trigger
+
+- 触发：修改 `src/translators/llm.ts`、`src/pipeline/translate.ts`、`src/pipeline/typeset/columns.ts`，或调整 LLM 文本翻译 prompt / JSON payload / `translatedColumns` 语义。
+- 目标：竖排漫画文本必须先按完整语义翻成自然中文，再按最终排版拆列；不要把源 OCR 列当成逐列直译单元。
+
+### 2. Signatures
+
+```typescript
+type LlmSourceTextPayload = {
+  plainText: string;
+  textWithBreaks: string;
+  readingOrder: 'right-to-left' | 'top-to-bottom';
+  columns?: Array<{ index: number; label: string; text: string }>;
+  lines?: Array<{ index: number; label: string; text: string }>;
+};
+
+type LlmBatchResponse = {
+  regions: Array<{
+    id: string;
+    translation: string;
+    columns?: string[];
+  }>;
+};
+```
+
+### 3. Contracts
+
+- `sourceText.plainText` 是去掉换行后的完整原文，用于语义理解，不代表最终分列。
+- `sourceText.textWithBreaks` 保留 OCR/视觉换行，仅作为源断列/断行参考。
+- `sourceText.readingOrder` 必须显式标注：竖排为 `right-to-left`，横排为 `top-to-bottom`。
+- `sourceText.columns` / `sourceText.lines` 必须使用 `{ index, label, text }`，不要回退到 `{ "column1": "..." }` 这类动态 key 对象。
+- LLM prompt 必须要求先生成自然中文完整译文，再按 `targetColumns` / `targetLines` 输出 `columns`。
+- 返回的 `columns` 是最终排版分段，不要求逐列对应源 `columns`，但顺序必须是最终显示阅读顺序。
+- 单框 fallback prompt 也必须强调自然中文语序和漫画本地化，避免批量失败后退回逐词直译。
+- 整页 batch 失败或漏掉 region 时，`runTranslate()` 应先尝试单框结构化翻译；结构化 fallback 也失败后，才退回普通单框文本翻译。
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| LLM 返回无 `regions` | 抛出 `LlmColumnsParseError`，保留 raw response 供 debug |
+| 单个 region 缺少有效 `translation` | 该 region 不计入 batch hit，`runTranslate()` 先走单框结构化 fallback |
+| LLM 未返回 `columns` | 保留 `translation`，typeset 从换行或分段 fallback 推导 |
+| `columns` 中含非字符串或空字符串 | 解析时过滤无效项，不污染 `translatedColumns` |
+| 单框结构化 fallback 失败 | 退回普通单框文本翻译，`translatedColumns` 置空 |
+| 译文超过源列长度 | `splitByTextLength()` 优先在中文标点/语气停顿/短语边界切分，再退回硬切 |
+
+### 5. Good/Base/Bad Cases
+
+- Good：竖排输入 `もう大丈夫\n泣くな` 先生成 `已经没事了，别哭。`，再返回 `["已经没事了，", "别哭。"]`。
+- Good：整页 batch JSON 失败后，单个 region 的结构化 fallback 成功返回 `translation` 和 `columns`，最终保留 `translatedColumns`。
+- Base：模型只返回 `translation`，排版层仍能用自然边界 fallback 分列。
+- Bad：prompt 要求 `columns` “严格按 sourceText.columns 逐列翻译”，这会保留日语语序并破坏列间连贯性。
+- Bad：fallback 只按最大字数切分中文，例如把 `别哭了，真的没事` 切成 `别哭了，真的` / `没事`。
+
+### 6. Tests Required
+
+- `tests/translators/llm.test.ts` 必须覆盖：
+  - batch prompt 包含自然中文、跨列重组、排版分段等约束；
+  - payload 包含 `plainText`、`textWithBreaks`、`readingOrder`、结构化 `columns` / `lines`；
+  - fenced JSON response 能解析为 `translatedText` + `translatedColumns`；
+  - 单框 fallback prompt 强调自然中文语序。
+- `tests/pipeline/typeset/columns.test.ts` 必须覆盖中文标点和语气停顿优先分段。
+- `tests/pipeline/translate.test.ts` 必须覆盖 batch 失败后的单框结构化 fallback，以及结构化 fallback 失败后的普通文本 fallback。
+- 运行 `npx tsc --noEmit --pretty false` 和相关 Vitest；跨入口或 manifest 变化时再运行 `npm run build`。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+content: 'direction=v 时，columns 必须严格按 sourceText.columns 的顺序返回（不得反转）。'
+```
+
+#### Correct
+
+```typescript
+content: 'direction=v 时，先写完整中文译文，再按 targetColumns 拆成 columns；columns 按最终竖排显示的阅读顺序返回。'
+```

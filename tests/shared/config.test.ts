@@ -243,6 +243,7 @@ describe("OpenAI provider settings", () => {
       geminiAppPromptTemplate: "   ",
     });
 
+    expect(settings.geminiAppPromptTemplate).toMatch(/^任务：使用生图工具，/);
     expect(settings.geminiAppPromptTemplate).toContain("只修改台词文字/音效文字");
   });
 

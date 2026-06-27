@@ -39,14 +39,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download model files
-        run: |
-          mkdir -p public/models
-          BASE_URL="https://github.com/${{ github.repository }}/releases/download/${{ steps.models.outputs.tag }}"
-          for file in detector.onnx ocr_encoder.onnx ocr_decoder.onnx ocr_dict.txt lama_fp32.onnx bubble.onnx ch_PP-OCRv5_rec_mobile.onnx paddleocr_v5_dict.txt; do
-            echo "  Downloading $file ..."
-            curl -fSL -o "public/models/$file" "$BASE_URL/$file"
-          done
-          echo "Model files downloaded"
+        run: npm run models:download -- "${{ steps.models.outputs.tag }}" --force
 
       - name: Build extension
         run: npm run build
@@ -70,17 +63,25 @@ jobs:
             echo "ERROR: Missing bundled ONNX files in dist/models/"
             exit 1
           fi
-          for file in detector.onnx ocr_encoder.onnx ocr_decoder.onnx ocr_dict.txt lama_fp32.onnx bubble.onnx ch_PP-OCRv5_rec_mobile.onnx paddleocr_v5_dict.txt; do
-            if [ ! -f "dist/models/$file" ]; then
-              echo "ERROR: Missing $file in dist/models/"
-              exit 1
-            fi
-          done
+          node --input-type=module <<'NODE'
+          import { collectModelAssets } from './scripts/model-release-assets.mjs';
+          import { existsSync } from 'node:fs';
+          import { join } from 'node:path';
+
+          const assets = await collectModelAssets('dist/models/models.json');
+          for (const file of assets) {
+            if (!existsSync(join('dist/models', file))) {
+              console.error(`ERROR: Missing ${file} in dist/models/`);
+              process.exit(1);
+            }
+          }
+          console.log(`Verified model assets: ${assets.join(', ')}`);
+          NODE
           if [ -f "dist/models/ocr.onnx" ]; then
             echo "ERROR: Legacy ocr.onnx should not be bundled for split OCR releases"
             exit 1
           fi
-          echo "All split OCR model files present in dist/models/"
+          echo "All manifest model files present in dist/models/"
 
       - name: Create extension zip
         run: |

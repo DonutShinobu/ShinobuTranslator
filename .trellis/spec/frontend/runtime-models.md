@@ -27,6 +27,7 @@
   3. `PP-OCRv6_medium_rec.onnx`
   4. `aot_inpaint_512.onnx`
 - 发布包 `dist/models/` 不应包含旧 48px OCR、PaddleOCR v5、PP-OCRv6 small、Lama inpaint 或旧 bubble 备份。
+- `bubble.onnx` 是同名替换过的模型文件：当前文件必须来自 YOLO11n Bubble，不要因为文件名未变而沿用旧 YOLOv8m 来源判断。
 - benchmark 候选模型不得自动进入前端设置、`models.json` 或默认发布包；需要产品化时先更新本文档。
 
 ### 4. Validation & Error Matrix
@@ -38,6 +39,7 @@
 | 前端重新暴露 OCR 引擎切换 | 用户可选择不存在或未维护的模型 | 移除 UI 选项，只保留内部兼容字段 |
 | 旧设置值没有归一化 | 老用户设置升级后进入无效分支 | 在 `normalizeOcrEngine()` 中迁移到 `paddleocr_v6_medium` |
 | benchmark 继续要求 small/48px/Lama 文件 | 新发布包无法跑性能测试 | 将 benchmark 入口收束到当前发布模型，历史对照只看旧报告 |
+| 只按文件名判断 `bubble.onnx` 未变 | 发布说明、第三方来源或模型 release 可能继续引用旧 YOLOv8m bubble | 对照 SHA256/来源；当前应为 YOLO11n `3DA3317F...789F0A0` |
 
 ### 5. Good/Base/Bad Cases
 
@@ -84,6 +86,13 @@
 | `PP-OCRv6_medium_rec.onnx` | `paddleocr_v6_medium_rec` | `9C09ABF0957F7968C7586464B7397B84AD2387A0497A351AF40E9ACC71B673BA` | 唯一 OCR recognition 模型；识别检测框内日文/中文文本，使用 CTC decode | [`PaddlePaddle/PP-OCRv6_medium_rec_onnx`](https://huggingface.co/PaddlePaddle/PP-OCRv6_medium_rec_onnx) |
 | `aot_inpaint_512.onnx` | `inpaint` | `ACDDDCCFDC32780C8947946814E9EEA6A8B0D5B1880FB46F3BE8389510F11689` | 去字 inpaint；接收原图和 refined text mask，输出清理后的图像 | [`mayocream/aot-inpainting`](https://huggingface.co/mayocream/aot-inpainting)，来源 checkpoint 为 [`zyddnys/manga-image-translator`](https://github.com/zyddnys/manga-image-translator) 的 AOT inpainting |
 | `bubble.onnx` | `bubble` | `3DA3317F6DFFE27CF5C9396DC95D5324FB647E22ADEB7BF304EDBE921789F0A0` | YOLO11n 气泡实例分割；给排版阶段提供 `bubbleBox` 和 `bubbleMask` | [`huyvux3005/manga109-segmentation-bubble`](https://huggingface.co/huyvux3005/manga109-segmentation-bubble)，MangaLens YOLO11n speech bubble segmentation |
+
+### Bubble 同名替换记录
+
+- 当前 `bubble.onnx` 保持 manifest key 和文件名不变，但二进制内容已经从旧 YOLOv8m speech bubble segmentation 切换为 YOLO11n Bubble。
+- 旧 `models-v0.4.0` release 中的 `bubble.onnx`：size `108982949`，SHA256 `36C26BDEFE150226ACD9669772E9FF5A011FA0DD4622469B49D3D5E359F3251C`。
+- 当前发布模型的 `bubble.onnx`：size `11626988`，SHA256 `3DA3317F6DFFE27CF5C9396DC95D5324FB647E22ADEB7BF304EDBE921789F0A0`。
+- 更新发布说明、第三方声明或模型 release 时，必须写当前 YOLO11n 来源；不要沿用旧 `kitsumed/yolov8m_seg-speech-bubble` 描述。
 
 非模型但必须随包保留：
 

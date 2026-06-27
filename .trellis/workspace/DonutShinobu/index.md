@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 20
-- **Last Active**: 2026-06-17
+- **Total Sessions**: 21
+- **Last Active**: 2026-06-27
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~658 | Active |
+| `journal-1.md` | ~691 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 21 | 2026-06-27 | Structured diagnostic logging | `5c5b7a4` | `master` |
 | 20 | 2026-06-17 | Paddle cold-start validation | `cff16fd` | `codex/paddle-cold-start-validation` |
 | 19 | 2026-06-17 | Paddle pipeline profiling and optimization | `918f947` | `master` |
 | 18 | 2026-06-16 | PaddleOCR v6 medium 收敛与任务收尾 | `69ec023`, `1179750`, `4a170f4`, `67c38e0` | `master` |

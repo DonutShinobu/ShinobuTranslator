@@ -656,3 +656,36 @@ Validated Paddle OCR cold-start routes on branch codex/paddle-cold-start-validat
 ### Next Steps
 
 - None - task complete
+
+
+## Session 21: Structured diagnostic logging
+
+**Date**: 2026-06-27
+**Task**: Structured diagnostic logging
+**Branch**: `master`
+
+### Summary
+
+Implemented structured diagnostic logging with popup download and clear actions, LLM/API/pipeline event capture, text .log export, redaction, timestamp hardening, tests, and spec updates.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5c5b7a4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

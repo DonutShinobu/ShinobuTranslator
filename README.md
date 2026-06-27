@@ -18,14 +18,14 @@
   <a href="https://github.com/zyddnys/manga-image-translator">
     <img alt="基于 manga-image-translator" src="https://img.shields.io/badge/基于-manga--image--translator-green">
   </a>
-  <a href="https://huggingface.co/webnn/PP-OCRv5-ONNX">
-    <img alt="OCR PP-OCRv5" src="https://img.shields.io/badge/OCR-PP--OCRv5-blue">
+  <a href="https://huggingface.co/PaddlePaddle/PP-OCRv6_medium_rec_onnx">
+    <img alt="OCR PP-OCRv6 medium" src="https://img.shields.io/badge/OCR-PP--OCRv6%20medium-blue">
   </a>
-  <a href="https://huggingface.co/Carve/LaMa-ONNX">
-    <img alt="模型 LaMa-ONNX" src="https://img.shields.io/badge/模型-LaMa--ONNX-orange">
+  <a href="https://huggingface.co/mayocream/aot-inpainting">
+    <img alt="模型 AOT Inpaint" src="https://img.shields.io/badge/模型-AOT%20Inpaint-orange">
   </a>
-  <a href="https://huggingface.co/kitsumed/yolov8m_seg-speech-bubble">
-    <img alt="模型 Speech Bubble" src="https://img.shields.io/badge/模型-Speech%20Bubble-orange">
+  <a href="https://huggingface.co/huyvux3005/manga109-segmentation-bubble">
+    <img alt="模型 YOLO11n Bubble" src="https://img.shields.io/badge/模型-YOLO11n%20Bubble-orange">
   </a>
 </p>
 
@@ -181,10 +181,10 @@ ShinobuTranslator 使用 `onnxruntime-web` 在浏览器端运行视觉模型。�
 
 | 模型 | 用途 |
 | --- | --- |
-| `detector` | 文本检测 |
-| `bubble` | 气泡分割 |
-| `paddleocr_v6_medium_rec` | OCR 识别 |
-| `inpaint` | 去字修复 |
+| `detector` | 文本检测（`detector.onnx`） |
+| `bubble` | YOLO11n 气泡实例分割（`bubble.onnx`） |
+| `paddleocr_v6_medium_rec` | PP-OCRv6 medium OCR 识别（`PP-OCRv6_medium_rec.onnx` + `paddleocr_v6_dict.txt`） |
+| `inpaint` | AOT 去字修复（`aot_inpaint_512.onnx`） |
 
 ## 从源码运行
 
@@ -223,7 +223,7 @@ npx tsc --noEmit
 
 ### 模型资源
 
-如果模型文件没有随仓库或 Release 提供，可尝试运行：
+ONNX 模型文件通常随 Release 模型资产分发，源码仓库只保留 manifest 和字典等小文件。如果本地缺少模型文件，可运行：
 
 ```bash
 npm run models:download

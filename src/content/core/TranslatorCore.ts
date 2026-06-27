@@ -296,25 +296,38 @@ export class TranslatorCore {
     }
 
     for (const target of targets) {
-      if (this.mounted.has(target.key)) continue;
+      const mounted = this.mounted.get(target.key);
+      if (mounted?.ui.host.isConnected) {
+        mounted.target = target;
+        const state = this.ensureState(target.key, target.originalUrl);
+        this.applyStateImage(target, state);
+        continue;
+      }
+      if (mounted) {
+        this.mounted.delete(target.key);
+      }
+
+      const key = target.key;
       const anchor = this.adapter.createUiAnchor(target);
       const ui = createUiElements();
       anchor.appendChild(ui.host);
 
       ui.button.addEventListener('click', () => {
-        void this.handleTranslateClick(target);
+        const currentTarget = this.mounted.get(key)?.target ?? target;
+        void this.handleTranslateClick(currentTarget);
       });
       ui.debugDownloadButton.addEventListener('click', () => {
-        const state = this.states.get(target.key);
+        const state = this.states.get(key);
         if (state) handleDebugDownload(state);
       });
       ui.stageTimingCardToggleButton.addEventListener('click', () => {
-        const state = this.states.get(target.key);
-        if (state) this.toggleStageTimingCard(state, () => this.renderForKey(target.key));
+        const state = this.states.get(key);
+        if (state) this.toggleStageTimingCard(state, () => this.renderForKey(key));
       });
 
-      this.mounted.set(target.key, { key: target.key, target, ui });
-      const state = this.ensureState(target.key, target.originalUrl);
+      this.mounted.set(key, { key, target, ui });
+      const state = this.ensureState(key, target.originalUrl);
+      this.applyStateImage(target, state);
       renderUi(ui, state);
     }
   }
@@ -355,6 +368,12 @@ export class TranslatorCore {
     if (!mounted) return;
     const state = this.states.get(key) ?? null;
     renderUi(mounted.ui, state);
+  }
+
+  private applyStateImage(target: ImageTarget, state: PhotoState): void {
+    if (!state.translatedUrl) return;
+    const imageUrl = state.mode === 'translated' ? state.translatedUrl : state.originalUrl;
+    this.adapter.applyImage(target, imageUrl);
   }
 
   private resetStateForPipeline(state: PhotoState): void {
@@ -629,12 +648,12 @@ export class TranslatorCore {
       if (state.mode === 'translated') {
         state.mode = 'original';
         state.status = 'showingOriginal';
-        this.adapter.applyImage(target, state.originalUrl);
       } else {
         state.mode = 'translated';
         state.status = 'translated';
-        this.adapter.applyImage(target, state.translatedUrl);
       }
+      const currentTarget = this.mounted.get(key)?.target ?? target;
+      this.applyStateImage(currentTarget, state);
       this.renderForKey(key);
       return;
     }
@@ -658,7 +677,8 @@ export class TranslatorCore {
         },
         jankMonitor,
       });
-      if (state.translatedUrl) this.adapter.applyImage(target, state.translatedUrl);
+      const currentTarget = this.mounted.get(key)?.target ?? target;
+      this.applyStateImage(currentTarget, state);
       this.renderForKey(key);
     } catch (error) {
       finishProgressJankMonitor(jankMonitor);

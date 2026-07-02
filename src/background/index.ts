@@ -60,6 +60,12 @@ import {
 import { arrayBufferToBase64, toErrorMessage } from '../shared/utils';
 import { runGeminiApiImageTranslate } from './geminiApiImageClient';
 import { getGeminiAppAuthStatus, getGeminiAppRawResponse, runGeminiAppImageTranslate } from './geminiAppClient';
+import {
+  LlmChatCompletionHttpError,
+  LlmChatCompletionParseError,
+  proxyApiKeyChatCompletions,
+  resolveLlmChatCompletionsEndpoint,
+} from './llmProxy';
 
 const openAiOAuthStorageKey = 'mangaTranslate.openaiOAuth';
 const openAiOAuthPendingStorageKey = 'mangaTranslate.openaiOAuthPending';
@@ -771,6 +777,33 @@ async function proxyOpenAiChatCompletions(body: LlmChatCompletionRequestBody): P
   return toChatCompletionsResponse(content, body.model);
 }
 
+function getLlmProxyEndpoint(settings: ExtensionSettings): string {
+  const profile = settings.llmProfiles[settings.llmProvider];
+  if (settings.llmProvider === 'openai' && profile.authMode === 'openai_oauth') {
+    return openAiCodexResponsesEndpoint;
+  }
+  return resolveLlmChatCompletionsEndpoint(settings);
+}
+
+function getLlmProxyErrorData(error: unknown): Record<string, unknown> {
+  if (error instanceof LlmChatCompletionHttpError) {
+    return {
+      status: error.status,
+      statusText: error.statusText,
+      contentType: error.contentType,
+      responseText: error.responseText,
+    };
+  }
+  if (error instanceof LlmChatCompletionParseError) {
+    return {
+      status: error.status,
+      contentType: error.contentType,
+      responseText: error.responseText,
+    };
+  }
+  return {};
+}
+
 function buildOriginalCandidates(imageUrl: string): string[] {
   const urls: string[] = [];
   try {
@@ -1050,11 +1083,12 @@ async function handleMessage(message: RuntimeMessage, sender: ChromeMessageSende
 
   if (message.type === 'mt:llm-chat-completions') {
     const settings = await getSettings();
+    const profile = settings.llmProfiles[settings.llmProvider];
     const startedAt = Date.now();
     const baseLogData = {
-      provider: 'openai',
-      authMode: 'openai_oauth',
-      endpoint: sanitizeDiagnosticUrl(openAiCodexResponsesEndpoint),
+      provider: settings.llmProvider,
+      authMode: profile.authMode,
+      endpoint: sanitizeDiagnosticUrl(getLlmProxyEndpoint(settings)),
       model: message.body.model,
       messageCount: message.body.messages.length,
       responseFormat: message.body.response_format?.type ?? 'default',
@@ -1067,17 +1101,19 @@ async function handleMessage(message: RuntimeMessage, sender: ChromeMessageSende
       level: 'info',
       category: 'llm.api',
       source: { context: 'background', module: 'background/index.ts' },
-      message: 'OpenAI OAuth 代理请求开始',
+      message: `${settings.llmProvider} LLM 代理请求开始`,
       data: baseLogData,
     });
     try {
-      const data = await proxyOpenAiChatCompletions(message.body);
+      const data = settings.llmProvider === 'openai' && profile.authMode === 'openai_oauth'
+        ? await proxyOpenAiChatCompletions(message.body)
+        : await proxyApiKeyChatCompletions(settings, message.body);
       await recordBackgroundDiagnosticLog(settings, {
         runId: message.diagnosticRunId,
         level: 'info',
         category: 'llm.api',
         source: { context: 'background', module: 'background/index.ts' },
-        message: 'OpenAI OAuth 代理请求完成',
+        message: `${settings.llmProvider} LLM 代理请求完成`,
         data: {
           ...baseLogData,
           durationMs: Date.now() - startedAt,
@@ -1090,17 +1126,21 @@ async function handleMessage(message: RuntimeMessage, sender: ChromeMessageSende
         data,
       };
     } catch (error) {
-      const classification = classifyLlmFetchError(error);
+      const classification = classifyLlmFetchError(
+        error,
+        error instanceof LlmChatCompletionHttpError ? error.status : undefined,
+      );
       await recordBackgroundDiagnosticLog(settings, {
         runId: message.diagnosticRunId,
         level: 'error',
         category: 'llm.api',
         source: { context: 'background', module: 'background/index.ts' },
-        message: `OpenAI OAuth 代理请求失败：${classification.reason}`,
+        message: `${settings.llmProvider} LLM 代理请求失败：${classification.reason}`,
         data: {
           ...baseLogData,
           durationMs: Date.now() - startedAt,
           classification,
+          ...getLlmProxyErrorData(error),
         },
         error: toDiagnosticError(error),
       });

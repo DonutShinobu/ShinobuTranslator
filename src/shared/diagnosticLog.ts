@@ -1,4 +1,5 @@
-import { resolveLlmBaseUrl, resolveLlmModel, type ExtensionSettings } from './config';
+import { resolveLlmBaseUrl, resolveLlmModel } from './config';
+import type { ExtensionSettings } from './config';
 import type { PipelineConfig } from '../types';
 
 export type DiagnosticLogLevel = 'debug' | 'info' | 'warn' | 'error';
@@ -128,6 +129,7 @@ export type LlmFetchErrorClassification = {
 const secretKeyPattern = /(api[_-]?key|authorization|cookie|token|access[_-]?token|refresh[_-]?token|bearer|secret|password|code_verifier|codeVerifier|client_secret)/iu;
 const bearerPattern = /Bearer\s+[A-Za-z0-9._~+/=-]+/giu;
 const imageDataUrlPattern = /^data:image\/[^;]+;base64,/iu;
+const blobUrlPattern = /^blob:/iu;
 const longTextLimit = 12_000;
 const maxArrayItems = 80;
 const maxObjectKeys = 120;
@@ -236,6 +238,9 @@ export function truncateDiagnosticText(text: string, limit = longTextLimit): str
 export function sanitizeDiagnosticUrl(url: string): string {
   if (imageDataUrlPattern.test(url)) {
     return `[IMAGE_DATA_URL_REDACTED:${url.length}]`;
+  }
+  if (blobUrlPattern.test(url)) {
+    return `[BLOB_URL_REDACTED:${url.length}]`;
   }
   try {
     const parsed = new URL(url);

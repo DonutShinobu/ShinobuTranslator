@@ -35,9 +35,35 @@ type CapturedRegionPayload = Array<{
   };
 }>;
 
-function parseRequestBody(requestInit: RequestInit | undefined): CapturedChatBody {
-  expect(requestInit?.body).toBeTypeOf('string');
-  return JSON.parse(requestInit?.body as string) as CapturedChatBody;
+function installRuntimeChatCompletionMock(responseContent: string, sentMessages: unknown[]): void {
+  testGlobal.chrome = {
+    runtime: {
+      sendMessage(message: unknown, callback?: (response: unknown) => void): void {
+        sentMessages.push(message);
+        callback?.({
+          ok: true,
+          type: 'mt:llm-chat-completions',
+          data: {
+            choices: [{ message: { content: responseContent } }],
+          },
+        });
+      },
+    },
+  };
+}
+
+function findCapturedChatBody(sentMessages: unknown[]): CapturedChatBody {
+  const chatMessage = sentMessages.find(
+    (message) => typeof message === 'object' && message !== null && (message as { type?: unknown }).type === 'mt:llm-chat-completions',
+  ) as { body?: unknown } | undefined;
+  expect(chatMessage?.body).toBeTruthy();
+  return chatMessage?.body as CapturedChatBody;
+}
+
+function findRuntimeChatMessages(sentMessages: unknown[]): unknown[] {
+  return sentMessages.filter(
+    (message) => typeof message === 'object' && message !== null && (message as { type?: unknown }).type === 'mt:llm-chat-completions',
+  );
 }
 
 function parsePromptPayload(userContent: string): CapturedRegionPayload {
@@ -60,26 +86,12 @@ afterEach(() => {
 describe('llmTranslate', () => {
   it('proxies OpenAI OAuth chat completion requests through runtime messaging', async () => {
     const sentMessages: unknown[] = [];
-    testGlobal.chrome = {
-      runtime: {
-        sendMessage(message: unknown, callback?: (response: unknown) => void): void {
-          sentMessages.push(message);
-          callback?.({
-            ok: true,
-            type: 'mt:llm-chat-completions',
-            data: {
-              choices: [{ message: { content: '译文' } }],
-            },
-          });
-        },
-      },
-    };
+    installRuntimeChatCompletionMock('译文', sentMessages);
 
     const translated = await llmTranslate({
       provider: 'openai',
       authMode: 'openai_oauth',
       baseUrl: 'https://api.openai.com/v1',
-      apiKey: '',
       model: 'gpt-5.4-mini',
       from: 'ja',
       to: 'zh-CHS',
@@ -98,20 +110,14 @@ describe('llmTranslate', () => {
     });
   });
 
-  it('uses the configured API key for direct OpenAI requests in API key mode', async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response(JSON.stringify({ choices: [{ message: { content: '译文' } }] }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    );
-    vi.stubGlobal('fetch', fetchMock);
+  it('proxies API-key chat completion requests through runtime messaging', async () => {
+    const sentMessages: unknown[] = [];
+    installRuntimeChatCompletionMock('译文', sentMessages);
 
     const translated = await llmTranslate({
       provider: 'openai',
       authMode: 'api_key',
       baseUrl: 'https://api.openai.com/v1',
-      apiKey: 'sk-test',
       model: 'gpt-5.4-mini',
       from: 'ja',
       to: 'zh-CHS',
@@ -119,16 +125,15 @@ describe('llmTranslate', () => {
     });
 
     expect(translated).toBe('译文');
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://api.openai.com/v1/chat/completions',
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          Authorization: 'Bearer sk-test',
-        }),
-      }),
-    );
-    const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
-    const body = parseRequestBody(requestInit);
+    const chatMessages = findRuntimeChatMessages(sentMessages);
+    expect(chatMessages).toHaveLength(1);
+    expect(chatMessages[0]).toMatchObject({
+      type: 'mt:llm-chat-completions',
+      body: {
+        model: 'gpt-5.4-mini',
+      },
+    });
+    const body = findCapturedChatBody(sentMessages);
     expect(body).not.toHaveProperty('temperature');
     expect(body.messages[0].content).toContain('专业漫画本地化译者');
     expect(body.messages[0].content).toContain('不要保留日语倒装语序');
@@ -159,19 +164,13 @@ describe('llmTranslateRegions', () => {
       }),
       '```',
     ].join('\n');
-    const fetchMock = vi.fn(async () =>
-      new Response(JSON.stringify({ choices: [{ message: { content: rawContent } }] }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    );
-    vi.stubGlobal('fetch', fetchMock);
+    const sentMessages: unknown[] = [];
+    installRuntimeChatCompletionMock(rawContent, sentMessages);
 
     const result = await llmTranslateRegions({
       provider: 'openai',
       authMode: 'api_key',
       baseUrl: 'https://api.openai.com/v1',
-      apiKey: 'sk-test',
       model: 'gpt-5.4-mini',
       from: 'ja',
       to: 'zh-CHS',
@@ -201,8 +200,7 @@ describe('llmTranslateRegions', () => {
     });
     expect(result.rawContent).toBe(rawContent);
 
-    const requestInit = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
-    const body = parseRequestBody(requestInit);
+    const body = findCapturedChatBody(sentMessages);
     expect(body.response_format).toEqual({ type: 'json_object' });
     expect(body.messages[0].content).toContain('专业漫画本地化译者');
     expect(body.messages[0].content).toContain('不要按日语列顺序逐列直译');

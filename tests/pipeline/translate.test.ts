@@ -2,6 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runTranslate } from '../../src/pipeline/translate';
 import type { PipelineConfig, TextRegion } from '../../src/types';
 
+const testGlobal = globalThis as typeof globalThis & { chrome?: unknown };
+const originalChrome = testGlobal.chrome;
+
 const baseConfig: PipelineConfig = {
   sourceLang: 'ja',
   targetLang: 'zh-CHS',
@@ -30,23 +33,45 @@ function makeRegion(overrides: Partial<TextRegion> = {}): TextRegion {
   };
 }
 
-function chatResponse(content: string): Response {
-  return new Response(JSON.stringify({ choices: [{ message: { content } }] }), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
-  });
+function installRuntimeChatSequence(contents: string[]): unknown[] {
+  const sentChatMessages: unknown[] = [];
+  const queue = [...contents];
+  testGlobal.chrome = {
+    runtime: {
+      sendMessage(message: unknown, callback?: (response: unknown) => void): void {
+        if (typeof message === 'object' && message !== null && (message as { type?: unknown }).type === 'mt:llm-chat-completions') {
+          sentChatMessages.push(message);
+          callback?.({
+            ok: true,
+            type: 'mt:llm-chat-completions',
+            data: {
+              choices: [{ message: { content: queue.shift() ?? '' } }],
+            },
+          });
+          return;
+        }
+        callback?.({ ok: true, type: 'mt:diagnostic-log-event' });
+      },
+    },
+  };
+  return sentChatMessages;
 }
 
 afterEach(() => {
+  if (originalChrome === undefined) {
+    delete testGlobal.chrome;
+  } else {
+    testGlobal.chrome = originalChrome;
+  }
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
 describe('runTranslate', () => {
   it('uses single-region structured fallback after batch parse failure', async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(chatResponse('not json'))
-      .mockResolvedValueOnce(chatResponse(JSON.stringify({
+    const sentChatMessages = installRuntimeChatSequence([
+      'not json',
+      JSON.stringify({
         regions: [
           {
             id: 'region-1',
@@ -54,12 +79,12 @@ describe('runTranslate', () => {
             columns: ['已经没事了，', '别哭。'],
           },
         ],
-      })));
-    vi.stubGlobal('fetch', fetchMock);
+      }),
+    ]);
 
     const result = await runTranslate([makeRegion()], baseConfig);
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(sentChatMessages).toHaveLength(2);
     expect(result.regions[0]).toMatchObject({
       translatedText: '已经没事了，别哭。',
       translatedColumns: ['已经没事了，', '别哭。'],
@@ -74,15 +99,15 @@ describe('runTranslate', () => {
   });
 
   it('falls back to plain single-text translation if structured fallback also fails', async () => {
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(chatResponse('not json'))
-      .mockResolvedValueOnce(chatResponse(JSON.stringify({ regions: [] })))
-      .mockResolvedValueOnce(chatResponse('普通译文'));
-    vi.stubGlobal('fetch', fetchMock);
+    const sentChatMessages = installRuntimeChatSequence([
+      'not json',
+      JSON.stringify({ regions: [] }),
+      '普通译文',
+    ]);
 
     const result = await runTranslate([makeRegion()], baseConfig);
 
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(sentChatMessages).toHaveLength(3);
     expect(result.regions[0]).toMatchObject({
       translatedText: '普通译文',
       translatedColumns: undefined,

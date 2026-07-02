@@ -62,7 +62,8 @@ describe('formatDiagnosticReadableLog', () => {
           model: 'deepseek-v4-flash',
           status: 200,
           durationMs: 1234.4,
-          contentDirectFetch: true,
+          backgroundDirectFetch: true,
+          contentDirectFetch: false,
         },
       },
       {
@@ -81,7 +82,8 @@ describe('formatDiagnosticReadableLog', () => {
     );
     expect(formatDiagnosticReadableLogLines(events)[0]).toContain('"status":200');
     expect(formatDiagnosticReadableLogLines(events)[0]).toContain('"durationMs":1234.4');
-    expect(formatDiagnosticReadableLogLines(events)[0]).toContain('"contentDirectFetch":true');
+    expect(formatDiagnosticReadableLogLines(events)[0]).toContain('"backgroundDirectFetch":true');
+    expect(formatDiagnosticReadableLogLines(events)[0]).toContain('"contentDirectFetch":false');
   });
 
   it('builds a text export without exposing the top-level events array', () => {
@@ -201,11 +203,13 @@ describe('redactDiagnosticValue', () => {
 });
 
 describe('sanitizeDiagnosticUrl', () => {
-  it('keeps only origin and path and redacts image data URLs', () => {
+  it('keeps only origin and path and redacts local image URLs', () => {
     expect(sanitizeDiagnosticUrl('https://api.deepseek.com/chat/completions?api_key=secret')).toBe(
       'https://api.deepseek.com/chat/completions',
     );
     expect(sanitizeDiagnosticUrl('data:image/png;base64,aaaa')).toBe('[IMAGE_DATA_URL_REDACTED:26]');
+    const blobUrl = 'blob:https://mangaplus.shueisha.tv/12345678-1234-1234-1234-123456789abc';
+    expect(sanitizeDiagnosticUrl(blobUrl)).toBe(`[BLOB_URL_REDACTED:${blobUrl.length}]`);
   });
 });
 

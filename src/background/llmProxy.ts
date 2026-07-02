@@ -1,6 +1,5 @@
-import { resolveLlmBaseUrl } from '../shared/config';
 import type { ExtensionSettings } from '../shared/config';
-import type { LlmChatCompletionRequestBody } from '../shared/messages';
+import type { LlmChatCompletionRequestBody, LlmChatCompletionsProxyConfig } from '../shared/messages';
 
 export class LlmChatCompletionHttpError extends Error {
   readonly status: number;
@@ -70,29 +69,35 @@ function parseMaybeJson(text: string): unknown {
   }
 }
 
-export function resolveLlmChatCompletionsEndpoint(settings: ExtensionSettings): string {
-  return `${resolveLlmBaseUrl(settings).replace(/\/+$/u, '')}/chat/completions`;
+export function resolveLlmChatCompletionsEndpoint(baseUrl: string): string {
+  return `${baseUrl.trim().replace(/\/+$/u, '')}/chat/completions`;
 }
 
 export async function proxyApiKeyChatCompletions(
   settings: ExtensionSettings,
+  proxyConfig: LlmChatCompletionsProxyConfig,
   body: LlmChatCompletionRequestBody,
 ): Promise<unknown> {
-  if (settings.llmProvider === 'gemini') {
+  if (proxyConfig.provider === 'gemini') {
     throw new Error('Nano Banana 使用端到端译图流程，不支持 OCR 文本翻译流程');
   }
 
-  const profile = settings.llmProfiles[settings.llmProvider];
-  if (profile.authMode !== 'api_key') {
+  if (proxyConfig.authMode !== 'api_key') {
     throw new Error('当前 LLM 认证方式不支持 API Key 请求');
   }
 
+  const profile = settings.llmProfiles[proxyConfig.provider];
   const apiKey = profile.apiKey.trim();
   if (!apiKey) {
     throw new Error('LLM 模式需要填写 API Key');
   }
 
-  const endpoint = resolveLlmChatCompletionsEndpoint(settings);
+  const baseUrl = proxyConfig.baseUrl.trim();
+  if (!baseUrl) {
+    throw new Error('LLM Base URL 不能为空');
+  }
+
+  const endpoint = resolveLlmChatCompletionsEndpoint(baseUrl);
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {

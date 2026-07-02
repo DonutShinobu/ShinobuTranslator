@@ -30,6 +30,7 @@ import {
 import {
   isRuntimeMessage,
   type LlmChatCompletionRequestBody,
+  type LlmChatCompletionsProxyConfig,
   type RuntimeMessage,
   type RuntimeResponse,
 } from '../shared/messages';
@@ -777,12 +778,26 @@ async function proxyOpenAiChatCompletions(body: LlmChatCompletionRequestBody): P
   return toChatCompletionsResponse(content, body.model);
 }
 
-function getLlmProxyEndpoint(settings: ExtensionSettings): string {
+function resolveLlmProxyConfig(
+  settings: ExtensionSettings,
+  proxyConfig: LlmChatCompletionsProxyConfig | undefined,
+): LlmChatCompletionsProxyConfig {
+  if (proxyConfig) {
+    return proxyConfig;
+  }
   const profile = settings.llmProfiles[settings.llmProvider];
-  if (settings.llmProvider === 'openai' && profile.authMode === 'openai_oauth') {
+  return {
+    provider: settings.llmProvider,
+    authMode: profile.authMode,
+    baseUrl: resolveLlmBaseUrl(settings),
+  };
+}
+
+function getLlmProxyEndpoint(proxyConfig: LlmChatCompletionsProxyConfig): string {
+  if (proxyConfig.provider === 'openai' && proxyConfig.authMode === 'openai_oauth') {
     return openAiCodexResponsesEndpoint;
   }
-  return resolveLlmChatCompletionsEndpoint(settings);
+  return resolveLlmChatCompletionsEndpoint(proxyConfig.baseUrl);
 }
 
 function getLlmProxyErrorData(error: unknown): Record<string, unknown> {
@@ -1083,12 +1098,12 @@ async function handleMessage(message: RuntimeMessage, sender: ChromeMessageSende
 
   if (message.type === 'mt:llm-chat-completions') {
     const settings = await getSettings();
-    const profile = settings.llmProfiles[settings.llmProvider];
+    const proxyConfig = resolveLlmProxyConfig(settings, message.proxyConfig);
     const startedAt = Date.now();
     const baseLogData = {
-      provider: settings.llmProvider,
-      authMode: profile.authMode,
-      endpoint: sanitizeDiagnosticUrl(getLlmProxyEndpoint(settings)),
+      provider: proxyConfig.provider,
+      authMode: proxyConfig.authMode,
+      endpoint: sanitizeDiagnosticUrl(getLlmProxyEndpoint(proxyConfig)),
       model: message.body.model,
       messageCount: message.body.messages.length,
       responseFormat: message.body.response_format?.type ?? 'default',
@@ -1101,19 +1116,19 @@ async function handleMessage(message: RuntimeMessage, sender: ChromeMessageSende
       level: 'info',
       category: 'llm.api',
       source: { context: 'background', module: 'background/index.ts' },
-      message: `${settings.llmProvider} LLM 代理请求开始`,
+      message: `${proxyConfig.provider} LLM 代理请求开始`,
       data: baseLogData,
     });
     try {
-      const data = settings.llmProvider === 'openai' && profile.authMode === 'openai_oauth'
+      const data = proxyConfig.provider === 'openai' && proxyConfig.authMode === 'openai_oauth'
         ? await proxyOpenAiChatCompletions(message.body)
-        : await proxyApiKeyChatCompletions(settings, message.body);
+        : await proxyApiKeyChatCompletions(settings, proxyConfig, message.body);
       await recordBackgroundDiagnosticLog(settings, {
         runId: message.diagnosticRunId,
         level: 'info',
         category: 'llm.api',
         source: { context: 'background', module: 'background/index.ts' },
-        message: `${settings.llmProvider} LLM 代理请求完成`,
+        message: `${proxyConfig.provider} LLM 代理请求完成`,
         data: {
           ...baseLogData,
           durationMs: Date.now() - startedAt,
@@ -1135,7 +1150,7 @@ async function handleMessage(message: RuntimeMessage, sender: ChromeMessageSende
         level: 'error',
         category: 'llm.api',
         source: { context: 'background', module: 'background/index.ts' },
-        message: `${settings.llmProvider} LLM 代理请求失败：${classification.reason}`,
+        message: `${proxyConfig.provider} LLM 代理请求失败：${classification.reason}`,
         data: {
           ...baseLogData,
           durationMs: Date.now() - startedAt,

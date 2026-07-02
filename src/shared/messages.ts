@@ -1,7 +1,7 @@
 import type { ExtensionSettings } from './config';
 import type { DiagnosticLogEvent, DiagnosticLogTextExport } from './diagnosticLog';
 import type { OpenAiOAuthStatusInfo } from './openaiOAuth';
-import type { StageTiming } from '../types';
+import type { LlmAuthMode, LlmProvider, StageTiming } from '../types';
 import { requireChromeApi } from './chrome';
 import { toErrorMessage } from './utils';
 
@@ -62,9 +62,16 @@ export type LlmChatCompletionRequestBody = {
   };
 };
 
+export type LlmChatCompletionsProxyConfig = {
+  provider: LlmProvider;
+  authMode: LlmAuthMode;
+  baseUrl: string;
+};
+
 export type LlmChatCompletionsMessage = {
   type: 'mt:llm-chat-completions';
   body: LlmChatCompletionRequestBody;
+  proxyConfig?: LlmChatCompletionsProxyConfig;
   diagnosticRunId?: string;
 };
 
@@ -271,8 +278,35 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+function isLlmProvider(value: unknown): value is LlmProvider {
+  return (
+    value === 'deepseek' ||
+    value === 'gemini' ||
+    value === 'glm' ||
+    value === 'kimi' ||
+    value === 'minimax' ||
+    value === 'mimo' ||
+    value === 'openai' ||
+    value === 'custom'
+  );
+}
+
+function isLlmAuthMode(value: unknown): value is LlmAuthMode {
+  return value === 'api_key' || value === 'openai_oauth' || value === 'gemini_app';
+}
+
 function isLlmChatCompletionsMessage(value: Record<string, unknown>): value is LlmChatCompletionsMessage {
   if (value.type !== 'mt:llm-chat-completions' || !isRecord(value.body)) {
+    return false;
+  }
+  const proxyConfig = value.proxyConfig;
+  if (
+    proxyConfig !== undefined &&
+    (!isRecord(proxyConfig) ||
+      !isLlmProvider(proxyConfig.provider) ||
+      !isLlmAuthMode(proxyConfig.authMode) ||
+      typeof proxyConfig.baseUrl !== 'string')
+  ) {
     return false;
   }
   return (

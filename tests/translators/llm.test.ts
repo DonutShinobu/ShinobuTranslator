@@ -107,6 +107,11 @@ describe('llmTranslate', () => {
       body: {
         model: 'gpt-5.4-mini',
       },
+      proxyConfig: {
+        provider: 'openai',
+        authMode: 'openai_oauth',
+        baseUrl: 'https://api.openai.com/v1',
+      },
     });
   });
 
@@ -131,6 +136,11 @@ describe('llmTranslate', () => {
       type: 'mt:llm-chat-completions',
       body: {
         model: 'gpt-5.4-mini',
+      },
+      proxyConfig: {
+        provider: 'openai',
+        authMode: 'api_key',
+        baseUrl: 'https://api.openai.com/v1',
       },
     });
     const body = findCapturedChatBody(sentMessages);
@@ -201,6 +211,14 @@ describe('llmTranslateRegions', () => {
     expect(result.rawContent).toBe(rawContent);
 
     const body = findCapturedChatBody(sentMessages);
+    const chatMessages = findRuntimeChatMessages(sentMessages);
+    expect(chatMessages[0]).toMatchObject({
+      proxyConfig: {
+        provider: 'openai',
+        authMode: 'api_key',
+        baseUrl: 'https://api.openai.com/v1',
+      },
+    });
     expect(body.response_format).toEqual({ type: 'json_object' });
     expect(body.messages[0].content).toContain('专业漫画本地化译者');
     expect(body.messages[0].content).toContain('不要按日语列顺序逐列直译');

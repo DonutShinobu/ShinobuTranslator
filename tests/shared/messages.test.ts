@@ -17,6 +17,11 @@ describe("isRuntimeMessage", () => {
     expect(isRuntimeMessage({
       type: "mt:llm-chat-completions",
       body: { model: "gpt-5.4-mini", messages: [] },
+      proxyConfig: {
+        provider: "openai",
+        authMode: "api_key",
+        baseUrl: "https://api.openai.com/v1",
+      },
       diagnosticRunId: "run-1",
     })).toBe(true);
   });
@@ -68,6 +73,24 @@ describe("isRuntimeMessage", () => {
       type: "mt:llm-chat-completions",
       body: { model: "gpt-5.4-mini", messages: [] },
       diagnosticRunId: 1,
+    })).toBe(false);
+    expect(isRuntimeMessage({
+      type: "mt:llm-chat-completions",
+      body: { model: "gpt-5.4-mini", messages: [] },
+      proxyConfig: {
+        provider: "invalid",
+        authMode: "api_key",
+        baseUrl: "https://api.openai.com/v1",
+      },
+    })).toBe(false);
+    expect(isRuntimeMessage({
+      type: "mt:llm-chat-completions",
+      body: { model: "gpt-5.4-mini", messages: [] },
+      proxyConfig: {
+        provider: "openai",
+        authMode: "invalid",
+        baseUrl: "https://api.openai.com/v1",
+      },
     })).toBe(false);
   });
 

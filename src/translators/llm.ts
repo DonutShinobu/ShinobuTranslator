@@ -215,6 +215,11 @@ async function requestChatCompletion(
     const response = await sendRuntimeMessage({
       type: 'mt:llm-chat-completions',
       body,
+      proxyConfig: {
+        provider: options.provider,
+        authMode: options.authMode,
+        baseUrl: options.baseUrl,
+      },
       diagnosticRunId: options.diagnosticRunId,
     });
     if (!response.ok || response.type !== 'mt:llm-chat-completions') {

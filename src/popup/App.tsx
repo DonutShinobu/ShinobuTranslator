@@ -909,6 +909,18 @@ export function App() {
                         placeholder="例如：your-model-name"
                       />
                     </label>
+                    <label className="field">
+                      <span className="field-label">API Key</span>
+                      <input
+                        type="password"
+                        value={currentProfile.apiKey}
+                        onChange={(event) =>
+                          updateActiveLlmProfile({ apiKey: event.target.value }, { showSaveStatus: true })
+                        }
+                        disabled={loading}
+                        placeholder="sk-..."
+                      />
+                    </label>
                   </>
                 ) : (
                   <>

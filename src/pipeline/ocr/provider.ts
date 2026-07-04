@@ -1,6 +1,6 @@
 import type { OcrRunDebugInfo, QuadPoint, TextDirection, TextRegion } from "../../types";
 import type { PlatformProvider, PipelineImage } from "../../runtime/platform";
-import { sampleEdgeColors, sampleCornerBgColor, histogramBimodal } from "./colorSampling";
+import { sampleEdgeColors, sampleCornerBgColor, sampleTextColors } from "./colorSampling";
 import { colorDistance } from "../typeset/color";
 
 export type OcrRecognizeResult = {
@@ -88,15 +88,15 @@ export function fillMissingOcrFields(
     let bgColor = r.bgColor;
 
     // When OCR model provides both colors but they're too similar, fall back
-    // to histogram bimodal analysis which is more reliable for bimodal distributions.
+    // to pixel candidate analysis.
     if (fgColor && bgColor && colorDistance(fgColor, bgColor) < 30) {
       if (image) {
         const cropped = cropQuadRegion(image, r.quad, platform!);
         if (cropped) {
-          const histResult = histogramBimodal(cropped.data, cropped.width, cropped.height);
-          if (histResult) {
-            fgColor = histResult.fgColor;
-            bgColor = histResult.bgColor;
+          const sampledColors = sampleTextColors(cropped.data, cropped.width, cropped.height);
+          if (sampledColors) {
+            fgColor = sampledColors.fgColor;
+            bgColor = sampledColors.bgColor;
           }
         }
       }
@@ -105,11 +105,11 @@ export function fillMissingOcrFields(
     if (image && (fgColor === undefined || bgColor === undefined)) {
       const cropped = cropQuadRegion(image, r.quad, platform!);
       if (cropped) {
-        // Try histogram bimodal first — it's more reliable than Sobel edge sampling.
-        const histResult = histogramBimodal(cropped.data, cropped.width, cropped.height);
-        if (histResult) {
-          if (fgColor === undefined) fgColor = histResult.fgColor;
-          if (bgColor === undefined) bgColor = histResult.bgColor;
+        // Try unified pixel candidates first; Sobel/corners are last-resort fallbacks.
+        const sampledColors = sampleTextColors(cropped.data, cropped.width, cropped.height);
+        if (sampledColors) {
+          if (fgColor === undefined) fgColor = sampledColors.fgColor;
+          if (bgColor === undefined) bgColor = sampledColors.bgColor;
         } else {
           if (fgColor === undefined) {
             const sampled = sampleEdgeColors(cropped.data, cropped.width, cropped.height);

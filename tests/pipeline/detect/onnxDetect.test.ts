@@ -1,6 +1,16 @@
 import { describe, it, expect, vi } from "vitest";
-import { rectToQuad, inferDirection, intersectsOrNear, mergeRects, connectedComponents } from "../../../src/pipeline/detect/onnxDetect";
+import {
+  rectToQuad,
+  inferDirection,
+  intersectsOrNear,
+  mergeRects,
+  connectedComponents,
+  extractCtdTextLineContours,
+  scoreCtdContourPixels,
+  sortCtdQuadPoints,
+} from "../../../src/pipeline/detect/onnxDetect";
 import type { Rect } from "../../../src/types";
+import type { Quad } from "../../../src/pipeline/typeset/geometry";
 
 // onnxDetect.ts imports onnxruntime-web/all at module level for non-pure functions.
 // Mock it so the module can load without a browser environment.
@@ -201,5 +211,87 @@ describe("connectedComponents", () => {
     mask[6 * width + 6] = 1;
     const rects = connectedComponents(mask, width, height);
     expect(rects.length).toBe(0);
+  });
+});
+
+describe("CTD text-line contour postprocess", () => {
+  it("uses upstream long-side structure direction for rotated vertical quads", () => {
+    const quad: Quad = [
+      { x: 1105, y: 2383 },
+      { x: 1230, y: 1800 },
+      { x: 1335, y: 1823 },
+      { x: 1210, y: 2406 },
+    ];
+
+    const sorted = sortCtdQuadPoints(quad);
+
+    expect(sorted.direction).toBe("v");
+    expect(sorted.quad).toEqual([
+      { x: 1230, y: 1800 },
+      { x: 1335, y: 1823 },
+      { x: 1210, y: 2406 },
+      { x: 1105, y: 2383 },
+    ]);
+  });
+
+  it("keeps horizontal quads ordered as top-left, top-right, bottom-right, bottom-left", () => {
+    const quad: Quad = [
+      { x: 12, y: 31 },
+      { x: 4, y: 10 },
+      { x: 112, y: 3 },
+      { x: 120, y: 24 },
+    ];
+
+    const sorted = sortCtdQuadPoints(quad);
+
+    expect(sorted.direction).toBe("h");
+    expect(sorted.quad).toEqual([
+      { x: 4, y: 10 },
+      { x: 112, y: 3 },
+      { x: 120, y: 24 },
+      { x: 12, y: 31 },
+    ]);
+  });
+
+  it("keeps concave text-line candidates from being down-scored by convex-hull background", () => {
+    const width = 8;
+    const height = 8;
+    const mask = new Uint8Array(width * height);
+    const scores = new Float32Array(width * height);
+
+    for (let y = 1; y <= 6; y++) {
+      const idx = y * width + 1;
+      mask[idx] = 1;
+      scores[idx] = 0.9;
+    }
+    for (let x = 1; x <= 6; x++) {
+      const idx = 6 * width + x;
+      mask[idx] = 1;
+      scores[idx] = 0.9;
+    }
+
+    const contours = extractCtdTextLineContours(mask, width, height);
+    expect(contours.length).toBe(1);
+    expect(scoreCtdContourPixels(scores, contours[0])).toBeCloseTo(0.9);
+  });
+
+  it("records both outer and inner boundaries for ring-shaped foreground components", () => {
+    const width = 7;
+    const height = 7;
+    const mask = new Uint8Array(width * height);
+    for (let y = 1; y <= 5; y++) {
+      for (let x = 1; x <= 5; x++) {
+        if (x === 3 && y === 3) {
+          continue;
+        }
+        mask[y * width + x] = 1;
+      }
+    }
+
+    const contours = extractCtdTextLineContours(mask, width, height);
+    expect(contours.length).toBe(1);
+    expect(contours[0].boundary).toContainEqual({ x: 3, y: 2 });
+    expect(contours[0].boundary).toContainEqual({ x: 3, y: 4 });
+    expect(contours[0].pixels.length).toBe(24);
   });
 });

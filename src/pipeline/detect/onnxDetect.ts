@@ -7,7 +7,7 @@ import type { RuntimeProvider, WebNnDeviceType } from "../../runtime/onnxTypes";
 import { runInference, runDetectWithGpuPreprocess } from "../../runtime/onnxBridge";
 import type { WorkerSessionHandle, TensorTransport } from "../../runtime/onnxWorkerTypes";
 import { toErrorMessage } from "../../shared/utils";
-import { clamp, polygonArea, nmsBoxes, convexHull, type ScoredBox } from "../utils";
+import { clamp, polygonArea, nmsBoxes, type ScoredBox } from "../utils";
 
 type LetterboxResult = {
   input: Float32Array;
@@ -17,8 +17,9 @@ type LetterboxResult = {
   unpaddedHeight: number;
 };
 
-type MaskComponent = {
+export type CtdTextLineContour = {
   boundary: QuadPoint[];
+  pixels: number[];
 };
 
 export type DetectOutput = {
@@ -124,45 +125,15 @@ function polygonPerimeter(points: QuadPoint[]): number {
   return acc;
 }
 
-function pointInPolygon(x: number, y: number, polygon: QuadPoint[]): boolean {
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
-    const xi = polygon[i].x;
-    const yi = polygon[i].y;
-    const xj = polygon[j].x;
-    const yj = polygon[j].y;
-    const intersect = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi + 1e-12) + xi;
-    if (intersect) {
-      inside = !inside;
-    }
-  }
-  return inside;
-}
-
-function polygonScoreFast(scoreMap: Float32Array, width: number, height: number, polygon: QuadPoint[]): number {
-  if (polygon.length < 3) {
+export function scoreCtdContourPixels(scoreMap: Float32Array, contour: CtdTextLineContour): number {
+  if (contour.pixels.length === 0) {
     return 0;
   }
-  const minX = clamp(Math.floor(Math.min(...polygon.map((point) => point.x))), 0, width - 1);
-  const maxX = clamp(Math.ceil(Math.max(...polygon.map((point) => point.x))), minX, width - 1);
-  const minY = clamp(Math.floor(Math.min(...polygon.map((point) => point.y))), 0, height - 1);
-  const maxY = clamp(Math.ceil(Math.max(...polygon.map((point) => point.y))), minY, height - 1);
-
   let sum = 0;
-  let count = 0;
-  for (let y = minY; y <= maxY; y += 1) {
-    for (let x = minX; x <= maxX; x += 1) {
-      if (!pointInPolygon(x + 0.5, y + 0.5, polygon)) {
-        continue;
-      }
-      sum += scoreMap[y * width + x];
-      count += 1;
-    }
+  for (const pixel of contour.pixels) {
+    sum += scoreMap[pixel] ?? 0;
   }
-  if (count === 0) {
-    return 0;
-  }
-  return sum / count;
+  return sum / contour.pixels.length;
 }
 
 function unclipBox(box: Quad, unclipRatio: number): Quad {
@@ -212,18 +183,55 @@ function quadToRect(quad: Quad, imageWidth: number, imageHeight: number): Rect {
   return { x, y, width: right - x, height: bottom - y };
 }
 
-function inferDirectionFromQuad(quad: Quad): "h" | "v" {
-  const width = (distance(quad[0], quad[1]) + distance(quad[2], quad[3])) * 0.5;
-  const height = (distance(quad[0], quad[3]) + distance(quad[1], quad[2])) * 0.5;
-  return height > width ? "v" : "h";
+export function sortCtdQuadPoints(quad: Quad): { quad: Quad; direction: "h" | "v" } {
+  const points = quad.map((point) => ({ x: point.x, y: point.y })) as Quad;
+  const pairwiseVectors: Array<{ x: number; y: number; norm: number; order: number }> = [];
+
+  for (let i = 0; i < points.length; i += 1) {
+    for (let j = 0; j < points.length; j += 1) {
+      const x = points[i].x - points[j].x;
+      const y = points[i].y - points[j].y;
+      pairwiseVectors.push({ x, y, norm: Math.hypot(x, y), order: i * points.length + j });
+    }
+  }
+
+  pairwiseVectors.sort((a, b) => a.norm - b.norm || a.order - b.order);
+  const longSideVecs = [
+    { x: pairwiseVectors[8].x, y: pairwiseVectors[8].y },
+    { x: pairwiseVectors[10].x, y: pairwiseVectors[10].y }
+  ];
+  const innerProduct = longSideVecs[0].x * longSideVecs[1].x + longSideVecs[0].y * longSideVecs[1].y;
+  if (innerProduct < 0) {
+    longSideVecs[0].x = -longSideVecs[0].x;
+    longSideVecs[0].y = -longSideVecs[0].y;
+  }
+
+  const structureVector = {
+    x: Math.abs((longSideVecs[0].x + longSideVecs[1].x) * 0.5),
+    y: Math.abs((longSideVecs[0].y + longSideVecs[1].y) * 0.5)
+  };
+  const direction = structureVector.x <= structureVector.y ? "v" : "h";
+
+  if (direction === "v") {
+    const byY = [...points].sort((a, b) => a.y - b.y || a.x - b.x);
+    const top = [byY[0], byY[1]].sort((a, b) => a.x - b.x || a.y - b.y);
+    const bottom = [byY[2], byY[3]].sort((a, b) => b.x - a.x || a.y - b.y);
+    return { quad: [top[0], top[1], bottom[0], bottom[1]], direction };
+  }
+
+  const byX = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
+  const left = [byX[0], byX[1]].sort((a, b) => a.y - b.y || a.x - b.x);
+  const right = [byX[2], byX[3]].sort((a, b) => a.y - b.y || a.x - b.x);
+  return { quad: [left[0], right[0], right[1], left[1]], direction };
 }
 
 function makeRegionFromQuad(quad: Quad, imageWidth: number, imageHeight: number, score: number): TextRegion {
+  const sorted = sortCtdQuadPoints(quad);
   return {
     id: crypto.randomUUID(),
-    box: quadToRect(quad, imageWidth, imageHeight),
-    quad,
-    direction: inferDirectionFromQuad(quad),
+    box: quadToRect(sorted.quad, imageWidth, imageHeight),
+    quad: sorted.quad,
+    direction: sorted.direction,
     prob: score,
     sourceText: "",
     translatedText: ""
@@ -533,11 +541,11 @@ function buildBinaryMaskFromTensor(
   return { mask, width, height };
 }
 
-function extractMaskComponents(mask: Uint8Array, width: number, height: number): MaskComponent[] {
+export function extractCtdTextLineContours(mask: Uint8Array, width: number, height: number): CtdTextLineContour[] {
   const total = width * height;
   const visited = new Uint8Array(total);
   const queue = new Int32Array(total);
-  const out: MaskComponent[] = [];
+  const out: CtdTextLineContour[] = [];
 
   for (let idx = 0; idx < total; idx += 1) {
     if (mask[idx] === 0 || visited[idx] === 1) {
@@ -605,11 +613,11 @@ function extractMaskComponents(mask: Uint8Array, width: number, height: number):
       }
     }
 
-    if (boundary.length < 4) {
+    if (boundary.length < 2) {
       continue;
     }
 
-    out.push({ boundary });
+    out.push({ boundary, pixels });
 
     if (out.length >= 1000) {
       break;
@@ -674,17 +682,16 @@ function detectCtdRegionsFromDetTensor(
     }
   }
 
-  const components = extractMaskComponents(mask, width, height);
+  const contours = extractCtdTextLineContours(mask, width, height);
   const regions: TextRegion[] = [];
 
-  for (const component of components) {
-    const contour = convexHull(component.boundary);
-    const mini = minAreaRect(contour);
+  for (const contour of contours) {
+    const mini = minAreaRect(contour.boundary);
     if (!mini || mini.shortSide < 2) {
       continue;
     }
 
-    const score = polygonScoreFast(map, width, height, contour);
+    const score = scoreCtdContourPixels(map, contour);
     if (score <= 0.6) {
       continue;
     }

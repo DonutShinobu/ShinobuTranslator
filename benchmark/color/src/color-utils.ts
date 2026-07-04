@@ -4,7 +4,7 @@
 // ---------------------------------------------------------------------------
 
 import { rgbToLab as _rgbToLab, colorDistance as _colorDistance, resolveColors as _resolveColors } from "../../../src/pipeline/typeset/color";
-import { sampleEdgeColors as _sampleEdgeColors, sampleCornerBgColor as _sampleCornerBgColor, grayAt as _grayAt, histogramBimodal as _histogramBimodal } from "../../../src/pipeline/ocr/colorSampling";
+import { sampleEdgeColors as _sampleEdgeColors, sampleCornerBgColor as _sampleCornerBgColor, grayAt as _grayAt, histogramBimodal as _histogramBimodal, sampleTextColors as _sampleTextColors } from "../../../src/pipeline/ocr/colorSampling";
 import { existsSync, readFileSync, readdirSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
@@ -23,6 +23,7 @@ export const sampleEdgeColors = _sampleEdgeColors;
 export const sampleCornerBgColor = _sampleCornerBgColor;
 export const grayAt = _grayAt;
 export const histogramBimodal = _histogramBimodal;
+export const sampleTextColors = _sampleTextColors;
 
 /**
  * DeltaE (CIE76) between two RGB colors.

@@ -3,6 +3,7 @@ import {
   grayAt,
   sampleEdgeColors,
   sampleCornerBgColor,
+  sampleTextColors,
 } from "../../../src/pipeline/ocr/colorSampling";
 
 /**
@@ -42,6 +43,23 @@ function makePixelData(
   }
 
   return data;
+}
+
+function fillRect(
+  data: Uint8ClampedArray,
+  width: number,
+  color: [number, number, number],
+  rect: { x: number; y: number; w: number; h: number },
+): void {
+  for (let y = rect.y; y < rect.y + rect.h; y += 1) {
+    for (let x = rect.x; x < rect.x + rect.w; x += 1) {
+      const idx = (y * width + x) * 4;
+      data[idx] = color[0];
+      data[idx + 1] = color[1];
+      data[idx + 2] = color[2];
+      data[idx + 3] = 255;
+    }
+  }
 }
 
 describe("grayAt", () => {
@@ -186,4 +204,105 @@ describe("sampleCornerBgColor", () => {
     // All four corners point to the same pixel
     expect(result).toEqual([100, 150, 200]);
   });
+});
+
+describe("sampleTextColors", () => {
+  it("keeps black fill and white stroke/background for standard manga text", () => {
+    const data = makePixelData(40, 40, [255, 255, 255], [0, 0, 0], {
+      x: 14,
+      y: 8,
+      w: 12,
+      h: 24,
+    });
+
+    const result = sampleTextColors(data, 40, 40);
+    expect(result).not.toBeNull();
+    expect(result!.fgColor[0]).toBeLessThan(40);
+    expect(result!.fgColor[1]).toBeLessThan(40);
+    expect(result!.fgColor[2]).toBeLessThan(40);
+    expect(result!.bgColor[0]).toBeGreaterThan(230);
+    expect(result!.bgColor[1]).toBeGreaterThan(230);
+    expect(result!.bgColor[2]).toBeGreaterThan(230);
+  });
+
+  it("separates white fill and black outline from an orange bubble background", () => {
+    const data = makePixelData(48, 48, [248, 196, 148], [248, 196, 148]);
+    fillRect(data, 48, [0, 0, 0], { x: 12, y: 6, w: 24, h: 36 });
+    fillRect(data, 48, [255, 255, 255], { x: 17, y: 12, w: 14, h: 24 });
+
+    const result = sampleTextColors(data, 48, 48);
+    expect(result).not.toBeNull();
+    expect(result!.fgColor[0]).toBeGreaterThan(230);
+    expect(result!.fgColor[1]).toBeGreaterThan(230);
+    expect(result!.fgColor[2]).toBeGreaterThan(230);
+    expect(result!.bgColor[0]).toBeLessThan(40);
+    expect(result!.bgColor[1]).toBeLessThan(40);
+    expect(result!.bgColor[2]).toBeLessThan(40);
+  });
+
+  it("separates white fill and red outline from a warm illustration background", () => {
+    const data = makePixelData(48, 48, [252, 172, 121], [252, 172, 121]);
+    fillRect(data, 48, [145, 42, 22], { x: 12, y: 6, w: 24, h: 36 });
+    fillRect(data, 48, [255, 255, 255], { x: 17, y: 12, w: 14, h: 24 });
+
+    const result = sampleTextColors(data, 48, 48);
+    expect(result).not.toBeNull();
+    expect(result!.fgColor[0]).toBeGreaterThan(230);
+    expect(result!.fgColor[1]).toBeGreaterThan(230);
+    expect(result!.fgColor[2]).toBeGreaterThan(230);
+    expect(result!.bgColor[0]).toBeGreaterThan(100);
+    expect(result!.bgColor[0]).toBeLessThan(180);
+    expect(result!.bgColor[1]).toBeLessThan(80);
+    expect(result!.bgColor[2]).toBeLessThan(60);
+  });
+
+  it("keeps black fill and white outline on an orange bubble background", () => {
+    const data = makePixelData(48, 48, [248, 196, 148], [248, 196, 148]);
+    fillRect(data, 48, [255, 255, 255], { x: 12, y: 6, w: 24, h: 36 });
+    fillRect(data, 48, [0, 0, 0], { x: 17, y: 12, w: 14, h: 24 });
+
+    const result = sampleTextColors(data, 48, 48);
+    expect(result).not.toBeNull();
+    expect(result!.fgColor[0]).toBeLessThan(40);
+    expect(result!.fgColor[1]).toBeLessThan(40);
+    expect(result!.fgColor[2]).toBeLessThan(40);
+    expect(result!.bgColor[0]).toBeGreaterThan(230);
+    expect(result!.bgColor[1]).toBeGreaterThan(230);
+    expect(result!.bgColor[2]).toBeGreaterThan(230);
+  });
+
+  it("keeps orange fill and white outline when the outline touches the background", () => {
+    const data = makePixelData(48, 48, [64, 56, 52], [64, 56, 52]);
+    fillRect(data, 48, [255, 255, 255], { x: 12, y: 6, w: 24, h: 36 });
+    fillRect(data, 48, [232, 116, 44], { x: 17, y: 12, w: 14, h: 24 });
+
+    const result = sampleTextColors(data, 48, 48);
+    expect(result).not.toBeNull();
+    expect(result!.fgColor[0]).toBeGreaterThan(200);
+    expect(result!.fgColor[0]).toBeLessThan(250);
+    expect(result!.fgColor[1]).toBeGreaterThan(80);
+    expect(result!.fgColor[1]).toBeLessThan(150);
+    expect(result!.fgColor[2]).toBeLessThan(80);
+    expect(result!.bgColor[0]).toBeGreaterThan(230);
+    expect(result!.bgColor[1]).toBeGreaterThan(230);
+    expect(result!.bgColor[2]).toBeGreaterThan(230);
+  });
+
+  it("keeps small orange fill when a warm background competes for candidates", () => {
+    const data = makePixelData(60, 60, [252, 172, 119], [252, 172, 119]);
+    fillRect(data, 60, [255, 255, 255], { x: 19, y: 8, w: 22, h: 44 });
+    fillRect(data, 60, [164, 58, 27], { x: 25, y: 15, w: 10, h: 30 });
+
+    const result = sampleTextColors(data, 60, 60);
+    expect(result).not.toBeNull();
+    expect(result!.fgColor[0]).toBeGreaterThan(120);
+    expect(result!.fgColor[0]).toBeLessThan(210);
+    expect(result!.fgColor[1]).toBeGreaterThan(30);
+    expect(result!.fgColor[1]).toBeLessThan(100);
+    expect(result!.fgColor[2]).toBeLessThan(70);
+    expect(result!.bgColor[0]).toBeGreaterThan(230);
+    expect(result!.bgColor[1]).toBeGreaterThan(230);
+    expect(result!.bgColor[2]).toBeGreaterThan(230);
+  });
+
 });

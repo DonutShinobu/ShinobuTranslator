@@ -56,9 +56,26 @@ export type StageTimingCardStage = {
   label: string;
   durationMs: number;
   durationText: string;
+  offsetPercent: number;
+  widthPercent: number;
   percent: number;
   percentText: string;
   fallbackText?: string;
+  parallelLanes?: StageTimingCardParallelLane[];
+};
+
+export type StageTimingCardParallelLane = {
+  stage: string;
+  label: string;
+  durationMs: number;
+  durationText: string;
+  offsetPercent: number;
+  widthPercent: number;
+  localOffsetPercent: number;
+  localWidthPercent: number;
+  timelineOffsetPercent: number;
+  timelineWidthPercent: number;
+  detailText?: string;
 };
 
 export type StageTimingCardRuntimeStatus = 'enabled' | 'disabled' | 'unknown';

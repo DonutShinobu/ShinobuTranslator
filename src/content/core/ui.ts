@@ -1,4 +1,4 @@
-import type { PhotoState, ReadingModeBarUi } from './types';
+import type { PhotoState, ReadingModeBarUi, StageTimingCardParallelLane, StageTimingCardStage } from './types';
 import {
   buildScreenshotElementCandidates,
   getNextScreenshotElementCandidateIndex,
@@ -40,6 +40,7 @@ export type UiElements = {
   stageTimingCardChevron: HTMLSpanElement;
   stageTimingCardBody: HTMLDivElement;
   stageTimingStageList: HTMLDivElement;
+  stageTimingParallelList: HTMLDivElement;
   stageTimingRuntimeList: HTMLDivElement;
   debugDownloadButton: HTMLButtonElement;
 };
@@ -68,6 +69,7 @@ export type ScreenshotResultUiElements = {
   stageTimingCardChevron: HTMLSpanElement;
   stageTimingCardBody: HTMLDivElement;
   stageTimingStageList: HTMLDivElement;
+  stageTimingParallelList: HTMLDivElement;
   stageTimingRuntimeList: HTMLDivElement;
   debugDownloadButton: HTMLButtonElement;
   image: HTMLImageElement;
@@ -362,7 +364,7 @@ export function injectStyles(): void {
       box-shadow:
         0 8px 22px oklch(0 0 0 / 0.14),
         inset 0 1px 0 oklch(1 0 0 / 0.08);
-      overflow: hidden;
+      overflow: visible;
       font-family: "MTX-SourceHanSans-CN", "MTX-SourceHanSans-TW", system-ui, sans-serif;
       text-shadow: none;
       backdrop-filter: blur(14px) saturate(1.15);
@@ -386,6 +388,10 @@ export function injectStyles(): void {
       text-align: left;
       font: inherit;
       letter-spacing: 0;
+      border-radius: 17px;
+    }
+    .mt-x-stage-card[data-expanded='true'] .mt-x-stage-card-toggle {
+      border-radius: 17px 17px 0 0;
     }
     .mt-x-stage-card-toggle:hover {
       background: var(--mt-stage-bg-hover, oklch(0.92 0.01 250 / 0.06));
@@ -479,33 +485,216 @@ export function injectStyles(): void {
       white-space: pre-wrap;
       overflow-wrap: anywhere;
     }
+    .mt-x-stage-timing-row {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr);
+      align-items: center;
+      gap: 6px;
+      margin-top: 9px;
+    }
+    .mt-x-stage-row-label,
+    .mt-x-stage-parallel-label {
+      min-width: 0;
+      color: var(--mt-stage-muted, oklch(0.94 0.01 250 / 0.7));
+      font-size: 9.5px;
+      font-weight: 560;
+      line-height: 1.2;
+      text-align: right;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      pointer-events: none;
+    }
     .mt-x-stage-timeline {
       position: relative;
       display: flex;
       align-items: center;
       gap: 2px;
+      box-sizing: border-box;
       height: 13px;
-      margin-top: 9px;
       padding: 2px;
       border: 1px solid var(--mt-stage-border-soft, oklch(0.9 0.012 250 / 0.18));
       border-radius: 999px;
       background: var(--mt-stage-track, oklch(0.94 0.01 250 / 0.14));
-      overflow: hidden;
+      overflow: visible;
     }
     .mt-x-stage-segment {
       position: relative;
-      min-width: 5px;
+      flex-basis: 0;
       height: 100%;
+      min-width: 3px;
       border-radius: 999px;
       background: color-mix(in oklab, var(--mt-stage-fill, oklch(0.72 0.12 350 / 0.96)) var(--mt-stage-alpha, 76%), var(--mt-stage-fill-soft, oklch(0.83 0.07 350 / 0.5)));
       cursor: help;
       opacity: 0.9;
-      transition: opacity 0.15s ease-out, transform 0.15s ease-out, filter 0.15s ease-out;
+      transition: opacity 0.15s ease-out, filter 0.15s ease-out, box-shadow 0.15s ease-out;
     }
     .mt-x-stage-segment:hover {
+      z-index: 5;
       opacity: 1;
       filter: saturate(1.15);
-      transform: scaleY(1.28);
+      box-shadow:
+        0 0 0 1px oklch(1 0 0 / 0.2),
+        0 0 10px color-mix(in oklab, var(--mt-stage-fill, oklch(0.72 0.12 350 / 0.96)) 38%, transparent);
+    }
+    .mt-x-stage-segment:focus-visible {
+      z-index: 5;
+      outline: 2px solid var(--mt-focus, oklch(0.6 0.15 250 / 0.8));
+      outline-offset: 3px;
+    }
+    .mt-x-stage-segment[data-tooltip]::before,
+    .mt-x-stage-parallel-bar[data-tooltip]::before,
+    .mt-x-runtime-node[data-tooltip]::before {
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 6px);
+      z-index: 20;
+      width: 10px;
+      height: 10px;
+      border-right: 1px solid var(--mt-stage-border-soft, oklch(0.9 0.012 250 / 0.28));
+      border-bottom: 1px solid var(--mt-stage-border-soft, oklch(0.9 0.012 250 / 0.28));
+      background: var(--mt-stage-bg-active, var(--mt-stage-bg, oklch(0.16 0.012 250 / 0.96)));
+      content: "";
+      opacity: 0;
+      pointer-events: none;
+      transform: translateX(-50%) translateY(7px) rotate(45deg);
+      transition:
+        opacity 90ms ease-out,
+        transform 120ms cubic-bezier(0.2, 0.85, 0.25, 1);
+    }
+    .mt-x-stage-segment[data-tooltip]::after,
+    .mt-x-stage-parallel-bar[data-tooltip]::after,
+    .mt-x-runtime-node[data-tooltip]::after {
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 10px);
+      z-index: 21;
+      box-sizing: border-box;
+      width: max-content;
+      max-width: min(248px, calc(100vw - 32px));
+      border: 1px solid var(--mt-stage-border-soft, oklch(0.9 0.012 250 / 0.28));
+      border-radius: 12px;
+      padding: 7px 9px;
+      background: var(--mt-stage-bg-active, var(--mt-stage-bg, oklch(0.16 0.012 250 / 0.96)));
+      color: var(--mt-text, oklch(0.94 0.01 250));
+      box-shadow:
+        0 10px 26px oklch(0 0 0 / 0.2),
+        inset 0 1px 0 oklch(1 0 0 / 0.08);
+      content: attr(data-tooltip);
+      font-size: 10.5px;
+      font-weight: 560;
+      line-height: 1.38;
+      letter-spacing: 0;
+      opacity: 0;
+      overflow-wrap: anywhere;
+      pointer-events: none;
+      text-align: left;
+      text-shadow: none;
+      transform: translateX(-50%) translateY(7px);
+      transition:
+        opacity 90ms ease-out,
+        transform 120ms cubic-bezier(0.2, 0.85, 0.25, 1);
+      white-space: normal;
+    }
+    .mt-x-stage-segment[data-tooltip]:hover::before,
+    .mt-x-stage-segment[data-tooltip]:hover::after,
+    .mt-x-stage-segment[data-tooltip]:focus-visible::before,
+    .mt-x-stage-segment[data-tooltip]:focus-visible::after,
+    .mt-x-stage-parallel-bar[data-tooltip]:hover::before,
+    .mt-x-stage-parallel-bar[data-tooltip]:hover::after,
+    .mt-x-stage-parallel-bar[data-tooltip]:focus-visible::before,
+    .mt-x-stage-parallel-bar[data-tooltip]:focus-visible::after,
+    .mt-x-runtime-node[data-tooltip]:hover::before,
+    .mt-x-runtime-node[data-tooltip]:hover::after,
+    .mt-x-runtime-node[data-tooltip]:focus-visible::before,
+    .mt-x-runtime-node[data-tooltip]:focus-visible::after {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0) rotate(45deg);
+    }
+    .mt-x-stage-segment[data-tooltip]:hover::after,
+    .mt-x-stage-segment[data-tooltip]:focus-visible::after,
+    .mt-x-stage-parallel-bar[data-tooltip]:hover::after,
+    .mt-x-stage-parallel-bar[data-tooltip]:focus-visible::after,
+    .mt-x-runtime-node[data-tooltip]:hover::after,
+    .mt-x-runtime-node[data-tooltip]:focus-visible::after {
+      transform: translateX(-50%) translateY(0);
+    }
+    .mt-x-stage-parallel {
+      display: none;
+      gap: 4px;
+      padding-top: 5px;
+    }
+    .mt-x-stage-parallel[data-visible='true'] {
+      display: grid;
+    }
+    .mt-x-stage-parallel-row {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr);
+      align-items: center;
+      gap: 6px;
+      min-height: 12px;
+    }
+    .mt-x-stage-parallel-track {
+      position: relative;
+      box-sizing: border-box;
+      width: 100%;
+      height: 10px;
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding: 1px 2px;
+      border: 1px solid var(--mt-stage-border-soft, oklch(0.9 0.012 250 / 0.16));
+      border-radius: 999px;
+      background: var(--mt-stage-track, oklch(0.94 0.01 250 / 0.14));
+      overflow: visible;
+      pointer-events: none;
+    }
+    .mt-x-stage-parallel-slot {
+      min-width: 3px;
+      height: 100%;
+      flex-basis: 0;
+      pointer-events: none;
+    }
+    .mt-x-stage-parallel-inner {
+      display: flex;
+      align-items: stretch;
+      gap: 2px;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+    .mt-x-stage-parallel-spacer {
+      min-width: 0;
+      height: 100%;
+      flex-basis: 0;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .mt-x-stage-parallel-bar {
+      position: relative;
+      z-index: 1;
+      flex-basis: 0;
+      height: 100%;
+      min-width: 3px;
+      border-radius: 999px;
+      background: color-mix(in oklab, var(--mt-stage-fill, oklch(0.72 0.12 350 / 0.96)) 82%, var(--mt-stage-fill-soft, oklch(0.83 0.07 350 / 0.5)));
+      box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.18);
+      cursor: help;
+      pointer-events: auto;
+    }
+    .mt-x-stage-parallel-bar[data-stage='mask_refine'] {
+      opacity: 0.68;
+    }
+    .mt-x-stage-parallel-bar[data-stage='inpaint'] {
+      background: color-mix(in oklab, var(--mt-stage-fill, oklch(0.72 0.12 350 / 0.96)) 94%, var(--mt-stage-fill-soft, oklch(0.83 0.07 350 / 0.5)));
+    }
+    .mt-x-stage-parallel-bar:hover,
+    .mt-x-stage-parallel-bar:focus-visible {
+      z-index: 5;
+      outline: none;
+      box-shadow:
+        inset 0 1px 0 oklch(1 0 0 / 0.2),
+        0 0 10px color-mix(in oklab, var(--mt-stage-fill, oklch(0.72 0.12 350 / 0.96)) 36%, transparent);
     }
     .mt-x-stage-runtime {
       display: grid;
@@ -515,6 +704,7 @@ export function injectStyles(): void {
       padding-top: 8px;
     }
     .mt-x-runtime-node {
+      position: relative;
       min-width: 0;
       display: grid;
       grid-template-columns: auto minmax(0, 1fr);
@@ -548,6 +738,14 @@ export function injectStyles(): void {
     }
     .mt-x-runtime-node[data-status='enabled'] {
       border-color: var(--mt-stage-border-soft, oklch(0.9 0.012 250 / 0.22));
+    }
+    .mt-x-runtime-node:hover,
+    .mt-x-runtime-node:focus-visible {
+      z-index: 5;
+    }
+    .mt-x-runtime-node:focus-visible {
+      outline: 2px solid var(--mt-focus, oklch(0.6 0.15 250 / 0.8));
+      outline-offset: 2px;
     }
     .mt-x-runtime-label {
       grid-area: label;
@@ -991,11 +1189,21 @@ export function createUiElements(): UiElements {
 
   const stageTimingCardBody = document.createElement('div');
   stageTimingCardBody.className = 'mt-x-stage-card-body';
+  const stageTimingTimelineRow = document.createElement('div');
+  stageTimingTimelineRow.className = 'mt-x-stage-timing-row';
+  const stageTimingOverviewLabel = document.createElement('span');
+  stageTimingOverviewLabel.className = 'mt-x-stage-row-label';
+  stageTimingOverviewLabel.textContent = '总览';
   const stageTimingStageList = document.createElement('div');
   stageTimingStageList.className = 'mt-x-stage-timeline';
+  stageTimingTimelineRow.appendChild(stageTimingOverviewLabel);
+  stageTimingTimelineRow.appendChild(stageTimingStageList);
+  const stageTimingParallelList = document.createElement('div');
+  stageTimingParallelList.className = 'mt-x-stage-parallel';
   const stageTimingRuntimeList = document.createElement('div');
   stageTimingRuntimeList.className = 'mt-x-stage-runtime';
-  stageTimingCardBody.appendChild(stageTimingStageList);
+  stageTimingCardBody.appendChild(stageTimingTimelineRow);
+  stageTimingCardBody.appendChild(stageTimingParallelList);
   stageTimingCardBody.appendChild(stageTimingRuntimeList);
   stageTimingCard.appendChild(stageTimingCardToggleButton);
   stageTimingCard.appendChild(stageTimingCardBody);
@@ -1028,6 +1236,7 @@ export function createUiElements(): UiElements {
     stageTimingCardChevron,
     stageTimingCardBody,
     stageTimingStageList,
+    stageTimingParallelList,
     stageTimingRuntimeList,
     debugDownloadButton,
   };
@@ -1036,6 +1245,70 @@ export function createUiElements(): UiElements {
 function clampPercent(percent: number): number {
   if (!Number.isFinite(percent)) return 0;
   return Math.min(100, Math.max(0, percent));
+}
+
+function toStageFlexGrow(percent: number): number {
+  const stagePercent = clampPercent(percent);
+  return stagePercent > 0 ? Math.max(1, stagePercent) : 0;
+}
+
+function toLaneFlexGrow(percent: number): number {
+  const lanePercent = clampPercent(percent);
+  return lanePercent > 0 ? Math.max(1, lanePercent) : 0;
+}
+
+function appendParallelSpacer(container: HTMLElement, percent: number): void {
+  const flexGrow = toLaneFlexGrow(percent);
+  if (flexGrow <= 0) return;
+  const spacer = document.createElement('span');
+  spacer.className = 'mt-x-stage-parallel-spacer';
+  spacer.style.flexGrow = String(flexGrow);
+  container.appendChild(spacer);
+}
+
+function appendParallelLaneBar(container: HTMLElement, lane: StageTimingCardParallelLane): void {
+  const flexGrow = toLaneFlexGrow(lane.localWidthPercent);
+  if (flexGrow <= 0) return;
+
+  const bar = document.createElement('span');
+  bar.className = 'mt-x-stage-parallel-bar';
+  bar.dataset.stage = lane.stage;
+  bar.style.flexGrow = String(flexGrow);
+  const detailText = lane.detailText ? `，${lane.detailText}` : '';
+  const laneDescription = `${lane.label}：${lane.durationText}${detailText}`;
+  bar.dataset.tooltip = laneDescription;
+  bar.setAttribute('aria-label', laneDescription);
+  bar.tabIndex = 0;
+  container.appendChild(bar);
+}
+
+function appendParallelLaneSegments(container: HTMLElement, lanes: StageTimingCardParallelLane[]): void {
+  const sortedLanes = [...lanes].sort((a, b) => a.localOffsetPercent - b.localOffsetPercent);
+  let cursorPercent = 0;
+  for (const lane of sortedLanes) {
+    const laneOffsetPercent = clampPercent(lane.localOffsetPercent);
+    appendParallelSpacer(container, laneOffsetPercent - cursorPercent);
+    appendParallelLaneBar(container, lane);
+    cursorPercent = Math.max(cursorPercent, laneOffsetPercent + clampPercent(lane.localWidthPercent));
+  }
+  appendParallelSpacer(container, 100 - cursorPercent);
+}
+
+function appendParallelStageSlot(
+  track: HTMLElement,
+  stage: StageTimingCardStage,
+  activeLanes?: StageTimingCardParallelLane[],
+): void {
+  const slot = document.createElement('span');
+  slot.className = 'mt-x-stage-parallel-slot';
+  slot.style.flexGrow = String(toStageFlexGrow(stage.percent));
+  if (activeLanes && activeLanes.length > 0) {
+    const inner = document.createElement('span');
+    inner.className = 'mt-x-stage-parallel-inner';
+    appendParallelLaneSegments(inner, activeLanes);
+    slot.appendChild(inner);
+  }
+  track.appendChild(slot);
 }
 
 function formatStageTimingTotalBadge(totalText: string): string {
@@ -1077,6 +1350,8 @@ function renderStageTimingCard(ui: UiElements, state: PhotoState | null): void {
     ui.stageTimingCardTotal.textContent = '';
     ui.stageTimingCardMeta.textContent = '';
     ui.stageTimingStageList.replaceChildren();
+    ui.stageTimingParallelList.dataset.visible = 'false';
+    ui.stageTimingParallelList.replaceChildren();
     ui.stageTimingRuntimeList.replaceChildren();
     return;
   }
@@ -1093,13 +1368,49 @@ function renderStageTimingCard(ui: UiElements, state: PhotoState | null): void {
     const segment = document.createElement('span');
     segment.className = 'mt-x-stage-segment';
     const stagePercent = clampPercent(stage.percent);
-    segment.style.flexGrow = String(Math.max(1, stagePercent));
+    segment.style.flexGrow = String(toStageFlexGrow(stagePercent));
     segment.style.setProperty('--mt-stage-alpha', `${Math.min(92, Math.max(44, Math.round(stagePercent + 48)))}%`);
     const fallbackText = stage.fallbackText ? `，${stage.fallbackText}` : '';
     const stageDescription = `${stage.label}：${stage.durationText}，${stage.percentText}${fallbackText}`;
-    segment.title = stageDescription;
+    segment.dataset.tooltip = stageDescription;
     segment.setAttribute('aria-label', stageDescription);
+    segment.tabIndex = 0;
     ui.stageTimingStageList.appendChild(segment);
+  }
+
+  ui.stageTimingParallelList.replaceChildren();
+  const parallelStageIndex = card.stages.findIndex((stage) => stage.parallelLanes && stage.parallelLanes.length > 0);
+  const parallelStage = parallelStageIndex >= 0 ? card.stages[parallelStageIndex] : undefined;
+  if (parallelStage?.parallelLanes?.length) {
+    ui.stageTimingParallelList.dataset.visible = 'true';
+    const lanes = parallelStage.parallelLanes;
+    const translateLane = lanes.find((lane) => lane.stage === 'translate');
+    const eraseLanes = lanes.filter((lane) => lane.stage === 'mask_refine' || lane.stage === 'inpaint');
+    const parallelRows: Array<{ label: string; lanes: typeof lanes }> = [];
+    if (translateLane) {
+      parallelRows.push({ label: '翻译', lanes: [translateLane] });
+    }
+    if (eraseLanes.length > 0) {
+      parallelRows.push({ label: '去字', lanes: eraseLanes });
+    }
+
+    for (const rowData of parallelRows) {
+      const row = document.createElement('div');
+      row.className = 'mt-x-stage-parallel-row';
+      const label = document.createElement('span');
+      label.className = 'mt-x-stage-parallel-label';
+      label.textContent = rowData.label;
+      const track = document.createElement('span');
+      track.className = 'mt-x-stage-parallel-track';
+      card.stages.forEach((stage, stageIndex) => {
+        appendParallelStageSlot(track, stage, stageIndex === parallelStageIndex ? rowData.lanes : undefined);
+      });
+      row.appendChild(label);
+      row.appendChild(track);
+      ui.stageTimingParallelList.appendChild(row);
+    }
+  } else {
+    ui.stageTimingParallelList.dataset.visible = 'false';
   }
 
   ui.stageTimingRuntimeList.replaceChildren();
@@ -1107,7 +1418,9 @@ function renderStageTimingCard(ui: UiElements, state: PhotoState | null): void {
     const chip = document.createElement('span');
     chip.className = 'mt-x-runtime-node';
     chip.dataset.status = runtime.status;
-    chip.title = runtime.detail;
+    chip.dataset.tooltip = runtime.detail;
+    chip.setAttribute('aria-label', `${runtime.label}：${runtime.providerText}，${runtime.detail}`);
+    chip.tabIndex = 0;
     const dot = document.createElement('span');
     dot.className = 'mt-x-runtime-dot';
     const label = document.createElement('strong');

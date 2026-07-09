@@ -1,4 +1,11 @@
-import type { RuntimeStageStatus, StageTiming, StageTimingCardData, StageTimingCardRuntime, TranslationDebugInfo } from './types';
+import type {
+  RuntimeStageStatus,
+  StageTiming,
+  StageTimingCardData,
+  StageTimingCardParallelLane,
+  StageTimingCardRuntime,
+  TranslationDebugInfo,
+} from './types';
 
 export { downloadJson, toErrorMessage } from '../../shared/utils';
 
@@ -78,6 +85,7 @@ const runtimeModelLabels: Record<RuntimeStageStatus['model'], string> = {
 };
 
 const orderedRuntimeModels: RuntimeStageStatus['model'][] = ['detector', 'ocr', 'inpaint'];
+const parallelChildStages = new Set(['translate', 'mask_refine', 'inpaint']);
 
 function formatPercent(percent: number): string {
   if (!Number.isFinite(percent) || percent <= 0) return '0%';
@@ -137,6 +145,154 @@ function toRuntimeCardItems(runtimeStages: RuntimeStageStatus[]): StageTimingCar
   });
 }
 
+function safeDuration(durationMs: number): number {
+  return Number.isFinite(durationMs) && durationMs > 0 ? durationMs : 0;
+}
+
+function isFiniteCount(value: number | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+function formatTranslationDebugSummary(translationDebug: TranslationDebugInfo): string {
+  const parts: string[] = [];
+  const requestedCount = translationDebug.llmBatchRequestedRegionCount;
+  const hitCount = translationDebug.llmBatchHitRegionCount;
+  if (isFiniteCount(requestedCount) && isFiniteCount(hitCount)) {
+    parts.push(`${hitCount}/${requestedCount} 命中`);
+  }
+
+  if (isFiniteCount(translationDebug.llmFallbackRegionCount) && translationDebug.llmFallbackRegionCount > 0) {
+    parts.push(`回退 ${translationDebug.llmFallbackRegionCount} 个`);
+  } else if (translationDebug.llmFallbackUsed) {
+    parts.push('有回退');
+  } else if (translationDebug.llmFallbackUsed !== undefined) {
+    parts.push('无回退');
+  }
+  if (isFiniteCount(translationDebug.llmFallbackRequestCount) && translationDebug.llmFallbackRequestCount > 0) {
+    parts.push(`${translationDebug.llmFallbackRequestCount} 次回退请求`);
+  }
+
+  return parts.length > 0 ? parts.join('，') : '无回退';
+}
+
+function hasParallelStage(stageTimings: StageTiming[]): boolean {
+  return stageTimings.some((timing) => timing.stage === 'parallel');
+}
+
+function toDisplayStageTimings(stageTimings: StageTiming[]): StageTiming[] {
+  if (!hasParallelStage(stageTimings)) {
+    return stageTimings;
+  }
+  return stageTimings.filter((timing) => !parallelChildStages.has(timing.stage));
+}
+
+function findStageTiming(stageTimings: StageTiming[], stage: string): StageTiming | undefined {
+  return stageTimings.find((timing) => timing.stage === stage);
+}
+
+function buildParallelLanes(
+  stageTimings: StageTiming[],
+  translationDebug?: TranslationDebugInfo | null,
+  timelineOffsetPercent = 0,
+  timelineWidthPercent = 100,
+): StageTimingCardParallelLane[] | undefined {
+  const parallelTiming = findStageTiming(stageTimings, 'parallel');
+  if (!parallelTiming) {
+    return undefined;
+  }
+
+  const laneDrafts: Array<{
+    timing: StageTiming;
+    startMs: number;
+    durationMs: number;
+    detailText?: string;
+  }> = [];
+  const translateTiming = findStageTiming(stageTimings, 'translate');
+  if (translateTiming) {
+    const durationMs = safeDuration(translateTiming.durationMs);
+    if (durationMs > 0) {
+      laneDrafts.push({
+        timing: translateTiming,
+        startMs: 0,
+        durationMs,
+        detailText: translationDebug ? formatTranslationDebugSummary(translationDebug) : undefined,
+      });
+    }
+  }
+
+  const maskRefineTiming = findStageTiming(stageTimings, 'mask_refine');
+  const maskRefineDurationMs = maskRefineTiming ? safeDuration(maskRefineTiming.durationMs) : 0;
+  if (maskRefineTiming && maskRefineDurationMs > 0) {
+    laneDrafts.push({
+      timing: maskRefineTiming,
+      startMs: 0,
+      durationMs: maskRefineDurationMs,
+    });
+  }
+
+  const inpaintTiming = findStageTiming(stageTimings, 'inpaint');
+  const inpaintDurationMs = inpaintTiming ? safeDuration(inpaintTiming.durationMs) : 0;
+  if (inpaintTiming && inpaintDurationMs > 0) {
+    laneDrafts.push({
+      timing: inpaintTiming,
+      startMs: maskRefineDurationMs,
+      durationMs: inpaintDurationMs,
+    });
+  }
+
+  if (laneDrafts.length === 0) {
+    return undefined;
+  }
+
+  const scaleDurationMs = laneDrafts.reduce(
+    (maxMs, lane) => Math.max(maxMs, lane.startMs + lane.durationMs),
+    0,
+  );
+  if (scaleDurationMs <= 0) {
+    return undefined;
+  }
+
+  return laneDrafts.map((lane) => {
+    const localOffsetPercent = (lane.startMs / scaleDurationMs) * 100;
+    const localWidthPercent = (lane.durationMs / scaleDurationMs) * 100;
+    return {
+      stage: lane.timing.stage,
+      label: formatStageLabel(lane.timing),
+      durationMs: lane.durationMs,
+      durationText: formatDuration(lane.durationMs),
+      offsetPercent: localOffsetPercent,
+      widthPercent: localWidthPercent,
+      localOffsetPercent,
+      localWidthPercent,
+      timelineOffsetPercent: timelineOffsetPercent + (localOffsetPercent * timelineWidthPercent) / 100,
+      timelineWidthPercent: (localWidthPercent * timelineWidthPercent) / 100,
+      detailText: lane.detailText,
+    };
+  });
+}
+
+function getStageDetailText(
+  timing: StageTiming,
+  stageTimings: StageTiming[],
+  translationDebug?: TranslationDebugInfo | null,
+): string | undefined {
+  if (timing.stage === 'translate' && translationDebug) {
+    return formatTranslationDebugSummary(translationDebug);
+  }
+  if (timing.stage !== 'parallel') {
+    return undefined;
+  }
+
+  const parallelLanes = buildParallelLanes(stageTimings, translationDebug);
+  if (!parallelLanes) {
+    return undefined;
+  }
+  return `明细: ${parallelLanes.map((lane) => {
+    const detailText = lane.detailText ? ` (${lane.detailText})` : '';
+    return `${lane.label} ${lane.durationText}${detailText}`;
+  }).join(' / ')}`;
+}
+
 export function buildStageTimingCardData(
   totalDurationMs: number,
   stageTimings: StageTiming[],
@@ -144,23 +300,28 @@ export function buildStageTimingCardData(
   expanded: boolean,
   translationDebug?: TranslationDebugInfo | null,
 ): StageTimingCardData {
-  const stageTotalMs = stageTimings.reduce((sum, timing) => (
-    Number.isFinite(timing.durationMs) && timing.durationMs > 0 ? sum + timing.durationMs : sum
-  ), 0);
-  const stages = stageTimings.map((timing) => {
-    const durationMs = Number.isFinite(timing.durationMs) && timing.durationMs > 0 ? timing.durationMs : 0;
-    const percent = stageTotalMs > 0 ? (durationMs / stageTotalMs) * 100 : 0;
-    const fallbackText = timing.stage === 'translate' && translationDebug
-      ? translationDebug.llmFallbackUsed ? '有回退' : '无回退'
-      : undefined;
+  const displayStageTimings = toDisplayStageTimings(stageTimings);
+  const stageTotalMs = displayStageTimings.reduce((sum, timing) => sum + safeDuration(timing.durationMs), 0);
+  let stageOffsetPercent = 0;
+  const stages = displayStageTimings.map((timing) => {
+    const durationMs = safeDuration(timing.durationMs);
+    const widthPercent = stageTotalMs > 0 ? (durationMs / stageTotalMs) * 100 : 0;
+    const offsetPercent = stageOffsetPercent;
+    stageOffsetPercent += widthPercent;
+    const fallbackText = getStageDetailText(timing, stageTimings, translationDebug);
     return {
       stage: timing.stage,
       label: formatStageLabel(timing),
       durationMs,
       durationText: formatDuration(durationMs),
-      percent,
-      percentText: formatPercent(percent),
+      offsetPercent,
+      widthPercent,
+      percent: widthPercent,
+      percentText: formatPercent(widthPercent),
       fallbackText,
+      parallelLanes: timing.stage === 'parallel'
+        ? buildParallelLanes(stageTimings, translationDebug, offsetPercent, widthPercent)
+        : undefined,
     };
   });
   return {
@@ -186,15 +347,13 @@ export function formatElapsedText(
   if (!showStageDetails || stageTimings.length === 0) {
     return runtimeLine ? [totalLine, runtimeLine].join('\n') : totalLine;
   }
-  const detailLines = stageTimings.map((timing) => {
+  const detailLines = toDisplayStageTimings(stageTimings).map((timing) => {
     const label = formatStageLabel(timing);
-    return `${label}：${formatDuration(timing.durationMs)}`;
+    const detailText = getStageDetailText(timing, stageTimings, translationDebug);
+    return detailText
+      ? `${label}：${formatDuration(timing.durationMs)} (${detailText})`
+      : `${label}：${formatDuration(timing.durationMs)}`;
   });
-  const translateLineIndex = stageTimings.findIndex((t) => t.stage === 'translate');
-  if (translateLineIndex >= 0 && translationDebug) {
-    const fallbackTag = translationDebug.llmFallbackUsed ? '有回退' : '无回退';
-    detailLines[translateLineIndex] += ` (${fallbackTag})`;
-  }
   return runtimeLine
     ? [totalLine, runtimeLine, ...detailLines].join('\n')
     : [totalLine, ...detailLines].join('\n');

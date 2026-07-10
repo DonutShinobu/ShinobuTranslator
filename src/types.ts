@@ -131,6 +131,9 @@ export type TypesetDebugVerticalItem = {
   sourceTargetAdvanceY?: number;
   resolvedTargetAdvanceY?: number;
   inkOccupancy?: number;
+  paintedInkHeight?: number;
+  uprightInkOccupancy?: number;
+  uprightOccupancyConstrained?: boolean;
   spanMode?: "natural" | "source-aware";
 };
 
@@ -142,6 +145,8 @@ export type TypesetLayoutDiagnostics = {
   actualBoxScale?: number;
   useDefaultAdvanceBase: boolean;
   sourceSpanAware: boolean;
+  uprightInkOccupancyConstrained: boolean;
+  sourceAdvanceExpansionEnabled: boolean;
   layoutContentHeight: number;
   renderContentHeight: number;
 };

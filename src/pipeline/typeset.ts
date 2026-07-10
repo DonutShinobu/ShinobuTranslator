@@ -912,6 +912,9 @@ export async function drawTypeset(
               sourceTargetAdvanceY: glyph.sourceTargetAdvanceY,
               resolvedTargetAdvanceY: glyph.resolvedTargetAdvanceY,
               inkOccupancy: glyph.inkOccupancy,
+              paintedInkHeight: glyph.paintedInkHeight,
+              uprightInkOccupancy: glyph.uprightInkOccupancy,
+              uprightOccupancyConstrained: glyph.uprightOccupancyConstrained,
               spanMode: glyph.spanMode,
             };
             penY += glyph.advanceY;

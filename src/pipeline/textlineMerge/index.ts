@@ -9,6 +9,10 @@
  */
 
 import type { SourceTextLineGeometry, TextRegion, TextDirection, QuadPoint, Rect } from "../../types";
+import {
+  countSourceGeometryGlyphs,
+  estimateVerticalSourceFontSize,
+} from "../sourceTextGeometry";
 import { minAreaRect } from "../typeset/geometry";
 import type { InternalQuad, MergedGroup } from "./mergePredicates";
 import { buildInternalQuad, mergeTextRegions } from "./mergePredicates";
@@ -28,6 +32,16 @@ function internalQuadToSourceGeometry(q: InternalQuad): SourceTextLineGeometry {
   const bottomW = Math.hypot(q.pts[2].x - q.pts[3].x, q.pts[2].y - q.pts[3].y);
   const leftH = Math.hypot(q.pts[3].x - q.pts[0].x, q.pts[3].y - q.pts[0].y);
   const rightH = Math.hypot(q.pts[2].x - q.pts[1].x, q.pts[2].y - q.pts[1].y);
+  const width = (topW + bottomW) / 2;
+  const height = (leftH + rightH) / 2;
+  const fontSize = q.direction === "v"
+    ? estimateVerticalSourceFontSize(
+        width,
+        height,
+        countSourceGeometryGlyphs(q.text),
+        q.fontSize,
+      )
+    : q.fontSize;
 
   return {
     text: q.text,
@@ -41,9 +55,9 @@ function internalQuadToSourceGeometry(q: InternalQuad): SourceTextLineGeometry {
     quad: q.pts.map((p) => ({ x: p.x, y: p.y })) as [QuadPoint, QuadPoint, QuadPoint, QuadPoint],
     centerX: q.centroid.x,
     centerY: q.centroid.y,
-    width: (topW + bottomW) / 2,
-    height: (leftH + rightH) / 2,
-    fontSize: q.fontSize,
+    width,
+    height,
+    fontSize,
   };
 }
 

@@ -24,6 +24,8 @@ import {
   estimateVerticalPreferredProfile,
   minSourceGeometryAdvanceScale,
   minVerticalAdvanceScale,
+  maxUprightPaintedInkOccupancy,
+  maxTranslatedSourceAdvanceExpansionRatio,
 } from "../../../src/pipeline/typeset/fontFit";
 import type { VerticalCellMetrics, VerticalLayoutResult, VColumn } from "../../../src/pipeline/typeset/fontFit";
 import { tokenizeVerticalText } from "../../../src/pipeline/typeset/verticalOrientation";
@@ -428,6 +430,51 @@ describe("resolveVerticalTokenMetrics", () => {
 
     expect(metrics.renderInlineScale).toBe(1.1);
     expect(metrics.renderCrossScale).toBe(1.1);
+  });
+
+  it("expands upright advance to keep painted ink below the readability limit", () => {
+    const crampedCtx = {
+      ...ctx,
+      measureText: () => ({
+        width: 20,
+        actualBoundingBoxLeft: 10,
+        actualBoundingBoxRight: 10,
+        actualBoundingBoxAscent: 18,
+        actualBoundingBoxDescent: 2,
+        fontBoundingBoxAscent: 16,
+        fontBoundingBoxDescent: 4,
+      }),
+    } as unknown as CanvasRenderingContext2D;
+    const token = tokenizeVerticalText("中")[0];
+    const unconstrained = resolveVerticalTokenMetrics(
+      crampedCtx,
+      token,
+      20,
+      20,
+      0.6,
+      0.65,
+      true,
+      false,
+      false,
+    );
+    const constrained = resolveVerticalTokenMetrics(
+      crampedCtx,
+      token,
+      20,
+      20,
+      0.6,
+      0.65,
+      true,
+      false,
+      true,
+    );
+
+    expect(unconstrained.advanceY).toBe(13);
+    expect(unconstrained.uprightInkOccupancy).toBeGreaterThan(1);
+    expect(constrained.paintedInkHeight).toBe(22);
+    expect(constrained.advanceY).toBe(25);
+    expect(constrained.uprightInkOccupancy).toBeLessThanOrEqual(maxUprightPaintedInkOccupancy);
+    expect(constrained.uprightOccupancyConstrained).toBe(true);
   });
 });
 
@@ -983,6 +1030,71 @@ describe("estimateVerticalPreferredProfile", () => {
 
     expect(profile.advanceScale).toBe(1);
     expect(profile.perColumnAdvanceScale).toEqual([1.1, minSourceGeometryAdvanceScale]);
+  });
+
+  it("uses bounded source-advance expansion for shorter translated columns", () => {
+    const compactCtx = {
+      font: "",
+      measureText: () => ({
+        width: 20,
+        actualBoundingBoxLeft: 10,
+        actualBoundingBoxRight: 10,
+        actualBoundingBoxAscent: 16,
+        actualBoundingBoxDescent: 4,
+        fontBoundingBoxAscent: 16,
+        fontBoundingBoxDescent: 4,
+      }),
+    };
+    const region = makeRegion({
+      direction: "v",
+      sourceText: "一二三四",
+      translatedText: "中文",
+      originalLineCount: 1,
+    });
+    const sourceGeometry = {
+      columnCount: 1,
+      groupCenterX: 20,
+      medianPitch: null,
+      medianGap: null,
+      medianWidth: 20,
+      medianHeight: 80,
+      medianFontSize: 20,
+      medianAdvance: 20,
+      perColumnAdvance: [20],
+      perColumnTopY: [0],
+    };
+
+    const sourceLocked = estimateVerticalPreferredProfile(
+      compactCtx as never,
+      region,
+      "中文",
+      40,
+      80,
+      20,
+      "sans-serif",
+      ["中文"],
+      40,
+      sourceGeometry,
+      false,
+    );
+    const translated = estimateVerticalPreferredProfile(
+      compactCtx as never,
+      region,
+      "中文",
+      40,
+      80,
+      20,
+      "sans-serif",
+      ["中文"],
+      40,
+      sourceGeometry,
+      true,
+    );
+
+    expect(sourceLocked.perColumnAdvanceScale).toEqual([1]);
+    expect(sourceLocked.advanceScale).toBe(1);
+    expect(translated.perColumnAdvanceScale).toEqual([maxTranslatedSourceAdvanceExpansionRatio]);
+    expect(translated.advanceScale).toBe(maxTranslatedSourceAdvanceExpansionRatio);
   });
 });
 

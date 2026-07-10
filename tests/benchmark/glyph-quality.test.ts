@@ -41,6 +41,9 @@ function makeRegion(text: string): TypesetDebugRegionLog {
       x: 20,
       y: 20 + index * 20,
       advanceY: 20,
+      paintedInkHeight: token.kind === "upright-glyph" ? 14 : undefined,
+      uprightInkOccupancy: token.kind === "upright-glyph" ? 0.7 : undefined,
+      uprightOccupancyConstrained: token.kind === "upright-glyph" ? true : undefined,
     }))],
   };
 }
@@ -57,6 +60,8 @@ describe("computeVerticalGlyphQuality", () => {
       runInkOccupancy: 1,
       runTrackingCompliance: 1,
       runTrackingEmMax: 0,
+      uprightInkOccupancyMax: 0,
+      uprightInkOccupancyCompliance: 1,
       glyphQualityScore: 1,
     });
   });
@@ -93,6 +98,19 @@ describe("computeVerticalGlyphQuality", () => {
     expect(quality.runInkOccupancy).toBe(0.5);
     expect(quality.runTrackingEmMax).toBe(0.5);
     expect(quality.runTrackingCompliance).toBeCloseTo(0.16);
+    expect(quality.glyphQualityScore).toBeLessThan(1);
+  });
+
+  it("reports painted upright ink occupancy violations", () => {
+    const region = makeRegion("中文");
+    const item = region.columnVerticalItems?.[0]?.[0];
+    if (!item) throw new Error("Expected upright fixture item");
+    item.uprightInkOccupancy = 1.1;
+    item.uprightOccupancyConstrained = true;
+
+    const quality = computeVerticalGlyphQuality(region);
+    expect(quality.uprightInkOccupancyMax).toBe(1.1);
+    expect(quality.uprightInkOccupancyCompliance).toBeCloseTo(((0.88 / 1.1) + 1) / 2);
     expect(quality.glyphQualityScore).toBeLessThan(1);
   });
 });

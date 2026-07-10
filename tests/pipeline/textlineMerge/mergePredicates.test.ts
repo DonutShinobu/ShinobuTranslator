@@ -292,4 +292,21 @@ describe("mergeTextLines sourceLineGeometries", () => {
       centerY: 60,
     });
   });
+
+  it("stores a visual vertical font estimate instead of the raw column width", () => {
+    const [merged] = mergeTextLines([
+      makeRegion({
+        id: "dense-column",
+        box: { x: 20, y: 10, width: 40, height: 200 },
+        sourceText: "一二三四五六七八九十",
+        fontSize: 40,
+      }),
+    ], 200, 300);
+
+    expect(merged.sourceLineGeometries?.[0]).toMatchObject({
+      width: 40,
+      height: 200,
+      fontSize: 20,
+    });
+  });
 });

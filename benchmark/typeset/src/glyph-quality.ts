@@ -3,6 +3,7 @@ import { tokenizeVerticalText } from "../../../src/pipeline/typeset/verticalOrie
 import {
   maxSidewaysLatinTrackingEm,
   minSidewaysLatinInkOccupancy,
+  maxUprightPaintedInkOccupancy,
 } from "../../../src/pipeline/typeset/fontFit";
 
 export type VerticalGlyphQualityMetrics = {
@@ -14,6 +15,8 @@ export type VerticalGlyphQualityMetrics = {
   runInkOccupancy: number;
   runTrackingCompliance: number;
   runTrackingEmMax: number;
+  uprightInkOccupancyMax: number;
+  uprightInkOccupancyCompliance: number;
   glyphQualityScore: number;
 };
 
@@ -74,6 +77,8 @@ export function computeVerticalGlyphQuality(
       runInkOccupancy: 0,
       runTrackingCompliance: 0,
       runTrackingEmMax: 0,
+      uprightInkOccupancyMax: 0,
+      uprightInkOccupancyCompliance: 0,
       glyphQualityScore: 0,
     };
   }
@@ -149,14 +154,38 @@ export function computeVerticalGlyphQuality(
   const runTrackingCompliance = runTrackingEmMax > maxSidewaysLatinTrackingEm
     ? maxSidewaysLatinTrackingEm / runTrackingEmMax
     : 1;
+  const uprightItems = actual.filter((item) => item.kind === "upright-glyph");
+  const uprightOccupancies = uprightItems
+    .map((item) => item.uprightInkOccupancy)
+    .filter((occupancy): occupancy is number => (
+      occupancy !== undefined && Number.isFinite(occupancy) && occupancy >= 0
+    ));
+  const uprightInkOccupancyMax = uprightOccupancies.length > 0
+    ? Math.max(...uprightOccupancies)
+    : 0;
+  const constrainedUprightOccupancies = uprightItems
+    .filter((item) => item.uprightOccupancyConstrained)
+    .map((item) => item.uprightInkOccupancy);
+  const uprightInkOccupancyCompliance = mean(
+    constrainedUprightOccupancies.map((occupancy) => {
+      if (occupancy === undefined || !Number.isFinite(occupancy) || occupancy < 0) {
+        return 0;
+      }
+      return occupancy > maxUprightPaintedInkOccupancy
+        ? maxUprightPaintedInkOccupancy / occupancy
+        : 1;
+    }),
+    1,
+  );
   const glyphQualityCoverage = expected.length > 0 ? Math.min(1, actual.length / expected.length) : 1;
   const glyphQualityScore = (
-    glyphOrientationAccuracy * 0.35
-    + runContinuityRate * 0.2
-    + verticalItemCenterAlignment * 0.15
-    + runSpanFidelity * 0.15
-    + runInkOccupancyScore * 0.1
-    + runTrackingCompliance * 0.05
+    glyphOrientationAccuracy * 0.32
+    + runContinuityRate * 0.18
+    + verticalItemCenterAlignment * 0.14
+    + runSpanFidelity * 0.14
+    + runInkOccupancyScore * 0.09
+    + runTrackingCompliance * 0.04
+    + uprightInkOccupancyCompliance * 0.09
   );
 
   return {
@@ -168,6 +197,8 @@ export function computeVerticalGlyphQuality(
     runInkOccupancy,
     runTrackingCompliance,
     runTrackingEmMax,
+    uprightInkOccupancyMax,
+    uprightInkOccupancyCompliance,
     glyphQualityScore,
   };
 }

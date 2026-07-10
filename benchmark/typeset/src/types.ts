@@ -99,6 +99,8 @@ export type RegionMetrics = {
   runInkOccupancy?: number;
   runTrackingCompliance?: number;
   runTrackingEmMax?: number;
+  uprightInkOccupancyMax?: number;
+  uprightInkOccupancyCompliance?: number;
   glyphQualityScore?: number;
 };
 
@@ -116,6 +118,8 @@ export type ImageMetrics = {
   avgRunInkOccupancy: number;
   avgRunTrackingCompliance: number;
   avgRunTrackingEmMax: number;
+  avgUprightInkOccupancyMax: number;
+  avgUprightInkOccupancyCompliance: number;
   avgGlyphQualityScore: number;
 };
 
@@ -133,6 +137,8 @@ export type BenchmarkSummary = {
   avgRunInkOccupancy: number;
   avgRunTrackingCompliance: number;
   avgRunTrackingEmMax: number;
+  avgUprightInkOccupancyMax: number;
+  avgUprightInkOccupancyCompliance: number;
   avgGlyphQualityScore: number;
   avgColumnIouMean: number;
   avgFontSizeError: number;

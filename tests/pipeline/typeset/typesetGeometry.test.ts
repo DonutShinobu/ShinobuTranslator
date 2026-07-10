@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { queryMaskMaxY, calcVertical } from "../../../src/pipeline/typeset/index";
+import { queryMaskMaxY, calcVertical, computeFullVerticalTypeset } from "../../../src/pipeline/typeset/index";
+import type { TextRegion } from "../../../src/types";
 
 function createMask(width: number, height: number, fillFn: (x: number, y: number) => boolean): ImageData {
   const data = new Uint8ClampedArray(width * height * 4);
@@ -118,5 +119,55 @@ describe("calcVertical with perColumnMaxHeight", () => {
       { kind: "tate-chu-yoko", sourceText: "!?", policy: "terminal-punctuation" },
     ]);
     expect(glyphs[0].advanceY).toBeGreaterThan(20);
+  });
+
+  it("enforces painted-ink spacing only for translated upright content", () => {
+    const ctx = {
+      ...createMockCtx(),
+      measureText: () => ({
+        width: 20,
+        actualBoundingBoxAscent: 18,
+        actualBoundingBoxDescent: 2,
+        actualBoundingBoxLeft: 10,
+        actualBoundingBoxRight: 10,
+        fontBoundingBoxAscent: 16,
+        fontBoundingBoxDescent: 4,
+      }),
+    } as unknown as CanvasRenderingContext2D;
+    const sourceText = "一二三四五六";
+    const region: TextRegion = {
+      id: "translated-upright",
+      box: { x: 0, y: 0, width: 40, height: 120 },
+      direction: "v",
+      fontSize: 40,
+      originalLineCount: 1,
+      sourceText,
+      translatedText: "中文",
+      translatedColumns: ["中文"],
+      sourceLineGeometries: [{
+        text: sourceText,
+        direction: "v",
+        box: { x: 0, y: 0, width: 40, height: 120 },
+        centerX: 20,
+        centerY: 60,
+        width: 40,
+        height: 120,
+        fontSize: 20,
+      }],
+    };
+
+    const result = computeFullVerticalTypeset({
+      region,
+      fontFamily: "sans-serif",
+      measureCtx: ctx,
+    });
+
+    expect(result.fittedFontSize).toBe(20);
+    expect(result.layoutDiagnostics.uprightInkOccupancyConstrained).toBe(true);
+    expect(result.layoutDiagnostics.sourceAdvanceExpansionEnabled).toBe(true);
+    expect(result.columns[0].glyphs).toHaveLength(2);
+    expect(result.columns[0].glyphs.every((glyph) =>
+      (glyph.uprightInkOccupancy ?? 0) <= 0.88,
+    )).toBe(true);
   });
 });

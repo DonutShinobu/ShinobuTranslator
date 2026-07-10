@@ -95,6 +95,8 @@ export function computeFullVerticalTypeset(
   const text = (preferredColumns && preferredColumns.length > 0)
     ? preferredColumns.join("")
     : translated;
+  const normalizeLayoutText = (value: string): string => value.replace(/\s+/gu, "");
+  const hasTranslatedContent = normalizeLayoutText(text) !== normalizeLayoutText(inputRegion.sourceText);
 
   const sourceColumns = verticalPreferred?.sourceColumns ?? resolveSourceColumns(inputRegion);
   const sourceColumnLengths = verticalPreferred?.sourceColumnLengths ?? sourceColumns.map((column) => countTextLength(column));
@@ -163,6 +165,7 @@ export function computeFullVerticalTypeset(
     region.translatedColumns,
     originalContentWidth,
     sourceGeometryProfile,
+    hasTranslatedContent,
   );
   let activePerColumnAdvanceScales = preferredProfile.perColumnAdvanceScale;
 
@@ -175,6 +178,7 @@ export function computeFullVerticalTypeset(
     actualBoxScale: sourceGeometryProfile ? sourceGeometryActualBoxScale : undefined,
     useDefaultAdvanceBase: Boolean(sourceGeometryProfile),
     sourceSpanAware: Boolean(sourceGeometryProfile),
+    enforceUprightInkOccupancy: hasTranslatedContent,
     columnAnchor,
     preferredColumns: region.translatedColumns,
     preferredColumnSources,
@@ -223,6 +227,7 @@ export function computeFullVerticalTypeset(
       estimatedInitialFontSize, ff, region.translatedColumns,
       originalContentWidth,
       sourceGeometryProfile,
+      hasTranslatedContent,
     );
     const extendedOptions: BuildVerticalLayoutOptions = {
       ...verticalLayoutOptions,
@@ -269,6 +274,7 @@ export function computeFullVerticalTypeset(
         measureCtx, region, text, contentWidth, layoutContentHeight, mid, ff, region.translatedColumns,
         originalContentWidth,
         sourceGeometryProfile,
+        hasTranslatedContent,
       );
       const opts: BuildVerticalLayoutOptions = {
         ...verticalLayoutOptions,
@@ -360,6 +366,8 @@ export function computeFullVerticalTypeset(
       actualBoxScale: verticalLayoutOptions.actualBoxScale,
       useDefaultAdvanceBase: verticalLayoutOptions.useDefaultAdvanceBase ?? false,
       sourceSpanAware: verticalLayoutOptions.sourceSpanAware ?? false,
+      uprightInkOccupancyConstrained: verticalLayoutOptions.enforceUprightInkOccupancy ?? false,
+      sourceAdvanceExpansionEnabled: hasTranslatedContent && Boolean(sourceGeometryProfile),
       layoutContentHeight,
       renderContentHeight,
     },

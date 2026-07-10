@@ -10,22 +10,22 @@
 
 <p align="center">
   <a href="https://chromewebstore.google.com/detail/pgehhpbnifjlalmmnpiebkjhphojffef">
-    <img alt="Chrome Web Store" src="https://img.shields.io/badge/Chrome%20Web%20Store-安装-4285F4">
+    <img alt="Chrome Web Store" src="https://img.shields.io/badge/Chrome%20Web%20Store-安装-4285F4?style=flat-square">
   </a>
   <a href="LICENSE">
-    <img alt="License" src="https://img.shields.io/badge/License-GPL--3.0-blue">
+    <img alt="License" src="https://img.shields.io/badge/License-GPL--3.0-blue?style=flat-square">
   </a>
   <a href="https://github.com/zyddnys/manga-image-translator">
-    <img alt="基于 manga-image-translator" src="https://img.shields.io/badge/基于-manga--image--translator-green">
+    <img alt="基于 manga-image-translator" src="https://img.shields.io/badge/基于-manga--image--translator-green?style=flat-square">
   </a>
   <a href="https://huggingface.co/PaddlePaddle/PP-OCRv6_medium_rec_onnx">
-    <img alt="OCR PP-OCRv6 medium" src="https://img.shields.io/badge/OCR-PP--OCRv6%20medium-blue">
+    <img alt="OCR PP-OCRv6 medium" src="https://img.shields.io/badge/OCR-PP--OCRv6%20medium-blue?style=flat-square">
   </a>
   <a href="https://huggingface.co/mayocream/aot-inpainting">
-    <img alt="模型 AOT Inpaint" src="https://img.shields.io/badge/模型-AOT%20Inpaint-orange">
+    <img alt="模型 AOT Inpaint" src="https://img.shields.io/badge/模型-AOT%20Inpaint-orange?style=flat-square">
   </a>
   <a href="https://huggingface.co/huyvux3005/manga109-segmentation-bubble">
-    <img alt="模型 YOLO11n Bubble" src="https://img.shields.io/badge/模型-YOLO11n%20Bubble-orange">
+    <img alt="模型 YOLO11n Bubble" src="https://img.shields.io/badge/模型-YOLO11n%20Bubble-orange?style=flat-square">
   </a>
 </p>
 
@@ -277,10 +277,12 @@ benchmark/
 
 ShinobuTranslator 仅用于个人学习、研究和合法授权内容的辅助翻译。使用者应自行确认对输入图片、翻译结果和后续传播行为拥有合法权利，并遵守所在地法律法规、平台规则和第三方服务条款。翻译结果由模型或第三方服务生成，可能存在错误，请在发布或二次使用前自行校对。
 
-## Star 趋势
+## Star History
 
-<div align="center">
-
-[![Star History Chart](https://api.star-history.com/svg?repos=DonutShinobu/ShinobuTranslator&type=Date)](https://star-history.com/#DonutShinobu/ShinobuTranslator&Date)
-
-</div>
+<a href="https://www.star-history.com/?type=date&repos=DonutShinobu%2FShinobuTranslator">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=DonutShinobu/ShinobuTranslator&type=date&theme=dark&legend=top-left&sealed_token=_sAHU9p_GIu8YRV4B1NUeFz_jiIPnpUA45CXVeha2WML7vAOrj2RNdn0U_HwonQp0os2_7btrkuqTaS_oYbD05lru-v-5FngnxpQ8dxLhVBA63qPeU3Dlw" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=DonutShinobu/ShinobuTranslator&type=date&legend=top-left&sealed_token=_sAHU9p_GIu8YRV4B1NUeFz_jiIPnpUA45CXVeha2WML7vAOrj2RNdn0U_HwonQp0os2_7btrkuqTaS_oYbD05lru-v-5FngnxpQ8dxLhVBA63qPeU3Dlw" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=DonutShinobu/ShinobuTranslator&type=date&legend=top-left&sealed_token=_sAHU9p_GIu8YRV4B1NUeFz_jiIPnpUA45CXVeha2WML7vAOrj2RNdn0U_HwonQp0os2_7btrkuqTaS_oYbD05lru-v-5FngnxpQ8dxLhVBA63qPeU3Dlw" />
+ </picture>
+</a>

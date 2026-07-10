@@ -7,10 +7,12 @@ import {
   computeVerticalTotalWidth,
   resolveVerticalColumnPositions,
   resolveVerticalSourceColumnAnchor,
+  resolveVerticalSourceColumnStartOffsets,
   resolveVerticalSourceGeometryProfile,
   strokeWidth,
   resolveOffscreenGuardPadding,
   resolveVerticalStartY,
+  buildVerticalDebugColumnBoxes,
   resolveAlignment,
   resolveBoxPadding,
   resolveVerticalContentHeight,
@@ -349,9 +351,79 @@ describe("resolveVerticalSourceGeometryProfile", () => {
       medianHeight: 70,
       medianAdvance: 20,
       perColumnAdvance: [20, 20],
+      perColumnTopY: [25, 25],
     });
 
     expect(resolveVerticalSourceColumnAnchor(region, 5, profile)).toEqual({ contentCenterX: 40 });
+  });
+
+  it("maps staggered source tops into content-space offsets", () => {
+    const region = makeRegion({
+      box: { x: 100, y: 200, width: 120, height: 300 },
+      sourceText: "right\nleft",
+      sourceLineGeometries: [
+        {
+          text: "right",
+          direction: "v",
+          box: { x: 180, y: 250, width: 20, height: 100 },
+          centerX: 190,
+          centerY: 300,
+          width: 20,
+          height: 100,
+        },
+        {
+          text: "left",
+          direction: "v",
+          box: { x: 130, y: 290, width: 20, height: 80 },
+          centerX: 140,
+          centerY: 330,
+          width: 20,
+          height: 80,
+        },
+      ],
+    });
+
+    const profile = resolveVerticalSourceGeometryProfile(region, 2);
+
+    expect(profile?.perColumnTopY).toEqual([250, 290]);
+    expect(resolveVerticalSourceColumnStartOffsets(region, 10, 2, profile)).toEqual([40, 80]);
+  });
+
+  it("does not apply source top offsets to single or rotated column layouts", () => {
+    const region = makeRegion({
+      box: { x: 0, y: 0, width: 100, height: 200 },
+      quad: [
+        { x: 0, y: 0 },
+        { x: 100, y: 10 },
+        { x: 80, y: 210 },
+        { x: -20, y: 200 },
+      ],
+      sourceText: "right\nleft",
+      sourceLineGeometries: [
+        {
+          text: "right",
+          direction: "v",
+          box: { x: 60, y: 20, width: 20, height: 100 },
+          centerX: 70,
+          centerY: 70,
+          width: 20,
+          height: 100,
+        },
+        {
+          text: "left",
+          direction: "v",
+          box: { x: 20, y: 40, width: 20, height: 100 },
+          centerX: 30,
+          centerY: 90,
+          width: 20,
+          height: 100,
+        },
+      ],
+    });
+    const profile = resolveVerticalSourceGeometryProfile(region, 2);
+
+    expect(resolveVerticalSourceColumnStartOffsets(region, 0, 1, profile)).toBeUndefined();
+    expect(resolveVerticalSourceColumnStartOffsets(region, 0, 2, profile)).toBeUndefined();
   });
 
   it("keeps pitch targets in spatial order and advance targets in source order", () => {
@@ -721,6 +793,32 @@ describe("resolveVerticalStartY", () => {
   it("returns padding when contentHeight equals columnHeight", () => {
     // center alignment with equal heights: padding + 0/2 = padding
     expect(resolveVerticalStartY(50, 50, "center", 10)).toBe(10);
+  });
+
+  it("uses and clamps a source-derived start offset", () => {
+    expect(resolveVerticalStartY(100, 40, "left", 10, 25)).toBe(35);
+    expect(resolveVerticalStartY(100, 80, "left", 10, 50)).toBe(30);
+  });
+
+  it("applies independent source starts to debug column boxes", () => {
+    const columns: VColumn[] = [
+      { glyphs: [{ ch: "右", advanceY: 20 }], height: 20 },
+      { glyphs: [{ ch: "左", advanceY: 20 }], height: 20 },
+    ];
+    const boxes = buildVerticalDebugColumnBoxes(
+      columns,
+      100,
+      100,
+      makeMetrics(),
+      "left",
+      10,
+      undefined,
+      undefined,
+      undefined,
+      [15, 45],
+    );
+
+    expect(boxes.map((box) => box.y)).toEqual([25, 55]);
   });
 });
 

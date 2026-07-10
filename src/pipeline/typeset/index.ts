@@ -44,6 +44,7 @@ export type FullVerticalTypesetResult = {
   verticalContentHeight: number;
   alignment: "left" | "center" | "right";
   columnAnchor?: import("./fontFit").VerticalColumnAnchor;
+  columnStartOffsets?: number[];
   layoutDiagnostics: TypesetLayoutDiagnostics;
 };
 
@@ -64,6 +65,7 @@ import {
   buildVerticalDebugColumnBoxes,
   resolveVerticalColumnPositions,
   resolveVerticalSourceColumnAnchor,
+  resolveVerticalSourceColumnStartOffsets,
   resolveVerticalSourceGeometryProfile,
   minFontSafetySize,
   sourceGeometryActualBoxScale,
@@ -307,6 +309,12 @@ export function computeFullVerticalTypeset(
   const { columns, columnBreakReasons, columnSegmentIds, columnSegmentSources, metrics } = layout;
   const strokePadding = resolveVerticalRenderPadding(measureCtx, columns, fontSize, metrics, ff);
   const alignment = resolveAlignment(region, columns.length);
+  const columnStartOffsets = resolveVerticalSourceColumnStartOffsets(
+    region,
+    boxPadding,
+    columns.length,
+    sourceGeometryProfile,
+  );
 
   measureCtx.font = `${fontSize}px ${ff}`;
   const debugColumnBoxes = buildVerticalDebugColumnBoxes(
@@ -319,6 +327,7 @@ export function computeFullVerticalTypeset(
     measureCtx,
     fontSize,
     verticalLayoutOptions.columnAnchor,
+    columnStartOffsets,
   );
 
   return {
@@ -345,6 +354,7 @@ export function computeFullVerticalTypeset(
     verticalContentHeight: renderContentHeight,
     alignment,
     columnAnchor: verticalLayoutOptions.columnAnchor,
+    columnStartOffsets,
     layoutDiagnostics: {
       sourceGeometryProfileUsed: Boolean(sourceGeometryProfile),
       advanceScale: verticalLayoutOptions.advanceScale ?? 1,

@@ -26,6 +26,7 @@ import {
   minFontSafetySize,
   getRegionQuad,
   resolveVerticalColumnPositions,
+  resolveVerticalStartY,
   KINSOKU_NSTART,
   KINSOKU_NEND,
 } from "./typeset/index";
@@ -542,6 +543,7 @@ function renderVertical(
   alignment: "left" | "center" | "right",
   metrics: VerticalCellMetrics,
   padding: number,
+  columnStartOffsets?: readonly number[],
   columnAnchor?: VerticalColumnAnchor,
   platform?: PlatformProvider,
 ): PipelineCanvas {
@@ -569,15 +571,13 @@ function renderVertical(
     const col = columns[c];
     const cx = positions.centers[c];
 
-    // Vertical alignment within column
-    let startY: number;
-    if (alignment === "center") {
-      startY = padding + (contentHeight - col.height) / 2;
-    } else if (alignment === "right") {
-      startY = padding + contentHeight - col.height;
-    } else {
-      startY = padding;
-    }
+    const startY = resolveVerticalStartY(
+      contentHeight,
+      col.height,
+      alignment,
+      padding,
+      columnStartOffsets?.[c],
+    );
 
     let penY = startY;
     for (const glyph of col.glyphs) {
@@ -592,14 +592,13 @@ function renderVertical(
     const col = columns[c];
     const cx = positions.centers[c];
 
-    let startY: number;
-    if (alignment === "center") {
-      startY = padding + (contentHeight - col.height) / 2;
-    } else if (alignment === "right") {
-      startY = padding + contentHeight - col.height;
-    } else {
-      startY = padding;
-    }
+    const startY = resolveVerticalStartY(
+      contentHeight,
+      col.height,
+      alignment,
+      padding,
+      columnStartOffsets?.[c],
+    );
 
     let penY = startY;
     for (const glyph of col.glyphs) {
@@ -770,6 +769,7 @@ export async function drawTypeset(
           vResult.alignment,
           vResult.metrics,
           vResult.strokePadding,
+          vResult.columnStartOffsets,
           vResult.columnAnchor,
           platform,
         );

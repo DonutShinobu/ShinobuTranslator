@@ -142,10 +142,11 @@ export type VerticalSourceGeometryProfile = {
   medianHeight: number;
   medianAdvance: number | null;
   /**
-   * Advance targets are aligned to source text/render column order.
+   * Advance and top-edge targets are aligned to source text/render column order.
    * Spatial pitch and anchor are resolved independently from right-to-left order.
    */
   perColumnAdvance: number[];
+  perColumnTopY: number[];
 };
 
 export type RegionTypesetDebug = {
@@ -429,6 +430,7 @@ export function resolveVerticalSourceGeometryProfile(
     .filter((line) =>
       line.direction === "v" &&
       Number.isFinite(line.centerX) &&
+      Number.isFinite(line.centerY) &&
       Number.isFinite(line.width) &&
       Number.isFinite(line.height) &&
       line.width > 0 &&
@@ -486,6 +488,7 @@ export function resolveVerticalSourceGeometryProfile(
     const length = Math.max(1, countTextGlyphs(line.text));
     return line.height / length;
   });
+  const perColumnTopY = sourceOrderedLines.map((line) => line.centerY - line.height / 2);
 
   return {
     columnCount: spatialColumns.length,
@@ -496,6 +499,7 @@ export function resolveVerticalSourceGeometryProfile(
     medianHeight,
     medianAdvance,
     perColumnAdvance,
+    perColumnTopY,
   };
 }
 
@@ -516,6 +520,34 @@ export function resolveVerticalSourceColumnAnchor(
     return undefined;
   }
   return { contentCenterX };
+}
+
+export function resolveVerticalSourceColumnStartOffsets(
+  region: TextRegion,
+  boxPadding: number,
+  renderedColumnCount: number,
+  profile?: VerticalSourceGeometryProfile,
+): number[] | undefined {
+  if (
+    renderedColumnCount <= 1 ||
+    !profile ||
+    profile.perColumnTopY.length !== renderedColumnCount
+  ) {
+    return undefined;
+  }
+
+  const angle = quadAngle(getRegionQuad(region));
+  if (Math.abs(angle) > maxSourceGeometryAnchorAngleRad) {
+    return undefined;
+  }
+
+  const contentTopY = region.box.y + boxPadding;
+  const offsets = profile.perColumnTopY.map((topY) => topY - contentTopY);
+  if (!offsets.every(Number.isFinite)) {
+    return undefined;
+  }
+
+  return offsets.map((offset) => Math.max(0, offset));
 }
 
 // ---------------------------------------------------------------------------
@@ -1081,7 +1113,12 @@ export function resolveVerticalStartY(
   columnHeight: number,
   alignment: "left" | "center" | "right",
   padding: number,
+  sourceStartOffset?: number,
 ): number {
+  if (sourceStartOffset !== undefined && Number.isFinite(sourceStartOffset)) {
+    const maxOffset = Math.max(0, contentHeight - columnHeight);
+    return padding + clampNumber(sourceStartOffset, 0, maxOffset);
+  }
   if (alignment === "center") {
     return padding + (contentHeight - columnHeight) / 2;
   }
@@ -1101,6 +1138,7 @@ export function buildVerticalDebugColumnBoxes(
   ctx?: PipelineRenderingContext,
   fontSize?: number,
   anchor?: VerticalColumnAnchor,
+  columnStartOffsets?: readonly number[],
 ): DebugColumnBox[] {
   if (columns.length === 0) {
     return [];
@@ -1111,7 +1149,13 @@ export function buildVerticalDebugColumnBoxes(
   for (let c = 0; c < columns.length; c += 1) {
     const col = columns[c];
     const cx = positions.centers[c];
-    const startY = resolveVerticalStartY(contentHeight, col.height, alignment, padding);
+    const startY = resolveVerticalStartY(
+      contentHeight,
+      col.height,
+      alignment,
+      padding,
+      columnStartOffsets?.[c],
+    );
     let boxWidth = metrics.colWidth;
     if (ctx && fontSize) {
       let maxW = 0;

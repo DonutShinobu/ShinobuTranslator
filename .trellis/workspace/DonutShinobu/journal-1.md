@@ -788,3 +788,36 @@ Completed the translation coherence task: improved LLM prompt and structured pay
 ### Next Steps
 
 - None - task complete
+
+
+## Session 25: 统一竖排源样式估算
+
+**Date**: 2026-07-10
+**Task**: 统一竖排源样式估算
+**Branch**: `master`
+
+### Summary
+
+以源列几何联合估算字号、字距和列距，溢出时统一缩放；补充回归测试并完成 14 张 fixture 审计、重渲染与评分。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `795f747` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

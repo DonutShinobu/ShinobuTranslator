@@ -755,3 +755,36 @@ Completed the translation coherence task: improved LLM prompt and structured pay
 ### Next Steps
 
 - None - task complete
+
+
+## Session 24: 完善 mixed 竖排与源感知字号估算
+
+**Date**: 2026-07-10
+**Task**: 完善 mixed 竖排与源感知字号估算
+**Branch**: `master`
+
+### Summary
+
+修正波浪号、长音符、Latin mixed run 与句末双标点的竖排规则，引入 source-aware run 度量和稳健的源列字号中位数估算，并完成 14 张 fixture 的 render、评分与完整质量验证。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `658e5cf` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

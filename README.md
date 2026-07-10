@@ -9,24 +9,12 @@
 </p>
 
 <p align="center">
-  <a href="https://chromewebstore.google.com/detail/pgehhpbnifjlalmmnpiebkjhphojffef">
-    <img alt="Chrome Web Store" src="https://img.shields.io/badge/Chrome%20Web%20Store-安装-4285F4?style=flat-square">
-  </a>
-  <a href="LICENSE">
-    <img alt="License" src="https://img.shields.io/badge/License-GPL--3.0-blue?style=flat-square">
-  </a>
-  <a href="https://github.com/zyddnys/manga-image-translator">
-    <img alt="基于 manga-image-translator" src="https://img.shields.io/badge/基于-manga--image--translator-green?style=flat-square">
-  </a>
-  <a href="https://huggingface.co/PaddlePaddle/PP-OCRv6_medium_rec_onnx">
-    <img alt="OCR PP-OCRv6 medium" src="https://img.shields.io/badge/OCR-PP--OCRv6%20medium-blue?style=flat-square">
-  </a>
-  <a href="https://huggingface.co/mayocream/aot-inpainting">
-    <img alt="模型 AOT Inpaint" src="https://img.shields.io/badge/模型-AOT%20Inpaint-orange?style=flat-square">
-  </a>
-  <a href="https://huggingface.co/huyvux3005/manga109-segmentation-bubble">
-    <img alt="模型 YOLO11n Bubble" src="https://img.shields.io/badge/模型-YOLO11n%20Bubble-orange?style=flat-square">
-  </a>
+  <a href="https://chromewebstore.google.com/detail/pgehhpbnifjlalmmnpiebkjhphojffef"><img alt="Chrome Web Store" src="https://img.shields.io/badge/Chrome%20Web%20Store-安装-4285F4?style=flat-square"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/License-GPL--3.0-blue?style=flat-square"></a>
+  <a href="https://github.com/zyddnys/manga-image-translator"><img alt="基于 manga-image-translator" src="https://img.shields.io/badge/基于-manga--image--translator-green?style=flat-square"></a>
+  <a href="https://huggingface.co/PaddlePaddle/PP-OCRv6_medium_rec_onnx"><img alt="OCR PP-OCRv6 medium" src="https://img.shields.io/badge/OCR-PP--OCRv6%20medium-blue?style=flat-square"></a>
+  <a href="https://huggingface.co/mayocream/aot-inpainting"><img alt="模型 AOT Inpaint" src="https://img.shields.io/badge/模型-AOT%20Inpaint-orange?style=flat-square"></a>
+  <a href="https://huggingface.co/huyvux3005/manga109-segmentation-bubble"><img alt="模型 YOLO11n Bubble" src="https://img.shields.io/badge/模型-YOLO11n%20Bubble-orange?style=flat-square"></a>
 </p>
 
 一款漫画翻译扩展程序，识别/去字等模型仅在浏览器本地运行，无需单独服务器。主要支持日文漫画场景，自动进行识别、翻译、嵌字全流程。同时提供基于Nano Banana的翻译模式，可以利用Gemini订阅对各种类型漫画进行端到端翻译。对于 X / Pixiv / eHentai 做了专门适配，其他网站均可使用右键/键盘快捷键进行截图翻译。

@@ -722,3 +722,36 @@ Completed the translation coherence task: improved LLM prompt and structured pay
 ### Next Steps
 
 - None - task complete
+
+
+## Session 23: 竖排字形方向与 mixed 排版
+
+**Date**: 2026-07-10
+**Task**: 竖排字形方向与 mixed 排版
+**Branch**: `master`
+
+### Summary
+
+基于 Unicode 17 实现竖排方向、Latin mixed run 与句末双标点纵中横，修正真实墨迹度量和旋转中心，补充 benchmark 字形评分；14 张 fixture、507 项测试、类型检查与构建均通过。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `636eef5` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 22
-- **Last Active**: 2026-06-27
+- **Total Sessions**: 23
+- **Last Active**: 2026-07-10
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~724 | Active |
+| `journal-1.md` | ~757 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 23 | 2026-07-10 | 竖排字形方向与 mixed 排版 | `636eef5` | `master` |
 | 22 | 2026-06-27 | Manga translation coherence | `ad52490` | `master` |
 | 21 | 2026-06-27 | Structured diagnostic logging | `5c5b7a4` | `master` |
 | 20 | 2026-06-17 | Paddle cold-start validation | `cff16fd` | `codex/paddle-cold-start-validation` |

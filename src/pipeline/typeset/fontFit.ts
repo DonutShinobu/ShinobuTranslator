@@ -158,11 +158,15 @@ export type VerticalColumnPositions = {
 export type VerticalSourceGeometryProfile = {
   columnCount: number;
   groupCenterX: number;
+  /** Robust source em estimate from per-column cross size and inline advance. */
+  sourceFontSize: number;
+  /** Resolved column-center pitch; falls back to the normal em-based pitch for one source column. */
+  sourcePitch: number;
   medianPitch: number | null;
   medianGap: number | null;
   medianWidth: number;
   medianHeight: number;
-  medianAdvance: number | null;
+  medianAdvance: number;
   /**
    * Advance and top-edge targets are aligned to source text/render column order.
    * Spatial pitch and anchor are resolved independently from right-to-left order.
@@ -625,38 +629,61 @@ export function resolveVerticalSourceGeometryProfile(
     const left = spatialColumns[index + 1];
     const pitch = right.centerX - left.centerX;
     if (!Number.isFinite(pitch) || pitch <= 1) {
-      return undefined;
+      continue;
     }
     pitches.push(pitch);
     gaps.push(pitch - (right.width + left.width) / 2);
   }
 
-  const medianPitch = pitches.length > 0 ? medianNumber(pitches) : null;
-  const medianGap = gaps.length > 0 ? medianNumber(gaps) : null;
-  if (
-    medianPitch !== null &&
-    (medianPitch < medianWidth * 0.75 || medianPitch > Math.max(region.box.width, medianWidth) * 1.25)
-  ) {
-    return undefined;
-  }
+  const measuredMedianPitch = pitches.length > 0 ? medianNumber(pitches) : null;
+  const measuredMedianGap = gaps.length > 0 ? medianNumber(gaps) : null;
+  const medianPitch = measuredMedianPitch;
+  const medianGap = measuredMedianGap;
 
   const leftEdge = Math.min(...spatialColumns.map((line) => line.centerX - line.width / 2));
   const rightEdge = Math.max(...spatialColumns.map((line) => line.centerX + line.width / 2));
-  const spatialColumnAdvance = spatialColumns.map((line) => {
-    const length = Math.max(1, countTextGlyphs(line.text));
-    return line.height / length;
+  const sourceColumnStyles = spatialColumns.map((line) => {
+    const glyphCount = countTextGlyphs(line.text);
+    const effectiveGlyphCount = Math.max(1, glyphCount);
+    const advance = line.height / effectiveGlyphCount;
+    const declaredFontSize = line.fontSize;
+    const crossSize = declaredFontSize !== undefined && Number.isFinite(declaredFontSize) && declaredFontSize > 0
+      ? Math.min(line.width, declaredFontSize)
+      : line.width;
+    return {
+      glyphCount,
+      advance,
+      fontSize: Math.min(crossSize, advance),
+    };
   });
-  const medianAdvance = medianNumber(spatialColumnAdvance);
+  const reliableSourceColumnStyles = sourceColumnStyles.filter((style) => style.glyphCount >= 2);
+  const fontSizeCandidates = reliableSourceColumnStyles.length > 0
+    ? reliableSourceColumnStyles
+    : sourceColumnStyles;
+  const sourceFontSize = medianNumber(fontSizeCandidates.map((style) => style.fontSize));
+  if (sourceFontSize === null || sourceFontSize <= 0) {
+    return undefined;
+  }
+  const medianAdvance = reliableSourceColumnStyles.length > 0
+    ? medianNumber(reliableSourceColumnStyles.map((style) => style.advance)) ?? sourceFontSize
+    : sourceFontSize;
+  const sourcePitch = medianPitch !== null
+    ? Math.max(sourceFontSize, medianPitch)
+    : sourceFontSize * (1 + verticalColumnSpacingRatio);
   const sourceOrderedLines = resolveSourceOrderedGeometryLines(region, sourceLines, targetColumnCount);
   const perColumnAdvance = sourceOrderedLines.map((line) => {
-    const length = Math.max(1, countTextGlyphs(line.text));
-    return line.height / length;
+    const glyphCount = countTextGlyphs(line.text);
+    return glyphCount >= 2
+      ? line.height / glyphCount
+      : medianAdvance;
   });
   const perColumnTopY = sourceOrderedLines.map((line) => line.centerY - line.height / 2);
 
   return {
     columnCount: spatialColumns.length,
     groupCenterX: (leftEdge + rightEdge) / 2,
+    sourceFontSize,
+    sourcePitch,
     medianPitch,
     medianGap,
     medianWidth,
@@ -1562,41 +1589,41 @@ export function estimateVerticalPreferredProfile(
   const sw = strokeWidth(fontSize);
   const metrics = resolveVerticalCellMetrics(ctx, text, fontSize, sw);
   const sourceColumns = resolveSourceColumns(region);
-  const sourceLengths = sourceColumns.map((column) => countTextGlyphs(column));
   const translatedColumnTexts = preferredColumns ?? [text];
-  const translatedLengths = translatedColumnTexts.map((c) => countTextGlyphs(c));
-  const baselineLength = Math.max(1, ...sourceLengths, ...translatedLengths);
-
-  const contentAdvanceTarget = contentHeight / baselineLength;
-  const sourceAdvanceTarget = sourceGeometryProfile
-    ? sourceGeometryProfile.medianAdvance
-    : null;
-  const targetAdvance = sourceAdvanceTarget !== null
-    ? Math.min(contentAdvanceTarget, sourceAdvanceTarget)
-    : contentAdvanceTarget;
   const baseAdvance = Math.max(1, metrics.defaultAdvanceY * verticalAdvanceTightenRatio);
-  const minAdvanceScale = sourceGeometryProfile ? minSourceGeometryAdvanceScale : minVerticalAdvanceScale;
-  const advanceScale = clampNumber(
-    targetAdvance / baseAdvance,
-    minAdvanceScale,
-    1.1,
-  );
-  const perColumnAdvanceScale = sourceGeometryProfile?.perColumnAdvance.length
-    ? translatedColumnTexts.map((column, index) => {
-      const sourceAdvance = sourceGeometryProfile.perColumnAdvance[index];
-      if (!Number.isFinite(sourceAdvance) || sourceAdvance <= 0) {
-        return advanceScale;
-      }
-      const translatedLength = Math.max(1, countTextGlyphs(column));
-      const columnContentAdvanceTarget = contentHeight / translatedLength;
-      const columnTargetAdvance = Math.min(columnContentAdvanceTarget, sourceAdvance);
-      return clampNumber(
-        columnTargetAdvance / baseAdvance,
-        minAdvanceScale,
-        1.1,
+  const sourceStyleScale = sourceGeometryProfile
+    ? fontSize / Math.max(1, sourceGeometryProfile.sourceFontSize)
+    : 1;
+
+  let advanceScale: number;
+  let perColumnAdvanceScale: number[] | undefined;
+  if (sourceGeometryProfile) {
+    const targetAdvance = sourceGeometryProfile.medianAdvance * sourceStyleScale;
+    advanceScale = targetAdvance / baseAdvance;
+
+    const sourceColumnIdentityMatches = (
+      sourceGeometryProfile.perColumnAdvance.length === sourceColumns.length &&
+      translatedColumnTexts.length === sourceColumns.length &&
+      translatedColumnTexts.every((column, index) =>
+        normalizeGeometryText(column) === normalizeGeometryText(sourceColumns[index] ?? ""),
+      )
+    );
+    if (sourceColumnIdentityMatches) {
+      perColumnAdvanceScale = sourceGeometryProfile.perColumnAdvance.map((sourceAdvance) =>
+        sourceAdvance * sourceStyleScale / baseAdvance,
       );
-    })
-    : undefined;
+    }
+  } else {
+    const sourceLengths = sourceColumns.map((column) => countTextGlyphs(column));
+    const translatedLengths = translatedColumnTexts.map((column) => countTextGlyphs(column));
+    const baselineLength = Math.max(1, ...sourceLengths, ...translatedLengths);
+    const targetAdvance = contentHeight / baselineLength;
+    advanceScale = clampNumber(
+      targetAdvance / baseAdvance,
+      minVerticalAdvanceScale,
+      1.1,
+    );
+  }
 
   const targetColumnCount = Math.max(
     1,
@@ -1608,7 +1635,9 @@ export function estimateVerticalPreferredProfile(
   if (targetColumnCount > 1) {
     const spacingWidth = originalContentWidth ?? contentWidth;
     const fallbackSpacing = (spacingWidth - targetColumnCount * metrics.colWidth) / (targetColumnCount - 1);
-    const sourcePitch = sourceGeometryProfile?.medianPitch ?? undefined;
+    const sourcePitch = sourceGeometryProfile
+      ? sourceGeometryProfile.sourcePitch * sourceStyleScale
+      : undefined;
     const sourceSpacing = sourcePitch !== undefined ? sourcePitch - metrics.colWidth : undefined;
     const baseSpacing = Math.max(1, metrics.colSpacing);
     if (sourceSpacing !== undefined) {

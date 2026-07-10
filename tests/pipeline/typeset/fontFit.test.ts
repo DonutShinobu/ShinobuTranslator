@@ -21,10 +21,14 @@ import {
   resolveVerticalTokenMetrics,
   sourceGeometryActualBoxScale,
   estimateVerticalPreferredProfile,
-  minSourceGeometryAdvanceScale,
   minVerticalAdvanceScale,
 } from "../../../src/pipeline/typeset/fontFit";
-import type { VerticalCellMetrics, VerticalLayoutResult, VColumn } from "../../../src/pipeline/typeset/fontFit";
+import type {
+  VerticalCellMetrics,
+  VerticalLayoutResult,
+  VerticalSourceGeometryProfile,
+  VColumn,
+} from "../../../src/pipeline/typeset/fontFit";
 import { tokenizeVerticalText } from "../../../src/pipeline/typeset/verticalOrientation";
 
 // ---------------------------------------------------------------------------
@@ -458,6 +462,8 @@ describe("resolveVerticalSourceGeometryProfile", () => {
     expect(profile).toMatchObject({
       columnCount: 2,
       groupCenterX: 75,
+      sourceFontSize: 20,
+      sourcePitch: 30,
       medianPitch: 30,
       medianGap: 10,
       medianWidth: 20,
@@ -671,6 +677,41 @@ describe("resolveVerticalSourceGeometryProfile", () => {
     expect(profile?.perColumnAdvance).toEqual([]);
   });
 
+  it("keeps source style estimates and clamps overlapping column pitch to one em", () => {
+    const region = makeRegion({
+      box: { x: 0, y: 0, width: 100, height: 100 },
+      sourceText: "甲乙丙丁戊\n己庚辛壬癸",
+      sourceLineGeometries: [
+        {
+          text: "甲乙丙丁戊",
+          direction: "v",
+          box: { x: 20, y: 0, width: 40, height: 100 },
+          centerX: 40,
+          centerY: 50,
+          width: 40,
+          height: 100,
+        },
+        {
+          text: "己庚辛壬癸",
+          direction: "v",
+          box: { x: 0, y: 0, width: 40, height: 100 },
+          centerX: 20,
+          centerY: 50,
+          width: 40,
+          height: 100,
+        },
+      ],
+    });
+
+    const profile = resolveVerticalSourceGeometryProfile(region, 2);
+
+    expect(profile).toBeDefined();
+    expect(profile?.sourceFontSize).toBe(20);
+    expect(profile?.medianAdvance).toBe(20);
+    expect(profile?.medianPitch).toBe(20);
+    expect(profile?.sourcePitch).toBe(20);
+  });
+
   it("rejects profiles when source column count no longer matches layout target", () => {
     const region = makeRegion({
       sourceLineGeometries: [
@@ -707,25 +748,122 @@ describe("resolveVerticalSourceGeometryProfile", () => {
     });
 
     const profile = resolveVerticalSourceGeometryProfile(region, 1);
+    expect(profile?.sourceFontSize).toBe(59);
     expect(profile?.perColumnAdvance).toEqual([59]);
+  });
+
+  it("estimates source font size per column before taking the median", () => {
+    const region = makeRegion({
+      box: { x: 0, y: 0, width: 120, height: 450 },
+      sourceText: "日本語日本語\nABCDEFGHIJ\n安心安心",
+      sourceLineGeometries: [
+        {
+          text: "日本語日本語",
+          direction: "v",
+          box: { x: 80, y: 0, width: 44, height: 240 },
+          centerX: 102,
+          centerY: 120,
+          width: 44,
+          height: 240,
+        },
+        {
+          text: "ABCDEFGHIJ",
+          direction: "v",
+          box: { x: 40, y: 0, width: 44, height: 300 },
+          centerX: 62,
+          centerY: 150,
+          width: 44,
+          height: 300,
+        },
+        {
+          text: "安心安心",
+          direction: "v",
+          box: { x: 0, y: 0, width: 34, height: 156 },
+          centerX: 17,
+          centerY: 78,
+          width: 34,
+          height: 156,
+        },
+      ],
+    });
+
+    const profile = resolveVerticalSourceGeometryProfile(region, 3);
+
+    expect(profile?.sourceFontSize).toBe(34);
+    expect(profile?.medianAdvance).toBe(39);
+  });
+
+  it("ignores a one-glyph outlier when another column provides spacing evidence", () => {
+    const region = makeRegion({
+      box: { x: 0, y: 0, width: 100, height: 240 },
+      sourceText: "N\n日本語日本語",
+      sourceLineGeometries: [
+        {
+          text: "N",
+          direction: "v",
+          box: { x: 40, y: 0, width: 60, height: 240 },
+          centerX: 70,
+          centerY: 120,
+          width: 60,
+          height: 240,
+        },
+        {
+          text: "日本語日本語",
+          direction: "v",
+          box: { x: 0, y: 0, width: 40, height: 240 },
+          centerX: 20,
+          centerY: 120,
+          width: 40,
+          height: 240,
+        },
+      ],
+    });
+
+    const profile = resolveVerticalSourceGeometryProfile(region, 2);
+
+    expect(profile?.sourceFontSize).toBe(40);
+    expect(profile?.medianAdvance).toBe(40);
+    expect(profile?.perColumnAdvance).toEqual([40, 40]);
   });
 });
 
 describe("estimateVerticalPreferredProfile", () => {
   const ctx = {
     font: "",
-    measureText: () => ({
-      width: 20,
+    measureText: (text: string) => {
+      const fontSize = Number.parseFloat(ctx.font) || 20;
+      return {
+      width: Math.max(fontSize, text.length * fontSize * 0.6),
       actualBoundingBoxLeft: 0,
-      actualBoundingBoxRight: 20,
-      actualBoundingBoxAscent: 20,
-      actualBoundingBoxDescent: 20,
-      fontBoundingBoxAscent: 25,
-      fontBoundingBoxDescent: 25,
-    }),
+      actualBoundingBoxRight: fontSize,
+      actualBoundingBoxAscent: fontSize * 0.8,
+      actualBoundingBoxDescent: fontSize * 0.2,
+      fontBoundingBoxAscent: fontSize * 0.8,
+      fontBoundingBoxDescent: fontSize * 0.2,
+    };
+    },
   };
 
-  it("uses a lower advance-scale floor only when source geometry is available", () => {
+  function makeSourceProfile(
+    overrides: Partial<VerticalSourceGeometryProfile> = {},
+  ): VerticalSourceGeometryProfile {
+    return {
+      columnCount: 1,
+      groupCenterX: 40,
+      sourceFontSize: 20,
+      sourcePitch: 30,
+      medianPitch: null,
+      medianGap: null,
+      medianWidth: 20,
+      medianHeight: 40,
+      medianAdvance: 20,
+      perColumnAdvance: [20],
+      perColumnTopY: [0],
+      ...overrides,
+    };
+  }
+
+  it("keeps the fallback advance floor when source geometry is unavailable", () => {
     const region = makeRegion({
       direction: "v",
       sourceText: "A",
@@ -738,36 +876,54 @@ describe("estimateVerticalPreferredProfile", () => {
       region,
       "A",
       80,
-      30,
+      5,
       20,
       "sans-serif",
       ["A"],
       80,
-    );
-    const withSource = estimateVerticalPreferredProfile(
-      ctx as never,
-      region,
-      "A",
-      80,
-      30,
-      20,
-      "sans-serif",
-      ["A"],
-      80,
-      {
-        columnCount: 1,
-        groupCenterX: 40,
-        medianPitch: null,
-        medianGap: null,
-        medianWidth: 20,
-        medianHeight: 30,
-        medianAdvance: 30,
-        perColumnAdvance: [30],
-      },
     );
 
     expect(withoutSource.advanceScale).toBe(minVerticalAdvanceScale);
-    expect(withSource.advanceScale).toBe(minSourceGeometryAdvanceScale);
+  });
+
+  it("does not derive source advance from translated length or content height", () => {
+    const region = makeRegion({
+      direction: "v",
+      sourceText: "原文",
+      translatedText: "中文",
+      originalLineCount: 1,
+    });
+    const sourceProfile = makeSourceProfile({ medianAdvance: 24 });
+
+    const short = estimateVerticalPreferredProfile(
+      ctx as never,
+      region,
+      "中文",
+      80,
+      30,
+      20,
+      "sans-serif",
+      ["中文"],
+      80,
+      sourceProfile,
+    );
+    const long = estimateVerticalPreferredProfile(
+      ctx as never,
+      region,
+      "这是一段明显更长的中文译文",
+      80,
+      300,
+      20,
+      "sans-serif",
+      ["这是一段明显更长的中文译文"],
+      80,
+      sourceProfile,
+    );
+
+    expect(short.advanceScale).toBeCloseTo(1.2);
+    expect(long.advanceScale).toBeCloseTo(short.advanceScale);
+    expect(short.perColumnAdvanceScale).toBeUndefined();
+    expect(long.perColumnAdvanceScale).toBeUndefined();
   });
 
   it("uses real glyph count, not weighted text length, for vertical advance targets", () => {
@@ -783,7 +939,7 @@ describe("estimateVerticalPreferredProfile", () => {
       region,
       "ちょっと物憂げな",
       120,
-      400,
+      160,
       20,
       "sans-serif",
       ["ちょっと物憂げな"],
@@ -811,20 +967,84 @@ describe("estimateVerticalPreferredProfile", () => {
       "sans-serif",
       ["AA", "BBBB"],
       120,
-      {
+      makeSourceProfile({
         columnCount: 2,
         groupCenterX: 60,
+        sourcePitch: 60,
         medianPitch: 60,
-        medianGap: 30,
-        medianWidth: 20,
+        medianGap: 40,
         medianHeight: 100,
-        medianAdvance: 55,
-        perColumnAdvance: [80, 30],
-      },
+        medianAdvance: 25,
+        perColumnAdvance: [30, 20],
+        perColumnTopY: [0, 0],
+      }),
     );
 
-    expect(profile.advanceScale).toBe(1);
-    expect(profile.perColumnAdvanceScale).toEqual([1.1, minSourceGeometryAdvanceScale]);
+    expect(profile.advanceScale).toBeCloseTo(1.25);
+    expect(profile.perColumnAdvanceScale).toEqual([1.5, 1]);
+  });
+
+  it("uses the global source advance when translated columns no longer map to source columns", () => {
+    const region = makeRegion({
+      direction: "v",
+      sourceText: "AA\nBBBB",
+      translatedText: "甲乙丙丁",
+      originalLineCount: 2,
+    });
+
+    const profile = estimateVerticalPreferredProfile(
+      ctx as never,
+      region,
+      "甲乙丙丁",
+      120,
+      200,
+      20,
+      "sans-serif",
+      ["甲乙", "丙丁"],
+      120,
+      makeSourceProfile({
+        columnCount: 2,
+        sourcePitch: 30,
+        medianPitch: 30,
+        medianGap: 10,
+        medianAdvance: 25,
+        perColumnAdvance: [30, 20],
+        perColumnTopY: [0, 0],
+      }),
+    );
+
+    expect(profile.advanceScale).toBeCloseTo(1.25);
+    expect(profile.perColumnAdvanceScale).toBeUndefined();
+  });
+
+  it("scales source advance and column pitch together with the font size", () => {
+    const region = makeRegion({
+      direction: "v",
+      sourceText: "甲\n乙",
+      translatedText: "丙\n丁",
+      originalLineCount: 2,
+    });
+    const sourceProfile = makeSourceProfile({
+      columnCount: 2,
+      sourcePitch: 30,
+      medianPitch: 30,
+      medianGap: 10,
+      medianAdvance: 24,
+      perColumnAdvance: [24, 24],
+      perColumnTopY: [0, 0],
+    });
+
+    const fullSize = estimateVerticalPreferredProfile(
+      ctx as never, region, "丙丁", 80, 100, 20, "sans-serif", ["丙", "丁"], 80, sourceProfile,
+    );
+    const halfSize = estimateVerticalPreferredProfile(
+      ctx as never, region, "丙丁", 80, 100, 10, "sans-serif", ["丙", "丁"], 80, sourceProfile,
+    );
+
+    expect(fullSize.advanceScale).toBeCloseTo(1.2);
+    expect(halfSize.advanceScale).toBeCloseTo(1.2);
+    expect(fullSize.colSpacingScale).toBeCloseTo(4);
+    expect(halfSize.colSpacingScale).toBeCloseTo(4);
   });
 });
 

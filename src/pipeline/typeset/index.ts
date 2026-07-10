@@ -100,7 +100,20 @@ export function computeFullVerticalTypeset(
   const singleColumnMaxLength = verticalPreferred?.singleColumnMaxLength
     ?? (sourceColumnLengths.length > 0 ? Math.max(...sourceColumnLengths) : null);
 
-  let estimatedInitialFontSize = Math.max(8, Math.round(resolveInitialFontSize(cloned)));
+  const targetColumnCount = Math.max(
+    1,
+    sourceColumns.length,
+    preferredColumns?.length ?? 0,
+    inputRegion.originalLineCount ?? 0,
+  );
+  const sourceGeometryProfile = resolveVerticalSourceGeometryProfile(
+    cloned,
+    sourceColumns.length,
+  );
+
+  let estimatedInitialFontSize = sourceGeometryProfile
+    ? Math.max(8, Math.floor(sourceGeometryProfile.sourceFontSize))
+    : Math.max(8, Math.round(resolveInitialFontSize(cloned)));
 
   // Use quad's real dimensions (edge lengths) instead of AABB so that
   // the layout space matches the actual rendering target.  When the quad
@@ -109,38 +122,36 @@ export function computeFullVerticalTypeset(
   // during compositing, shrinking the rendered text.
   const clonedQuadDims = quadDimensions(getRegionQuad(cloned));
 
-  const heightFitLength = Math.max(
-    singleColumnMaxLength ?? 0,
-    ...sourceColumns.map((column) => countTextGlyphs(column)),
-    ...(preferredColumns ?? []).map((column) => countTextGlyphs(column)),
-  );
-  if (heightFitLength > 0) {
-    const boxPaddingEst = resolveBoxPadding(cloned);
-    const availableHeight = Math.max(20, clonedQuadDims.height - boxPaddingEst * 2);
-    const maxFontByHeight = Math.round(availableHeight / heightFitLength);
-    if (maxFontByHeight > 0 && maxFontByHeight < estimatedInitialFontSize) {
-      estimatedInitialFontSize = Math.max(8, maxFontByHeight);
+  if (!sourceGeometryProfile) {
+    const heightFitLength = Math.max(
+      singleColumnMaxLength ?? 0,
+      ...sourceColumns.map((column) => countTextGlyphs(column)),
+      ...(preferredColumns ?? []).map((column) => countTextGlyphs(column)),
+    );
+    if (heightFitLength > 0) {
+      const boxPaddingEst = resolveBoxPadding(cloned);
+      const availableHeight = Math.max(20, clonedQuadDims.height - boxPaddingEst * 2);
+      const maxFontByHeight = Math.round(availableHeight / heightFitLength);
+      if (maxFontByHeight > 0 && maxFontByHeight < estimatedInitialFontSize) {
+        estimatedInitialFontSize = Math.max(8, maxFontByHeight);
+      }
     }
-  }
 
-  const estColumnCount = Math.max(
-    1,
-    sourceColumns.length,
-    preferredColumns?.length ?? 0,
-    cloned.originalLineCount ?? 0,
-  );
-  if (estColumnCount > 1) {
-    const boxPaddingEst = resolveBoxPadding(cloned);
-    const availableWidth = Math.max(20, clonedQuadDims.width - boxPaddingEst * 2);
-    const maxFontByWidth = Math.floor(availableWidth / (estColumnCount * 1.05));
-    if (maxFontByWidth > 0 && maxFontByWidth < estimatedInitialFontSize) {
-      estimatedInitialFontSize = Math.max(8, maxFontByWidth);
+    if (targetColumnCount > 1) {
+      const boxPaddingEst = resolveBoxPadding(cloned);
+      const availableWidth = Math.max(20, clonedQuadDims.width - boxPaddingEst * 2);
+      const maxFontByWidth = Math.floor(availableWidth / (targetColumnCount * 1.05));
+      if (maxFontByWidth > 0 && maxFontByWidth < estimatedInitialFontSize) {
+        estimatedInitialFontSize = Math.max(8, maxFontByWidth);
+      }
     }
   }
 
   const noopHLineCount = () => 1;
   const originalContentWidth = Math.max(20, clonedQuadDims.width - resolveBoxPadding(cloned) * 2);
-  const region = expandRegionBeforeRender(cloned, text, measureCtx, ff, noopHLineCount);
+  const region = sourceGeometryProfile
+    ? cloned
+    : expandRegionBeforeRender(cloned, text, measureCtx, ff, noopHLineCount);
 
   const boxPadding = resolveBoxPadding(region);
   const regionQuadDims = quadDimensions(getRegionQuad(region));
@@ -148,13 +159,6 @@ export function computeFullVerticalTypeset(
   const contentHeight = Math.max(20, regionQuadDims.height - boxPadding * 2);
   let verticalContentHeight = resolveVerticalContentHeight(contentHeight, estimatedInitialFontSize);
 
-  const targetColumnCount = Math.max(
-    1,
-    sourceColumns.length,
-    preferredColumns?.length ?? 0,
-    inputRegion.originalLineCount ?? 0,
-  );
-  const sourceGeometryProfile = resolveVerticalSourceGeometryProfile(region, targetColumnCount);
   const columnAnchor = resolveVerticalSourceColumnAnchor(region, boxPadding, sourceGeometryProfile);
 
   const preferredProfile = estimateVerticalPreferredProfile(
@@ -190,6 +194,14 @@ export function computeFullVerticalTypeset(
   let layoutContentHeight = verticalContentHeight;
   let renderContentHeight = verticalContentHeight;
   let perColumnMaxHeight: ((columnIndex: number) => number) | undefined;
+  const hasTargetOverflow = (candidate: typeof layout, candidateFontSize: number): boolean => {
+    const columnPitch = candidate.metrics.colWidth + candidate.metrics.colSpacing;
+    const paintedGroupWidth = candidateFontSize + Math.max(0, candidate.columns.length - 1) * columnPitch;
+    return (
+      candidate.columns.length > targetColumnCount ||
+      (Boolean(sourceGeometryProfile) && paintedGroupWidth > contentWidth + 0.5)
+    );
+  };
 
   if (baseLayout.columns.length > targetColumnCount && inputRegion.bubbleMask) {
     const mask = inputRegion.bubbleMask;
@@ -217,9 +229,7 @@ export function computeFullVerticalTypeset(
     }
 
     layoutContentHeight = Math.max(verticalContentHeight, ...perColMaxHeights);
-    if (!sourceGeometryProfile) {
-      renderContentHeight = layoutContentHeight;
-    }
+    renderContentHeight = layoutContentHeight;
     perColumnMaxHeight = (ci: number) => perColMaxHeights[ci] ?? verticalContentHeight;
 
     const extendedProfile = estimateVerticalPreferredProfile(
@@ -248,25 +258,52 @@ export function computeFullVerticalTypeset(
     activePerColumnAdvanceScales = extendedProfile.perColumnAdvanceScale;
   }
 
-  const shrunk = tryShrinkVerticalForMinorOverflow(
-    measureCtx,
-    text,
-    layoutContentHeight,
-    estimatedInitialFontSize,
-    verticalLayoutOptions,
-    layout,
-    ff,
-  );
-  fontSize = shrunk.fontSize;
-  layout = shrunk.layout;
+  if (!sourceGeometryProfile) {
+    const shrunk = tryShrinkVerticalForMinorOverflow(
+      measureCtx,
+      text,
+      layoutContentHeight,
+      estimatedInitialFontSize,
+      verticalLayoutOptions,
+      layout,
+      ff,
+    );
+    fontSize = shrunk.fontSize;
+    layout = shrunk.layout;
+  }
 
-  if (layout.columns.length > targetColumnCount && fontSize > minFontSafetySize) {
+  if (hasTargetOverflow(layout, fontSize) && fontSize > minFontSafetySize) {
     const minAllowed = Math.max(minFontSafetySize, Math.ceil(estimatedInitialFontSize * 0.3));
     let lo = minAllowed;
     let hi = fontSize - 1;
     let bestFs = fontSize;
     let bestLayout = layout;
     let bestProfile: ReturnType<typeof estimateVerticalPreferredProfile> | undefined;
+    if (sourceGeometryProfile) {
+      bestFs = minAllowed;
+      bestProfile = estimateVerticalPreferredProfile(
+        measureCtx, region, text, contentWidth, layoutContentHeight, minAllowed, ff, region.translatedColumns,
+        originalContentWidth,
+        sourceGeometryProfile,
+      );
+      const minOptions: BuildVerticalLayoutOptions = {
+        ...verticalLayoutOptions,
+        colSpacingScale: bestProfile.colSpacingScale,
+        advanceScale: bestProfile.advanceScale,
+        perColumnAdvanceScale: bestProfile.perColumnAdvanceScale
+          ? (columnIndex: number) => bestProfile?.perColumnAdvanceScale?.[columnIndex]
+          : undefined,
+        perColumnMaxHeight,
+      };
+      bestLayout = buildVerticalLayout(
+        measureCtx,
+        text,
+        layoutContentHeight,
+        minAllowed,
+        ff,
+        minOptions,
+      );
+    }
     while (lo <= hi) {
       const mid = Math.floor((lo + hi) / 2);
       const profile = estimateVerticalPreferredProfile(
@@ -284,7 +321,7 @@ export function computeFullVerticalTypeset(
         perColumnMaxHeight,
       };
       const candidate = buildVerticalLayout(measureCtx, text, layoutContentHeight, mid, ff, opts);
-      if (candidate.columns.length <= targetColumnCount) {
+      if (!hasTargetOverflow(candidate, mid)) {
         bestFs = mid;
         bestLayout = candidate;
         bestProfile = profile;
@@ -358,6 +395,12 @@ export function computeFullVerticalTypeset(
     columnStartOffsets,
     layoutDiagnostics: {
       sourceGeometryProfileUsed: Boolean(sourceGeometryProfile),
+      sourceFontSize: sourceGeometryProfile?.sourceFontSize,
+      sourceAdvance: sourceGeometryProfile?.medianAdvance,
+      sourcePitch: sourceGeometryProfile?.sourcePitch,
+      uniformScale: sourceGeometryProfile
+        ? fontSize / Math.max(1, sourceGeometryProfile.sourceFontSize)
+        : undefined,
       advanceScale: verticalLayoutOptions.advanceScale ?? 1,
       perColumnAdvanceScales: activePerColumnAdvanceScales,
       colSpacingScale: verticalLayoutOptions.colSpacingScale ?? 1,

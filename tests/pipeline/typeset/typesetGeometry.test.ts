@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { queryMaskMaxY, calcVertical } from "../../../src/pipeline/typeset/index";
+import type { TextRegion } from "../../../src/types";
+import {
+  queryMaskMaxY,
+  calcVertical,
+  computeFullVerticalTypeset,
+} from "../../../src/pipeline/typeset/index";
 
 function createMask(width: number, height: number, fillFn: (x: number, y: number) => boolean): ImageData {
   const data = new Uint8ClampedArray(width * height * 4);
@@ -15,6 +20,57 @@ function createMask(width: number, height: number, fillFn: (x: number, y: number
     }
   }
   return { data, width, height, colorSpace: "srgb" } as ImageData;
+}
+
+function createScaledMockCtx(): CanvasRenderingContext2D {
+  const ctx = {
+    font: "20px sans-serif",
+    textAlign: "start",
+    textBaseline: "alphabetic",
+    measureText: (text: string) => {
+      const fontSize = Number.parseFloat(ctx.font) || 20;
+      const glyphCount = Math.max(1, Array.from(text).length);
+      const width = glyphCount === 1
+        ? fontSize
+        : glyphCount * fontSize * 0.6;
+      return {
+        width,
+        actualBoundingBoxAscent: fontSize * 0.8,
+        actualBoundingBoxDescent: fontSize * 0.2,
+        actualBoundingBoxLeft: 0,
+        actualBoundingBoxRight: width,
+        fontBoundingBoxAscent: fontSize * 0.8,
+        fontBoundingBoxDescent: fontSize * 0.2,
+      };
+    },
+  };
+  return ctx as unknown as CanvasRenderingContext2D;
+}
+
+function createSourceStyledRegion(overrides: Partial<TextRegion> = {}): TextRegion {
+  return {
+    id: "source-style",
+    box: { x: 0, y: 0, width: 40, height: 100 },
+    direction: "v",
+    fontSize: 60,
+    originalLineCount: 1,
+    sourceText: "日日日日日",
+    translatedText: "中文",
+    translatedColumns: ["中文"],
+    sourceLineGeometries: [
+      {
+        text: "日日日日日",
+        direction: "v",
+        box: { x: 10, y: 0, width: 20, height: 100 },
+        centerX: 20,
+        centerY: 50,
+        width: 20,
+        height: 100,
+        fontSize: 20,
+      },
+    ],
+    ...overrides,
+  };
 }
 
 describe("queryMaskMaxY", () => {
@@ -98,5 +154,111 @@ describe("calcVertical with perColumnMaxHeight", () => {
       { kind: "tate-chu-yoko", sourceText: "!?", policy: "terminal-punctuation" },
     ]);
     expect(glyphs[0].advanceY).toBeGreaterThan(20);
+  });
+});
+
+describe("computeFullVerticalTypeset source style", () => {
+  it("keeps source font size and advance for a shorter translation", () => {
+    const region = createSourceStyledRegion();
+    const result = computeFullVerticalTypeset({
+      region,
+      fontFamily: "sans-serif",
+      measureCtx: createScaledMockCtx(),
+    });
+
+    expect(result.initialFontSize).toBe(20);
+    expect(result.fittedFontSize).toBe(20);
+    expect(result.columns).toHaveLength(1);
+    expect(result.columns[0].height).toBe(40);
+    expect(result.columns[0].glyphs.map((glyph) => glyph.advanceY)).toEqual([20, 20]);
+    expect(result.expandedRegion.box).toEqual(region.box);
+    expect(result.layoutDiagnostics).toMatchObject({
+      sourceFontSize: 20,
+      sourceAdvance: 20,
+      sourcePitch: 22,
+      uniformScale: 1,
+    });
+  });
+
+  it("shrinks font size and advance together only when translated text overflows", () => {
+    const translatedText = "甲乙丙丁戊己庚辛壬癸";
+    const region = createSourceStyledRegion({
+      translatedText,
+      translatedColumns: [translatedText],
+    });
+    const result = computeFullVerticalTypeset({
+      region,
+      fontFamily: "sans-serif",
+      measureCtx: createScaledMockCtx(),
+    });
+
+    expect(result.initialFontSize).toBe(20);
+    expect(result.fittedFontSize).toBe(10);
+    expect(result.columns).toHaveLength(1);
+    expect(result.columns[0].glyphs.every((glyph) => glyph.advanceY === 10)).toBe(true);
+    expect(result.expandedRegion.box).toEqual(region.box);
+    expect(result.layoutDiagnostics.uniformScale).toBe(0.5);
+  });
+
+  it("includes column width in uniform overflow fitting", () => {
+    const region = createSourceStyledRegion({
+      box: { x: 0, y: 0, width: 49, height: 100 },
+      originalLineCount: 2,
+      sourceText: "日日日日日\n月月月月月",
+      translatedText: "甲\n乙",
+      translatedColumns: ["甲", "乙"],
+      sourceLineGeometries: [
+        {
+          text: "日日日日日",
+          direction: "v",
+          box: { x: 30, y: 0, width: 20, height: 100 },
+          centerX: 40,
+          centerY: 50,
+          width: 20,
+          height: 100,
+          fontSize: 20,
+        },
+        {
+          text: "月月月月月",
+          direction: "v",
+          box: { x: 0, y: 0, width: 20, height: 100 },
+          centerX: 10,
+          centerY: 50,
+          width: 20,
+          height: 100,
+          fontSize: 20,
+        },
+      ],
+    });
+    const result = computeFullVerticalTypeset({
+      region,
+      fontFamily: "sans-serif",
+      measureCtx: createScaledMockCtx(),
+    });
+
+    expect(result.initialFontSize).toBe(20);
+    expect(result.fittedFontSize).toBe(19);
+    const paintedGroupWidth = result.fittedFontSize
+      + (result.columns.length - 1) * (result.metrics.colWidth + result.metrics.colSpacing);
+    expect(paintedGroupWidth).toBeLessThanOrEqual(result.contentWidth);
+    expect(result.columns.flatMap((column) => column.glyphs).every((glyph) => glyph.advanceY === 19)).toBe(true);
+  });
+
+  it("renders the same mask-extended height that layout uses", () => {
+    const translatedText = "甲乙丙丁戊己庚辛壬癸";
+    const region = createSourceStyledRegion({
+      translatedText,
+      translatedColumns: [translatedText],
+      bubbleMask: createMask(40, 200, () => true),
+    });
+    const result = computeFullVerticalTypeset({
+      region,
+      fontFamily: "sans-serif",
+      measureCtx: createScaledMockCtx(),
+    });
+
+    expect(result.layoutDiagnostics.layoutContentHeight).toBeGreaterThan(100);
+    expect(result.layoutDiagnostics.renderContentHeight).toBe(result.layoutDiagnostics.layoutContentHeight);
+    expect(result.verticalContentHeight).toBe(result.layoutDiagnostics.layoutContentHeight);
   });
 });

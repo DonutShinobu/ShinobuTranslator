@@ -126,6 +126,10 @@ export type TypesetDebugVerticalItem = {
 
 export type TypesetLayoutDiagnostics = {
   sourceGeometryProfileUsed: boolean;
+  sourceFontSize?: number;
+  sourceAdvance?: number;
+  sourcePitch?: number;
+  uniformScale?: number;
   advanceScale: number;
   perColumnAdvanceScales?: number[];
   colSpacingScale: number;

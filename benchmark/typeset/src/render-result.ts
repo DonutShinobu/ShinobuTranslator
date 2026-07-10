@@ -153,6 +153,19 @@ async function renderDebugOverlay(
         }
       }
     }
+
+    for (const region of debugLog.regions) {
+      for (const column of region.columnVerticalItems ?? []) {
+        for (const item of column) {
+          ctx.fillStyle = item.kind === "sideways-run"
+            ? "rgba(233, 30, 99, 0.95)"
+            : item.kind === "tate-chu-yoko"
+              ? "rgba(76, 175, 80, 0.95)"
+              : "rgba(255, 193, 7, 0.95)";
+          ctx.fillRect(item.x - 3, item.y - 3, 6, 6);
+        }
+      }
+    }
   }
 
   return canvas.toBuffer("image/png");

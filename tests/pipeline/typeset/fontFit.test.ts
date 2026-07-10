@@ -18,12 +18,14 @@ import {
   resolveVerticalContentHeight,
   hasMinorOverflowWrap,
   resolveGlyphVerticalAdvance,
+  resolveVerticalTokenMetrics,
   sourceGeometryActualBoxScale,
   estimateVerticalPreferredProfile,
   minSourceGeometryAdvanceScale,
   minVerticalAdvanceScale,
 } from "../../../src/pipeline/typeset/fontFit";
 import type { VerticalCellMetrics, VerticalLayoutResult, VColumn } from "../../../src/pipeline/typeset/fontFit";
+import { tokenizeVerticalText } from "../../../src/pipeline/typeset/verticalOrientation";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -49,11 +51,41 @@ function makeMetrics(overrides: Partial<VerticalCellMetrics> = {}): VerticalCell
 }
 
 function makeVColumn(glyphCount: number, advanceY: number): VColumn {
-  const glyphs = Array.from({ length: glyphCount }, (_, i) => ({
-    ch: String.fromCharCode(0x3042 + i), // hiragana characters
-    advanceY,
-  }));
+  const glyphs = Array.from({ length: glyphCount }, (_, i) => {
+    const sourceText = String.fromCharCode(0x3042 + i);
+    const token = tokenizeVerticalText(sourceText)[0];
+    if (!token) throw new Error("Expected one vertical token");
+    return {
+      ...token,
+      ch: token.displayText,
+      advanceY,
+      renderInlineScale: 1,
+      renderCrossScale: 1,
+      renderOffsetX: 0,
+      renderOffsetY: 0,
+      inkWidth: advanceY,
+      inkHeight: advanceY,
+      boundaryGap: 0,
+    };
+  });
   return { glyphs, height: glyphCount * advanceY };
+}
+
+function makeVerticalGlyph(sourceText: string, advanceY: number): VColumn["glyphs"][number] {
+  const token = tokenizeVerticalText(sourceText)[0];
+  if (!token) throw new Error("Expected one vertical token");
+  return {
+    ...token,
+    ch: token.displayText,
+    advanceY,
+    renderInlineScale: 1,
+    renderCrossScale: 1,
+    renderOffsetX: 0,
+    renderOffsetY: 0,
+    inkWidth: advanceY,
+    inkHeight: advanceY,
+    boundaryGap: 0,
+  };
 }
 
 function makeLayout(overrides: Partial<VerticalLayoutResult> = {}): VerticalLayoutResult {
@@ -162,6 +194,87 @@ describe("metricAbs", () => {
 
   it("returns 0 for -Infinity", () => {
     expect(metricAbs(-Infinity)).toBe(0);
+  });
+});
+
+describe("resolveVerticalTokenMetrics", () => {
+  const ctx = {
+    font: "",
+    textAlign: "center",
+    textBaseline: "middle",
+    measureText: (text: string) => {
+      if (text === "国") {
+        return {
+          width: 20,
+          actualBoundingBoxLeft: 10,
+          actualBoundingBoxRight: 10,
+          actualBoundingBoxAscent: 8,
+          actualBoundingBoxDescent: 2,
+          fontBoundingBoxAscent: 16,
+          fontBoundingBoxDescent: 4,
+        };
+      }
+      if (text === "AveMujica") {
+        return {
+          width: 60,
+          actualBoundingBoxLeft: 35,
+          actualBoundingBoxRight: 25,
+          actualBoundingBoxAscent: 6,
+          actualBoundingBoxDescent: 4,
+          fontBoundingBoxAscent: 16,
+          fontBoundingBoxDescent: 4,
+        };
+      }
+      return {
+        width: 18,
+        actualBoundingBoxLeft: 9,
+        actualBoundingBoxRight: 9,
+        actualBoundingBoxAscent: 4,
+        actualBoundingBoxDescent: 4,
+        fontBoundingBoxAscent: 16,
+        fontBoundingBoxDescent: 4,
+      };
+    },
+  } as unknown as CanvasRenderingContext2D;
+
+  it("derives Latin optical size, boundary gap, and center offset from ink bounds", () => {
+    const token = tokenizeVerticalText("AveMujica")[0];
+    const metrics = resolveVerticalTokenMetrics(ctx, token, 20, 20);
+
+    expect(metrics).toMatchObject({
+      advanceY: 82,
+      renderInlineScale: 1.2,
+      renderCrossScale: 1.2,
+      renderOffsetX: 5,
+      renderOffsetY: 1,
+      inkWidth: 60,
+      inkHeight: 10,
+      boundaryGap: 5,
+    });
+  });
+
+  it("keeps a rotated prolonged mark on the standard glyph path", () => {
+    const token = tokenizeVerticalText("ー")[0];
+    const metrics = resolveVerticalTokenMetrics(ctx, token, 20, 20);
+
+    expect(metrics).toMatchObject({
+      advanceY: 20,
+      renderInlineScale: 1,
+      renderCrossScale: 1,
+      boundaryGap: 0,
+    });
+  });
+
+  it("does not squeeze a Latin word to the source per-character advance", () => {
+    const token = tokenizeVerticalText("AveMujica")[0];
+    const metrics = resolveVerticalTokenMetrics(ctx, token, 20, 20, 0.7);
+
+    expect(metrics).toMatchObject({
+      advanceY: 76,
+      renderInlineScale: 1.2,
+      renderCrossScale: 1.2,
+      boundaryGap: 2,
+    });
   });
 });
 
@@ -802,8 +915,8 @@ describe("resolveVerticalStartY", () => {
 
   it("applies independent source starts to debug column boxes", () => {
     const columns: VColumn[] = [
-      { glyphs: [{ ch: "右", advanceY: 20 }], height: 20 },
-      { glyphs: [{ ch: "左", advanceY: 20 }], height: 20 },
+      { glyphs: [makeVerticalGlyph("右", 20)], height: 20 },
+      { glyphs: [makeVerticalGlyph("左", 20)], height: 20 },
     ];
     const boxes = buildVerticalDebugColumnBoxes(
       columns,

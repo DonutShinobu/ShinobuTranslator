@@ -4,6 +4,7 @@ import { basename, dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { debugRegionToColumns } from "./debug-columns";
 import { computeRegionMetrics } from "./metrics";
+import { computeVerticalGlyphQuality } from "./glyph-quality";
 import { assessFixtureSourceGeometry } from "./source-geometry";
 import type {
   BenchConfig,
@@ -102,7 +103,8 @@ function formatCsv(images: ImageMetrics[]): string {
     "dTopNormMean", "dBottomNormMean", "heightRatioMean",
     "signedCharDyNormMean", "charDyNormMean", "charDyNormMax", "charDyNormP95",
     "signedCharAdvanceNormMean", "charAdvanceRatioMean",
-    "compositeScore",
+    "compositeScore", "glyphQualityCoverage", "glyphOrientationAccuracy",
+    "runContinuityRate", "verticalItemCenterAlignment", "glyphQualityScore",
   ].join(",");
   const rows: string[] = [header];
   for (const img of images) {
@@ -123,6 +125,11 @@ function formatCsv(images: ImageMetrics[]): string {
         r.charDyNormP95.toFixed(4),
         r.signedCharAdvanceNormMean.toFixed(4), r.charAdvanceRatioMean.toFixed(4),
         r.compositeScore.toFixed(4),
+        (r.glyphQualityCoverage ?? 0).toFixed(4),
+        (r.glyphOrientationAccuracy ?? 0).toFixed(4),
+        (r.runContinuityRate ?? 0).toFixed(4),
+        (r.verticalItemCenterAlignment ?? 0).toFixed(4),
+        (r.glyphQualityScore ?? 0).toFixed(4),
       ].join(","));
     }
   }
@@ -142,6 +149,11 @@ function formatSummaryMd(summary: BenchmarkSummary, reportDir: string): string {
     `| Regions (total) | ${summary.totalRegionCount} |`,
     `| Regions (skipped) | ${summary.skippedRegionCount} |`,
     `| Composite Score (avg) | ${summary.avgCompositeScore.toFixed(4)} |`,
+    `| Glyph Quality Score (avg) | ${summary.avgGlyphQualityScore.toFixed(4)} |`,
+    `| Glyph Quality Coverage (avg) | ${summary.avgGlyphQualityCoverage.toFixed(4)} |`,
+    `| Glyph Orientation Accuracy (avg) | ${summary.avgGlyphOrientationAccuracy.toFixed(4)} |`,
+    `| Run Continuity Rate (avg) | ${summary.avgRunContinuityRate.toFixed(4)} |`,
+    `| Vertical Item Center Alignment (avg) | ${summary.avgVerticalItemCenterAlignment.toFixed(4)} |`,
     `| Column IoU (avg) | ${summary.avgColumnIouMean.toFixed(4)} |`,
     `| Font Size Error (avg) | ${summary.avgFontSizeError.toFixed(4)} |`,
     `| Signed Column Dx Norm (avg) | ${summary.avgSignedColumnDxNorm.toFixed(4)} |`,
@@ -274,12 +286,14 @@ async function main(): Promise<void> {
         debugRegion.fittedFontSize,
         config.scoreWeights,
       );
+      const glyphQuality = computeVerticalGlyphQuality(debugRegion);
 
       regionResults.push({
         regionId: region.id,
         skipped: false,
         sourceGeometryStatus: sourceGeometry.status,
         ...metrics,
+        ...glyphQuality,
       });
     }
 
@@ -290,6 +304,11 @@ async function main(): Promise<void> {
       skippedCount: regionResults.filter((r) => r.skipped).length,
       regions: regionResults,
       avgCompositeScore: meanMetric(scored, (r) => r.compositeScore),
+      avgGlyphQualityCoverage: meanMetric(scored, (r) => r.glyphQualityCoverage ?? 0),
+      avgGlyphOrientationAccuracy: meanMetric(scored, (r) => r.glyphOrientationAccuracy ?? 0),
+      avgRunContinuityRate: meanMetric(scored, (r) => r.runContinuityRate ?? 0),
+      avgVerticalItemCenterAlignment: meanMetric(scored, (r) => r.verticalItemCenterAlignment ?? 0),
+      avgGlyphQualityScore: meanMetric(scored, (r) => r.glyphQualityScore ?? 0),
     });
   }
 
@@ -302,6 +321,11 @@ async function main(): Promise<void> {
     totalRegionCount: imageMetrics.reduce((sum, image) => sum + image.regionCount, 0),
     skippedRegionCount: imageMetrics.reduce((sum, image) => sum + image.skippedCount, 0),
     avgCompositeScore: meanMetric(allScored, (r) => r.compositeScore),
+    avgGlyphQualityCoverage: meanMetric(allScored, (r) => r.glyphQualityCoverage ?? 0),
+    avgGlyphOrientationAccuracy: meanMetric(allScored, (r) => r.glyphOrientationAccuracy ?? 0),
+    avgRunContinuityRate: meanMetric(allScored, (r) => r.runContinuityRate ?? 0),
+    avgVerticalItemCenterAlignment: meanMetric(allScored, (r) => r.verticalItemCenterAlignment ?? 0),
+    avgGlyphQualityScore: meanMetric(allScored, (r) => r.glyphQualityScore ?? 0),
     avgColumnIouMean: meanMetric(allScored, (r) => r.columnIouMean),
     avgFontSizeError: meanMetric(allScored, (r) => r.fontSizeError),
     avgSignedColumnDxNorm: meanMetric(allScored, (r) => r.signedColumnDxNormMean),
@@ -332,6 +356,9 @@ async function main(): Promise<void> {
   console.log(`Benchmark complete. Report: ${reportDir}`);
   console.log("  Metric source: browser render debug");
   console.log(`  Composite score: ${summary.avgCompositeScore.toFixed(4)}`);
+  console.log(`  Glyph quality score: ${summary.avgGlyphQualityScore.toFixed(4)}`);
+  console.log(`  Glyph orientation accuracy: ${summary.avgGlyphOrientationAccuracy.toFixed(4)}`);
+  console.log(`  Run continuity rate: ${summary.avgRunContinuityRate.toFixed(4)}`);
   console.log(`  Column IoU: ${summary.avgColumnIouMean.toFixed(4)}`);
   console.log(`  Font size error: ${summary.avgFontSizeError.toFixed(4)}`);
   console.log(`  Signed column gap norm: ${summary.avgSignedColumnGapNorm.toFixed(4)}`);

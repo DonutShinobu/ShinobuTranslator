@@ -140,6 +140,70 @@ sourceLineGeometries: region.groundTruth.columns.map(groundTruthColumnToSourceGe
 - If source text, GT array order, and spatial order disagree, do not use per-column advance. Using a per-column advance from a mismatched column moves height/spacing from one visual column to another and creates the same class of position regressions as rewriting `sourceText`.
 - Benchmark diagnostics may report `spatial_order_mismatch` or `text_mismatch`; those statuses are evidence to avoid per-column runtime feedback, not permission to reorder render input.
 
+## 场景：竖排字形质量诊断
+
+### 1. Scope / Trigger
+
+- 触发：修改 typeset debug schema、`glyph-quality.ts`、render overlay 或排版报告字段。
+- 目标：几何位置和字形方向分别评分，同时保持 render input、GT 和诊断层隔离。
+
+### 2. Signatures
+
+```typescript
+type VerticalGlyphQualityMetrics = {
+  glyphQualityCoverage: number;
+  glyphOrientationAccuracy: number;
+  runContinuityRate: number;
+  verticalItemCenterAlignment: number;
+  glyphQualityScore: number;
+};
+```
+
+### 3. Contracts
+
+- `compositeScore` 继续表示旧几何指标；`glyphQualityScore` 表示 layout-item 方向、run 连续性和中心归属，不得互相覆盖。
+- 预期方向从 render input 文本推导，实际方向来自 `columnVerticalItems`；诊断只能比较和报告，不能改写文本或列顺序。
+- 旧 debug 缺少 `columnVerticalItems` 时 coverage/score 为 0，不能默认视为兼容通过。
+- overlay 使用不同颜色显示 upright、sideways 和 tate-chu-yoko item 中心，但不得影响 render PNG。
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| render debug 文件缺失 | 要求先运行 `bench:render` |
+| region 缺少 `columnVerticalItems` | glyph-quality 为 0，几何指标仍可独立计算 |
+| 预期 Latin run 被拆开 | `runContinuityRate` 下降 |
+| item 中心落在列框之外 | `verticalItemCenterAlignment` 下降 |
+| mixed/纵中横让几何 GT 分下降 | 同时报告 geometry 与 glyph-quality，不用诊断修改 GT |
+
+### 5. Good / Base / Bad Cases
+
+- Good：`AveMujica` 的 geometry 可能因正确旋转而变化，但 run continuity 和 orientation 均为 1。
+- Base：纯 CJK 区域没有 sideways run，`runContinuityRate` 记为 1。
+- Bad：为了恢复旧 IoU，把一个正确的 tate-chu-yoko 拆回两个竖排字符。
+
+### 6. Tests Required
+
+- `tests/benchmark/glyph-quality.test.ts` 覆盖完整、旧日志和 run 破坏场景。
+- `npm run bench:audit-fixtures -- --strict` 必须先通过。
+- `npm run bench:render` 后运行 `npm run bench`，确认 geometry 与 glyph-quality 均出现在 JSON、Markdown 和控制台。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+// Do not rewrite runtime input from a diagnostic mismatch.
+region.translatedColumns = expectedItems.map((item) => item.sourceText);
+```
+
+#### Correct
+
+```typescript
+const geometry = computeRegionMetrics(gt, predicted, fontSize, weights);
+const glyphQuality = computeVerticalGlyphQuality(debugRegion);
+```
+
 ## 场景：浏览器 Paddle Profile Benchmark
 
 ### 1. Scope / Trigger

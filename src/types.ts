@@ -101,6 +101,29 @@ export type TypesetDebugGlyphCenter = {
   y: number;
 };
 
+export type TypesetDebugVerticalItem = {
+  sourceText: string;
+  displayText: string;
+  kind: "upright-glyph" | "sideways-run" | "tate-chu-yoko";
+  orientation: "upright" | "sideways" | "transformed-upright" | "transformed-sideways";
+  unicodeOrientation: "U" | "R" | "Tu" | "Tr";
+  policy?: "short-digits" | "terminal-punctuation";
+  rotationDeg?: 90;
+  sourceStart: number;
+  sourceEnd: number;
+  sourceGlyphCount: number;
+  x: number;
+  y: number;
+  advanceY: number;
+  inkWidth?: number;
+  inkHeight?: number;
+  renderInlineScale?: number;
+  renderCrossScale?: number;
+  renderOffsetX?: number;
+  renderOffsetY?: number;
+  boundaryGap?: number;
+};
+
 export type TypesetLayoutDiagnostics = {
   sourceGeometryProfileUsed: boolean;
   advanceScale: number;
@@ -141,6 +164,7 @@ export type TypesetDebugRegionLog = {
   columnBoxes: TypesetDebugColumnBox[];
   columnCanvasQuads: [QuadPoint, QuadPoint, QuadPoint, QuadPoint][];
   columnGlyphCenters: TypesetDebugGlyphCenter[][];
+  columnVerticalItems?: TypesetDebugVerticalItem[][];
 };
 
 export type PipelineTypesetDebugLog = {

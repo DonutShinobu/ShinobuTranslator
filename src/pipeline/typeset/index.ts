@@ -9,6 +9,7 @@ export * from "./color";
 export * from "./geometry";
 export * from "./columns";
 export * from "./fontFit";
+export * from "./verticalOrientation";
 
 // ---------------------------------------------------------------------------
 // Entry function: computeFullVerticalTypeset

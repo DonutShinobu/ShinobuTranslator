@@ -52,12 +52,14 @@ describe("calcVertical with perColumnMaxHeight", () => {
   function createMockCtx(): CanvasRenderingContext2D {
     return {
       font: "",
-      measureText: (_text: string) => ({
-        width: 20,
-        actualBoundingBoxAscent: 10,
+      measureText: (text: string) => ({
+        width: text.length * 10,
+        actualBoundingBoxAscent: 8,
         actualBoundingBoxDescent: 2,
-        actualBoundingBoxLeft: 0,
-        actualBoundingBoxRight: 20,
+        actualBoundingBoxLeft: text.length * 5,
+        actualBoundingBoxRight: text.length * 5,
+        fontBoundingBoxAscent: 16,
+        fontBoundingBoxDescent: 4,
       }),
     } as unknown as CanvasRenderingContext2D;
   }
@@ -75,5 +77,26 @@ describe("calcVertical with perColumnMaxHeight", () => {
     if (columns.length >= 2) {
       expect(columns[0].glyphs.length).toBeGreaterThanOrEqual(columns[1].glyphs.length);
     }
+  });
+
+  it("carries mixed runs and tate-chu-yoko through the column layout", () => {
+    const ctx = createMockCtx();
+    const columns = calcVertical(ctx, "AveMujica12!?", 500, 20, 20, 1);
+    const glyphs = columns.flatMap((column) => column.glyphs);
+    expect(glyphs).toMatchObject([
+      {
+        kind: "sideways-run",
+        sourceText: "AveMujica",
+        rotationDeg: 90,
+        renderInlineScale: 1.2,
+        renderCrossScale: 1.2,
+        renderOffsetX: 0,
+        renderOffsetY: 3,
+        boundaryGap: 5,
+      },
+      { kind: "tate-chu-yoko", sourceText: "12", policy: "short-digits" },
+      { kind: "tate-chu-yoko", sourceText: "!?", policy: "terminal-punctuation" },
+    ]);
+    expect(glyphs[0].advanceY).toBeGreaterThan(20);
   });
 });

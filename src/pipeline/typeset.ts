@@ -27,11 +27,13 @@ import {
   getRegionQuad,
   resolveVerticalColumnPositions,
   resolveVerticalStartY,
+  segmentVerticalGraphemes,
   KINSOKU_NSTART,
   KINSOKU_NEND,
 } from "./typeset/index";
 import type {
   VColumn,
+  VerticalGlyph,
   VerticalCellMetrics,
   VerticalColumnAnchor,
   DebugColumnBox,
@@ -527,6 +529,26 @@ function drawTypesetDebugOverlay(
     ctx.fillStyle = 'rgba(255, 152, 0, 0.14)';
   }
 
+  for (const column of debug.columnVerticalItems ?? []) {
+    for (const item of column) {
+      const point = mapOffscreenPointToCanvas(
+        expandedRegion,
+        item,
+        debug.offscreenWidth,
+        debug.offscreenHeight,
+        debug.boxPadding,
+        debug.strokePadding,
+        transform,
+      );
+      ctx.fillStyle = item.kind === "sideways-run"
+        ? "rgba(233, 30, 99, 0.95)"
+        : item.kind === "tate-chu-yoko"
+          ? "rgba(76, 175, 80, 0.95)"
+          : "rgba(255, 193, 7, 0.95)";
+      ctx.fillRect(point.x - 2, point.y - 2, 4, 4);
+    }
+  }
+
   ctx.restore();
 }
 
@@ -534,6 +556,39 @@ function drawTypesetDebugOverlay(
  * Render vertical text onto an offscreen canvas with two-layer stroke.
  * Columns flow right-to-left.
  */
+function renderVerticalGlyph(
+  ctx: PipelineRenderingContext,
+  glyph: VerticalGlyph,
+  centerX: number,
+  centerY: number,
+  fontSize: number,
+  pass: "stroke" | "fill",
+): void {
+  const draw = (x = 0, y = 0): void => {
+    if (pass === "stroke") {
+      ctx.strokeText(glyph.ch, x, y);
+    } else {
+      ctx.fillText(glyph.ch, x, y);
+    }
+  };
+
+  ctx.save();
+  ctx.translate(centerX, centerY);
+  if (glyph.kind === "sideways-run") {
+    ctx.rotate(Math.PI / 2);
+    ctx.scale(glyph.renderInlineScale, glyph.renderCrossScale);
+    draw(glyph.renderOffsetX, glyph.renderOffsetY);
+  } else if (glyph.kind === "tate-chu-yoko") {
+    const measuredWidth = Math.max(1, ctx.measureText(glyph.ch).width);
+    const scaleX = Math.min(1, fontSize * 0.9 / measuredWidth);
+    ctx.scale(scaleX, 1);
+    draw();
+  } else {
+    draw();
+  }
+  ctx.restore();
+}
+
 function renderVertical(
   columns: VColumn[],
   fontSize: number,
@@ -581,7 +636,7 @@ function renderVertical(
 
     let penY = startY;
     for (const glyph of col.glyphs) {
-      ctx.strokeText(glyph.ch, cx, penY + glyph.advanceY / 2);
+      renderVerticalGlyph(ctx, glyph, cx, penY + glyph.advanceY / 2, fontSize, "stroke");
       penY += glyph.advanceY;
     }
   }
@@ -602,7 +657,7 @@ function renderVertical(
 
     let penY = startY;
     for (const glyph of col.glyphs) {
-      ctx.fillText(glyph.ch, cx, penY + glyph.advanceY / 2);
+      renderVerticalGlyph(ctx, glyph, cx, penY + glyph.advanceY / 2, fontSize, "fill");
       penY += glyph.advanceY;
     }
   }
@@ -781,14 +836,46 @@ export async function drawTypeset(
           const box = vResult.debugColumnBoxes[i];
           if (!box) return [];
           let penY = box.y;
+          return col.glyphs.flatMap((glyph) => {
+            const sourceGraphemes = segmentVerticalGraphemes(glyph.sourceText);
+            const centers = sourceGraphemes.map((ch, sourceIndex) => ({
+              ch,
+              x: box.x + box.width / 2,
+              y: penY + glyph.advanceY * (sourceIndex + 0.5) / sourceGraphemes.length,
+            }));
+            penY += glyph.advanceY;
+            return centers;
+          });
+        }),
+        columnVerticalItems: vResult.columns.map((col, i) => {
+          const box = vResult.debugColumnBoxes[i];
+          if (!box) return [];
+          let penY = box.y;
           return col.glyphs.map((glyph) => {
-            const center = {
-              ch: glyph.ch,
+            const item = {
+              sourceText: glyph.sourceText,
+              displayText: glyph.displayText,
+              kind: glyph.kind,
+              orientation: glyph.orientation,
+              unicodeOrientation: glyph.unicodeOrientation,
+              policy: glyph.kind === "tate-chu-yoko" ? glyph.policy : undefined,
+              rotationDeg: glyph.kind === "sideways-run" ? glyph.rotationDeg : undefined,
+              sourceStart: glyph.sourceStart,
+              sourceEnd: glyph.sourceEnd,
+              sourceGlyphCount: glyph.sourceGlyphCount,
               x: box.x + box.width / 2,
               y: penY + glyph.advanceY / 2,
+              advanceY: glyph.advanceY,
+              inkWidth: glyph.inkWidth,
+              inkHeight: glyph.inkHeight,
+              renderInlineScale: glyph.renderInlineScale,
+              renderCrossScale: glyph.renderCrossScale,
+              renderOffsetX: glyph.renderOffsetX,
+              renderOffsetY: glyph.renderOffsetY,
+              boundaryGap: glyph.boundaryGap,
             };
             penY += glyph.advanceY;
-            return center;
+            return item;
           });
         }),
         columnBreakReasons: vResult.columnBreakReasons,
@@ -1121,6 +1208,24 @@ export async function drawTypeset(
           };
         })
       );
+      const columnVerticalItems = (debug.columnVerticalItems ?? []).map((column) =>
+        column.map((item) => {
+          const mapped = mapOffscreenPointToCanvas(
+            region,
+            item,
+            debug.offscreenWidth,
+            debug.offscreenHeight,
+            debug.boxPadding,
+            debug.strokePadding,
+            transform,
+          );
+          return {
+            ...item,
+            x: mapped.x,
+            y: mapped.y,
+          };
+        })
+      );
       const direction: TextDirection = region.direction === "h" ? "h" : "v";
       debugRegions.push({
         regionId: inputRegion.id,
@@ -1151,6 +1256,7 @@ export async function drawTypeset(
         columnBoxes: debug.columnBoxes.map((box) => ({ ...box })),
         columnCanvasQuads,
         columnGlyphCenters,
+        columnVerticalItems,
       });
     }
   }

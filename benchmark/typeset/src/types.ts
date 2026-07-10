@@ -91,6 +91,11 @@ export type RegionMetrics = {
   signedCharAdvanceNormMean: number;
   charAdvanceRatioMean: number;
   compositeScore: number;
+  glyphQualityCoverage?: number;
+  glyphOrientationAccuracy?: number;
+  runContinuityRate?: number;
+  verticalItemCenterAlignment?: number;
+  glyphQualityScore?: number;
 };
 
 export type ImageMetrics = {
@@ -99,6 +104,11 @@ export type ImageMetrics = {
   skippedCount: number;
   regions: RegionMetrics[];
   avgCompositeScore: number;
+  avgGlyphQualityCoverage: number;
+  avgGlyphOrientationAccuracy: number;
+  avgRunContinuityRate: number;
+  avgVerticalItemCenterAlignment: number;
+  avgGlyphQualityScore: number;
 };
 
 export type BenchmarkSummary = {
@@ -107,6 +117,11 @@ export type BenchmarkSummary = {
   totalRegionCount: number;
   skippedRegionCount: number;
   avgCompositeScore: number;
+  avgGlyphQualityCoverage: number;
+  avgGlyphOrientationAccuracy: number;
+  avgRunContinuityRate: number;
+  avgVerticalItemCenterAlignment: number;
+  avgGlyphQualityScore: number;
   avgColumnIouMean: number;
   avgFontSizeError: number;
   avgSignedColumnDxNorm: number;

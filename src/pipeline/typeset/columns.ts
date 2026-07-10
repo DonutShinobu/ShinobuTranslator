@@ -10,9 +10,6 @@ import type { TextRegion } from "../../types";
  */
 export const CJK_H2V = new Map<string, string>([
   ["‥", "︰"],
-  ["—", "︱"],
-  ["―", "|"],
-  ["–", "︲"],
   ["_", "︳"],
   ["(", "︵"],
   [")", "︶"],
@@ -42,9 +39,6 @@ export const CJK_H2V = new Map<string, string>([
   ["”", "﹂"], // RIGHT DOUBLE QUOTATION MARK
   ["‘", "﹁"], // LEFT SINGLE QUOTATION MARK
   ["’", "﹂"], // RIGHT SINGLE QUOTATION MARK
-  ["~", "︴"],
-  ["〜", "︴"],
-  ["～", "︴"],
   ["!", "︕"],
   ["?", "︖"],
   [".", "︒"],
@@ -55,8 +49,6 @@ export const CJK_H2V = new Map<string, string>([
   ["：", "︓"],
   [",", "︐"],
   ["，", "︐"],
-  ["-", "︲"],
-  ["−", "︲"],
   ["・", "·"],
 ]);
 

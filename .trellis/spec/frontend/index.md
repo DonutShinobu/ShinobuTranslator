@@ -22,6 +22,7 @@ This project is a Chrome Manifest V3 browser extension for translating manga/com
 | [Type Safety](./type-safety.md) | Type patterns, validation | Filled |
 | [WebGPU Dataflow](./webgpu-dataflow.md) | GPU-accelerated preprocessing and IO Binding contracts | Filled |
 | [Runtime Models](./runtime-models.md) | 本地模型来源、用途、发布包文件集和 OCR 引擎固定策略 | Filled |
+| [Vertical Typesetting](./vertical-typesetting.md) | Unicode 竖排方向、mixed run、纵中横与 Canvas 渲染契约 | Filled |
 
 ---
 

@@ -15,6 +15,7 @@
     "bench:render": "tsx benchmark/typeset/src/render-result.ts",
     "bench:baseline": "tsx benchmark/typeset/src/diff-baseline.ts --update-baseline",
     "bench:diff": "tsx benchmark/typeset/src/diff-baseline.ts",
+    "typeset:generate-vertical-orientation": "node scripts/generate-vertical-orientation.mjs",
     "bench:ocr-debug": "tsx benchmark/perf/src/run-ocr-debug.ts",
     "bench:ocr-gpu-argmax": "tsx benchmark/perf/src/run-ocr-gpu-argmax.ts",
     "bench:browser-ocr-smoke": "tsx benchmark/perf/src/run-browser-ocr-smoke.ts",

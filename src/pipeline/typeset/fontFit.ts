@@ -1,8 +1,7 @@
-import type { TextRegion, TypesetLayoutDiagnostics } from "../../types";
+import type { TextRegion, TypesetDebugVerticalItem, TypesetLayoutDiagnostics } from "../../types";
 import type { PipelineRenderingContext, PipelineImageData } from "../../runtime/platform";
 import { clamp } from "../utils";
 import {
-  CJK_H2V,
   KINSOKU_NSTART,
   KINSOKU_NEND,
   countTextLength,
@@ -11,6 +10,8 @@ import {
   type ColumnSegmentSource,
   type PreferredColumnSegment,
 } from "./columns";
+import { segmentVerticalGraphemes, tokenizeVerticalText } from "./verticalOrientation";
+import type { VerticalToken } from "./verticalOrientation";
 import {
   quadAngle,
   cloneRegionForTypeset,
@@ -47,15 +48,36 @@ export const maxHorizontalLetterSpacingScale = 1.5;
 export const minHorizontalLineHeightScale = 0.85;
 export const maxSourceGeometryAnchorAngleRad = 0.052;
 export const maxVerticalSourceColumnOverlapRatio = 0.45;
+export const minSidewaysLatinOpticalScale = 0.85;
+export const maxSidewaysLatinOpticalScale = 1.2;
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-export type VerticalGlyph = {
+export type VerticalGlyph = VerticalToken & {
   ch: string;
   advanceY: number;
+  renderInlineScale: number;
+  renderCrossScale: number;
+  renderOffsetX: number;
+  renderOffsetY: number;
+  inkWidth: number;
+  inkHeight: number;
+  boundaryGap: number;
 };
+
+export type VerticalTokenMetrics = Pick<
+  VerticalGlyph,
+  | "advanceY"
+  | "renderInlineScale"
+  | "renderCrossScale"
+  | "renderOffsetX"
+  | "renderOffsetY"
+  | "inkWidth"
+  | "inkHeight"
+  | "boundaryGap"
+>;
 
 export type VColumn = {
   glyphs: VerticalGlyph[];
@@ -153,6 +175,7 @@ export type RegionTypesetDebug = {
   fittedFontSize: number;
   columnBoxes: DebugColumnBox[];
   columnGlyphCenters?: Array<Array<{ ch: string; x: number; y: number }>>;
+  columnVerticalItems?: TypesetDebugVerticalItem[][];
   columnBreakReasons: ColumnBreakReason[];
   columnSegmentIds: number[];
   columnSegmentSources: ColumnSegmentSource[];
@@ -241,6 +264,48 @@ export function metricAbs(value: number): number {
   return Number.isFinite(value) ? Math.abs(value) : 0;
 }
 
+type TextInkMetrics = {
+  width: number;
+  height: number;
+  centerX: number;
+  centerY: number;
+};
+
+function measureTextInkMetrics(
+  ctx: PipelineRenderingContext,
+  text: string,
+  fallbackFontSize: number,
+): TextInkMetrics {
+  const metrics = ctx.measureText(text);
+  const left = Number.isFinite(metrics.actualBoundingBoxLeft)
+    ? metrics.actualBoundingBoxLeft!
+    : 0;
+  const right = Number.isFinite(metrics.actualBoundingBoxRight)
+    ? metrics.actualBoundingBoxRight!
+    : 0;
+  const ascent = Number.isFinite(metrics.actualBoundingBoxAscent)
+    ? metrics.actualBoundingBoxAscent!
+    : 0;
+  const descent = Number.isFinite(metrics.actualBoundingBoxDescent)
+    ? metrics.actualBoundingBoxDescent!
+    : 0;
+  const measuredWidth = left + right;
+  const measuredHeight = ascent + descent;
+  const hasHorizontalInkBounds = measuredWidth > 0;
+  const hasVerticalInkBounds = measuredHeight > 0;
+
+  return {
+    width: hasHorizontalInkBounds
+      ? measuredWidth
+      : Math.max(1, metrics.width || fallbackFontSize),
+    height: hasVerticalInkBounds
+      ? measuredHeight
+      : fallbackFontSize,
+    centerX: hasHorizontalInkBounds ? (right - left) / 2 : 0,
+    centerY: hasVerticalInkBounds ? (descent - ascent) / 2 : 0,
+  };
+}
+
 /**
  * Estimate vertical advance from font metrics.
  * In browsers we do not have FreeType's vertAdvance, so use font box / em box.
@@ -289,6 +354,102 @@ export function resolveGlyphVerticalAdvance(
   return Math.max(1, Math.round(quantizedAdvance));
 }
 
+export function resolveVerticalTokenMetrics(
+  ctx: PipelineRenderingContext,
+  token: VerticalToken,
+  fontSize: number,
+  defaultAdvanceY: number,
+  advanceScale = 1,
+  actualBoxScale?: number,
+  useDefaultAdvanceBase = false,
+): VerticalTokenMetrics {
+  const ink = measureTextInkMetrics(ctx, token.displayText, fontSize);
+  const renderOffsetX = ink.centerX === 0 ? 0 : -ink.centerX;
+  const renderOffsetY = ink.centerY === 0 ? 0 : -ink.centerY;
+  if (token.kind !== "sideways-run") {
+    const measureText = token.kind === "tate-chu-yoko" ? "国" : token.displayText;
+    return {
+      advanceY: resolveGlyphVerticalAdvance(
+        ctx,
+        measureText,
+        fontSize,
+        defaultAdvanceY,
+        advanceScale,
+        actualBoxScale,
+        useDefaultAdvanceBase,
+      ),
+      renderInlineScale: 1,
+      renderCrossScale: 1,
+      renderOffsetX: 0,
+      renderOffsetY: 0,
+      inkWidth: ink.width,
+      inkHeight: ink.height,
+      boundaryGap: 0,
+    };
+  }
+
+  const isLatinRun = token.sourceGlyphCount > 1
+    && segmentVerticalGraphemes(token.sourceText).every((grapheme) =>
+      /^\p{Script=Latin}\p{M}*$/u.test(grapheme),
+    );
+  const referenceInk = measureTextInkMetrics(ctx, "国", fontSize);
+  const targetLatinCrossSize = Math.max(
+    referenceInk.width,
+    Math.min(fontSize, defaultAdvanceY * advanceScale),
+  );
+  const renderCrossScale = isLatinRun
+    ? clampNumber(
+        targetLatinCrossSize / Math.max(1, ink.height),
+        minSidewaysLatinOpticalScale,
+        maxSidewaysLatinOpticalScale,
+      )
+    : 1;
+
+  if (token.sourceGlyphCount === 1) {
+    const advanceY = resolveGlyphVerticalAdvance(
+      ctx,
+      token.displayText,
+      fontSize,
+      defaultAdvanceY,
+      advanceScale,
+      actualBoxScale,
+      useDefaultAdvanceBase,
+    );
+    return {
+      advanceY,
+      renderInlineScale: Math.min(1, advanceY / Math.max(1, ink.width)),
+      renderCrossScale,
+      renderOffsetX,
+      renderOffsetY,
+      inkWidth: ink.width,
+      inkHeight: ink.height,
+      boundaryGap: 0,
+    };
+  }
+
+  const boundaryGap = isLatinRun
+    ? Math.max(0, (defaultAdvanceY * advanceScale - referenceInk.height) / 2)
+    : 0;
+  const inlineScale = renderCrossScale * (isLatinRun ? 1 : advanceScale);
+  const scaledInkWidth = ink.width * inlineScale;
+  const unquantizedAdvance = scaledInkWidth + boundaryGap * 2;
+  const quantizedAdvance = useDefaultAdvanceBase
+    ? unquantizedAdvance - sourceGeometryAdvanceQuantizationBiasPx
+    : unquantizedAdvance;
+  const advanceY = Math.max(1, Math.round(quantizedAdvance));
+  const availableInkWidth = Math.max(1, advanceY - boundaryGap * 2);
+  return {
+    advanceY,
+    renderInlineScale: availableInkWidth / Math.max(1, ink.width),
+    renderCrossScale,
+    renderOffsetX,
+    renderOffsetY,
+    inkWidth: ink.width,
+    inkHeight: ink.height,
+    boundaryGap,
+  };
+}
+
 /**
  * Resolve per-cell metrics for vertical layout based on real glyph bounds.
  */
@@ -298,12 +459,15 @@ export function resolveVerticalCellMetrics(
   fontSize: number,
   sw: number,
 ): VerticalCellMetrics {
-  const mappedChars = [...text.replace(/\s+/g, "")].map((raw) => CJK_H2V.get(raw) ?? raw);
-  const uniqueChars = Array.from(new Set(mappedChars));
+  const items = tokenizeVerticalText(text);
   let maxGlyphWidth = 0;
 
-  for (const ch of uniqueChars) {
-    const box = measureGlyphBox(ctx, ch, fontSize);
+  for (const item of items) {
+    if (item.kind === "sideways-run" || item.kind === "tate-chu-yoko") {
+      maxGlyphWidth = Math.max(maxGlyphWidth, fontSize);
+      continue;
+    }
+    const box = measureGlyphBox(ctx, item.displayText, fontSize);
     maxGlyphWidth = Math.max(maxGlyphWidth, box.width);
   }
 
@@ -557,7 +721,7 @@ export function resolveVerticalSourceColumnStartOffsets(
 /**
  * Split text into columns for vertical rendering.
  * Characters flow top-to-bottom within a column; new columns start to the left.
- * Applies CJK_H2V punctuation substitution and kinsoku rules.
+ * Applies Unicode vertical-orientation tokens and kinsoku rules.
  */
 export function calcVertical(
   ctx: PipelineRenderingContext,
@@ -571,20 +735,23 @@ export function calcVertical(
   useDefaultAdvanceBase = false,
   perColumnAdvanceScale?: (columnIndex: number) => number | undefined,
 ): VColumn[] {
-  const chars = [...text.replace(/\s+/g, "")];
-  if (chars.length === 0) return [];
+  const tokens = tokenizeVerticalText(text);
+  if (tokens.length === 0) return [];
 
-  const advanceCache = new Map<string, number>();
-  const getAdvance = (ch: string, columnIndex: number): number => {
+  const advanceCache = new Map<string, VerticalTokenMetrics>();
+  const getTokenMetrics = (
+    token: VerticalToken,
+    columnIndex: number,
+  ): VerticalTokenMetrics => {
     const columnAdvanceScale = perColumnAdvanceScale?.(columnIndex) ?? advanceScale;
-    const cacheKey = `${columnAdvanceScale}:${ch}`;
+    const cacheKey = `${columnAdvanceScale}:${token.kind}:${token.displayText}`;
     const cached = advanceCache.get(cacheKey);
     if (cached !== undefined) {
       return cached;
     }
-    const resolved = resolveGlyphVerticalAdvance(
+    const resolved = resolveVerticalTokenMetrics(
       ctx,
-      ch,
+      token,
       fontSize,
       defaultAdvanceY,
       columnAdvanceScale,
@@ -600,17 +767,21 @@ export function calcVertical(
   let colHeight = 0;
   let colIndex = 0;
 
-  for (let i = 0; i < chars.length; i++) {
-    const raw = chars[i];
-    const ch = CJK_H2V.get(raw) ?? raw;
-    const advanceY = getAdvance(ch, colIndex);
+  for (const token of tokens) {
+    const tokenMetrics = getTokenMetrics(token, colIndex);
+    const glyph: VerticalGlyph = {
+      ...token,
+      ch: token.displayText,
+      ...tokenMetrics,
+    };
 
     const currentMaxHeight = perColumnMaxHeight ? perColumnMaxHeight(colIndex) : maxHeight;
-    if (colHeight + advanceY > currentMaxHeight && col.length > 0) {
+    if (colHeight + glyph.advanceY > currentMaxHeight && col.length > 0) {
       // Check kinsoku: next char can't start a column
-      if (KINSOKU_NSTART.has(ch)) {
-        col.push({ ch, advanceY });
-        colHeight += advanceY;
+      const firstSourceChar = Array.from(token.sourceText)[0] ?? token.sourceText;
+      if (KINSOKU_NSTART.has(firstSourceChar)) {
+        col.push(glyph);
+        colHeight += glyph.advanceY;
         columns.push({ glyphs: col, height: colHeight });
         col = [];
         colHeight = 0;
@@ -620,11 +791,13 @@ export function calcVertical(
 
       // Current col's last char can't end a column
       const lastInCol = col[col.length - 1];
-      if (KINSOKU_NEND.has(lastInCol.ch) && col.length > 1) {
+      const lastSourceChars = Array.from(lastInCol.sourceText);
+      const lastSourceChar = lastSourceChars[lastSourceChars.length - 1] ?? lastInCol.sourceText;
+      if (KINSOKU_NEND.has(lastSourceChar) && col.length > 1) {
         const carry = col.pop()!;
         columns.push({ glyphs: col, height: colHeight - carry.advanceY });
-        col = [carry, { ch, advanceY }];
-        colHeight = carry.advanceY + advanceY;
+        col = [carry, glyph];
+        colHeight = carry.advanceY + glyph.advanceY;
         colIndex++;
         continue;
       }
@@ -635,8 +808,8 @@ export function calcVertical(
       colIndex++;
     }
 
-    col.push({ ch, advanceY });
-    colHeight += advanceY;
+    col.push(glyph);
+    colHeight += glyph.advanceY;
   }
 
   if (col.length > 0) {
@@ -663,6 +836,8 @@ export function calcVerticalFromColumns(
   columnSegmentIds: number[];
   columnSegmentSources: ColumnSegmentSource[];
 } {
+  const sourceGlyphCount = (column: VColumn): number =>
+    column.glyphs.reduce((sum, glyph) => sum + glyph.sourceGlyphCount, 0);
   const mergeSegmentColumnsByMaxLength = (
     segmentColumns: VColumn[],
     segmentMaxGlyphCount: number,
@@ -678,7 +853,7 @@ export function calcVerticalFromColumns(
         merged.push(current);
         continue;
       }
-      const mergedGlyphCount = previous.glyphs.length + current.glyphs.length;
+      const mergedGlyphCount = sourceGlyphCount(previous) + sourceGlyphCount(current);
       const mergedHeight = previous.height + current.height;
       const canMergeBySameSegmentMax = mergedGlyphCount <= segmentMaxGlyphCount;
       if (canMergeBySameSegmentMax && mergedHeight <= maxHeight) {
@@ -718,7 +893,7 @@ export function calcVerticalFromColumns(
       useDefaultAdvanceBase,
       perColumnAdvanceScale ? (ci) => perColumnAdvanceScale(columns.length + ci) : undefined,
     );
-    const segmentMaxGlyphCount = Math.max(1, ...segmentColumns.map((column) => column.glyphs.length));
+    const segmentMaxGlyphCount = Math.max(1, ...segmentColumns.map(sourceGlyphCount));
     if (segmentColumns.length === 0) {
       previousSegmentOverflowed = false;
       continue;
@@ -1090,9 +1265,19 @@ export function resolveVerticalRenderPadding(
       const ascent = metricAbs(measured.actualBoundingBoxAscent ?? 0);
       const descent = metricAbs(measured.actualBoundingBoxDescent ?? 0);
 
-      const xOverflow = Math.max(0, left - halfColWidth, right - halfColWidth);
       const halfAdvance = glyph.advanceY / 2;
-      const yOverflow = Math.max(0, ascent - halfAdvance, descent - halfAdvance);
+      const xOverflow = glyph.kind === "sideways-run"
+        ? Math.max(
+            0,
+            glyph.inkHeight * glyph.renderCrossScale / 2 - halfColWidth,
+          )
+        : Math.max(0, left - halfColWidth, right - halfColWidth);
+      const yOverflow = glyph.kind === "sideways-run"
+        ? Math.max(
+            0,
+            glyph.inkWidth * glyph.renderInlineScale / 2 - halfAdvance,
+          )
+        : Math.max(0, ascent - halfAdvance, descent - halfAdvance);
       maxOverflow = Math.max(maxOverflow, xOverflow, yOverflow);
     }
   }
@@ -1160,8 +1345,10 @@ export function buildVerticalDebugColumnBoxes(
     if (ctx && fontSize) {
       let maxW = 0;
       for (const g of col.glyphs) {
-        const box = measureGlyphBox(ctx, g.ch, fontSize);
-        maxW = Math.max(maxW, box.width);
+        const visualWidth = g.kind === "sideways-run"
+          ? g.inkHeight * g.renderCrossScale
+          : measureGlyphBox(ctx, g.ch, fontSize).width;
+        maxW = Math.max(maxW, visualWidth);
       }
       boxWidth = Math.ceil(Math.max(fontSize * 1.1, maxW));
     }
@@ -1208,6 +1395,8 @@ export function buildVerticalLayout(
   options?: BuildVerticalLayoutOptions,
 ): VerticalLayoutResult {
   ctx.font = `${fontSize}px ${fontFamily}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
   const sw = strokeWidth(fontSize);
   const baseMetrics = resolveVerticalCellMetrics(ctx, text, fontSize, sw);
   const colSpacingScale = options?.colSpacingScale ?? 1;
@@ -1274,7 +1463,10 @@ export function hasMinorOverflowWrap(layout: VerticalLayoutResult): boolean {
   if (tailReason !== 'wrap' && tailReason !== 'both') {
     return false;
   }
-  const tailGlyphCount = layout.columns[tailIndex]?.glyphs.length ?? 0;
+  const tailGlyphCount = layout.columns[tailIndex]?.glyphs.reduce(
+    (sum, glyph) => sum + glyph.sourceGlyphCount,
+    0,
+  ) ?? 0;
   return tailGlyphCount >= 1 && tailGlyphCount <= minorOverflowMaxGlyphCount;
 }
 

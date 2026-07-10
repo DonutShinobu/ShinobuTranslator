@@ -155,6 +155,10 @@ type VerticalGlyphQualityMetrics = {
   glyphOrientationAccuracy: number;
   runContinuityRate: number;
   verticalItemCenterAlignment: number;
+  runSpanFidelity: number;
+  runInkOccupancy: number;
+  runTrackingCompliance: number;
+  runTrackingEmMax: number;
   glyphQualityScore: number;
 };
 ```
@@ -165,6 +169,7 @@ type VerticalGlyphQualityMetrics = {
 - 预期方向从 render input 文本推导，实际方向来自 `columnVerticalItems`；诊断只能比较和报告，不能改写文本或列顺序。
 - 旧 debug 缺少 `columnVerticalItems` 时 coverage/score 为 0，不能默认视为兼容通过。
 - overlay 使用不同颜色显示 upright、sideways 和 tate-chu-yoko item 中心，但不得影响 render PNG。
+- source-aware sideways run 还要独立报告源目标跨度一致度、可见跨度占用率和 tracking 上限合规度；这些诊断只读 `columnVerticalItems`，不得反馈修改 runtime 输入。
 
 ### 4. Validation & Error Matrix
 

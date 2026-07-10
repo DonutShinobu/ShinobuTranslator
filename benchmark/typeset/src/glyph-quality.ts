@@ -1,13 +1,27 @@
 import type { TypesetDebugRegionLog, TypesetDebugVerticalItem } from "../../../src/types";
 import { tokenizeVerticalText } from "../../../src/pipeline/typeset/verticalOrientation";
+import {
+  maxSidewaysLatinTrackingEm,
+  minSidewaysLatinInkOccupancy,
+} from "../../../src/pipeline/typeset/fontFit";
 
 export type VerticalGlyphQualityMetrics = {
   glyphQualityCoverage: number;
   glyphOrientationAccuracy: number;
   runContinuityRate: number;
   verticalItemCenterAlignment: number;
+  runSpanFidelity: number;
+  runInkOccupancy: number;
+  runTrackingCompliance: number;
+  runTrackingEmMax: number;
   glyphQualityScore: number;
 };
+
+function mean(values: readonly number[], fallback: number): number {
+  return values.length > 0
+    ? values.reduce((sum, value) => sum + value, 0) / values.length
+    : fallback;
+}
 
 function itemSignature(item: Pick<
   TypesetDebugVerticalItem,
@@ -56,6 +70,10 @@ export function computeVerticalGlyphQuality(
       glyphOrientationAccuracy: 0,
       runContinuityRate: 0,
       verticalItemCenterAlignment: 0,
+      runSpanFidelity: 0,
+      runInkOccupancy: 0,
+      runTrackingCompliance: 0,
+      runTrackingEmMax: 0,
       glyphQualityScore: 0,
     };
   }
@@ -108,11 +126,37 @@ export function computeVerticalGlyphQuality(
     }
   }
   const verticalItemCenterAlignment = positionedItems > 0 ? centeredItems / positionedItems : 1;
+  const sourceAwareRuns = actual.filter((item) =>
+    item.kind === "sideways-run"
+    && item.sourceGlyphCount > 1
+    && item.spanMode === "source-aware"
+    && (item.sourceTargetAdvanceY ?? 0) > 0,
+  );
+  const runSpanFidelity = mean(sourceAwareRuns.map((item) => {
+    const target = item.resolvedTargetAdvanceY ?? item.sourceTargetAdvanceY ?? item.advanceY;
+    return Math.min(item.advanceY, target) / Math.max(item.advanceY, target);
+  }), 1);
+  const occupancies = sourceAwareRuns.map((item) => item.inkOccupancy ?? 0);
+  const runInkOccupancy = mean(occupancies, 1);
+  const runInkOccupancyScore = mean(
+    occupancies.map((occupancy) => Math.min(1, occupancy / minSidewaysLatinInkOccupancy)),
+    1,
+  );
+  const trackingEmValues = sourceAwareRuns.map((item) =>
+    (item.inlineTracking ?? 0) / Math.max(1, region.fittedFontSize),
+  );
+  const runTrackingEmMax = trackingEmValues.length > 0 ? Math.max(...trackingEmValues) : 0;
+  const runTrackingCompliance = runTrackingEmMax > maxSidewaysLatinTrackingEm
+    ? maxSidewaysLatinTrackingEm / runTrackingEmMax
+    : 1;
   const glyphQualityCoverage = expected.length > 0 ? Math.min(1, actual.length / expected.length) : 1;
   const glyphQualityScore = (
-    glyphOrientationAccuracy * 0.5
-    + runContinuityRate * 0.3
-    + verticalItemCenterAlignment * 0.2
+    glyphOrientationAccuracy * 0.35
+    + runContinuityRate * 0.2
+    + verticalItemCenterAlignment * 0.15
+    + runSpanFidelity * 0.15
+    + runInkOccupancyScore * 0.1
+    + runTrackingCompliance * 0.05
   );
 
   return {
@@ -120,6 +164,10 @@ export function computeVerticalGlyphQuality(
     glyphOrientationAccuracy,
     runContinuityRate,
     verticalItemCenterAlignment,
+    runSpanFidelity,
+    runInkOccupancy,
+    runTrackingCompliance,
+    runTrackingEmMax,
     glyphQualityScore,
   };
 }

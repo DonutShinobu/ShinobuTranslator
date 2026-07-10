@@ -104,7 +104,9 @@ function formatCsv(images: ImageMetrics[]): string {
     "signedCharDyNormMean", "charDyNormMean", "charDyNormMax", "charDyNormP95",
     "signedCharAdvanceNormMean", "charAdvanceRatioMean",
     "compositeScore", "glyphQualityCoverage", "glyphOrientationAccuracy",
-    "runContinuityRate", "verticalItemCenterAlignment", "glyphQualityScore",
+    "runContinuityRate", "verticalItemCenterAlignment",
+    "runSpanFidelity", "runInkOccupancy", "runTrackingCompliance", "runTrackingEmMax",
+    "glyphQualityScore",
   ].join(",");
   const rows: string[] = [header];
   for (const img of images) {
@@ -129,6 +131,10 @@ function formatCsv(images: ImageMetrics[]): string {
         (r.glyphOrientationAccuracy ?? 0).toFixed(4),
         (r.runContinuityRate ?? 0).toFixed(4),
         (r.verticalItemCenterAlignment ?? 0).toFixed(4),
+        (r.runSpanFidelity ?? 0).toFixed(4),
+        (r.runInkOccupancy ?? 0).toFixed(4),
+        (r.runTrackingCompliance ?? 0).toFixed(4),
+        (r.runTrackingEmMax ?? 0).toFixed(4),
         (r.glyphQualityScore ?? 0).toFixed(4),
       ].join(","));
     }
@@ -154,6 +160,10 @@ function formatSummaryMd(summary: BenchmarkSummary, reportDir: string): string {
     `| Glyph Orientation Accuracy (avg) | ${summary.avgGlyphOrientationAccuracy.toFixed(4)} |`,
     `| Run Continuity Rate (avg) | ${summary.avgRunContinuityRate.toFixed(4)} |`,
     `| Vertical Item Center Alignment (avg) | ${summary.avgVerticalItemCenterAlignment.toFixed(4)} |`,
+    `| Run Span Fidelity (avg) | ${summary.avgRunSpanFidelity.toFixed(4)} |`,
+    `| Run Ink Occupancy (avg) | ${summary.avgRunInkOccupancy.toFixed(4)} |`,
+    `| Run Tracking Compliance (avg) | ${summary.avgRunTrackingCompliance.toFixed(4)} |`,
+    `| Run Tracking Em Max (avg) | ${summary.avgRunTrackingEmMax.toFixed(4)} |`,
     `| Column IoU (avg) | ${summary.avgColumnIouMean.toFixed(4)} |`,
     `| Font Size Error (avg) | ${summary.avgFontSizeError.toFixed(4)} |`,
     `| Signed Column Dx Norm (avg) | ${summary.avgSignedColumnDxNorm.toFixed(4)} |`,
@@ -308,6 +318,10 @@ async function main(): Promise<void> {
       avgGlyphOrientationAccuracy: meanMetric(scored, (r) => r.glyphOrientationAccuracy ?? 0),
       avgRunContinuityRate: meanMetric(scored, (r) => r.runContinuityRate ?? 0),
       avgVerticalItemCenterAlignment: meanMetric(scored, (r) => r.verticalItemCenterAlignment ?? 0),
+      avgRunSpanFidelity: meanMetric(scored, (r) => r.runSpanFidelity ?? 0),
+      avgRunInkOccupancy: meanMetric(scored, (r) => r.runInkOccupancy ?? 0),
+      avgRunTrackingCompliance: meanMetric(scored, (r) => r.runTrackingCompliance ?? 0),
+      avgRunTrackingEmMax: meanMetric(scored, (r) => r.runTrackingEmMax ?? 0),
       avgGlyphQualityScore: meanMetric(scored, (r) => r.glyphQualityScore ?? 0),
     });
   }
@@ -325,6 +339,10 @@ async function main(): Promise<void> {
     avgGlyphOrientationAccuracy: meanMetric(allScored, (r) => r.glyphOrientationAccuracy ?? 0),
     avgRunContinuityRate: meanMetric(allScored, (r) => r.runContinuityRate ?? 0),
     avgVerticalItemCenterAlignment: meanMetric(allScored, (r) => r.verticalItemCenterAlignment ?? 0),
+    avgRunSpanFidelity: meanMetric(allScored, (r) => r.runSpanFidelity ?? 0),
+    avgRunInkOccupancy: meanMetric(allScored, (r) => r.runInkOccupancy ?? 0),
+    avgRunTrackingCompliance: meanMetric(allScored, (r) => r.runTrackingCompliance ?? 0),
+    avgRunTrackingEmMax: meanMetric(allScored, (r) => r.runTrackingEmMax ?? 0),
     avgGlyphQualityScore: meanMetric(allScored, (r) => r.glyphQualityScore ?? 0),
     avgColumnIouMean: meanMetric(allScored, (r) => r.columnIouMean),
     avgFontSizeError: meanMetric(allScored, (r) => r.fontSizeError),
@@ -359,6 +377,8 @@ async function main(): Promise<void> {
   console.log(`  Glyph quality score: ${summary.avgGlyphQualityScore.toFixed(4)}`);
   console.log(`  Glyph orientation accuracy: ${summary.avgGlyphOrientationAccuracy.toFixed(4)}`);
   console.log(`  Run continuity rate: ${summary.avgRunContinuityRate.toFixed(4)}`);
+  console.log(`  Run span fidelity: ${summary.avgRunSpanFidelity.toFixed(4)}`);
+  console.log(`  Run ink occupancy: ${summary.avgRunInkOccupancy.toFixed(4)}`);
   console.log(`  Column IoU: ${summary.avgColumnIouMean.toFixed(4)}`);
   console.log(`  Font size error: ${summary.avgFontSizeError.toFixed(4)}`);
   console.log(`  Signed column gap norm: ${summary.avgSignedColumnGapNorm.toFixed(4)}`);

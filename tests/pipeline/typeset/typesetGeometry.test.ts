@@ -79,6 +79,26 @@ describe("calcVertical with perColumnMaxHeight", () => {
     }
   });
 
+  it("remeasures a wrapped glyph with the destination column advance", () => {
+    const ctx = createMockCtx();
+    const columns = calcVertical(
+      ctx,
+      "あい",
+      25,
+      20,
+      20,
+      1,
+      undefined,
+      undefined,
+      false,
+      (columnIndex) => columnIndex === 0 ? 1 : 0.75,
+    );
+
+    expect(columns).toHaveLength(2);
+    expect(columns[0].glyphs[0].advanceY).toBe(20);
+    expect(columns[1].glyphs[0].advanceY).toBe(15);
+  });
+
   it("carries mixed runs and tate-chu-yoko through the column layout", () => {
     const ctx = createMockCtx();
     const columns = calcVertical(ctx, "AveMujica12!?", 500, 20, 20, 1);

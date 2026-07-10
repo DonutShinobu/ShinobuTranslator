@@ -53,6 +53,10 @@ describe("computeVerticalGlyphQuality", () => {
       glyphOrientationAccuracy: 1,
       runContinuityRate: 1,
       verticalItemCenterAlignment: 1,
+      runSpanFidelity: 1,
+      runInkOccupancy: 1,
+      runTrackingCompliance: 1,
+      runTrackingEmMax: 0,
       glyphQualityScore: 1,
     });
   });
@@ -69,6 +73,26 @@ describe("computeVerticalGlyphQuality", () => {
     const quality = computeVerticalGlyphQuality(region);
     expect(quality.glyphOrientationAccuracy).toBe(0);
     expect(quality.runContinuityRate).toBe(0);
+    expect(quality.glyphQualityScore).toBeLessThan(1);
+  });
+
+  it("scores source-aware run span, occupancy, and tracking", () => {
+    const region = makeRegion("AveMujica");
+    const item = region.columnVerticalItems?.[0]?.[0];
+    if (!item) throw new Error("Expected source-aware run fixture item");
+    item.spanMode = "source-aware";
+    item.sourceTargetAdvanceY = 180;
+    item.resolvedTargetAdvanceY = 180;
+    item.advanceY = 90;
+    item.renderedInlineSpan = 45;
+    item.inkOccupancy = 0.5;
+    item.inlineTracking = 10;
+
+    const quality = computeVerticalGlyphQuality(region);
+    expect(quality.runSpanFidelity).toBe(0.5);
+    expect(quality.runInkOccupancy).toBe(0.5);
+    expect(quality.runTrackingEmMax).toBe(0.5);
+    expect(quality.runTrackingCompliance).toBeCloseTo(0.16);
     expect(quality.glyphQualityScore).toBeLessThan(1);
   });
 });

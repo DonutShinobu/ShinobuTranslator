@@ -50,6 +50,10 @@ export const maxSourceGeometryAnchorAngleRad = 0.052;
 export const maxVerticalSourceColumnOverlapRatio = 0.45;
 export const minSidewaysLatinOpticalScale = 0.85;
 export const maxSidewaysLatinOpticalScale = 1.2;
+export const minSourceAwareSidewaysLatinOpticalScale = 1.1;
+export const maxSidewaysLatinTrackingEm = 0.08;
+export const minSidewaysLatinInkOccupancy = 0.9;
+export const sourceAwareLatinLeadingGapRatio = 0.25;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -65,6 +69,16 @@ export type VerticalGlyph = VerticalToken & {
   inkWidth: number;
   inkHeight: number;
   boundaryGap: number;
+  leadingBoundaryGap: number;
+  trailingBoundaryGap: number;
+  inlineTracking: number;
+  renderInlineOffset: number;
+  naturalInlineAdvance: number;
+  renderedInlineSpan: number;
+  sourceTargetAdvanceY?: number;
+  resolvedTargetAdvanceY?: number;
+  inkOccupancy: number;
+  spanMode: "natural" | "source-aware";
 };
 
 export type VerticalTokenMetrics = Pick<
@@ -77,6 +91,16 @@ export type VerticalTokenMetrics = Pick<
   | "inkWidth"
   | "inkHeight"
   | "boundaryGap"
+  | "leadingBoundaryGap"
+  | "trailingBoundaryGap"
+  | "inlineTracking"
+  | "renderInlineOffset"
+  | "naturalInlineAdvance"
+  | "renderedInlineSpan"
+  | "sourceTargetAdvanceY"
+  | "resolvedTargetAdvanceY"
+  | "inkOccupancy"
+  | "spanMode"
 >;
 
 export type VColumn = {
@@ -96,6 +120,7 @@ export type BuildVerticalLayoutOptions = {
   perColumnAdvanceScale?: (columnIndex: number) => number | undefined;
   actualBoxScale?: number;
   useDefaultAdvanceBase?: boolean;
+  sourceSpanAware?: boolean;
   columnAnchor?: VerticalColumnAnchor;
   preferredColumns?: string[];
   preferredColumnSources?: ColumnSegmentSource[];
@@ -162,6 +187,7 @@ export type VerticalSourceGeometryProfile = {
   medianGap: number | null;
   medianWidth: number;
   medianHeight: number;
+  medianFontSize: number | null;
   medianAdvance: number | null;
   /**
    * Advance and top-edge targets are aligned to source text/render column order.
@@ -228,6 +254,56 @@ export function resolveInitialFontSize(region: TextRegion): number {
   )));
 }
 
+export type VerticalInitialFontFitOptions = {
+  initialFontSize: number;
+  availableWidth: number;
+  availableHeight: number;
+  heightFitLength: number;
+  columnCount: number;
+  sourceGeometryProfile?: VerticalSourceGeometryProfile;
+};
+
+/**
+ * Apply conservative pre-layout caps to the OCR/merge font estimate.
+ *
+ * Reliable source geometry keeps visual glyph size and inline advance as
+ * separate measurements. Use the robust per-column visual estimate for the
+ * former; column pitch/height is consumed later by source-aware layout.
+ */
+export function fitVerticalInitialFontSize(options: VerticalInitialFontFitOptions): number {
+  let fittedFontSize = Math.max(8, Math.round(options.initialFontSize));
+
+  if (options.sourceGeometryProfile) {
+    const sourceVisualFontSize = options.sourceGeometryProfile.medianFontSize
+      ?? options.sourceGeometryProfile.medianAdvance;
+    if (
+      sourceVisualFontSize !== null
+      && Number.isFinite(sourceVisualFontSize)
+      && sourceVisualFontSize > 0
+      && sourceVisualFontSize < fittedFontSize
+    ) {
+      fittedFontSize = Math.max(8, Math.round(sourceVisualFontSize));
+    }
+    return fittedFontSize;
+  }
+
+  if (options.heightFitLength > 0) {
+    const maxFontByHeight = Math.round(options.availableHeight / options.heightFitLength);
+    if (maxFontByHeight > 0 && maxFontByHeight < fittedFontSize) {
+      fittedFontSize = Math.max(8, maxFontByHeight);
+    }
+  }
+
+  if (options.columnCount > 1) {
+    const maxFontByWidth = Math.floor(options.availableWidth / (options.columnCount * 1.05));
+    if (maxFontByWidth > 0 && maxFontByWidth < fittedFontSize) {
+      fittedFontSize = Math.max(8, maxFontByWidth);
+    }
+  }
+
+  return fittedFontSize;
+}
+
 // ---------------------------------------------------------------------------
 // Font/glyph functions
 // ---------------------------------------------------------------------------
@@ -267,6 +343,7 @@ export function metricAbs(value: number): number {
 type TextInkMetrics = {
   width: number;
   height: number;
+  advanceWidth: number;
   centerX: number;
   centerY: number;
 };
@@ -301,6 +378,7 @@ function measureTextInkMetrics(
     height: hasVerticalInkBounds
       ? measuredHeight
       : fallbackFontSize,
+    advanceWidth: Math.max(1, metrics.width || measuredWidth || fallbackFontSize),
     centerX: hasHorizontalInkBounds ? (right - left) / 2 : 0,
     centerY: hasVerticalInkBounds ? (descent - ascent) / 2 : 0,
   };
@@ -362,6 +440,7 @@ export function resolveVerticalTokenMetrics(
   advanceScale = 1,
   actualBoxScale?: number,
   useDefaultAdvanceBase = false,
+  sourceSpanAware = false,
 ): VerticalTokenMetrics {
   const ink = measureTextInkMetrics(ctx, token.displayText, fontSize);
   const renderOffsetX = ink.centerX === 0 ? 0 : -ink.centerX;
@@ -385,6 +464,14 @@ export function resolveVerticalTokenMetrics(
       inkWidth: ink.width,
       inkHeight: ink.height,
       boundaryGap: 0,
+      leadingBoundaryGap: 0,
+      trailingBoundaryGap: 0,
+      inlineTracking: 0,
+      renderInlineOffset: 0,
+      naturalInlineAdvance: ink.width,
+      renderedInlineSpan: ink.width,
+      inkOccupancy: 1,
+      spanMode: "natural",
     };
   }
 
@@ -397,10 +484,13 @@ export function resolveVerticalTokenMetrics(
     referenceInk.width,
     Math.min(fontSize, defaultAdvanceY * advanceScale),
   );
+  const minimumLatinOpticalScale = sourceSpanAware && ink.height <= fontSize * 1.1
+    ? minSourceAwareSidewaysLatinOpticalScale
+    : minSidewaysLatinOpticalScale;
   const renderCrossScale = isLatinRun
     ? clampNumber(
         targetLatinCrossSize / Math.max(1, ink.height),
-        minSidewaysLatinOpticalScale,
+        minimumLatinOpticalScale,
         maxSidewaysLatinOpticalScale,
       )
     : 1;
@@ -424,20 +514,93 @@ export function resolveVerticalTokenMetrics(
       inkWidth: ink.width,
       inkHeight: ink.height,
       boundaryGap: 0,
+      leadingBoundaryGap: 0,
+      trailingBoundaryGap: 0,
+      inlineTracking: 0,
+      renderInlineOffset: 0,
+      naturalInlineAdvance: ink.width * Math.min(1, advanceY / Math.max(1, ink.width)),
+      renderedInlineSpan: ink.width * Math.min(1, advanceY / Math.max(1, ink.width)),
+      inkOccupancy: 1,
+      spanMode: "natural",
     };
   }
 
-  const boundaryGap = isLatinRun
+  const naturalBoundaryGap = isLatinRun
     ? Math.max(0, (defaultAdvanceY * advanceScale - referenceInk.height) / 2)
     : 0;
   const inlineScale = renderCrossScale * (isLatinRun ? 1 : advanceScale);
+
+  if (isLatinRun && sourceSpanAware) {
+    const sourceCellAdvance = resolveGlyphVerticalAdvance(
+      ctx,
+      "国",
+      fontSize,
+      defaultAdvanceY,
+      advanceScale,
+      actualBoxScale,
+      useDefaultAdvanceBase,
+    );
+    const sourceTargetAdvanceY = sourceCellAdvance * token.sourceGlyphCount;
+    const naturalInlineAdvance = Math.max(ink.width, ink.advanceWidth) * inlineScale;
+    const trackingSlotCount = Math.max(0, token.sourceGlyphCount - 1);
+    const minimumAdvance = naturalInlineAdvance + naturalBoundaryGap * 2;
+    const requiredTracking = trackingSlotCount > 0
+      ? Math.max(0, (sourceTargetAdvanceY - minimumAdvance) / trackingSlotCount)
+      : 0;
+    const maxTracking = maxSidewaysLatinTrackingEm * Math.min(fontSize, sourceCellAdvance);
+    const inlineTracking = Math.min(requiredTracking, maxTracking);
+    const renderedInlineSpan = naturalInlineAdvance + inlineTracking * trackingSlotCount;
+    const maxAdvanceByOccupancy = renderedInlineSpan / minSidewaysLatinInkOccupancy;
+    const desiredAdvance = Math.max(
+      renderedInlineSpan + naturalBoundaryGap * 2,
+      Math.min(sourceTargetAdvanceY, maxAdvanceByOccupancy),
+    );
+    const resolvedTargetAdvanceY = Math.min(desiredAdvance, maxAdvanceByOccupancy);
+    const quantizedAdvance = useDefaultAdvanceBase
+      ? resolvedTargetAdvanceY - sourceGeometryAdvanceQuantizationBiasPx
+      : resolvedTargetAdvanceY;
+    const advanceY = Math.max(
+      1,
+      Math.min(Math.round(quantizedAdvance), Math.floor(maxAdvanceByOccupancy)),
+    );
+    const totalBoundaryGap = Math.max(0, advanceY - renderedInlineSpan);
+    const symmetricBoundaryGap = totalBoundaryGap / 2;
+    const minimumLeadingGap = Math.min(symmetricBoundaryGap, naturalBoundaryGap);
+    const leadingBoundaryGap = Math.min(
+      symmetricBoundaryGap,
+      Math.max(minimumLeadingGap, totalBoundaryGap * sourceAwareLatinLeadingGapRatio),
+    );
+    const trailingBoundaryGap = totalBoundaryGap - leadingBoundaryGap;
+    const renderInlineOffset = (leadingBoundaryGap - trailingBoundaryGap) / 2;
+    return {
+      advanceY,
+      renderInlineScale: inlineScale,
+      renderCrossScale,
+      renderOffsetX,
+      renderOffsetY,
+      inkWidth: ink.width,
+      inkHeight: ink.height,
+      boundaryGap: symmetricBoundaryGap,
+      leadingBoundaryGap,
+      trailingBoundaryGap,
+      inlineTracking,
+      renderInlineOffset,
+      naturalInlineAdvance,
+      renderedInlineSpan,
+      sourceTargetAdvanceY,
+      resolvedTargetAdvanceY,
+      inkOccupancy: Math.min(1, renderedInlineSpan / advanceY),
+      spanMode: "source-aware",
+    };
+  }
+
   const scaledInkWidth = ink.width * inlineScale;
-  const unquantizedAdvance = scaledInkWidth + boundaryGap * 2;
+  const unquantizedAdvance = scaledInkWidth + naturalBoundaryGap * 2;
   const quantizedAdvance = useDefaultAdvanceBase
     ? unquantizedAdvance - sourceGeometryAdvanceQuantizationBiasPx
     : unquantizedAdvance;
   const advanceY = Math.max(1, Math.round(quantizedAdvance));
-  const availableInkWidth = Math.max(1, advanceY - boundaryGap * 2);
+  const availableInkWidth = Math.max(1, advanceY - naturalBoundaryGap * 2);
   return {
     advanceY,
     renderInlineScale: availableInkWidth / Math.max(1, ink.width),
@@ -446,7 +609,15 @@ export function resolveVerticalTokenMetrics(
     renderOffsetY,
     inkWidth: ink.width,
     inkHeight: ink.height,
-    boundaryGap,
+    boundaryGap: naturalBoundaryGap,
+    leadingBoundaryGap: naturalBoundaryGap,
+    trailingBoundaryGap: naturalBoundaryGap,
+    inlineTracking: 0,
+    renderInlineOffset: 0,
+    naturalInlineAdvance: scaledInkWidth,
+    renderedInlineSpan: scaledInkWidth,
+    inkOccupancy: Math.min(1, scaledInkWidth / advanceY),
+    spanMode: "natural",
   };
 }
 
@@ -646,6 +817,14 @@ export function resolveVerticalSourceGeometryProfile(
     const length = Math.max(1, countTextGlyphs(line.text));
     return line.height / length;
   });
+  const sourceFontSizes = spatialColumns
+    .map((line) => line.fontSize)
+    .filter((fontSize): fontSize is number => (
+      fontSize !== undefined
+      && Number.isFinite(fontSize)
+      && fontSize > 0
+    ));
+  const medianFontSize = medianNumber(sourceFontSizes);
   const medianAdvance = medianNumber(spatialColumnAdvance);
   const sourceOrderedLines = resolveSourceOrderedGeometryLines(region, sourceLines, targetColumnCount);
   const perColumnAdvance = sourceOrderedLines.map((line) => {
@@ -661,6 +840,7 @@ export function resolveVerticalSourceGeometryProfile(
     medianGap,
     medianWidth,
     medianHeight,
+    medianFontSize,
     medianAdvance,
     perColumnAdvance,
     perColumnTopY,
@@ -734,6 +914,7 @@ export function calcVertical(
   actualBoxScale?: number,
   useDefaultAdvanceBase = false,
   perColumnAdvanceScale?: (columnIndex: number) => number | undefined,
+  sourceSpanAware = false,
 ): VColumn[] {
   const tokens = tokenizeVerticalText(text);
   if (tokens.length === 0) return [];
@@ -744,7 +925,13 @@ export function calcVertical(
     columnIndex: number,
   ): VerticalTokenMetrics => {
     const columnAdvanceScale = perColumnAdvanceScale?.(columnIndex) ?? advanceScale;
-    const cacheKey = `${columnAdvanceScale}:${token.kind}:${token.displayText}`;
+    const cacheKey = [
+      columnAdvanceScale,
+      sourceSpanAware ? "source" : "natural",
+      token.kind,
+      token.sourceGlyphCount,
+      token.displayText,
+    ].join(":");
     const cached = advanceCache.get(cacheKey);
     if (cached !== undefined) {
       return cached;
@@ -757,6 +944,7 @@ export function calcVertical(
       columnAdvanceScale,
       actualBoxScale,
       useDefaultAdvanceBase,
+      sourceSpanAware,
     );
     advanceCache.set(cacheKey, resolved);
     return resolved;
@@ -766,14 +954,14 @@ export function calcVertical(
   let col: VerticalGlyph[] = [];
   let colHeight = 0;
   let colIndex = 0;
+  const createGlyph = (token: VerticalToken, columnIndex: number): VerticalGlyph => ({
+    ...token,
+    ch: token.displayText,
+    ...getTokenMetrics(token, columnIndex),
+  });
 
   for (const token of tokens) {
-    const tokenMetrics = getTokenMetrics(token, colIndex);
-    const glyph: VerticalGlyph = {
-      ...token,
-      ch: token.displayText,
-      ...tokenMetrics,
-    };
+    let glyph = createGlyph(token, colIndex);
 
     const currentMaxHeight = perColumnMaxHeight ? perColumnMaxHeight(colIndex) : maxHeight;
     if (colHeight + glyph.advanceY > currentMaxHeight && col.length > 0) {
@@ -796,9 +984,11 @@ export function calcVertical(
       if (KINSOKU_NEND.has(lastSourceChar) && col.length > 1) {
         const carry = col.pop()!;
         columns.push({ glyphs: col, height: colHeight - carry.advanceY });
-        col = [carry, glyph];
-        colHeight = carry.advanceY + glyph.advanceY;
         colIndex++;
+        const remappedCarry = createGlyph(carry, colIndex);
+        glyph = createGlyph(token, colIndex);
+        col = [remappedCarry, glyph];
+        colHeight = remappedCarry.advanceY + glyph.advanceY;
         continue;
       }
 
@@ -806,6 +996,7 @@ export function calcVertical(
       col = [];
       colHeight = 0;
       colIndex++;
+      glyph = createGlyph(token, colIndex);
     }
 
     col.push(glyph);
@@ -830,6 +1021,7 @@ export function calcVerticalFromColumns(
   actualBoxScale?: number,
   useDefaultAdvanceBase = false,
   perColumnAdvanceScale?: (columnIndex: number) => number | undefined,
+  sourceSpanAware = false,
 ): {
   columns: VColumn[];
   columnBreakReasons: ColumnBreakReason[];
@@ -892,6 +1084,7 @@ export function calcVerticalFromColumns(
       actualBoxScale,
       useDefaultAdvanceBase,
       perColumnAdvanceScale ? (ci) => perColumnAdvanceScale(columns.length + ci) : undefined,
+      sourceSpanAware,
     );
     const segmentMaxGlyphCount = Math.max(1, ...segmentColumns.map(sourceGlyphCount));
     if (segmentColumns.length === 0) {
@@ -1275,7 +1468,7 @@ export function resolveVerticalRenderPadding(
       const yOverflow = glyph.kind === "sideways-run"
         ? Math.max(
             0,
-            glyph.inkWidth * glyph.renderInlineScale / 2 - halfAdvance,
+            Math.abs(glyph.renderInlineOffset) + glyph.renderedInlineSpan / 2 - halfAdvance,
           )
         : Math.max(0, ascent - halfAdvance, descent - halfAdvance);
       maxOverflow = Math.max(maxOverflow, xOverflow, yOverflow);
@@ -1404,6 +1597,7 @@ export function buildVerticalLayout(
   const perColumnAdvanceScale = options?.perColumnAdvanceScale;
   const actualBoxScale = options?.actualBoxScale;
   const useDefaultAdvanceBase = options?.useDefaultAdvanceBase ?? false;
+  const sourceSpanAware = options?.sourceSpanAware ?? false;
   const scaledColSpacing = baseMetrics.colSpacing * colSpacingScale;
   const minColSpacing = -baseMetrics.colWidth * maxVerticalSourceColumnOverlapRatio;
   const metrics = {
@@ -1428,6 +1622,7 @@ export function buildVerticalLayout(
       actualBoxScale,
       useDefaultAdvanceBase,
       perColumnAdvanceScale,
+      sourceSpanAware,
     );
     columns = detailed.columns;
     columnBreakReasons = detailed.columnBreakReasons;
@@ -1445,6 +1640,7 @@ export function buildVerticalLayout(
       actualBoxScale,
       useDefaultAdvanceBase,
       perColumnAdvanceScale,
+      sourceSpanAware,
     );
     columnBreakReasons = columns.map((_, index) => (index === 0 ? 'start' : 'wrap'));
     columnSegmentIds = columns.map(() => 1);

@@ -122,6 +122,16 @@ export type TypesetDebugVerticalItem = {
   renderOffsetX?: number;
   renderOffsetY?: number;
   boundaryGap?: number;
+  leadingBoundaryGap?: number;
+  trailingBoundaryGap?: number;
+  inlineTracking?: number;
+  renderInlineOffset?: number;
+  naturalInlineAdvance?: number;
+  renderedInlineSpan?: number;
+  sourceTargetAdvanceY?: number;
+  resolvedTargetAdvanceY?: number;
+  inkOccupancy?: number;
+  spanMode?: "natural" | "source-aware";
 };
 
 export type TypesetLayoutDiagnostics = {
@@ -131,6 +141,7 @@ export type TypesetLayoutDiagnostics = {
   colSpacingScale: number;
   actualBoxScale?: number;
   useDefaultAdvanceBase: boolean;
+  sourceSpanAware: boolean;
   layoutContentHeight: number;
   renderContentHeight: number;
 };

@@ -80,14 +80,6 @@ For each boundary:
 
 **Project example**: When a benchmark fixture is suspected to be corrupt, regenerate fixtures to a report-scoped output directory first, then run strict fixture audit before copying them into the official fixture directory. Do not tune runtime layout against a fixture until `sourceText`, source geometry, and `groundTruth.columns` pass the source-order/spatial-order contract.
 
-### Mistake 5: Same Field Name, Different Measurement Semantics
-
-**Bad**: Runtime and benchmark both expose `fontSize`, but runtime stores a detected column's short edge while fixture bake stores `min(columnWidth, columnHeight / glyphCount)`. Tests then validate a cleaner input than production receives.
-
-**Good**: Put the measurement formula in one pure shared helper, call it at every producer boundary, and add an integration test that feeds a production-shaped geometry record into the consumer.
-
-**Project example**: `SourceTextLineGeometry.fontSize` is consumed by source-aware vertical typesetting. Runtime textline merge, fixture bake, and benchmark render must all mean “conservative local visual font estimate”; column width and per-glyph inline advance remain separate measurements. Any change to this field requires a merge → typeset test in addition to fixture rendering.
-
 ---
 
 ## Checklist for Cross-Layer Features
@@ -102,7 +94,6 @@ After implementation:
 - [ ] Tested with edge cases (null, empty, invalid)
 - [ ] Verified error handling at each boundary
 - [ ] Checked data survives round-trip
-- [ ] Compared runtime and fixture/test producers for same-name field semantics, not only TypeScript shape
 
 ---
 

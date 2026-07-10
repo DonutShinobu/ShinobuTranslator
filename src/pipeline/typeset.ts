@@ -577,37 +577,7 @@ function renderVerticalGlyph(
   if (glyph.kind === "sideways-run") {
     ctx.rotate(Math.PI / 2);
     ctx.scale(glyph.renderInlineScale, glyph.renderCrossScale);
-    const localInlineOffset = glyph.renderInlineOffset / Math.max(0.001, glyph.renderInlineScale);
-    if (glyph.inlineTracking > 0 && glyph.sourceGlyphCount > 1) {
-      const graphemes = segmentVerticalGraphemes(glyph.ch);
-      const localTracking = glyph.inlineTracking / Math.max(0.001, glyph.renderInlineScale);
-      const advances: number[] = [];
-      let prefix = "";
-      let previousWidth = 0;
-      for (const grapheme of graphemes) {
-        prefix += grapheme;
-        const prefixWidth = ctx.measureText(prefix).width;
-        const fallbackWidth = ctx.measureText(grapheme).width;
-        const advance = Math.max(0, prefixWidth - previousWidth) || fallbackWidth;
-        advances.push(advance);
-        previousWidth = prefixWidth;
-      }
-      const totalAdvance = advances.reduce((sum, advance) => sum + advance, 0)
-        + localTracking * Math.max(0, graphemes.length - 1);
-      let penX = -totalAdvance / 2 + glyph.renderOffsetX + localInlineOffset;
-      for (let index = 0; index < graphemes.length; index += 1) {
-        const advance = advances[index] ?? 0;
-        const drawX = penX + advance / 2;
-        if (pass === "stroke") {
-          ctx.strokeText(graphemes[index], drawX, glyph.renderOffsetY);
-        } else {
-          ctx.fillText(graphemes[index], drawX, glyph.renderOffsetY);
-        }
-        penX += advance + localTracking;
-      }
-    } else {
-      draw(glyph.renderOffsetX + localInlineOffset, glyph.renderOffsetY);
-    }
+    draw(glyph.renderOffsetX, glyph.renderOffsetY);
   } else if (glyph.kind === "tate-chu-yoko") {
     const measuredWidth = Math.max(1, ctx.measureText(glyph.ch).width);
     const scaleX = Math.min(1, fontSize * 0.9 / measuredWidth);
@@ -903,19 +873,6 @@ export async function drawTypeset(
               renderOffsetX: glyph.renderOffsetX,
               renderOffsetY: glyph.renderOffsetY,
               boundaryGap: glyph.boundaryGap,
-              leadingBoundaryGap: glyph.leadingBoundaryGap,
-              trailingBoundaryGap: glyph.trailingBoundaryGap,
-              inlineTracking: glyph.inlineTracking,
-              renderInlineOffset: glyph.renderInlineOffset,
-              naturalInlineAdvance: glyph.naturalInlineAdvance,
-              renderedInlineSpan: glyph.renderedInlineSpan,
-              sourceTargetAdvanceY: glyph.sourceTargetAdvanceY,
-              resolvedTargetAdvanceY: glyph.resolvedTargetAdvanceY,
-              inkOccupancy: glyph.inkOccupancy,
-              paintedInkHeight: glyph.paintedInkHeight,
-              uprightInkOccupancy: glyph.uprightInkOccupancy,
-              uprightOccupancyConstrained: glyph.uprightOccupancyConstrained,
-              spanMode: glyph.spanMode,
             };
             penY += glyph.advanceY;
             return item;

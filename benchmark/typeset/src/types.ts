@@ -95,12 +95,6 @@ export type RegionMetrics = {
   glyphOrientationAccuracy?: number;
   runContinuityRate?: number;
   verticalItemCenterAlignment?: number;
-  runSpanFidelity?: number;
-  runInkOccupancy?: number;
-  runTrackingCompliance?: number;
-  runTrackingEmMax?: number;
-  uprightInkOccupancyMax?: number;
-  uprightInkOccupancyCompliance?: number;
   glyphQualityScore?: number;
 };
 
@@ -114,12 +108,6 @@ export type ImageMetrics = {
   avgGlyphOrientationAccuracy: number;
   avgRunContinuityRate: number;
   avgVerticalItemCenterAlignment: number;
-  avgRunSpanFidelity: number;
-  avgRunInkOccupancy: number;
-  avgRunTrackingCompliance: number;
-  avgRunTrackingEmMax: number;
-  avgUprightInkOccupancyMax: number;
-  avgUprightInkOccupancyCompliance: number;
   avgGlyphQualityScore: number;
 };
 
@@ -133,12 +121,6 @@ export type BenchmarkSummary = {
   avgGlyphOrientationAccuracy: number;
   avgRunContinuityRate: number;
   avgVerticalItemCenterAlignment: number;
-  avgRunSpanFidelity: number;
-  avgRunInkOccupancy: number;
-  avgRunTrackingCompliance: number;
-  avgRunTrackingEmMax: number;
-  avgUprightInkOccupancyMax: number;
-  avgUprightInkOccupancyCompliance: number;
   avgGlyphQualityScore: number;
   avgColumnIouMean: number;
   avgFontSizeError: number;

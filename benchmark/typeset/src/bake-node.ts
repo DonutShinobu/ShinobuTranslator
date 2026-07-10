@@ -21,7 +21,6 @@ import { execSync } from "child_process";
 import type { BakeInfo, Fixture, FixtureRegion, GroundTruthColumn } from "./types";
 import type { BakeResultRegion } from "../../../src/pipeline/bake";
 import { shinobuBake } from "../../../src/pipeline/bake";
-import { estimateVerticalSourceFontSize } from "../../../src/pipeline/sourceTextGeometry";
 import { nodePlatform } from "../../../src/runtime/nodePlatform";
 
 // ---------------------------------------------------------------------------
@@ -126,7 +125,7 @@ function buildGroundTruthColumns(
       bottomY: col.bottomY,
       width: col.width,
       height: col.height,
-      estimatedFontSize: estimateVerticalSourceFontSize(col.width, col.height, chars.length, 24),
+      estimatedFontSize: Math.min(col.width, chars.length > 0 ? col.height / chars.length : 24),
       charCenters,
     };
   });
@@ -168,7 +167,7 @@ function buildTypesetSnapshotColumns(
       bottomY: box.y + box.height,
       width: box.width,
       height: box.height,
-      estimatedFontSize: estimateVerticalSourceFontSize(box.width, box.height, colChars.length, fontSize),
+      estimatedFontSize: Math.min(box.width, colChars.length > 0 ? box.height / colChars.length : fontSize),
       charCenters,
     });
   }

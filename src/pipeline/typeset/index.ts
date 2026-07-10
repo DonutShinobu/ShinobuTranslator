@@ -53,7 +53,6 @@ import { resolveVerticalPreferredColumns, resolveSourceColumns, countTextLength,
 import { quadDimensions, getRegionQuad, cloneRegionForTypeset } from "./geometry";
 import {
   resolveInitialFontSize,
-  fitVerticalInitialFontSize,
   resolveBoxPadding,
   resolveVerticalContentHeight,
   estimateVerticalPreferredProfile,
@@ -95,8 +94,6 @@ export function computeFullVerticalTypeset(
   const text = (preferredColumns && preferredColumns.length > 0)
     ? preferredColumns.join("")
     : translated;
-  const normalizeLayoutText = (value: string): string => value.replace(/\s+/gu, "");
-  const hasTranslatedContent = normalizeLayoutText(text) !== normalizeLayoutText(inputRegion.sourceText);
 
   const sourceColumns = verticalPreferred?.sourceColumns ?? resolveSourceColumns(inputRegion);
   const sourceColumnLengths = verticalPreferred?.sourceColumnLengths ?? sourceColumns.map((column) => countTextLength(column));
@@ -112,34 +109,34 @@ export function computeFullVerticalTypeset(
   // during compositing, shrinking the rendered text.
   const clonedQuadDims = quadDimensions(getRegionQuad(cloned));
 
-  const targetColumnCount = Math.max(
-    1,
-    sourceColumns.length,
-    preferredColumns?.length ?? 0,
-    inputRegion.originalLineCount ?? 0,
-  );
-  const initialSourceGeometryProfile = resolveVerticalSourceGeometryProfile(cloned, targetColumnCount);
-
   const heightFitLength = Math.max(
     singleColumnMaxLength ?? 0,
     ...sourceColumns.map((column) => countTextGlyphs(column)),
     ...(preferredColumns ?? []).map((column) => countTextGlyphs(column)),
   );
+  if (heightFitLength > 0) {
+    const boxPaddingEst = resolveBoxPadding(cloned);
+    const availableHeight = Math.max(20, clonedQuadDims.height - boxPaddingEst * 2);
+    const maxFontByHeight = Math.round(availableHeight / heightFitLength);
+    if (maxFontByHeight > 0 && maxFontByHeight < estimatedInitialFontSize) {
+      estimatedInitialFontSize = Math.max(8, maxFontByHeight);
+    }
+  }
+
   const estColumnCount = Math.max(
     1,
     sourceColumns.length,
     preferredColumns?.length ?? 0,
     cloned.originalLineCount ?? 0,
   );
-  const boxPaddingEst = resolveBoxPadding(cloned);
-  estimatedInitialFontSize = fitVerticalInitialFontSize({
-    initialFontSize: estimatedInitialFontSize,
-    availableWidth: Math.max(20, clonedQuadDims.width - boxPaddingEst * 2),
-    availableHeight: Math.max(20, clonedQuadDims.height - boxPaddingEst * 2),
-    heightFitLength,
-    columnCount: estColumnCount,
-    sourceGeometryProfile: initialSourceGeometryProfile,
-  });
+  if (estColumnCount > 1) {
+    const boxPaddingEst = resolveBoxPadding(cloned);
+    const availableWidth = Math.max(20, clonedQuadDims.width - boxPaddingEst * 2);
+    const maxFontByWidth = Math.floor(availableWidth / (estColumnCount * 1.05));
+    if (maxFontByWidth > 0 && maxFontByWidth < estimatedInitialFontSize) {
+      estimatedInitialFontSize = Math.max(8, maxFontByWidth);
+    }
+  }
 
   const noopHLineCount = () => 1;
   const originalContentWidth = Math.max(20, clonedQuadDims.width - resolveBoxPadding(cloned) * 2);
@@ -151,6 +148,12 @@ export function computeFullVerticalTypeset(
   const contentHeight = Math.max(20, regionQuadDims.height - boxPadding * 2);
   let verticalContentHeight = resolveVerticalContentHeight(contentHeight, estimatedInitialFontSize);
 
+  const targetColumnCount = Math.max(
+    1,
+    sourceColumns.length,
+    preferredColumns?.length ?? 0,
+    inputRegion.originalLineCount ?? 0,
+  );
   const sourceGeometryProfile = resolveVerticalSourceGeometryProfile(region, targetColumnCount);
   const columnAnchor = resolveVerticalSourceColumnAnchor(region, boxPadding, sourceGeometryProfile);
 
@@ -165,7 +168,6 @@ export function computeFullVerticalTypeset(
     region.translatedColumns,
     originalContentWidth,
     sourceGeometryProfile,
-    hasTranslatedContent,
   );
   let activePerColumnAdvanceScales = preferredProfile.perColumnAdvanceScale;
 
@@ -177,8 +179,6 @@ export function computeFullVerticalTypeset(
       : undefined,
     actualBoxScale: sourceGeometryProfile ? sourceGeometryActualBoxScale : undefined,
     useDefaultAdvanceBase: Boolean(sourceGeometryProfile),
-    sourceSpanAware: Boolean(sourceGeometryProfile),
-    enforceUprightInkOccupancy: hasTranslatedContent,
     columnAnchor,
     preferredColumns: region.translatedColumns,
     preferredColumnSources,
@@ -227,7 +227,6 @@ export function computeFullVerticalTypeset(
       estimatedInitialFontSize, ff, region.translatedColumns,
       originalContentWidth,
       sourceGeometryProfile,
-      hasTranslatedContent,
     );
     const extendedOptions: BuildVerticalLayoutOptions = {
       ...verticalLayoutOptions,
@@ -274,7 +273,6 @@ export function computeFullVerticalTypeset(
         measureCtx, region, text, contentWidth, layoutContentHeight, mid, ff, region.translatedColumns,
         originalContentWidth,
         sourceGeometryProfile,
-        hasTranslatedContent,
       );
       const opts: BuildVerticalLayoutOptions = {
         ...verticalLayoutOptions,
@@ -365,9 +363,6 @@ export function computeFullVerticalTypeset(
       colSpacingScale: verticalLayoutOptions.colSpacingScale ?? 1,
       actualBoxScale: verticalLayoutOptions.actualBoxScale,
       useDefaultAdvanceBase: verticalLayoutOptions.useDefaultAdvanceBase ?? false,
-      sourceSpanAware: verticalLayoutOptions.sourceSpanAware ?? false,
-      uprightInkOccupancyConstrained: verticalLayoutOptions.enforceUprightInkOccupancy ?? false,
-      sourceAdvanceExpansionEnabled: hasTranslatedContent && Boolean(sourceGeometryProfile),
       layoutContentHeight,
       renderContentHeight,
     },

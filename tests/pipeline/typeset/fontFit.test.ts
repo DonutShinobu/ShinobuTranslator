@@ -3,7 +3,6 @@ import type { TextRegion } from "../../../src/types";
 import {
   clampNumber,
   resolveInitialFontSize,
-  fitVerticalInitialFontSize,
   metricAbs,
   computeVerticalTotalWidth,
   resolveVerticalColumnPositions,
@@ -24,8 +23,6 @@ import {
   estimateVerticalPreferredProfile,
   minSourceGeometryAdvanceScale,
   minVerticalAdvanceScale,
-  maxUprightPaintedInkOccupancy,
-  maxTranslatedSourceAdvanceExpansionRatio,
 } from "../../../src/pipeline/typeset/fontFit";
 import type { VerticalCellMetrics, VerticalLayoutResult, VColumn } from "../../../src/pipeline/typeset/fontFit";
 import { tokenizeVerticalText } from "../../../src/pipeline/typeset/verticalOrientation";
@@ -69,14 +66,6 @@ function makeVColumn(glyphCount: number, advanceY: number): VColumn {
       inkWidth: advanceY,
       inkHeight: advanceY,
       boundaryGap: 0,
-      leadingBoundaryGap: 0,
-      trailingBoundaryGap: 0,
-      inlineTracking: 0,
-      renderInlineOffset: 0,
-      naturalInlineAdvance: advanceY,
-      renderedInlineSpan: advanceY,
-      inkOccupancy: 1,
-      spanMode: "natural" as const,
     };
   });
   return { glyphs, height: glyphCount * advanceY };
@@ -96,14 +85,6 @@ function makeVerticalGlyph(sourceText: string, advanceY: number): VColumn["glyph
     inkWidth: advanceY,
     inkHeight: advanceY,
     boundaryGap: 0,
-    leadingBoundaryGap: 0,
-    trailingBoundaryGap: 0,
-    inlineTracking: 0,
-    renderInlineOffset: 0,
-    naturalInlineAdvance: advanceY,
-    renderedInlineSpan: advanceY,
-    inkOccupancy: 1,
-    spanMode: "natural" as const,
   };
 }
 
@@ -216,40 +197,6 @@ describe("metricAbs", () => {
   });
 });
 
-describe("fitVerticalInitialFontSize", () => {
-  it("uses the robust source-column visual size instead of the longest raw column", () => {
-    expect(fitVerticalInitialFontSize({
-      initialFontSize: 40.334,
-      availableWidth: 120,
-      availableHeight: 450,
-      heightFitLength: 15,
-      columnCount: 3,
-      sourceGeometryProfile: {
-        columnCount: 3,
-        groupCenterX: 60,
-        medianPitch: 40,
-        medianGap: -3.5,
-        medianWidth: 43.5,
-        medianHeight: 273,
-        medianFontSize: 34,
-        medianAdvance: 39,
-        perColumnAdvance: [39.75, 30, 39],
-        perColumnTopY: [0, 0, 0],
-      },
-    })).toBe(34);
-  });
-
-  it("retains conservative character-cell caps without source geometry", () => {
-    expect(fitVerticalInitialFontSize({
-      initialFontSize: 40.334,
-      availableWidth: 120,
-      availableHeight: 450,
-      heightFitLength: 15,
-      columnCount: 3,
-    })).toBe(30);
-  });
-});
-
 describe("resolveVerticalTokenMetrics", () => {
   const ctx = {
     font: "",
@@ -328,153 +275,6 @@ describe("resolveVerticalTokenMetrics", () => {
       renderCrossScale: 1.2,
       boundaryGap: 2,
     });
-  });
-
-  it("uses tracked source span without stretching a Latin run", () => {
-    const sourceAwareCtx = {
-      ...ctx,
-      measureText: (text: string) => {
-        if (text === "AveMujica") {
-          return {
-            width: 140,
-            actualBoundingBoxLeft: 70,
-            actualBoundingBoxRight: 70,
-            actualBoundingBoxAscent: 6,
-            actualBoundingBoxDescent: 4,
-            fontBoundingBoxAscent: 16,
-            fontBoundingBoxDescent: 4,
-          };
-        }
-        return ctx.measureText(text);
-      },
-    } as unknown as CanvasRenderingContext2D;
-    const token = tokenizeVerticalText("AveMujica")[0];
-    const metrics = resolveVerticalTokenMetrics(
-      sourceAwareCtx,
-      token,
-      20,
-      20,
-      1,
-      undefined,
-      true,
-      true,
-    );
-
-    expect(metrics).toMatchObject({
-      advanceY: 180,
-      renderInlineScale: 1.2,
-      renderCrossScale: 1.2,
-      inlineTracking: 0.25,
-      naturalInlineAdvance: 168,
-      renderedInlineSpan: 170,
-      sourceTargetAdvanceY: 180,
-      resolvedTargetAdvanceY: 180,
-      boundaryGap: 5,
-      spanMode: "source-aware",
-    });
-    expect(metrics.inkOccupancy).toBeCloseTo(170 / 180);
-  });
-
-  it("caps sparse source-aware runs by minimum ink occupancy", () => {
-    const token = tokenizeVerticalText("AveMujica")[0];
-    const metrics = resolveVerticalTokenMetrics(
-      ctx,
-      token,
-      20,
-      20,
-      1,
-      undefined,
-      true,
-      true,
-    );
-
-    expect(metrics.sourceTargetAdvanceY).toBe(180);
-    expect(metrics.advanceY).toBeLessThan(180);
-    expect(metrics.inlineTracking).toBe(1.6);
-    expect(metrics.inkOccupancy).toBeGreaterThanOrEqual(0.9);
-    expect(metrics.resolvedTargetAdvanceY).toBeCloseTo(84.8 / 0.9);
-    expect(metrics.leadingBoundaryGap).toBeCloseTo(4.6);
-    expect(metrics.trailingBoundaryGap).toBeCloseTo(4.6);
-    expect(metrics.renderInlineOffset).toBeCloseTo(0);
-  });
-
-  it("does not optically shrink a source-aware Latin run that is close to one em tall", () => {
-    const nearEmCtx = {
-      ...ctx,
-      measureText: (text: string) => {
-        if (text === "AveMujica") {
-          return {
-            width: 80,
-            actualBoundingBoxLeft: 42,
-            actualBoundingBoxRight: 38,
-            actualBoundingBoxAscent: 16,
-            actualBoundingBoxDescent: 6,
-            fontBoundingBoxAscent: 16,
-            fontBoundingBoxDescent: 4,
-          };
-        }
-        return ctx.measureText(text);
-      },
-    } as unknown as CanvasRenderingContext2D;
-    const token = tokenizeVerticalText("AveMujica")[0];
-    const metrics = resolveVerticalTokenMetrics(
-      nearEmCtx,
-      token,
-      20,
-      20,
-      1,
-      undefined,
-      true,
-      true,
-    );
-
-    expect(metrics.renderInlineScale).toBe(1.1);
-    expect(metrics.renderCrossScale).toBe(1.1);
-  });
-
-  it("expands upright advance to keep painted ink below the readability limit", () => {
-    const crampedCtx = {
-      ...ctx,
-      measureText: () => ({
-        width: 20,
-        actualBoundingBoxLeft: 10,
-        actualBoundingBoxRight: 10,
-        actualBoundingBoxAscent: 18,
-        actualBoundingBoxDescent: 2,
-        fontBoundingBoxAscent: 16,
-        fontBoundingBoxDescent: 4,
-      }),
-    } as unknown as CanvasRenderingContext2D;
-    const token = tokenizeVerticalText("中")[0];
-    const unconstrained = resolveVerticalTokenMetrics(
-      crampedCtx,
-      token,
-      20,
-      20,
-      0.6,
-      0.65,
-      true,
-      false,
-      false,
-    );
-    const constrained = resolveVerticalTokenMetrics(
-      crampedCtx,
-      token,
-      20,
-      20,
-      0.6,
-      0.65,
-      true,
-      false,
-      true,
-    );
-
-    expect(unconstrained.advanceY).toBe(13);
-    expect(unconstrained.uprightInkOccupancy).toBeGreaterThan(1);
-    expect(constrained.paintedInkHeight).toBe(22);
-    expect(constrained.advanceY).toBe(25);
-    expect(constrained.uprightInkOccupancy).toBeLessThanOrEqual(maxUprightPaintedInkOccupancy);
-    expect(constrained.uprightOccupancyConstrained).toBe(true);
   });
 });
 
@@ -641,7 +441,6 @@ describe("resolveVerticalSourceGeometryProfile", () => {
           centerY: 65,
           width: 20,
           height: 80,
-          fontSize: 18,
         },
         {
           text: "EFG",
@@ -651,7 +450,6 @@ describe("resolveVerticalSourceGeometryProfile", () => {
           centerY: 55,
           width: 20,
           height: 60,
-          fontSize: 22,
         },
       ],
     });
@@ -664,7 +462,6 @@ describe("resolveVerticalSourceGeometryProfile", () => {
       medianGap: 10,
       medianWidth: 20,
       medianHeight: 70,
-      medianFontSize: 20,
       medianAdvance: 20,
       perColumnAdvance: [20, 20],
       perColumnTopY: [25, 25],
@@ -964,7 +761,6 @@ describe("estimateVerticalPreferredProfile", () => {
         medianGap: null,
         medianWidth: 20,
         medianHeight: 30,
-        medianFontSize: null,
         medianAdvance: 30,
         perColumnAdvance: [30],
       },
@@ -1022,7 +818,6 @@ describe("estimateVerticalPreferredProfile", () => {
         medianGap: 30,
         medianWidth: 20,
         medianHeight: 100,
-        medianFontSize: null,
         medianAdvance: 55,
         perColumnAdvance: [80, 30],
       },
@@ -1030,71 +825,6 @@ describe("estimateVerticalPreferredProfile", () => {
 
     expect(profile.advanceScale).toBe(1);
     expect(profile.perColumnAdvanceScale).toEqual([1.1, minSourceGeometryAdvanceScale]);
-  });
-
-  it("uses bounded source-advance expansion for shorter translated columns", () => {
-    const compactCtx = {
-      font: "",
-      measureText: () => ({
-        width: 20,
-        actualBoundingBoxLeft: 10,
-        actualBoundingBoxRight: 10,
-        actualBoundingBoxAscent: 16,
-        actualBoundingBoxDescent: 4,
-        fontBoundingBoxAscent: 16,
-        fontBoundingBoxDescent: 4,
-      }),
-    };
-    const region = makeRegion({
-      direction: "v",
-      sourceText: "一二三四",
-      translatedText: "中文",
-      originalLineCount: 1,
-    });
-    const sourceGeometry = {
-      columnCount: 1,
-      groupCenterX: 20,
-      medianPitch: null,
-      medianGap: null,
-      medianWidth: 20,
-      medianHeight: 80,
-      medianFontSize: 20,
-      medianAdvance: 20,
-      perColumnAdvance: [20],
-      perColumnTopY: [0],
-    };
-
-    const sourceLocked = estimateVerticalPreferredProfile(
-      compactCtx as never,
-      region,
-      "中文",
-      40,
-      80,
-      20,
-      "sans-serif",
-      ["中文"],
-      40,
-      sourceGeometry,
-      false,
-    );
-    const translated = estimateVerticalPreferredProfile(
-      compactCtx as never,
-      region,
-      "中文",
-      40,
-      80,
-      20,
-      "sans-serif",
-      ["中文"],
-      40,
-      sourceGeometry,
-      true,
-    );
-
-    expect(sourceLocked.perColumnAdvanceScale).toEqual([1]);
-    expect(sourceLocked.advanceScale).toBe(1);
-    expect(translated.perColumnAdvanceScale).toEqual([maxTranslatedSourceAdvanceExpansionRatio]);
-    expect(translated.advanceScale).toBe(maxTranslatedSourceAdvanceExpansionRatio);
   });
 });
 

@@ -155,12 +155,6 @@ type VerticalGlyphQualityMetrics = {
   glyphOrientationAccuracy: number;
   runContinuityRate: number;
   verticalItemCenterAlignment: number;
-  runSpanFidelity: number;
-  runInkOccupancy: number;
-  runTrackingCompliance: number;
-  runTrackingEmMax: number;
-  uprightInkOccupancyMax: number;
-  uprightInkOccupancyCompliance: number;
   glyphQualityScore: number;
 };
 ```
@@ -171,9 +165,6 @@ type VerticalGlyphQualityMetrics = {
 - 预期方向从 render input 文本推导，实际方向来自 `columnVerticalItems`；诊断只能比较和报告，不能改写文本或列顺序。
 - 旧 debug 缺少 `columnVerticalItems` 时 coverage/score 为 0，不能默认视为兼容通过。
 - overlay 使用不同颜色显示 upright、sideways 和 tate-chu-yoko item 中心，但不得影响 render PNG。
-- source-aware sideways run 还要独立报告源目标跨度一致度、可见跨度占用率和 tracking 上限合规度；这些诊断只读 `columnVerticalItems`，不得反馈修改 runtime 输入。
-- upright item 还要报告 `paintedInkHeight / advanceY` 的最大值；只有实际译文启用 occupancy 约束，source 原文复现不因保真紧排被判错。受约束 item 必须满足 `<= 0.88`，缺少新字段时不得伪造合规。
-- fixture bake 与 runtime merge 必须共享竖排局部字号 estimator；benchmark adapter 不得把 production 的“列宽”静默替换成更精炼的 `fontSize` 后再评分。
 
 ### 4. Validation & Error Matrix
 
@@ -194,7 +185,6 @@ type VerticalGlyphQualityMetrics = {
 ### 6. Tests Required
 
 - `tests/benchmark/glyph-quality.test.ts` 覆盖完整、旧日志和 run 破坏场景。
-- `tests/benchmark/glyph-quality.test.ts` 还需覆盖 upright occupancy 合规与违规场景；pipeline 集成测试必须覆盖 runtime/fixture 字号语义一致性。
 - `npm run bench:audit-fixtures -- --strict` 必须先通过。
 - `npm run bench:render` 后运行 `npm run bench`，确认 geometry 与 glyph-quality 均出现在 JSON、Markdown 和控制台。
 

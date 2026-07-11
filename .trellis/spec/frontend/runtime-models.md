@@ -27,6 +27,7 @@
   3. `PP-OCRv6_medium_rec.onnx`
   4. `aot_inpaint_512.onnx`
 - 发布包 `dist/models/` 不应包含旧 48px OCR、PaddleOCR v5、PP-OCRv6 small、Lama inpaint 或旧 bubble 备份。
+- 旧 AR/Lama 转换脚本只可作为历史参考保存在 `scripts/legacy/`；`package.json`、Vite、CI 和 Release build 不得调用它们。
 - `bubble.onnx` 是同名替换过的模型文件：当前文件必须来自 YOLO11n Bubble，不要因为文件名未变而沿用旧 YOLOv8m 来源判断。
 - benchmark 候选模型不得自动进入前端设置、`models.json` 或默认发布包；需要产品化时先更新本文档。
 
@@ -53,6 +54,7 @@
 - `npx tsc --noEmit --pretty false`
 - `npm run test`
 - `npm run build`
+- `npm run check:artifacts`，确认 Release Worker 不含旧 AR RPC、模型名或输出名。
 - 构建后检查 `dist/models/` 只包含本文档“当前发布模型”和必需运行时文件。
 - OCR 设置迁移测试必须覆盖 `48px`、`builtin`、`paddleocr`、`paddleocr_v6_small` 到 `paddleocr_v6_medium`。
 
@@ -73,7 +75,7 @@
 {
   "paddleocr_v6_medium_rec": {
     "url": "/models/PP-OCRv6_medium_rec.onnx",
-    "dict": "/models/paddleocr_v6_dict.txt"
+    "dictUrl": "/models/paddleocr_v6_dict.txt"
   }
 }
 ```
@@ -118,8 +120,11 @@
 | `lama_fp32.onnx` | 旧 Lama inpaint，当前改用 AOT |
 | 旧 `bubble.onnx` YOLOv8m 备份 | 当前改用 YOLO11n `bubble.onnx` |
 
+旧 AR 模型导出/拆分和旧 Lama WebGPU patch 脚本位于 `scripts/legacy/`，用途见其 README。它们不代表受支持的模型，也不允许把生成物自动写入 `public/models/models.json`。如需重新评估，必须新建实验任务并重新建立 benchmark、模型来源与发布边界。
+
 ## 维护规则
 
 - 新增模型必须先写入本文档，再加入 `public/models/models.json`。
 - 如果只是用于 benchmark 的候选模型，不要加入前端设置，也不要加入默认发布包。
 - 模型二进制受 `.gitignore` 忽略；发布前以 `public/models/models.json` 为准检查实际 `public/models/` 和 `dist/models/` 文件集。
+- 保留历史 benchmark JSON/文档用于回溯；历史报告中出现的旧模型名不是恢复 runtime 或 npm 命令的依据。

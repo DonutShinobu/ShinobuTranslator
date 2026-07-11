@@ -6,7 +6,7 @@
 
 ## Overview
 
-This project is a Chrome Manifest V3 browser extension for translating manga/comics on Twitter (x.com) and Pixiv. It has three runtime contexts: content script (imperative DOM), background service worker, and popup UI (React). All spec files below document actual code patterns.
+This project is a Chrome Manifest V3 browser extension for translating manga/comics on Twitter/X, Pixiv, and E-Hentai. Runtime contexts include the imperative-DOM content script, background service worker, React popup, and separately built ONNX Worker; benchmark mode adds an isolated page entry that is absent from Release.
 
 ---
 
@@ -29,10 +29,13 @@ This project is a Chrome Manifest V3 browser extension for translating manga/com
 ## Key Architecture Facts
 
 - **React is only in the popup** — content scripts use imperative DOM (`document.createElement`)
-- **No external state library** — `useState` in popup, `Map` in content script, `storage.local` in background
+- **No external state library** — `useState` in popup, `PhotoStateStore`/controllers in content, `storage.local` in background
 - **Pipeline is lazy-loaded** — `import('../../pipeline/orchestrator')` only when user clicks translate
 - **本地模型固定清单** — 发布包只包含 detector、PP-OCRv6 medium、AOT inpaint、YOLO11n bubble；前端不提供 OCR 引擎切换
-- **Three separate entry points** — content.js, background.js, popup.js (Vite rollup)
+- **Thin composition roots** — Background 通过 router/services 分层；`TranslatorCore` 组合 store/controllers/UI
+- **Three Release Vite entries** — content.js、background.js、popup.js；`onnxWorker.js` 由独立脚本构建
+- **Benchmark is isolated** — `benchmark.html`/`src/benchmark/browserEntry.ts` 只在 benchmark mode 出现
+- **Standard quality gate** — `npm run check` 检查 app/tests/benchmark 类型、Vitest、Release/Worker 构建和产物边界
 - **Custom Vite plugin** bridges ES module output to Chrome's classic script injection for content scripts
 
 ---

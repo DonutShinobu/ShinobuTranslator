@@ -22,21 +22,18 @@ Managed by Trellis. Edits outside this block are preserved; edits inside may be 
 
 ## Project Overview
 
-ShinobuTranslator is a Chrome Manifest V3 browser extension that translates manga/comic images on Twitter/X and Pixiv. The translation pipeline runs locally in the browser and includes text detection, OCR, translation, inpainting, and typesetting.
+ShinobuTranslator is a Chrome Manifest V3 browser extension that translates manga/comic images on Twitter/X, Pixiv, and E-Hentai. The local pipeline includes text detection, OCR, translation, inpainting, and typesetting.
 
 ## Build Commands
 
 ```bash
 npm run dev       # Vite development mode
-npm run build     # TypeScript compile + Vite production build
+npm run typecheck # App + tests + benchmark TypeScript checks
+npm run build     # Release build + separate ONNX Worker build + artifact checks
+npm run check     # Full typecheck + Vitest + Release build gate
+npm run build:benchmark # Build the isolated benchmark page after Release checks
 npm run preview   # Preview production build
 npm run test      # Vitest test runner
-```
-
-Additional check:
-
-```bash
-npx tsc --noEmit  # Type check only
 ```
 
 ## Development Notes
@@ -53,9 +50,17 @@ npx tsc --noEmit  # Type check only
 ## Runtime and Models
 
 - Runtime uses `onnxruntime-web` with provider fallback (WebNN/WebGPU/WASM depending on environment support).
-- Register every model in `public/models/manifest.json` before usage.
+- Register every product model in `public/models/models.json` before usage.
 - Load model sessions through `src/runtime/modelRegistry.ts`.
+- `src/workers/onnx-worker.ts` is built separately by `scripts/build-worker.mjs`; do not add it to the main Vite entry graph.
+- The only product OCR runtime is `paddleocr_v6_medium`; legacy conversion scripts under `scripts/legacy/` are historical references, not build inputs.
 - The pipeline is lazy-loaded via dynamic `import()` only when the user clicks translate.
+
+## Benchmark Boundary
+
+- `benchmark.html` and `src/benchmark/browserEntry.ts` are only available through `npm run build:benchmark`.
+- Production content/background/popup code must not expose benchmark globals or import benchmark-only modules.
+- Keep historical benchmark reports, but do not restore removed runtime paths merely to execute an old report or command.
 
 ## Security Notes
 

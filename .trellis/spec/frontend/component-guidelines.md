@@ -33,19 +33,22 @@ No component splitting, no separate files per UI section. The popup is small eno
 
 ### Content script (Imperative DOM)
 
-UI creation and rendering are in separate functions:
-- `createUi()` — builds the DOM structure once, returns a `UiElements` object
-- `renderUi(ui, state)` — imperatively updates DOM based on current state
-- `injectStyles()` — injects a `<style>` element with all CSS rules
+Content UI 的公共入口是 `src/content/core/ui/index.ts`：
 
-DOM elements are created with `document.createElement()`, not JSX. State updates are direct mutations: `state.status = 'running';`
+- `createUiElements()` — 组合图片按钮和卡片 DOM，返回 `UiElements`
+- `renderUi(ui, state)` — 根据 `PhotoState` 更新 DOM
+- `injectStyles()` — 从 `ui/styles.ts` 注入唯一一份 `mt-x-` 样式
+- `createReadingModeBar()` — 组合 Pixiv 阅读模式全局控制条
+- `createScreenshotOverlay()` — 组合截图选择与浮动结果 UI
+
+具体 DOM 责任按 `imageControls.ts`、`cards.ts`、`readingModeBar.ts`、`screenshotOverlay.ts` 拆分；图标和样式分别位于 `icons.ts`、`styles.ts`。DOM 事件只调用 controller/core 回调，UI 模块不直接运行 pipeline 或管理持久状态。
 
 ---
 
 ## Props Conventions
 
 - **Popup**: No props — `App` is the root component, receives nothing. If components are extracted in future, props should use TypeScript `type` (not `interface`), matching the project convention.
-- **Content script**: No props concept — state is passed as plain objects to render functions: `renderUi(ui: UiElements, state: PhotoState | null): void`.
+- **Content script**: No props concept — state is passed as plain objects to render functions: `renderUi(ui: UiElements, state: PhotoState | null): void`. 复杂 UI 工厂使用具名 options/callback 类型，不引用 `TranslatorCore` 实例。
 
 ---
 
@@ -57,7 +60,7 @@ DOM elements are created with `document.createElement()`, not JSX. State updates
 - No CSS modules, no CSS-in-JS, no Tailwind, no styled-components
 
 ### Content script: Injected styles
-- `injectStyles()` creates a `<style>` element with all rules
+- `ui/styles.ts` owns CSS text; `injectStyles()` idempotently creates a `<style>` element
 - CSS classes use `mt-x-` prefix to avoid collisions with host page styles
 - Some positioning uses inline `style.cssText` for computed values (e.g., button placement relative to image)
 
@@ -77,5 +80,6 @@ DOM elements are created with `document.createElement()`, not JSX. State updates
 
 1. **Using React in content scripts** — The content script runs in the host page DOM. React reconciliation would conflict with the page. Always use imperative DOM in `src/content/`.
 2. **Using unprefixed CSS classes in content scripts** — Must use `mt-x-` prefix to avoid style collisions with host page CSS.
-3. **Adding component splitting prematurely** — The popup is intentionally kept as one file. Don't split unless the UI grows significantly.
+3. **把 Content UI 再聚合成单体文件** — 图片控件、卡片、阅读模式和截图浮层已按职责拆分；新增复杂交互应放入对应子模块，而不是恢复旧 `core/ui.ts`。
 4. **Mutating DOM directly in popup** — The popup uses React. Don't use `document.createElement` or direct DOM mutation in popup code.
+5. **在 UI 模块运行 pipeline** — pipeline 调用属于 `TranslationRunner`；状态生命周期属于 `PhotoStateStore`，UI 只创建/渲染 DOM 并上报事件。

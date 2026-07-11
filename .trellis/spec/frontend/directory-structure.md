@@ -1,188 +1,160 @@
-# Directory Structure
+# 目录与模块边界
 
-> How frontend code is organized in this project.
+本文档记录 ShinobuTranslator 当前已经落地的代码组织方式。项目是 Chrome Manifest V3 扩展，支持 Twitter/X、Pixiv 和 E-Hentai；Popup、Content Script、Background Service Worker、ONNX Worker 与 benchmark 页面分别运行在不同上下文中。
 
----
+## 当前目录
 
-## Overview
-
-This is a Chrome Manifest V3 browser extension for translating manga/comics on Twitter and Pixiv. The project has three separate entry points (content script, background service worker, popup UI) that share common code via Vite rollup chunks.
-
----
-
-## Directory Layout
-
-```
+```text
 src/
-├── types.ts                    # Central shared type definitions (pipeline domain types)
 ├── background/
-│   └── index.ts                # Chrome extension background service worker entry
+│   ├── index.ts                 # composition root：组装 service 并注册 Chrome 事件
+│   ├── messages/router.ts       # RuntimeMessage 路由；只依赖 BackgroundServices
+│   ├── diagnostics/logStore.ts  # 持久化诊断日志
+│   ├── images/imageService.ts   # 截图、下载与 pximg referer 规则
+│   ├── menus/registerMenus.ts   # 右键菜单与快捷键
+│   ├── settings/settingsStore.ts
+│   ├── storage/chromeStorage.ts
+│   ├── providers/providerService.ts
+│   ├── gemini/authService.ts
+│   └── openai/                  # OAuth 与 Responses proxy
 ├── content/
-│   ├── index.ts                # Content script entry (adapter selection + core init)
-│   ├── core/
-│   │   ├── TranslatorCore.ts   # Main translation lifecycle orchestrator (class-based)
-│   │   ├── types.ts            # Content-script-specific types (PhotoState, SiteAdapter)
-│   │   ├── ui.ts               # Imperative DOM UI rendering (no React)
-│   │   └── utils.ts            # Utility helpers (re-exports toErrorMessage from shared)
-│   └── adapters/
-│       ├── twitter.ts          # Twitter/X site adapter (implements SiteAdapter)
-│       └── pixiv.ts            # Pixiv site adapter (implements SiteAdapter)
+│   ├── index.ts                 # 站点 adapter 选择和 TranslatorCore 启动
+│   ├── adapters/
+│   │   ├── twitter.ts
+│   │   ├── pixiv.ts
+│   │   └── ehentai.ts
+│   └── core/
+│       ├── TranslatorCore.ts    # 薄编排器：挂载、同步、控制器组合
+│       ├── types.ts
+│       ├── state/photoStateStore.ts
+│       ├── translation/
+│       │   ├── translationRunner.ts
+│       │   └── imageTranslationController.ts
+│       ├── reading/readingModeController.ts
+│       ├── screenshot/
+│       │   ├── screenshotController.ts
+│       │   └── overlayInteraction.ts
+│       └── ui/
+│           ├── index.ts         # Content UI 公共入口
+│           ├── cards.ts
+│           ├── cardState.ts
+│           ├── imageControls.ts
+│           ├── readingModeBar.ts
+│           ├── screenshotOverlay.ts
+│           ├── styles.ts
+│           └── icons.ts
 ├── pipeline/
-│   ├── utils.ts                # Shared pipeline utilities (clamp, polygonArea, convexHull, nmsBoxes, rectIou, UnionFind, normalizeTextDeep/Light)
-│   ├── orchestrator.ts         # Main pipeline coordinator (runPipeline)
-│   ├── detect/                 # Text detection (ONNX + Tesseract + heuristic)
-│   │   ├── index.ts            #   Entry: detectTextRegionsWithMask, DetectOutput
-│   │   ├── onnxDetect.ts       #   ONNX detection + shared helpers (connectedComponents, mergeRects, makeRegion)
-│   │   └── heuristicDetect.ts  #   Tesseract + heuristic fallback
-│   ├── ocr/                    # OCR recognition (autoregressive + CTC)
-│   │   ├── index.ts            #   Entry: runOcr, OcrResult
-│   │   ├── decodeAutoregressive.ts  # Autoregressive beam search decoding
-│   │   ├── decodeCtc.ts       #   CTC greedy decoding (fallback path)
-│   │   ├── preprocess.ts       #   Perspective transform, region crop, direction inference
-│   │   └── color.ts            #   Background/text color extraction
-│   ├── translate.ts            # Translation dispatcher
-│   ├── inpaint.ts              # Inpainting (text removal from image)
-│   ├── typeset.ts              # Typesetting/rendering translated text
-│   ├── typeset/                # Typeset geometry calculations (merged old geometry.ts)
-│   │   ├── index.ts            #   Entry: computeFullVerticalTypeset, re-exports
-│   │   ├── geometry.ts         #   Quad ops, convexHull (re-export), sortMiniBoxPoints, minAreaRect
-│   │   ├── columns.ts          #   Column logic, rebalancing, kinsoku (禁則)
-│   │   ├── fontFit.ts          #   Font size search, canvas measurement, layout
-│   │   └── color.ts            #   Color science, contrast, color selection
-│   ├── bubbleDetect.ts         # Speech bubble detection
-│   ├── maskRefinement/         # Mask refinement for inpainting
-│   │   ├── index.ts            #   Entry: refineTextMask → RefineTextMaskResult
-│   │   └── algorithms.ts       #   Otsu, dilate, polygon clipping, connected components
-│   ├── readingOrder.ts         # Reading order sorting
-│   ├── textlineMerge/          # Text line merging
-│   │   ├── index.ts            #   Entry: mergeTextLines
-│   │   └── mergePredicates.ts  #   Merge predicates, MST splitting, InternalQuad types
-│   ├── image.ts                # Image file/canvas helpers
-│   ├── visualize.ts            # Debug visualization
-│   └── bake.ts                 # Benchmark bake/render bridge
-├── popup/
-│   ├── App.tsx                 # React popup component (settings UI)
-│   ├── main.tsx                # React entry point
-│   └── styles.css              # Plain CSS for popup
-├── workers/
-│   └── onnx-worker.ts       # ONNX inference Worker entry (comlink + onnxruntime-web)
+│   ├── orchestrator.ts          # 本地翻译 pipeline composition root
+│   ├── detect/                  # 文字检测和后处理
+│   ├── ocr/                     # PP-OCRv6 medium + CTC +颜色采样
+│   ├── typeset/
+│   │   ├── index.ts             # 仅导出 drawTypeset 及公共类型
+│   │   ├── drawTypeset.ts       # 排版入口
+│   │   ├── composite.ts         # 最终合成
+│   │   ├── debug.ts             # debug 输出
+│   │   ├── fontFit*.ts          # 共享字号拟合与度量
+│   │   ├── horizontal*.ts       # 横排拟合、布局和渲染
+│   │   ├── vertical*.ts         # 竖排拟合、布局、方向和渲染
+│   │   └── sourceGeometry.ts    # 源列几何约束
+│   ├── translate.ts
+│   ├── inpaint.ts
+│   ├── bubbleDetect.ts
+│   ├── maskRefinement/
+│   └── textlineMerge/
 ├── runtime/
-│   ├── onnx.ts                 # ONNX Runtime session management (WebNN/WebGPU/WASM)
-│   ├── onnxBridge.ts           # Conditional ONNX import entry (isNode → onnxNodeBridge, else onnxWorkerBridge)
-│   ├── onnxNodeBridge.ts       # Node ONNX bridge (onnxruntime-node + CUDA EP, in-process sessions)
-│   ├── onnxruntime-node.d.ts   # Type declaration shim for onnxruntime-node
-│   ├── modelRegistry.ts        # Model manifest loading + session caching (Node: fs, Browser: fetch)
-│   ├── platform.ts             # PlatformProvider structural types (PipelineCanvas, PipelineImage, etc.)
-│   ├── browserPlatform.ts      # Browser PlatformProvider (DOM API implementation)
-│   ├── nodePlatform.ts         # Node PlatformProvider (node-canvas implementation)
-│   └── selfCheck.ts            # Runtime self-diagnostic checks
-├── shared/
-│   ├── utils.ts                # Global shared utilities (toErrorMessage)
-│   ├── config.ts               # Extension settings types + normalization + defaults + LLM config
-│   ├── messages.ts             # Chrome runtime message types + send/receive helpers
-│   ├── chrome.ts               # Chrome API abstraction (getChromeApi/requireChromeApi)
-│   └── assetUrl.ts             # Asset URL resolution (chrome.runtime.getURL polyfill)
-└── translators/
-    ├── googleWeb.ts             # Google Translate web API
-    └── llm.ts                  # LLM batch/individual translation (DeepSeek, GLM, etc.)
+│   ├── modelRegistry.ts         # 浏览器模型 manifest 与 session 缓存
+│   ├── modelRegistryNode.ts     # Node 模型路径适配
+│   ├── onnxBridge.ts            # Browser/Node 统一懒加载入口
+│   ├── onnxWorkerBridge.ts      # Comlink 浏览器桥
+│   ├── onnxNodeBridge.ts        # onnxruntime-node 进程内桥
+│   ├── onnxWorkerTypes.ts       # Worker transport/API 契约
+│   ├── browserPlatform.ts
+│   ├── nodePlatform.ts
+│   └── platform.ts
+├── workers/
+│   ├── onnx-worker.ts           # 独立构建的 ONNX Worker
+│   └── gpuPreprocess.ts
+├── benchmark/browserEntry.ts    # 仅 benchmark mode 暴露 window API
+├── popup/                       # React 设置 UI
+├── shared/                      # 配置、Chrome/messages、诊断等跨层契约
+├── translators/                 # 文本翻译 provider
+└── types.ts                     # pipeline 领域共享类型
 ```
 
-Top-level files outside `src/`:
+项目根目录的重要边界：
 
-```
-popup.html          # Popup HTML entry (<div id="root">)
-vite.config.ts      # 3-entry rollup build + custom plugins
-tsconfig.json       # strict mode, ES2022, react-jsx
-public/
-  manifest.json     # Chrome Manifest V3 extension manifest
+```text
+benchmark.html                   # benchmark mode HTML；Release 不包含
+benchmark/
+├── typeset/                     # 排版 fixture、render、metrics
+├── color/                       # 颜色诊断
+└── perf/                        # 浏览器/Node 性能与 smoke；历史报告可保留
+tests/                            # 集中式 Vitest，按 src 层级镜像
 scripts/
-  benchmark/        # Benchmark infrastructure (bake, run, render, diff)
+├── build-worker.mjs             # 独立构建 dist/onnxWorker.js
+├── check-release-boundaries.mjs # Release/benchmark 产物边界断言
+└── legacy/                      # 非生产历史模型转换脚本
+public/
+├── manifest.json                # Chrome MV3 manifest
+└── models/models.json           # 当前模型事实源
+vite.config.ts                   # Release 三入口 + 独立 benchmark mode
+tsconfig.json                    # 应用代码
+tsconfig.tests.json              # tests
+tsconfig.benchmark.json          # benchmark
 ```
 
----
+## 构建入口
 
-## Module Organization
+- Release Vite 输入只有 `popup.html`、`src/background/index.ts` 和 `src/content/index.ts`。
+- `src/workers/onnx-worker.ts` 不属于主 Vite 输入；`npm run build` 在主构建后调用 `scripts/build-worker.mjs`，单独生成 `dist/onnxWorker.js`。
+- `benchmark.html` 和 `src/benchmark/browserEntry.ts` 只由 `vite build --mode benchmark` 使用。生产 Content Script 不得安装 `window.__shinobuBenchmark__` 或 benchmark message bridge。
+- `npm run check:artifacts` 必须确认 Release 不含 benchmark entry/bridge，也不含已移除的 legacy OCR Worker API。
 
-### Adding a new Worker entry point
-Create `src/workers/<name>-worker.ts`, import comlink + domain-specific libraries, define an API class with methods, call `Comlink.expose(apiInstance)` at the end. Add the entry to `vite.config.ts` `rollupOptions.input` as `'<name>Worker': resolve(__dirname, 'src/workers/<name>-worker.ts')`. Add `'<name>Worker.js'` to `web_accessible_resources` in `public/manifest.json`. On the main thread, create the Worker via `new Worker(chrome.runtime.getURL('<name>Worker.js'))` and wrap with `Comlink.wrap<ApiType>(worker)`.
+## 层级约束
 
-### Adding a new site adapter
-Create `src/content/adapters/<site>.ts`, implement the `SiteAdapter` interface (`match`, `findImages`, `createUiAnchor`, `applyImage`, `observe`), export as named const, and register in `src/content/index.ts`.
+### Background
 
-### Adding a new pipeline stage
-Create `src/pipeline/<stage>.ts` (or `src/pipeline/<stage>/index.ts` for complex stages), add its output type to `src/types.ts` if shared, and wire it into `orchestrator.ts`'s `runPipeline`.
+`src/background/index.ts` 只负责组装 `BackgroundServices`、注册 Chrome listener 和启动初始化。消息分派放在 `messages/router.ts`，Chrome/API 细节放在具名 service。新增消息时同时更新 shared message guard、router 测试和对应 service 测试，避免把业务分支重新堆回入口。
 
-### Adding a sub-module to an existing pipeline stage
-When a pipeline module grows beyond ~500 lines, split it into a sub-directory with `index.ts` as the public entry. Internal sub-modules are named by responsibility (e.g., `decodeAutoregressive.ts`, `algorithms.ts`). The `index.ts` re-exports the public API so external imports (`from "../pipeline/ocr"`) remain unchanged.
+### Content Script
 
-### Adding a new translator
-Create `src/translators/<translator>.ts`, implement the translate function signature, and register in `src/pipeline/translate.ts`.
+`TranslatorCore` 负责生命周期和控制器组合，不直接承载翻译、截图、阅读模式或大段 UI 实现：
 
-### Adding a new popup setting
-Add the field to `ExtensionSettings` in `src/shared/config.ts`, set a default in `DEFAULT_SETTINGS`, add UI in `src/popup/App.tsx`, and wire the save/load through `src/shared/messages.ts`.
+- 状态与 Blob URL 生命周期：`PhotoStateStore`
+- pipeline 执行：`TranslationRunner`
+- 单图交互：`ImageTranslationController`
+- 阅读模式：`ReadingModeController`
+- 截图/浮层：`ScreenshotController`
+- DOM 创建/渲染：`core/ui/`
 
-### Adding a new pipeline debug visualization
-Debug visualizations in this project modify the pipeline output directly — they replace `resultCanvas` with a debug canvas so the user sees the debug info in the normal translation result. **Do not** store debug canvases as separate blob URLs in `PhotoState` or open them via `window.open`. Follow the pattern: pipeline stage returns structured debug data → orchestrator builds a debug overlay canvas → replaces `resultCanvas` when the debug flag is enabled.
+Content Script 继续使用 imperative DOM，禁止引入 React。所有 CSS class 使用 `mt-x-` 前缀。
 
-### refineTextMask contract
-`refineTextMask` returns `RefineTextMaskResult` (not a bare `HTMLCanvasElement`). The `collectDebugLayers` parameter (default `false`) controls whether `debugLayers: MaskDebugLayers` is populated. When `false`, no intermediate arrays are allocated. The `refinedMaskCanvas` field is always present and identical to the previous single-canvas return value.
+### Typeset
 
-### Adding a shared utility function
-- **Globally shared** (used across pipeline/runtime/content/background): `src/shared/utils.ts`
-- **Pipeline-specific** (used across pipeline modules): `src/pipeline/utils.ts`
-- **Module-internal** (used only within one sub-directory): keep in the relevant sub-module file
+外部模块只从 `src/pipeline/typeset/index.ts` 导入 `drawTypeset` 和公共类型。入口编排、横竖排算法、Canvas 渲染、合成与 debug 分离；不要重新建立顶层 `src/pipeline/typeset.ts` 或把实现聚合回 `fontFit.ts`。
 
----
+### OCR 与 Worker
 
-## Naming Conventions
+产品 OCR 只有 `paddleocr_v6_medium`，识别由 Paddle provider + CTC decode 完成。Worker API 保持通用 session/inference、runtime probe、Paddle graph-capture probe、detector GPU preprocess 和 dispose 能力；AR decode/color 不是 Worker RPC。
 
-- **Files**: camelCase for multi-word modules. Single-word files use lowercase (`detect/`, `ocr/`, `image.ts`).
-- **Sub-directories**: Named by pipeline stage (`detect/`, `ocr/`, `typeset/`). Entry point is always `index.ts`.
-- **Test files**: Colocated with source, `.test.ts` suffix (`geometry.test.ts`, `typesetGeometry.test.ts`).
-- **Entry points**: Always `index.ts` (background, content, popup, and pipeline sub-directories all use this pattern). Workers use `<name>-worker.ts`.
-- **Worker files**: Named `<name>-worker.ts` in `src/workers/`, with corresponding `<name>Worker.ts` bridge and `<name>WorkerTypes.ts` transport types in `src/runtime/`.
-- **Types files**: `types.ts` at top-level and sub-level (`src/types.ts`, `src/content/core/types.ts`).
-- **Adapters**: Named by site (`twitter.ts`, `pixiv.ts`), exported as `const <site>Adapter: SiteAdapter`.
-- **CSS classes in content script**: `mt-x-` prefix (`mt-x-overlay-inline`, `mt-x-control`, `mt-x-status`).
-- **CSS classes in popup**: No prefix, plain class names (`.popup`, `.panel`, `.checkbox-row`).
-- **Chrome messages**: `mt:` prefix discriminant (`mt:get-settings`, `mt:set-settings`, `mt:download-image`).
+### Benchmark
 
----
+benchmark 可导入生产 pipeline 进行测量，但生产入口不得反向导入 `src/benchmark/` 或 `benchmark/`。保留历史报告不代表恢复历史 runtime。当前 Paddle 浏览器性能入口为 `benchmark/perf/src/run-browser-paddle-profile.ts`。
 
-## Pipeline Sub-directory Convention
+## 新增代码的放置规则
 
-Pipeline modules follow a consistent pattern when split into sub-directories:
+- 新站点：实现 `SiteAdapter`，放在 `src/content/adapters/<site>.ts`，在 `src/content/index.ts` 注册，并在 `tests/content/adapters/` 增加测试。
+- 新 Background 能力：放入具名 service 目录，通过 `BackgroundServices` 注入 router；入口只做 wiring。
+- 新 Content 交互：优先放入现有 controller/store/UI 子模块；`TranslatorCore` 只添加编排调用。
+- 新复杂 pipeline stage：使用 `src/pipeline/<stage>/index.ts` 作为唯一公共入口，内部按职责拆分。
+- 新 Worker 能力：先证明它属于产品通用 runtime，再同步 API type、Browser/Node bridge、Worker expose、契约测试和产物断言；不要把废弃领域算法塞进 Worker。
+- 新 benchmark 页面能力：只从 `src/benchmark/browserEntry.ts` 暴露，并验证 Release 产物不含该符号。
+- 新测试：放在 `tests/` 下并镜像源码层级；当前 Vitest 不运行 colocated `src/**/*.test.ts`。
 
-| Pattern | Description |
-|---------|-------------|
-| `index.ts` | Public API entry — re-exports main function + types |
-| `*Detect.ts` / `*Decode.ts` / `*Algorithm.ts` | Core algorithm by strategy |
-| `preprocess.ts` | Input transformation / preprocessing |
-| `color.ts` | Color-related extraction / science |
-| `geometry.ts` | Geometric operations (quad, hull, rect) |
-| `algorithms.ts` | Shared algorithm-level functions |
-| `mergePredicates.ts` | Predicates / matching / splitting logic |
+## 命名与导入
 
-External imports always target the directory (e.g., `from "../pipeline/detect"`) which resolves to `index.ts`.
-
----
-
-## Shared Utilities Convention
-
-| Location | Scope | Examples |
-|----------|-------|---------|
-| `src/shared/utils.ts` | All modules | `toErrorMessage` |
-| `src/pipeline/utils.ts` | Pipeline modules only | `clamp`, `polygonArea`, `convexHull`, `nmsBoxes`, `rectIou`, `UnionFind`, `normalizeTextDeep`, `normalizeTextLight` |
-
-**Rules:**
-- Never duplicate a utility function across files. If it's used in 2+ files, extract to the appropriate utils file.
-- `normalizeText` has two semantic variants: `normalizeTextDeep` (replaces newlines + collapses whitespace) and `normalizeTextLight` (trims only). Choose the one matching your use case.
-- `connectedComponents` has 3 different return types across the codebase. Do NOT unify — each variant serves a different pipeline stage with different filtering/area semantics.
-
----
-
-## Examples
-
-- Well-organized sub-directory module: `src/pipeline/ocr/` — `index.ts` orchestrates, sub-modules by responsibility (decode, preprocess, color)
-- Well-organized shared utility: `src/pipeline/utils.ts` — pure functions, no side effects, used across pipeline modules
-- Well-organized adapter module: `src/content/adapters/twitter.ts` — single responsibility, clear interface contract
+- 文件使用 camelCase；目录与入口用领域名称和 `index.ts`。
+- 数据结构优先 `type`，可扩展契约（例如 `SiteAdapter`、`OnnxWorkerApi`）可使用 `interface`。
+- 类型导入使用 `import type`。
+- Pipeline 只能通过 `runtime/onnxBridge.ts` 访问 ONNX，不能直接导入 Browser/Node bridge。
+- 跨领域工具放 `src/shared/`，pipeline 共享算法放 `src/pipeline/utils.ts`，单模块 helper 留在所属目录。

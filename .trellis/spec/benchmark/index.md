@@ -6,16 +6,13 @@
 
 ## Overview
 
-项目在 `benchmark/` 下有两套基准测试基础设施：
+项目在 `benchmark/` 下有三类基础设施：
 
-1. **排版基准测试** — `benchmark/typeset/`，竖排排版几何精度回归测试（`run-bench.ts`, `bake-fixtures.ts` 等）
-2. **颜色诊断与对比测试** — `benchmark/color/`，OCR 文字前景/背景色识别的诊断 + 量化对比框架（`color-diagnostic.ts`, `color-comparison.ts` 等）
-3. **Node bake CLI** — `bake-node.ts`，纯 Node.js 端到端 pipeline（detect → OCR → merge → JSON 输出），使用 CUDA GPU 加速，替代 Chrome CDP 路径
+1. **排版基准** — `benchmark/typeset/`，fixture bake、render、几何/字形指标与回归报告。
+2. **颜色诊断** — `benchmark/color/`，文字前景/背景色取样的诊断和量化对比。
+3. **Pipeline 性能与 smoke** — `benchmark/perf/`，包括 Node OCR、真实 Chromium/WebGPU OCR/pipeline/UI jank smoke 和单路径 Paddle profile。
 
-1. **排版基准测试** — 竖排排版几何精度回归测试（`run-bench.ts`, `bake-fixtures.ts` 等）
-2. **颜色诊断与对比测试** — OCR 文字前景/背景色识别的诊断 + 量化对比框架（`color-diagnostic.ts`, `color-comparison.ts` 等）
-
-两者都运行在 Node.js 环境下，使用 `@napi-rs/canvas` 模拟 Canvas，`tsx` 作为运行器。
+Node 脚本通过 `tsx` 和 `canvas` 运行；浏览器脚本通过 Playwright 启动 Chromium，并加载独立 `benchmark.html`。历史 JSON/Markdown 可以保留，但旧报告中的命令或 runtime 名称不构成当前可执行入口。
 
 ---
 
@@ -29,12 +26,14 @@
 
 ## Key Architecture Facts
 
-- **Benchmark 脚本运行在 Node.js** — 不依赖浏览器环境，使用 `@napi-rs/canvas` 替代 DOM Canvas
-- **运行方式** — `tsx benchmark/typeset/src/*.ts` / `tsx benchmark/color/src/*.ts`，或通过 `package.json` 中的 npm scripts
+- **Node 与浏览器分离** — typeset/color/Node OCR 直接由 `tsx` 运行；浏览器 smoke/profile 由 Playwright 加载 benchmark build
+- **独立 browser entry** — `benchmark.html` → `src/benchmark/browserEntry.ts` → `window.__shinobuBenchmark__`，只在 `vite build --mode benchmark` 中存在
+- **Release 隔离** — `npm run build` 不包含 benchmark entry/global；`npm run build:benchmark` 先完成 Release build/断言，再生成 benchmark 页面
+- **运行方式** — 优先使用 `package.json` 中的具名 npm scripts，不为已删除 runtime 保留兼容命令
 - **bake-node** — `npx tsx benchmark/typeset/src/bake-node.ts [--out-dir path] [image1.png ...]` 或 `npm run bench:bake-node`，使用 `nodePlatform` + `onnxNodeBridge`（CUDA EP），输出 Fixture JSON
 - **bake-node 字体限制** — node-canvas 的 `registerFont()` 只支持 `.ttf/.otf/.ttc`，不支持 `.woff2`。若项目字体只有 `.woff2` 格式，需安装系统 CJK 字体作为 fallback
 - **Fixture 数据** — JSON 注解文件 git 追踪，实际图片文件 gitignore（用户手动添加）
-- **报告输出** — `benchmark/reports/` 目录，gitignore，每次运行生成带时间戳的子目录
+- **报告输出** — 新生成的 `benchmark/reports/`、`benchmark/perf/reports/` 默认忽略；已经追踪的历史报告只读保留
 - **颜色工具函数** — `color-utils.ts` 从 `src/pipeline/typeset/color.ts` 重新导出 `rgbToLab`/`colorDistance`/`resolveColors`，不直接引用浏览器端代码（避免 ONNX Runtime 等浏览器依赖）
 
 ---
@@ -44,11 +43,12 @@
 Before modifying benchmark scripts, verify:
 
 - [ ] `tsx` 可用（`package.json` devDependencies）
-- [ ] `@napi-rs/canvas` 已安装（Node.js Canvas 模拟）
+- [ ] `canvas` 已安装（Node.js Canvas/DOM 适配）
 - [ ] Fixture 注解格式与 `color-types.ts` 中的类型定义一致
-- [ ] 新算法实现不修改浏览器端 `src/pipeline/` 代码（仅建立测试框架）
+- [ ] benchmark 只测量/适配生产能力；如实验需要改 `src/pipeline/`，必须在独立 Trellis 实现任务中说明产品影响
 - [ ] 重复逻辑提取到 `color-utils.ts`（共享工具优于各脚本内复制）
 - [ ] 颜色算法脚本放在 `benchmark/color/src/`，排版脚本放在 `benchmark/typeset/src/`
+- [ ] 浏览器 API 只从 `src/benchmark/browserEntry.ts` 暴露，Release 产物断言保持通过
 
 ---
 
@@ -208,17 +208,17 @@ const glyphQuality = computeVerticalGlyphQuality(debugRegion);
 
 ### 1. Scope / Trigger
 
-- 触发：修改 `benchmark/perf/src/run-browser-x-compare.ts`、新增浏览器 pipeline profile 命令，或需要在 Chromium/WebGPU 中分析 `paddleocr_v6_medium` 端到端耗时。
+- 触发：修改 `benchmark/perf/src/run-browser-paddle-profile.ts`、`src/benchmark/browserEntry.ts`，或需要在 Chromium/WebGPU 中分析 `paddleocr_v6_medium` 端到端耗时。
 - 目标：用真实浏览器 provider、stage timings 和 Paddle OCR debug 判断 cold/warm 瓶颈，不用 Node CPU 结果替代 WebGPU 结论。
 
 ### 2. Signatures
 
 ```bash
 npm run bench:browser-paddle-profile -- [--image=<local-image>] [--runs=3] [--process-mode=erase|original|translate] [--paddle-batch|--paddle-serial] [--paddle-provider=default|webgpu|webnn|wasm] [--paddle-cold-first-serial|--paddle-no-cold-first-serial] [--paddle-model=medium] [--paddle-runtime-probe=legacy|prepare|warmup] [--paddle-prepare|--paddle-warmup] [--paddle-probe-schedule=detect-start|after-detect|bubble-start|after-bubble|ocr-start] [--inpaint-probe-schedule=current|detect-start|after-detect|bubble-start|after-bubble|ocr-start] [--paddle-fixed-width=<px>] [--paddle-graph-capture]
-npm run bench:browser-x-current -- --ocr-engine=paddleocr_v6_medium [--image=<local-image>] [--runs=3]
 ```
 
-- `--ocr-engine=paddleocr_v6_medium` 是当前浏览器 profile 的唯一 OCR 语义；旧 AR 对比模式不再用于当前发布包。
+- npm script 固定附加 `--ocr-engine=paddleocr_v6_medium --process-mode=erase`；用户传入的同名 `--name=value` 取最后一个值。
+- runner 只有一个当前 Paddle result，不包含 old/current mode 或 AR compare selector。
 - `--image` 读取本地 fixture 并转为 data URL，避免 X 页面登录/网络状态影响性能判断。
 - `--paddle-batch` 强制 width-bucket；`--paddle-serial` 强制逐 region；未传时使用 runtime 默认 provider-aware 策略。
 - `--paddle-provider` 只用于 benchmark 内临时覆盖 Paddle recognition provider，用于回答 WebGPU/WebNN/WASM 对照问题；正式 pipeline 默认 fallback 不变。
@@ -237,8 +237,8 @@ npm run bench:browser-x-current -- --ocr-engine=paddleocr_v6_medium [--image=<lo
 - `ocrDebug.paddle.inferenceRuns[0]` 必须保留首个 inference 的 `inputDims`、`durationMs`、`outputDims`、`timeSteps` 和文本，cold-start 结论不能只看 OCR stage 总数。
 - Browser profile 必须区分 cold run（`runIndex=0`）和 warm runs；性能结论优先使用 warm median，cold 结论单独说明 session/shape 编译成本。
 - `processMode=erase` 覆盖本地检测、气泡、Paddle OCR、mask refine、inpaint；`processMode=original` 额外覆盖 typeset，不包含网络翻译。
-- `paddleRuntimeProbeMode`、`paddleModelMode`、`paddleFixedInputWidth`、`paddleGraphCapture` 必须写入 mode-level report，避免多个实验报告混淆。
-- `paddleRuntimeProbeSchedule` 和 `inpaintRuntimeProbeSchedule` 必须写入 mode-level report。分析 prepare 净收益时必须同时看 cold total、cold OCR、detect/bubble/inpaint stage；不能只看 OCR stage 变短。
+- `paddleRuntimeProbeMode`、`paddleModelMode`、`paddleFixedInputWidth`、`paddleGraphCapture` 必须写入 `report.result`，避免多个实验报告混淆。
+- `paddleRuntimeProbeSchedule` 和 `inpaintRuntimeProbeSchedule` 必须写入 `report.result`。分析 prepare 净收益时必须同时看 cold total、cold OCR、detect/bubble/inpaint stage；不能只看 OCR stage 变短。
 - Paddle prepare/warmup 只能在用户触发翻译后的 pipeline 内启动，不得改成页面加载时预加载。
 
 ### 4. Validation & Error Matrix
@@ -247,7 +247,7 @@ npm run bench:browser-x-current -- --ocr-engine=paddleocr_v6_medium [--image=<lo
 | --- | --- | --- |
 | `dist` 未 build 或当前发布模型缺失 | benchmark 启动时报 missing dist asset | 先运行 `npm run build`，确认 `detector.onnx`、`bubble.onnx`、`aot_inpaint_512.onnx`、`PP-OCRv6_medium_rec.onnx` 和 `paddleocr_v6_dict.txt` 存在 |
 | 传入 `--paddle-model=small` | benchmark 试图引用已删除模型 | 使用默认 medium；如需重新评估 small，先按 frontend runtime-models spec 重新引入候选 |
-| 在非 current-only 模式传 Paddle engine | 旧 AR 对比语义混乱 | 抛错，要求使用 `bench:browser-paddle-profile` 或 `--current-only` |
+| runner 出现 old/current 多模式 selector | 废弃 AR compare 入口回流 | 删除分支，只保留一个 `report.result` |
 | 同名 CLI 参数由 npm script 默认值和用户 override 同时提供 | 用户 override 被忽略 | 参数解析取最后一个 `--name=value` |
 | 只看 Node CPU profile | WebGPU shape/session 行为被误判 | 必须补浏览器 WebGPU profile，再决定默认策略 |
 | `--paddle-graph-capture` 仍使用 CPU input/output | `External buffer must be provided for input/output index 0 when enableGraphCapture is true` | 记录为当前架构不支持；除非先实现 GPU external input/output 和 decode/readback 设计 |
@@ -262,7 +262,7 @@ npm run bench:browser-x-current -- --ocr-engine=paddleocr_v6_medium [--image=<lo
 - Good：用 `--paddle-prepare` 验证用户触发后的懒准备收益，同时检查 detect/bubble 是否被 worker/GPU 争用拖慢。
 - Good：对 prepare 调度实验使用同一图片、同一 runs，对比 `detect-start` / `after-detect` / `bubble-start` / `after-bubble` / `ocr-start`，并记录 `inpaintRuntimeProbeSchedule` 是否为默认。
 - Base：用 `--paddle-serial` 跑对照，只比较 OCR 内部 inference/run count，不把 inpaint/detect 抖动误读为 batch 策略收益。
-- Bad：用旧 `run-browser-x-compare` 默认 `ocrEngine=builtin` 的结果回答 Paddle 瓶颈。
+- Bad：只为重跑历史报告而恢复多模式 AR compare，并把已删除模型接回当前构建。
 - Bad：把 cold run 的首次 WebGPU shape 编译成本混进 warm median，并据此判断热运行瓶颈。
 - Bad：`--paddle-graph-capture` 报外部 buffer 错误后继续把它当作可上线优化；当前 Paddle logits 需要 CPU CTC decode，必须先补 GPU buffer/readback 设计。
 - Bad：把 inpaint probe 提前到 detect-start 后只看 OCR 缩短；如果 cold total 或 detect/bubble 变差，应判定为调度争用。
@@ -271,7 +271,7 @@ npm run bench:browser-x-current -- --ocr-engine=paddleocr_v6_medium [--image=<lo
 
 - `npx tsc --noEmit --pretty false`
 - `npm run test`
-- `npm run build`
+- `npm run build:benchmark`（npm script 已自动执行；直接运行 runner 前也必须先完成）
 - `npm run bench:browser-paddle-profile -- --image=<fixture> --runs=3`
 - `npm run bench:browser-paddle-profile -- --image=<fixture> --runs=3 --paddle-prepare`
 - 调度实验：`npm run bench:browser-paddle-profile -- --image=<fixture> --runs=3 --paddle-prepare --paddle-probe-schedule=<schedule> [--inpaint-probe-schedule=<schedule>]`
@@ -284,10 +284,10 @@ npm run bench:browser-x-current -- --ocr-engine=paddleocr_v6_medium [--image=<lo
 #### Wrong
 
 ```bash
-npm run bench:browser-x-current -- --runs=3
+tsx benchmark/perf/src/run-browser-paddle-profile.ts --runs=3
 ```
 
-这会混用历史 X 对比入口的默认参数，不能作为当前 Paddle OCR/WebGPU profile 结论。
+直接启动 runner 会绕过 benchmark build 和 Release 边界断言，可能测到陈旧 `dist`。
 
 #### Correct
 

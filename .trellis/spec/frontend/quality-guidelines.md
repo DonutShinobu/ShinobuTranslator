@@ -6,7 +6,7 @@
 
 ## Overview
 
-Testing is minimal (3 test files). Linting relies on TypeScript strict mode. No ESLint or Prettier configuration exists. Quality is enforced through TypeScript compiler checks and manual review.
+项目使用集中式 Vitest 测试，覆盖 background router/services、content store/controllers/UI、pipeline、runtime 契约、benchmark helper 和 shared message/config。当前没有 ESLint 或 Prettier；工程门禁由三套 TypeScript project、Vitest、Release build 和产物边界断言组成。提交前的标准命令是 `npm run check`。
 
 ---
 
@@ -21,12 +21,14 @@ Testing is minimal (3 test files). Linting relies on TypeScript strict mode. No 
 7. **CSS-in-JS / Tailwind** — Use plain CSS files or injected `<style>` elements. No styled-components, no Tailwind.
 8. **Adding runtime validation for internal types** — Trust TypeScript for internal code. Only validate at system boundaries.
 9. **Long `.then()` chains** — Use async/await instead. `.then()` only for unavoidable Chrome API callback patterns.
-10. **`Comlink.transfer()` on input data** — Never transfer input tensors/data to a Worker via `Comlink.transfer()`. Transfer detaches the ArrayBuffer on the sender side, making fallback paths and subsequent uses (e.g., OCR color decode after batch decode) send corrupted/empty data. Use structured clone (comlink default) for inputs; only use `Comlink.transfer()` for outputs where the sender doesn't need the data afterward.
+10. **`Comlink.transfer()` on reusable input data** — Transferring detaches the sender's ArrayBuffer and breaks retries or later consumers. Use structured clone for reusable inputs; only transfer outputs or explicitly throwaway input copies.
 11. **Direct import of onnxWorkerBridge or onnxNodeBridge from pipeline code** — Pipeline modules must import from `./onnxBridge`. Direct `onnxWorkerBridge` import pulls Comlink/Worker/DOM code into Node; direct `onnxNodeBridge` import leaks onnxruntime-node into the browser build.
 12. **`require()` in browser-executed code** — `modelRegistry.ts` runs in both browser and Node. Use static `import` for browser-side modules like `resolveAssetUrl`. `require()` is undefined in the Chrome extension and will crash at runtime.
 13. **Unexternalized Node-only dynamic imports in Vite config** — If a module is dynamically imported under `isNode`, Vite still resolves it and bundles it as a reachable chunk. Must add to `rollupOptions.external` to prevent leaking into the browser build.
 14. **`preferredOutputLocation:"gpu-buffer"` on all WebGPU sessions** — Only apply `preferredOutputLocation:"gpu-buffer"` to sessions whose outputs are consumed via the GPU-preprocessed path. Other sessions' `tensorToTransport` reads `tensor.data` directly, which fails on GPU tensors ("The data is not on CPU"). Restrict by `modelKey`, not by provider.
-15. **Omitting `platform` parameter in OCR provider calls** — `OcrProvider.recognize()` takes an optional `platform?: PlatformProvider`. Non-builtin providers (e.g., `paddleocrProvider`) call `platform.createCanvas()`, so passing `undefined` crashes. Always pass `platform` through from the caller.
+15. **Omitting `platform` parameter in OCR provider calls** — `paddleocrProvider` uses `platform.createCanvas()`; always pass the Browser/Node platform through from the caller.
+16. **Production imports of benchmark entry code** — `src/benchmark/browserEntry.ts` and `benchmark/` are benchmark-only. Content/background/popup must not import them or expose `window.__shinobuBenchmark__`.
+17. **Legacy OCR domain RPC in the ONNX Worker** — Worker/Bridge must not regain AR batch/split/single decode or AR color RPC. Product OCR uses generic inference plus Paddle CTC on the caller side.
 
 ---
 
@@ -36,10 +38,10 @@ Testing is minimal (3 test files). Linting relies on TypeScript strict mode. No 
 2. **`type` over `interface`** — Use `type` for data types. Only use `interface` for contracts (like `SiteAdapter`).
 3. **String union types for status** — `type Status = 'idle' | 'running' | 'done'`, not enum.
 4. **`mt:` prefix for Chrome messages** — `mt:get-settings`, `mt:set-settings`, `mt:download-image`.
-5. **`mt-x-` prefix for content script CSS** — All classes in `src/content/core/ui.ts`.
+5. **`mt-x-` prefix for content script CSS** — All classes owned by `src/content/core/ui/styles.ts` and related UI modules.
 6. **Discriminated union for messages** — `type` discriminant field for `RuntimeMessage`, `ok` for `RuntimeResponse`.
 7. **Lazy pipeline loading** — Content script uses `import('../../pipeline/orchestrator')` only when user clicks translate. Don't load pipeline eagerly.
-8. **`trimStateCache()` after dispose** — Prevent memory leaks on long-scrolling pages.
+8. **`PhotoStateStore` for per-image lifecycle** — Create/delete state through the store so eviction and Blob URL cleanup cannot be skipped.
 9. **`async/await` over `.then()` chains** — Use async/await for asynchronous code. `.then()` is acceptable only for Chrome API callbacks where async/await is impractical.
 10. **Function declarations for exports** — Prefer `export function foo()` over `export const foo = ()`. Function declarations are hoisted and easier to trace.
 11. **Chinese for user-facing messages** — Status text, labels, and error messages shown to users must be in Chinese.
@@ -78,6 +80,10 @@ Testing is minimal (3 test files). Linting relies on TypeScript strict mode. No 
 29. **Context-menu image overlays must keep a live image anchor until user manipulation** - For generic right-click image translation, pass the source `HTMLImageElement` through to the floating overlay path and keep the result host synchronized from `element.getBoundingClientRect()` plus scroll offsets while the overlay is still attached. Prefer the normal outside right-top/right-bottom pill placement whenever the source image top or bottom edge can support it. For images taller than the viewport where neither normal edge placement is reachable, place the pill inside the visible image area on the right side and recompute that fallback every sync: horizontal placement follows the visible image edge, while vertical placement sticks to the visible image area's top (usually viewport top) until normal outside placement becomes reachable. Use rAF-based tracking while attached because site viewers often pan images with CSS transforms that do not fire `scroll` or `ResizeObserver`. Once the user drags or wheel-zooms the floating result, detach from the source image but keep rAF tracking the result host itself; in manual result mode, avoid keeping the pill inside the image while an outside top position is approaching, prefer the viewport-clamped outside-top position, and lock the first reachable normal outside placement (`normal-top` or `normal-bottom`) so later movement does not fall back to sticky. Do not add a viewport-bottom-clamped fallback before `normal-bottom` is truly reachable, because it causes the pill to jump to the bottom inside the image. Mode transitions should enable CSS transition before writing the new overlay position and should animate with nonlinear easing plus duration derived from travel distance.
 
 30. **Source-geometry vertical advance must correct quantization before wrapping** - When vertical typesetting uses source column geometry (`useDefaultAdvanceBase` / `sourceGeometryProfileUsed`), the target glyph advance comes from whole-column geometry. Apply a small quantization correction before integer rounding (`sourceGeometryAdvanceQuantizationBiasPx`) so per-glyph `Math.round` does not accumulate upward and force a source column to wrap. The target advance baseline must use real glyph count (`countTextGlyphs`), not weighted text length (`countTextLength`): the vertical layout loop advances once per glyph, so small kana/punctuation counted as half-width will overestimate available advance and can split a source column. Do not add a region-specific fallback that rewrites model/source column break behavior; tune the font-size and glyph-advance rules, then validate with `npm run bench:render` and `npm run bench`.
+
+31. **Thin composition roots** — `src/background/index.ts` wires `BackgroundServices` into the router；`src/content/core/TranslatorCore.ts` wires store/controllers/UI。新增业务逻辑应进入具名 service/controller，而不是重新堆进入口。
+
+32. **Release boundary assertion** — `npm run build` 必须运行 `check:artifacts`。修改 Vite entry、Content import graph、Worker API 或 benchmark bridge 时，同步更新 `scripts/check-release-boundaries.mjs` 与对应契约测试。
 
 ## Scenario: Chrome Extension Shortcuts
 
@@ -205,7 +211,7 @@ wrapper.before(anchor); // anchor appears to the LEFT of direction toggle
 ### 1. Scope / Trigger
 
 - Trigger: changing content-script progress UI, pipeline progress reporting, or heavy pipeline stages that run while the pill/spinner is visible.
-- Applies to `src/content/core/ui.ts`, `src/content/core/TranslatorCore.ts`, `src/content/core/progressJank.ts`, `src/pipeline/orchestrator.ts`, and pipeline stages that perform main-thread image/canvas work.
+- Applies to `src/content/core/ui/`, `src/content/core/TranslatorCore.ts`, `src/content/core/progressJank.ts`, `src/pipeline/orchestrator.ts`, and pipeline stages that perform main-thread image/canvas work.
 
 ### 2. Signatures
 
@@ -458,10 +464,12 @@ downloadText(response.log.text, response.log.filenamePrefix);
 - Do not place new tests next to source files unless the Vitest include pattern is intentionally changed too; colocated `src/**/*.test.ts` files are type-checked by `tsc` but are not run by `npm run test`.
 
 ### Current test coverage
-- `tests/pipeline/geometry.test.ts` — Geometry utility functions (convexHull, sortMiniBoxPoints, minAreaRect — now imports from `src/pipeline/typeset/geometry`)
-- `tests/pipeline/typeset/typesetGeometry.test.ts` — Typeset geometry calculations (queryMaskMaxY — now imports from `src/pipeline/typeset/index`)
-- `tests/content/core/screenshot.test.ts` — Screenshot crop/viewport conversion, element candidate ordering, wheel layer switching, and move/resize geometry
-- `tests/benchmark/metrics.test.ts` — Benchmark metrics
+- `tests/background/` — message router 和 provider/settings/image/diagnostic service contract
+- `tests/content/` — adapters、`PhotoStateStore`、translation/reading/screenshot controllers 和 UI helper
+- `tests/pipeline/` — detect、OCR、translate、typeset、orchestrator 和纯算法
+- `tests/runtime/` — Worker API、源码/产物禁用项与当前模型清单契约
+- `tests/benchmark/` — metrics、source geometry、glyph quality 和颜色诊断 helper
+- `tests/shared/`、`tests/translators/` — config/message/diagnostic 与 LLM contract
 
 ### Test patterns
 - Pure function testing — no DOM mocking, no React component testing
@@ -474,7 +482,15 @@ downloadText(response.log.text, response.log.filenamePrefix);
 - **Pipeline math/geometry functions** — Always test pure calculations
 - **Message type guards** — Test `isRuntimeMessage()` with valid and invalid inputs
 - **Pipeline stage outputs** — Test stage functions with controlled inputs when feasible
-- **Don't test** Chrome extension integration, DOM rendering, or ONNX model inference (too environment-dependent)
+- **Composition roots** — 通过注入 fake services/controllers 测 router 和控制流，不在单测里启动真实 Chrome
+- **Runtime/浏览器行为** — 单测固定静态契约；ONNX provider 和完整浏览器链路使用 `benchmark/perf` smoke/profile 验证
+
+### Standard gate
+
+- `npm run typecheck`：分别检查 app、tests、benchmark。
+- `npm run test`：运行 `tests/**/*.test.ts`。
+- `npm run build`：构建 Release、独立 Worker，并执行产物断言。
+- `npm run check`：上述三项的标准串行门禁；CI 与本地收口都使用它。
 
 ---
 
@@ -491,7 +507,9 @@ downloadText(response.log.text, response.log.filenamePrefix);
 - [ ] Pipeline imports are lazy-loaded in content script
 - [ ] No `Comlink.transfer()` on input data to Workers (only on outputs)
 - [ ] Worker-extracted shared files don't import heavy libraries (e.g., onnxruntime-web)
-- [ ] Memory cleanup: `trimStateCache()` / `URL.revokeObjectURL()` called where needed
+- [ ] Per-image state goes through `PhotoStateStore`; Blob URLs are released on delete/dispose
+- [ ] Background/Content entry points remain composition roots
+- [ ] Release has no benchmark global/entry or legacy OCR Worker API
 
 ## Scenario: LLM 文本翻译列契约
 

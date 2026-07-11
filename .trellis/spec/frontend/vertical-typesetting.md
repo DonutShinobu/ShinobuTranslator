@@ -2,7 +2,7 @@
 
 ## 1. Scope / Trigger
 
-- 触发：修改 `src/pipeline/typeset/verticalOrientation.ts`、`columns.ts`、`fontFit.ts`、`typeset.ts`，或调整竖排 debug/benchmark 字段。
+- 触发：修改 `src/pipeline/typeset/verticalOrientation.ts`、`columns.ts`、`verticalFit.ts`、`verticalLayout.ts`、`renderVertical.ts`、`drawTypeset.ts`，或调整竖排 debug/benchmark 字段。
 - 目标：Unicode 字形方向、连续 run、换列、Canvas transform 和诊断必须使用同一个 layout-item 契约，不能退回逐 code point 直立绘制。
 
 ## 2. Signatures
@@ -43,6 +43,7 @@ function resolveUnicodeVerticalOrientation(grapheme: string): "U" | "R" | "Tu" |
 - 描边与填充必须调用同一个 item transform。Canvas 顺时针旋转使用 `Math.PI / 2`。
 - 所有 item 使用统一样式描边；不得按细线、长音符或特定 sourceText 修改 `lineWidth`。
 - `columnVerticalItems` 是诊断输出，不得反馈进 runtime 换列或 source geometry。
+- `src/pipeline/typeset/index.ts` 是外部公共入口，只导出 `drawTypeset` 和公共类型；竖排内部模块之间可以直接导入，但 pipeline 其他层不得依赖内部布局细节。
 
 ## 4. Validation & Error Matrix
 

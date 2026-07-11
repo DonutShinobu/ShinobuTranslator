@@ -821,3 +821,40 @@ Completed the translation coherence task: improved LLM prompt and structured pay
 ### Next Steps
 
 - None - task complete
+
+
+## Session 26: 完成架构边界重构与 Legacy OCR 清理
+
+**Date**: 2026-07-11
+**Task**: 完成架构边界重构与 Legacy OCR 清理
+**Branch**: `codex/architecture-boundary-refactor`
+
+### Summary
+
+隔离生产 benchmark，补齐质量门禁，拆分 Typeset、Background 与 Content，删除旧 AR OCR runtime/RPC，迁移 legacy 脚本并同步架构规范；全量测试、浏览器/Node OCR 和排版基准通过。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3a359bd` | (see git log) |
+| `cbfb5e9` | (see git log) |
+| `9064b5a` | (see git log) |
+| `3f11a3f` | (see git log) |
+| `a4bddaa` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -858,3 +858,36 @@ Completed the translation coherence task: improved LLM prompt and structured pay
 ### Next Steps
 
 - None - task complete
+
+
+## Session 27: 竖排拉丁字号与间距估算
+
+**Date**: 2026-07-11
+**Task**: 竖排拉丁字号与间距估算
+**Branch**: `master`
+
+### Summary
+
+使用实际 Canvas 字体度量估算竖排拉丁 run 的等效汉字位，同时保持日文逐字竖排单位与源列间距一致。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2948daf` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

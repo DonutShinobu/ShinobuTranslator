@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 26
+- **Total Sessions**: 27
 - **Last Active**: 2026-07-11
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~860 | Active |
+| `journal-1.md` | ~893 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 27 | 2026-07-11 | 竖排拉丁字号与间距估算 | `2948daf` | `master` |
 | 26 | 2026-07-11 | 完成架构边界重构与 Legacy OCR 清理 | `3a359bd`, `cbfb5e9`, `9064b5a`, `3f11a3f`, `a4bddaa` | `codex/architecture-boundary-refactor` |
 | 25 | 2026-07-10 | 统一竖排源样式估算 | `795f747` | `master` |
 | 24 | 2026-07-10 | 完善 mixed 竖排与源感知字号估算 | `658e5cf` | `master` |

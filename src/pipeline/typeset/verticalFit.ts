@@ -1,0 +1,32 @@
+export {
+  buildVerticalDebugColumnBoxes,
+  buildVerticalLayout,
+  calcVertical,
+  calcVerticalFromColumns,
+  computeVerticalTotalWidth,
+  countNeededColumnsAtFontSize,
+  estimateVerticalPreferredProfile,
+  hasMinorOverflowWrap,
+  minVerticalAdvanceScale,
+  minVerticalColSpacingScale,
+  minVerticalContentHeightExpandPx,
+  queryMaskMaxY,
+  resolveVerticalColumnPositions,
+  resolveVerticalContentHeight,
+  resolveVerticalRenderPadding,
+  resolveVerticalStartY,
+  tryShrinkVerticalForMinorOverflow,
+  verticalAdvanceTightenRatio,
+  verticalColumnSpacingRatio,
+  verticalContentHeightExpandBaseRatio,
+  verticalContentHeightExpandFontRatio,
+} from './fontFitCore';
+
+export type {
+  BuildVerticalLayoutOptions,
+  VColumn,
+  VerticalColumnAnchor,
+  VerticalColumnPositions,
+  VerticalFitOptions,
+  VerticalLayoutResult,
+} from './fontFitCore';

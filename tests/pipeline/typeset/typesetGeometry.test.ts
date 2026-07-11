@@ -1,10 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { TextRegion } from "../../../src/types";
-import {
-  queryMaskMaxY,
-  calcVertical,
-  computeFullVerticalTypeset,
-} from "../../../src/pipeline/typeset/index";
+import { computeFullVerticalTypeset } from "../../../src/pipeline/typeset/verticalLayout";
+import { calcVertical, queryMaskMaxY } from "../../../src/pipeline/typeset/verticalFit";
 
 function createMask(width: number, height: number, fillFn: (x: number, y: number) => boolean): ImageData {
   const data = new Uint8ClampedArray(width * height * 4);

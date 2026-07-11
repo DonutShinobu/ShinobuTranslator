@@ -1,0 +1,31 @@
+export {
+  clampNumber,
+  expandRegionBeforeRender,
+  maxSidewaysLatinOpticalScale,
+  measureGlyphBox,
+  metricAbs,
+  minFontSafetySize,
+  minOffscreenGuardPaddingPx,
+  minSidewaysLatinOpticalScale,
+  minorOverflowMaxGlyphCount,
+  minorOverflowShrinkMinScale,
+  offscreenGuardPaddingByFontRatio,
+  resolveAlignment,
+  resolveBoxPadding,
+  resolveFontVerticalAdvance,
+  resolveGlyphVerticalAdvance,
+  resolveInitialFontSize,
+  resolveOffscreenGuardPadding,
+  resolveVerticalCellMetrics,
+  resolveVerticalTokenMetrics,
+  strokeWidth,
+} from './fontFitCore';
+
+export type {
+  ColumnBreakReason,
+  DebugColumnBox,
+  RegionTypesetDebug,
+  VerticalCellMetrics,
+  VerticalGlyph,
+  VerticalTokenMetrics,
+} from './fontFitCore';

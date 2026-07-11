@@ -123,23 +123,9 @@ describe("buildOpenAiTokenExpiresAt", () => {
 describe("refresh token safety helpers", () => {
   it("detects when an in-flight refresh belongs to a stale login", () => {
     expect(isOpenAiOAuthRefreshSuperseded({
-      idToken: "id-new",
-      accessToken: "access-new",
       refreshToken: "refresh-new",
-      accountId: "acct-new",
-      email: "new@example.com",
-      planType: "pro",
-      expiresAt: 2_000,
-      lastRefresh: 1_000,
     }, {
-      idToken: "id-old",
-      accessToken: "access-old",
       refreshToken: "refresh-old",
-      accountId: "acct-old",
-      email: "old@example.com",
-      planType: "plus",
-      expiresAt: 1_000,
-      lastRefresh: 500,
     })).toBe(true);
   });
 

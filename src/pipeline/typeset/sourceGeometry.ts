@@ -4,6 +4,7 @@ export {
   minSourceGeometryAdvanceScale,
   resolveHorizontalSourceGeometryProfile,
   resolveHorizontalSourceLineAnchor,
+  resolveHorizontalSourceLineLayouts,
   resolveVerticalSourceColumnAnchor,
   resolveVerticalSourceColumnStartOffsets,
   resolveVerticalSourceGeometryProfile,
@@ -14,6 +15,7 @@ export {
 export type {
   HorizontalAlignmentProfile,
   HorizontalLineAnchor,
+  HorizontalSourceLineLayout,
   HorizontalSourceGeometryProfile,
   VerticalSourceGeometryProfile,
 } from './fontFitCore';

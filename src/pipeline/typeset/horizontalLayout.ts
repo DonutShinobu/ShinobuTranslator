@@ -30,9 +30,11 @@ import type { HLine, HorizontalLineBox } from "./horizontalFit";
 import {
   resolveHorizontalSourceGeometryProfile,
   resolveHorizontalSourceLineAnchor,
+  resolveHorizontalSourceLineLayouts,
 } from "./sourceGeometry";
 import type {
   HorizontalLineAnchor,
+  HorizontalSourceLineLayout,
 } from "./sourceGeometry";
 
 export const horizontalLetterSpacingRatio = -0.05;
@@ -377,7 +379,7 @@ export function computeFullHorizontalTypeset(
     fontFamily,
   );
   let estimatedInitialFontSize = sourceGeometryProfile
-    ? Math.max(minFontSafetySize, Math.round(sourceGeometryProfile.sourceFontSize))
+    ? Math.max(minFontSafetySize, sourceGeometryProfile.sourceFontSize)
     : Math.max(minFontSafetySize, Math.round(resolveInitialFontSize(inputRegion)));
   const inputQuadDims = quadDimensions(getRegionQuad(inputRegion));
   if (!sourceGeometryProfile && singleLineMaxLength && singleLineMaxLength > 0) {
@@ -434,6 +436,14 @@ export function computeFullHorizontalTypeset(
     boxPadding,
     sourceGeometryProfile,
   );
+  const sourceLineLayouts = resolveHorizontalSourceLineLayouts(
+    expandedRegion,
+    boxPadding,
+    preferredLines ?? [],
+    sourceGeometryProfile,
+  );
+  const sourceLineIdentityMatched = sourceLineLayouts !== undefined;
+  let sourceLineLayoutEnabled = sourceLineIdentityMatched;
   const alignment = sourceGeometryProfile?.inferredAlignment !== undefined
     && sourceGeometryProfile.inferredAlignment !== "unknown"
     ? sourceGeometryProfile.inferredAlignment
@@ -462,7 +472,7 @@ export function computeFullHorizontalTypeset(
       return calcHorizontalFromLines(
         measureCtx,
         preferredLineSegments,
-        maxWidth,
+        sourceLineLayoutEnabled ? Number.POSITIVE_INFINITY : maxWidth,
         fontSize,
         letterSpacingScale,
       );
@@ -481,6 +491,36 @@ export function computeFullHorizontalTypeset(
       lineSegmentIds: lines.map(() => 1),
       lineSegmentSources: lines.map(() => "model"),
     };
+  };
+
+  const scaleSourceLineLayouts = (
+    fontSize: number,
+    lines: readonly HLine[],
+  ): HorizontalSourceLineLayout[] | undefined => {
+    if (!sourceLineLayouts || !sourceGeometryProfile || sourceLineLayouts.length !== lines.length) {
+      return undefined;
+    }
+    const scale = fontSize / sourceGeometryProfile.sourceFontSize;
+    return sourceLineLayouts.map((layout, index) => {
+      const targetWidth = layout.targetWidth * scale;
+      const sourceCenterX = layout.contentLeftX + layout.targetWidth / 2;
+      const sourceRightX = layout.contentLeftX + layout.targetWidth;
+      let contentLeftX: number;
+      if (alignment === "left") {
+        contentLeftX = layout.contentLeftX;
+      } else if (alignment === "right") {
+        contentLeftX = sourceRightX - targetWidth;
+      } else {
+        contentLeftX = sourceCenterX - targetWidth / 2;
+      }
+      const naturalWidth = lines[index]?.width ?? targetWidth;
+      return {
+        contentLeftX,
+        targetWidth,
+        targetHeight: layout.targetHeight * scale,
+        advanceScale: naturalWidth > 0 ? targetWidth / naturalWidth : 1,
+      };
+    });
   };
 
   const buildCandidate = (fontSize: number): HorizontalCandidate => {
@@ -508,6 +548,9 @@ export function computeFullHorizontalTypeset(
       ? sourceGeometryProfile.sourcePitch * fontSize / sourceGeometryProfile.sourceFontSize
       : resolveHorizontalLineHeight(fontSize, lineHeightScale);
     let wrapped = wrapLines(contentWidth, fontSize, letterSpacingScale);
+    let candidateSourceLayouts = sourceLineLayoutEnabled
+      ? scaleSourceLineLayouts(fontSize, wrapped.lines)
+      : undefined;
     let lineBoxes = buildHorizontalLineBoxes({
       ctx: measureCtx,
       lines: wrapped.lines,
@@ -519,12 +562,21 @@ export function computeFullHorizontalTypeset(
       alignment,
       anchorContentCenterY: horizontalAnchor?.contentCenterY,
       sourcePitch,
+      sourceLineLayouts: candidateSourceLayouts,
       bubbleMask: inputRegion.bubbleMask,
       boxPadding,
     });
     let reflowed = false;
 
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (
+      candidateSourceLayouts
+      && lineBoxes.some((line) => !line.sourceAnchored)
+    ) {
+      sourceLineLayoutEnabled = false;
+      return buildCandidate(fontSize);
+    }
+
+    for (let attempt = 0; !sourceLineLayoutEnabled && attempt < 2; attempt += 1) {
       const overflowing = lineBoxes.some((line) => line.width > line.maxWidth + 0.5);
       if (!overflowing || lineBoxes.length === 0) break;
       const safeWrapWidth = Math.max(20, Math.min(...lineBoxes.map((line) => line.maxWidth)));
@@ -537,6 +589,7 @@ export function computeFullHorizontalTypeset(
       }
       wrapped = nextWrapped;
       reflowed = true;
+      candidateSourceLayouts = scaleSourceLineLayouts(fontSize, wrapped.lines);
       lineBoxes = buildHorizontalLineBoxes({
         ctx: measureCtx,
         lines: wrapped.lines,
@@ -548,20 +601,24 @@ export function computeFullHorizontalTypeset(
         alignment,
         anchorContentCenterY: horizontalAnchor?.contentCenterY,
         sourcePitch,
+        sourceLineLayouts: candidateSourceLayouts,
         bubbleMask: inputRegion.bubbleMask,
         boxPadding,
       });
     }
 
-    const balancedLines = rebalanceHorizontalShortTailLines(
-      measureCtx,
-      wrapped.lines,
-      lineBoxes.map((line) => line.maxWidth),
-      resolveHorizontalLetterSpacing(fontSize, letterSpacingScale),
-    );
+    const balancedLines = sourceLineLayoutEnabled
+      ? wrapped.lines
+      : rebalanceHorizontalShortTailLines(
+          measureCtx,
+          wrapped.lines,
+          lineBoxes.map((line) => line.maxWidth),
+          resolveHorizontalLetterSpacing(fontSize, letterSpacingScale),
+        );
     if (balancedLines.some((line, index) => line.text !== wrapped.lines[index]?.text)) {
       reflowed = true;
       wrapped = { ...wrapped, lines: balancedLines };
+      candidateSourceLayouts = scaleSourceLineLayouts(fontSize, wrapped.lines);
       lineBoxes = buildHorizontalLineBoxes({
         ctx: measureCtx,
         lines: wrapped.lines,
@@ -573,6 +630,7 @@ export function computeFullHorizontalTypeset(
         alignment,
         anchorContentCenterY: horizontalAnchor?.contentCenterY,
         sourcePitch,
+        sourceLineLayouts: candidateSourceLayouts,
         bubbleMask: inputRegion.bubbleMask,
         boxPadding,
       });
@@ -589,11 +647,17 @@ export function computeFullHorizontalTypeset(
     };
   };
 
-  const candidateFits = (candidate: HorizontalCandidate): boolean => (
-    candidate.lines.length <= targetLineCount
-    && candidate.lineBoxes.every((line) => line.width <= line.maxWidth + 0.5)
-    && candidate.lineBoxes.reduce((sum, line) => sum + line.lineHeight, 0) <= candidate.contentHeight + 0.5
-  );
+  const candidateFits = (candidate: HorizontalCandidate): boolean => {
+    const visualBoundsFit = candidate.lineBoxes.every((line) => (
+      line.topY >= -boxPadding - 0.5
+      && line.topY + line.visualHeight <= candidate.contentHeight + boxPadding + 0.5
+    ));
+    return candidate.lines.length <= targetLineCount
+      && candidate.lineBoxes.every((line) => line.width <= line.maxWidth + 0.5)
+      && (sourceLineLayoutEnabled
+        ? visualBoundsFit
+        : candidate.lineBoxes.reduce((sum, line) => sum + line.lineHeight, 0) <= candidate.contentHeight + 0.5);
+  };
 
   let candidate = buildCandidate(estimatedInitialFontSize);
   if (!candidateFits(candidate) && estimatedInitialFontSize > minFontSafetySize) {
@@ -640,6 +704,9 @@ export function computeFullHorizontalTypeset(
   const finalSourcePitch = sourceGeometryProfile
     ? sourceGeometryProfile.sourcePitch * fontSize / sourceGeometryProfile.sourceFontSize
     : resolveHorizontalLineHeight(fontSize, lineHeightScale);
+  const finalSourceLineLayouts = sourceLineLayoutEnabled
+    ? scaleSourceLineLayouts(fontSize, lines)
+    : undefined;
   const lineBoxes = buildHorizontalLineBoxes({
     ctx: measureCtx,
     lines,
@@ -651,6 +718,7 @@ export function computeFullHorizontalTypeset(
     alignment,
     anchorContentCenterY: horizontalAnchor?.contentCenterY,
     sourcePitch: finalSourcePitch,
+    sourceLineLayouts: finalSourceLineLayouts,
     bubbleMask: inputRegion.bubbleMask,
     boxPadding,
   });
@@ -658,7 +726,7 @@ export function computeFullHorizontalTypeset(
     x: line.x,
     y: line.topY,
     width: line.width,
-    height: line.lineHeight,
+    height: line.visualHeight,
   }));
   const layoutDiagnostics: TypesetLayoutDiagnostics = {
     sourceGeometryProfileUsed: sourceGeometryProfile !== undefined,
@@ -683,6 +751,14 @@ export function computeFullHorizontalTypeset(
     horizontalLetterSpacingScale: letterSpacingScale,
     horizontalLineHeightScale: lineHeightScale,
     horizontalReflowed: candidate.reflowed,
+    horizontalSourceIdentityMatched: sourceLineIdentityMatched,
+    horizontalSourceLineStartXs: lineBoxes.map((line) => line.x - strokePadding),
+    horizontalSourceLineTargetWidths: lineBoxes.map((line) => line.width),
+    horizontalSourceLineAdvanceScales: lineBoxes.map((line) => line.sourceAdvanceScale ?? 1),
+    horizontalSourceLineClampCount: lineBoxes.filter((line) => line.sourceClamped).length,
+    horizontalLineBaselines: lineBoxes.map((line) => line.baselineY),
+    horizontalLineInkAscents: lineBoxes.map((line) => line.inkAscent),
+    horizontalLineInkDescents: lineBoxes.map((line) => line.inkDescent),
   };
 
   return {

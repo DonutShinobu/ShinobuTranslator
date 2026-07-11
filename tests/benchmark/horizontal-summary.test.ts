@@ -8,13 +8,11 @@ import type {
 } from "../../benchmark/typeset/src/types";
 
 const weights: HorizontalScoreWeights = {
-  lineCountMatch: 0.1,
-  lineQuadIouMean: 0.2,
-  blockHullIou: 0.1,
-  fontSizeError: 0.1,
-  lineBreakF1: 0.1,
-  glyphPositionCoverage: 0.1,
-  charCenterQuality: 0.3,
+  lineCountMatch: 0.2,
+  lineQuadIouMean: 0.3,
+  fontSizeError: 0.2,
+  lineDyNorm: 0.15,
+  charDxNorm: 0.15,
 };
 
 function line(centers: Array<{ x: number; y: number }>): GroundTruthColumn {
@@ -59,5 +57,6 @@ describe("summarizeHorizontalMetrics", () => {
     expect(summary.charDistanceNormMean).toBeCloseTo((0 + 0.5 + 2) / 3, 6);
     expect(summary.charDistanceNormMedian).toBeCloseTo(0.5, 6);
     expect(summary.charDistanceOverOneEmRate).toBeCloseTo(1 / 3, 6);
+    expect(summary.charDxScoreNormMean).toBeCloseTo((0 + 0.5 + 2) / 3, 6);
   });
 });

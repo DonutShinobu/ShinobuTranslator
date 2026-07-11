@@ -1,5 +1,7 @@
 import type { BenchmarkSummary } from "./types";
 
+export const TYPESET_BASELINE_SCHEMA_VERSION = 3 as const;
+
 export type BaselineMetricComparison = {
   name: string;
   baseline: number;
@@ -8,7 +10,7 @@ export type BaselineMetricComparison = {
 };
 
 export type TypesetBaseline = {
-  schemaVersion?: 2;
+  schemaVersion: typeof TYPESET_BASELINE_SCHEMA_VERSION;
   generatedAt: string;
   avgCompositeScore: number;
   avgColumnIouMean: number;
@@ -26,6 +28,8 @@ export type TypesetBaseline = {
     scoredRegionCount: number;
     avgCompositeScore: number;
     avgLineQuadIouMean: number;
+    avgLineDyNormMean: number;
+    charDxScoreNormMean: number;
     charDistanceNormMean: number;
     charDistanceOverOneEmRate: number;
     glyphPositionCoverage: number;
@@ -39,7 +43,7 @@ export type BaselineComparisonResult = {
 
 export function buildTypesetBaseline(summary: BenchmarkSummary): TypesetBaseline {
   return {
-    schemaVersion: 2,
+    schemaVersion: TYPESET_BASELINE_SCHEMA_VERSION,
     generatedAt: summary.generatedAt,
     avgCompositeScore: summary.avgCompositeScore,
     avgColumnIouMean: summary.avgColumnIouMean,
@@ -58,12 +62,25 @@ export function buildTypesetBaseline(summary: BenchmarkSummary): TypesetBaseline
           scoredRegionCount: summary.horizontal.scoredRegionCount,
           avgCompositeScore: summary.horizontal.avgCompositeScore,
           avgLineQuadIouMean: summary.horizontal.avgLineQuadIouMean,
+          avgLineDyNormMean: summary.horizontal.avgLineDyNormMean,
+          charDxScoreNormMean: summary.horizontal.charDxScoreNormMean,
           charDistanceNormMean: summary.horizontal.charDistanceNormMean,
           charDistanceOverOneEmRate: summary.horizontal.charDistanceOverOneEmRate,
           glyphPositionCoverage: summary.horizontal.glyphPositionCoverage,
         }
       : undefined,
   };
+}
+
+export function getTypesetBaselineSchemaError(value: unknown): string | undefined {
+  if (typeof value !== "object" || value === null || !("schemaVersion" in value)) {
+    return `Baseline schema is missing and is incompatible with v${TYPESET_BASELINE_SCHEMA_VERSION}; regenerate it with --update-baseline.`;
+  }
+  const schemaVersion = (value as { schemaVersion?: unknown }).schemaVersion;
+  if (schemaVersion !== TYPESET_BASELINE_SCHEMA_VERSION) {
+    return `Baseline schema v${String(schemaVersion)} is incompatible with v${TYPESET_BASELINE_SCHEMA_VERSION}; regenerate it with --update-baseline.`;
+  }
+  return undefined;
 }
 
 export function buildBaselineComparisons(
@@ -87,6 +104,8 @@ export function buildBaselineComparisons(
   metrics.push(
     { name: "Horizontal Composite Score", baseline: baseline.horizontal.avgCompositeScore, current: current.horizontal.avgCompositeScore, higherIsBetter: true },
     { name: "Horizontal Line Quad IoU", baseline: baseline.horizontal.avgLineQuadIouMean, current: current.horizontal.avgLineQuadIouMean, higherIsBetter: true },
+    { name: "Horizontal Line Y Error Norm", baseline: baseline.horizontal.avgLineDyNormMean, current: current.horizontal.avgLineDyNormMean, higherIsBetter: false },
+    { name: "Horizontal Char X Score Error Norm", baseline: baseline.horizontal.charDxScoreNormMean, current: current.horizontal.charDxScoreNormMean, higherIsBetter: false },
     { name: "Horizontal Char Distance Norm", baseline: baseline.horizontal.charDistanceNormMean, current: current.horizontal.charDistanceNormMean, higherIsBetter: false },
     { name: "Horizontal Char Distance > 1em", baseline: baseline.horizontal.charDistanceOverOneEmRate, current: current.horizontal.charDistanceOverOneEmRate, higherIsBetter: false },
     { name: "Horizontal Glyph Position Coverage", baseline: baseline.horizontal.glyphPositionCoverage, current: current.horizontal.glyphPositionCoverage, higherIsBetter: true },

@@ -9,13 +9,11 @@ import type {
 } from "../../benchmark/typeset/src/types";
 
 const weights: HorizontalScoreWeights = {
-  lineCountMatch: 0.1,
-  lineQuadIouMean: 0.2,
-  blockHullIou: 0.1,
-  fontSizeError: 0.1,
-  lineBreakF1: 0.1,
-  glyphPositionCoverage: 0.1,
-  charCenterQuality: 0.3,
+  lineCountMatch: 0.2,
+  lineQuadIouMean: 0.3,
+  fontSizeError: 0.2,
+  lineDyNorm: 0.15,
+  charDxNorm: 0.15,
 };
 
 function makeLine(
@@ -68,6 +66,23 @@ describe("computeHorizontalRegionMetrics", () => {
     expect(metrics.signedCharDxNormMean).toBeCloseTo(0.3, 6);
     expect(metrics.signedCharDyNormMean).toBeCloseTo(0.4, 6);
     expect(metrics.charDistanceNormMean).toBeCloseTo(0.5, 6);
+    expect(metrics.charDxScoreNormMean).toBeCloseTo(0.3, 6);
+  });
+
+  it("normalizes line Y error by GT line height", () => {
+    const gt = makeLine("ab", 0);
+    const pred = makeLine("ab", 10);
+    const metrics = computeHorizontalRegionMetrics([gt], [pred], 20, weights).metrics!;
+
+    expect(metrics.lineDyNormMean).toBeCloseTo(0.5, 6);
+  });
+
+  it("penalizes font-size error only once in the symmetric composite", () => {
+    const line = makeLine("ab");
+    const metrics = computeHorizontalRegionMetrics([line], [line], 10, weights).metrics!;
+
+    expect(metrics.fontSizeError).toBeCloseTo(0.5, 6);
+    expect(metrics.compositeScore).toBeCloseTo(0.9, 6);
   });
 
   it("uses true quad IoU and angle for rotated lines", () => {
@@ -104,6 +119,27 @@ describe("computeHorizontalRegionMetrics", () => {
     expect(metrics.glyphTextMatchCoverage).toBeCloseTo(0.8, 6);
   });
 
+  it("counts unmatched glyphs as one-em X error in the score denominator", () => {
+    const gt = makeLine("abc");
+    const pred = makeLine(
+      "ab",
+      0,
+      [{ x: 10, y: 10 }, { x: 30, y: 10 }],
+      {
+        centerX: 30,
+        width: 60,
+        quad: [
+          { x: 0, y: 0 }, { x: 60, y: 0 }, { x: 60, y: 20 }, { x: 0, y: 20 },
+        ],
+      },
+    );
+    const metrics = computeHorizontalRegionMetrics([gt], [pred], 20, weights).metrics!;
+
+    expect(metrics.glyphPositionCoverage).toBeCloseTo(2 / 3, 6);
+    expect(metrics.charDxScoreNormMean).toBeCloseTo(1 / 3, 6);
+    expect(metrics.compositeScore).toBeCloseTo(0.95, 6);
+  });
+
   it("reports outlier percentiles and threshold rates", () => {
     const gt = makeLine("abc", 0, [
       { x: 10, y: 10 }, { x: 30, y: 10 }, { x: 50, y: 10 },
@@ -120,13 +156,15 @@ describe("computeHorizontalRegionMetrics", () => {
     expect(metrics.charDistanceOverOneEmRate).toBeCloseTo(1 / 3, 6);
   });
 
-  it("does not fabricate horizontal X coordinates", () => {
+  it("penalizes unlocatable horizontal X coordinates without skipping the region", () => {
     const gt = makeLine("ab", 0, [{ y: 10 }, { y: 10 }]);
     const pred = makeLine("ab");
     const result = computeHorizontalRegionMetrics([gt], [pred], 20, weights);
 
-    expect(result.metrics).toBeUndefined();
-    expect(result.skipReason).toBe("no_horizontal_glyph_pairs");
+    expect(result.skipReason).toBeUndefined();
+    expect(result.metrics?.glyphPositionCoverage).toBe(0);
+    expect(result.metrics?.charDxScoreNormMean).toBe(1);
+    expect(result.metrics?.compositeScore).toBeCloseTo(0.85, 6);
   });
 
   it("penalizes an extra predicted line", () => {

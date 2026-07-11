@@ -183,6 +183,13 @@ export type HorizontalLineAnchor = {
   contentCenterY: number;
 };
 
+export type HorizontalSourceLineLayout = {
+  contentLeftX: number;
+  targetWidth: number;
+  targetHeight: number;
+  advanceScale: number;
+};
+
 export type HorizontalSourceGeometryProfile = {
   lineCount: number;
   groupCenterX: number;
@@ -198,6 +205,7 @@ export type HorizontalSourceGeometryProfile = {
   perLineCentersY: number[];
   perLineLeftX: number[];
   perLineRightX: number[];
+  perLineHeights: number[];
 };
 
 export type RegionTypesetDebug = {
@@ -871,10 +879,10 @@ export function resolveHorizontalSourceGeometryProfile(
     const inlineUnits = Math.max(1, countSourceInlineUnits(line.text, measureCtx, fontFamily));
     const inlineAdvance = line.width / inlineUnits;
     const declaredFontSize = line.fontSize;
-    const crossSize = declaredFontSize !== undefined && Number.isFinite(declaredFontSize) && declaredFontSize > 0
-      ? Math.min(line.height, declaredFontSize)
-      : line.height;
-    return Math.min(crossSize, inlineAdvance);
+    if (declaredFontSize !== undefined && Number.isFinite(declaredFontSize) && declaredFontSize > 0) {
+      return Math.min(line.height, declaredFontSize);
+    }
+    return Math.min(line.height, inlineAdvance);
   });
   const sourceFontSize = medianNumber(sourceFontSizes);
   if (sourceFontSize === null || sourceFontSize <= 0) {
@@ -914,7 +922,61 @@ export function resolveHorizontalSourceGeometryProfile(
     perLineRightX: sourceOrderReliable
       ? sourceOrderedLines.map((line) => line.centerX + line.width / 2)
       : [],
+    perLineHeights: sourceOrderReliable
+      ? sourceOrderedLines.map((line) => line.height)
+      : [],
   };
+}
+
+export function resolveHorizontalSourceLineLayouts(
+  region: TextRegion,
+  boxPadding: number,
+  renderedLines: readonly string[],
+  profile?: HorizontalSourceGeometryProfile,
+): HorizontalSourceLineLayout[] | undefined {
+  if (
+    !profile
+    || !profile.sourceOrderReliable
+    || renderedLines.length !== profile.lineCount
+    || profile.perLineLeftX.length !== profile.lineCount
+    || profile.perLineRightX.length !== profile.lineCount
+    || profile.perLineHeights.length !== profile.lineCount
+  ) {
+    return undefined;
+  }
+
+  const sourceLines = resolveSourceColumns(region);
+  if (
+    sourceLines.length !== renderedLines.length
+    || !renderedLines.every((line, index) => (
+      normalizeGeometryText(line) === normalizeGeometryText(sourceLines[index] ?? "")
+    ))
+  ) {
+    return undefined;
+  }
+
+  const contentLeft = region.box.x + boxPadding;
+  const layouts = renderedLines.map((_, index) => {
+    const left = profile.perLineLeftX[index];
+    const right = profile.perLineRightX[index];
+    const height = profile.perLineHeights[index];
+    return {
+      contentLeftX: left - contentLeft,
+      targetWidth: right - left,
+      targetHeight: height,
+      advanceScale: 1,
+    };
+  });
+
+  return layouts.every((layout) => (
+    Number.isFinite(layout.contentLeftX)
+    && Number.isFinite(layout.targetWidth)
+    && Number.isFinite(layout.targetHeight)
+    && layout.targetWidth > 0
+    && layout.targetHeight > 0
+  ))
+    ? layouts
+    : undefined;
 }
 
 export function resolveHorizontalSourceLineAnchor(
@@ -1821,6 +1883,8 @@ export function estimateVerticalPreferredProfile(
   sourceGeometryProfile?: VerticalSourceGeometryProfile,
 ): { advanceScale: number; perColumnAdvanceScale?: number[]; colSpacingScale: number } {
   ctx.font = `${fontSize}px ${fontFamily}`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
   const sw = strokeWidth(fontSize);
   const metrics = resolveVerticalCellMetrics(ctx, text, fontSize, sw);
   const sourceColumns = resolveSourceColumns(region);

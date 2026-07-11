@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildBaselineComparisons,
   buildTypesetBaseline,
+  getTypesetBaselineSchemaError,
   type TypesetBaseline,
 } from "../../benchmark/typeset/src/baseline";
 import type { BenchmarkSummary, HorizontalBenchmarkSummary } from "../../benchmark/typeset/src/types";
@@ -15,6 +16,7 @@ function horizontalSummary(scoredRegionCount: number): HorizontalBenchmarkSummar
     avgBlockHullIou: 0.7,
     avgSourceQuadCoverage: 1,
     avgFontSizeError: 0.1,
+    avgLineDyNormMean: 0.2,
     avgLineCenterDistanceNorm: 0.4,
     avgLineWidthError: 0.2,
     avgLineHeightError: 0.1,
@@ -30,6 +32,7 @@ function horizontalSummary(scoredRegionCount: number): HorizontalBenchmarkSummar
     signedCharDxNormMean: 0.1,
     signedCharDyNormMean: 0.1,
     charDxNormMean: 0.2,
+    charDxScoreNormMean: 0.2,
     charDyNormMean: 0.2,
     charDistanceNormMean: 0.3,
     charDistanceNormMedian: 0.2,
@@ -44,7 +47,7 @@ function horizontalSummary(scoredRegionCount: number): HorizontalBenchmarkSummar
 
 function makeSummary(horizontalScored = 1): BenchmarkSummary {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     generatedAt: "2026-07-11T00:00:00.000Z",
     imageCount: 1,
     totalRegionCount: 1,
@@ -76,6 +79,13 @@ function makeSummary(horizontalScored = 1): BenchmarkSummary {
 }
 
 describe("typeset baseline horizontal compatibility", () => {
+  it("rejects v2 baselines after the horizontal scoring definition changes", () => {
+    expect(getTypesetBaselineSchemaError({ schemaVersion: 2 })).toContain(
+      "schema v2 is incompatible with v3",
+    );
+    expect(getTypesetBaselineSchemaError({ schemaVersion: 3 })).toBeUndefined();
+  });
+
   it("omits horizontal baseline fields when no horizontal region is scored", () => {
     expect(buildTypesetBaseline(makeSummary(0)).horizontal).toBeUndefined();
   });

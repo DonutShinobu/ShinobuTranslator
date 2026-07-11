@@ -6,6 +6,7 @@ import type {
 import type { TextRegion } from "../../../src/types";
 import {
   buildHorizontalLineBoxes,
+  buildHorizontalGlyphPlacements,
   rebalanceHorizontalShortTailLines,
   resolveHorizontalLineMetrics,
   resolveHorizontalSafeInterval,
@@ -13,6 +14,7 @@ import {
 import {
   resolveHorizontalSourceGeometryProfile,
   resolveHorizontalSourceLineAnchor,
+  resolveHorizontalSourceLineLayouts,
 } from "../../../src/pipeline/typeset/sourceGeometry";
 
 function makeRegion(overrides: Partial<TextRegion> = {}): TextRegion {
@@ -109,10 +111,16 @@ describe("resolveHorizontalSourceGeometryProfile", () => {
       perLineCentersY: [70, 100],
       perLineLeftX: [120, 120],
       perLineRightX: [200, 240],
+      perLineHeights: [20, 20],
     });
     expect(resolveHorizontalSourceLineAnchor(region, 0, profile)).toEqual({
       contentCenterY: 35,
     });
+    expect(resolveHorizontalSourceLineLayouts(region, 0, ['甲乙', '丙丁戊'], profile)).toEqual([
+      { contentLeftX: 20, targetWidth: 80, targetHeight: 20, advanceScale: 1 },
+      { contentLeftX: 20, targetWidth: 120, targetHeight: 20, advanceScale: 1 },
+    ]);
+    expect(resolveHorizontalSourceLineLayouts(region, 0, ['甲乙', '不匹配'], profile)).toBeUndefined();
   });
 
   it("infers centered source lines from a stable center axis", () => {
@@ -175,6 +183,7 @@ describe("resolveHorizontalSourceGeometryProfile", () => {
       perLineCentersY: [],
       perLineLeftX: [],
       perLineRightX: [],
+      perLineHeights: [],
     });
   });
 
@@ -355,10 +364,33 @@ describe("resolveHorizontalSourceGeometryProfile", () => {
 });
 
 describe("horizontal line metrics and mask width", () => {
+  it("resets a vertical middle baseline before measuring horizontal ink", () => {
+    const ctx = createMeasureContext();
+    const measureText = ctx.measureText.bind(ctx);
+    ctx.textBaseline = "middle";
+    ctx.measureText = (text: string) => {
+      const measured = measureText(text);
+      if (ctx.textBaseline !== "middle") return measured;
+      return {
+        ...measured,
+        actualBoundingBoxAscent: 10,
+        actualBoundingBoxDescent: 10,
+      };
+    };
+
+    expect(resolveHorizontalLineMetrics(ctx, "测试", 20)).toMatchObject({
+      inkAscent: 16,
+      inkDescent: 4,
+    });
+    expect(ctx.textBaseline).toBe("alphabetic");
+  });
+
   it("uses real font metrics and source pitch for the line box", () => {
     expect(resolveHorizontalLineMetrics(createMeasureContext(), "测试", 20, 30)).toEqual({
       ascent: 16,
       descent: 4,
+      inkAscent: 16,
+      inkDescent: 4,
       inkHeight: 20,
       lineHeight: 30,
     });
@@ -368,6 +400,8 @@ describe("horizontal line metrics and mask width", () => {
     expect(resolveHorizontalLineMetrics(createMeasureContext(false), "测试", 20)).toEqual({
       ascent: 16,
       descent: 4,
+      inkAscent: 16,
+      inkDescent: 4,
       inkHeight: 20,
       lineHeight: 20,
     });
@@ -443,6 +477,78 @@ describe("horizontal line metrics and mask width", () => {
 
     expect(lineBoxes.map((line) => line.safeInterval.source)).toEqual(["mask", "mask"]);
     expect(lineBoxes[0].maxWidth).toBeLessThan(lineBoxes[1].maxWidth);
+  });
+
+  it("anchors source lines, clamps them to the safe interval, and shares scaled placements", () => {
+    const mask = createMask(220, 100, (x, y) => (
+      y >= 20 && y <= 60 ? x >= 50 && x <= 150 : true
+    ));
+    const region = makeRegion({ box: { x: 0, y: 0, width: 200, height: 80 } });
+    const ctx = createMeasureContext();
+    ctx.font = "20px Test Sans";
+    const lineBoxes = buildHorizontalLineBoxes({
+      ctx,
+      lines: [{ text: "甲 乙", width: 30 }],
+      region,
+      contentWidth: 200,
+      contentHeight: 80,
+      fontSize: 20,
+      padding: 0,
+      alignment: "left",
+      sourcePitch: 20,
+      sourceLineLayouts: [{
+        contentLeftX: 0,
+        targetWidth: 80,
+        targetHeight: 20,
+        advanceScale: 80 / 30,
+      }],
+      bubbleMask: mask,
+    });
+
+    expect(lineBoxes[0]).toMatchObject({
+      x: 50,
+      width: 80,
+      naturalWidth: 30,
+      visualHeight: 20,
+      sourceAnchored: true,
+      sourceClamped: true,
+    });
+    const placements = buildHorizontalGlyphPlacements(ctx, lineBoxes, 0)[0];
+    expect(placements).toHaveLength(3);
+    expect(placements[1].ch).toBe(" ");
+    expect(placements[0].centerX).toBeCloseTo(50 + 80 / 6);
+    expect(placements[2].centerX).toBeCloseTo(50 + 80 * 5 / 6);
+    expect(placements[0].centerY).toBe(placements[2].centerY);
+  });
+
+  it("rejects source anchoring when the target width cannot fit the safe interval", () => {
+    const mask = createMask(220, 100, (x, y) => (
+      y >= 20 && y <= 60 ? x >= 70 && x <= 130 : true
+    ));
+    const region = makeRegion({ box: { x: 0, y: 0, width: 200, height: 80 } });
+    const ctx = createMeasureContext();
+    ctx.font = "20px Test Sans";
+    const [lineBox] = buildHorizontalLineBoxes({
+      ctx,
+      lines: [{ text: "甲乙丙丁", width: 40 }],
+      region,
+      contentWidth: 200,
+      contentHeight: 80,
+      fontSize: 20,
+      padding: 0,
+      alignment: "center",
+      sourcePitch: 20,
+      sourceLineLayouts: [{
+        contentLeftX: 0,
+        targetWidth: 120,
+        targetHeight: 20,
+        advanceScale: 3,
+      }],
+      bubbleMask: mask,
+    });
+
+    expect(lineBox.sourceAnchored).toBe(false);
+    expect(lineBox.sourceAdvanceScale).toBeUndefined();
   });
 
   it("falls back to the content interval when no continuous mask run exists", () => {

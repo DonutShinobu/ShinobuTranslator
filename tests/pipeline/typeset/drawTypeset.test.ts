@@ -144,8 +144,60 @@ describe('drawTypeset', () => {
       x: line.x,
       y: line.topY,
       width: line.width,
-      height: line.lineHeight,
+      height: line.visualHeight,
     })));
+  });
+
+  it('preserves source font size and visual line geometry for identity text', () => {
+    const measureCtx = createMeasureContext();
+    const originalMeasureText = measureCtx.measureText.bind(measureCtx);
+    measureCtx.measureText = (text: string) => {
+      const measured = originalMeasureText(text);
+      const fontSize = Number.parseFloat(measureCtx.font) || 16;
+      return {
+        ...measured,
+        fontBoundingBoxAscent: fontSize * 1.1,
+        fontBoundingBoxDescent: fontSize * 0.3,
+      };
+    };
+    const region: TextRegion = {
+      id: 'horizontal-source-identity',
+      box: { x: 0, y: 0, width: 400, height: 80 },
+      direction: 'h',
+      sourceText: '甲乙 丙丁',
+      translatedText: '甲乙 丙丁',
+      originalLineCount: 1,
+      fontSize: 80,
+      sourceLineGeometries: [{
+        text: '甲乙 丙丁',
+        direction: 'h',
+        box: { x: 0, y: 0, width: 400, height: 80 },
+        centerX: 200,
+        centerY: 40,
+        width: 400,
+        height: 80,
+        fontSize: 80,
+      }],
+    };
+
+    const layout = computeFullHorizontalTypeset({
+      region,
+      fontFamily: 'Test Sans',
+      measureCtx,
+    });
+
+    expect(layout).toMatchObject({
+      initialFontSize: 80,
+      fittedFontSize: 80,
+      layoutDiagnostics: {
+        horizontalSourceIdentityMatched: true,
+        horizontalSourceLineTargetWidths: [400],
+      },
+    });
+    expect(layout?.debugColumnBoxes).toEqual([
+      expect.objectContaining({ width: 400, height: 80 }),
+    ]);
+    expect(layout!.lineBoxes[0].baselineY - layout!.strokePadding).toBeCloseTo(64, 6);
   });
 
   it('exposes a horizontal layout result independent from Canvas rendering', () => {

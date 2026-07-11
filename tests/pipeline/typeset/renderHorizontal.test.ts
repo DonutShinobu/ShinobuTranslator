@@ -41,9 +41,15 @@ describe("renderHorizontal", () => {
       maxWidth: 80,
       ascent: 16,
       descent: 4,
+      inkAscent: 16,
+      inkDescent: 4,
       inkHeight: 20,
       lineHeight: 24,
       safeInterval: { left: 0, right: 80, width: 80, source: "content" },
+      naturalWidth: 20,
+      visualHeight: 24,
+      sourceAnchored: false,
+      sourceClamped: false,
     };
     const glyphPlacements = buildHorizontalGlyphPlacements(context, [line], -1);
 

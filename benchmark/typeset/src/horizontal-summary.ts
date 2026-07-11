@@ -30,6 +30,13 @@ export function summarizeHorizontalMetrics(
   );
   const matchedGlyphCount = regions.reduce((sum, region) => sum + region.matchedGlyphCount, 0);
   const positionedGlyphCount = positioned.length;
+  const charDxScoreNormMean = coverageDenominator > 0
+    ? (
+        dxNorms.reduce((sum, dx) => sum + Math.abs(dx), 0)
+        + coverageDenominator
+        - positionedGlyphCount
+      ) / coverageDenominator
+    : 1;
 
   return {
     scoredRegionCount: regions.length,
@@ -39,6 +46,7 @@ export function summarizeHorizontalMetrics(
     avgBlockHullIou: mean(regions.map((region) => region.blockHullIou)),
     avgSourceQuadCoverage: mean(regions.map((region) => region.sourceQuadCoverage)),
     avgFontSizeError: mean(regions.map((region) => region.fontSizeError)),
+    avgLineDyNormMean: mean(regions.map((region) => region.lineDyNormMean)),
     avgLineCenterDistanceNorm: mean(regions.map((region) => region.lineCenterDistanceNormMean)),
     avgLineWidthError: mean(regions.map((region) => region.lineWidthErrorMean)),
     avgLineHeightError: mean(regions.map((region) => region.lineHeightErrorMean)),
@@ -54,6 +62,7 @@ export function summarizeHorizontalMetrics(
     signedCharDxNormMean: mean(dxNorms),
     signedCharDyNormMean: mean(dyNorms),
     charDxNormMean: mean(dxNorms.map(Math.abs)),
+    charDxScoreNormMean,
     charDyNormMean: mean(dyNorms.map(Math.abs)),
     charDistanceNormMean: mean(distances),
     charDistanceNormMedian: median(distances),

@@ -367,9 +367,6 @@ export function computeHorizontalRegionMetrics(
   const positionedDiagnostics = glyphDiagnostics.filter((item) => (
     item.matchStatus === "matched" && item.distanceNorm !== undefined
   ));
-  if (positionedDiagnostics.length === 0) {
-    return { skipReason: "no_horizontal_glyph_pairs", glyphDiagnostics };
-  }
 
   const gtSpatial = [...gtColumns].sort((a, b) => (
     quadCenter(columnQuad(a)).y - quadCenter(columnQuad(b)).y
@@ -381,6 +378,7 @@ export function computeHorizontalRegionMetrics(
   const lineIous: number[] = [];
   const signedLineDx: number[] = [];
   const signedLineDy: number[] = [];
+  const lineDyNorms: number[] = [];
   const lineDistances: number[] = [];
   const widthRatios: number[] = [];
   const widthErrors: number[] = [];
@@ -392,6 +390,7 @@ export function computeHorizontalRegionMetrics(
     const predColumn = predSpatial[index];
     if (!gtColumn || !predColumn) {
       lineIous.push(0);
+      lineDyNorms.push(1);
       continue;
     }
     const gtQuad = columnQuad(gtColumn);
@@ -406,6 +405,7 @@ export function computeHorizontalRegionMetrics(
     lineDistances.push(Math.hypot(dx, dy));
     const gtDimensions = quadDimensions(gtQuad);
     const predDimensions = quadDimensions(predQuad);
+    lineDyNorms.push(Math.abs(predCenter.y - gtCenter.y) / Math.max(1, gtDimensions.height));
     const widthRatio = safeRatio(predDimensions.width, gtDimensions.width);
     const heightRatio = safeRatio(predDimensions.height, gtDimensions.height);
     widthRatios.push(widthRatio);
@@ -454,6 +454,13 @@ export function computeHorizontalRegionMetrics(
   const dxNorms = positionedDiagnostics.map((item) => item.dxNorm!);
   const dyNorms = positionedDiagnostics.map((item) => item.dyNorm!);
   const distances = positionedDiagnostics.map((item) => item.distanceNorm!);
+  const charDxScoreNormMean = glyphCoverageDenominator > 0
+    ? (
+        dxNorms.reduce((sum, dx) => sum + Math.abs(dx), 0)
+        + glyphCoverageDenominator
+        - positionedDiagnostics.length
+      ) / glyphCoverageDenominator
+    : 1;
 
   const signedCharAdvances: number[] = [];
   const charAdvanceRatios: number[] = [];
@@ -489,14 +496,13 @@ export function computeHorizontalRegionMetrics(
   const charCenterQuality = mean(distances.map((distance) => 1 - clamp01(distance)));
   const lineCountMatch = gtColumns.length === predColumns.length ? 1 : 0;
   const lineQuadIouMean = mean(lineIous);
+  const lineDyNormMean = mean(lineDyNorms);
   const compositeScore =
     weights.lineCountMatch * lineCountMatch
     + weights.lineQuadIouMean * lineQuadIouMean
-    + weights.blockHullIou * blockHullIou
     + weights.fontSizeError * (1 - clamp01(fontSizeError))
-    + weights.lineBreakF1 * lineBreak.f1
-    + weights.glyphPositionCoverage * glyphPositionCoverage
-    + weights.charCenterQuality * charCenterQuality;
+    + weights.lineDyNorm * (1 - clamp01(lineDyNormMean))
+    + weights.charDxNorm * (1 - clamp01(charDxScoreNormMean));
 
   return {
     glyphDiagnostics,
@@ -513,6 +519,7 @@ export function computeHorizontalRegionMetrics(
       fontSizeError,
       signedLineCenterDxNormMean: mean(signedLineDx),
       signedLineCenterDyNormMean: mean(signedLineDy),
+      lineDyNormMean,
       lineCenterDistanceNormMean: mean(lineDistances),
       lineCenterDistanceNormP95: percentile(lineDistances, 95),
       lineCenterDistanceNormMax: lineDistances.length > 0 ? Math.max(...lineDistances) : 0,
@@ -537,6 +544,7 @@ export function computeHorizontalRegionMetrics(
       signedCharDxNormMean: mean(dxNorms),
       signedCharDyNormMean: mean(dyNorms),
       charDxNormMean: mean(dxNorms.map(Math.abs)),
+      charDxScoreNormMean,
       charDyNormMean: mean(dyNorms.map(Math.abs)),
       charDistanceNormMean: mean(distances),
       charDistanceNormMedian: median(distances),

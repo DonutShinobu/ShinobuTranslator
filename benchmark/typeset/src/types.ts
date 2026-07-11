@@ -128,6 +128,7 @@ export type HorizontalMetricValues = {
   fontSizeError: number;
   signedLineCenterDxNormMean: number;
   signedLineCenterDyNormMean: number;
+  lineDyNormMean: number;
   lineCenterDistanceNormMean: number;
   lineCenterDistanceNormP95: number;
   lineCenterDistanceNormMax: number;
@@ -152,6 +153,7 @@ export type HorizontalMetricValues = {
   signedCharDxNormMean: number;
   signedCharDyNormMean: number;
   charDxNormMean: number;
+  charDxScoreNormMean: number;
   charDyNormMean: number;
   charDistanceNormMean: number;
   charDistanceNormMedian: number;
@@ -204,6 +206,7 @@ export type HorizontalBenchmarkSummary = {
   avgBlockHullIou: number;
   avgSourceQuadCoverage: number;
   avgFontSizeError: number;
+  avgLineDyNormMean: number;
   avgLineCenterDistanceNorm: number;
   avgLineWidthError: number;
   avgLineHeightError: number;
@@ -219,6 +222,7 @@ export type HorizontalBenchmarkSummary = {
   signedCharDxNormMean: number;
   signedCharDyNormMean: number;
   charDxNormMean: number;
+  charDxScoreNormMean: number;
   charDyNormMean: number;
   charDistanceNormMean: number;
   charDistanceNormMedian: number;
@@ -231,7 +235,7 @@ export type HorizontalBenchmarkSummary = {
 };
 
 export type BenchmarkSummary = {
-  schemaVersion: 2;
+  schemaVersion: 3;
   generatedAt: string;
   imageCount: number;
   totalRegionCount: number;
@@ -272,11 +276,9 @@ export type ScoreWeights = {
 export type HorizontalScoreWeights = {
   lineCountMatch: number;
   lineQuadIouMean: number;
-  blockHullIou: number;
   fontSizeError: number;
-  lineBreakF1: number;
-  glyphPositionCoverage: number;
-  charCenterQuality: number;
+  lineDyNorm: number;
+  charDxNorm: number;
 };
 
 export type BenchConfig = {

@@ -10,13 +10,11 @@
     "charDyNorm": 0.15
   },
   "horizontalScoreWeights": {
-    "lineCountMatch": 0.1,
-    "lineQuadIouMean": 0.2,
-    "blockHullIou": 0.1,
-    "fontSizeError": 0.1,
-    "lineBreakF1": 0.1,
-    "glyphPositionCoverage": 0.1,
-    "charCenterQuality": 0.3
+    "lineCountMatch": 0.2,
+    "lineQuadIouMean": 0.3,
+    "fontSizeError": 0.2,
+    "lineDyNorm": 0.15,
+    "charDxNorm": 0.15
   },
   "regressionThreshold": 0.05
 }

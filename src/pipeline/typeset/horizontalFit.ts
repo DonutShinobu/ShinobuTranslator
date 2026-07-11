@@ -5,7 +5,7 @@ import type {
 import type { TextRegion } from '../../types';
 import { getRegionQuad, quadAngle } from './geometry';
 import { maxSourceGeometryAnchorAngleRad } from './fontFitCore';
-import type { HLine } from './fontFitCore';
+import type { HLine, HorizontalSourceLineLayout } from './fontFitCore';
 
 export {
   calcHorizontalFromLines,
@@ -26,6 +26,8 @@ export type { HLine, HorizontalFromLinesResult } from './fontFitCore';
 export type HorizontalLineMetrics = {
   ascent: number;
   descent: number;
+  inkAscent: number;
+  inkDescent: number;
   inkHeight: number;
   lineHeight: number;
 };
@@ -43,6 +45,11 @@ export type HorizontalLineBox = HLine & HorizontalLineMetrics & {
   baselineY: number;
   maxWidth: number;
   safeInterval: HorizontalSafeInterval;
+  naturalWidth: number;
+  visualHeight: number;
+  sourceAdvanceScale?: number;
+  sourceAnchored: boolean;
+  sourceClamped: boolean;
 };
 
 export type HorizontalGlyphPlacement = {
@@ -65,6 +72,7 @@ export type BuildHorizontalLineBoxesInput = {
   alignment: 'left' | 'center' | 'right';
   anchorContentCenterY?: number;
   sourcePitch?: number;
+  sourceLineLayouts?: readonly HorizontalSourceLineLayout[];
   bubbleMask?: PipelineImageData;
   boxPadding?: number;
 };
@@ -90,6 +98,7 @@ export function resolveHorizontalLineMetrics(
   fontSize: number,
   sourcePitch?: number,
 ): HorizontalLineMetrics {
+  ctx.textBaseline = 'alphabetic';
   const measured = ctx.measureText(text || '国');
   const actualAscent = finiteMetric(measured.actualBoundingBoxAscent);
   const actualDescent = finiteMetric(measured.actualBoundingBoxDescent);
@@ -97,11 +106,12 @@ export function resolveHorizontalLineMetrics(
   const fontDescent = finiteMetric(measured.fontBoundingBoxDescent);
   const ascent = fontAscent > 0 ? fontAscent : actualAscent > 0 ? actualAscent : fontSize * 0.8;
   const descent = fontDescent > 0 ? fontDescent : actualDescent > 0 ? actualDescent : fontSize * 0.2;
-  const actualInkHeight = actualAscent + actualDescent;
-  const inkHeight = actualInkHeight > 0 ? actualInkHeight : fontSize;
+  const inkAscent = actualAscent > 0 ? actualAscent : ascent;
+  const inkDescent = actualDescent > 0 ? actualDescent : descent;
+  const inkHeight = inkAscent + inkDescent;
   const naturalLineHeight = Math.max(fontSize, ascent + descent);
   const lineHeight = Math.max(1, naturalLineHeight, sourcePitch ?? 0);
-  return { ascent, descent, inkHeight, lineHeight };
+  return { ascent, descent, inkAscent, inkDescent, inkHeight, lineHeight };
 }
 
 function contentInterval(contentWidth: number): HorizontalSafeInterval {
@@ -196,49 +206,107 @@ export function buildHorizontalLineBoxes(
     alignment,
     anchorContentCenterY,
     sourcePitch,
+    sourceLineLayouts,
     bubbleMask,
     boxPadding = 0,
   } = input;
   if (lines.length === 0) return [];
 
+  const resolvedSourceLayouts = sourceLineLayouts?.length === lines.length
+    ? sourceLineLayouts
+    : undefined;
+
   const metricsByLine = lines.map((line) => (
     resolveHorizontalLineMetrics(ctx, line.text, fontSize, sourcePitch)
   ));
-  const lineHeight = Math.max(...metricsByLine.map((metrics) => metrics.lineHeight));
-  const totalHeight = lineHeight * lines.length;
-  const minCenterY = totalHeight / 2;
-  const maxCenterY = Math.max(minCenterY, contentHeight - totalHeight / 2);
+  const lineHeight = resolvedSourceLayouts
+    ? Math.max(1, sourcePitch ?? fontSize)
+    : Math.max(...metricsByLine.map((metrics) => metrics.lineHeight));
+  const centerOffsets = lines.map((_, index) => (
+    (index - (lines.length - 1) / 2) * lineHeight
+  ));
+  const visualHeights = lines.map((_, index) => (
+    resolvedSourceLayouts?.[index]?.targetHeight ?? lineHeight
+  ));
+  const topOffset = Math.min(...centerOffsets.map((offset, index) => (
+    offset - visualHeights[index] / 2
+  )));
+  const bottomOffset = Math.max(...centerOffsets.map((offset, index) => (
+    offset + visualHeights[index] / 2
+  )));
+  const minCenterY = -topOffset;
+  const maxCenterY = Math.max(minCenterY, contentHeight - bottomOffset);
   const contentCenterY = clampNumber(
     anchorContentCenterY ?? contentHeight / 2,
     minCenterY,
     maxCenterY,
   );
-  const contentTopY = contentCenterY - totalHeight / 2;
   const safetyMargin = Math.max(0, Math.ceil(fontSize * 0.08));
 
   return lines.map((line, index) => {
     const metrics = metricsByLine[index];
-    const localTopY = contentTopY + index * lineHeight;
-    const safeInterval = resolveHorizontalSafeInterval({
+    const sourceLayout = resolvedSourceLayouts?.[index];
+    const visualHeight = visualHeights[index];
+    const lineCenterY = contentCenterY + centerOffsets[index];
+    const localTopY = lineCenterY - visualHeight / 2;
+    const measuredSafeInterval = resolveHorizontalSafeInterval({
       mask: bubbleMask,
       region,
       contentWidth,
       localTopY,
-      localBottomY: localTopY + lineHeight,
-      preferredContentX: contentWidth / 2,
+      localBottomY: localTopY + visualHeight,
+      preferredContentX: sourceLayout
+        ? sourceLayout.contentLeftX + sourceLayout.targetWidth / 2
+        : contentWidth / 2,
       safetyMargin,
       boxPadding,
     });
+    const safeInterval = sourceLayout
+      ? (() => {
+          const left = Math.max(
+            -boxPadding,
+            measuredSafeInterval.left - safetyMargin - boxPadding,
+          );
+          const right = Math.min(
+            contentWidth + boxPadding,
+            measuredSafeInterval.right + safetyMargin + boxPadding,
+          );
+          return {
+            left,
+            right,
+            width: Math.max(0, right - left),
+            source: measuredSafeInterval.source,
+          };
+        })()
+      : measuredSafeInterval;
+    const targetWidth = sourceLayout?.targetWidth ?? line.width;
+    const sourceFits = sourceLayout !== undefined && targetWidth <= safeInterval.width + 0.5;
+    const desiredLeft = sourceLayout?.contentLeftX ?? 0;
+    const clampedLeft = sourceFits
+      ? clampNumber(desiredLeft, safeInterval.left, safeInterval.right - targetWidth)
+      : desiredLeft;
+    const sourceClamped = sourceFits && Math.abs(clampedLeft - desiredLeft) > 0.5;
     const leadingTop = Math.max(0, (lineHeight - metrics.ascent - metrics.descent) / 2);
+    const baselineY = sourceLayout
+      ? padding + lineCenterY + (metrics.inkAscent - metrics.inkDescent) / 2
+      : padding + localTopY + leadingTop + metrics.ascent;
     return {
       ...line,
       ...metrics,
+      width: targetWidth,
       lineHeight,
-      x: alignedLineX(line.width, safeInterval, padding, alignment),
+      x: sourceLayout
+        ? padding + clampedLeft
+        : alignedLineX(line.width, safeInterval, padding, alignment),
       topY: padding + localTopY,
-      baselineY: padding + localTopY + leadingTop + metrics.ascent,
+      baselineY,
       maxWidth: safeInterval.width,
       safeInterval,
+      naturalWidth: line.width,
+      visualHeight,
+      sourceAdvanceScale: sourceFits ? sourceLayout.advanceScale : undefined,
+      sourceAnchored: sourceFits,
+      sourceClamped,
     };
   });
 }
@@ -248,18 +316,51 @@ export function buildHorizontalGlyphPlacements(
   lines: readonly HorizontalLineBox[],
   letterSpacing: number,
 ): HorizontalGlyphPlacement[][] {
+  ctx.textBaseline = 'alphabetic';
   return lines.map((line) => {
-    const centerY = line.baselineY + (line.descent - line.ascent) / 2;
+    if (line.sourceAnchored) {
+      const chars = [...line.text];
+      const measurements = chars.map((ch) => ctx.measureText(ch));
+      const widths = measurements.map((measurement) => measurement.width);
+      const naturalAdvances = widths.map((width, index) => (
+        width + (index < chars.length - 1 ? letterSpacing : 0)
+      ));
+      const naturalTotal = naturalAdvances.reduce((sum, advance) => sum + advance, 0);
+      const advanceScale = naturalTotal > 0 ? line.width / naturalTotal : 1;
+      let penX = line.x;
+      return chars.map((ch, index) => {
+        const width = widths[index];
+        const measurement = measurements[index];
+        const glyphAscent = finiteMetric(measurement.actualBoundingBoxAscent) || line.inkAscent;
+        const glyphDescent = finiteMetric(measurement.actualBoundingBoxDescent) || line.inkDescent;
+        const allocatedAdvance = naturalAdvances[index] * advanceScale;
+        const centerX = penX + allocatedAdvance / 2;
+        const placement: HorizontalGlyphPlacement = {
+          ch,
+          x: centerX - width / 2,
+          baselineY: line.baselineY,
+          centerX,
+          centerY: line.baselineY + (glyphDescent - glyphAscent) / 2,
+          width,
+        };
+        penX += allocatedAdvance;
+        return placement;
+      });
+    }
+
     let penX = line.x;
     const chars = [...line.text];
     return chars.map((ch, index) => {
-      const width = ctx.measureText(ch).width;
+      const measurement = ctx.measureText(ch);
+      const width = measurement.width;
+      const glyphAscent = finiteMetric(measurement.actualBoundingBoxAscent) || line.inkAscent;
+      const glyphDescent = finiteMetric(measurement.actualBoundingBoxDescent) || line.inkDescent;
       const placement: HorizontalGlyphPlacement = {
         ch,
         x: penX,
         baselineY: line.baselineY,
         centerX: penX + width / 2,
-        centerY,
+        centerY: line.baselineY + (glyphDescent - glyphAscent) / 2,
         width,
       };
       if (index < chars.length - 1) {

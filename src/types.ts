@@ -148,6 +148,14 @@ export type TypesetLayoutDiagnostics = {
   horizontalLetterSpacingScale?: number;
   horizontalLineHeightScale?: number;
   horizontalReflowed?: boolean;
+  horizontalSourceIdentityMatched?: boolean;
+  horizontalSourceLineStartXs?: number[];
+  horizontalSourceLineTargetWidths?: number[];
+  horizontalSourceLineAdvanceScales?: number[];
+  horizontalSourceLineClampCount?: number;
+  horizontalLineBaselines?: number[];
+  horizontalLineInkAscents?: number[];
+  horizontalLineInkDescents?: number[];
 };
 
 export type TypesetDebugRegionLog = {

@@ -6,6 +6,7 @@ import { parseTypesetSuiteArgs } from "./suite-paths";
 import {
   buildBaselineComparisons,
   buildTypesetBaseline,
+  getTypesetBaselineSchemaError,
   type TypesetBaseline,
 } from "./baseline";
 
@@ -54,7 +55,13 @@ function main(): void {
     return;
   }
 
-  const baseline = JSON.parse(readFileSync(baselinePath, "utf-8")) as TypesetBaseline;
+  const baselineValue: unknown = JSON.parse(readFileSync(baselinePath, "utf-8"));
+  const schemaError = getTypesetBaselineSchemaError(baselineValue);
+  if (schemaError) {
+    console.error(schemaError);
+    process.exit(1);
+  }
+  const baseline = baselineValue as TypesetBaseline;
   const threshold = config.regressionThreshold;
   const comparison = buildBaselineComparisons(baseline, current);
   if (comparison.horizontalStatus === "missing-baseline") {

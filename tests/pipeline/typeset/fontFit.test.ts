@@ -916,6 +916,68 @@ describe("estimateVerticalPreferredProfile", () => {
     };
   }
 
+  it("resets horizontal Canvas alignment before deriving source column spacing", () => {
+    const contaminatedCtx = {
+      font: "",
+      textAlign: "start",
+      textBaseline: "alphabetic",
+      measureText: (text: string) => {
+        const fontSize = Number.parseFloat(contaminatedCtx.font) || 29;
+        const centered = contaminatedCtx.textAlign === "center";
+        const width = Math.max(fontSize, text.length * fontSize * 0.6);
+        return {
+          width,
+          actualBoundingBoxLeft: centered ? fontSize / 2 : 0,
+          actualBoundingBoxRight: centered ? fontSize / 2 : 45,
+          actualBoundingBoxAscent: fontSize / 2,
+          actualBoundingBoxDescent: fontSize / 2,
+          fontBoundingBoxAscent: fontSize * 0.8,
+          fontBoundingBoxDescent: fontSize * 0.2,
+        };
+      },
+    };
+    const region = makeRegion({
+      direction: "v",
+      sourceText: "优等生所以\n不会洒出来哦？",
+      translatedText: "优等生所以不会洒出来哦？",
+      originalLineCount: 2,
+    });
+    const sourceProfile = makeSourceProfile({
+      columnCount: 2,
+      sourceFontSize: 29,
+      sourcePitch: 36,
+      medianPitch: 36,
+      medianGap: 7,
+      medianWidth: 29,
+      medianAdvance: 29,
+      perColumnAdvance: [29, 29],
+      perColumnTopY: [0, 0],
+    });
+
+    const profile = estimateVerticalPreferredProfile(
+      contaminatedCtx as never,
+      region,
+      "优等生所以不会洒出来哦？",
+      65,
+      248,
+      29,
+      "sans-serif",
+      ["优等生所以", "不会洒出来哦？"],
+      65,
+      sourceProfile,
+    );
+    const metrics = resolveVerticalCellMetrics(
+      contaminatedCtx as never,
+      "优等生所以不会洒出来哦？",
+      29,
+      strokeWidth(29),
+    );
+
+    expect(contaminatedCtx.textAlign).toBe("center");
+    expect(contaminatedCtx.textBaseline).toBe("middle");
+    expect(metrics.colWidth + metrics.colSpacing * profile.colSpacingScale).toBeCloseTo(36);
+  });
+
   it("keeps the fallback advance floor when source geometry is unavailable", () => {
     const region = makeRegion({
       direction: "v",

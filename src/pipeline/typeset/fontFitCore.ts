@@ -386,7 +386,7 @@ export function resolveVerticalTokenMetrics(
       ),
       renderInlineScale: 1,
       renderCrossScale: 1,
-      renderOffsetX: 0,
+      renderOffsetX,
       renderOffsetY: 0,
       inkWidth: ink.width,
       inkHeight: ink.height,

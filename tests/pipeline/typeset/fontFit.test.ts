@@ -230,6 +230,17 @@ describe("resolveVerticalTokenMetrics", () => {
           fontBoundingBoxDescent: 4,
         };
       }
+      if (["︕", "︖", "！", "？", "!?"].includes(text)) {
+        return {
+          width: text === "!?" ? 24 : 20,
+          actualBoundingBoxLeft: text === "!?" ? 14 : 12,
+          actualBoundingBoxRight: text === "!?" ? 8 : 6,
+          actualBoundingBoxAscent: 8,
+          actualBoundingBoxDescent: 2,
+          fontBoundingBoxAscent: 16,
+          fontBoundingBoxDescent: 4,
+        };
+      }
       return {
         width: 18,
         actualBoundingBoxLeft: 9,
@@ -255,6 +266,29 @@ describe("resolveVerticalTokenMetrics", () => {
       inkWidth: 60,
       inkHeight: 10,
       boundaryGap: 5,
+    });
+  });
+
+  it.each(["!", "?", "！", "？"])(
+    "centers upright punctuation %s from its ink bounds",
+    (punctuation) => {
+      const token = tokenizeVerticalText(punctuation)[0];
+      if (!token) throw new Error("Expected one vertical punctuation token");
+
+      expect(resolveVerticalTokenMetrics(ctx, token, 20, 20)).toMatchObject({
+        renderOffsetX: 3,
+        renderOffsetY: 0,
+      });
+    },
+  );
+
+  it("centers terminal double punctuation from its combined ink bounds", () => {
+    const token = tokenizeVerticalText("真的吗!?").at(-1);
+    if (!token) throw new Error("Expected terminal punctuation token");
+
+    expect(resolveVerticalTokenMetrics(ctx, token, 20, 20)).toMatchObject({
+      renderOffsetX: 3,
+      renderOffsetY: 0,
     });
   });
 
@@ -756,7 +790,7 @@ describe("resolveVerticalSourceGeometryProfile", () => {
   it("uses Canvas font measurements for source font-size and advance", () => {
     const measureCtx = {
       font: "",
-      measureText(text: string) {
+      measureText(this: { font: string }, text: string) {
         const fontSize = Number.parseFloat(this.font) || 100;
         if (text === "国") return { width: fontSize };
         if (!/^\p{Script=Latin}+$/u.test(text)) {

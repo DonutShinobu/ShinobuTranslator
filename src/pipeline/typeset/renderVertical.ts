@@ -44,9 +44,9 @@ function renderVerticalGlyph(
     const measuredWidth = Math.max(1, ctx.measureText(glyph.ch).width);
     const scaleX = Math.min(1, fontSize * 0.9 / measuredWidth);
     ctx.scale(scaleX, 1);
-    draw();
+    draw(glyph.renderOffsetX);
   } else {
-    draw();
+    draw(glyph.renderOffsetX);
   }
   ctx.restore();
 }

@@ -1687,9 +1687,12 @@ export function estimateVerticalPreferredProfile(
   if (targetColumnCount > 1) {
     const spacingWidth = originalContentWidth ?? contentWidth;
     const fallbackSpacing = (spacingWidth - targetColumnCount * metrics.colWidth) / (targetColumnCount - 1);
-    const sourcePitch = sourceGeometryProfile
-      ? sourceGeometryProfile.sourcePitch * sourceStyleScale
-      : undefined;
+    // Preserve the source columns' absolute center-to-center distance. Font
+    // fitting may scale glyph width and inline advance, but scaling the pitch
+    // by the same factor collapses the whitespace between translated columns.
+    // When no measured multi-column pitch exists, keep the existing fallback
+    // that derives spacing from the available content width.
+    const sourcePitch = sourceGeometryProfile?.medianPitch ?? undefined;
     const sourceSpacing = sourcePitch !== undefined ? sourcePitch - metrics.colWidth : undefined;
     const baseSpacing = Math.max(1, metrics.colSpacing);
     if (sourceSpacing !== undefined) {

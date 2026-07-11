@@ -10,6 +10,7 @@ import {
   resolveVerticalSourceColumnAnchor,
   resolveVerticalSourceColumnStartOffsets,
   resolveVerticalSourceGeometryProfile,
+  resolveVerticalCellMetrics,
   strokeWidth,
   resolveOffscreenGuardPadding,
   resolveVerticalStartY,
@@ -1069,7 +1070,7 @@ describe("estimateVerticalPreferredProfile", () => {
     expect(profile.perColumnAdvanceScale).toBeUndefined();
   });
 
-  it("scales source advance and column pitch together with the font size", () => {
+  it("keeps the absolute source column pitch while font size and advance scale", () => {
     const region = makeRegion({
       direction: "v",
       sourceText: "甲\n乙",
@@ -1095,8 +1096,12 @@ describe("estimateVerticalPreferredProfile", () => {
 
     expect(fullSize.advanceScale).toBeCloseTo(1.2);
     expect(halfSize.advanceScale).toBeCloseTo(1.2);
-    expect(fullSize.colSpacingScale).toBeCloseTo(4);
-    expect(halfSize.colSpacingScale).toBeCloseTo(4);
+    const fullMetrics = resolveVerticalCellMetrics(ctx as never, "丙丁", 20, strokeWidth(20));
+    const halfMetrics = resolveVerticalCellMetrics(ctx as never, "丙丁", 10, strokeWidth(10));
+    const fullPitch = fullMetrics.colWidth + fullMetrics.colSpacing * fullSize.colSpacingScale;
+    const halfPitch = halfMetrics.colWidth + halfMetrics.colSpacing * halfSize.colSpacingScale;
+    expect(fullPitch).toBeCloseTo(30);
+    expect(halfPitch).toBeCloseTo(30);
   });
 });
 

@@ -40,6 +40,7 @@ function resolveUnicodeVerticalOrientation(grapheme: string): "U" | "R" | "Tu" |
 - sideways run 的 `advanceY` 来自完整 run 的真实 ink width、旋转后 cross size 与边界留白；旋转中心用实际 ink center 补偿。Latin run 不得套用源逐字符 advance 做纵向非等比压缩，空间不足应交给统一字号拟合/换列处理。
 - OCR 字符语义不在 typeset 层纠正。类似 `_lll` 的输入按 mixed 规则原样分类，禁止增加“重复 Latin 直立”或相邻字符猜测替换。
 - tate-chu-yoko 在一个 em 内缩放。source advance、font size、content height、bubble height 继续独立。
+- 可靠多列源几何提供的 `medianPitch` 是图像空间中的绝对列中心距。字号拟合可以缩放 glyph 宽度和纵向 advance，但不得把 `medianPitch` 乘以 `fontSize / sourceFontSize`；多列总宽度溢出时优先通过现有字号拟合收缩 glyph，只有没有实测 `medianPitch` 时才按可用宽度回退估算列距。
 - 描边与填充必须调用同一个 item transform。Canvas 顺时针旋转使用 `Math.PI / 2`。
 - 所有 item 使用统一样式描边；不得按细线、长音符或特定 sourceText 修改 `lineWidth`。
 - `columnVerticalItems` 是诊断输出，不得反馈进 runtime 换列或 source geometry。
@@ -61,16 +62,18 @@ function resolveUnicodeVerticalOrientation(grapheme: string): "U" | "R" | "Tu" |
 - Good：`AveMujica` 在换列前形成一个 sideways run，渲染时整体旋转。
 - Good：`そうだねーー` 的两个 `ー` 都是独立 `transformed-sideways` item，方向不受句尾上下文影响。
 - Good：`真的吗?！」` 形成一个 `terminal-punctuation` tate-chu-yoko，随后单独布局 `」`。
+- Good：译文字号因溢出从 `20px` 缩到 `10px` 时，可靠源列 `medianPitch = 30px` 仍保持 `30px`，而不是跟随字号缩成 `15px`。
 - Base：单个 `N` 保持直立；单个全角 `？` 使用字体直立形态。
 - Bad：把 `～` 映射成 `︴`，会改变波形语义并产生短而怪异的 glyph。
 - Bad：先做 `! -> ︕`、`? -> ︖`，再尝试识别 `!?`；此时组合信息已经丢失。
 - Bad：用 benchmark GT 或方向诊断重排 `translatedColumns`。
 - Bad：把 OCR 输出 `_lll` 当成竖线序列并增加重复字符特判；这会把 OCR 语义错误泄漏进排版规则。
+- Bad：使用 `sourcePitch * sourceStyleScale` 作为多列中心距；这会在译文字号缩小时同步吞掉列间留白，使相邻中文列贴在一起。
 
 ## 6. Tests Required
 
 - `tests/pipeline/typeset/verticalOrientation.test.ts`：Unicode 值、grapheme、wave/长音符、Latin/digit、四类双标点及三连负例。
-- `tests/pipeline/typeset/fontFit.test.ts` 与 `typesetGeometry.test.ts`：source advance、换列、禁则和 debug box 无回归。
+- `tests/pipeline/typeset/fontFit.test.ts` 与 `typesetGeometry.test.ts`：source advance、换列、禁则和 debug box 无回归；至少断言同一可靠 `medianPitch` 在不同拟合字号下解析出的实际列中心距保持不变。
 - `tests/benchmark/glyph-quality.test.ts`：旧日志 coverage=0、run 被拆分时明确失败。
 - 运行 `npx tsc --noEmit --pretty false`、`npm run test`、`npm run build`、严格 fixture audit、`bench:render` 和 `bench`。
 - 字体或 Canvas transform 变化后，人工复核包含 wave、`ー`、Latin run、双标点的 render/overlay。

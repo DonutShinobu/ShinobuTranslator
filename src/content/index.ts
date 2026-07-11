@@ -1,5 +1,3 @@
-import { shinobuBake, shinobuRender, shinobuRenderDebug, shinobuRenderFixtureDebug } from '../pipeline/bake';
-import { browserPlatform } from '../runtime/browserPlatform';
 import { twitterAdapter } from './adapters/twitter';
 import { pixivAdapter } from './adapters/pixiv';
 import { ehentaiAdapter } from './adapters/ehentai';
@@ -14,54 +12,9 @@ import {
 } from './core/screenshot';
 import type { ScreenshotRect, ScreenshotSelection } from './core/screenshot';
 
-type ShinobuWindow = typeof window & {
-  __shinobu_bake__?: typeof shinobuBake;
-};
-
-(window as ShinobuWindow).__shinobu_bake__ = shinobuBake;
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
-
-// Bridge for benchmark baking: listen for postMessage from main world
-window.addEventListener("message", async (event) => {
-  if (event.data?.type === "__shinobu_bake_request__") {
-    try {
-      const result = await shinobuBake(event.data.dataUrl, browserPlatform);
-      window.postMessage({ type: "__shinobu_bake_response__", result }, "*");
-    } catch (error: unknown) {
-      window.postMessage({ type: "__shinobu_bake_response__", error: toErrorMessage(error) }, "*");
-    }
-  } else if (event.data?.type === "__shinobu_render_request__") {
-    try {
-      const result = await shinobuRender(event.data.dataUrl, browserPlatform);
-      window.postMessage({ type: "__shinobu_render_response__", result }, "*");
-    } catch (error: unknown) {
-      window.postMessage({ type: "__shinobu_render_response__", error: toErrorMessage(error) }, "*");
-    }
-  } else if (event.data?.type === "__shinobu_render_debug_request__") {
-    try {
-      const result = await shinobuRenderDebug(event.data.dataUrl, browserPlatform);
-      window.postMessage({ type: "__shinobu_render_debug_response__", result }, "*");
-    } catch (error: unknown) {
-      window.postMessage({ type: "__shinobu_render_debug_response__", error: toErrorMessage(error) }, "*");
-    }
-  } else if (event.data?.type === "__shinobu_render_fixture_debug_request__") {
-    try {
-      const result = await shinobuRenderFixtureDebug(
-        event.data.dataUrl,
-        event.data.regions,
-        browserPlatform,
-      );
-      window.postMessage({ type: "__shinobu_render_fixture_debug_response__", result }, "*");
-    } catch (error: unknown) {
-      window.postMessage({ type: "__shinobu_render_fixture_debug_response__", error: toErrorMessage(error) }, "*");
-    }
-  }
-});
-// Signal that the bake bridge is ready
-window.postMessage({ type: "__shinobu_bake_ready__" }, "*");
 
 /** Null adapter for non-supported sites — supports only context-menu translation. */
 function createNullAdapter(): SiteAdapter {

@@ -5,15 +5,6 @@ import type {
   TensorTransport,
   WorkerSessionHandle,
   InferenceResult,
-  OcrInputNameSet,
-  OcrSplitInputNameSet,
-  OcrBatchDecodeInputItem,
-  OcrBatchDecodeOptions,
-  OcrBatchDecodeResult,
-  OcrSingleDecodeResult,
-  OcrColorBatchInputItem,
-  OcrColorBatchResult,
-  OcrColorSingleResult,
   OnnxWorkerApi,
   GpuDetectResult,
   PaddleGraphCaptureProbeOptions,
@@ -40,30 +31,6 @@ function tensorByteLength(tensor: TensorTransport): number {
 
 function tensorRecordByteLength(tensors: Record<string, TensorTransport>): number {
   return Object.values(tensors).reduce((sum, tensor) => sum + tensorByteLength(tensor), 0);
-}
-
-function ocrBatchInputBytes(items: OcrBatchDecodeInputItem[]): number {
-  return items.reduce((sum, item) => sum + item.imageData.byteLength, 0);
-}
-
-function ocrColorBatchInputBytes(items: OcrColorBatchInputItem[]): number {
-  return items.reduce((sum, item) => sum + item.imageData.byteLength + item.tokenIds.length * 8, 0);
-}
-
-function ocrBatchOutputBytes(result: OcrBatchDecodeResult): number {
-  return result.items.reduce((sum, item) => sum + item.tokenIds.length * 8 + (item.colors ? 24 : 0), 0);
-}
-
-function ocrColorBatchOutputBytes(result: OcrColorBatchResult): number {
-  return result.colors.length * 24;
-}
-
-function ocrSingleOutputBytes(result: OcrSingleDecodeResult): number {
-  return result.output ? result.output.tokenIds.length * 8 : 0;
-}
-
-function ocrColorSingleOutputBytes(result: OcrColorSingleResult): number {
-  return result.color ? 24 : 0;
 }
 
 function gpuDetectOutputBytes(result: GpuDetectResult): number {
@@ -195,136 +162,6 @@ export async function runInference(
       model: sessionId,
       inputBytes: tensorRecordByteLength(feeds),
       outputBytes: result ? tensorRecordByteLength(result.outputs) : undefined,
-      startedAt,
-      durationMs: performance.now() - startedAt,
-    });
-  }
-}
-
-export async function runOcrBatchDecode(
-  sessionId: string,
-  inputNames: OcrInputNameSet,
-  items: OcrBatchDecodeInputItem[],
-  options: OcrBatchDecodeOptions
-): Promise<OcrBatchDecodeResult> {
-  const startedAt = performance.now();
-  let result: OcrBatchDecodeResult | null = null;
-  try {
-    result = await (await getProxy()).runOcrBatchDecode(sessionId, inputNames, items, options);
-    return result;
-  } finally {
-    recordPerfWorkerCall({
-      kind: "runOcrBatchDecode",
-      model: sessionId,
-      inputBytes: ocrBatchInputBytes(items),
-      outputBytes: result ? ocrBatchOutputBytes(result) : undefined,
-      startedAt,
-      durationMs: performance.now() - startedAt,
-    });
-  }
-}
-
-export async function runOcrSplitBatchDecode(
-  encoderSessionId: string,
-  decoderSessionId: string,
-  inputNames: OcrSplitInputNameSet,
-  items: OcrBatchDecodeInputItem[],
-  options: OcrBatchDecodeOptions
-): Promise<OcrBatchDecodeResult> {
-  const startedAt = performance.now();
-  let result: OcrBatchDecodeResult | null = null;
-  try {
-    result = await (await getProxy()).runOcrSplitBatchDecode(encoderSessionId, decoderSessionId, inputNames, items, options);
-    return result;
-  } finally {
-    recordPerfWorkerCall({
-      kind: "runOcrSplitBatchDecode",
-      model: `${encoderSessionId}/${decoderSessionId}`,
-      inputBytes: ocrBatchInputBytes(items),
-      outputBytes: result ? ocrBatchOutputBytes(result) : undefined,
-      startedAt,
-      durationMs: performance.now() - startedAt,
-    });
-  }
-}
-
-export async function runOcrSingleDecode(
-  sessionId: string,
-  inputNames: OcrInputNameSet,
-  imageData: Float32Array,
-  imageDims: number[],
-  validEncoderLength: number,
-  options: {
-    seqLen: number;
-    encoderLen: number;
-    maxSteps: number;
-    charset: string[] | null;
-  }
-): Promise<OcrSingleDecodeResult> {
-  const startedAt = performance.now();
-  let result: OcrSingleDecodeResult | null = null;
-  try {
-    result = await (await getProxy()).runOcrSingleDecode(sessionId, inputNames, imageData, imageDims, validEncoderLength, options);
-    return result;
-  } finally {
-    recordPerfWorkerCall({
-      kind: "runOcrSingleDecode",
-      model: sessionId,
-      inputBytes: imageData.byteLength,
-      outputBytes: result ? ocrSingleOutputBytes(result) : undefined,
-      startedAt,
-      durationMs: performance.now() - startedAt,
-    });
-  }
-}
-
-export async function runOcrColorBatch(
-  sessionId: string,
-  inputNames: OcrInputNameSet,
-  items: OcrColorBatchInputItem[],
-  seqLen: number,
-  encoderLen: number,
-  inputHeight: number,
-  inputWidth: number
-): Promise<OcrColorBatchResult> {
-  const startedAt = performance.now();
-  let result: OcrColorBatchResult | null = null;
-  try {
-    result = await (await getProxy()).runOcrColorBatch(sessionId, inputNames, items, seqLen, encoderLen, inputHeight, inputWidth);
-    return result;
-  } finally {
-    recordPerfWorkerCall({
-      kind: "runOcrColorBatch",
-      model: sessionId,
-      inputBytes: ocrColorBatchInputBytes(items),
-      outputBytes: result ? ocrColorBatchOutputBytes(result) : undefined,
-      startedAt,
-      durationMs: performance.now() - startedAt,
-    });
-  }
-}
-
-export async function runOcrColorSingle(
-  sessionId: string,
-  inputNames: OcrInputNameSet,
-  imageData: Float32Array,
-  imageDims: number[],
-  validEncoderLength: number,
-  tokenIds: number[],
-  seqLen: number,
-  encoderLen: number
-): Promise<OcrColorSingleResult> {
-  const startedAt = performance.now();
-  let result: OcrColorSingleResult | null = null;
-  try {
-    result = await (await getProxy()).runOcrColorSingle(sessionId, inputNames, imageData, imageDims, validEncoderLength, tokenIds, seqLen, encoderLen);
-    return result;
-  } finally {
-    recordPerfWorkerCall({
-      kind: "runOcrColorSingle",
-      model: sessionId,
-      inputBytes: imageData.byteLength + tokenIds.length * 8,
-      outputBytes: result ? ocrColorSingleOutputBytes(result) : undefined,
       startedAt,
       durationMs: performance.now() - startedAt,
     });

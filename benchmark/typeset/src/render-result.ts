@@ -1,14 +1,13 @@
-import { launchWindowsChrome } from "./chrome-cdp";
+import { launchWindowsChrome, openBenchmarkPage } from "./chrome-cdp";
 import { createCanvas, loadImage } from "canvas";
 import { createHash } from "crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "fs";
 import { dirname, extname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { execSync } from "child_process";
-import { createServer } from "http";
-import type { AddressInfo } from "net";
 import type { Fixture, GroundTruthColumn } from "./types";
 import type { RenderFixtureRegion } from "../../../src/pipeline/bake";
+import type { ShinobuBenchmarkWindow } from "../../../src/benchmark/browserEntry";
 import type { PipelineTypesetDebugLog, QuadPoint, SourceTextLineGeometry } from "../../../src/types";
 
 const ROOT = resolve(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -172,38 +171,8 @@ async function renderDebugOverlay(
 }
 
 async function main(): Promise<void> {
-  console.log("Building extension...");
-  execSync("npm run build", { cwd: ROOT, stdio: "inherit" });
-
-  const manifestPath = join(DIST_DIR, "manifest.json");
-  const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
-  manifest.content_scripts[0].matches = ["http://localhost/*", ...manifest.content_scripts[0].matches];
-  if (!manifest.host_permissions) manifest.host_permissions = [];
-  if (!manifest.host_permissions.includes("http://localhost/*")) {
-    manifest.host_permissions.push("http://localhost/*");
-  }
-  if (!manifest.permissions) manifest.permissions = [];
-  if (!manifest.permissions.includes("scripting")) {
-    manifest.permissions.push("scripting");
-  }
-  for (const war of manifest.web_accessible_resources ?? []) {
-    if (!war.matches.includes("http://localhost/*")) {
-      war.matches.push("http://localhost/*");
-    }
-  }
-  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-
-  const server = createServer((_req, res) => {
-    res.writeHead(200, { "Content-Type": "text/html" });
-    res.end("<html><body></body></html>");
-  });
-  await new Promise<void>((resolve) => server.listen(0, "0.0.0.0", resolve));
-  const address = server.address();
-  if (!address || typeof address === "string") {
-    throw new Error("Failed to resolve benchmark server port.");
-  }
-  const port = (address as AddressInfo).port;
-  const localUrl = `http://localhost:${port}/`;
+  console.log("Building benchmark extension...");
+  execSync("npm run build:benchmark", { cwd: ROOT, stdio: "inherit" });
 
   const fixtureFiles = readdirSync(FIXTURES_DIR).filter((f) => f.endsWith(".fixture.json"));
   if (fixtureFiles.length === 0) {
@@ -214,7 +183,7 @@ async function main(): Promise<void> {
   const outputDir = join(REPORTS_DIR, new Date().toISOString().replace(/[:.]/g, "-"));
   mkdirSync(outputDir, { recursive: true });
 
-  const { context, close: closeBrowser } = await launchWindowsChrome(DIST_DIR);
+  const chrome = await launchWindowsChrome(DIST_DIR);
 
   for (const fixtureFile of fixtureFiles) {
     const fixture = JSON.parse(readFileSync(join(FIXTURES_DIR, fixtureFile), "utf-8")) as Fixture;
@@ -227,48 +196,18 @@ async function main(): Promise<void> {
     console.log(`Rendering fixture: ${imgFile}`);
     const dataUrl = imageToDataUrl(imgPath);
 
-    const page = await context.newPage();
+    const page = await openBenchmarkPage(chrome);
     page.on("console", (msg) => console.log(`  [browser ${msg.type()}] ${msg.text()}`));
     page.on("pageerror", (err) => console.log(`  [pageerror] ${err.message}`));
 
-    await page.addInitScript(`
-      window.__shinobu_bridge_ready__ = false;
-      window.addEventListener("message", (e) => {
-        if (e.data?.type === "__shinobu_bake_ready__") {
-          window.__shinobu_bridge_ready__ = true;
-        }
-      });
-    `);
-
-    await page.goto(localUrl, { waitUntil: "load" });
-    await page.waitForFunction('window.__shinobu_bridge_ready__ === true', { timeout: 15_000 });
-
-    await page.evaluate(
-      ({ du, regions }: { du: string; regions: RenderFixtureRegion[] }) => {
-        (window as typeof window & {
-          __shinobu_render_fixture__?: { dataUrl: string; regions: RenderFixtureRegion[] };
-        }).__shinobu_render_fixture__ = { dataUrl: du, regions };
-      },
-      { du: dataUrl, regions: toRenderFixtureRegions(fixture) },
-    );
-    const result: RenderDebugResponse = await page.evaluate(`
-      new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error("Render timeout")), 120000);
-        const handler = (e) => {
-          if (e.data?.type !== "__shinobu_render_fixture_debug_response__") return;
-          window.removeEventListener("message", handler);
-          clearTimeout(timeout);
-          if (e.data.error) reject(new Error(e.data.error));
-          else resolve(e.data.result);
-        };
-        window.addEventListener("message", handler);
-        window.postMessage({
-          type: "__shinobu_render_fixture_debug_request__",
-          dataUrl: window.__shinobu_render_fixture__.dataUrl,
-          regions: window.__shinobu_render_fixture__.regions,
-        }, "*");
-      })
-    `);
+    const result = await page.evaluate<
+      RenderDebugResponse,
+      { dataUrl: string; regions: RenderFixtureRegion[] }
+    >(async ({ dataUrl: fixtureDataUrl, regions }) => {
+      const api = (window as ShinobuBenchmarkWindow).__shinobuBenchmark__;
+      if (!api) throw new Error("Benchmark API is unavailable");
+      return api.renderFixtureDebug(fixtureDataUrl, regions);
+    }, { dataUrl, regions: toRenderFixtureRegions(fixture) });
 
     const stem = imgFile.replace(/\.[^.]+$/, "");
     const renderedPng = dataUrlToBuffer(result.dataUrl);
@@ -284,8 +223,7 @@ async function main(): Promise<void> {
     await page.close();
   }
 
-  await closeBrowser();
-  server.close();
+  await chrome.close();
   console.log(`Render complete. Output: ${outputDir}`);
 }
 

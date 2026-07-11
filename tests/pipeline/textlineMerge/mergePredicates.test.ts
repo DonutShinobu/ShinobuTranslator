@@ -7,7 +7,7 @@ import {
   mergeTextRegions,
 } from "../../../src/pipeline/textlineMerge/mergePredicates";
 import type { TextRegion, TextDirection } from "../../../src/types";
-import type { InternalQuad, MergedGroup } from "../../../src/pipeline/textlineMerge/mergePredicates";
+import type { InternalQuad } from "../../../src/pipeline/textlineMerge/mergePredicates";
 
 // Helper to create a minimal TextRegion for testing
 function makeRegion(overrides: Partial<TextRegion> = {}): TextRegion {
@@ -82,7 +82,7 @@ describe("buildInternalQuad", () => {
         { x: 40, y: 0 },
         { x: 40, y: 60 },
         { x: 10, y: 60 },
-      ] as [TextRegion["quad"][0], TextRegion["quad"][1], TextRegion["quad"][2], TextRegion["quad"][3]],
+      ] as NonNullable<TextRegion["quad"]>,
     });
     const iq = buildInternalQuad(region, 0);
     // The quad is shifted from origin, centroid should reflect that

@@ -1,6 +1,6 @@
 import { createServer } from "http";
 import type { AddressInfo } from "net";
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { dirname, extname, join, resolve, sep } from "path";
 import { fileURLToPath } from "url";
 import { chromium } from "@playwright/test";
@@ -121,8 +121,7 @@ type OcrSummary = {
   paddle?: PaddleSummary;
 };
 
-type ModeResult = {
-  mode: "old-full-ar" | "new-split" | "current";
+type PaddleProfileResult = {
   extensionDir: string;
   ocrEngine: OcrEngine;
   processMode: ProcessMode;
@@ -153,23 +152,12 @@ type XImage = {
   bytes: number;
 };
 
-type CompareReport = {
+type PaddleProfileReport = {
   createdAt: string;
   xUrl: string;
   image: Omit<XImage, "dataUrl">;
-  runsPerMode: number;
-  modes: ModeResult[];
-  improvement?: {
-    totalMsSaved: number;
-    totalPct: number;
-    totalSpeedup: number;
-    ocrStageMsSaved: number;
-    ocrStagePct: number;
-    ocrStageSpeedup: number;
-    decodeSessionRunMsSaved: number;
-    decodeSessionRunPct: number;
-    decodeSessionRunSpeedup: number;
-  };
+  runCount: number;
+  result: PaddleProfileResult;
 };
 
 function argValue(name: string): string | null {
@@ -208,13 +196,8 @@ function pickRunCount(): number {
 
 function normalizeOcrEngine(value: string): OcrEngine {
   switch (value) {
-    case "48px":
-    case "builtin":
     case "paddle":
     case "paddleocr":
-    case "paddleocr_v6_small":
-    case "v6-small":
-    case "paddle-v6-small":
     case "paddleocr_v6_medium":
     case "v6-medium":
     case "paddle-v6-medium":
@@ -292,9 +275,6 @@ function pickPaddleModelMode(): PaddleModelCliMode {
   if (raw === "medium" || raw === "v6-medium" || raw === "paddleocr_v6_medium") {
     return "medium";
   }
-  if (raw === "small" || raw === "v6-small" || raw === "paddleocr_v6_small") {
-    throw new Error("--paddle-model=small was removed from the current runtime model set");
-  }
   throw new Error(`Invalid --paddle-model value: ${raw}`);
 }
 
@@ -354,16 +334,6 @@ function pickPaddleGraphCapture(): boolean {
   return process.argv.includes("--paddle-graph-capture");
 }
 
-function pickPrewarmOcrBatch(): number {
-  const raw = argValue("prewarm-ocr-batch");
-  if (!raw) return 0;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    throw new Error(`Invalid --prewarm-ocr-batch value: ${raw}`);
-  }
-  return parsed;
-}
-
 function pickOcrCompactActiveBatch(): boolean | undefined {
   if (process.argv.includes("--fixed-ocr-batch")) {
     return false;
@@ -374,10 +344,6 @@ function pickOcrCompactActiveBatch(): boolean | undefined {
   if (normalized === "false" || normalized === "0" || normalized === "no") return false;
   if (normalized === "true" || normalized === "1" || normalized === "yes") return true;
   throw new Error(`Invalid --ocr-compact-active-batch value: ${raw}`);
-}
-
-function isCurrentOnly(): boolean {
-  return process.argv.includes("--current-only") || argValue("mode") === "current";
 }
 
 function findChromeExecutable(): string | undefined {
@@ -519,24 +485,6 @@ function contentTypeFromUrl(url: string): string {
   return "image/png";
 }
 
-function createOldFullArExtensionDir(): string {
-  const target = join(TMP_DIR, `x-compare-old-full-ar-${Date.now()}`);
-  rmInsideTmp(target);
-  mkdirSync(dirname(target), { recursive: true });
-  cpSync(DIST_DIR, target, { recursive: true });
-  const manifestPath = join(target, "models/models.json");
-  const manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as {
-    models?: Record<string, unknown>;
-  };
-  if (!manifest.models) {
-    throw new Error(`Invalid model manifest: ${manifestPath}`);
-  }
-  delete manifest.models.ocr_encoder;
-  delete manifest.models.ocr_decoder;
-  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-  return target;
-}
-
 function rmInsideTmp(target: string): void {
   const tmpFull = resolve(TMP_DIR);
   const targetFull = resolve(target);
@@ -574,7 +522,7 @@ async function startProbeServer(): Promise<{ url: string; close(): Promise<void>
       "cross-origin-embedder-policy": "require-corp",
       "cross-origin-resource-policy": "same-origin",
     });
-    res.end("<!doctype html><meta charset=\"utf-8\"><title>x compare</title><body>x compare</body>");
+    res.end("<!doctype html><meta charset=\"utf-8\"><title>Paddle OCR profile</title><body>Paddle OCR profile</body>");
   });
   await new Promise<void>((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
   const address = server.address() as AddressInfo;
@@ -702,7 +650,7 @@ function warmRuns(runs: PipelineRun[]): PipelineRun[] {
   return warm.length > 0 ? warm : runs;
 }
 
-function computeWarmMedian(runs: PipelineRun[]): ModeResult["warmMedian"] {
+function computeWarmMedian(runs: PipelineRun[]): PaddleProfileResult["warmMedian"] {
   const selected = warmRuns(runs);
   return {
     totalMs: round(median(selected.map((run) => run.totalMs))),
@@ -711,162 +659,10 @@ function computeWarmMedian(runs: PipelineRun[]): ModeResult["warmMedian"] {
   };
 }
 
-function improvement(oldMs: number, newMs: number): { saved: number; pct: number; speedup: number } {
-  if (oldMs <= 0 || newMs <= 0) {
-    return { saved: 0, pct: 0, speedup: 0 };
-  }
-  return {
-    saved: round(oldMs - newMs),
-    pct: round(((oldMs - newMs) / oldMs) * 100),
-    speedup: round(oldMs / newMs),
-  };
-}
-
-async function runMode(
-  mode: ModeResult["mode"],
-  extensionDir: string,
-  image: XImage,
-  runs: number,
-  ocrEngine: OcrEngine,
-  processMode: ProcessMode,
-): Promise<ModeResult> {
-  const userDataDir = join(TMP_DIR, `x-compare-${mode}-${Date.now()}`);
-  rmInsideTmp(userDataDir);
-  mkdirSync(userDataDir, { recursive: true });
-  const chromePath = findChromeExecutable();
-  const context = await chromium.launchPersistentContext(userDataDir, {
-    ...(chromePath ? { executablePath: chromePath } : {}),
-    headless: false,
-    ignoreDefaultArgs: ["--disable-extensions"],
-    args: [
-      `--disable-extensions-except=${extensionDir}`,
-      `--load-extension=${extensionDir}`,
-      "--no-first-run",
-      "--no-default-browser-check",
-      "--disable-background-timer-throttling",
-      "--disable-renderer-backgrounding",
-      "--enable-unsafe-webgpu",
-    ],
-  });
-  context.setDefaultTimeout(900000);
-  try {
-    const worker = context.serviceWorkers()[0] ?? await context.waitForEvent("serviceworker", { timeout: 30000 });
-    const extensionId = worker.url().match(/^chrome-extension:\/\/([^/]+)/)?.[1];
-    if (!extensionId) {
-      throw new Error(`Unable to parse extension id from service worker URL: ${worker.url()}`);
-    }
-    const extensionUrl = (path: string) => `chrome-extension://${extensionId}/${path.replace(/^\/+/, "")}`;
-    const page = await context.newPage();
-    page.setDefaultTimeout(900000);
-    page.on("console", (message) => {
-      const text = message.text();
-      if (text.includes("[ocr] encoder cache")) return;
-      console.log(`[${mode}:browser:${message.type()}] ${text}`);
-    });
-    page.on("pageerror", (error) => {
-      console.log(`[${mode}:pageerror] ${error.message}`);
-    });
-    await page.goto(extensionUrl("popup.html"), { waitUntil: "load" });
-    await page.addScriptTag({ url: extensionUrl("content.js") });
-    await page.waitForFunction(() => Boolean((window as any).__shinobu_shared), undefined, { timeout: 30000 });
-    await page.evaluate("var __name = (target) => target;");
-
-    const results: PipelineRun[] = [];
-    for (let i = 0; i < runs; i += 1) {
-      const run = await page.evaluate<PipelineRun, {
-        dataUrl: string;
-        contentType: string;
-        runIndex: number;
-        ocrEngine: OcrEngine;
-        processMode: ProcessMode;
-      }>(
-        async ({ dataUrl, contentType, runIndex, ocrEngine, processMode }) => {
-          type Orchestrator = {
-            runPipeline(file: File, config: Record<string, unknown>, onProgress: () => void): Promise<{
-              original: { naturalWidth: number; naturalHeight: number };
-              detectedRegions: Array<{ sourceText: string }>;
-              runtimeStages: PipelineRun["runtimeStages"];
-              stageTimings: StageTiming[];
-              ocrDebug: OcrDebug | null;
-            }>;
-          };
-          const chromeApi = (globalThis as any).chrome;
-          const module = await import(chromeApi.runtime.getURL("chunks/orchestrator.js")) as Orchestrator;
-          const blob = await (await fetch(dataUrl)).blob();
-          const file = new File([blob], `x-source.${contentType.includes("jpeg") ? "jpg" : "png"}`, { type: contentType });
-          const config = {
-            sourceLang: "ja",
-            targetLang: "zh-CHS",
-            translator: "google_web",
-            llmProvider: "deepseek",
-            llmBaseUrl: "https://api.deepseek.com",
-            llmApiKey: "",
-            llmModel: "deepseek-v4-flash",
-            llmTemperature: 1,
-            typesetDebug: false,
-            eraseDebug: false,
-            collectDebugLog: false,
-            ocrEngine,
-            processMode,
-          };
-          const totalT0 = performance.now();
-          const artifacts = await module.runPipeline(file, config, () => {});
-          const totalMs = performance.now() - totalT0;
-          const sourceTexts = artifacts.detectedRegions.map((region) => region.sourceText);
-          const runResult = {
-            runIndex,
-            isColdStart: runIndex === 0,
-            totalMs,
-            imageWidth: artifacts.original.naturalWidth,
-            imageHeight: artifacts.original.naturalHeight,
-            regionCount: artifacts.detectedRegions.length,
-            sourceCharCount: sourceTexts.reduce((sum, text) => sum + text.length, 0),
-            sourceTexts,
-            sampleTexts: sourceTexts.filter((text) => text.length > 0).slice(0, 5),
-            runtimeStages: artifacts.runtimeStages,
-            stageTimings: artifacts.stageTimings,
-            ocrDebug: artifacts.ocrDebug,
-            ocrSummary: {
-              stageMs: 0,
-              encoderCache: false,
-              decodeSessionRunCount: 0,
-              decodeSessionRunTotalMs: 0,
-              decodeStepCount: 0,
-              encoderRunMs: 0,
-              decoderRunMs: 0,
-              gpuPostprocessStepCount: 0,
-              postprocessMs: 0,
-              colorDecodeMode: "none",
-              colorTotalMs: 0,
-              fallbackTriggerCount: 0,
-            },
-          };
-          return runResult;
-        },
-        { dataUrl: image.dataUrl, contentType: image.contentType, runIndex: i, ocrEngine, processMode }
-      );
-      run.ocrSummary = summarizeOcr(run);
-      results.push(roundRun(run));
-      console.log(`${mode} run ${i + 1}/${runs}: total=${formatMs(run.totalMs)}, ocr=${formatMs(run.ocrSummary.stageMs)}, decode=${formatMs(run.ocrSummary.decodeSessionRunTotalMs)}, encoderCache=${run.ocrSummary.encoderCache}`);
-    }
-    return {
-      mode,
-      extensionDir,
-      ocrEngine,
-      processMode,
-      runs: results,
-      warmMedian: computeWarmMedian(results),
-    };
-  } finally {
-    await context.close();
-  }
-}
-
-async function runCurrentWebMode(
+async function runPaddleProfile(
   pageUrl: string,
   image: XImage,
   runs: number,
-  prewarmOcrBatch: number,
   ocrCompactActiveBatch: boolean | undefined,
   ocrEngine: OcrEngine,
   processMode: ProcessMode,
@@ -880,9 +676,9 @@ async function runCurrentWebMode(
   bubbleRuntimeProbeSchedule: BubbleRuntimeProbeScheduleCliMode,
   paddleFixedInputWidth: number | undefined,
   paddleGraphCapture: boolean,
-): Promise<ModeResult> {
-  const mode: ModeResult["mode"] = "current";
-  const userDataDir = join(TMP_DIR, `x-current-web-${Date.now()}`);
+): Promise<PaddleProfileResult> {
+  const label = "paddle-profile";
+  const userDataDir = join(TMP_DIR, `paddle-profile-web-${Date.now()}`);
   rmInsideTmp(userDataDir);
   mkdirSync(userDataDir, { recursive: true });
   const chromePath = findChromeExecutable();
@@ -904,33 +700,25 @@ async function runCurrentWebMode(
     page.on("console", (message) => {
       const text = message.text();
       if (text.includes("[ocr] encoder cache")) return;
-      console.log(`[${mode}:browser:${message.type()}] ${text}`);
+      console.log(`[${label}:browser:${message.type()}] ${text}`);
     });
     page.on("pageerror", (error) => {
-      console.log(`[${mode}:pageerror] ${error.message}`);
+      console.log(`[${label}:pageerror] ${error.message}`);
     });
-    await page.goto(pageUrl, { waitUntil: "load" });
+    await page.goto(new URL('/benchmark.html', pageUrl).toString(), { waitUntil: "load" });
     await page.evaluate(() => {
-      (window as any).chrome = {
+      (window as typeof window & {
+        chrome?: { runtime: { getURL(path: string): string } };
+      }).chrome = {
         runtime: {
           getURL(path: string) {
             return new URL(path.replace(/^\/+/, ""), `${location.origin}/`).toString();
           },
-          onMessage: {
-            addListener() {
-              // No-op shim for the benchmark web harness.
-            },
-          },
         },
       };
     });
-    await page.addScriptTag({ url: "/content.js" });
-    await page.waitForFunction(() => Boolean((window as any).__shinobu_shared), undefined, { timeout: 30000 });
+    await page.waitForFunction(() => Boolean((window as any).__shinobuBenchmark__), undefined, { timeout: 30000 });
     await page.evaluate("var __name = (target) => target;");
-    if (prewarmOcrBatch > 0) {
-      throw new Error("--prewarm-ocr-batch targeted the removed 48px OCR path and is no longer supported.");
-    }
-
     const results: PipelineRun[] = [];
     for (let i = 0; i < runs; i += 1) {
       const run = await page.evaluate<PipelineRun, {
@@ -987,7 +775,7 @@ async function runCurrentWebMode(
             __shinobuPaddleOcrWarmupInputWidth?: number;
             __shinobuPaddleOcrWarmupBatchSize?: number;
           };
-          type Orchestrator = {
+          type BenchmarkApi = {
             runPipeline(file: File, config: Record<string, unknown>, onProgress: () => void): Promise<{
               original: { naturalWidth: number; naturalHeight: number };
               detectedRegions: Array<{ sourceText: string }>;
@@ -1014,7 +802,9 @@ async function runCurrentWebMode(
           } else {
             runtimeFlags.__shinobuPaddleOcrColdFirstSerial = paddleColdFirstMode === "on";
           }
-          runtimeFlags.__shinobuPaddleOcrModelName = "paddleocr_v6_medium_rec";
+          runtimeFlags.__shinobuPaddleOcrModelName = paddleModelMode === "medium"
+            ? "paddleocr_v6_medium_rec"
+            : undefined;
           runtimeFlags.__shinobuPaddleOcrRuntimeProbe = paddleRuntimeProbeMode;
           runtimeFlags.__shinobuPaddleOcrRuntimeProbeSchedule = paddleRuntimeProbeSchedule;
           runtimeFlags.__shinobuInpaintRuntimeProbeSchedule = inpaintRuntimeProbeSchedule;
@@ -1040,7 +830,8 @@ async function runCurrentWebMode(
           } else {
             delete runtimeFlags.__shinobuPaddleOcrSessionOptions;
           }
-          const module = await import("/chunks/orchestrator.js") as Orchestrator;
+          const api = (globalThis as typeof globalThis & { __shinobuBenchmark__?: BenchmarkApi }).__shinobuBenchmark__;
+          if (!api) throw new Error("Benchmark API is unavailable");
           const blob = await (await fetch(dataUrl)).blob();
           const file = new File([blob], `x-source.${contentType.includes("jpeg") ? "jpg" : "png"}`, { type: contentType });
           const config = {
@@ -1060,7 +851,7 @@ async function runCurrentWebMode(
             processMode,
           };
           const totalT0 = performance.now();
-          const artifacts = await module.runPipeline(file, config, () => {});
+          const artifacts = await api.runPipeline(file, config, () => {});
           const totalMs = performance.now() - totalT0;
           const sourceTexts = artifacts.detectedRegions.map((region) => region.sourceText);
           return {
@@ -1113,10 +904,9 @@ async function runCurrentWebMode(
       );
       run.ocrSummary = summarizeOcr(run);
       results.push(roundRun(run));
-      console.log(`${mode} run ${i + 1}/${runs}: total=${formatMs(run.totalMs)}, ocr=${formatMs(run.ocrSummary.stageMs)}, decode=${formatMs(run.ocrSummary.decodeSessionRunTotalMs)}, encoderCache=${run.ocrSummary.encoderCache}`);
+      console.log(`${label} run ${i + 1}/${runs}: total=${formatMs(run.totalMs)}, ocr=${formatMs(run.ocrSummary.stageMs)}, decode=${formatMs(run.ocrSummary.decodeSessionRunTotalMs)}, encoderCache=${run.ocrSummary.encoderCache}`);
     }
     return {
-      mode,
       extensionDir: DIST_DIR,
       ocrEngine,
       processMode,
@@ -1160,76 +950,67 @@ function formatMs(ms: number): string {
   return ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${Math.round(ms)}ms`;
 }
 
-function printSummary(report: CompareReport): void {
-  console.log(`\n=== X image ${report.modes.length === 1 ? "current" : "compare"} summary ===`);
+function printSummary(report: PaddleProfileReport): void {
+  console.log("\n=== Paddle OCR browser profile ===");
   console.log(`URL: ${report.xUrl}`);
   console.log(`Image: ${report.image.imageUrl}`);
-  for (const mode of report.modes) {
-    console.log(`\n${mode.mode}`);
-    console.log(`  OCR engine:        ${mode.ocrEngine}`);
-    console.log(`  process mode:      ${mode.processMode}`);
-    if (typeof mode.ocrCompactActiveBatch === "boolean") {
-      console.log(`  OCR compact batch: ${mode.ocrCompactActiveBatch}`);
-    }
-    if (mode.paddleBatchMode) {
-      console.log(`  Paddle batch mode: ${mode.paddleBatchMode}`);
-    }
-    if (mode.paddleProviderMode) {
-      console.log(`  Paddle provider mode: ${mode.paddleProviderMode}`);
-    }
-    if (mode.paddleColdFirstMode) {
-      console.log(`  Paddle cold-first: ${mode.paddleColdFirstMode}`);
-    }
-    if (mode.paddleModelMode) {
-      console.log(`  Paddle model:      ${mode.paddleModelMode}`);
-    }
-    if (mode.paddleRuntimeProbeMode) {
-      console.log(`  Paddle probe:      ${mode.paddleRuntimeProbeMode}`);
-    }
-    if (mode.paddleRuntimeProbeSchedule) {
-      console.log(`  Paddle schedule:   ${mode.paddleRuntimeProbeSchedule}`);
-    }
-    if (mode.inpaintRuntimeProbeSchedule) {
-      console.log(`  Inpaint schedule:  ${mode.inpaintRuntimeProbeSchedule}`);
-    }
-    if (mode.bubbleRuntimeProbeSchedule) {
-      console.log(`  Bubble schedule:   ${mode.bubbleRuntimeProbeSchedule}`);
-    }
-    if (typeof mode.paddleFixedInputWidth === "number") {
-      console.log(`  Paddle fixed W:    ${mode.paddleFixedInputWidth}`);
-    }
-    if (mode.paddleGraphCapture) {
-      console.log("  Paddle graph cap:  true");
-    }
-    console.log(`  warm median total: ${formatMs(mode.warmMedian.totalMs)}`);
-    console.log(`  warm median OCR:   ${formatMs(mode.warmMedian.ocrStageMs)}`);
-    console.log(`  warm median decode:${formatMs(mode.warmMedian.decodeSessionRunTotalMs)}`);
-    const latestWarm = warmRuns(mode.runs).at(-1) ?? mode.runs.at(-1);
-    if (latestWarm) {
-      console.log(`  regions/chars:     ${latestWarm.regionCount}/${latestWarm.sourceCharCount}`);
-      console.log(`  sample:            ${latestWarm.sampleTexts.slice(0, 3).join(" | ")}`);
-      if (latestWarm.ocrSummary.paddle) {
-        const paddle = latestWarm.ocrSummary.paddle;
-        console.log(`  Paddle provider:   ${paddle.provider ?? "unknown"}${paddle.webnnDeviceType ? `/${paddle.webnnDeviceType}` : ""}`);
-        console.log(`  Paddle batch:      ${paddle.batchMode}${paddle.batchBucketWidth ? ` ${paddle.batchBucketWidth}px` : ""}, coldFirst=${paddle.coldFirstSerial === true}, runs=${paddle.inferenceRunCount}`);
-        if (typeof paddle.fixedInputWidth === "number" || paddle.sessionOptionsKey) {
-          console.log(`  Paddle options:    fixedW=${paddle.fixedInputWidth ?? "default"}, session=${paddle.sessionOptionsKey ?? "default"}`);
-        }
-        console.log(`  Paddle OCR split:  preprocess=${formatMs(paddle.preprocessTotalMs)}, inference=${formatMs(paddle.inferenceTotalMs)}, ctc=${formatMs(paddle.decodeTotalMs)}, color=${formatMs(paddle.colorFillMs)}`);
-        console.log(`  Paddle widths:     min=${paddle.widthSummary.min}, max=${paddle.widthSummary.max}, avg=${paddle.widthSummary.avg}`);
-      }
-    }
+  const result = report.result;
+  console.log(`  OCR engine:        ${result.ocrEngine}`);
+  console.log(`  process mode:      ${result.processMode}`);
+  if (typeof result.ocrCompactActiveBatch === "boolean") {
+    console.log(`  OCR compact batch: ${result.ocrCompactActiveBatch}`);
   }
-  if (report.improvement) {
-    console.log("\nimprovement (warm median, old-full-ar -> new-split)");
-    console.log(`  total:  -${formatMs(report.improvement.totalMsSaved)} (${report.improvement.totalPct}%, ${report.improvement.totalSpeedup}x)`);
-    console.log(`  OCR:    -${formatMs(report.improvement.ocrStageMsSaved)} (${report.improvement.ocrStagePct}%, ${report.improvement.ocrStageSpeedup}x)`);
-    console.log(`  decode: -${formatMs(report.improvement.decodeSessionRunMsSaved)} (${report.improvement.decodeSessionRunPct}%, ${report.improvement.decodeSessionRunSpeedup}x)`);
+  if (result.paddleBatchMode) {
+    console.log(`  Paddle batch mode: ${result.paddleBatchMode}`);
+  }
+  if (result.paddleProviderMode) {
+    console.log(`  Paddle provider mode: ${result.paddleProviderMode}`);
+  }
+  if (result.paddleColdFirstMode) {
+    console.log(`  Paddle cold-first: ${result.paddleColdFirstMode}`);
+  }
+  if (result.paddleModelMode) {
+    console.log(`  Paddle model:      ${result.paddleModelMode}`);
+  }
+  if (result.paddleRuntimeProbeMode) {
+    console.log(`  Paddle probe:      ${result.paddleRuntimeProbeMode}`);
+  }
+  if (result.paddleRuntimeProbeSchedule) {
+    console.log(`  Paddle schedule:   ${result.paddleRuntimeProbeSchedule}`);
+  }
+  if (result.inpaintRuntimeProbeSchedule) {
+    console.log(`  Inpaint schedule:  ${result.inpaintRuntimeProbeSchedule}`);
+  }
+  if (result.bubbleRuntimeProbeSchedule) {
+    console.log(`  Bubble schedule:   ${result.bubbleRuntimeProbeSchedule}`);
+  }
+  if (typeof result.paddleFixedInputWidth === "number") {
+    console.log(`  Paddle fixed W:    ${result.paddleFixedInputWidth}`);
+  }
+  if (result.paddleGraphCapture) {
+    console.log("  Paddle graph cap:  true");
+  }
+  console.log(`  warm median total: ${formatMs(result.warmMedian.totalMs)}`);
+  console.log(`  warm median OCR:   ${formatMs(result.warmMedian.ocrStageMs)}`);
+  console.log(`  warm median decode:${formatMs(result.warmMedian.decodeSessionRunTotalMs)}`);
+  const latestWarm = warmRuns(result.runs).at(-1) ?? result.runs.at(-1);
+  if (latestWarm) {
+    console.log(`  regions/chars:     ${latestWarm.regionCount}/${latestWarm.sourceCharCount}`);
+    console.log(`  sample:            ${latestWarm.sampleTexts.slice(0, 3).join(" | ")}`);
+    if (latestWarm.ocrSummary.paddle) {
+      const paddle = latestWarm.ocrSummary.paddle;
+      console.log(`  Paddle provider:   ${paddle.provider ?? "unknown"}${paddle.webnnDeviceType ? `/${paddle.webnnDeviceType}` : ""}`);
+      console.log(`  Paddle batch:      ${paddle.batchMode}${paddle.batchBucketWidth ? ` ${paddle.batchBucketWidth}px` : ""}, coldFirst=${paddle.coldFirstSerial === true}, runs=${paddle.inferenceRunCount}`);
+      if (typeof paddle.fixedInputWidth === "number" || paddle.sessionOptionsKey) {
+        console.log(`  Paddle options:    fixedW=${paddle.fixedInputWidth ?? "default"}, session=${paddle.sessionOptionsKey ?? "default"}`);
+      }
+      console.log(`  Paddle OCR split:  preprocess=${formatMs(paddle.preprocessTotalMs)}, inference=${formatMs(paddle.inferenceTotalMs)}, ctc=${formatMs(paddle.decodeTotalMs)}, color=${formatMs(paddle.colorFillMs)}`);
+      console.log(`  Paddle widths:     min=${paddle.widthSummary.min}, max=${paddle.widthSummary.max}, avg=${paddle.widthSummary.avg}`);
+    }
   }
 }
 
 async function main(): Promise<void> {
-  const currentOnly = isCurrentOnly();
   const ocrEngine = pickOcrEngine();
   const processMode = pickProcessMode();
   const paddleBatchMode = pickPaddleBatchMode();
@@ -1242,9 +1023,6 @@ async function main(): Promise<void> {
   const bubbleRuntimeProbeSchedule = pickBubbleRuntimeProbeSchedule();
   const paddleFixedInputWidth = pickPaddleFixedInputWidth();
   const paddleGraphCapture = pickPaddleGraphCapture();
-  if (!currentOnly) {
-    throw new Error("Legacy 48px browser compare is no longer supported; use --current-only or npm run bench:browser-paddle-profile.");
-  }
   ensureDistReady();
   mkdirSync(TMP_DIR, { recursive: true });
   mkdirSync(REPORTS_DIR, { recursive: true });
@@ -1252,7 +1030,6 @@ async function main(): Promise<void> {
   const imageUrlOverride = pickImageUrlOverride();
   const imagePathOverride = pickImagePathOverride();
   const runs = pickRunCount();
-  const prewarmOcrBatch = pickPrewarmOcrBatch();
   const ocrCompactActiveBatch = pickOcrCompactActiveBatch();
   console.log(`Browser profile config: ocr=${ocrEngine}, process=${processMode}, paddleBatch=${paddleBatchMode}, paddleProvider=${paddleProviderMode}, paddleColdFirst=${paddleColdFirstMode}, paddleModel=${paddleModelMode}, paddleProbe=${paddleRuntimeProbeMode}, paddleSchedule=${paddleRuntimeProbeSchedule}, inpaintSchedule=${inpaintRuntimeProbeSchedule}, bubbleSchedule=${bubbleRuntimeProbeSchedule}, paddleFixedW=${paddleFixedInputWidth ?? "default"}, paddleGraphCapture=${paddleGraphCapture}, runs=${runs}`);
   console.log(imagePathOverride ? `Loading local image: ${imagePathOverride}` : `Resolving X image: ${xUrl}`);
@@ -1260,55 +1037,25 @@ async function main(): Promise<void> {
   console.log(`Resolved image: ${image.imageUrl} (${image.contentType}, ${image.bytes} bytes)`);
   const server = await startProbeServer();
   try {
-    // Keep the local server alive so Chrome treats the process like a real page
-    // benchmark session if future runs need a non-extension page.
-    void server.url;
-    if (currentOnly) {
-      const currentResult = await runCurrentWebMode(
-        server.url,
-        image,
-        runs,
-        prewarmOcrBatch,
-        ocrCompactActiveBatch,
-        ocrEngine,
-        processMode,
-        paddleBatchMode,
-        paddleProviderMode,
-        paddleColdFirstMode,
-        paddleModelMode,
-        paddleRuntimeProbeMode,
-        paddleRuntimeProbeSchedule,
-        inpaintRuntimeProbeSchedule,
-        bubbleRuntimeProbeSchedule,
-        paddleFixedInputWidth,
-        paddleGraphCapture,
-      );
-      const report: CompareReport = {
-        createdAt: new Date().toISOString(),
-        xUrl,
-        image: {
-          pageUrl: image.pageUrl,
-          imageUrl: image.imageUrl,
-          contentType: image.contentType,
-          bytes: image.bytes,
-        },
-        runsPerMode: runs,
-        modes: [currentResult],
-      };
-      printSummary(report);
-      const reportPath = join(REPORTS_DIR, `x-current-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
-      writeFileSync(reportPath, JSON.stringify(report, null, 2));
-      console.log(`\nReport saved: ${reportPath}`);
-      return;
-    }
-
-    const oldExtensionDir = createOldFullArExtensionDir();
-    const oldResult = await runMode("old-full-ar", oldExtensionDir, image, runs, ocrEngine, processMode);
-    const newResult = await runMode("new-split", DIST_DIR, image, runs, ocrEngine, processMode);
-    const total = improvement(oldResult.warmMedian.totalMs, newResult.warmMedian.totalMs);
-    const ocr = improvement(oldResult.warmMedian.ocrStageMs, newResult.warmMedian.ocrStageMs);
-    const decode = improvement(oldResult.warmMedian.decodeSessionRunTotalMs, newResult.warmMedian.decodeSessionRunTotalMs);
-    const report: CompareReport = {
+    const result = await runPaddleProfile(
+      server.url,
+      image,
+      runs,
+      ocrCompactActiveBatch,
+      ocrEngine,
+      processMode,
+      paddleBatchMode,
+      paddleProviderMode,
+      paddleColdFirstMode,
+      paddleModelMode,
+      paddleRuntimeProbeMode,
+      paddleRuntimeProbeSchedule,
+      inpaintRuntimeProbeSchedule,
+      bubbleRuntimeProbeSchedule,
+      paddleFixedInputWidth,
+      paddleGraphCapture,
+    );
+    const report: PaddleProfileReport = {
       createdAt: new Date().toISOString(),
       xUrl,
       image: {
@@ -1317,22 +1064,11 @@ async function main(): Promise<void> {
         contentType: image.contentType,
         bytes: image.bytes,
       },
-      runsPerMode: runs,
-      modes: [oldResult, newResult],
-      improvement: {
-        totalMsSaved: total.saved,
-        totalPct: total.pct,
-        totalSpeedup: total.speedup,
-        ocrStageMsSaved: ocr.saved,
-        ocrStagePct: ocr.pct,
-        ocrStageSpeedup: ocr.speedup,
-        decodeSessionRunMsSaved: decode.saved,
-        decodeSessionRunPct: decode.pct,
-        decodeSessionRunSpeedup: decode.speedup,
-      },
+      runCount: runs,
+      result,
     };
     printSummary(report);
-    const reportPath = join(REPORTS_DIR, `x-compare-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
+    const reportPath = join(REPORTS_DIR, `paddle-profile-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
     writeFileSync(reportPath, JSON.stringify(report, null, 2));
     console.log(`\nReport saved: ${reportPath}`);
   } finally {

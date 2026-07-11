@@ -5,6 +5,7 @@
 // ---------------------------------------------------------------------------
 
 import { createCanvas, loadImage } from "canvas";
+import type { Image } from "canvas";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { basename, join } from "path";
 import {
@@ -14,7 +15,7 @@ import {
   deltaE,
   extractColorsFromOutputsCurrent,
   FIXTURES_DIR,
-  histogramBimodal,
+  histogramBimodal as histogramBimodalCurrent,
   isGrayFailure,
   loadFixtures,
   REPORTS_DIR,
@@ -23,7 +24,7 @@ import {
   sampleCornerBgColor,
 } from "./color-utils";
 import { extractColorsFromOutputsAlgA } from "./alg-a-fix-hasbg";
-import { histogramBimodal } from "./alg-d-histogram-bimodal";
+import { histogramBimodal as histogramBimodalAlgD } from "./alg-d-histogram-bimodal";
 import type {
   AlgorithmRegionResult,
   AlgorithmSummary,
@@ -59,7 +60,7 @@ function runCurrentAlgorithm(
 
     // When OCR colors are too similar, fall back to histogram bimodal
     if (rawFg && rawBg && colorDistance(rawFg, rawBg) < 30) {
-      const histResult = histogramBimodal(croppedData, cropWidth, cropHeight);
+      const histResult = histogramBimodalCurrent(croppedData, cropWidth, cropHeight);
       if (histResult) {
         rawFg = histResult.fgColor;
         rawBg = histResult.bgColor;
@@ -124,7 +125,7 @@ function runAlgorithmD(
   cropWidth: number,
   cropHeight: number,
 ): { fgRgb: [number, number, number]; bgRgb: [number, number, number] } {
-  const result = histogramBimodal(croppedData, cropWidth, cropHeight);
+  const result = histogramBimodalAlgD(croppedData, cropWidth, cropHeight);
   if (!result) {
     // Fall back to resolveColors defaults
     const resolved = resolveColors(undefined, undefined);
@@ -142,10 +143,10 @@ function runAlgorithmD(
  * each with text rendered in the algorithm's fg/bg colors.
  */
 function renderComparisonImage(
-  img: CanvasImageSource,
+  img: Image,
   results: { region: ColorFixtureRegion; current: AlgorithmRegionResult; algA: AlgorithmRegionResult; algD: AlgorithmRegionResult }[],
 ): Buffer {
-  const imgCanvas = img as unknown as { width: number; height: number };
+  const imgCanvas = img;
   // Each comparison row: original image + 3 text panels per region
   const panelWidth = 200;
   const panelHeight = 60;
@@ -158,7 +159,7 @@ function renderComparisonImage(
   const ctx = vizCanvas.getContext("2d");
 
   // Draw original image
-  ctx.drawImage(img as unknown as CanvasImageSource, 0, 0);
+  ctx.drawImage(img, 0, 0);
 
   // Draw header for comparison section
   const headerY = imgCanvas.height + padding;

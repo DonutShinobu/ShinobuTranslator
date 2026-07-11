@@ -41,8 +41,8 @@ jobs:
       - name: Download model files
         run: npm run models:download -- "${{ steps.models.outputs.tag }}" --force
 
-      - name: Build extension
-        run: npm run build
+      - name: Run quality gate
+        run: npm run check
 
       - name: Verify version matches release tag
         run: |
@@ -78,7 +78,7 @@ jobs:
           console.log(`Verified model assets: ${assets.join(', ')}`);
           NODE
           if [ -f "dist/models/ocr.onnx" ]; then
-            echo "ERROR: Legacy ocr.onnx should not be bundled for split OCR releases"
+            echo "ERROR: Legacy AR ocr.onnx must not be bundled in the Paddle-only release"
             exit 1
           fi
           echo "All manifest model files present in dist/models/"

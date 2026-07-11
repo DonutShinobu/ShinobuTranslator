@@ -8,8 +8,12 @@ import { sampleEdgeColors as _sampleEdgeColors, sampleCornerBgColor as _sampleCo
 import { existsSync, readFileSync, readdirSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
-import type { OcrColorResult } from "../../../src/pipeline/ocr/color";
 import type { ColorFixture } from "./color-types";
+
+type OcrColorResult = {
+  fgColor: [number, number, number];
+  bgColor: [number, number, number];
+};
 
 export const ROOT = resolve(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "../../..");
 export const FIXTURES_DIR = join(ROOT, "benchmark/color/fixtures");

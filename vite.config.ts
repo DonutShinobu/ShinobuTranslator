@@ -6,6 +6,15 @@ import type { Plugin } from 'vite';
 
 const REPO = 'DonutShinobu/ShinobuTranslator';
 
+function externalizeNodeOnlyModule(id: string): boolean {
+  if (id.includes('onnxruntime-node')) return true;
+  if (id.includes('onnxNodeBridge')) return true;
+  if (id.includes('modelRegistryNode')) return true;
+  if (id.includes('nodePlatform')) return true;
+  if (id.includes('ocrSharedNode')) return true;
+  return false;
+}
+
 // Replaces model URLs in dist/models/models.json with GitHub Release URLs
 // when MODEL_RELEASE_TAG is set (e.g. MODEL_RELEASE_TAG=models-v0.4.0).
 function modelReleaseUrlPlugin(): Plugin {
@@ -145,33 +154,48 @@ function chromeExtensionContentScriptPlugin(): Plugin {
   };
 }
 
-export default defineConfig({
-  plugins: [react(), chromeExtensionContentScriptPlugin(), modelReleaseUrlPlugin()],
-  build: {
-    rollupOptions: {
-      input: {
-        popup: resolve(__dirname, 'popup.html'),
-        background: resolve(__dirname, 'src/background/index.ts'),
-        content: resolve(__dirname, 'src/content/index.ts'),
+export default defineConfig(({ mode }) => {
+  if (mode === 'benchmark') {
+    return {
+      publicDir: false,
+      build: {
+        emptyOutDir: false,
+        rollupOptions: {
+          input: {
+            benchmark: resolve(__dirname, 'benchmark.html'),
+          },
+          output: {
+            entryFileNames: 'benchmark.js',
+            chunkFileNames: 'benchmark-chunks/[name].js',
+            assetFileNames: 'benchmark-assets/[name][extname]',
+          },
+          external: externalizeNodeOnlyModule,
+        },
       },
-      output: {
-        entryFileNames: (chunkInfo) => `${chunkInfo.name}.js`,
-        chunkFileNames: 'chunks/[name].js',
-        assetFileNames: 'assets/[name][extname]',
-      },
-      // Node-only modules must be externalized for the browser build.
-      // These modules are loaded via dynamic import() guarded by isNode,
-      // but Vite/Rollup still resolves and bundles them as reachable chunks.
-      // Externalizing prevents them from appearing in the browser extension
-      // and avoids __vite-browser-external.js shims that can break Chrome extensions.
-      external: (id) => {
-        if (id.includes('onnxruntime-node')) return true;
-        if (id.includes('onnxNodeBridge')) return true;
-        if (id.includes('modelRegistryNode')) return true;
-        if (id.includes('nodePlatform')) return true;
-        if (id.includes('ocrSharedNode')) return true;
-        return false;
+    };
+  }
+
+  return {
+    plugins: [react(), chromeExtensionContentScriptPlugin(), modelReleaseUrlPlugin()],
+    build: {
+      rollupOptions: {
+        input: {
+          popup: resolve(__dirname, 'popup.html'),
+          background: resolve(__dirname, 'src/background/index.ts'),
+          content: resolve(__dirname, 'src/content/index.ts'),
+        },
+        output: {
+          entryFileNames: (chunkInfo) => `${chunkInfo.name}.js`,
+          chunkFileNames: 'chunks/[name].js',
+          assetFileNames: 'assets/[name][extname]',
+        },
+        // Node-only modules must be externalized for the browser build.
+        // These modules are loaded via dynamic import() guarded by isNode,
+        // but Vite/Rollup still resolves and bundles them as reachable chunks.
+        // Externalizing prevents them from appearing in the browser extension
+        // and avoids __vite-browser-external.js shims that can break Chrome extensions.
+        external: externalizeNodeOnlyModule,
       },
     },
-  },
+  };
 });

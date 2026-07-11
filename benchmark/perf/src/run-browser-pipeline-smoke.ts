@@ -1,9 +1,8 @@
-import { createServer } from "http";
-import type { AddressInfo } from "net";
 import { existsSync, mkdirSync, readFileSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { chromium } from "@playwright/test";
+import type { ShinobuBenchmarkWindow } from "../../../src/benchmark/browserEntry";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const DIST_DIR = join(ROOT, "dist");
@@ -11,6 +10,7 @@ const TMP_DIR = join(ROOT, ".tmp");
 const USER_DATA_DIR = join(TMP_DIR, `browser-pipeline-smoke-${Date.now()}`);
 const DEFAULT_IMAGE = join(ROOT, "benchmark/color/fixtures/typeset-debug-log-2026-05-23T06-03-39-877Z.png");
 const USE_SYSTEM_CHROME = process.argv.includes("--system-chrome") || Boolean(process.env.CHROME_PATH);
+const EXERCISE_ALL_API = process.argv.includes("--all-api");
 const CHROME_CANDIDATES = [
   process.env.CHROME_PATH,
   ...(USE_SYSTEM_CHROME
@@ -37,12 +37,17 @@ type PipelineSmokeResult = {
   sourceCharCount: number;
   sampleTexts: string[];
   firstBox: BakeRegion["box"] | null;
+  apiSmoke?: {
+    render: boolean;
+    renderDebug: boolean;
+    renderFixtureDebug: boolean;
+  };
 };
 
 function requireFile(relativePath: string): void {
   const fullPath = join(DIST_DIR, relativePath);
   if (!existsSync(fullPath)) {
-    throw new Error(`Missing dist asset: ${fullPath}. Run npm run build first.`);
+    throw new Error(`Missing dist asset: ${fullPath}. Run npm run build:benchmark first.`);
   }
 }
 
@@ -73,40 +78,11 @@ function imageToDataUrl(path: string): string {
   return `data:image/${ext};base64,${buf.toString("base64")}`;
 }
 
-async function startProbeServer(): Promise<{ url: string; close(): Promise<void> }> {
-  const server = createServer((req, res) => {
-    if (req.url !== "/" && req.url !== "/probe.html") {
-      res.writeHead(404).end("not found");
-      return;
-    }
-    res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-    res.end(`<!doctype html>
-<meta charset="utf-8">
-<title>shinobu pipeline smoke</title>
-<script>
-window.__shinobuMessages = [];
-window.addEventListener("message", function (event) {
-  window.__shinobuMessages.push(event.data);
-});
-</script>
-<body>pipeline smoke</body>`);
-  });
-  await new Promise<void>((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
-  const address = server.address() as AddressInfo;
-  return {
-    url: `http://127.0.0.1:${address.port}/probe.html`,
-    close: () => new Promise<void>((resolveClose, rejectClose) => {
-      server.close((error) => {
-        if (error) rejectClose(error);
-        else resolveClose();
-      });
-    }),
-  };
-}
-
 async function main(): Promise<void> {
   requireFile("manifest.json");
   requireFile("content.js");
+  requireFile("benchmark.html");
+  requireFile("benchmark.js");
   requireFile("onnxWorker.js");
   requireFile("models/models.json");
   requireFile("models/detector.onnx");
@@ -118,7 +94,6 @@ async function main(): Promise<void> {
 
   const imagePath = pickImagePath();
   const dataUrl = imageToDataUrl(imagePath);
-  const server = await startProbeServer();
   const chromePath = findChromeExecutable();
   const context = await chromium.launchPersistentContext(USER_DATA_DIR, {
     ...(chromePath ? { executablePath: chromePath } : {}),
@@ -151,46 +126,40 @@ async function main(): Promise<void> {
     page.on("pageerror", (error) => {
       console.log(`[pageerror] ${error.message}`);
     });
-    await page.goto(server.url, { waitUntil: "domcontentloaded" });
+    await page.goto(`chrome-extension://${extensionId}/benchmark.html`, { waitUntil: "load" });
+    await page.waitForFunction(() => Boolean(
+      (window as ShinobuBenchmarkWindow).__shinobuBenchmark__,
+    ));
     await page.evaluate("var __name = (target) => target;");
 
-    const result = await page.evaluate<PipelineSmokeResult, { dataUrl: string; imagePath: string; extensionId: string }>(
-      async ({ dataUrl: pageDataUrl, imagePath: pageImagePath, extensionId: pageExtensionId }) => {
-        type BakeResponse = {
-          type?: string;
-          error?: string;
-          result?: {
-            imageWidth: number;
-            imageHeight: number;
-            regions: BakeRegion[];
+    const result = await page.evaluate<
+      PipelineSmokeResult,
+      { dataUrl: string; imagePath: string; extensionId: string; exerciseAllApi: boolean }
+    >(
+      async ({
+        dataUrl: pageDataUrl,
+        imagePath: pageImagePath,
+        extensionId: pageExtensionId,
+        exerciseAllApi,
+      }) => {
+        const api = (window as ShinobuBenchmarkWindow).__shinobuBenchmark__;
+        if (!api) throw new Error("Benchmark API is unavailable");
+        const bakeResult = await api.bake(pageDataUrl);
+        const regions: BakeRegion[] = bakeResult.regions;
+        let apiSmoke: PipelineSmokeResult["apiSmoke"];
+        if (exerciseAllApi) {
+          const rendered = await api.render(pageDataUrl);
+          const renderDebug = await api.renderDebug(pageDataUrl);
+          const fixtureDebug = await api.renderFixtureDebug(pageDataUrl, bakeResult.regions);
+          apiSmoke = {
+            render: rendered.startsWith("data:image/png;base64,"),
+            renderDebug: renderDebug.dataUrl.startsWith("data:image/png;base64,"),
+            renderFixtureDebug: fixtureDebug.dataUrl.startsWith("data:image/png;base64,"),
           };
-        };
-
-        const response = await new Promise<BakeResponse>((resolveResponse, rejectResponse) => {
-          const timeout = window.setTimeout(() => {
-            window.removeEventListener("message", onMessage);
-            rejectResponse(new Error("Timed out waiting for __shinobu_bake_response__"));
-          }, 600000);
-          function onMessage(event: MessageEvent) {
-            const data = event.data as BakeResponse;
-            if (data?.type !== "__shinobu_bake_response__") {
-              return;
-            }
-            window.clearTimeout(timeout);
-            window.removeEventListener("message", onMessage);
-            resolveResponse(data);
+          if (!Object.values(apiSmoke).every(Boolean)) {
+            throw new Error(`Benchmark render API smoke failed: ${JSON.stringify(apiSmoke)}`);
           }
-          window.addEventListener("message", onMessage);
-          window.postMessage({ type: "__shinobu_bake_request__", dataUrl: pageDataUrl }, "*");
-        });
-
-        if (response.error) {
-          throw new Error(response.error);
         }
-        if (!response.result) {
-          throw new Error("Bake response did not include result");
-        }
-        const regions = response.result.regions;
         const sampleTexts = regions
           .map((region) => region.sourceText)
           .filter((text) => text.length > 0)
@@ -199,22 +168,22 @@ async function main(): Promise<void> {
           extensionId: pageExtensionId,
           pageUrl: location.href,
           image: pageImagePath,
-          imageWidth: response.result.imageWidth,
-          imageHeight: response.result.imageHeight,
+          imageWidth: bakeResult.imageWidth,
+          imageHeight: bakeResult.imageHeight,
           regionCount: regions.length,
           nonEmptySourceCount: regions.filter((region) => region.sourceText.length > 0).length,
           sourceCharCount: regions.reduce((sum, region) => sum + region.sourceText.length, 0),
           sampleTexts,
           firstBox: regions[0]?.box ?? null,
+          apiSmoke,
         };
       },
-      { dataUrl, imagePath, extensionId }
+      { dataUrl, imagePath, extensionId, exerciseAllApi: EXERCISE_ALL_API }
     );
 
     console.log(JSON.stringify(result, null, 2));
   } finally {
     await context.close();
-    await server.close();
   }
 }
 

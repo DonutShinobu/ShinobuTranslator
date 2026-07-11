@@ -17,15 +17,6 @@ import type {
   TensorTransport,
   WorkerSessionHandle,
   InferenceResult,
-  OcrInputNameSet,
-  OcrSplitInputNameSet,
-  OcrBatchDecodeInputItem,
-  OcrBatchDecodeOptions,
-  OcrBatchDecodeResult,
-  OcrSingleDecodeResult,
-  OcrColorBatchInputItem,
-  OcrColorBatchResult,
-  OcrColorSingleResult,
   GpuDetectResult,
 } from "./onnxWorkerTypes";
 import type { RuntimeSelfCheckReport } from "./selfCheck";
@@ -40,9 +31,19 @@ const isNode = typeof process !== "undefined" && !!process.versions?.node;
 // Bridge module cache — loaded once, reused across pipeline calls
 // ---------------------------------------------------------------------------
 
-let bridge: any = null;
+type BridgeModule = Pick<
+  typeof import("./onnxWorkerBridge"),
+  | "createSession"
+  | "runInference"
+  | "probeRuntime"
+  | "runDetectWithGpuPreprocess"
+  | "disposeSession"
+  | "disposeAll"
+>;
 
-async function loadBridge() {
+let bridge: BridgeModule | null = null;
+
+async function loadBridge(): Promise<BridgeModule> {
   if (bridge) return bridge;
   if (isNode) {
     bridge = await import("./onnxNodeBridge");
@@ -70,66 +71,6 @@ export async function runInference(
   feeds: Record<string, TensorTransport>
 ): Promise<InferenceResult> {
   return (await loadBridge()).runInference(sessionId, feeds);
-}
-
-export async function runOcrBatchDecode(
-  sessionId: string,
-  inputNames: OcrInputNameSet,
-  items: OcrBatchDecodeInputItem[],
-  options: OcrBatchDecodeOptions
-): Promise<OcrBatchDecodeResult> {
-  return (await loadBridge()).runOcrBatchDecode(sessionId, inputNames, items, options);
-}
-
-export async function runOcrSplitBatchDecode(
-  encoderSessionId: string,
-  decoderSessionId: string,
-  inputNames: OcrSplitInputNameSet,
-  items: OcrBatchDecodeInputItem[],
-  options: OcrBatchDecodeOptions
-): Promise<OcrBatchDecodeResult> {
-  return (await loadBridge()).runOcrSplitBatchDecode(encoderSessionId, decoderSessionId, inputNames, items, options);
-}
-
-export async function runOcrSingleDecode(
-  sessionId: string,
-  inputNames: OcrInputNameSet,
-  imageData: Float32Array,
-  imageDims: number[],
-  validEncoderLength: number,
-  options: {
-    seqLen: number;
-    encoderLen: number;
-    maxSteps: number;
-    charset: string[] | null;
-  }
-): Promise<OcrSingleDecodeResult> {
-  return (await loadBridge()).runOcrSingleDecode(sessionId, inputNames, imageData, imageDims, validEncoderLength, options);
-}
-
-export async function runOcrColorBatch(
-  sessionId: string,
-  inputNames: OcrInputNameSet,
-  items: OcrColorBatchInputItem[],
-  seqLen: number,
-  encoderLen: number,
-  inputHeight: number,
-  inputWidth: number
-): Promise<OcrColorBatchResult> {
-  return (await loadBridge()).runOcrColorBatch(sessionId, inputNames, items, seqLen, encoderLen, inputHeight, inputWidth);
-}
-
-export async function runOcrColorSingle(
-  sessionId: string,
-  inputNames: OcrInputNameSet,
-  imageData: Float32Array,
-  imageDims: number[],
-  validEncoderLength: number,
-  tokenIds: number[],
-  seqLen: number,
-  encoderLen: number
-): Promise<OcrColorSingleResult> {
-  return (await loadBridge()).runOcrColorSingle(sessionId, inputNames, imageData, imageDims, validEncoderLength, tokenIds, seqLen, encoderLen);
 }
 
 export async function probeRuntime(modelUrl: string): Promise<RuntimeSelfCheckReport> {

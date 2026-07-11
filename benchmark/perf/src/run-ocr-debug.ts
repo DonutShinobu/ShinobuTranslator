@@ -90,12 +90,6 @@ function normalizeEngineArg(value: string): OcrEngine | "all" {
     case "all":
     case "matrix":
       return "all";
-    case "48px":
-    case "builtin":
-    case "paddleocr_v6_small":
-    case "v6-small":
-    case "paddle-v6-small":
-      return "paddleocr_v6_medium";
     case "paddle":
     case "paddleocr":
     case "paddleocr_v6_medium":

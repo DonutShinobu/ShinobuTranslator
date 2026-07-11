@@ -1,27 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { decodeCtcGreedy, tokenToText } from "../../../src/pipeline/ocr/decodeCtc";
-import { tokenToTextAutoregressive, avgLogProbToConfidence } from "../../../src/pipeline/ocr/decodeAutoregressive";
-
-// Both source modules import onnxruntime-web/all at module level.
-// Mock it so the modules can load without a browser environment.
-vi.mock("onnxruntime-web/all", () => ({
-  InferenceSession: {},
-  Tensor: class Tensor {
-    data: unknown;
-    dims: number[];
-    type: string;
-    constructor(type: string, data: unknown, dims: number[]) {
-      this.type = type;
-      this.data = data;
-      this.dims = dims;
-    }
-  },
-}));
-
-// decodeAutoregressive also imports from preprocess which imports onnxruntime-web/all indirectly
-vi.mock("../../../src/pipeline/ocr/preprocess", () => ({
-  buildBatchImageTensor: vi.fn(),
-}));
 
 describe("decodeCtcGreedy", () => {
   it("returns empty array for all-blank path (all class 0)", () => {
@@ -98,67 +76,5 @@ describe("tokenToText", () => {
     expect(tokenToText(0, charset)).toBe("");
     // token 3 → idx 2 → out of range (charset has 2 elements)
     expect(tokenToText(3, charset)).toBe("");
-  });
-});
-
-describe("tokenToTextAutoregressive", () => {
-  it("maps normal token to charset character", () => {
-    const charset = ["<S>", "</S>", "<SP>", "A", "B", "C"];
-    // token 3 → charset[3] = "A"
-    expect(tokenToTextAutoregressive(3, charset)).toBe("A");
-  });
-
-  it("returns empty string for special token <S>", () => {
-    const charset = ["<S>", "</S>", "<SP>", "A"];
-    expect(tokenToTextAutoregressive(0, charset)).toBe("");
-  });
-
-  it("returns empty string for special token </S>", () => {
-    const charset = ["<S>", "</S>", "<SP>", "A"];
-    expect(tokenToTextAutoregressive(1, charset)).toBe("");
-  });
-
-  it("returns space for <SP> token", () => {
-    const charset = ["<S>", "</S>", "<SP>", "A"];
-    expect(tokenToTextAutoregressive(2, charset)).toBe(" ");
-  });
-
-  it("returns empty string when charset is null", () => {
-    expect(tokenToTextAutoregressive(5, null)).toBe("");
-  });
-
-  it("returns empty string for out-of-range token", () => {
-    const charset = ["<S>", "</S>", "A"];
-    expect(tokenToTextAutoregressive(10, charset)).toBe("");
-    expect(tokenToTextAutoregressive(-1, charset)).toBe("");
-  });
-});
-
-describe("avgLogProbToConfidence", () => {
-  it("returns 1.0 for probability array [1.0]", () => {
-    expect(avgLogProbToConfidence([1.0])).toBeCloseTo(1.0, 5);
-  });
-
-  it("returns 0.5 for probability array [0.5, 0.5]", () => {
-    // exp(mean(log([0.5, 0.5]))) = exp(log(0.5)) = 0.5
-    expect(avgLogProbToConfidence([0.5, 0.5])).toBeCloseTo(0.5, 5);
-  });
-
-  it("returns 0 for empty array", () => {
-    expect(avgLogProbToConfidence([])).toBe(0);
-  });
-
-  it("clamps very small probabilities to minimum 1e-6", () => {
-    // 0 probability should not produce -Infinity
-    const result = avgLogProbToConfidence([0, 0.5]);
-    expect(result).toBeGreaterThan(0);
-    expect(Number.isFinite(result)).toBe(true);
-  });
-
-  it("computes geometric mean of probabilities", () => {
-    // exp(mean(log([0.8, 0.9]))) ≈ sqrt(0.8 * 0.9)
-    const result = avgLogProbToConfidence([0.8, 0.9]);
-    const expected = Math.sqrt(0.8 * 0.9);
-    expect(result).toBeCloseTo(expected, 5);
   });
 });

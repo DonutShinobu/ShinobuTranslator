@@ -163,14 +163,6 @@ async function startProbeServer(imagePath: string): Promise<{ url: string; close
   body { margin: 0; min-height: 100vh; background: #111; display: grid; place-items: start center; }
   img { display: block; width: min(720px, 92vw); height: auto; margin: 24px auto; }
 </style>
-<script>
-  window.__shinobuReady = false;
-  window.addEventListener("message", function (event) {
-    if (event.data && event.data.type === "__shinobu_bake_ready__") {
-      window.__shinobuReady = true;
-    }
-  });
-</script>
 <img id="target" src="/fixture.png" alt="fixture">`);
   });
   await new Promise<void>((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
@@ -374,7 +366,7 @@ async function main(): Promise<void> {
     });
 
     await page.goto(server.url, { waitUntil: "domcontentloaded" });
-    await page.waitForFunction(() => Boolean((window as typeof window & { __shinobuReady?: boolean }).__shinobuReady), undefined, {
+    await page.waitForFunction(() => Boolean(document.getElementById("mt-overlay-style")), undefined, {
       timeout: 30000,
     });
     await moveMouseToImage(page);

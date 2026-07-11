@@ -171,7 +171,8 @@ async function main(): Promise<void> {
       classCount: number;
       runs: number;
     }>(async (options) => {
-      const bridge = await import("/chunks/onnxWorkerBridge.js") as PaddleGraphCaptureBridge;
+      const bridgeUrl = "/chunks/onnxWorkerBridge.js";
+      const bridge = await import(bridgeUrl) as PaddleGraphCaptureBridge;
       return bridge.probePaddleGraphCapture({
         ...options,
         modelUrl: new URL(options.modelUrl.replace(/^\/+/, ""), location.origin).toString(),

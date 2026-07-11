@@ -89,7 +89,7 @@ function traceRegionColors(
   }
 
   // Apply resolveColors safety net
-  const resolved = resolveColors(rawFgRgb, rawBgRgb);
+  const resolved = resolveColors(rawFgRgb ?? undefined, rawBgRgb ?? undefined);
 
   // Compute DeltaE between raw fg/bg
   const rawDeltaE =

@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["@webgpu/types", "node"]
+  },
+  "include": ["src", "benchmark/*/src/**/*.ts"]
+}

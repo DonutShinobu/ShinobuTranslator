@@ -46,7 +46,7 @@ describe('resolveLlmChatCompletionsEndpoint', () => {
 
 describe('proxyApiKeyChatCompletions', () => {
   it('sends chat completions from the background with the stored API key', async () => {
-    const fetchMock = vi.fn(async () =>
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       new Response(JSON.stringify({ choices: [{ message: { content: '译文' } }] }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },

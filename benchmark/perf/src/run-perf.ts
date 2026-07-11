@@ -16,7 +16,6 @@ import { execSync } from "child_process";
 import { imageToCanvas } from "../../../src/pipeline/image";
 import { detectTextRegionsWithMask } from "../../../src/pipeline/detect";
 import { runOcr } from "../../../src/pipeline/ocr";
-import { runTranslate } from "../../../src/pipeline/translate";
 import { runInpaint } from "../../../src/pipeline/inpaint";
 import { drawTypeset } from "../../../src/pipeline/typeset";
 import { mergeTextLines } from "../../../src/pipeline/textlineMerge";

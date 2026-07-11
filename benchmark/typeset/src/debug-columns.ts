@@ -35,7 +35,7 @@ export function debugRegionToColumns(region: TypesetDebugRegionLog): GroundTruth
           maxX: 0,
           maxY: 0,
         };
-    const charCenters = glyphs.map((g) => ({ y: g.y }));
+    const charCenters = glyphs.map((g) => ({ x: g.x, y: g.y }));
     return {
       index,
       text: glyphs.map((g) => g.ch).join(""),
@@ -47,6 +47,7 @@ export function debugRegionToColumns(region: TypesetDebugRegionLog): GroundTruth
       height: Math.max(0, bounds.maxY - bounds.minY),
       estimatedFontSize: region.fittedFontSize,
       charCenters,
+      quad,
     };
   });
 }

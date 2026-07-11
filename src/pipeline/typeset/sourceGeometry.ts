@@ -2,6 +2,8 @@ export {
   maxSourceGeometryAnchorAngleRad,
   maxVerticalSourceColumnOverlapRatio,
   minSourceGeometryAdvanceScale,
+  resolveHorizontalSourceGeometryProfile,
+  resolveHorizontalSourceLineAnchor,
   resolveVerticalSourceColumnAnchor,
   resolveVerticalSourceColumnStartOffsets,
   resolveVerticalSourceGeometryProfile,
@@ -9,4 +11,9 @@ export {
   sourceGeometryAdvanceQuantizationBiasPx,
 } from './fontFitCore';
 
-export type { VerticalSourceGeometryProfile } from './fontFitCore';
+export type {
+  HorizontalAlignmentProfile,
+  HorizontalLineAnchor,
+  HorizontalSourceGeometryProfile,
+  VerticalSourceGeometryProfile,
+} from './fontFitCore';

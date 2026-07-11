@@ -1,8 +1,9 @@
 import type {
   GroundTruthColumn,
-  RegionMetrics,
   ScoreWeights,
+  VerticalMetricValues,
 } from "./types";
+import { clamp01, mean, meanOr, median, percentile } from "./metric-utils";
 
 function rectIntersectionArea(
   ax: number, ay: number, aw: number, ah: number,
@@ -30,37 +31,9 @@ function columnIoU(gt: GroundTruthColumn, pred: GroundTruthColumn): number {
   return inter / union;
 }
 
-function percentile(values: number[], p: number): number {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const idx = (p / 100) * (sorted.length - 1);
-  const lo = Math.floor(idx);
-  const hi = Math.ceil(idx);
-  if (lo === hi) return sorted[lo];
-  return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
-}
-
-function median(values: number[]): number {
-  return percentile(values, 50);
-}
-
-function mean(values: number[]): number {
-  return values.length > 0
-    ? values.reduce((a, b) => a + b, 0) / values.length
-    : 0;
-}
-
-function meanOr(values: number[], fallback: number): number {
-  return values.length > 0 ? mean(values) : fallback;
-}
-
 function positiveMedian(values: number[], fallback: number): number {
   const positives = values.filter((v) => v > 0);
   return positives.length > 0 ? median(positives) : fallback;
-}
-
-function clamp01(v: number): number {
-  return Math.max(0, Math.min(1, v));
 }
 
 function columnLeft(column: GroundTruthColumn): number {
@@ -98,7 +71,7 @@ export function computeRegionMetrics(
   predColumns: GroundTruthColumn[],
   predFontSize: number,
   weights: ScoreWeights,
-): Omit<RegionMetrics, "regionId" | "skipped" | "skipReason"> {
+): VerticalMetricValues {
   const gtN = gtColumns.length;
   const predN = predColumns.length;
   const columnCountMatch = gtN === predN ? 1 : 0;

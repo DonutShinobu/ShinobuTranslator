@@ -9,5 +9,14 @@
     "columnDxNorm": 0.15,
     "charDyNorm": 0.15
   },
+  "horizontalScoreWeights": {
+    "lineCountMatch": 0.1,
+    "lineQuadIouMean": 0.2,
+    "blockHullIou": 0.1,
+    "fontSizeError": 0.1,
+    "lineBreakF1": 0.1,
+    "glyphPositionCoverage": 0.1,
+    "charCenterQuality": 0.3
+  },
   "regressionThreshold": 0.05
 }

@@ -7,34 +7,37 @@
  * benchmark infrastructure.
  *
  * Usage:
- *   npx tsx benchmark/typeset/src/bake-node.ts [--out-dir path] [image1.png image2.jpg ...]
+ *   npx tsx benchmark/typeset/src/bake-node.ts [--suite-dir path] [--out-dir path] [--direction all|h|v] [image1.png image2.jpg ...]
  *   npm run bench:bake-node
  *
- * If no image paths are given, scans benchmark/typeset/images/ directory.
+ * If no image paths are given, scans the selected suite's images/ directory.
  */
 
 import { createHash } from "crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "fs";
-import { dirname, extname, join, resolve } from "path";
+import { basename, dirname, extname, join, relative, resolve } from "path";
 import { fileURLToPath } from "url";
 import { execSync } from "child_process";
-import type { BakeInfo, Fixture, FixtureRegion, GroundTruthColumn } from "./types";
-import type { BakeResultRegion } from "../../../src/pipeline/bake";
+import type { BakeInfo, Fixture } from "./types";
+import type { BakeDirection } from "../../../src/pipeline/bake";
 import { shinobuBake } from "../../../src/pipeline/bake";
 import { nodePlatform } from "../../../src/runtime/nodePlatform";
+import { parseBakeDirectionArgs } from "./bake-options";
+import { bakeResultRegionToFixtureRegion } from "./fixture-build";
+import { parseTypesetSuiteArgs, resolveTypesetBenchmarkPath } from "./suite-paths";
 
 // ---------------------------------------------------------------------------
 // Path constants
 // ---------------------------------------------------------------------------
 
 const ROOT = resolve(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "../../..");
-const IMAGES_DIR = join(ROOT, "benchmark/typeset/images");
-const FIXTURES_DIR = join(ROOT, "benchmark/typeset/fixtures");
 const MODELS_DIR = join(ROOT, "public/models");
 
 type BakeNodeOptions = {
   imagePaths: string[];
+  imagesDir: string;
   fixturesDir: string;
+  direction: BakeDirection;
 };
 
 // ---------------------------------------------------------------------------
@@ -60,144 +63,24 @@ function imageToDataUrl(path: string): string {
   return `data:${mime};base64,${buf.toString("base64")}`;
 }
 
-function resolveCliPath(path: string): string {
-  return resolve(ROOT, path);
-}
-
 function parseArgs(args: string[]): BakeNodeOptions {
+  const parsed = parseTypesetSuiteArgs(args, { fixtureOutputAlias: true });
+  const bakeOptions = parseBakeDirectionArgs(parsed.remainingArgs);
   const imagePaths: string[] = [];
-  let fixturesDir = FIXTURES_DIR;
 
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg === "--out-dir") {
-      const outDir = args[i + 1];
-      if (!outDir) {
-        console.error("--out-dir requires a path.");
-        process.exit(1);
-      }
-      fixturesDir = resolveCliPath(outDir);
-      i++;
-      continue;
-    }
-    if (arg.startsWith("--out-dir=")) {
-      fixturesDir = resolveCliPath(arg.slice("--out-dir=".length));
-      continue;
-    }
+  for (const arg of bakeOptions.remainingArgs) {
     if (arg.startsWith("--")) {
       console.error(`Unknown option: ${arg}`);
       process.exit(1);
     }
-    imagePaths.push(resolveCliPath(arg));
+    imagePaths.push(resolveTypesetBenchmarkPath(arg));
   }
 
-  return { imagePaths, fixturesDir };
-}
-
-// ---------------------------------------------------------------------------
-// Fixture format converters (from bake-fixtures.ts)
-// ---------------------------------------------------------------------------
-
-function buildGroundTruthColumns(
-  detected: Array<{
-    centerX: number; topY: number; bottomY: number;
-    width: number; height: number; text: string; charCount: number;
-  }>,
-): GroundTruthColumn[] {
-  if (detected.length === 0) return [];
-
-  return detected.map((col, i) => {
-    const chars = [...col.text.replace(/\s+/g, "")];
-    const charCenters: { y: number }[] = [];
-    if (chars.length > 0) {
-      const step = col.height / chars.length;
-      for (let j = 0; j < chars.length; j++) {
-        charCenters.push({ y: col.topY + step * j + step / 2 });
-      }
-    }
-
-    return {
-      index: i,
-      text: col.text,
-      charCount: col.charCount,
-      centerX: col.centerX,
-      topY: col.topY,
-      bottomY: col.bottomY,
-      width: col.width,
-      height: col.height,
-      estimatedFontSize: Math.min(col.width, chars.length > 0 ? col.height / chars.length : 24),
-      charCenters,
-    };
-  });
-}
-
-function buildTypesetSnapshotColumns(
-  boxes: Array<{ x: number; y: number; width: number; height: number }>,
-  sourceText: string,
-  fontSize: number,
-): GroundTruthColumn[] {
-  if (boxes.length === 0) return [];
-
-  const chars = [...sourceText.replace(/\s+/g, "")];
-  const totalHeight = boxes.reduce((s, b) => s + b.height, 0);
-  const columns: GroundTruthColumn[] = [];
-  let charIdx = 0;
-
-  for (let i = 0; i < boxes.length; i++) {
-    const box = boxes[i];
-    const proportion = totalHeight > 0 ? box.height / totalHeight : 1 / boxes.length;
-    const colCharCount = Math.max(1, Math.round(proportion * chars.length));
-    const colChars = chars.slice(charIdx, charIdx + colCharCount);
-    charIdx += colChars.length;
-
-    const charCenters: { y: number }[] = [];
-    if (colChars.length > 0) {
-      const step = box.height / colChars.length;
-      for (let j = 0; j < colChars.length; j++) {
-        charCenters.push({ y: box.y + step * j + step / 2 });
-      }
-    }
-
-    columns.push({
-      index: i,
-      text: colChars.join(""),
-      charCount: colChars.length,
-      centerX: box.x + box.width / 2,
-      topY: box.y,
-      bottomY: box.y + box.height,
-      width: box.width,
-      height: box.height,
-      estimatedFontSize: Math.min(box.width, colChars.length > 0 ? box.height / colChars.length : fontSize),
-      charCenters,
-    });
-  }
-
-  return columns;
-}
-
-function bakeRegionToFixtureRegion(r: BakeResultRegion): FixtureRegion {
   return {
-    id: r.id,
-    direction: r.direction,
-    box: r.box,
-    quad: r.quad,
-    sourceText: r.sourceText,
-    fontSize: r.fontSize,
-    fgColor: r.fgColor,
-    bgColor: r.bgColor,
-    originalLineCount: r.originalLineCount,
-    translatedColumns: r.translatedColumns,
-    groundTruth: {
-      columns: buildGroundTruthColumns(r.detectedColumns ?? []),
-    },
-    currentTypeset: {
-      fittedFontSize: r.typesetDebug?.fittedFontSize ?? 0,
-      columns: buildTypesetSnapshotColumns(
-        r.typesetDebug?.columnBoxes ?? [],
-        r.sourceText ?? "",
-        r.typesetDebug?.fittedFontSize ?? 24,
-      ),
-    },
+    imagePaths,
+    imagesDir: parsed.paths.imagesDir,
+    fixturesDir: parsed.paths.fixturesDir,
+    direction: bakeOptions.direction,
   };
 }
 
@@ -267,7 +150,7 @@ function checkModelFiles(): void {
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
 
-  // Determine image files: from CLI args or scan IMAGES_DIR
+  // Determine image files: from CLI args or scan the selected suite images directory.
   let imageFiles: string[];
   if (options.imagePaths.length > 0) {
     // Absolute or relative paths provided via CLI
@@ -280,20 +163,20 @@ async function main(): Promise<void> {
       }
     }
   } else {
-    // Scan default images directory
-    if (!existsSync(IMAGES_DIR)) {
-      console.error(`Images directory not found: ${IMAGES_DIR}`);
+    // Scan the selected suite images directory.
+    if (!existsSync(options.imagesDir)) {
+      console.error(`Images directory not found: ${options.imagesDir}`);
       process.exit(1);
     }
-    const dirEntries = readdirSync(IMAGES_DIR).filter((f) =>
+    const dirEntries = readdirSync(options.imagesDir).filter((f) =>
       /\.(png|jpe?g|webp)$/i.test(f),
     );
     if (dirEntries.length === 0) {
-      console.error(`No images found in ${IMAGES_DIR}`);
+      console.error(`No images found in ${options.imagesDir}`);
       console.error("Add image files or provide paths as CLI arguments.");
       process.exit(1);
     }
-    imageFiles = dirEntries.map((f) => join(IMAGES_DIR, f));
+    imageFiles = dirEntries.map((f) => join(options.imagesDir, f));
   }
 
   console.log(`Found ${imageFiles.length} images to bake`);
@@ -310,23 +193,27 @@ async function main(): Promise<void> {
     gitCommit: gitCommit(),
     detectorModel: "detector.onnx",
     ocrModel: "PP-OCRv6_medium_rec.onnx",
+    direction: options.direction,
   };
 
   let successCount = 0;
   let failCount = 0;
 
   for (const imgPath of imageFiles) {
-    const imgFile = imgPath.includes(IMAGES_DIR)
-      ? imgPath.slice(IMAGES_DIR.length + 1)
-      : imgPath;
+    const relativeImagePath = relative(options.imagesDir, imgPath);
+    const imgFile = relativeImagePath.startsWith("..")
+      ? basename(imgPath)
+      : relativeImagePath;
     console.log(`Baking: ${imgFile}`);
 
     try {
       const dataUrl = imageToDataUrl(imgPath);
 
-      const result = await shinobuBake(dataUrl, nodePlatform);
+      const result = await shinobuBake(dataUrl, nodePlatform, {
+        direction: options.direction,
+      });
 
-      const fixtureRegions: FixtureRegion[] = result.regions.map(bakeRegionToFixtureRegion);
+      const fixtureRegions = result.regions.map(bakeResultRegionToFixtureRegion);
 
       const fixture: Fixture = {
         schemaVersion: 1,

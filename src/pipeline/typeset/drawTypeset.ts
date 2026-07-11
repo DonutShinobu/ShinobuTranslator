@@ -11,10 +11,14 @@ import {
 import { segmentVerticalGraphemes } from "./verticalOrientation";
 import { computeFullVerticalTypeset } from "./verticalLayout";
 import { renderHorizontal } from "./renderHorizontal";
+import { buildHorizontalGlyphPlacements } from "./horizontalFit";
 import { renderVertical } from "./renderVertical";
 import { compositeRegion } from "./composite";
 import { drawTypesetDebugOverlay } from "./debug";
-import { computeFullHorizontalTypeset } from "./horizontalLayout";
+import {
+  computeFullHorizontalTypeset,
+  resolveHorizontalLetterSpacing,
+} from "./horizontalLayout";
 import type { RegionTypesetDebug } from "./fontMetrics";
 import type { CompositeTransform } from "./geometry";
 
@@ -201,27 +205,45 @@ export async function drawTypeset(
       singleColumnMaxLength = horizontal.singleLineMaxLength;
 
       const colors = resolveColors(region.fgColor, region.bgColor);
+      measureCtx.font = `${horizontal.fittedFontSize}px ${fontFamily}`;
+      const horizontalGlyphPlacements = buildHorizontalGlyphPlacements(
+        measureCtx,
+        horizontal.lineBoxes,
+        resolveHorizontalLetterSpacing(
+          horizontal.fittedFontSize,
+          horizontal.letterSpacingScale,
+        ),
+      );
       if (renderText) {
         offCanvas = renderHorizontal(
-          horizontal.lines,
+          horizontal.lineBoxes,
           horizontal.fittedFontSize,
           horizontal.contentWidth,
           horizontal.contentHeight,
           colors,
-          horizontal.alignment,
           horizontal.strokePadding,
           fontFamily,
           horizontal.letterSpacingScale,
-          horizontal.lineHeightScale,
           platform,
+          horizontalGlyphPlacements,
         );
       }
       debug = {
         fittedFontSize: horizontal.fittedFontSize,
         columnBoxes: horizontal.debugColumnBoxes,
+        columnGlyphCenters: horizontalGlyphPlacements.map((line) => (
+          line
+            .filter((glyph) => !/^\s+$/u.test(glyph.ch))
+            .map((glyph) => ({
+              ch: glyph.ch,
+              x: glyph.centerX,
+              y: glyph.centerY,
+            }))
+        )),
         columnBreakReasons: horizontal.lineBreakReasons,
         columnSegmentIds: horizontal.lineSegmentIds,
         columnSegmentSources: horizontal.lineSegmentSources,
+        layoutDiagnostics: horizontal.layoutDiagnostics,
         offscreenWidth: horizontal.offscreenWidth,
         offscreenHeight: horizontal.offscreenHeight,
         boxPadding: horizontal.boxPadding,

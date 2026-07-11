@@ -1,4 +1,4 @@
-import type { SourceTextLineGeometry, TextRegion } from "../types";
+import type { QuadPoint, SourceTextLineGeometry, TextDirection, TextRegion } from "../types";
 import type { PipelineTypesetDebugLog } from "../types";
 import type { PlatformProvider, PipelineImage } from "../runtime/platform";
 import { imageToCanvas } from "./image";
@@ -17,11 +17,12 @@ export type DetectedColumn = {
   height: number;
   text: string;
   charCount: number;
+  quad?: [QuadPoint, QuadPoint, QuadPoint, QuadPoint];
 };
 
 export type BakeResultRegion = {
   id: string;
-  direction: "v";
+  direction: TextDirection;
   box: { x: number; y: number; width: number; height: number };
   quad?: [
     { x: number; y: number },
@@ -46,6 +47,12 @@ export type BakeResult = {
   imageWidth: number;
   imageHeight: number;
   regions: BakeResultRegion[];
+};
+
+export type BakeDirection = "all" | TextDirection;
+
+export type ShinobuBakeOptions = {
+  direction?: BakeDirection;
 };
 
 export type RenderFixtureRegion = {
@@ -100,6 +107,7 @@ function toDetectedColumn(region: TextRegion): DetectedColumn {
     height: region.box.height,
     text: region.sourceText,
     charCount: [...text].length,
+    quad: region.quad,
   };
 }
 
@@ -113,6 +121,7 @@ function sourceGeometryToDetectedColumn(line: SourceTextLineGeometry): DetectedC
     height: line.height,
     text: line.text,
     charCount: [...text].length,
+    quad: line.quad,
   };
 }
 
@@ -200,7 +209,24 @@ export async function shinobuRenderFixtureDebug(
   };
 }
 
-export async function shinobuBake(dataUrl: string, platform: PlatformProvider): Promise<BakeResult> {
+function includesBakeDirection(direction: TextDirection, selected: BakeDirection): boolean {
+  return selected === "all" || direction === selected;
+}
+
+function resolveBakeRegionDirection(region: TextRegion): TextDirection {
+  if (region.direction === "h" || region.direction === "v") return region.direction;
+  const geometryDirection = region.sourceLineGeometries?.find((line) => (
+    line.direction === "h" || line.direction === "v"
+  ))?.direction;
+  if (geometryDirection) return geometryDirection;
+  return region.box.height >= region.box.width ? "v" : "h";
+}
+
+export async function shinobuBake(
+  dataUrl: string,
+  platform: PlatformProvider,
+  options: ShinobuBakeOptions = {},
+): Promise<BakeResult> {
   const image = await loadImage(dataUrl, platform);
   const canvas = imageToCanvas(image, platform);
   const w = image.naturalWidth;
@@ -209,8 +235,12 @@ export async function shinobuBake(dataUrl: string, platform: PlatformProvider): 
   const detected = await detectTextRegionsWithMask(image, platform);
   const ocrResult = await runOcr(image, detected.regions, undefined, platform);
 
-  // Snapshot pre-merge regions for ground truth
-  const preMergeRegions = ocrResult.regions.filter((r) => r.direction === "v");
+  const selectedDirection = options.direction ?? "all";
+
+  // Snapshot pre-merge regions for ground truth, preserving the requested directions.
+  const preMergeRegions = ocrResult.regions.filter((region) => (
+    includesBakeDirection(resolveBakeRegionDirection(region), selectedDirection)
+  ));
 
   let regions = mergeTextLines(ocrResult.regions, w, h);
   regions = sortRegionsForRender(regions, canvas, platform);
@@ -232,20 +262,25 @@ export async function shinobuBake(dataUrl: string, platform: PlatformProvider): 
 
   const debugRegions = typesetResult.debugLog?.regions ?? [];
 
-  const verticalRegions = regions.filter((r) => r.direction === "v");
+  const selectedRegions = regions.filter((region) => (
+    includesBakeDirection(resolveBakeRegionDirection(region), selectedDirection)
+  ));
 
-  const resultRegions: BakeResultRegion[] = verticalRegions.map((merged) => {
+  const resultRegions: BakeResultRegion[] = selectedRegions.map((merged) => {
+    const direction = resolveBakeRegionDirection(merged);
     const detectedColumns = merged.sourceLineGeometries && merged.sourceLineGeometries.length > 0
       ? merged.sourceLineGeometries.map(sourceGeometryToDetectedColumn)
       : preMergeRegions
-          .filter((pre) => centerInBox(pre.box, merged.box))
+          .filter((pre) => (
+            resolveBakeRegionDirection(pre) === direction && centerInBox(pre.box, merged.box)
+          ))
           .map(toDetectedColumn);
 
     const debugEntry = debugRegions.find((d) => d.regionId === merged.id);
 
     return {
       id: merged.id,
-      direction: "v" as const,
+      direction,
       box: merged.box,
       quad: merged.quad,
       sourceText: merged.sourceText,

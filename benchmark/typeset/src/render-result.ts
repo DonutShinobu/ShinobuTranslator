@@ -5,16 +5,15 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { dirname, extname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { execSync } from "child_process";
-import type { Fixture, GroundTruthColumn } from "./types";
+import type { Fixture } from "./types";
 import type { RenderFixtureRegion } from "../../../src/pipeline/bake";
 import type { ShinobuBenchmarkWindow } from "../../../src/benchmark/browserEntry";
-import type { PipelineTypesetDebugLog, QuadPoint, SourceTextLineGeometry } from "../../../src/types";
+import type { PipelineTypesetDebugLog, QuadPoint } from "../../../src/types";
+import { toRenderFixtureRegions } from "./fixture-render";
+import { parseTypesetSuiteArgs } from "./suite-paths";
 
 const ROOT = resolve(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "../../..");
-const IMAGES_DIR = join(ROOT, "benchmark/typeset/images");
-const REPORTS_DIR = join(ROOT, "benchmark/reports");
 const DIST_DIR = join(ROOT, "dist");
-const FIXTURES_DIR = join(ROOT, "benchmark/typeset/fixtures");
 
 type RenderDebugResponse = {
   dataUrl: string;
@@ -45,62 +44,17 @@ function drawQuad(
   ctx.closePath();
 }
 
-function groundTruthColumnToSourceGeometry(column: GroundTruthColumn): SourceTextLineGeometry {
-  const left = column.centerX - column.width / 2;
-  const right = column.centerX + column.width / 2;
-  const top = column.topY;
-  const bottom = column.bottomY;
-
-  return {
-    text: column.text,
-    direction: "v",
-    box: {
-      x: left,
-      y: top,
-      width: column.width,
-      height: column.height,
-    },
-    quad: [
-      { x: left, y: top },
-      { x: right, y: top },
-      { x: right, y: bottom },
-      { x: left, y: bottom },
-    ],
-    centerX: column.centerX,
-    centerY: (top + bottom) / 2,
-    width: column.width,
-    height: column.height,
-    fontSize: column.estimatedFontSize,
-  };
-}
-
-function toRenderFixtureRegions(fixture: Fixture): RenderFixtureRegion[] {
-  return fixture.regions.map((region) => ({
-    id: region.id,
-    direction: region.direction,
-    box: region.box,
-    quad: region.quad,
-    sourceText: region.sourceText,
-    fontSize: region.fontSize,
-    fgColor: region.fgColor,
-    bgColor: region.bgColor,
-    originalLineCount: region.originalLineCount,
-    translatedColumns: region.translatedColumns,
-    sourceLineGeometries: region.groundTruth.columns.map(groundTruthColumnToSourceGeometry),
-  }));
-}
-
-function resolveFixtureImagePath(fixture: Fixture): string | null {
-  const imagePath = join(IMAGES_DIR, fixture.image.file.replace(/^images\//, ""));
+function resolveFixtureImagePath(fixture: Fixture, imagesDir: string): string | null {
+  const imagePath = join(imagesDir, fixture.image.file.replace(/^images\//, ""));
   if (existsSync(imagePath)) return imagePath;
 
-  const candidates = readdirSync(IMAGES_DIR).filter((f) => /\.(png|jpe?g|webp)$/i.test(f));
+  const candidates = readdirSync(imagesDir).filter((f) => /\.(png|jpe?g|webp)$/i.test(f));
   const match = candidates.find((c) => {
-    const path = join(IMAGES_DIR, c);
+    const path = join(imagesDir, c);
     const hash = createHash("sha256").update(readFileSync(path)).digest("hex");
     return hash === fixture.image.sha256;
   });
-  return match ? join(IMAGES_DIR, match) : null;
+  return match ? join(imagesDir, match) : null;
 }
 
 async function renderDebugOverlay(
@@ -119,11 +73,16 @@ async function renderDebugOverlay(
     ctx.lineWidth = 2;
     for (const region of fixture.regions) {
       for (const col of region.groundTruth.columns) {
-        const left = col.centerX - col.width / 2;
-        ctx.strokeRect(left, col.topY, col.width, col.height);
+        if (col.quad) {
+          drawQuad(ctx, col.quad);
+          ctx.stroke();
+        } else {
+          const left = col.centerX - col.width / 2;
+          ctx.strokeRect(left, col.topY, col.width, col.height);
+        }
         for (const center of col.charCenters) {
           ctx.beginPath();
-          ctx.arc(col.centerX, center.y, 4, 0, Math.PI * 2);
+          ctx.arc(center.x ?? col.centerX, center.y, 4, 0, Math.PI * 2);
           ctx.fill();
         }
       }
@@ -171,23 +130,37 @@ async function renderDebugOverlay(
 }
 
 async function main(): Promise<void> {
-  console.log("Building benchmark extension...");
-  execSync("npm run build:benchmark", { cwd: ROOT, stdio: "inherit" });
-
-  const fixtureFiles = readdirSync(FIXTURES_DIR).filter((f) => f.endsWith(".fixture.json"));
+  const parsed = parseTypesetSuiteArgs(process.argv.slice(2));
+  if (parsed.remainingArgs.length > 0) {
+    console.error(`Unknown option: ${parsed.remainingArgs[0]}`);
+    process.exit(1);
+  }
+  const { imagesDir, fixturesDir, reportsDir } = parsed.paths;
+  if (!existsSync(fixturesDir)) {
+    console.error(`Fixtures directory not found: ${fixturesDir}`);
+    process.exit(1);
+  }
+  if (!existsSync(imagesDir)) {
+    console.error(`Images directory not found: ${imagesDir}`);
+    process.exit(1);
+  }
+  const fixtureFiles = readdirSync(fixturesDir).filter((f) => f.endsWith(".fixture.json"));
   if (fixtureFiles.length === 0) {
     console.error("No fixtures found. Run npm run bench:bake first.");
     process.exit(1);
   }
 
-  const outputDir = join(REPORTS_DIR, new Date().toISOString().replace(/[:.]/g, "-"));
+  console.log("Building benchmark extension...");
+  execSync("npm run build:benchmark", { cwd: ROOT, stdio: "inherit" });
+
+  const outputDir = join(reportsDir, new Date().toISOString().replace(/[:.]/g, "-"));
   mkdirSync(outputDir, { recursive: true });
 
   const chrome = await launchWindowsChrome(DIST_DIR);
 
   for (const fixtureFile of fixtureFiles) {
-    const fixture = JSON.parse(readFileSync(join(FIXTURES_DIR, fixtureFile), "utf-8")) as Fixture;
-    const imgPath = resolveFixtureImagePath(fixture);
+    const fixture = JSON.parse(readFileSync(join(fixturesDir, fixtureFile), "utf-8")) as Fixture;
+    const imgPath = resolveFixtureImagePath(fixture, imagesDir);
     if (!imgPath) {
       console.log(`Skipping ${fixtureFile}: image not found`);
       continue;

@@ -1,12 +1,12 @@
 import type { PipelineRenderingContext } from "../../runtime/platform";
-import type { TextRegion } from "../../types";
+import type { TextRegion, TypesetLayoutDiagnostics } from "../../types";
 import {
   KINSOKU_NEND,
   KINSOKU_NSTART,
   resolveHorizontalPreferredLines,
 } from "./columns";
 import type { ColumnSegmentSource } from "./columns";
-import { getRegionQuad, quadDimensions } from "./geometry";
+import { cloneRegionForTypeset, getRegionQuad, quadDimensions } from "./geometry";
 import {
   expandRegionBeforeRender,
   metricAbs,
@@ -19,13 +19,21 @@ import {
 } from "./fontMetrics";
 import {
   calcHorizontalFromLines,
+  buildHorizontalLineBoxes,
   estimateHorizontalPreferredProfile,
+  rebalanceHorizontalShortTailLines,
   resolveHorizontalContentHeight,
   resolveHorizontalMaskHeight,
-  tryShrinkHorizontalForMinorOverflow,
 } from "./horizontalFit";
 import type { ColumnBreakReason, DebugColumnBox } from "./fontMetrics";
-import type { HLine } from "./horizontalFit";
+import type { HLine, HorizontalLineBox } from "./horizontalFit";
+import {
+  resolveHorizontalSourceGeometryProfile,
+  resolveHorizontalSourceLineAnchor,
+} from "./sourceGeometry";
+import type {
+  HorizontalLineAnchor,
+} from "./sourceGeometry";
 
 export const horizontalLetterSpacingRatio = -0.05;
 export const horizontalLineHeightRatio = 0.93;
@@ -321,15 +329,18 @@ export type FullHorizontalTypesetResult = {
   initialFontSize: number;
   fittedFontSize: number;
   lines: HLine[];
+  lineBoxes: HorizontalLineBox[];
   lineBreakReasons: ColumnBreakReason[];
   lineSegmentIds: number[];
   lineSegmentSources: ColumnSegmentSource[];
   contentWidth: number;
   contentHeight: number;
   alignment: "left" | "center" | "right";
+  horizontalAnchor?: HorizontalLineAnchor;
   strokePadding: number;
   letterSpacingScale: number;
   lineHeightScale: number;
+  layoutDiagnostics: TypesetLayoutDiagnostics;
   debugColumnBoxes: DebugColumnBox[];
   offscreenWidth: number;
   offscreenHeight: number;
@@ -353,9 +364,23 @@ export function computeFullHorizontalTypeset(
   const singleLineMaxLength = horizontalPreferred.singleLineMaxLength;
   const text = translated;
 
-  let estimatedInitialFontSize = Math.max(8, Math.round(resolveInitialFontSize(inputRegion)));
+  const targetLineCount = Math.max(
+    1,
+    sourceLines.length,
+    preferredLines?.length ?? 0,
+    inputRegion.originalLineCount ?? 0,
+  );
+  const sourceGeometryProfile = resolveHorizontalSourceGeometryProfile(
+    inputRegion,
+    sourceLines.length,
+    measureCtx,
+    fontFamily,
+  );
+  let estimatedInitialFontSize = sourceGeometryProfile
+    ? Math.max(minFontSafetySize, Math.round(sourceGeometryProfile.sourceFontSize))
+    : Math.max(minFontSafetySize, Math.round(resolveInitialFontSize(inputRegion)));
   const inputQuadDims = quadDimensions(getRegionQuad(inputRegion));
-  if (singleLineMaxLength && singleLineMaxLength > 0) {
+  if (!sourceGeometryProfile && singleLineMaxLength && singleLineMaxLength > 0) {
     const boxPaddingEst = resolveBoxPadding(inputRegion);
     const availableWidth = Math.max(20, inputQuadDims.width - boxPaddingEst * 2);
     const maxFontByWidth = Math.floor(availableWidth / (singleLineMaxLength * 1.1));
@@ -387,13 +412,15 @@ export function computeFullHorizontalTypeset(
       fontFamily,
     ).length;
   };
-  const expandedRegion = expandRegionBeforeRender(
-    inputRegion,
-    text,
-    measureCtx,
-    fontFamily,
-    calcHorizontalLineCount,
-  );
+  const expandedRegion = sourceGeometryProfile
+    ? cloneRegionForTypeset(inputRegion)
+    : expandRegionBeforeRender(
+      inputRegion,
+      text,
+      measureCtx,
+      fontFamily,
+      calcHorizontalLineCount,
+    );
   const boxPadding = resolveBoxPadding(expandedRegion);
   const regionQuadDims = quadDimensions(getRegionQuad(expandedRegion));
   const contentWidth = Math.max(20, regionQuadDims.width - boxPadding * 2);
@@ -402,212 +429,206 @@ export function computeFullHorizontalTypeset(
     20,
     inputQuadDims.height - resolveBoxPadding(inputRegion) * 2,
   );
-  const preferredProfile = estimateHorizontalPreferredProfile(
-    measureCtx,
+  const horizontalAnchor = resolveHorizontalSourceLineAnchor(
     expandedRegion,
-    text,
-    contentWidth,
-    contentHeight,
-    estimatedInitialFontSize,
-    fontFamily,
-    preferredLines,
-    originalContentHeight,
+    boxPadding,
+    sourceGeometryProfile,
   );
-  let letterSpacingScale = preferredProfile.letterSpacingScale;
-  let lineHeightScale = preferredProfile.lineHeightScale;
-  let fontSize = estimatedInitialFontSize;
-  let lines: HLine[];
-  let lineBreakReasons: ColumnBreakReason[];
-  let lineSegmentIds: number[];
-  let lineSegmentSources: ColumnSegmentSource[];
+  const alignment = sourceGeometryProfile?.inferredAlignment !== undefined
+    && sourceGeometryProfile.inferredAlignment !== "unknown"
+    ? sourceGeometryProfile.inferredAlignment
+    : resolveAlignment(expandedRegion, targetLineCount);
 
-  if (preferredLineSegments.length > 0) {
-    measureCtx.font = `${fontSize}px ${fontFamily}`;
-    const horizontalResult = calcHorizontalFromLines(
-      measureCtx,
-      preferredLineSegments,
-      contentWidth,
-      fontSize,
-      letterSpacingScale,
-    );
-    lines = horizontalResult.lines;
-    lineBreakReasons = horizontalResult.lineBreakReasons;
-    lineSegmentIds = horizontalResult.lineSegmentIds;
-    lineSegmentSources = horizontalResult.lineSegmentSources;
-  } else {
-    measureCtx.font = `${fontSize}px ${fontFamily}`;
-    lines = calcHorizontal(
-      measureCtx,
-      text,
-      contentWidth,
-      fontSize,
-      fontFamily,
-      letterSpacingScale,
-    );
-    lineBreakReasons = lines.map((_, index) => (index === 0 ? 'start' : 'wrap'));
-    lineSegmentIds = lines.map(() => 1);
-    lineSegmentSources = lines.map(() => 'model');
-  }
+  type HorizontalCandidate = {
+    fontSize: number;
+    lines: HLine[];
+    lineBoxes: HorizontalLineBox[];
+    lineBreakReasons: ColumnBreakReason[];
+    lineSegmentIds: number[];
+    lineSegmentSources: ColumnSegmentSource[];
+    contentHeight: number;
+    letterSpacingScale: number;
+    lineHeightScale: number;
+    reflowed: boolean;
+  };
 
-  const calculateLines = (
-    context: PipelineRenderingContext,
-    candidateText: string,
+  const wrapLines = (
     maxWidth: number,
-    candidateFontSize: number,
-  ): HLine[] => {
+    fontSize: number,
+    letterSpacingScale: number,
+  ): Pick<HorizontalCandidate, "lines" | "lineBreakReasons" | "lineSegmentIds" | "lineSegmentSources"> => {
+    measureCtx.font = `${fontSize}px ${fontFamily}`;
     if (preferredLineSegments.length > 0) {
-      context.font = `${candidateFontSize}px ${fontFamily}`;
       return calcHorizontalFromLines(
-        context,
+        measureCtx,
         preferredLineSegments,
         maxWidth,
-        candidateFontSize,
+        fontSize,
         letterSpacingScale,
-      ).lines;
+      );
     }
-    return calcHorizontal(
-      context,
-      candidateText,
+    const lines = calcHorizontal(
+      measureCtx,
+      text,
       maxWidth,
-      candidateFontSize,
+      fontSize,
       fontFamily,
       letterSpacingScale,
     );
+    return {
+      lines,
+      lineBreakReasons: lines.map((_, index) => (index === 0 ? "start" : "wrap")),
+      lineSegmentIds: lines.map(() => 1),
+      lineSegmentSources: lines.map(() => "model"),
+    };
   };
-  const shrinkResult = tryShrinkHorizontalForMinorOverflow(
-    measureCtx,
-    text,
-    contentWidth,
-    estimatedInitialFontSize,
-    fontFamily,
-    lines,
-    calculateLines,
-  );
-  fontSize = shrinkResult.fontSize;
-  lines = shrinkResult.lines;
 
-  if (fontSize !== estimatedInitialFontSize && preferredLineSegments.length > 0) {
-    measureCtx.font = `${fontSize}px ${fontFamily}`;
-    const horizontalResult = calcHorizontalFromLines(
-      measureCtx,
-      preferredLineSegments,
-      contentWidth,
+  const buildCandidate = (fontSize: number): HorizontalCandidate => {
+    const horizontalContentHeight = resolveHorizontalMaskHeight(
+      inputRegion.bubbleMask,
+      expandedRegion,
+      resolveHorizontalContentHeight(contentHeight, fontSize),
       fontSize,
-      letterSpacingScale,
     );
-    lineBreakReasons = horizontalResult.lineBreakReasons;
-    lineSegmentIds = horizontalResult.lineSegmentIds;
-    lineSegmentSources = horizontalResult.lineSegmentSources;
-  } else if (fontSize !== estimatedInitialFontSize) {
-    lineBreakReasons = lines.map((_, index) => (index === 0 ? 'start' : 'wrap'));
-    lineSegmentIds = lines.map(() => 1);
-    lineSegmentSources = lines.map(() => 'model');
-  }
+    const preferredProfile = estimateHorizontalPreferredProfile(
+      measureCtx,
+      expandedRegion,
+      text,
+      contentWidth,
+      horizontalContentHeight,
+      fontSize,
+      fontFamily,
+      preferredLines,
+      originalContentHeight,
+      sourceGeometryProfile,
+    );
+    const letterSpacingScale = Math.min(1.15, preferredProfile.letterSpacingScale);
+    const lineHeightScale = preferredProfile.lineHeightScale;
+    const sourcePitch = sourceGeometryProfile
+      ? sourceGeometryProfile.sourcePitch * fontSize / sourceGeometryProfile.sourceFontSize
+      : resolveHorizontalLineHeight(fontSize, lineHeightScale);
+    let wrapped = wrapLines(contentWidth, fontSize, letterSpacingScale);
+    let lineBoxes = buildHorizontalLineBoxes({
+      ctx: measureCtx,
+      lines: wrapped.lines,
+      region: expandedRegion,
+      contentWidth,
+      contentHeight: horizontalContentHeight,
+      fontSize,
+      padding: 0,
+      alignment,
+      anchorContentCenterY: horizontalAnchor?.contentCenterY,
+      sourcePitch,
+      bubbleMask: inputRegion.bubbleMask,
+      boxPadding,
+    });
+    let reflowed = false;
 
-  let horizontalContentHeight = resolveHorizontalContentHeight(contentHeight, fontSize);
-  horizontalContentHeight = resolveHorizontalMaskHeight(
-    inputRegion.bubbleMask,
-    expandedRegion,
-    horizontalContentHeight,
-    fontSize,
-  );
-  const targetLineCount = Math.max(
-    1,
-    sourceLines.length,
-    preferredLines?.length ?? 0,
-    inputRegion.originalLineCount ?? 0,
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const overflowing = lineBoxes.some((line) => line.width > line.maxWidth + 0.5);
+      if (!overflowing || lineBoxes.length === 0) break;
+      const safeWrapWidth = Math.max(20, Math.min(...lineBoxes.map((line) => line.maxWidth)));
+      const nextWrapped = wrapLines(safeWrapWidth, fontSize, letterSpacingScale);
+      if (
+        nextWrapped.lines.length === wrapped.lines.length
+        && nextWrapped.lines.every((line, index) => line.text === wrapped.lines[index]?.text)
+      ) {
+        break;
+      }
+      wrapped = nextWrapped;
+      reflowed = true;
+      lineBoxes = buildHorizontalLineBoxes({
+        ctx: measureCtx,
+        lines: wrapped.lines,
+        region: expandedRegion,
+        contentWidth,
+        contentHeight: horizontalContentHeight,
+        fontSize,
+        padding: 0,
+        alignment,
+        anchorContentCenterY: horizontalAnchor?.contentCenterY,
+        sourcePitch,
+        bubbleMask: inputRegion.bubbleMask,
+        boxPadding,
+      });
+    }
+
+    const balancedLines = rebalanceHorizontalShortTailLines(
+      measureCtx,
+      wrapped.lines,
+      lineBoxes.map((line) => line.maxWidth),
+      resolveHorizontalLetterSpacing(fontSize, letterSpacingScale),
+    );
+    if (balancedLines.some((line, index) => line.text !== wrapped.lines[index]?.text)) {
+      reflowed = true;
+      wrapped = { ...wrapped, lines: balancedLines };
+      lineBoxes = buildHorizontalLineBoxes({
+        ctx: measureCtx,
+        lines: wrapped.lines,
+        region: expandedRegion,
+        contentWidth,
+        contentHeight: horizontalContentHeight,
+        fontSize,
+        padding: 0,
+        alignment,
+        anchorContentCenterY: horizontalAnchor?.contentCenterY,
+        sourcePitch,
+        bubbleMask: inputRegion.bubbleMask,
+        boxPadding,
+      });
+    }
+
+    return {
+      fontSize,
+      ...wrapped,
+      lineBoxes,
+      contentHeight: horizontalContentHeight,
+      letterSpacingScale,
+      lineHeightScale,
+      reflowed,
+    };
+  };
+
+  const candidateFits = (candidate: HorizontalCandidate): boolean => (
+    candidate.lines.length <= targetLineCount
+    && candidate.lineBoxes.every((line) => line.width <= line.maxWidth + 0.5)
+    && candidate.lineBoxes.reduce((sum, line) => sum + line.lineHeight, 0) <= candidate.contentHeight + 0.5
   );
 
-  if (lines.length > targetLineCount && fontSize > minFontSafetySize) {
+  let candidate = buildCandidate(estimatedInitialFontSize);
+  if (!candidateFits(candidate) && estimatedInitialFontSize > minFontSafetySize) {
     const minAllowed = Math.max(
       minFontSafetySize,
       Math.ceil(estimatedInitialFontSize * 0.3),
     );
     let lo = minAllowed;
-    let hi = fontSize - 1;
-    let bestFontSize = fontSize;
-    let bestLines = lines;
-    let bestBreakReasons = lineBreakReasons;
-    let bestSegmentIds = lineSegmentIds;
-    let bestSegmentSources = lineSegmentSources;
-    let bestLetterSpacingScale = letterSpacingScale;
-    let bestLineHeightScale = lineHeightScale;
-
+    let hi = estimatedInitialFontSize - 1;
+    let bestCandidate: HorizontalCandidate | undefined;
+    let smallestCandidate = candidate;
     while (lo <= hi) {
       const mid = Math.floor((lo + hi) / 2);
-      const midProfile = estimateHorizontalPreferredProfile(
-        measureCtx,
-        expandedRegion,
-        text,
-        contentWidth,
-        horizontalContentHeight,
-        mid,
-        fontFamily,
-        preferredLines,
-        originalContentHeight,
-      );
-      measureCtx.font = `${mid}px ${fontFamily}`;
-      let candidateLines: HLine[];
-      if (preferredLineSegments.length > 0) {
-        const horizontalResult = calcHorizontalFromLines(
-          measureCtx,
-          preferredLineSegments,
-          contentWidth,
-          mid,
-          midProfile.letterSpacingScale,
-        );
-        candidateLines = horizontalResult.lines;
-        if (candidateLines.length <= targetLineCount) {
-          bestBreakReasons = horizontalResult.lineBreakReasons;
-          bestSegmentIds = horizontalResult.lineSegmentIds;
-          bestSegmentSources = horizontalResult.lineSegmentSources;
-        }
-      } else {
-        candidateLines = calcHorizontal(
-          measureCtx,
-          text,
-          contentWidth,
-          mid,
-          fontFamily,
-          midProfile.letterSpacingScale,
-        );
-        if (candidateLines.length <= targetLineCount) {
-          bestBreakReasons = candidateLines.map((_, index) => (
-            index === 0 ? 'start' : 'wrap'
-          ));
-          bestSegmentIds = candidateLines.map(() => 1);
-          bestSegmentSources = candidateLines.map(() => 'model');
-        }
-      }
-      if (candidateLines.length <= targetLineCount) {
-        bestFontSize = mid;
-        bestLines = candidateLines;
-        bestLetterSpacingScale = midProfile.letterSpacingScale;
-        bestLineHeightScale = midProfile.lineHeightScale;
+      const current = buildCandidate(mid);
+      if (current.fontSize < smallestCandidate.fontSize) smallestCandidate = current;
+      if (candidateFits(current)) {
+        bestCandidate = current;
         lo = mid + 1;
       } else {
         hi = mid - 1;
       }
     }
-
-    if (bestFontSize !== fontSize) {
-      fontSize = bestFontSize;
-      lines = bestLines;
-      lineBreakReasons = bestBreakReasons;
-      lineSegmentIds = bestSegmentIds;
-      lineSegmentSources = bestSegmentSources;
-      letterSpacingScale = bestLetterSpacingScale;
-      lineHeightScale = bestLineHeightScale;
-      horizontalContentHeight = resolveHorizontalContentHeight(contentHeight, fontSize);
-      horizontalContentHeight = resolveHorizontalMaskHeight(
-        inputRegion.bubbleMask,
-        expandedRegion,
-        horizontalContentHeight,
-        fontSize,
-      );
-    }
+    candidate = bestCandidate ?? smallestCandidate;
   }
 
+  const {
+    fontSize,
+    lines,
+    lineBreakReasons,
+    lineSegmentIds,
+    lineSegmentSources,
+    contentHeight: horizontalContentHeight,
+    letterSpacingScale,
+    lineHeightScale,
+  } = candidate;
   measureCtx.font = `${fontSize}px ${fontFamily}`;
   const strokePadding = resolveHorizontalRenderPadding(
     measureCtx,
@@ -616,16 +637,53 @@ export function computeFullHorizontalTypeset(
     fontFamily,
     letterSpacingScale,
   );
-  const alignment = resolveAlignment(expandedRegion, lines.length);
-  const debugColumnBoxes = buildHorizontalDebugColumnBoxes(
+  const finalSourcePitch = sourceGeometryProfile
+    ? sourceGeometryProfile.sourcePitch * fontSize / sourceGeometryProfile.sourceFontSize
+    : resolveHorizontalLineHeight(fontSize, lineHeightScale);
+  const lineBoxes = buildHorizontalLineBoxes({
+    ctx: measureCtx,
     lines,
+    region: expandedRegion,
     contentWidth,
-    horizontalContentHeight,
+    contentHeight: horizontalContentHeight,
     fontSize,
+    padding: strokePadding,
     alignment,
-    strokePadding,
-    lineHeightScale,
-  );
+    anchorContentCenterY: horizontalAnchor?.contentCenterY,
+    sourcePitch: finalSourcePitch,
+    bubbleMask: inputRegion.bubbleMask,
+    boxPadding,
+  });
+  const debugColumnBoxes = lineBoxes.map((line) => ({
+    x: line.x,
+    y: line.topY,
+    width: line.width,
+    height: line.lineHeight,
+  }));
+  const layoutDiagnostics: TypesetLayoutDiagnostics = {
+    sourceGeometryProfileUsed: sourceGeometryProfile !== undefined,
+    sourceFontSize: sourceGeometryProfile?.sourceFontSize,
+    sourcePitch: sourceGeometryProfile?.sourcePitch,
+    uniformScale: sourceGeometryProfile
+      ? fontSize / sourceGeometryProfile.sourceFontSize
+      : undefined,
+    advanceScale: 1,
+    colSpacingScale: 1,
+    useDefaultAdvanceBase: false,
+    layoutContentHeight: horizontalContentHeight,
+    renderContentHeight: horizontalContentHeight,
+    horizontalAlignment: sourceGeometryProfile?.inferredAlignment ?? alignment,
+    horizontalAnchorContentCenterY: horizontalAnchor?.contentCenterY,
+    horizontalSafeWidths: lineBoxes.map((line) => line.maxWidth),
+    horizontalSafeIntervals: lineBoxes.map((line) => ({
+      left: line.safeInterval.left,
+      right: line.safeInterval.right,
+      source: line.safeInterval.source,
+    })),
+    horizontalLetterSpacingScale: letterSpacingScale,
+    horizontalLineHeightScale: lineHeightScale,
+    horizontalReflowed: candidate.reflowed,
+  };
 
   return {
     expandedRegion,
@@ -637,15 +695,18 @@ export function computeFullHorizontalTypeset(
     initialFontSize: estimatedInitialFontSize,
     fittedFontSize: fontSize,
     lines,
+    lineBoxes,
     lineBreakReasons,
     lineSegmentIds,
     lineSegmentSources,
     contentWidth,
     contentHeight: horizontalContentHeight,
     alignment,
+    horizontalAnchor,
     strokePadding,
     letterSpacingScale,
     lineHeightScale,
+    layoutDiagnostics,
     debugColumnBoxes,
     offscreenWidth: Math.ceil(contentWidth + strokePadding * 2),
     offscreenHeight: Math.ceil(horizontalContentHeight + strokePadding * 2),

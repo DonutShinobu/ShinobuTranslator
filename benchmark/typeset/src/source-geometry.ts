@@ -29,16 +29,6 @@ export function resolveSourceTextColumns(sourceText: string): string[] {
 
 export function assessFixtureSourceGeometry(region: FixtureRegion): FixtureSourceGeometryAssessment {
   const groundTruthColumnCount = region.groundTruth.columns.length;
-  if (region.direction !== "v") {
-    return {
-      status: "non_vertical",
-      usable: false,
-      sourceColumnCount: 0,
-      groundTruthColumnCount,
-      orderedColumns: [],
-    };
-  }
-
   const sourceColumns = resolveSourceTextColumns(region.sourceText);
   if (sourceColumns.length === 0) {
     return {
@@ -88,7 +78,11 @@ export function assessFixtureSourceGeometry(region: FixtureRegion): FixtureSourc
     orderedColumns.push(remaining[index].column);
   }
 
-  const spatialColumns = [...region.groundTruth.columns].sort((a, b) => b.centerX - a.centerX);
+  const spatialColumns = [...region.groundTruth.columns].sort((a, b) => (
+    region.direction === "h"
+      ? (a.topY + a.bottomY) / 2 - (b.topY + b.bottomY) / 2
+      : b.centerX - a.centerX
+  ));
   const sourceOrderMatchesSpatialOrder = orderedColumns.every((column, index) =>
     normalizeColumnText(column.text) === normalizeColumnText(spatialColumns[index]?.text ?? ""),
   );

@@ -6,13 +6,14 @@ import {
 } from '../pipeline/bake';
 import type {
   BakeResult,
+  ShinobuBakeOptions,
   RenderDebugResult,
   RenderFixtureRegion,
 } from '../pipeline/bake';
 import { browserPlatform } from '../runtime/browserPlatform';
 
 export type ShinobuBenchmarkApi = {
-  bake(dataUrl: string): Promise<BakeResult>;
+  bake(dataUrl: string, options?: ShinobuBakeOptions): Promise<BakeResult>;
   render(dataUrl: string): Promise<string>;
   renderDebug(dataUrl: string): Promise<RenderDebugResult>;
   renderFixtureDebug(
@@ -27,7 +28,7 @@ export type ShinobuBenchmarkWindow = typeof window & {
 };
 
 const benchmarkApi: ShinobuBenchmarkApi = {
-  bake: (dataUrl) => shinobuBake(dataUrl, browserPlatform),
+  bake: (dataUrl, options) => shinobuBake(dataUrl, browserPlatform, options),
   render: (dataUrl) => shinobuRender(dataUrl, browserPlatform),
   renderDebug: (dataUrl) => shinobuRenderDebug(dataUrl, browserPlatform),
   renderFixtureDebug: (dataUrl, regions) => (

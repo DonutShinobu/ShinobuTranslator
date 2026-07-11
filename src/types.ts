@@ -137,6 +137,17 @@ export type TypesetLayoutDiagnostics = {
   useDefaultAdvanceBase: boolean;
   layoutContentHeight: number;
   renderContentHeight: number;
+  horizontalAlignment?: 'left' | 'center' | 'right' | 'unknown';
+  horizontalAnchorContentCenterY?: number;
+  horizontalSafeWidths?: number[];
+  horizontalSafeIntervals?: Array<{
+    left: number;
+    right: number;
+    source: 'mask' | 'content';
+  }>;
+  horizontalLetterSpacingScale?: number;
+  horizontalLineHeightScale?: number;
+  horizontalReflowed?: boolean;
 };
 
 export type TypesetDebugRegionLog = {

@@ -24,6 +24,8 @@ export {
   maxSourceGeometryAnchorAngleRad,
   maxVerticalSourceColumnOverlapRatio,
   minSourceGeometryAdvanceScale,
+  resolveHorizontalSourceGeometryProfile,
+  resolveHorizontalSourceLineAnchor,
   resolveVerticalSourceColumnAnchor,
   resolveVerticalSourceColumnStartOffsets,
   resolveVerticalSourceGeometryProfile,
@@ -75,7 +77,12 @@ export type {
   VerticalGlyph,
   VerticalTokenMetrics,
 } from './fontMetrics';
-export type { VerticalSourceGeometryProfile } from './sourceGeometry';
+export type {
+  HorizontalAlignmentProfile,
+  HorizontalLineAnchor,
+  HorizontalSourceGeometryProfile,
+  VerticalSourceGeometryProfile,
+} from './sourceGeometry';
 export type {
   BuildVerticalLayoutOptions,
   VColumn,

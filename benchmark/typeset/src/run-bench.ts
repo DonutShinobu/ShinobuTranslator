@@ -3,15 +3,24 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from "fs";
 import { basename, dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { debugRegionToColumns } from "./debug-columns";
+import { computeHorizontalRegionMetrics } from "./horizontal-metrics";
+import {
+  summarizeHorizontalMetrics,
+  type ReportedHorizontalGlyphDiagnostic,
+} from "./horizontal-summary";
 import { computeRegionMetrics } from "./metrics";
 import { computeVerticalGlyphQuality } from "./glyph-quality";
 import { assessFixtureSourceGeometry } from "./source-geometry";
+import { parseTypesetSuiteArgs } from "./suite-paths";
 import type {
   BenchConfig,
   BenchmarkSummary,
   Fixture,
+  HorizontalRegionMetrics,
   ImageMetrics,
   RegionMetrics,
+  TypesetDirection,
+  VerticalRegionMetrics,
 } from "./types";
 import type { PipelineTypesetDebugLog } from "../../../src/types";
 
@@ -56,87 +65,145 @@ function loadRenderDebug(reportDir: string, fixture: Fixture): PipelineTypesetDe
   return parsed;
 }
 
-function emptySkippedRegion(regionId: string, reason: string): RegionMetrics {
+function emptySkippedRegion(
+  regionId: string,
+  direction: TypesetDirection,
+  reason: string,
+  sourceGeometryStatus = "skipped",
+): RegionMetrics {
   return {
     regionId,
+    direction,
     skipped: true,
     skipReason: reason,
-    sourceGeometryStatus: "skipped",
-    columnCountMatch: 0,
-    columnCountDiff: 0,
-    columnIouMean: 0,
-    columnIouMin: 0,
-    fontSizeRatio: 0,
-    fontSizeError: 0,
-    signedColumnDxNormMean: 0,
-    columnDxNormMean: 0,
-    columnDxNormMax: 0,
-    signedColumnGapNormMean: 0,
-    columnPitchRatioMean: 1,
-    dTopNormMean: 0,
-    dBottomNormMean: 0,
-    heightRatioMean: 0,
-    signedCharDyNormMean: 0,
-    charDyNormMean: 0,
-    charDyNormMax: 0,
-    charDyNormP95: 0,
-    signedCharAdvanceNormMean: 0,
-    charAdvanceRatioMean: 1,
-    compositeScore: 0,
+    sourceGeometryStatus,
   };
 }
 
-function meanMetric(regions: RegionMetrics[], getter: (region: RegionMetrics) => number): number {
+function meanMetric<T>(regions: T[], getter: (region: T) => number): number {
   return regions.length > 0
     ? regions.reduce((sum, region) => sum + getter(region), 0) / regions.length
     : 0;
 }
 
+function isVerticalRegion(region: RegionMetrics): region is VerticalRegionMetrics {
+  return !region.skipped && region.direction === "v";
+}
+
+function isHorizontalRegion(region: RegionMetrics): region is HorizontalRegionMetrics {
+  return !region.skipped && region.direction === "h";
+}
+
+function csvEscape(value: string | number | boolean | undefined): string {
+  if (value === undefined) return "";
+  const text = String(value);
+  return /[",\r\n]/u.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function fixed(value: number | undefined): string {
+  return value === undefined ? "" : value.toFixed(4);
+}
+
 function formatCsv(images: ImageMetrics[]): string {
   const header = [
-    "image", "regionId", "skipped", "skipReason", "sourceGeometryStatus",
+    "image", "regionId", "direction", "skipped", "skipReason", "sourceGeometryStatus",
+    "fontSizeRatio", "fontSizeError", "compositeScore",
     "columnCountMatch", "columnCountDiff",
     "columnIouMean", "columnIouMin",
-    "fontSizeRatio", "fontSizeError",
     "signedColumnDxNormMean", "columnDxNormMean", "columnDxNormMax",
     "signedColumnGapNormMean", "columnPitchRatioMean",
     "dTopNormMean", "dBottomNormMean", "heightRatioMean",
     "signedCharDyNormMean", "charDyNormMean", "charDyNormMax", "charDyNormP95",
     "signedCharAdvanceNormMean", "charAdvanceRatioMean",
-    "compositeScore", "glyphQualityCoverage", "glyphOrientationAccuracy",
+    "glyphQualityCoverage", "glyphOrientationAccuracy",
     "runContinuityRate", "verticalItemCenterAlignment", "glyphQualityScore",
+    "lineCountMatch", "lineCountDiff", "lineQuadIouMean", "lineQuadIouMin",
+    "blockHullIou", "sourceQuadCoverage",
+    "signedLineCenterDxNormMean", "signedLineCenterDyNormMean",
+    "lineCenterDistanceNormMean", "lineCenterDistanceNormP95", "lineCenterDistanceNormMax",
+    "lineWidthRatioMean", "lineWidthErrorMean", "lineHeightRatioMean", "lineHeightErrorMean",
+    "signedLineGapNormMean", "linePitchRatioMean", "linePitchErrorMean",
+    "lineAngleErrorDegMean", "lineAngleErrorDegMax",
+    "lineBreakPrecision", "lineBreakRecall", "lineBreakF1",
+    "gtGlyphCount", "predGlyphCount", "matchedGlyphCount", "positionedGlyphCount",
+    "glyphTextMatchCoverage", "glyphPositionCoverage",
+    "signedCharDxNormMean", "horizontalSignedCharDyNormMean",
+    "charDxNormMean", "horizontalCharDyNormMean",
+    "charDistanceNormMean", "charDistanceNormMedian", "charDistanceNormP95", "charDistanceNormMax",
+    "charDistanceOverHalfEmRate", "charDistanceOverOneEmRate",
+    "horizontalSignedCharAdvanceNormMean", "horizontalCharAdvanceRatioMean",
+    "charAdvanceErrorMean", "charCenterQuality",
   ].join(",");
   const rows: string[] = [header];
   for (const img of images) {
     for (const r of img.regions) {
+      const vertical = isVerticalRegion(r) ? r : undefined;
+      const horizontal = isHorizontalRegion(r) ? r : undefined;
+      const scored = vertical ?? horizontal;
       rows.push([
-        img.imageFile, r.regionId, r.skipped, r.skipReason ?? "",
+        img.imageFile, r.regionId, r.direction, r.skipped, r.skipReason ?? "",
         r.sourceGeometryStatus ?? "",
-        r.columnCountMatch, r.columnCountDiff,
-        r.columnIouMean.toFixed(4), r.columnIouMin.toFixed(4),
-        r.fontSizeRatio.toFixed(4), r.fontSizeError.toFixed(4),
-        r.signedColumnDxNormMean.toFixed(4),
-        r.columnDxNormMean.toFixed(4), r.columnDxNormMax.toFixed(4),
-        r.signedColumnGapNormMean.toFixed(4), r.columnPitchRatioMean.toFixed(4),
-        r.dTopNormMean.toFixed(4), r.dBottomNormMean.toFixed(4),
-        r.heightRatioMean.toFixed(4),
-        r.signedCharDyNormMean.toFixed(4),
-        r.charDyNormMean.toFixed(4), r.charDyNormMax.toFixed(4),
-        r.charDyNormP95.toFixed(4),
-        r.signedCharAdvanceNormMean.toFixed(4), r.charAdvanceRatioMean.toFixed(4),
-        r.compositeScore.toFixed(4),
-        (r.glyphQualityCoverage ?? 0).toFixed(4),
-        (r.glyphOrientationAccuracy ?? 0).toFixed(4),
-        (r.runContinuityRate ?? 0).toFixed(4),
-        (r.verticalItemCenterAlignment ?? 0).toFixed(4),
-        (r.glyphQualityScore ?? 0).toFixed(4),
-      ].join(","));
+        fixed(scored?.fontSizeRatio), fixed(scored?.fontSizeError), fixed(scored?.compositeScore),
+        vertical?.columnCountMatch, vertical?.columnCountDiff,
+        fixed(vertical?.columnIouMean), fixed(vertical?.columnIouMin),
+        fixed(vertical?.signedColumnDxNormMean), fixed(vertical?.columnDxNormMean), fixed(vertical?.columnDxNormMax),
+        fixed(vertical?.signedColumnGapNormMean), fixed(vertical?.columnPitchRatioMean),
+        fixed(vertical?.dTopNormMean), fixed(vertical?.dBottomNormMean), fixed(vertical?.heightRatioMean),
+        fixed(vertical?.signedCharDyNormMean), fixed(vertical?.charDyNormMean),
+        fixed(vertical?.charDyNormMax), fixed(vertical?.charDyNormP95),
+        fixed(vertical?.signedCharAdvanceNormMean), fixed(vertical?.charAdvanceRatioMean),
+        fixed(vertical?.glyphQualityCoverage), fixed(vertical?.glyphOrientationAccuracy),
+        fixed(vertical?.runContinuityRate), fixed(vertical?.verticalItemCenterAlignment),
+        fixed(vertical?.glyphQualityScore),
+        horizontal?.lineCountMatch, horizontal?.lineCountDiff,
+        fixed(horizontal?.lineQuadIouMean), fixed(horizontal?.lineQuadIouMin),
+        fixed(horizontal?.blockHullIou), fixed(horizontal?.sourceQuadCoverage),
+        fixed(horizontal?.signedLineCenterDxNormMean), fixed(horizontal?.signedLineCenterDyNormMean),
+        fixed(horizontal?.lineCenterDistanceNormMean), fixed(horizontal?.lineCenterDistanceNormP95),
+        fixed(horizontal?.lineCenterDistanceNormMax), fixed(horizontal?.lineWidthRatioMean),
+        fixed(horizontal?.lineWidthErrorMean), fixed(horizontal?.lineHeightRatioMean),
+        fixed(horizontal?.lineHeightErrorMean), fixed(horizontal?.signedLineGapNormMean),
+        fixed(horizontal?.linePitchRatioMean), fixed(horizontal?.linePitchErrorMean),
+        fixed(horizontal?.lineAngleErrorDegMean), fixed(horizontal?.lineAngleErrorDegMax),
+        fixed(horizontal?.lineBreakPrecision), fixed(horizontal?.lineBreakRecall), fixed(horizontal?.lineBreakF1),
+        horizontal?.gtGlyphCount, horizontal?.predGlyphCount, horizontal?.matchedGlyphCount,
+        horizontal?.positionedGlyphCount, fixed(horizontal?.glyphTextMatchCoverage),
+        fixed(horizontal?.glyphPositionCoverage), fixed(horizontal?.signedCharDxNormMean),
+        fixed(horizontal?.signedCharDyNormMean), fixed(horizontal?.charDxNormMean),
+        fixed(horizontal?.charDyNormMean), fixed(horizontal?.charDistanceNormMean),
+        fixed(horizontal?.charDistanceNormMedian), fixed(horizontal?.charDistanceNormP95),
+        fixed(horizontal?.charDistanceNormMax), fixed(horizontal?.charDistanceOverHalfEmRate),
+        fixed(horizontal?.charDistanceOverOneEmRate), fixed(horizontal?.signedCharAdvanceNormMean),
+        fixed(horizontal?.charAdvanceRatioMean), fixed(horizontal?.charAdvanceErrorMean),
+        fixed(horizontal?.charCenterQuality),
+      ].map(csvEscape).join(","));
     }
   }
   return rows.join("\n") + "\n";
 }
 
+function formatHorizontalGlyphCsv(rows: ReportedHorizontalGlyphDiagnostic[]): string {
+  const header = [
+    "image", "regionId", "matchStatus", "ch",
+    "gtLineIndex", "gtCharIndex", "gtSequenceIndex",
+    "predLineIndex", "predCharIndex", "predSequenceIndex",
+    "gtX", "gtY", "predX", "predY", "dxNorm", "dyNorm", "distanceNorm",
+  ];
+  const output = [header.join(",")];
+  for (const row of rows) {
+    output.push([
+      row.imageFile, row.regionId, row.matchStatus, row.ch,
+      row.gtLineIndex, row.gtCharIndex, row.gtSequenceIndex,
+      row.predLineIndex, row.predCharIndex, row.predSequenceIndex,
+      row.gtX, row.gtY, row.predX, row.predY,
+      row.dxNorm, row.dyNorm, row.distanceNorm,
+    ].map(csvEscape).join(","));
+  }
+  return output.join("\n") + "\n";
+}
+
 function formatSummaryMd(summary: BenchmarkSummary, reportDir: string): string {
+  const horizontal = summary.horizontal;
   const lines: string[] = [
     `# Typeset Benchmark Report`,
     ``,
@@ -148,6 +215,13 @@ function formatSummaryMd(summary: BenchmarkSummary, reportDir: string): string {
     `| Images | ${summary.imageCount} |`,
     `| Regions (total) | ${summary.totalRegionCount} |`,
     `| Regions (skipped) | ${summary.skippedRegionCount} |`,
+    `| Vertical regions (scored) | ${summary.images.reduce((sum, image) => sum + image.verticalScoredCount, 0)} |`,
+    `| Horizontal regions (scored) | ${horizontal.scoredRegionCount} |`,
+    ``,
+    `## Vertical Metrics`,
+    ``,
+    `| Metric | Value |`,
+    `|--------|-------|`,
     `| Composite Score (avg) | ${summary.avgCompositeScore.toFixed(4)} |`,
     `| Glyph Quality Score (avg) | ${summary.avgGlyphQualityScore.toFixed(4)} |`,
     `| Glyph Quality Coverage (avg) | ${summary.avgGlyphQualityCoverage.toFixed(4)} |`,
@@ -165,11 +239,38 @@ function formatSummaryMd(summary: BenchmarkSummary, reportDir: string): string {
     `| Signed Char Advance Norm (avg) | ${summary.avgSignedCharAdvanceNorm.toFixed(4)} |`,
     `| Char Advance Ratio (avg) | ${summary.avgCharAdvanceRatio.toFixed(4)} |`,
     `| Column Count Match Rate | ${(summary.columnCountMatchRate * 100).toFixed(1)}% |`,
-    `| Source Geometry Usable Regions | ${summary.sourceGeometryUsableRegionCount} |`,
-    `| Source Geometry Rejected Regions | ${summary.sourceGeometryRejectedRegionCount} |`,
-    `| Source Geometry Spatial Order Mismatches | ${summary.sourceGeometrySpatialOrderMismatchCount} |`,
+    ``,
+    `## Horizontal Metrics`,
+    ``,
+    `| Metric | Value |`,
+    `|--------|-------|`,
+    `| Regions (scored / skipped) | ${horizontal.scoredRegionCount} / ${horizontal.skippedRegionCount} |`,
+    `| Composite Score (avg) | ${horizontal.avgCompositeScore.toFixed(4)} |`,
+    `| Line Quad IoU (avg) | ${horizontal.avgLineQuadIouMean.toFixed(4)} |`,
+    `| Block Hull IoU (avg) | ${horizontal.avgBlockHullIou.toFixed(4)} |`,
+    `| Source Quad Coverage | ${(horizontal.avgSourceQuadCoverage * 100).toFixed(1)}% |`,
+    `| Font Size Error (avg) | ${horizontal.avgFontSizeError.toFixed(4)} |`,
+    `| Line Center Distance Norm (avg) | ${horizontal.avgLineCenterDistanceNorm.toFixed(4)} |`,
+    `| Line Width / Height Error (avg) | ${horizontal.avgLineWidthError.toFixed(4)} / ${horizontal.avgLineHeightError.toFixed(4)} |`,
+    `| Line Pitch Error (avg) | ${horizontal.avgLinePitchError.toFixed(4)} |`,
+    `| Line Angle Error (avg deg) | ${horizontal.avgLineAngleErrorDeg.toFixed(3)} |`,
+    `| Line Break F1 (avg) | ${horizontal.avgLineBreakF1.toFixed(4)} |`,
+    `| Glyphs (GT / predicted / matched / positioned) | ${horizontal.gtGlyphCount} / ${horizontal.predGlyphCount} / ${horizontal.matchedGlyphCount} / ${horizontal.positionedGlyphCount} |`,
+    `| Glyph Text / Position Coverage | ${(horizontal.glyphTextMatchCoverage * 100).toFixed(1)}% / ${(horizontal.glyphPositionCoverage * 100).toFixed(1)}% |`,
+    `| Signed Char Dx / Dy Norm (avg) | ${horizontal.signedCharDxNormMean.toFixed(4)} / ${horizontal.signedCharDyNormMean.toFixed(4)} |`,
+    `| Char Dx / Dy Norm (avg abs) | ${horizontal.charDxNormMean.toFixed(4)} / ${horizontal.charDyNormMean.toFixed(4)} |`,
+    `| Char Distance Norm (mean / median / P95 / max) | ${horizontal.charDistanceNormMean.toFixed(4)} / ${horizontal.charDistanceNormMedian.toFixed(4)} / ${horizontal.charDistanceNormP95.toFixed(4)} / ${horizontal.charDistanceNormMax.toFixed(4)} |`,
+    `| Char Distance > 0.5em / > 1em | ${(horizontal.charDistanceOverHalfEmRate * 100).toFixed(1)}% / ${(horizontal.charDistanceOverOneEmRate * 100).toFixed(1)}% |`,
+    `| Char Advance Error (avg) | ${horizontal.avgCharAdvanceError.toFixed(4)} |`,
+    `| Char Center Quality | ${horizontal.charCenterQuality.toFixed(4)} |`,
     ``,
     `## Source Geometry Diagnostics`,
+    ``,
+    `| Metric | Value |`,
+    `|--------|-------|`,
+    `| Vertical usable regions | ${summary.sourceGeometryUsableRegionCount} |`,
+    `| Vertical rejected regions | ${summary.sourceGeometryRejectedRegionCount} |`,
+    `| Vertical spatial order mismatches | ${summary.sourceGeometrySpatialOrderMismatchCount} |`,
     ``,
   ];
 
@@ -187,14 +288,14 @@ function formatSummaryMd(summary: BenchmarkSummary, reportDir: string): string {
 
   lines.push(
     ``,
-    `## Worst Regions`,
+    `## Worst Vertical Regions`,
     ``,
   );
 
-  const allRegions: (RegionMetrics & { imageFile: string })[] = [];
+  const allRegions: (VerticalRegionMetrics & { imageFile: string })[] = [];
   for (const img of summary.images) {
     for (const r of img.regions) {
-      if (!r.skipped) {
+      if (isVerticalRegion(r)) {
         allRegions.push({ ...r, imageFile: img.imageFile });
       }
     }
@@ -210,15 +311,41 @@ function formatSummaryMd(summary: BenchmarkSummary, reportDir: string): string {
       );
     }
   }
+
+  const horizontalRegions: (HorizontalRegionMetrics & { imageFile: string })[] = [];
+  for (const image of summary.images) {
+    for (const region of image.regions) {
+      if (isHorizontalRegion(region)) horizontalRegions.push({ ...region, imageFile: image.imageFile });
+    }
+  }
+  horizontalRegions.sort((a, b) => b.charDistanceNormP95 - a.charDistanceNormP95);
+  const worstHorizontal = horizontalRegions.slice(0, 10);
+  lines.push(``, `## Worst Horizontal Regions`, ``);
+  if (worstHorizontal.length > 0) {
+    lines.push(`| Image | Region | Score | CharMean | CharP95 | >0.5em | >1em | LineIoU | BreakF1 |`);
+    lines.push(`|-------|--------|-------|----------|---------|--------|------|---------|---------|`);
+    for (const region of worstHorizontal) {
+      lines.push(
+        `| ${region.imageFile} | ${region.regionId} | ${region.compositeScore.toFixed(3)} | ${region.charDistanceNormMean.toFixed(3)} | ${region.charDistanceNormP95.toFixed(3)} | ${(region.charDistanceOverHalfEmRate * 100).toFixed(1)}% | ${(region.charDistanceOverOneEmRate * 100).toFixed(1)}% | ${region.lineQuadIouMean.toFixed(3)} | ${region.lineBreakF1.toFixed(3)} |`,
+      );
+    }
+  }
   return lines.join("\n") + "\n";
 }
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  const fixturesDir = join(ROOT, config.fixturesDir);
-  const imagesDir = join(ROOT, config.imagesDir);
-  const reportsDir = join(ROOT, config.reportsDir);
+  const parsed = parseTypesetSuiteArgs(process.argv.slice(2));
+  if (parsed.remainingArgs.length > 0) {
+    console.error(`Unknown option: ${parsed.remainingArgs[0]}`);
+    process.exit(1);
+  }
+  const { fixturesDir, imagesDir, reportsDir } = parsed.paths;
 
+  if (!existsSync(fixturesDir)) {
+    console.error(`Fixtures directory not found: ${fixturesDir}`);
+    process.exit(1);
+  }
   const fixtureFiles = readdirSync(fixturesDir)
     .filter((f) => f.endsWith(".fixture.json"))
     .sort();
@@ -234,6 +361,7 @@ async function main(): Promise<void> {
   }
 
   const imageMetrics: ImageMetrics[] = [];
+  const horizontalGlyphDiagnostics: ReportedHorizontalGlyphDiagnostic[] = [];
   let sourceGeometryUsableRegionCount = 0;
   let sourceGeometryRejectedRegionCount = 0;
   let sourceGeometrySpatialOrderMismatchCount = 0;
@@ -254,23 +382,20 @@ async function main(): Promise<void> {
 
     const regionResults: RegionMetrics[] = [];
     for (const region of fixture.regions) {
-      if (region.direction !== "v") {
-        regionResults.push(emptySkippedRegion(region.id, "horizontal"));
-        continue;
-      }
-
       const sourceGeometry = assessFixtureSourceGeometry(region);
-      if (sourceGeometry.usable) {
-        sourceGeometryUsableRegionCount += 1;
-        if (sourceGeometry.status === "spatial_order_mismatch") {
-          sourceGeometrySpatialOrderMismatchCount += 1;
+      if (region.direction === "v") {
+        if (sourceGeometry.usable) {
+          sourceGeometryUsableRegionCount += 1;
+          if (sourceGeometry.status === "spatial_order_mismatch") {
+            sourceGeometrySpatialOrderMismatchCount += 1;
+          }
+        } else {
+          sourceGeometryRejectedRegionCount += 1;
+          sourceGeometryRejectedReasons.set(
+            sourceGeometry.status,
+            (sourceGeometryRejectedReasons.get(sourceGeometry.status) ?? 0) + 1,
+          );
         }
-      } else {
-        sourceGeometryRejectedRegionCount += 1;
-        sourceGeometryRejectedReasons.set(
-          sourceGeometry.status,
-          (sourceGeometryRejectedReasons.get(sourceGeometry.status) ?? 0) + 1,
-        );
       }
 
       const debugRegion = debugByRegionId.get(region.id);
@@ -280,9 +405,41 @@ async function main(): Promise<void> {
         );
       }
 
+      const predictedColumns = debugRegionToColumns(debugRegion);
+      if (region.direction === "h") {
+        const computation = computeHorizontalRegionMetrics(
+          region.groundTruth.columns,
+          predictedColumns,
+          debugRegion.fittedFontSize,
+          config.horizontalScoreWeights,
+        );
+        horizontalGlyphDiagnostics.push(...computation.glyphDiagnostics.map((diagnostic) => ({
+          ...diagnostic,
+          imageFile: fixture.image.file,
+          regionId: region.id,
+        })));
+        if (!computation.metrics) {
+          regionResults.push(emptySkippedRegion(
+            region.id,
+            "h",
+            computation.skipReason ?? "horizontal_metrics_unavailable",
+            sourceGeometry.status,
+          ));
+          continue;
+        }
+        regionResults.push({
+          regionId: region.id,
+          direction: "h",
+          skipped: false,
+          sourceGeometryStatus: sourceGeometry.status,
+          ...computation.metrics,
+        });
+        continue;
+      }
+
       const metrics = computeRegionMetrics(
         region.groundTruth.columns,
-        debugRegionToColumns(debugRegion),
+        predictedColumns,
         debugRegion.fittedFontSize,
         config.scoreWeights,
       );
@@ -290,6 +447,7 @@ async function main(): Promise<void> {
 
       regionResults.push({
         regionId: region.id,
+        direction: "v",
         skipped: false,
         sourceGeometryStatus: sourceGeometry.status,
         ...metrics,
@@ -297,48 +455,63 @@ async function main(): Promise<void> {
       });
     }
 
-    const scored = regionResults.filter((r) => !r.skipped);
+    const scoredVertical = regionResults.filter(isVerticalRegion);
+    const scoredHorizontal = regionResults.filter(isHorizontalRegion);
     imageMetrics.push({
       imageFile: fixture.image.file,
       regionCount: fixture.regions.length,
       skippedCount: regionResults.filter((r) => r.skipped).length,
       regions: regionResults,
-      avgCompositeScore: meanMetric(scored, (r) => r.compositeScore),
-      avgGlyphQualityCoverage: meanMetric(scored, (r) => r.glyphQualityCoverage ?? 0),
-      avgGlyphOrientationAccuracy: meanMetric(scored, (r) => r.glyphOrientationAccuracy ?? 0),
-      avgRunContinuityRate: meanMetric(scored, (r) => r.runContinuityRate ?? 0),
-      avgVerticalItemCenterAlignment: meanMetric(scored, (r) => r.verticalItemCenterAlignment ?? 0),
-      avgGlyphQualityScore: meanMetric(scored, (r) => r.glyphQualityScore ?? 0),
+      verticalScoredCount: scoredVertical.length,
+      horizontalScoredCount: scoredHorizontal.length,
+      avgCompositeScore: meanMetric(scoredVertical, (r) => r.compositeScore),
+      avgHorizontalCompositeScore: meanMetric(scoredHorizontal, (r) => r.compositeScore),
+      avgGlyphQualityCoverage: meanMetric(scoredVertical, (r) => r.glyphQualityCoverage ?? 0),
+      avgGlyphOrientationAccuracy: meanMetric(scoredVertical, (r) => r.glyphOrientationAccuracy ?? 0),
+      avgRunContinuityRate: meanMetric(scoredVertical, (r) => r.runContinuityRate ?? 0),
+      avgVerticalItemCenterAlignment: meanMetric(scoredVertical, (r) => r.verticalItemCenterAlignment ?? 0),
+      avgGlyphQualityScore: meanMetric(scoredVertical, (r) => r.glyphQualityScore ?? 0),
     });
   }
 
-  const allScored = imageMetrics.flatMap((im) =>
-    im.regions.filter((r) => !r.skipped),
+  const allVertical = imageMetrics.flatMap((image) => image.regions.filter(isVerticalRegion));
+  const allHorizontal = imageMetrics.flatMap((image) => image.regions.filter(isHorizontalRegion));
+  const horizontalSkippedCount = imageMetrics.reduce(
+    (sum, image) => sum + image.regions.filter((region) => (
+      region.direction === "h" && region.skipped
+    )).length,
+    0,
+  );
+  const horizontalSummary = summarizeHorizontalMetrics(
+    allHorizontal,
+    horizontalSkippedCount,
+    horizontalGlyphDiagnostics,
   );
   const summary: BenchmarkSummary = {
+    schemaVersion: 2,
     generatedAt: new Date().toISOString(),
     imageCount: imageMetrics.length,
     totalRegionCount: imageMetrics.reduce((sum, image) => sum + image.regionCount, 0),
     skippedRegionCount: imageMetrics.reduce((sum, image) => sum + image.skippedCount, 0),
-    avgCompositeScore: meanMetric(allScored, (r) => r.compositeScore),
-    avgGlyphQualityCoverage: meanMetric(allScored, (r) => r.glyphQualityCoverage ?? 0),
-    avgGlyphOrientationAccuracy: meanMetric(allScored, (r) => r.glyphOrientationAccuracy ?? 0),
-    avgRunContinuityRate: meanMetric(allScored, (r) => r.runContinuityRate ?? 0),
-    avgVerticalItemCenterAlignment: meanMetric(allScored, (r) => r.verticalItemCenterAlignment ?? 0),
-    avgGlyphQualityScore: meanMetric(allScored, (r) => r.glyphQualityScore ?? 0),
-    avgColumnIouMean: meanMetric(allScored, (r) => r.columnIouMean),
-    avgFontSizeError: meanMetric(allScored, (r) => r.fontSizeError),
-    avgSignedColumnDxNorm: meanMetric(allScored, (r) => r.signedColumnDxNormMean),
-    avgColumnDxNorm: meanMetric(allScored, (r) => r.columnDxNormMean),
-    avgSignedColumnGapNorm: meanMetric(allScored, (r) => r.signedColumnGapNormMean),
-    avgColumnPitchRatio: meanMetric(allScored, (r) => r.columnPitchRatioMean),
-    avgSignedCharDyNorm: meanMetric(allScored, (r) => r.signedCharDyNormMean),
-    avgCharDyNorm: meanMetric(allScored, (r) => r.charDyNormMean),
-    avgSignedCharAdvanceNorm: meanMetric(allScored, (r) => r.signedCharAdvanceNormMean),
-    avgCharAdvanceRatio: meanMetric(allScored, (r) => r.charAdvanceRatioMean),
+    avgCompositeScore: meanMetric(allVertical, (r) => r.compositeScore),
+    avgGlyphQualityCoverage: meanMetric(allVertical, (r) => r.glyphQualityCoverage ?? 0),
+    avgGlyphOrientationAccuracy: meanMetric(allVertical, (r) => r.glyphOrientationAccuracy ?? 0),
+    avgRunContinuityRate: meanMetric(allVertical, (r) => r.runContinuityRate ?? 0),
+    avgVerticalItemCenterAlignment: meanMetric(allVertical, (r) => r.verticalItemCenterAlignment ?? 0),
+    avgGlyphQualityScore: meanMetric(allVertical, (r) => r.glyphQualityScore ?? 0),
+    avgColumnIouMean: meanMetric(allVertical, (r) => r.columnIouMean),
+    avgFontSizeError: meanMetric(allVertical, (r) => r.fontSizeError),
+    avgSignedColumnDxNorm: meanMetric(allVertical, (r) => r.signedColumnDxNormMean),
+    avgColumnDxNorm: meanMetric(allVertical, (r) => r.columnDxNormMean),
+    avgSignedColumnGapNorm: meanMetric(allVertical, (r) => r.signedColumnGapNormMean),
+    avgColumnPitchRatio: meanMetric(allVertical, (r) => r.columnPitchRatioMean),
+    avgSignedCharDyNorm: meanMetric(allVertical, (r) => r.signedCharDyNormMean),
+    avgCharDyNorm: meanMetric(allVertical, (r) => r.charDyNormMean),
+    avgSignedCharAdvanceNorm: meanMetric(allVertical, (r) => r.signedCharAdvanceNormMean),
+    avgCharAdvanceRatio: meanMetric(allVertical, (r) => r.charAdvanceRatioMean),
     columnCountMatchRate:
-      allScored.length > 0
-        ? allScored.filter((r) => r.columnCountMatch === 1).length / allScored.length
+      allVertical.length > 0
+        ? allVertical.filter((r) => r.columnCountMatch === 1).length / allVertical.length
         : 0,
     sourceGeometryUsableRegionCount,
     sourceGeometryRejectedRegionCount,
@@ -346,16 +519,21 @@ async function main(): Promise<void> {
     sourceGeometryRejectedReasons: Object.fromEntries(
       [...sourceGeometryRejectedReasons.entries()].sort((a, b) => a[0].localeCompare(b[0])),
     ),
+    horizontal: horizontalSummary,
     images: imageMetrics,
   };
 
   writeFileSync(join(reportDir, "summary.json"), JSON.stringify(summary, null, 2));
   writeFileSync(join(reportDir, "summary.md"), formatSummaryMd(summary, reportDir));
   writeFileSync(join(reportDir, "per-region.csv"), formatCsv(imageMetrics));
+  writeFileSync(
+    join(reportDir, "horizontal-glyphs.csv"),
+    formatHorizontalGlyphCsv(horizontalGlyphDiagnostics),
+  );
 
   console.log(`Benchmark complete. Report: ${reportDir}`);
   console.log("  Metric source: browser render debug");
-  console.log(`  Composite score: ${summary.avgCompositeScore.toFixed(4)}`);
+  console.log(`  Vertical composite score: ${summary.avgCompositeScore.toFixed(4)}`);
   console.log(`  Glyph quality score: ${summary.avgGlyphQualityScore.toFixed(4)}`);
   console.log(`  Glyph orientation accuracy: ${summary.avgGlyphOrientationAccuracy.toFixed(4)}`);
   console.log(`  Run continuity rate: ${summary.avgRunContinuityRate.toFixed(4)}`);
@@ -364,6 +542,10 @@ async function main(): Promise<void> {
   console.log(`  Signed column gap norm: ${summary.avgSignedColumnGapNorm.toFixed(4)}`);
   console.log(`  Signed char advance norm: ${summary.avgSignedCharAdvanceNorm.toFixed(4)}`);
   console.log(`  Column count match: ${(summary.columnCountMatchRate * 100).toFixed(1)}%`);
+  console.log(`  Horizontal regions scored/skipped: ${horizontalSummary.scoredRegionCount}/${horizontalSummary.skippedRegionCount}`);
+  console.log(`  Horizontal composite score: ${horizontalSummary.avgCompositeScore.toFixed(4)}`);
+  console.log(`  Horizontal char distance mean/P95: ${horizontalSummary.charDistanceNormMean.toFixed(4)}/${horizontalSummary.charDistanceNormP95.toFixed(4)}`);
+  console.log(`  Horizontal char distance >0.5em/>1em: ${(horizontalSummary.charDistanceOverHalfEmRate * 100).toFixed(1)}%/${(horizontalSummary.charDistanceOverOneEmRate * 100).toFixed(1)}%`);
   console.log(`  Source geometry usable/rejected: ${sourceGeometryUsableRegionCount}/${sourceGeometryRejectedRegionCount}`);
   console.log(`  Source geometry spatial order mismatches: ${sourceGeometrySpatialOrderMismatchCount}`);
 }

@@ -84,6 +84,70 @@ function makeRegions(): TextRegion[] {
 }
 
 describe('drawTypeset', () => {
+  it('applies horizontal source style and exposes baseline line boxes', () => {
+    const region: TextRegion = {
+      id: 'horizontal-source-style',
+      box: { x: 100, y: 50, width: 200, height: 80 },
+      direction: 'h',
+      sourceText: '上行\n下行文字',
+      translatedText: '译文上行译文下行',
+      translatedColumns: ['译文上行', '译文下行'],
+      originalLineCount: 2,
+      fontSize: 32,
+      sourceLineGeometries: [
+        {
+          text: '上行',
+          direction: 'h',
+          box: { x: 120, y: 60, width: 80, height: 20 },
+          centerX: 160,
+          centerY: 70,
+          width: 80,
+          height: 20,
+          fontSize: 20,
+        },
+        {
+          text: '下行文字',
+          direction: 'h',
+          box: { x: 120, y: 90, width: 120, height: 20 },
+          centerX: 180,
+          centerY: 100,
+          width: 120,
+          height: 20,
+          fontSize: 20,
+        },
+      ],
+    };
+
+    const layout = computeFullHorizontalTypeset({
+      region,
+      fontFamily: 'Test Sans',
+      measureCtx: createMeasureContext(),
+    });
+
+    expect(layout).toMatchObject({
+      initialFontSize: 20,
+      alignment: 'left',
+      horizontalAnchor: { contentCenterY: 35 },
+      layoutDiagnostics: {
+        sourceGeometryProfileUsed: true,
+        sourceFontSize: 20,
+        sourcePitch: 30,
+        horizontalAlignment: 'left',
+        horizontalAnchorContentCenterY: 35,
+      },
+    });
+    expect(layout?.lineBoxes).toHaveLength(layout?.lines.length ?? 0);
+    expect(layout?.lineBoxes.every((line) => (
+      Number.isFinite(line.baselineY) && line.ascent > 0 && line.descent > 0
+    ))).toBe(true);
+    expect(layout?.debugColumnBoxes).toEqual(layout?.lineBoxes.map((line) => ({
+      x: line.x,
+      y: line.topY,
+      width: line.width,
+      height: line.lineHeight,
+    })));
+  });
+
   it('exposes a horizontal layout result independent from Canvas rendering', () => {
     const horizontalRegion = makeRegions()[1];
     const layout = computeFullHorizontalTypeset({
@@ -159,6 +223,16 @@ describe('drawTypeset', () => {
     }
 
     expect(vertical.columnVerticalItems?.flat().length).toBeGreaterThan(0);
+    expect(horizontal.columnGlyphCenters.flat()).toHaveLength(4);
+    expect(horizontal.columnGlyphCenters.flat().map((center) => center.ch)).toEqual([
+      '横', '排', '测', '试',
+    ]);
+    for (const line of horizontal.columnGlyphCenters) {
+      expect(line.every((center, index) => (
+        index === 0 || center.x > line[index - 1].x
+      ))).toBe(true);
+      expect(new Set(line.map((center) => center.y)).size).toBe(1);
+    }
     expect(horizontal.columnVerticalItems).toEqual([]);
   });
 });

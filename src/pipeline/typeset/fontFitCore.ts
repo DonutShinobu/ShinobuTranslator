@@ -177,6 +177,29 @@ export type VerticalSourceGeometryProfile = {
   perColumnTopY: number[];
 };
 
+export type HorizontalAlignmentProfile = "left" | "center" | "right" | "unknown";
+
+export type HorizontalLineAnchor = {
+  contentCenterY: number;
+};
+
+export type HorizontalSourceGeometryProfile = {
+  lineCount: number;
+  groupCenterX: number;
+  groupCenterY: number;
+  sourceFontSize: number;
+  sourcePitch: number;
+  medianPitch: number | null;
+  medianGap: number | null;
+  medianWidth: number;
+  medianHeight: number;
+  inferredAlignment: HorizontalAlignmentProfile;
+  sourceOrderReliable: boolean;
+  perLineCentersY: number[];
+  perLineLeftX: number[];
+  perLineRightX: number[];
+};
+
 export type RegionTypesetDebug = {
   fittedFontSize: number;
   columnBoxes: DebugColumnBox[];
@@ -519,10 +542,22 @@ function isRightToLeftGeometryOrder(
   return true;
 }
 
+function isTopToBottomGeometryOrder(
+  lines: NonNullable<TextRegion["sourceLineGeometries"]>,
+): boolean {
+  for (let index = 1; index < lines.length; index += 1) {
+    if (lines[index].centerY < lines[index - 1].centerY - 1e-6) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function resolveSourceOrderedGeometryLines(
   region: TextRegion,
   sourceLines: NonNullable<TextRegion["sourceLineGeometries"]>,
   targetColumnCount: number,
+  isOrdered: (lines: NonNullable<TextRegion["sourceLineGeometries"]>) => boolean = isRightToLeftGeometryOrder,
 ): NonNullable<TextRegion["sourceLineGeometries"]> {
   const sourceColumns = resolveSourceColumns(region).map(normalizeGeometryText);
   if (sourceColumns.length !== targetColumnCount) {
@@ -532,7 +567,7 @@ function resolveSourceOrderedGeometryLines(
   const lineTexts = sourceLines.map((line) => normalizeGeometryText(line.text));
   const directMatch = sourceColumns.every((text, index) => text === lineTexts[index]);
   if (directMatch) {
-    return isRightToLeftGeometryOrder(sourceLines) ? sourceLines : [];
+    return isOrdered(sourceLines) ? sourceLines : [];
   }
 
   const buckets = new Map<string, NonNullable<TextRegion["sourceLineGeometries"]>>();
@@ -555,7 +590,7 @@ function resolveSourceOrderedGeometryLines(
     return [];
   }
 
-  return isRightToLeftGeometryOrder(matched)
+  return isOrdered(matched)
     ? matched
     : [];
 }
@@ -592,7 +627,7 @@ export function resolveVerticalColumnPositions(
   };
 }
 
-function countVerticalSourceUnits(
+function countSourceInlineUnits(
   text: string,
   measureCtx?: PipelineRenderingContext,
   fontFamily?: string,
@@ -693,7 +728,7 @@ export function resolveVerticalSourceGeometryProfile(
     const effectiveGlyphCount = Math.max(1, glyphCount);
     const effectiveFontSizeUnits = Math.max(
       1,
-      countVerticalSourceUnits(line.text, measureCtx, fontFamily),
+      countSourceInlineUnits(line.text, measureCtx, fontFamily),
     );
     const advance = line.height / effectiveFontSizeUnits;
     const latinSizeCorrection = effectiveGlyphCount / effectiveFontSizeUnits;
@@ -724,7 +759,7 @@ export function resolveVerticalSourceGeometryProfile(
   const sourceOrderedLines = resolveSourceOrderedGeometryLines(region, sourceLines, targetColumnCount);
   const perColumnAdvance = sourceOrderedLines.map((line) => {
     const glyphCount = countTextGlyphs(line.text);
-    const advanceUnits = countVerticalSourceUnits(line.text, measureCtx, fontFamily);
+    const advanceUnits = countSourceInlineUnits(line.text, measureCtx, fontFamily);
     return glyphCount >= 2 && advanceUnits > 0
       ? line.height / advanceUnits
       : medianAdvance;
@@ -744,6 +779,154 @@ export function resolveVerticalSourceGeometryProfile(
     perColumnAdvance,
     perColumnTopY,
   };
+}
+
+function valueRange(values: number[]): number {
+  if (values.length === 0) return Number.POSITIVE_INFINITY;
+  return Math.max(...values) - Math.min(...values);
+}
+
+function inferHorizontalAlignment(
+  spatialLines: NonNullable<TextRegion["sourceLineGeometries"]>,
+  medianHeight: number,
+): HorizontalAlignmentProfile {
+  if (spatialLines.length < 2) return "unknown";
+
+  const candidates: Array<{ alignment: Exclude<HorizontalAlignmentProfile, "unknown">; spread: number }> = [
+    {
+      alignment: "left",
+      spread: valueRange(spatialLines.map((line) => line.centerX - line.width / 2)),
+    },
+    {
+      alignment: "center",
+      spread: valueRange(spatialLines.map((line) => line.centerX)),
+    },
+    {
+      alignment: "right",
+      spread: valueRange(spatialLines.map((line) => line.centerX + line.width / 2)),
+    },
+  ];
+  candidates.sort((a, b) => a.spread - b.spread);
+
+  const best = candidates[0];
+  const second = candidates[1];
+  const tieTolerance = Math.max(1, medianHeight * 0.05);
+  if (!best || !second || second.spread - best.spread <= tieTolerance) {
+    return "unknown";
+  }
+  return best.alignment;
+}
+
+export function resolveHorizontalSourceGeometryProfile(
+  region: TextRegion,
+  targetLineCount: number,
+  measureCtx?: PipelineRenderingContext,
+  fontFamily?: string,
+): HorizontalSourceGeometryProfile | undefined {
+  if (Math.abs(quadAngle(getRegionQuad(region))) > maxSourceGeometryAnchorAngleRad) {
+    return undefined;
+  }
+  const sourceLines = (region.sourceLineGeometries ?? [])
+    .filter((line) =>
+      line.direction === "h" &&
+      Number.isFinite(line.centerX) &&
+      Number.isFinite(line.centerY) &&
+      Number.isFinite(line.width) &&
+      Number.isFinite(line.height) &&
+      line.width > 0 &&
+      line.height > 0,
+    );
+
+  if (
+    targetLineCount <= 0 ||
+    sourceLines.length === 0 ||
+    sourceLines.length !== targetLineCount
+  ) {
+    return undefined;
+  }
+
+  const spatialLines = [...sourceLines].sort((a, b) => a.centerY - b.centerY);
+  const widths = spatialLines.map((line) => line.width);
+  const heights = spatialLines.map((line) => line.height);
+  const medianWidth = medianNumber(widths);
+  const medianHeight = medianNumber(heights);
+  if (medianWidth === null || medianHeight === null) {
+    return undefined;
+  }
+
+  const pitches: number[] = [];
+  const gaps: number[] = [];
+  for (let index = 0; index < spatialLines.length - 1; index += 1) {
+    const upper = spatialLines[index];
+    const lower = spatialLines[index + 1];
+    const pitch = lower.centerY - upper.centerY;
+    if (!Number.isFinite(pitch) || pitch <= 1) continue;
+    pitches.push(pitch);
+    gaps.push(pitch - (upper.height + lower.height) / 2);
+  }
+
+  const medianPitch = pitches.length > 0 ? medianNumber(pitches) : null;
+  const medianGap = gaps.length > 0 ? medianNumber(gaps) : null;
+  const sourceFontSizes = spatialLines.map((line) => {
+    const inlineUnits = Math.max(1, countSourceInlineUnits(line.text, measureCtx, fontFamily));
+    const inlineAdvance = line.width / inlineUnits;
+    const declaredFontSize = line.fontSize;
+    const crossSize = declaredFontSize !== undefined && Number.isFinite(declaredFontSize) && declaredFontSize > 0
+      ? Math.min(line.height, declaredFontSize)
+      : line.height;
+    return Math.min(crossSize, inlineAdvance);
+  });
+  const sourceFontSize = medianNumber(sourceFontSizes);
+  if (sourceFontSize === null || sourceFontSize <= 0) {
+    return undefined;
+  }
+
+  const topEdge = Math.min(...spatialLines.map((line) => line.centerY - line.height / 2));
+  const bottomEdge = Math.max(...spatialLines.map((line) => line.centerY + line.height / 2));
+  const leftEdge = Math.min(...spatialLines.map((line) => line.centerX - line.width / 2));
+  const rightEdge = Math.max(...spatialLines.map((line) => line.centerX + line.width / 2));
+  const sourceOrderedLines = resolveSourceOrderedGeometryLines(
+    region,
+    sourceLines,
+    targetLineCount,
+    isTopToBottomGeometryOrder,
+  );
+  const sourceOrderReliable = sourceOrderedLines.length === targetLineCount;
+
+  return {
+    lineCount: spatialLines.length,
+    groupCenterX: (leftEdge + rightEdge) / 2,
+    groupCenterY: (topEdge + bottomEdge) / 2,
+    sourceFontSize,
+    sourcePitch: medianPitch !== null
+      ? Math.max(sourceFontSize, medianPitch)
+      : Math.max(sourceFontSize, medianHeight),
+    medianPitch,
+    medianGap,
+    medianWidth,
+    medianHeight,
+    inferredAlignment: inferHorizontalAlignment(spatialLines, medianHeight),
+    sourceOrderReliable,
+    perLineCentersY: sourceOrderReliable ? sourceOrderedLines.map((line) => line.centerY) : [],
+    perLineLeftX: sourceOrderReliable
+      ? sourceOrderedLines.map((line) => line.centerX - line.width / 2)
+      : [],
+    perLineRightX: sourceOrderReliable
+      ? sourceOrderedLines.map((line) => line.centerX + line.width / 2)
+      : [],
+  };
+}
+
+export function resolveHorizontalSourceLineAnchor(
+  region: TextRegion,
+  boxPadding: number,
+  profile?: HorizontalSourceGeometryProfile,
+): HorizontalLineAnchor | undefined {
+  if (!profile) return undefined;
+  const angle = quadAngle(getRegionQuad(region));
+  if (Math.abs(angle) > maxSourceGeometryAnchorAngleRad) return undefined;
+  const contentCenterY = profile.groupCenterY - region.box.y - boxPadding;
+  return Number.isFinite(contentCenterY) ? { contentCenterY } : undefined;
 }
 
 export function resolveVerticalSourceColumnAnchor(
@@ -1727,6 +1910,7 @@ export function estimateHorizontalPreferredProfile(
   fontFamily: string,
   preferredLines?: string[],
   originalContentHeight?: number,
+  sourceGeometryProfile?: HorizontalSourceGeometryProfile,
 ): { letterSpacingScale: number; lineHeightScale: number } {
   ctx.font = `${fontSize}px ${fontFamily}`;
 
@@ -1748,11 +1932,8 @@ export function estimateHorizontalPreferredProfile(
     1,
     region.originalLineCount ?? 0,
     preferredLines?.length ?? 0,
+    sourceGeometryProfile?.lineCount ?? 0,
   );
-
-  if (neededLineCount <= targetLineCount) {
-    return { letterSpacingScale: 1, lineHeightScale: 1 };
-  }
 
   // Compress letter spacing: when letterSpacingRatio is negative, scaling it
   // UP increases overlap and compresses line width. We need total text to fit
@@ -1767,11 +1948,28 @@ export function estimateHorizontalPreferredProfile(
   // targetLineCount lines in available height
   const defaultLineHeight = Math.max(1, Math.round(fontSize * 0.93));
   const availableHeight = originalContentHeight ?? contentHeight;
-  const maxTotalLineHeight = availableHeight;
-  const targetTotalLineHeight = defaultLineHeight * targetLineCount;
-  const lineHeightScale = targetTotalLineHeight > maxTotalLineHeight
-    ? clampNumber(maxTotalLineHeight / targetTotalLineHeight, minHorizontalLineHeightScale, 1)
+  const sourceStyleScale = sourceGeometryProfile
+    ? fontSize / Math.max(1, sourceGeometryProfile.sourceFontSize)
     : 1;
+  const sourceLineHeightScale = sourceGeometryProfile
+    ? clampNumber(
+      sourceGeometryProfile.sourcePitch * sourceStyleScale / defaultLineHeight,
+      minHorizontalLineHeightScale,
+      1.5,
+    )
+    : 1;
+  const targetTotalLineHeight = defaultLineHeight * targetLineCount * sourceLineHeightScale;
+  const lineHeightScale = targetTotalLineHeight > availableHeight
+    ? clampNumber(
+      availableHeight / Math.max(1, defaultLineHeight * targetLineCount),
+      minHorizontalLineHeightScale,
+      sourceLineHeightScale,
+    )
+    : sourceLineHeightScale;
+
+  if (neededLineCount <= targetLineCount && !sourceGeometryProfile) {
+    return { letterSpacingScale: 1, lineHeightScale: 1 };
+  }
 
   return { letterSpacingScale, lineHeightScale };
 }

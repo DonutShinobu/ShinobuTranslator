@@ -2,6 +2,12 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import type { BenchConfig, BenchmarkSummary } from "./types";
+import { parseTypesetSuiteArgs } from "./suite-paths";
+import {
+  buildBaselineComparisons,
+  buildTypesetBaseline,
+  type TypesetBaseline,
+} from "./baseline";
 
 const ROOT = resolve(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -9,10 +15,16 @@ function main(): void {
   const configRaw = readFileSync(join(ROOT, "benchmark/typeset/bench.config.json"), "utf-8");
   const config: BenchConfig = JSON.parse(configRaw);
 
-  const updateBaseline = process.argv.includes("--update-baseline");
-  const baselinePath = join(ROOT, "benchmark/typeset/baseline.json");
+  const parsed = parseTypesetSuiteArgs(process.argv.slice(2));
+  const updateBaseline = parsed.remainingArgs.includes("--update-baseline");
+  const unknownOption = parsed.remainingArgs.find((arg) => arg !== "--update-baseline");
+  if (unknownOption) {
+    console.error(`Unknown option: ${unknownOption}`);
+    process.exit(1);
+  }
+  const baselinePath = parsed.paths.baselinePath;
 
-  const reportsDir = join(ROOT, config.reportsDir);
+  const reportsDir = parsed.paths.reportsDir;
   if (!existsSync(reportsDir)) {
     console.error("No reports directory. Run npm run bench first.");
     process.exit(1);
@@ -31,21 +43,7 @@ function main(): void {
   );
 
   if (updateBaseline) {
-    const baseline = {
-      generatedAt: current.generatedAt,
-      avgCompositeScore: current.avgCompositeScore,
-      avgColumnIouMean: current.avgColumnIouMean,
-      avgFontSizeError: current.avgFontSizeError,
-      avgSignedColumnDxNorm: current.avgSignedColumnDxNorm,
-      avgColumnDxNorm: current.avgColumnDxNorm,
-      avgSignedColumnGapNorm: current.avgSignedColumnGapNorm,
-      avgColumnPitchRatio: current.avgColumnPitchRatio,
-      avgSignedCharDyNorm: current.avgSignedCharDyNorm,
-      avgCharDyNorm: current.avgCharDyNorm,
-      avgSignedCharAdvanceNorm: current.avgSignedCharAdvanceNorm,
-      avgCharAdvanceRatio: current.avgCharAdvanceRatio,
-      columnCountMatchRate: current.columnCountMatchRate,
-    };
+    const baseline = buildTypesetBaseline(current);
     writeFileSync(baselinePath, JSON.stringify(baseline, null, 2));
     console.log("Baseline updated.");
     return;
@@ -56,20 +54,19 @@ function main(): void {
     return;
   }
 
-  const baseline = JSON.parse(readFileSync(baselinePath, "utf-8"));
+  const baseline = JSON.parse(readFileSync(baselinePath, "utf-8")) as TypesetBaseline;
   const threshold = config.regressionThreshold;
-
-  const metrics: Array<{ name: string; baseline: number; current: number; higherIsBetter: boolean }> = [
-    { name: "Composite Score", baseline: baseline.avgCompositeScore, current: current.avgCompositeScore, higherIsBetter: true },
-    { name: "Column IoU", baseline: baseline.avgColumnIouMean, current: current.avgColumnIouMean, higherIsBetter: true },
-    { name: "Font Size Error", baseline: baseline.avgFontSizeError, current: current.avgFontSizeError, higherIsBetter: false },
-    { name: "Column Dx Norm", baseline: baseline.avgColumnDxNorm, current: current.avgColumnDxNorm, higherIsBetter: false },
-    { name: "Char Dy Norm", baseline: baseline.avgCharDyNorm, current: current.avgCharDyNorm, higherIsBetter: false },
-    { name: "Col Count Match", baseline: baseline.columnCountMatchRate, current: current.columnCountMatchRate, higherIsBetter: true },
-  ];
+  const comparison = buildBaselineComparisons(baseline, current);
+  if (comparison.horizontalStatus === "missing-baseline") {
+    console.log("Horizontal baseline not established; horizontal regression checks skipped.");
+  }
+  if (comparison.horizontalStatus === "missing-current") {
+    console.error("Baseline expects horizontal regions, but the current report has no scored horizontal regions. Check suite and fixtures.");
+    process.exit(1);
+  }
 
   let hasRegression = false;
-  for (const m of metrics) {
+  for (const m of comparison.metrics) {
     const diff = m.current - m.baseline;
     const relDiff = m.baseline !== 0 ? Math.abs(diff / m.baseline) : Math.abs(diff);
     const improved = m.higherIsBetter ? diff > 0 : diff < 0;

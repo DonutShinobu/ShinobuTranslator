@@ -34,6 +34,7 @@ Node 脚本通过 `tsx` 和 `canvas` 运行；浏览器脚本通过 Playwright �
 - **bake-node 字体限制** — node-canvas 的 `registerFont()` 只支持 `.ttf/.otf/.ttc`，不支持 `.woff2`。若项目字体只有 `.woff2` 格式，需安装系统 CJK 字体作为 fallback
 - **Fixture 数据** — JSON 注解文件 git 追踪，实际图片文件 gitignore（用户手动添加）
 - **报告输出** — 新生成的 `benchmark/reports/`、`benchmark/perf/reports/` 默认忽略；已经追踪的历史报告只读保留
+- **排版观察集目录** — typeset benchmark 命令统一支持 `--suite-dir <root>`；目录自动映射为 `<root>/images`、`<root>/fixtures`、`<root>/reports` 和 `<root>/baseline.json`
 - **颜色工具函数** — `color-utils.ts` 从 `src/pipeline/typeset/color.ts` 重新导出 `rgbToLab`/`colorDistance`/`resolveColors`，不直接引用浏览器端代码（避免 ONNX Runtime 等浏览器依赖）
 
 ---
@@ -49,6 +50,297 @@ Before modifying benchmark scripts, verify:
 - [ ] 重复逻辑提取到 `color-utils.ts`（共享工具优于各脚本内复制）
 - [ ] 颜色算法脚本放在 `benchmark/color/src/`，排版脚本放在 `benchmark/typeset/src/`
 - [ ] 浏览器 API 只从 `src/benchmark/browserEntry.ts` 暴露，Release 产物断言保持通过
+
+---
+
+## 场景：Typeset Benchmark Suite 目录契约
+
+### 1. Scope / Trigger
+
+- 触发：新增独立排版观察集，或修改 `bake-fixtures.ts`、`bake-node.ts`、`audit-fixtures.ts`、`render-result.ts`、`run-bench.ts`、`diff-baseline.ts` 的目录解析。
+- 目标：同一观察集的图片、fixture、报告和 baseline 始终使用同一个根目录，不因某条命令遗漏参数而混入默认竖排数据。
+
+### 2. Signatures
+
+```bash
+npm run bench:bake -- --suite-dir <root> [--direction all|h|v]
+npm run bench:bake-node -- --suite-dir <root> [--direction all|h|v] [image...]
+npm run bench:audit-fixtures -- --suite-dir <root> [--strict]
+npm run bench:render -- --suite-dir <root>
+npm run bench -- --suite-dir <root>
+npm run bench:diff -- --suite-dir <root>
+npm run bench:baseline -- --suite-dir <root>
+```
+
+所有命令同时支持细粒度覆盖：`--images-dir`、`--fixtures-dir`、`--reports-dir`。两个 bake 命令继续把 `--out-dir` 作为 `--fixtures-dir` 的兼容别名。
+
+```typescript
+type BakeDirection = "all" | "h" | "v";
+
+type ShinobuBakeOptions = {
+  direction?: BakeDirection;
+};
+
+type BakeResultRegion = {
+  direction: "h" | "v";
+  // ...
+};
+
+type GroundTruthCharCenter = {
+  x?: number;
+  y: number;
+};
+
+type GroundTruthColumn = {
+  quad?: [QuadPoint, QuadPoint, QuadPoint, QuadPoint];
+  // legacy axis-aligned geometry remains available
+};
+
+type HorizontalGlyphPlacement = {
+  ch: string;
+  x: number;
+  baselineY: number;
+  centerX: number;
+  centerY: number;
+  width: number;
+};
+```
+
+### 3. Contracts
+
+- `--suite-dir <root>` 映射：
+  - images：`<root>/images`
+  - fixtures：`<root>/fixtures`
+  - reports：`<root>/reports`
+  - baseline：`<root>/baseline.json`
+- 未传 `--suite-dir` 时，继续读取 `bench.config.json` 的默认 `imagesDir`、`fixturesDir`、`reportsDir` 和原 `benchmark/typeset/baseline.json`，旧命令行为不变。
+- `--images-dir`、`--fixtures-dir`、`--reports-dir` 的显式值优先于 suite 自动映射；相对路径统一相对仓库根目录解析。
+- 路径解析只由 `suite-paths.ts` 负责，所有命令消费同一结果，禁止各脚本重新维护一套硬编码常量。
+- fixture render 必须把 `region.direction` 原样写入 `sourceLineGeometries.direction`；横排观察集不能被 adapter 硬编码为 `v`。
+- 两个 bake 入口的 `--direction` 语义必须一致：`all` 同时保留 `h | v`，`h`/`v` 只保留对应方向；未传参数时默认 `all`。
+- `shinobuBake()` 必须按 region/source geometry/box fallback 解析真实方向，并在 `BakeResultRegion.direction` 保留 `h | v`，不得把输出硬编码为 `v`。
+- fixture 的 `bakedWith.direction` 必须记录本次选择；旧 fixture 缺少该字段时仍可读取。
+- 横排 ground truth 按从上到下验证空间顺序，竖排 ground truth 按从右到左验证；方向选择不能改变各自的空间语义。
+- 横排 renderer 与 debug 必须消费同一份 `HorizontalGlyphPlacement[][]`；逐字 `x` advance、baseline 和中心点不得在 overlay 中重新估算。
+- 横排实际字符中心使用真实字宽与统一 letter spacing：`centerX = penX + width / 2`，`centerY = baselineY + (descent - ascent) / 2`。
+- 横排 fixture ground truth 的 `charCenters` 必须写入 `{x,y}`；旧竖排 fixture 的 `{y}` 保持兼容，overlay 仅在 `x` 缺失时回退 `column.centerX`。
+- bake 必须把每条 `SourceTextLineGeometry.quad` 原样传到 `DetectedColumn.quad` 和 `GroundTruthColumn.quad`；不得在 fixture 边界丢弃旋转几何。
+- GT overlay 有 quad 时必须直接描四边形；只有旧 fixture 缺少 quad 时才用 `centerX/topY/width/height` 画轴对齐矩形。
+- 有 quad 的 GT 字符中心沿文字行中线插值：横排从左边中点到右边中点，竖排从上边中点到下边中点。
+- 空白字符参与渲染 advance，但不输出可视化点；诊断点不能改变渲染文本或断行。
+- `run-bench.ts` 必须按 `direction` 分别计算横竖指标；横排有可用二维字符对时不得再仅因方向标记为 skipped。
+
+### 4. Validation & Error Matrix
+
+| 条件 | 必须行为 |
+| --- | --- |
+| `--suite-dir` 或细粒度目录参数缺值 | 立即报 `<option> requires a path.`，不得退回默认目录 |
+| suite 的 `images/` 为空 | bake 明确报告该目录没有图片，不运行 pipeline |
+| suite 的 `fixtures/` 为空 | audit/render/bench 明确报告没有 fixture，不读取默认 fixture |
+| suite 的 `reports/` 没有 summary | diff 明确报告没有 report，不读取默认 baseline/report |
+| 出现未知参数 | 非 bake-node 图片位置参数时立即失败 |
+| 同时传 suite 和细粒度目录 | 只覆盖指定子目录，其余仍来自 suite |
+| `--direction` 缺值 | 立即报 `--direction requires a value: all, h, or v.` |
+| `--direction` 不是 `all|h|v` | 立即报告允许值和收到的值，不运行 pipeline |
+| 未传 `--direction` | 使用 `all`，保留检测到的所有 `h | v` 区域 |
+| 选择 `h` 或 `v` 后无匹配区域 | 正常生成空 regions fixture，不回退到另一方向 |
+| 旧 fixture 的字符中心没有 `x` | overlay 使用所属列的 `centerX`，不得拒绝旧 fixture |
+| 横排行为空或只含空白 | 不输出字符点，渲染/审计不崩溃 |
+| 横排存在旋转 quad | 逐字中心通过现有 offscreen-to-canvas transform 映射，不直接使用未变换局部坐标 |
+| 新 fixture 的 source line 有 quad | 完整 round-trip 到 GT column 和 render source geometry |
+| 旧 fixture 缺少 GT quad | 保持矩形框与旧字符中心回退，不拒绝、不猜旋转角 |
+
+### 5. Good / Base / Bad Cases
+
+- Good：`npm run bench:render -- --suite-dir benchmark/typeset/horizontal` 只读取横排专区并把报告写回该专区。
+- Base：不传 suite 参数，六条命令继续使用 `bench.config.json` 中的原目录。
+- Good：bake 临时 fixture 使用 `--suite-dir ... --out-dir benchmark/reports/candidate-fixtures`，图片仍来自 suite，fixture 输出使用显式目录。
+- Good：`--direction h` 生成的 fixture 只含横排区域，且 `bakedWith.direction === "h"`。
+- Base：不传 `--direction` 等同于 `--direction all`，混排图片中的横排和竖排区域都被保留。
+- Good：横排 overlay 中每个非空白字符都有独立的绿色 GT 点和红色实际点，点位沿行内 advance 递增。
+- Good：倾斜横排的绿色框直接贴合原始 detector quad，绿色字符点沿倾斜中线分布。
+- Base：历史竖排 fixture 只有 `{y}` 字符中心，overlay 仍按原列中心绘制。
+- Bad：使用 AABB 的 `topY` 配合旋转 quad 的 intrinsic `height` 重建矩形；长横排会显示成过矮绿框。
+- Bad：只给 bake 改目录，render/bench 仍硬编码 `benchmark/typeset/fixtures`，导致观察集串数据。
+- Bad：横排 fixture 在 render adapter 中生成 `direction: "v"` 的源几何，使横排源画像静默降级。
+- Bad：benchmark bake 在 merge 前后使用 `.filter(region.direction === "v")`，导致浏览器插件能识别的横排区域在 fixture 中消失。
+
+### 6. Tests Required
+
+- `tests/benchmark/suite-paths.test.ts`：默认目录、suite 展开、细粒度覆盖、`--out-dir` 兼容和缺值错误。
+- `tests/benchmark/fixture-render.test.ts`：横排 region 生成的 `sourceLineGeometries.direction === "h"`。
+- `tests/benchmark/bake-options.test.ts`：默认 `all`、空格/等号两种参数形式、缺值与非法值。
+- `tests/benchmark/fixture-build.test.ts`：横排/竖排 fixture 均保留方向，并使用各自的字号和空间几何语义。
+- `tests/benchmark/source-geometry.test.ts`：横排从上到下、竖排从右到左的空间顺序审计。
+- `tests/pipeline/typeset/renderHorizontal.test.ts`：逐字 placement 使用真实宽度/letter spacing，并被 stroke/fill 两遍共同消费。
+- `tests/pipeline/typeset/drawTypeset.test.ts`：横排 debug 输出逐字中心，行内 x 单调递增且同一行 y 一致。
+- `tests/benchmark/fixture-build.test.ts`：横排 ground truth/current snapshot 输出二维字符中心，竖排旧行为不变。
+- `tests/benchmark/fixture-build.test.ts`：旋转 source quad 在 fixture 中保留，横排字符中心沿左右边中点连线插值。
+- `tests/benchmark/fixture-render.test.ts`：GT quad round-trip 回 `SourceTextLineGeometry`，旧无 quad 输入仍生成矩形 fallback。
+- 空 suite 命令 smoke：bake/audit/render/bench/diff 的错误路径必须显示所选 suite 子目录。
+- 真实 bake smoke：同一批图片至少验证一次 `--direction all` 和一次单方向选择，并对输出运行 strict fixture audit。
+- 默认回归：`npm run bench:audit-fixtures -- --strict` 仍审计正式默认 fixture。
+- 完整门禁：`npm run check` 和 `git diff --check`。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+const FIXTURES_DIR = join(ROOT, "benchmark/typeset/fixtures");
+const REPORTS_DIR = join(ROOT, "benchmark/reports");
+```
+
+每条命令单独硬编码目录会让新增观察集只在部分阶段生效。
+
+#### Correct
+
+```typescript
+const parsed = parseTypesetSuiteArgs(process.argv.slice(2));
+const { imagesDir, fixturesDir, reportsDir } = parsed.paths;
+```
+
+统一解析保证 bake、render、评分和 baseline 处于同一 suite 边界。
+
+#### Wrong: bake 方向硬编码
+
+```typescript
+const regions = mergedRegions.filter((region) => region.direction === "v");
+return regions.map((region) => ({ ...region, direction: "v" as const }));
+```
+
+#### Correct: 方向是可选契约
+
+```typescript
+const selectedDirection = options.direction ?? "all";
+const regions = mergedRegions.filter((region) => (
+  selectedDirection === "all" || resolveBakeRegionDirection(region) === selectedDirection
+));
+```
+
+#### Wrong: overlay 重新估算横排点位
+
+```typescript
+const x = line.x + index * averageGlyphWidth;
+```
+
+#### Correct: 渲染与诊断消费同一份 placement
+
+```typescript
+const placements = buildHorizontalGlyphPlacements(ctx, lineBoxes, letterSpacing);
+renderHorizontal(lineBoxes, fontSize, width, height, colors, padding, font, scale, platform, placements);
+const centers = placements.map((line) => line.map((glyph) => ({
+  ch: glyph.ch,
+  x: glyph.centerX,
+  y: glyph.centerY,
+})));
+```
+
+#### Wrong: 混合 AABB 与旋转边长重建 GT 框
+
+```typescript
+ctx.strokeRect(column.centerX - column.width / 2, column.topY, column.width, column.height);
+```
+
+#### Correct: 优先保留并绘制原始 quad
+
+```typescript
+if (column.quad) {
+  drawQuad(ctx, column.quad);
+  ctx.stroke();
+} else {
+  drawLegacyGroundTruthRect(ctx, column);
+}
+```
+
+---
+
+## 场景：横排数值评分与 baseline 契约
+
+### 1. Scope / Trigger
+
+- 触发：修改 `horizontal-metrics.ts`、`horizontal-summary.ts`、`run-bench.ts`、`diff-baseline.ts` 或 typeset 报告类型。
+- 目标：红绿字符点、旋转行框、换行和行距偏差能被方向专用指标量化，同时保持竖排历史分数与 baseline 语义不变。
+
+### 2. Signatures
+
+```typescript
+type RegionMetrics = VerticalRegionMetrics | HorizontalRegionMetrics | SkippedRegionMetrics;
+
+type HorizontalMetricComputation = {
+  metrics?: HorizontalMetricValues;
+  skipReason?: "no_horizontal_lines" | "no_horizontal_glyph_pairs";
+  glyphDiagnostics: HorizontalGlyphDiagnostic[];
+};
+
+type BenchmarkSummary = {
+  schemaVersion: 2;
+  avgCompositeScore: number; // 兼容字段，仍只表示竖排
+  horizontal: HorizontalBenchmarkSummary;
+};
+```
+
+- `bench.config.json.horizontalScoreWeights` 固定包含 `lineCountMatch`、`lineQuadIouMean`、`blockHullIou`、`fontSizeError`、`lineBreakF1`、`glyphPositionCoverage`、`charCenterQuality`，权重和为 1。
+- 报告新增 `horizontal-glyphs.csv`；每行包含图片、region、匹配状态、字符、GT/预测索引与坐标、`dxNorm`、`dyNorm`、`distanceNorm`。
+
+### 3. Contracts
+
+- 竖排继续使用原 `computeRegionMetrics()`、原 `ScoreWeights` 和顶层 `avgCompositeScore`；横排综合分只写入 `BenchmarkSummary.horizontal.avgCompositeScore`。
+- 横排 GT/预测字符按 grapheme 分段并过滤空白；全文完全一致时逐字匹配，否则使用保持顺序、近邻 tie-break 的字符对齐，禁止按长度比例猜配。
+- 字符和行中心距离优先除以实际 `fittedFontSize`；无效时回退 GT 中位字号，再回退 1。
+- 横排行 IoU 使用真实旋转 quad 的凸多边形交并比；缺 quad 时仅该行回退 AABB，并通过 `sourceQuadCoverage` 暴露标注覆盖率。
+- 横排 GT 没有可用 X 坐标时不得回退 `column.centerX` 参与数值评分；没有任何二维字符对的 region 使用 `no_horizontal_glyph_pairs` 跳过。
+- Markdown、JSON 和 per-region CSV 必须分开表达横竖指标；横排最差 region 按字符距离 P95 排名。
+- baseline 没有 `horizontal` 段时只比较竖排并明确跳过横排；baseline 有横排段但当前横排可评分数为 0 时必须失败。
+
+### 4. Validation & Error Matrix
+
+| 条件 | 必须行为 |
+| --- | --- |
+| GT 或预测没有横排行 | region skipped，reason=`no_horizontal_lines` |
+| 文本可匹配但 GT 字符没有 X | region skipped，reason=`no_horizontal_glyph_pairs`，不得伪造 X |
+| 文本跨行重排 | 全文字符仍匹配；`lineBreakF1` 和真实二维距离分别反映换行与位移 |
+| GT/预测字符增删 | 只匹配同字符有序子序列，覆盖率下降，未匹配项写入逐字 CSV |
+| 旧 baseline 缺少 horizontal | 横排回归检查跳过，不产生 NaN 或误报 |
+| baseline 期待横排但当前为 0 | diff 失败并提示检查 suite/fixture |
+
+### 5. Good / Base / Bad Cases
+
+- Good：横排 suite 的 47 个横排 region 全部评分，704 个字符在 `horizontal-glyphs.csv` 中可定位，竖排 6 个 region 的原分数保持独立。
+- Base：纯竖排默认 suite 的 horizontal summary 为零值，原竖排报告和 diff 继续可用。
+- Bad：把横排 region 混入 `avgCompositeScore`，会静默改变历史 baseline 含义。
+- Bad：为提高 coverage 把缺失 GT X 替换为行中心，会把无标注误当成排版偏差。
+
+### 6. Tests Required
+
+- `tests/benchmark/horizontal-metrics.test.ts`：完美重合、X/Y 偏移、旋转 quad、跨行重排、重复/增删字符、离群点、额外行、缺 X 和空行。
+- `tests/benchmark/horizontal-summary.test.ts`：字符距离按所有逐字诊断全局聚合，不能平均 region percentile。
+- `tests/benchmark/baseline.test.ts`：旧 baseline 跳过横排、显式横排 baseline 参与比较、当前横排消失时报错。
+- 真实 suite：`npm run bench -- --suite-dir benchmark/typeset/horizontal` 后确认横排 scored/skipped、字符数、逐字 CSV 和竖排兼容分。
+- 完整门禁：两套 strict fixture audit、`npm run check`、`git diff --check`。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+if (region.direction === "h") {
+  return emptySkippedRegion(region.id, "horizontal");
+}
+```
+
+#### Correct
+
+```typescript
+const computation = computeHorizontalRegionMetrics(
+  region.groundTruth.columns,
+  debugRegionToColumns(debugRegion),
+  debugRegion.fittedFontSize,
+  config.horizontalScoreWeights,
+);
+```
+
+横排指标只读取 fixture GT 和 render debug；任何差异都写入报告，不得反馈修改 renderer 输入。
 
 ---
 

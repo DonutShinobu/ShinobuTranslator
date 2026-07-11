@@ -1,6 +1,9 @@
 export type GroundTruthCharCenter = {
+  x?: number;
   y: number;
 };
+
+export type TypesetDirection = "h" | "v";
 
 export type GroundTruthColumn = {
   index: number;
@@ -13,6 +16,12 @@ export type GroundTruthColumn = {
   height: number;
   estimatedFontSize: number;
   charCenters: GroundTruthCharCenter[];
+  quad?: [
+    { x: number; y: number },
+    { x: number; y: number },
+    { x: number; y: number },
+    { x: number; y: number },
+  ];
 };
 
 export type GroundTruth = {
@@ -35,11 +44,12 @@ export type BakeInfo = {
   gitCommit: string;
   detectorModel: string;
   ocrModel: string;
+  direction?: "all" | "h" | "v";
 };
 
 export type FixtureRegion = {
   id: string;
-  direction: "v" | "h";
+  direction: TypesetDirection;
   box: { x: number; y: number; width: number; height: number };
   quad?: [
     { x: number; y: number },
@@ -65,11 +75,15 @@ export type Fixture = {
   regions: FixtureRegion[];
 };
 
-export type RegionMetrics = {
+export type RegionMetricBase = {
   regionId: string;
+  direction: TypesetDirection;
   skipped: boolean;
   skipReason?: string;
   sourceGeometryStatus?: string;
+};
+
+export type VerticalMetricValues = {
   columnCountMatch: number;
   columnCountDiff: number;
   columnIouMean: number;
@@ -98,12 +112,83 @@ export type RegionMetrics = {
   glyphQualityScore?: number;
 };
 
+export type VerticalRegionMetrics = RegionMetricBase & VerticalMetricValues & {
+  direction: "v";
+  skipped: false;
+};
+
+export type HorizontalMetricValues = {
+  lineCountMatch: number;
+  lineCountDiff: number;
+  lineQuadIouMean: number;
+  lineQuadIouMin: number;
+  blockHullIou: number;
+  sourceQuadCoverage: number;
+  fontSizeRatio: number;
+  fontSizeError: number;
+  signedLineCenterDxNormMean: number;
+  signedLineCenterDyNormMean: number;
+  lineCenterDistanceNormMean: number;
+  lineCenterDistanceNormP95: number;
+  lineCenterDistanceNormMax: number;
+  lineWidthRatioMean: number;
+  lineWidthErrorMean: number;
+  lineHeightRatioMean: number;
+  lineHeightErrorMean: number;
+  signedLineGapNormMean: number;
+  linePitchRatioMean: number;
+  linePitchErrorMean: number;
+  lineAngleErrorDegMean: number;
+  lineAngleErrorDegMax: number;
+  lineBreakPrecision: number;
+  lineBreakRecall: number;
+  lineBreakF1: number;
+  gtGlyphCount: number;
+  predGlyphCount: number;
+  matchedGlyphCount: number;
+  positionedGlyphCount: number;
+  glyphTextMatchCoverage: number;
+  glyphPositionCoverage: number;
+  signedCharDxNormMean: number;
+  signedCharDyNormMean: number;
+  charDxNormMean: number;
+  charDyNormMean: number;
+  charDistanceNormMean: number;
+  charDistanceNormMedian: number;
+  charDistanceNormP95: number;
+  charDistanceNormMax: number;
+  charDistanceOverHalfEmRate: number;
+  charDistanceOverOneEmRate: number;
+  signedCharAdvanceNormMean: number;
+  charAdvanceRatioMean: number;
+  charAdvanceErrorMean: number;
+  charCenterQuality: number;
+  compositeScore: number;
+};
+
+export type HorizontalRegionMetrics = RegionMetricBase & HorizontalMetricValues & {
+  direction: "h";
+  skipped: false;
+};
+
+export type SkippedRegionMetrics = RegionMetricBase & {
+  skipped: true;
+};
+
+export type RegionMetrics =
+  | VerticalRegionMetrics
+  | HorizontalRegionMetrics
+  | SkippedRegionMetrics;
+
 export type ImageMetrics = {
   imageFile: string;
   regionCount: number;
   skippedCount: number;
   regions: RegionMetrics[];
+  verticalScoredCount: number;
+  horizontalScoredCount: number;
   avgCompositeScore: number;
+  avgHorizontalCompositeScore: number;
   avgGlyphQualityCoverage: number;
   avgGlyphOrientationAccuracy: number;
   avgRunContinuityRate: number;
@@ -111,7 +196,42 @@ export type ImageMetrics = {
   avgGlyphQualityScore: number;
 };
 
+export type HorizontalBenchmarkSummary = {
+  scoredRegionCount: number;
+  skippedRegionCount: number;
+  avgCompositeScore: number;
+  avgLineQuadIouMean: number;
+  avgBlockHullIou: number;
+  avgSourceQuadCoverage: number;
+  avgFontSizeError: number;
+  avgLineCenterDistanceNorm: number;
+  avgLineWidthError: number;
+  avgLineHeightError: number;
+  avgLinePitchError: number;
+  avgLineAngleErrorDeg: number;
+  avgLineBreakF1: number;
+  gtGlyphCount: number;
+  predGlyphCount: number;
+  matchedGlyphCount: number;
+  positionedGlyphCount: number;
+  glyphTextMatchCoverage: number;
+  glyphPositionCoverage: number;
+  signedCharDxNormMean: number;
+  signedCharDyNormMean: number;
+  charDxNormMean: number;
+  charDyNormMean: number;
+  charDistanceNormMean: number;
+  charDistanceNormMedian: number;
+  charDistanceNormP95: number;
+  charDistanceNormMax: number;
+  charDistanceOverHalfEmRate: number;
+  charDistanceOverOneEmRate: number;
+  avgCharAdvanceError: number;
+  charCenterQuality: number;
+};
+
 export type BenchmarkSummary = {
+  schemaVersion: 2;
   generatedAt: string;
   imageCount: number;
   totalRegionCount: number;
@@ -137,6 +257,7 @@ export type BenchmarkSummary = {
   sourceGeometryRejectedRegionCount: number;
   sourceGeometrySpatialOrderMismatchCount: number;
   sourceGeometryRejectedReasons: Record<string, number>;
+  horizontal: HorizontalBenchmarkSummary;
   images: ImageMetrics[];
 };
 
@@ -148,10 +269,21 @@ export type ScoreWeights = {
   charDyNorm: number;
 };
 
+export type HorizontalScoreWeights = {
+  lineCountMatch: number;
+  lineQuadIouMean: number;
+  blockHullIou: number;
+  fontSizeError: number;
+  lineBreakF1: number;
+  glyphPositionCoverage: number;
+  charCenterQuality: number;
+};
+
 export type BenchConfig = {
   fixturesDir: string;
   imagesDir: string;
   reportsDir: string;
   scoreWeights: ScoreWeights;
+  horizontalScoreWeights: HorizontalScoreWeights;
   regressionThreshold: number;
 };

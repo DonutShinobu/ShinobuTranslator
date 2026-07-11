@@ -1,11 +1,8 @@
 import { existsSync, readFileSync, readdirSync } from "fs";
-import { dirname, join, resolve } from "path";
-import { fileURLToPath } from "url";
+import { join } from "path";
 import { assessFixtureSourceGeometry, type SourceGeometryStatus } from "./source-geometry";
-import type { BenchConfig, Fixture } from "./types";
-
-const ROOT = resolve(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "../../..");
-const CONFIG_PATH = join(ROOT, "benchmark/typeset/bench.config.json");
+import { parseTypesetSuiteArgs, resolveTypesetBenchmarkPath } from "./suite-paths";
+import type { Fixture } from "./types";
 
 const STATUS_VALUES: SourceGeometryStatus[] = [
   "usable",
@@ -45,40 +42,15 @@ function createAuditCounts(): AuditCounts {
   };
 }
 
-function loadConfig(): BenchConfig {
-  return JSON.parse(readFileSync(CONFIG_PATH, "utf-8")) as BenchConfig;
-}
-
-function defaultFixturesDir(): string {
-  const config = loadConfig();
-  return resolve(ROOT, config.fixturesDir);
-}
-
 function parseArgs(args: string[]): AuditOptions {
-  let fixturesDir = defaultFixturesDir();
+  const parsed = parseTypesetSuiteArgs(args);
+  let fixturesDir = parsed.paths.fixturesDir;
   let sawFixtureDir = false;
   let strict = false;
 
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
+  for (const arg of parsed.remainingArgs) {
     if (arg === "--strict") {
       strict = true;
-      continue;
-    }
-    if (arg === "--fixtures-dir") {
-      const dir = args[i + 1];
-      if (!dir) {
-        console.error("--fixtures-dir requires a path.");
-        process.exit(1);
-      }
-      fixturesDir = resolve(ROOT, dir);
-      sawFixtureDir = true;
-      i++;
-      continue;
-    }
-    if (arg.startsWith("--fixtures-dir=")) {
-      fixturesDir = resolve(ROOT, arg.slice("--fixtures-dir=".length));
-      sawFixtureDir = true;
       continue;
     }
     if (arg.startsWith("--")) {
@@ -89,7 +61,7 @@ function parseArgs(args: string[]): AuditOptions {
       console.error(`Unexpected extra fixtures directory: ${arg}`);
       process.exit(1);
     }
-    fixturesDir = resolve(ROOT, arg);
+    fixturesDir = resolveTypesetBenchmarkPath(arg);
     sawFixtureDir = true;
   }
 

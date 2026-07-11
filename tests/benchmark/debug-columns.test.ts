@@ -60,7 +60,17 @@ describe("debugRegionToColumns", () => {
     expect(column.height).toBe(100);
     expect(column.estimatedFontSize).toBe(22);
     expect(column.text).toBe("abc");
-    expect(column.charCenters).toEqual([{ y: 25 }, { y: 55 }, { y: 85 }]);
+    expect(column.charCenters).toEqual([
+      { x: 105, y: 25 },
+      { x: 105, y: 55 },
+      { x: 105, y: 85 },
+    ]);
+    expect(column.quad).toEqual([
+      { x: 90, y: 10 },
+      { x: 120, y: 10 },
+      { x: 120, y: 110 },
+      { x: 90, y: 110 },
+    ]);
   });
 
   it("falls back to glyph bounds when a column quad is absent", () => {

@@ -96,4 +96,38 @@ describe("fixture source geometry assessment", () => {
     expect(assessment.status).toBe("spatial_order_mismatch");
     expect(assessment.orderedColumns.map((column) => column.text)).toEqual(["right", "left"]);
   });
+
+  it("accepts horizontal source lines in top-to-bottom spatial order", () => {
+    const region = makeRegion({
+      direction: "h",
+      sourceText: "top\nbottom",
+      groundTruth: {
+        columns: [
+          makeColumn({ index: 0, text: "bottom", topY: 50, bottomY: 70 }),
+          makeColumn({ index: 1, text: "top", topY: 10, bottomY: 30 }),
+        ],
+      },
+    });
+
+    const assessment = assessFixtureSourceGeometry(region);
+
+    expect(assessment.status).toBe("usable");
+    expect(assessment.usable).toBe(true);
+    expect(assessment.orderedColumns.map((column) => column.text)).toEqual(["top", "bottom"]);
+  });
+
+  it("marks horizontal geometry when source lines are not top-to-bottom", () => {
+    const region = makeRegion({
+      direction: "h",
+      sourceText: "top\nbottom",
+      groundTruth: {
+        columns: [
+          makeColumn({ index: 0, text: "top", topY: 50, bottomY: 70 }),
+          makeColumn({ index: 1, text: "bottom", topY: 10, bottomY: 30 }),
+        ],
+      },
+    });
+
+    expect(assessFixtureSourceGeometry(region).status).toBe("spatial_order_mismatch");
+  });
 });

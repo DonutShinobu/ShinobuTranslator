@@ -891,3 +891,36 @@ Completed the translation coherence task: improved LLM prompt and structured pay
 ### Next Steps
 
 - None - task complete
+
+
+## Session 28: 完善横排排版与量化指标
+
+**Date**: 2026-07-11
+**Task**: 完善横排排版与量化指标
+**Branch**: `master`
+
+### Summary
+
+完成横排源几何布局闭环、独立 benchmark suite、逐字可视化与方向化数值评分；47 个横排区域和 704 个字符纳入评分，完整测试与构建门禁通过。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `12f2308` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

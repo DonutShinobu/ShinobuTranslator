@@ -103,6 +103,8 @@ export function computeFullVerticalTypeset(
   const sourceGeometryProfile = resolveVerticalSourceGeometryProfile(
     cloned,
     sourceColumns.length,
+    measureCtx,
+    ff,
   );
 
   let estimatedInitialFontSize = sourceGeometryProfile

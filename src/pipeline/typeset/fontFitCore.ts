@@ -51,6 +51,8 @@ export const maxVerticalSourceColumnOverlapRatio = 0.45;
 export const minSidewaysLatinOpticalScale = 0.85;
 export const maxSidewaysLatinOpticalScale = 1.2;
 
+const latinGraphemePattern = /^\p{Script=Latin}\p{M}*$/u;
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -394,7 +396,7 @@ export function resolveVerticalTokenMetrics(
 
   const isLatinRun = token.sourceGlyphCount > 1
     && segmentVerticalGraphemes(token.sourceText).every((grapheme) =>
-      /^\p{Script=Latin}\p{M}*$/u.test(grapheme),
+      latinGraphemePattern.test(grapheme),
     );
   const referenceInk = measureTextInkMetrics(ctx, "国", fontSize);
   const targetLatinCrossSize = Math.max(
@@ -590,9 +592,53 @@ export function resolveVerticalColumnPositions(
   };
 }
 
+function countVerticalSourceUnits(
+  text: string,
+  measureCtx?: PipelineRenderingContext,
+  fontFamily?: string,
+): number {
+  const graphemes = segmentVerticalGraphemes(text.trim());
+  const fallbackUnits = graphemes.filter((grapheme) => !/^\s+$/u.test(grapheme)).length;
+  if (fallbackUnits === 0) return 0;
+  if (!measureCtx || !fontFamily) return fallbackUnits;
+
+  const previousFont = measureCtx.font;
+  try {
+    measureCtx.font = `100px ${fontFamily}`;
+    const cjkUnitWidth = measureCtx.measureText("国").width;
+    if (!Number.isFinite(cjkUnitWidth) || cjkUnitWidth <= 0) return fallbackUnits;
+
+    let units = 0;
+    let latinRun = "";
+    const flushLatinRun = (): boolean => {
+      if (!latinRun) return true;
+      const measuredWidth = measureCtx.measureText(latinRun).width;
+      latinRun = "";
+      if (!Number.isFinite(measuredWidth) || measuredWidth <= 0) return false;
+      units += measuredWidth / cjkUnitWidth;
+      return true;
+    };
+
+    for (const grapheme of graphemes) {
+      if (latinGraphemePattern.test(grapheme)) {
+        latinRun += grapheme;
+        continue;
+      }
+      if (!flushLatinRun()) return fallbackUnits;
+      if (!/^\s+$/u.test(grapheme)) units += 1;
+    }
+    if (!flushLatinRun()) return fallbackUnits;
+    return units > 0 ? units : fallbackUnits;
+  } finally {
+    measureCtx.font = previousFont;
+  }
+}
+
 export function resolveVerticalSourceGeometryProfile(
   region: TextRegion,
   targetColumnCount: number,
+  measureCtx?: PipelineRenderingContext,
+  fontFamily?: string,
 ): VerticalSourceGeometryProfile | undefined {
   const sourceLines = (region.sourceLineGeometries ?? [])
     .filter((line) =>
@@ -645,10 +691,15 @@ export function resolveVerticalSourceGeometryProfile(
   const sourceColumnStyles = spatialColumns.map((line) => {
     const glyphCount = countTextGlyphs(line.text);
     const effectiveGlyphCount = Math.max(1, glyphCount);
-    const advance = line.height / effectiveGlyphCount;
+    const effectiveFontSizeUnits = Math.max(
+      1,
+      countVerticalSourceUnits(line.text, measureCtx, fontFamily),
+    );
+    const advance = line.height / effectiveFontSizeUnits;
+    const latinSizeCorrection = effectiveGlyphCount / effectiveFontSizeUnits;
     const declaredFontSize = line.fontSize;
     const crossSize = declaredFontSize !== undefined && Number.isFinite(declaredFontSize) && declaredFontSize > 0
-      ? Math.min(line.width, declaredFontSize)
+      ? Math.min(line.width, declaredFontSize * Math.max(1, latinSizeCorrection))
       : line.width;
     return {
       glyphCount,
@@ -673,8 +724,9 @@ export function resolveVerticalSourceGeometryProfile(
   const sourceOrderedLines = resolveSourceOrderedGeometryLines(region, sourceLines, targetColumnCount);
   const perColumnAdvance = sourceOrderedLines.map((line) => {
     const glyphCount = countTextGlyphs(line.text);
-    return glyphCount >= 2
-      ? line.height / glyphCount
+    const advanceUnits = countVerticalSourceUnits(line.text, measureCtx, fontFamily);
+    return glyphCount >= 2 && advanceUnits > 0
+      ? line.height / advanceUnits
       : medianAdvance;
   });
   const perColumnTopY = sourceOrderedLines.map((line) => line.centerY - line.height / 2);

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { TextRegion } from "../../../src/types";
+import type { PipelineRenderingContext } from "../../../src/runtime/platform";
 import {
   clampNumber,
   resolveInitialFontSize,
@@ -752,7 +753,18 @@ describe("resolveVerticalSourceGeometryProfile", () => {
     expect(profile?.perColumnAdvance).toEqual([59]);
   });
 
-  it("estimates source font size per column before taking the median", () => {
+  it("uses Canvas font measurements for source font-size and advance", () => {
+    const measureCtx = {
+      font: "",
+      measureText(text: string) {
+        const fontSize = Number.parseFloat(this.font) || 100;
+        if (text === "国") return { width: fontSize };
+        if (!/^\p{Script=Latin}+$/u.test(text)) {
+          throw new Error("竖排日文不应进入横向字体测量");
+        }
+        return { width: text.length * fontSize * 0.5 };
+      },
+    } as unknown as PipelineRenderingContext;
     const region = makeRegion({
       box: { x: 0, y: 0, width: 120, height: 450 },
       sourceText: "日本語日本語\nABCDEFGHIJ\n安心安心",
@@ -765,6 +777,7 @@ describe("resolveVerticalSourceGeometryProfile", () => {
           centerY: 120,
           width: 44,
           height: 240,
+          fontSize: 40,
         },
         {
           text: "ABCDEFGHIJ",
@@ -774,6 +787,7 @@ describe("resolveVerticalSourceGeometryProfile", () => {
           centerY: 150,
           width: 44,
           height: 300,
+          fontSize: 30,
         },
         {
           text: "安心安心",
@@ -783,14 +797,18 @@ describe("resolveVerticalSourceGeometryProfile", () => {
           centerY: 78,
           width: 34,
           height: 156,
+          fontSize: 34,
         },
       ],
     });
 
-    const profile = resolveVerticalSourceGeometryProfile(region, 3);
+    const profile = resolveVerticalSourceGeometryProfile(region, 3, measureCtx, "Test Sans");
 
-    expect(profile?.sourceFontSize).toBe(34);
-    expect(profile?.medianAdvance).toBe(39);
+    expect(profile?.sourceFontSize).toBe(40);
+    expect(profile?.medianAdvance).toBe(40);
+    expect(profile?.perColumnAdvance[0]).toBeCloseTo(40);
+    expect(profile?.perColumnAdvance[1]).toBeCloseTo(60);
+    expect(profile?.perColumnAdvance[2]).toBeCloseTo(39);
   });
 
   it("ignores a one-glyph outlier when another column provides spacing evidence", () => {

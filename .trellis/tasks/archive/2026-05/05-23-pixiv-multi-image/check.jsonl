@@ -1,3 +1,0 @@
-{"file": ".trellis/tasks/05-23-pixiv-multi-image/prd.md", "reason": "Acceptance criteria and requirements to verify against"}
-{"file": ".trellis/tasks/05-23-pixiv-multi-image/research/pixiv-dom-structure.md", "reason": "Stable selectors reference for verifying DOM interaction correctness"}
-{"file": ".trellis/spec/guides/browser-automation.md", "reason": "Browser automation guide for verifying the feature in real browser"}

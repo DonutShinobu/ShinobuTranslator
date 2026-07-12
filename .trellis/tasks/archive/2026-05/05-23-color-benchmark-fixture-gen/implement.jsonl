@@ -1,6 +1,0 @@
-{"file": "src/content/core/types.ts", "reason": "OcrRegionLogItem 类型定义，需加 fgColor/bgColor 字段"}
-{"file": "src/content/core/TranslatorCore.ts", "reason": "toTypesetDebugDownloadData 函数，需导出 fgColor/bgColor 到日志"}
-{"file": "benchmark/color/src/color-types.ts", "reason": "ColorFixture / ColorFixtureRegion 类型定义，fixture 脚本的输出目标格式"}
-{"file": "benchmark/color/src/color-utils.ts", "reason": "FIXTURES_DIR 常量、loadFixtures 函数，新脚本需复用这些基础设施"}
-{"file": "benchmark/color/src/color-diagnostic.ts", "reason": "现有 benchmark 脚本，需验证新 fixture 能被正常加载"}
-{"file": "benchmark/color/src/color-comparison.ts", "reason": "现有 benchmark 脚本，需验证新 fixture 能被正常加载"}

@@ -1,3 +1,0 @@
-{"file": ".trellis/tasks/05-26-stroke-aware-mask/design.md", "reason": "Technical design: outline detection algorithm, dilation adjustment formula, insertion point, boundary cases"}
-{"file": ".trellis/tasks/05-26-stroke-aware-mask/implement.md", "reason": "Execution plan: implementation checklist, validation commands, rollback points"}
-{"file": ".trellis/spec/guides/index.md", "reason": "Project coding conventions and guidelines reference"}

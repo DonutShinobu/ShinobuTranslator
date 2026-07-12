@@ -1,2 +1,0 @@
-{"file": ".trellis/spec/frontend/index.md", "reason": "UI改动——SegmentedControl新增选项需要参考前端规范"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "ProcessMode类型扩展需要参考类型安全规范"}

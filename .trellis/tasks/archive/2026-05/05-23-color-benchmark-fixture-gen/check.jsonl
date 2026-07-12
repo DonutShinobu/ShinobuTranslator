@@ -1,6 +1,0 @@
-{"file": "benchmark/color/src/color-types.ts", "reason": "确认 ColorFixtureRegion 格式不变，新 fixture 兼容"}
-{"file": "benchmark/color/src/color-utils.ts", "reason": "确认 loadFixtures 能加载新 fixture"}
-{"file": "benchmark/color/src/color-diagnostic.ts", "reason": "验证新 fixture + 图片能被 diagnostic 脚本正常处理"}
-{"file": "benchmark/color/src/color-comparison.ts", "reason": "验证新 fixture + 图片能被 comparison 脚本正常处理"}
-{"file": "src/content/core/types.ts", "reason": "确认 OcrRegionLogItem 新字段定义正确"}
-{"file": "src/content/core/TranslatorCore.ts", "reason": "确认日志导出包含 fgColor/bgColor"}

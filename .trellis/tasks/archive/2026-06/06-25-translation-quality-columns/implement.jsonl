@@ -1,4 +1,0 @@
-{"file":".trellis/spec/frontend/index.md","reason":"文本翻译流程属于前端扩展运行时，需要遵循 frontend 层规范索引。"}
-{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"修改 prompt、fallback 和测试时需要遵循项目质量约束。"}
-{"file":".trellis/spec/frontend/type-safety.md","reason":"新增结构化 payload 类型和测试时需要保持严格 TypeScript 类型安全。"}
-{"file":".trellis/spec/guides/documentation-conventions.md","reason":"任务文档和后续记录默认使用中文。"}

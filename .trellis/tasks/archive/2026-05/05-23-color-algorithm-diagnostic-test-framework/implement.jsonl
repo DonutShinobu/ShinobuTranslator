@@ -1,6 +1,0 @@
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Testing framework (vitest), forbidden/required patterns, test conventions for Node.js scripts"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Type patterns (type over interface, import type), validation boundaries for benchmark script types"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Architecture overview — pipeline lazy-load, benchmark infrastructure location"}
-{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Reuse existing benchmark infrastructure (run-bench, types.ts) instead of duplicating"}
-{"file": ".trellis/spec/benchmark/index.md", "reason": "Benchmark spec layer — conventions, pre-development checklist, quality check"}
-{"file": ".trellis/spec/benchmark/color-diagnostic-guide.md", "reason": "Usage guide — how to run, prepare data, iterate optimization"}

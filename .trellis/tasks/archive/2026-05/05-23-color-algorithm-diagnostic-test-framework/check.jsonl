@@ -1,4 +1,0 @@
-{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Quality check: lint, typecheck, forbidden patterns, test requirements"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Type safety check: type over interface, import type, no any"}
-{"file": ".trellis/spec/frontend/index.md", "reason": "Architecture consistency check"}
-{"file": ".trellis/spec/benchmark/index.md", "reason": "Benchmark spec layer — quality check criteria"}

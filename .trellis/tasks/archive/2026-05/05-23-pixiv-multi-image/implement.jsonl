@@ -1,4 +1,0 @@
-{"file": ".trellis/tasks/05-23-pixiv-multi-image/prd.md", "reason": "Complete requirements and technical approach for Pixiv multi-image translation"}
-{"file": ".trellis/tasks/05-23-pixiv-multi-image/research/pixiv-dom-structure.md", "reason": "Pixiv multi-image page DOM structure, selectors, navigation mechanism, and UI anchor positions"}
-{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "UI component conventions for creating new buttons and overlay elements"}
-{"file": ".trellis/spec/guides/browser-automation.md", "reason": "Browser automation guide for testing in Windows Chrome via CDP"}

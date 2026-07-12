@@ -1,8 +1,0 @@
-{"file": "prd.md", "reason": "验收标准参照"}
-{"file": "src/content/core/TranslatorCore.ts", "reason": "验证通用翻译流程与 adapter 流程共存逻辑"}
-{"file": "src/content/core/ui.ts", "reason": "验证按钮定位、关闭按钮、light theme"}
-{"file": "src/content/core/types.ts", "reason": "验证类型完整性"}
-{"file": "src/content/index.ts", "reason": "验证 contextmenu 监听和消息处理"}
-{"file": "src/background/index.ts", "reason": "验证 contextMenus 注册和消息转发"}
-{"file": "src/shared/messages.ts", "reason": "验证新增消息类型"}
-{"file": "public/manifest.json", "reason": "验证权限和 content script 匹配正确"}

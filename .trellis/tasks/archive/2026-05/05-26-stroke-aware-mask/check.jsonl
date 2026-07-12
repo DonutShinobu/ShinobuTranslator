@@ -1,2 +1,0 @@
-{"file": ".trellis/tasks/05-26-stroke-aware-mask/prd.md", "reason": "Acceptance criteria: verify outline detection triggers correctly, no regression on normal text, white outline residue reduced"}
-{"file": ".trellis/tasks/05-26-stroke-aware-mask/design.md", "reason": "Verify implementation matches algorithm spec: boundary pixel scan, bright threshold, outline ratio, dilation formula"}

@@ -8,6 +8,7 @@ import {
 } from "../../../src/pipeline/textlineMerge/mergePredicates";
 import type { TextRegion, TextDirection } from "../../../src/types";
 import type { InternalQuad } from "../../../src/pipeline/textlineMerge/mergePredicates";
+import { minAreaRect, quadAngle, quadDimensions } from "../../../src/pipeline/typeset/geometry";
 
 // Helper to create a minimal TextRegion for testing
 function makeRegion(overrides: Partial<TextRegion> = {}): TextRegion {
@@ -18,6 +19,41 @@ function makeRegion(overrides: Partial<TextRegion> = {}): TextRegion {
     sourceText: "テスト",
     translatedText: "",
     ...overrides,
+  };
+}
+
+function makeRotatedQuad(
+  centerX: number,
+  centerY: number,
+  width: number,
+  height: number,
+  angleDeg: number,
+): NonNullable<TextRegion["quad"]> {
+  const angle = angleDeg * Math.PI / 180;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const rotate = (x: number, y: number) => ({
+    x: centerX + x * cos - y * sin,
+    y: centerY + x * sin + y * cos,
+  });
+  return [
+    rotate(-width / 2, -height / 2),
+    rotate(width / 2, -height / 2),
+    rotate(width / 2, height / 2),
+    rotate(-width / 2, height / 2),
+  ];
+}
+
+function boxForQuad(quad: NonNullable<TextRegion["quad"]>): TextRegion["box"] {
+  const xs = quad.map((point) => point.x);
+  const ys = quad.map((point) => point.y);
+  const minX = Math.min(...xs);
+  const minY = Math.min(...ys);
+  return {
+    x: minX,
+    y: minY,
+    width: Math.max(...xs) - minX,
+    height: Math.max(...ys) - minY,
   };
 }
 
@@ -291,5 +327,95 @@ describe("mergeTextLines sourceLineGeometries", () => {
       centerX: 50,
       centerY: 60,
     });
+  });
+});
+
+describe("mergeTextLines rotated quad ordering", () => {
+  it("preserves the width axis of the rotated vertical SFX region", () => {
+    const quad: NonNullable<TextRegion["quad"]> = [
+      { x: 809, y: 184 },
+      { x: 895, y: 117 },
+      { x: 1087, y: 363 },
+      { x: 1001, y: 430 },
+    ];
+    const [merged] = mergeTextLines([
+      makeRegion({
+        id: "rotated-sfx",
+        box: { x: 809, y: 117, width: 278, height: 313 },
+        quad,
+        direction: "v",
+        sourceText: "xx1 xx1",
+      }),
+    ], 1450, 2048);
+
+    expect(merged.direction).toBe("v");
+    expect(merged.quad).toBeDefined();
+    const angleDeg = quadAngle(merged.quad!) * 180 / Math.PI;
+    const dimensions = quadDimensions(merged.quad!);
+    const expectedPointSet = minAreaRect(quad)?.box
+      .map((point) => ({ x: point.x, y: point.y }))
+      .sort((a, b) => a.x - b.x || a.y - b.y);
+    const actualPointSet = merged.quad!
+      .map((point) => ({ x: point.x, y: point.y }))
+      .sort((a, b) => a.x - b.x || a.y - b.y);
+    expect(angleDeg).toBeCloseTo(-38, 0);
+    expect(dimensions.width).toBeCloseTo(109, 0);
+    expect(dimensions.height).toBeCloseTo(312, 0);
+    expect(actualPointSet).toEqual(expectedPointSet);
+  });
+
+  it.each([
+    ["axis-aligned horizontal", "h", 120, 30, 0],
+    ["axis-aligned vertical", "v", 30, 120, 0],
+    ["clockwise horizontal", "h", 120, 30, 25],
+    ["counter-clockwise horizontal", "h", 120, 30, -25],
+    ["clockwise vertical", "v", 30, 120, 25],
+    ["counter-clockwise vertical", "v", 30, 120, -25],
+  ] as const)("keeps %s geometry unchanged", (_name, direction, width, height, angleDeg) => {
+    const quad = makeRotatedQuad(160, 160, width, height, angleDeg);
+    const [merged] = mergeTextLines([
+      makeRegion({
+        box: boxForQuad(quad),
+        quad,
+        direction,
+      }),
+    ], 400, 400);
+
+    expect(merged.direction).toBe(direction);
+    expect(merged.quad).toBeDefined();
+    expect(quadAngle(merged.quad!) * 180 / Math.PI).toBeCloseTo(angleDeg, 5);
+    expect(quadDimensions(merged.quad!).width).toBeCloseTo(width, 5);
+    expect(quadDimensions(merged.quad!).height).toBeCloseTo(height, 5);
+  });
+
+  it("uses the weighted source width axis for nearby rotated vertical lines", () => {
+    const firstQuad = makeRotatedQuad(150, 160, 24, 110, -30);
+    const secondQuad = makeRotatedQuad(173, 147, 20, 100, -26);
+    const [merged] = mergeTextLines([
+      makeRegion({
+        id: "rotated-column-a",
+        box: boxForQuad(firstQuad),
+        quad: firstQuad,
+        direction: "v",
+        sourceText: "A",
+      }),
+      makeRegion({
+        id: "rotated-column-b",
+        box: boxForQuad(secondQuad),
+        quad: secondQuad,
+        direction: "v",
+        sourceText: "B",
+      }),
+    ], 400, 400);
+
+    expect(merged).toBeDefined();
+    expect(merged.direction).toBe("v");
+    expect(merged.originalLineCount).toBe(2);
+    expect(merged.quad).toBeDefined();
+    const angleDeg = quadAngle(merged.quad!) * 180 / Math.PI;
+    const dimensions = quadDimensions(merged.quad!);
+    expect(angleDeg).toBeLessThan(-20);
+    expect(angleDeg).toBeGreaterThan(-35);
+    expect(dimensions.height).toBeGreaterThan(dimensions.width);
   });
 });

@@ -9,9 +9,97 @@
  */
 
 import type { SourceTextLineGeometry, TextRegion, TextDirection, QuadPoint, Rect } from "../../types";
-import { minAreaRect } from "../typeset/geometry";
+import { minAreaRect, type Quad } from "../typeset/geometry";
 import type { InternalQuad, MergedGroup } from "./mergePredicates";
 import { buildInternalQuad, mergeTextRegions } from "./mergePredicates";
+
+type Axis = { x: number; y: number };
+
+const axisEpsilon = 1e-6;
+
+function normalizeAxis(axis: Axis): Axis | null {
+  const norm = Math.hypot(axis.x, axis.y);
+  if (!Number.isFinite(norm) || norm <= axisEpsilon) {
+    return null;
+  }
+  return { x: axis.x / norm, y: axis.y / norm };
+}
+
+function axisDot(a: Axis, b: Axis): number {
+  return a.x * b.x + a.y * b.y;
+}
+
+function resolveReferenceWidthAxis(quads: InternalQuad[], direction: TextDirection): Axis | null {
+  const candidates = quads.flatMap((quad) => {
+    if (quad.direction !== direction) {
+      return [];
+    }
+    const axis = normalizeAxis({
+      x: quad.pts[1].x - quad.pts[0].x,
+      y: quad.pts[1].y - quad.pts[0].y,
+    });
+    if (!axis) {
+      return [];
+    }
+    const weight = Number.isFinite(quad.area) && quad.area > 0 ? quad.area : 0;
+    return [{ axis, weight }];
+  });
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  const anchor = candidates.reduce((best, candidate) => (
+    candidate.weight > best.weight ? candidate : best
+  ));
+  let sumX = 0;
+  let sumY = 0;
+  let totalWeight = 0;
+  for (const candidate of candidates) {
+    const sign = axisDot(candidate.axis, anchor.axis) < 0 ? -1 : 1;
+    const weight = candidate.weight > 0 ? candidate.weight : 1;
+    sumX += candidate.axis.x * sign * weight;
+    sumY += candidate.axis.y * sign * weight;
+    totalWeight += weight;
+  }
+  if (totalWeight <= axisEpsilon) {
+    return anchor.axis;
+  }
+  return normalizeAxis({ x: sumX / totalWeight, y: sumY / totalWeight }) ?? anchor.axis;
+}
+
+function rotateQuadStart(quad: Quad, offset: number): Quad {
+  return [
+    quad[offset % 4],
+    quad[(offset + 1) % 4],
+    quad[(offset + 2) % 4],
+    quad[(offset + 3) % 4],
+  ];
+}
+
+function alignQuadToReferenceWidthAxis(quad: Quad, referenceAxis: Axis | null): Quad {
+  if (!referenceAxis) {
+    return quad;
+  }
+
+  let best = quad;
+  let bestScore = Number.NEGATIVE_INFINITY;
+  for (let offset = 0; offset < 4; offset += 1) {
+    const candidate = rotateQuadStart(quad, offset);
+    const widthAxis = normalizeAxis({
+      x: candidate[1].x - candidate[0].x,
+      y: candidate[1].y - candidate[0].y,
+    });
+    if (!widthAxis) {
+      continue;
+    }
+    const score = axisDot(widthAxis, referenceAxis);
+    if (score > bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
+  }
+  return best;
+}
 
 // ---------------------------------------------------------------------------
 // Build merged TextRegion from a group of InternalQuads
@@ -122,7 +210,10 @@ function buildMergedRegion(group: MergedGroup, allQuads: InternalQuad[]): TextRe
   let quad: [QuadPoint, QuadPoint, QuadPoint, QuadPoint];
   const mar = minAreaRect(allPoints);
   if (mar) {
-    quad = mar.box;
+    quad = alignQuadToReferenceWidthAxis(
+      mar.box,
+      resolveReferenceWidthAxis(txtlns, majorityDir),
+    );
   } else {
     quad = [
       { x: box.x, y: box.y },

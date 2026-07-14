@@ -12,18 +12,37 @@ import type {
 } from "./onnxWorkerTypes";
 import type { RuntimeSelfCheckReport } from "./selfCheck";
 import { resolveAssetUrl } from "../shared/assetUrl";
-import { recordPerfWorkerCall } from "../shared/perfTrace";
+import { recordPerfRuntimeEvent, recordPerfWorkerCall } from "../shared/perfTrace";
+import {
+  serializePipelineError,
+  type WorkerBootstrapAttempt,
+} from "../shared/localPipelineProtocol";
 
 // ---------------------------------------------------------------------------
 // Worker singleton — created once, reused across pipeline calls.
 //
-// Prefer a Worker created directly from the extension URL so ORT's dynamic
-// backend imports stay same-origin with the copied runtime files. Some content
-// script contexts reject extension Workers, so keep the Blob Worker fallback.
+// The production offscreen document always creates the Worker directly from
+// the extension URL. Blob fallback exists only for HTTP development and
+// benchmark pages, where it is not subject to a website's production CSP.
 // ---------------------------------------------------------------------------
 
 let worker: Worker | null = null;
 let proxy: Comlink.Remote<OnnxWorkerApi> | null = null;
+let workerPromise: Promise<{ worker: Worker; proxy: Comlink.Remote<OnnxWorkerApi> }> | null = null;
+const sessionProviders = new Map<string, RuntimeProvider>();
+const sessionModels = new Map<string, string>();
+
+export class WorkerBootstrapError extends Error {
+  readonly code = "WORKER_BOOTSTRAP_FAILED";
+
+  constructor(readonly attempts: WorkerBootstrapAttempt[], cause?: unknown) {
+    const detail = attempts
+      .map((attempt) => `${attempt.mode}: ${attempt.status}${attempt.error ? ` (${attempt.error.message})` : ""}`)
+      .join(" | ");
+    super(`ONNX Worker 启动失败: ${detail || "没有可用启动方式"}`, cause === undefined ? undefined : { cause });
+    this.name = "WorkerBootstrapError";
+  }
+}
 
 function tensorByteLength(tensor: TensorTransport): number {
   return tensor.data.byteLength;
@@ -53,10 +72,17 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
 
 async function initWorker(candidate: Worker, ortPath: string, label: string): Promise<Comlink.Remote<OnnxWorkerApi>> {
   const candidateProxy = Comlink.wrap<OnnxWorkerApi>(candidate);
+  let workerErrorListener: ((event: ErrorEvent) => void) | null = null;
   const workerError = new Promise<never>((_resolve, reject) => {
-    candidate.addEventListener("error", (event) => {
-      reject(event.error ?? new Error(`${label} failed to load`));
-    }, { once: true });
+    workerErrorListener = (event: ErrorEvent) => {
+      const detail = [
+        event.message || `${label} failed to load`,
+        event.filename ? `source=${event.filename}` : "",
+        event.lineno ? `line=${event.lineno}:${event.colno ?? 0}` : "",
+      ].filter(Boolean).join(" | ");
+      reject(new Error(detail, event.error === undefined ? undefined : { cause: event.error }));
+    };
+    candidate.addEventListener("error", workerErrorListener, { once: true });
   });
   try {
     await withTimeout(Promise.race([candidateProxy.init(ortPath), workerError]), 10000, `${label} init`);
@@ -64,23 +90,83 @@ async function initWorker(candidate: Worker, ortPath: string, label: string): Pr
   } catch (error) {
     candidate.terminate();
     throw error;
+  } finally {
+    if (workerErrorListener) candidate.removeEventListener("error", workerErrorListener);
   }
 }
 
-async function createBlobWorker(scriptUrl: string): Promise<Worker> {
+async function initBlobWorker(scriptUrl: string, ortPath: string): Promise<{ worker: Worker; proxy: Comlink.Remote<OnnxWorkerApi> }> {
   const response = await fetch(scriptUrl);
+  if (!response.ok) {
+    throw new Error(`Worker 脚本请求失败: HTTP ${response.status} ${response.statusText}`);
+  }
   const scriptText = await response.text();
+  if (!scriptText.trim()) {
+    throw new Error("Worker 脚本响应为空");
+  }
   const blob = new Blob([scriptText], { type: "application/javascript" });
   const blobUrl = URL.createObjectURL(blob);
   try {
-    return new Worker(blobUrl, { type: "module" });
+    const candidate = new Worker(blobUrl, { type: "module" });
+    const candidateProxy = await initWorker(candidate, ortPath, "blob HTTP Worker");
+    return { worker: candidate, proxy: candidateProxy };
   } finally {
+    // Keep the URL alive until the module Worker has completed initialization.
     URL.revokeObjectURL(blobUrl);
   }
 }
 
-async function ensureWorker(): Promise<{ worker: Worker; proxy: Comlink.Remote<OnnxWorkerApi> }> {
-  if (worker && proxy) return { worker, proxy };
+async function runBootstrapAttempt(
+  attempts: WorkerBootstrapAttempt[],
+  mode: WorkerBootstrapAttempt["mode"],
+  scriptUrl: string,
+  bootstrap: () => Promise<{ worker: Worker; proxy: Comlink.Remote<OnnxWorkerApi> }>,
+): Promise<{ worker: Worker; proxy: Comlink.Remote<OnnxWorkerApi> }> {
+  const startedAt = performance.now();
+  const startedAtIso = new Date().toISOString();
+  recordPerfRuntimeEvent({
+    kind: "worker-bootstrap-attempt",
+    message: `开始 ONNX Worker 启动尝试: ${mode}`,
+    data: { mode, scriptUrl },
+  });
+  try {
+    const result = await bootstrap();
+    const attempt: WorkerBootstrapAttempt = {
+      mode,
+      scriptUrl,
+      startedAt: startedAtIso,
+      durationMs: performance.now() - startedAt,
+      status: "success",
+    };
+    attempts.push(attempt);
+    recordPerfRuntimeEvent({
+      kind: "worker-bootstrap-complete",
+      message: `ONNX Worker 启动成功: ${mode}`,
+      data: { attempt },
+    });
+    return result;
+  } catch (error) {
+    const attempt: WorkerBootstrapAttempt = {
+      mode,
+      scriptUrl,
+      startedAt: startedAtIso,
+      durationMs: performance.now() - startedAt,
+      status: "failed",
+      error: serializePipelineError(error, "WORKER_BOOTSTRAP_FAILED"),
+    };
+    attempts.push(attempt);
+    recordPerfRuntimeEvent({
+      kind: "worker-bootstrap-attempt",
+      message: `ONNX Worker 启动失败: ${mode}`,
+      data: { attempt },
+      error,
+    });
+    throw error;
+  }
+}
+
+async function bootstrapWorker(): Promise<{ worker: Worker; proxy: Comlink.Remote<OnnxWorkerApi> }> {
+  const attempts: WorkerBootstrapAttempt[] = [];
 
   const chromeApi = (globalThis as typeof globalThis & {
     chrome?: { runtime?: { getURL?: (path: string) => string } };
@@ -90,23 +176,56 @@ async function ensureWorker(): Promise<{ worker: Worker; proxy: Comlink.Remote<O
 
   if (scriptUrl.startsWith("chrome-extension://")) {
     try {
-      const directWorker = new Worker(scriptUrl, { type: "module" });
-      const directProxy = await initWorker(directWorker, ortPath, "extension Worker");
-      worker = directWorker;
-      proxy = directProxy;
-      return { worker, proxy };
-    } catch {
-      // Fall through to Blob Worker for content script contexts that reject
-      // chrome-extension:// Worker scripts.
+      return await runBootstrapAttempt(attempts, "direct-extension", scriptUrl, async () => {
+        const candidate = new Worker(scriptUrl, { type: "module" });
+        const candidateProxy = await initWorker(candidate, ortPath, "direct extension Worker");
+        return { worker: candidate, proxy: candidateProxy };
+      });
+    } catch (error) {
+      // Production extension contexts intentionally have no Blob fallback.
+      throw new WorkerBootstrapError(attempts, error);
     }
   }
 
-  const blobWorker = await createBlobWorker(scriptUrl);
-  const blobProxy = await initWorker(blobWorker, ortPath, "blob Worker");
-  worker = blobWorker;
-  proxy = blobProxy;
+  if (/^https?:\/\//i.test(scriptUrl)) {
+    let directError: unknown = null;
+    try {
+      return await runBootstrapAttempt(attempts, "direct-http", scriptUrl, async () => {
+        const candidate = new Worker(scriptUrl, { type: "module" });
+        const candidateProxy = await initWorker(candidate, ortPath, "direct HTTP Worker");
+        return { worker: candidate, proxy: candidateProxy };
+      });
+    } catch (error) {
+      directError = error;
+    }
+    try {
+      return await runBootstrapAttempt(
+        attempts,
+        "blob-http",
+        scriptUrl,
+        () => initBlobWorker(scriptUrl, ortPath),
+      );
+    } catch (error) {
+      throw new WorkerBootstrapError(attempts, new AggregateError([directError, error], "HTTP Worker 启动方式均失败"));
+    }
+  }
 
-  return { worker, proxy };
+  throw new WorkerBootstrapError(attempts, new Error(`不支持的 Worker 脚本 URL: ${scriptUrl}`));
+}
+
+async function ensureWorker(): Promise<{ worker: Worker; proxy: Comlink.Remote<OnnxWorkerApi> }> {
+  if (worker && proxy) return { worker, proxy };
+  if (workerPromise) return workerPromise;
+  workerPromise = bootstrapWorker()
+    .then((result) => {
+      worker = result.worker;
+      proxy = result.proxy;
+      return result;
+    })
+    .finally(() => {
+      workerPromise = null;
+    });
+  return workerPromise;
 }
 
 function getProxy(): Promise<Comlink.Remote<OnnxWorkerApi>> {
@@ -131,9 +250,15 @@ export async function createSession(
 ): Promise<WorkerSessionHandle> {
   const startedAt = performance.now();
   let handle: WorkerSessionHandle | null = null;
+  let failure: unknown = null;
   try {
     handle = await (await getProxy()).createSession(modelKey, modelUrl, preferred, sessionOptions);
+    sessionProviders.set(handle.sessionId, handle.provider);
+    sessionModels.set(handle.sessionId, modelKey);
     return handle;
+  } catch (error) {
+    failure = error;
+    throw error;
   } finally {
     recordPerfWorkerCall({
       kind: "createSession",
@@ -141,6 +266,7 @@ export async function createSession(
       provider: handle?.provider,
       startedAt,
       durationMs: performance.now() - startedAt,
+      error: failure instanceof Error ? failure.message : failure === null ? undefined : String(failure),
     });
   }
 }
@@ -151,19 +277,42 @@ export async function runInference(
 ): Promise<InferenceResult> {
   const startedAt = performance.now();
   let result: InferenceResult | null = null;
+  let failure: unknown = null;
   try {
     result = await (await getProxy()).runInference(sessionId, feeds);
     // Worker 推理失败时不抛异常，通过 InferenceResult.error 返回错误信息。
     // 调用者需要自行检查 error 字段。
+    if (result.error) {
+      failure = new Error(result.error);
+      recordPerfRuntimeEvent({
+        kind: "inference-failure",
+        model: sessionModels.get(sessionId) ?? sessionId,
+        provider: sessionProviders.get(sessionId),
+        message: `ONNX 推理失败: ${sessionModels.get(sessionId) ?? sessionId}`,
+        error: failure,
+      });
+    }
     return result;
+  } catch (error) {
+    failure = error;
+    recordPerfRuntimeEvent({
+      kind: "inference-failure",
+      model: sessionModels.get(sessionId) ?? sessionId,
+      provider: sessionProviders.get(sessionId),
+      message: `ONNX 推理调用异常: ${sessionModels.get(sessionId) ?? sessionId}`,
+      error,
+    });
+    throw error;
   } finally {
     recordPerfWorkerCall({
       kind: "runInference",
-      model: sessionId,
+      model: sessionModels.get(sessionId) ?? sessionId,
+      provider: sessionProviders.get(sessionId),
       inputBytes: tensorRecordByteLength(feeds),
       outputBytes: result ? tensorRecordByteLength(result.outputs) : undefined,
       startedAt,
       durationMs: performance.now() - startedAt,
+      error: failure instanceof Error ? failure.message : failure === null ? undefined : String(failure),
     });
   }
 }
@@ -209,27 +358,59 @@ export async function runDetectWithGpuPreprocess(
   const proxy = await getProxy();
   const startedAt = performance.now();
   let result: GpuDetectResult | null = null;
+  let failure: unknown = null;
   try {
     result = await proxy.runDetectWithGpuPreprocess(
       sessionId,
       Comlink.transfer(imageSource, [imageSource])
     );
     return result;
+  } catch (error) {
+    failure = error;
+    recordPerfRuntimeEvent({
+      kind: "inference-failure",
+      model: sessionModels.get(sessionId) ?? sessionId,
+      provider: sessionProviders.get(sessionId),
+      message: `GPU 检测推理调用异常: ${sessionModels.get(sessionId) ?? sessionId}`,
+      error,
+    });
+    throw error;
   } finally {
     recordPerfWorkerCall({
       kind: "runDetectWithGpuPreprocess",
-      model: sessionId,
+      model: sessionModels.get(sessionId) ?? sessionId,
+      provider: sessionProviders.get(sessionId),
       outputBytes: result ? gpuDetectOutputBytes(result) : undefined,
       startedAt,
       durationMs: performance.now() - startedAt,
+      error: failure instanceof Error ? failure.message : failure === null ? undefined : String(failure),
     });
   }
 }
 
 export async function disposeSession(sessionId: string): Promise<void> {
   await (await getProxy()).disposeSession(sessionId);
+  sessionProviders.delete(sessionId);
+  sessionModels.delete(sessionId);
 }
 
 export async function disposeAll(): Promise<void> {
-  await (await getProxy()).disposeAll();
+  const currentWorker = worker;
+  const currentProxy = proxy;
+  worker = null;
+  proxy = null;
+  workerPromise = null;
+  sessionProviders.clear();
+  sessionModels.clear();
+  if (!currentWorker || !currentProxy) return;
+  try {
+    await currentProxy.disposeAll();
+  } finally {
+    try {
+      currentProxy[Comlink.releaseProxy]();
+    } catch {
+      // Older Comlink proxies may not expose releaseProxy.
+    }
+    currentWorker.terminate();
+  }
 }

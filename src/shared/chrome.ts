@@ -26,6 +26,10 @@ type ChromeCookie = {
 };
 
 export type ChromeMessageSender = {
+  documentId?: string;
+  documentUrl?: string;
+  frameId?: number;
+  origin?: string;
   tab?: {
     id?: number;
     windowId?: number;
@@ -33,13 +37,40 @@ export type ChromeMessageSender = {
   };
 };
 
-type ChromeLike = {
+export type ChromePort = {
+  name: string;
+  sender?: ChromeMessageSender;
+  postMessage: (message: unknown) => void;
+  disconnect: () => void;
+  onMessage: {
+    addListener: (listener: (message: unknown, port: ChromePort) => void) => void;
+    removeListener?: (listener: (message: unknown, port: ChromePort) => void) => void;
+  };
+  onDisconnect: {
+    addListener: (listener: (port: ChromePort) => void) => void;
+    removeListener?: (listener: (port: ChromePort) => void) => void;
+  };
+};
+
+export type ChromeLike = {
   runtime?: {
     getManifest?: () => {
       version?: string;
     };
     getURL?: (path: string) => string;
+    connect?: (connectInfo?: { name?: string }) => ChromePort;
+    getContexts?: (filter: {
+      contextTypes?: Array<'OFFSCREEN_DOCUMENT' | 'BACKGROUND' | 'TAB' | 'POPUP'>;
+      documentUrls?: string[];
+    }) => Promise<Array<{
+      contextType: string;
+      documentId?: string;
+      documentUrl?: string;
+    }>>;
     sendMessage?: (message: unknown, callback?: (response: unknown) => void) => void;
+    onConnect?: {
+      addListener: (listener: (port: ChromePort) => void) => void;
+    };
     onMessage?: {
       addListener: (
         listener: (
@@ -52,6 +83,14 @@ type ChromeLike = {
     lastError?: {
       message?: string;
     };
+  };
+  offscreen?: {
+    createDocument?: (options: {
+      url: string;
+      reasons: Array<'WORKERS'>;
+      justification: string;
+    }) => Promise<void>;
+    closeDocument?: () => Promise<void>;
   };
   storage?: {
     local?: {

@@ -6,7 +6,7 @@ import {
   sanitizeDiagnosticUrl,
   toDiagnosticError,
 } from '../shared/diagnosticLog';
-import { emitDiagnosticLog } from '../shared/diagnosticLogClient';
+import { emitDiagnosticLog, getDiagnosticExecutionContext } from '../shared/diagnosticLogClient';
 
 type LlmTranslateOptions = {
   provider: LlmProvider;
@@ -203,7 +203,7 @@ async function requestChatCompletion(
     runId: options.diagnosticRunId,
     level: 'info',
     category: 'llm.api',
-    source: { context: 'content', module: 'translators/llm.ts' },
+    source: { context: getDiagnosticExecutionContext(), module: 'translators/llm.ts' },
     message: `${options.provider} LLM 请求开始`,
     data: {
       ...baseLogData,
@@ -229,7 +229,7 @@ async function requestChatCompletion(
       runId: options.diagnosticRunId,
       level: 'info',
       category: 'llm.api',
-      source: { context: 'content', module: 'translators/llm.ts' },
+      source: { context: getDiagnosticExecutionContext(), module: 'translators/llm.ts' },
       message: `${options.provider} LLM 请求完成`,
       data: {
         ...baseLogData,
@@ -245,7 +245,7 @@ async function requestChatCompletion(
       runId: options.diagnosticRunId,
       level: 'error',
       category: 'llm.api',
-      source: { context: 'content', module: 'translators/llm.ts' },
+      source: { context: getDiagnosticExecutionContext(), module: 'translators/llm.ts' },
       message: `${options.provider} LLM 代理请求失败：${classification.reason}`,
       data: {
         ...baseLogData,

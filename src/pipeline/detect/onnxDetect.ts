@@ -25,6 +25,8 @@ export type CtdTextLineContour = {
 export type DetectOutput = {
   regions: TextRegion[];
   rawMaskCanvas: PipelineCanvas | null;
+  engine?: "onnx" | "tesseract" | "heuristic";
+  fallbackReason?: string;
   actualProvider?: RuntimeProvider;
   actualWebnnDeviceType?: WebNnDeviceType;
 };

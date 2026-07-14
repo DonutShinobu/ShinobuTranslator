@@ -41,6 +41,7 @@ describe('buildStageTimingCardData', () => {
     expect(card.stages[1]?.fallbackText).toBe('有回退');
     expect(card.runtimes.map((runtime) => [runtime.label, runtime.providerText, runtime.status])).toEqual([
       ['检测', 'webgpu', 'enabled'],
+      ['气泡', '未知', 'unknown'],
       ['OCR', 'cpu(wasm)', 'enabled'],
       ['去字', '未知', 'unknown'],
     ]);

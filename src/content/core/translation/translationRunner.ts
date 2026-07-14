@@ -12,13 +12,13 @@ import {
   sanitizePipelineConfig,
   toDiagnosticError,
 } from '../../../shared/diagnosticLog';
-import { createDiagnosticRunId, emitDiagnosticLog } from '../../../shared/diagnosticLogClient';
+import { createDiagnosticRunId, emitDiagnosticLog, emitDiagnosticLogAsync } from '../../../shared/diagnosticLogClient';
+import type { LocalPipelineArtifactSummary } from '../../../shared/localPipelineProtocol';
 import { sendRuntimeMessage } from '../../../shared/messages';
 import type { RuntimeErrorDetail } from '../../../shared/messages';
 import type {
   ErrorDetailCardData,
   PhotoState,
-  PipelineArtifacts,
   PipelineProgress,
   ProgressJankEntry,
   ProgressJankReport,
@@ -27,13 +27,13 @@ import {
   base64ToBlob,
   blobToBase64,
   buildStageTimingCardData,
-  canvasToBlob,
   formatElapsedText,
   getStageLabel,
   inferFileExtension,
   toErrorMessage,
 } from '../utils';
 import { ProgressJankMonitor } from '../progressJank';
+import { runLocalPipeline, type RunLocalPipeline } from './localPipelineClient';
 
 const loggedProgressJankReports = new Set<string>();
 
@@ -87,7 +87,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-function getPipelineArtifactsFromError(error: unknown): PipelineArtifacts | null {
+function getPipelineArtifactsFromError(error: unknown): LocalPipelineArtifactSummary | null {
   if (!isRecord(error) || !('artifacts' in error)) {
     return null;
   }
@@ -95,7 +95,7 @@ function getPipelineArtifactsFromError(error: unknown): PipelineArtifacts | null
   if (!isRecord(artifacts) || !Array.isArray(artifacts.stageTimings)) {
     return null;
   }
-  return artifacts as PipelineArtifacts;
+  return artifacts as LocalPipelineArtifactSummary;
 }
 
 function toFileDiagnosticData(file: File): Record<string, unknown> {
@@ -108,21 +108,18 @@ function toFileDiagnosticData(file: File): Record<string, unknown> {
 }
 
 function toPipelineArtifactsDiagnosticData(
-  artifacts: PipelineArtifacts,
+  artifacts: LocalPipelineArtifactSummary,
   progressJank: ProgressJankReport | null,
 ): Record<string, unknown> {
   return {
-    image: {
-      width: artifacts.original.naturalWidth,
-      height: artifacts.original.naturalHeight,
-    },
-    detectedRegionCount: artifacts.detectedRegions.length,
+    image: artifacts.image,
+    detectedRegionCount: artifacts.detectedRegionCount,
     stageTimings: artifacts.stageTimings,
     runtimeStages: artifacts.runtimeStages,
     translationDebug: artifacts.translationDebug,
     ocrDebug: artifacts.ocrDebug,
     progressJank,
-    typesetDebug: artifacts.typesetDebugLog,
+    typesetDebug: artifacts.typesetDebug,
   };
 }
 
@@ -147,30 +144,20 @@ export type PipelineRunFileOptions = {
   diagnosticRunId?: string;
 };
 
-let runPipelineLoader: Promise<typeof import('../../../pipeline/orchestrator')> | null = null;
-
-async function getRunPipeline(): Promise<typeof import('../../../pipeline/orchestrator')['runPipeline']> {
-  if (!runPipelineLoader) {
-    runPipelineLoader = import('../../../pipeline/orchestrator');
-  }
-  const module = await runPipelineLoader;
-  return module.runPipeline;
-}
-
 export type TranslationRunnerDependencies = {
   sendMessage?: typeof sendRuntimeMessage;
-  loadPipeline?: typeof getRunPipeline;
+  runLocalPipeline?: RunLocalPipeline;
   urlApi?: Pick<typeof URL, 'createObjectURL' | 'revokeObjectURL'>;
 };
 
 export class TranslationRunner {
   private readonly sendMessage: typeof sendRuntimeMessage;
-  private readonly loadPipeline: typeof getRunPipeline;
+  private readonly runLocalPipeline: RunLocalPipeline;
   private readonly urlApi: Pick<typeof URL, 'createObjectURL' | 'revokeObjectURL'>;
 
   constructor(dependencies: TranslationRunnerDependencies = {}) {
     this.sendMessage = dependencies.sendMessage ?? sendRuntimeMessage;
-    this.loadPipeline = dependencies.loadPipeline ?? getRunPipeline;
+    this.runLocalPipeline = dependencies.runLocalPipeline ?? runLocalPipeline;
     this.urlApi = dependencies.urlApi ?? URL;
   }
 
@@ -219,7 +206,7 @@ export class TranslationRunner {
     }> {
       const startedAt = performance.now();
       if (diagnosticRunId) {
-        emitDiagnosticLog({
+        await emitDiagnosticLogAsync({
           runId: diagnosticRunId,
           level: 'info',
           category: 'image.io',
@@ -395,7 +382,7 @@ export class TranslationRunner {
         pipelineConfig.diagnosticRunId = diagnosticRunId;
       }
       if (diagnosticRunId) {
-        emitDiagnosticLog({
+        await emitDiagnosticLogAsync({
           runId: diagnosticRunId,
           level: 'info',
           category: 'app.config',
@@ -417,7 +404,7 @@ export class TranslationRunner {
           await this.runNanoBananaImageTranslateFromFile({ ...options, diagnosticRunId });
           progressJank = finishProgressJankMonitor(jankMonitor ?? null, diagnosticRunId);
           if (diagnosticRunId) {
-            emitDiagnosticLog({
+            await emitDiagnosticLogAsync({
               runId: diagnosticRunId,
               level: 'info',
               category: 'pipeline.stage',
@@ -433,8 +420,7 @@ export class TranslationRunner {
           return;
         }
 
-        const runPipeline = await this.loadPipeline();
-        const artifacts = await runPipeline(file, pipelineConfig, (progress: PipelineProgress) => {
+        const localResult = await this.runLocalPipeline(file, pipelineConfig, (progress: PipelineProgress) => {
           if (diagnosticRunId) {
             emitDiagnosticLog({
               runId: diagnosticRunId,
@@ -451,26 +437,15 @@ export class TranslationRunner {
           this.updatePipelineProgress(state, progress, onProgress, jankMonitor);
         });
 
-        const finalizeT0 = performance.now();
-        const translatedBlob = jankMonitor
-          ? await jankMonitor.measureAsync('canvasToBlob:result', () => canvasToBlob(artifacts.resultCanvas as HTMLCanvasElement))
-          : await canvasToBlob(artifacts.resultCanvas as HTMLCanvasElement);
-        artifacts.stageTimings.push({
-          stage: 'finalize',
-          label: '生成结果图片',
-          durationMs: performance.now() - finalizeT0,
-        });
-        const translatedUrl = this.urlApi.createObjectURL(translatedBlob);
+        const artifacts = localResult.summary;
+        const translatedUrl = this.urlApi.createObjectURL(localResult.result);
         if (state.translatedUrl) this.urlApi.revokeObjectURL(state.translatedUrl);
         if (state.debugOriginalUrl) {
           this.urlApi.revokeObjectURL(state.debugOriginalUrl);
           state.debugOriginalUrl = undefined;
         }
-        if (runSettings.showTypesetDebug && artifacts.debugOriginalCanvas) {
-          const debugBlob = jankMonitor
-            ? await jankMonitor.measureAsync('canvasToBlob:debug-original', () => canvasToBlob(artifacts.debugOriginalCanvas as HTMLCanvasElement))
-            : await canvasToBlob(artifacts.debugOriginalCanvas as HTMLCanvasElement);
-          state.debugOriginalUrl = this.urlApi.createObjectURL(debugBlob);
+        if (runSettings.showTypesetDebug && localResult.debug) {
+          state.debugOriginalUrl = this.urlApi.createObjectURL(localResult.debug);
         }
         progressJank = finishProgressJankMonitor(jankMonitor ?? null, diagnosticRunId);
         state.debugLogData = undefined;
@@ -483,7 +458,7 @@ export class TranslationRunner {
             message: '本地 pipeline artifacts 已汇总',
             data: toPipelineArtifactsDiagnosticData(artifacts, progressJank),
           });
-          emitDiagnosticLog({
+          await emitDiagnosticLogAsync({
             runId: diagnosticRunId,
             level: 'info',
             category: 'pipeline.stage',
@@ -532,7 +507,7 @@ export class TranslationRunner {
         if (diagnosticRunId) {
           const artifacts = getPipelineArtifactsFromError(error);
           const diagnosticError = toDiagnosticError(error);
-          emitDiagnosticLog({
+          await emitDiagnosticLogAsync({
             runId: diagnosticRunId,
             level: 'error',
             category: 'error',

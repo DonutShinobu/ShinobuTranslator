@@ -10,6 +10,7 @@ export type DiagnosticLogCategory =
   | 'pipeline.stage'
   | 'model.runtime'
   | 'pipeline.detect'
+  | 'pipeline.bubble'
   | 'pipeline.ocr'
   | 'pipeline.inpaint'
   | 'pipeline.typeset'
@@ -19,7 +20,7 @@ export type DiagnosticLogCategory =
   | 'ui.perf'
   | 'error';
 
-export type DiagnosticLogContext = 'popup' | 'content' | 'background' | 'worker';
+export type DiagnosticLogContext = 'popup' | 'content' | 'background' | 'offscreen' | 'worker';
 
 export type DiagnosticLogSource = {
   context: DiagnosticLogContext;
@@ -28,6 +29,7 @@ export type DiagnosticLogSource = {
 
 export type DiagnosticLogError = {
   name?: string;
+  code?: string;
   message: string;
   stack?: string;
   cause?: unknown;
@@ -149,12 +151,7 @@ export function normalizeDiagnosticTimestamp(timestamp: unknown, fallback = new 
 
 export function toDiagnosticError(error: unknown): DiagnosticLogError {
   if (error instanceof Error) {
-    return redactDiagnosticValue({
-      name: error.name,
-      message: error.message,
-      stack: error.stack,
-      cause: error.cause,
-    }) as DiagnosticLogError;
+    return redactDiagnosticValue(error) as DiagnosticLogError;
   }
   return {
     message: String(redactDiagnosticValue(error)),
@@ -185,7 +182,16 @@ export function createDiagnosticEvent(input: DiagnosticLogEventInput, defaultSes
   return event;
 }
 
-export function redactDiagnosticValue(value: unknown, keyHint = '', depth = 0): unknown {
+type DiagnosticRedactionState = {
+  seen: WeakSet<object>;
+};
+
+function redactDiagnosticValueInternal(
+  value: unknown,
+  keyHint: string,
+  depth: number,
+  state: DiagnosticRedactionState,
+): unknown {
   if (keyHint && secretKeyPattern.test(keyHint)) {
     return '[REDACTED]';
   }
@@ -196,14 +202,33 @@ export function redactDiagnosticValue(value: unknown, keyHint = '', depth = 0): 
   if (typeof value === 'number' || typeof value === 'boolean' || value === null || value === undefined) {
     return value;
   }
+  if ((typeof value === 'object' && value !== null) || typeof value === 'function') {
+    const objectValue = value as object;
+    if (state.seen.has(objectValue)) {
+      return '[CIRCULAR]';
+    }
+    state.seen.add(objectValue);
+  }
   if (value instanceof Error) {
-    return toDiagnosticError(value);
+    if (depth >= 8) return '[TRUNCATED_DEPTH]';
+    const extended = value as Error & { code?: unknown; stage?: unknown };
+    const out: DiagnosticLogError & { stage?: string } = {
+      name: value.name,
+      message: truncateDiagnosticText(redactString(value.message)),
+    };
+    if (typeof extended.code === 'string') out.code = truncateDiagnosticText(redactString(extended.code));
+    if (typeof extended.stage === 'string') out.stage = truncateDiagnosticText(redactString(extended.stage));
+    if (typeof value.stack === 'string') out.stack = truncateDiagnosticText(redactString(value.stack));
+    if (value.cause !== undefined) {
+      out.cause = redactDiagnosticValueInternal(value.cause, 'cause', depth + 1, state);
+    }
+    return out;
   }
   if (Array.isArray(value)) {
     if (depth >= 8) {
       return '[TRUNCATED_DEPTH]';
     }
-    const sliced = value.slice(0, maxArrayItems).map((item) => redactDiagnosticValue(item, keyHint, depth + 1));
+    const sliced = value.slice(0, maxArrayItems).map((item) => redactDiagnosticValueInternal(item, keyHint, depth + 1, state));
     if (value.length > maxArrayItems) {
       sliced.push(`[TRUNCATED_ARRAY:${value.length - maxArrayItems}]`);
     }
@@ -220,12 +245,16 @@ export function redactDiagnosticValue(value: unknown, keyHint = '', depth = 0): 
         out.__truncatedKeys = Object.keys(value as Record<string, unknown>).length - maxObjectKeys;
         break;
       }
-      out[key] = redactDiagnosticValue(nested, key, depth + 1);
+      out[key] = redactDiagnosticValueInternal(nested, key, depth + 1, state);
       index += 1;
     }
     return out;
   }
   return String(value);
+}
+
+export function redactDiagnosticValue(value: unknown, keyHint = '', depth = 0): unknown {
+  return redactDiagnosticValueInternal(value, keyHint, depth, { seen: new WeakSet<object>() });
 }
 
 export function truncateDiagnosticText(text: string, limit = longTextLimit): string {

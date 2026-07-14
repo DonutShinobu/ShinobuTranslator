@@ -81,4 +81,65 @@ describe('TranslationRunner', () => {
     const failureRunner = new TranslationRunner({ sendMessage: failureSender });
     await expect(failureRunner.downloadImageFile('https://example.com/image.png')).rejects.toThrow('upstream failed');
   });
+
+  it('runs the production local pipeline through the injected offscreen client', async () => {
+    const resultBlob = new Blob(['translated'], { type: 'image/png' });
+    const runLocalPipeline = vi.fn(async (_file, _config, onProgress) => {
+      onProgress({ stage: 'detect', detail: '文本检测' });
+      return {
+        result: resultBlob,
+        summary: {
+          image: { width: 100, height: 200 },
+          detectedRegionCount: 2,
+          stageTimings: [{ stage: 'detect', label: '文本检测', durationMs: 10 }],
+          runtimeStages: [
+            { model: 'detector' as const, enabled: true, engine: 'onnx' as const, provider: 'wasm' as const, detail: 'ok' },
+            { model: 'bubble' as const, enabled: true, provider: 'wasm' as const, detail: 'ok' },
+            { model: 'ocr' as const, enabled: true, provider: 'wasm' as const, detail: 'ok' },
+            { model: 'inpaint' as const, enabled: true, provider: 'wasm' as const, detail: 'ok' },
+          ],
+          translationDebug: null,
+          ocrDebug: null,
+          typesetDebug: null,
+        },
+      };
+    });
+    const createObjectURL = vi.fn(() => 'blob:translated');
+    const revokeObjectURL = vi.fn();
+    const runner = new TranslationRunner({
+      runLocalPipeline,
+      urlApi: { createObjectURL, revokeObjectURL },
+    });
+    const state = createInitialPhotoState('https://example.com/image.png');
+    const settings = { ...defaultExtensionSettings, processMode: 'original' as const };
+
+    await runner.runPipelineFromFile({
+      state,
+      file: new File([new Uint8Array([1])], 'source.png', { type: 'image/png' }),
+      runSettings: {
+        settings,
+        showElapsedTime: true,
+        showStageTimingDetails: true,
+        showRuntimeStages: true,
+        stageTimingCardExpanded: false,
+        showTypesetDebug: false,
+        enableDebugLog: false,
+      },
+      runStartAt: performance.now(),
+      includeElapsedText: true,
+      onProgress: vi.fn(),
+    });
+
+    expect(runLocalPipeline).toHaveBeenCalledTimes(1);
+    expect(createObjectURL).toHaveBeenCalledWith(resultBlob);
+    expect(state).toMatchObject({
+      status: 'translated',
+      mode: 'translated',
+      translatedUrl: 'blob:translated',
+      stageText: '',
+    });
+    expect(state.stageTimingCard?.runtimes.map((runtime) => runtime.model)).toEqual([
+      'detector', 'bubble', 'ocr', 'inpaint',
+    ]);
+  });
 });

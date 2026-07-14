@@ -77,8 +77,9 @@ export type PipelineConfig = {
 };
 
 export type RuntimeStageStatus = {
-  model: "detector" | "ocr" | "inpaint";
+  model: "detector" | "bubble" | "ocr" | "inpaint";
   enabled: boolean;
+  engine?: "onnx" | "tesseract" | "heuristic";
   provider?: "webnn" | "webgpu" | "wasm" | "cuda" | "cpu";
   webnnDeviceType?: "gpu" | "cpu" | "default";
   detail: string;

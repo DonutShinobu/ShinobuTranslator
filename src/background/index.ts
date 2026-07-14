@@ -38,6 +38,7 @@ import {
 } from './providers/providerService';
 import { routeBackgroundMessage } from './messages/router';
 import type { BackgroundServices } from './messages/router';
+import { registerOffscreenPipelineBroker } from './localPipeline/offscreenBroker';
 
 const services: BackgroundServices = {
   settings: {
@@ -77,6 +78,7 @@ function initializeBackground(): void {
   }
 
   void ensurePximgRefererRule();
+  registerOffscreenPipelineBroker(chromeApi);
 
   chromeApi.runtime.onMessage.addListener((message: unknown, sender: ChromeMessageSender, sendResponse: (response: unknown) => void) => {
     if (!isRuntimeMessage(message)) {

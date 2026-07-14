@@ -186,12 +186,18 @@ export type ProgressJankMainThreadTask = {
   stage?: string;
 };
 
-export type ProgressJankWorkerHeartbeatMode = 'worker-raf' | 'worker-timer' | 'unavailable' | 'error';
+export type ProgressJankWorkerHeartbeatMode = 'worker-raf' | 'worker-timer' | 'blocked-by-csp' | 'unavailable' | 'error';
+
+export type ProgressJankWorkerHeartbeatCsp = {
+  effectiveDirective: string;
+  blockedURI: string;
+};
 
 export type ProgressJankWorkerHeartbeatStats = ProgressJankFrameStats & {
   available: boolean;
   mode: ProgressJankWorkerHeartbeatMode;
   error?: string;
+  csp?: ProgressJankWorkerHeartbeatCsp;
 };
 
 export type ProgressJankObserverSupport = {
@@ -200,6 +206,7 @@ export type ProgressJankObserverSupport = {
   workerHeartbeat: boolean;
   workerHeartbeatMode: ProgressJankWorkerHeartbeatMode;
   workerHeartbeatError?: string;
+  workerHeartbeatCsp?: ProgressJankWorkerHeartbeatCsp;
 };
 
 export type ProgressJankLongFrameScript = {

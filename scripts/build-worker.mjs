@@ -4,11 +4,9 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Separate build for the ONNX Worker.
-// Content scripts cannot create Workers pointing to chrome-extension:// URLs
-// (same-origin policy), so we use a blob URL approach. This requires the
-// Worker script to be self-contained (no external chunk imports), which is
-// achieved by building it as a single-entry Rollup bundle.
+// Separate build for the ONNX Worker. The production offscreen document loads
+// this self-contained module directly from chrome-extension://. HTTP benchmark
+// builds may still use the development-only Blob fallback.
 await build({
   root: resolve(__dirname, '..'),
   publicDir: false,

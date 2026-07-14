@@ -44,7 +44,11 @@ const requiredReleaseArtifacts = [
   'popup.js',
   'background.js',
   'content.js',
-  'chunks/orchestrator.js',
+  'offscreen.html',
+  'offscreen.js',
+  'chunks/messages.js',
+  'chunks/localPipelineProtocol.js',
+  'chunks/perfTrace.js',
   'chunks/onnxWorkerBridge.js',
   'onnxWorker.js',
 ];
@@ -92,6 +96,24 @@ const workerSource = readFileSync(join(distDir, 'onnxWorker.js'), 'utf8');
 for (const token of forbiddenLegacyWorkerTokens) {
   if (workerSource.includes(token)) {
     throw new Error(`Release Worker contains forbidden legacy OCR token ${token}`);
+  }
+}
+
+const manifest = JSON.parse(readFileSync(join(distDir, 'manifest.json'), 'utf8'));
+if (manifest.minimum_chrome_version !== '109') {
+  throw new Error('Release manifest must require Chromium 109 for the Offscreen API.');
+}
+if (!Array.isArray(manifest.permissions) || !manifest.permissions.includes('offscreen')) {
+  throw new Error('Release manifest is missing the offscreen permission.');
+}
+if (!String(manifest.content_security_policy?.extension_pages ?? '').includes("worker-src 'self'")) {
+  throw new Error("Release manifest must explicitly restrict worker-src to 'self'.");
+}
+const exposedResources = (manifest.web_accessible_resources ?? [])
+  .flatMap((entry) => Array.isArray(entry.resources) ? entry.resources : []);
+for (const privateArtifact of ['models/*', 'ort/*', 'onnxWorker.js', 'chunks/*', 'chunks/onnxWorkerBridge.js']) {
+  if (exposedResources.includes(privateArtifact)) {
+    throw new Error(`Release manifest exposes private offscreen runtime artifact: ${privateArtifact}`);
   }
 }
 

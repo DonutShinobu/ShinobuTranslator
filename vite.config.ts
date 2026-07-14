@@ -183,6 +183,7 @@ export default defineConfig(({ mode }) => {
           popup: resolve(__dirname, 'popup.html'),
           background: resolve(__dirname, 'src/background/index.ts'),
           content: resolve(__dirname, 'src/content/index.ts'),
+          offscreen: resolve(__dirname, 'offscreen.html'),
         },
         output: {
           entryFileNames: (chunkInfo) => `${chunkInfo.name}.js`,

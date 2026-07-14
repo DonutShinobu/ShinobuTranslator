@@ -26,6 +26,7 @@
     "bench:ocr-debug": "tsx benchmark/perf/src/run-ocr-debug.ts",
     "bench:browser-ocr-smoke": "tsx benchmark/perf/src/run-browser-ocr-smoke.ts",
     "bench:browser-pipeline-smoke": "tsx benchmark/perf/src/run-browser-pipeline-smoke.ts",
+    "bench:browser-offscreen-smoke": "tsx benchmark/perf/src/run-browser-offscreen-smoke.ts",
     "bench:browser-ui-jank-smoke": "tsx benchmark/perf/src/run-browser-ui-jank-smoke.ts",
     "bench:browser-paddle-profile": "npm run build:benchmark && tsx benchmark/perf/src/run-browser-paddle-profile.ts --ocr-engine=paddleocr_v6_medium --process-mode=erase",
     "bench:paddle-graph-capture-probe": "tsx benchmark/perf/src/run-paddle-graph-capture-probe.ts",

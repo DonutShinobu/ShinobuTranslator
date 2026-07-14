@@ -1,9 +1,10 @@
 import type { RuntimeProvider } from './onnxTypes';
 import type { OnnxSessionOptions } from './onnxSessionOptions';
 import type { WorkerSessionHandle } from './onnxWorkerTypes';
-import { createSession, disposeSession } from './onnxBridge';
+import { createSession, disposeAll, disposeSession } from './onnxBridge';
 import { serializeOnnxSessionOptions } from './onnxSessionOptions';
 import { resolveAssetUrl } from '../shared/assetUrl';
+import { recordPerfRuntimeEvent } from '../shared/perfTrace';
 
 type ManifestModel = {
   name: string;
@@ -147,6 +148,7 @@ export async function getModel(name: ModelName): Promise<ManifestModel> {
 // ---------------------------------------------------------------------------
 
 const sessionCache = new Map<string, WorkerSessionHandle>();
+const sessionPromiseCache = new Map<string, Promise<WorkerSessionHandle>>();
 
 export async function getModelSession(
   name: ModelName,
@@ -159,11 +161,72 @@ export async function getModelSession(
   const cacheKey = `${name}:${runtime.join(',')}:${sessionOptionsKey}`;
   const cached = sessionCache.get(cacheKey);
   if (cached) {
+    recordPerfRuntimeEvent({
+      kind: 'session-cache-hit',
+      model: name,
+      provider: cached.provider,
+      message: `模型 Session 缓存命中: ${name}`,
+      data: { cacheKey, sessionId: cached.sessionId },
+    });
     return cached;
   }
-  const handle = await createSession(name, model.url, runtime, sessionOptions);
-  sessionCache.set(cacheKey, handle);
-  return handle;
+  const pending = sessionPromiseCache.get(cacheKey);
+  if (pending) {
+    recordPerfRuntimeEvent({
+      kind: 'session-cache-hit',
+      model: name,
+      message: `等待并发创建中的模型 Session: ${name}`,
+      data: { cacheKey, pending: true },
+    });
+    return pending;
+  }
+
+  recordPerfRuntimeEvent({
+    kind: 'session-create-start',
+    model: name,
+    message: `开始创建模型 Session: ${name}`,
+    data: { preferredProviders: runtime, sessionOptionsKey },
+  });
+  const creation = createSession(name, model.url, runtime, sessionOptions)
+    .then((handle) => {
+      sessionCache.set(cacheKey, handle);
+      recordPerfRuntimeEvent({
+        kind: 'session-create-complete',
+        model: name,
+        provider: handle.provider,
+        message: `模型 Session 创建完成: ${name}`,
+        data: {
+          sessionId: handle.sessionId,
+          preferredProviders: runtime,
+          webnnDeviceType: handle.webnnDeviceType,
+        },
+      });
+      if (runtime.length > 0 && handle.provider !== runtime[0]) {
+        recordPerfRuntimeEvent({
+          kind: 'provider-fallback',
+          model: name,
+          provider: handle.provider,
+          message: `模型 provider 已回退: ${name} ${runtime[0]} -> ${handle.provider}`,
+          data: { preferredProviders: runtime, actualProvider: handle.provider },
+        });
+      }
+      return handle;
+    })
+    .catch((error) => {
+      recordPerfRuntimeEvent({
+        kind: 'session-create-complete',
+        model: name,
+        message: `模型 Session 创建失败: ${name}`,
+        data: { preferredProviders: runtime, sessionOptionsKey },
+        error,
+      });
+      throw error;
+    })
+    .finally(() => {
+      sessionPromiseCache.delete(cacheKey);
+    });
+  sessionPromiseCache.set(cacheKey, creation);
+  return creation;
 }
 
 export async function disposeModelSession(name: ModelName): Promise<void> {
@@ -173,4 +236,11 @@ export async function disposeModelSession(name: ModelName): Promise<void> {
     }
   }
   await disposeSession(name);
+}
+
+export async function disposeAllModelSessions(): Promise<void> {
+  sessionCache.clear();
+  sessionPromiseCache.clear();
+  manifestCache = null;
+  await disposeAll();
 }

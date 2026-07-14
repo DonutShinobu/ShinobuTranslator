@@ -7,17 +7,20 @@ import { toErrorMessage } from "../../shared/utils";
 export type { DetectOutput };
 
 export async function detectTextRegionsWithMask(image: PipelineImage, platform: PlatformProvider): Promise<DetectOutput> {
+  const fallbackReasons: string[] = [];
   try {
     const onnxResult = await detectByOnnx(image, platform);
     if (onnxResult.regions.length > 0) {
-      return onnxResult;
+      return { ...onnxResult, engine: "onnx" };
     }
     throw new Error("未找到文本");
   } catch (error) {
     if (error instanceof Error && error.message === "未找到文本") {
       throw error;
     }
-    console.warn(`[detect] onnx detector unavailable, fallback to tesseract/heuristic: ${toErrorMessage(error)}`);
+    const reason = toErrorMessage(error);
+    fallbackReasons.push(`onnx: ${reason}`);
+    console.warn(`[detect] onnx detector unavailable, fallback to tesseract/heuristic: ${reason}`);
   }
 
   try {
@@ -25,11 +28,15 @@ export async function detectTextRegionsWithMask(image: PipelineImage, platform: 
     if (tessRegions.length > 0) {
       return {
         regions: tessRegions,
-        rawMaskCanvas: null
+        rawMaskCanvas: null,
+        engine: "tesseract",
+        fallbackReason: fallbackReasons.join(" | ")
       };
     }
   } catch (error) {
-    console.warn(`[detect] tesseract fallback unavailable, switch to heuristic: ${toErrorMessage(error)}`);
+    const reason = toErrorMessage(error);
+    fallbackReasons.push(`tesseract: ${reason}`);
+    console.warn(`[detect] tesseract fallback unavailable, switch to heuristic: ${reason}`);
   }
 
   const heuristicRegions = await detectByHeuristic(image, platform);
@@ -38,7 +45,9 @@ export async function detectTextRegionsWithMask(image: PipelineImage, platform: 
   }
   return {
     regions: heuristicRegions,
-    rawMaskCanvas: null
+    rawMaskCanvas: null,
+    engine: "heuristic",
+    fallbackReason: fallbackReasons.join(" | ")
   };
 }
 

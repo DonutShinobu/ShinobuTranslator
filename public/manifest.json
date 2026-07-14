@@ -2,6 +2,7 @@
   "manifest_version": 3,
   "name": "ShinobuTranslator",
   "version": "0.7.2",
+  "minimum_chrome_version": "109",
   "description": "用于 X / Pixiv 的漫画翻译器（支持谷歌翻译和大模型翻译）",
   "action": {
     "default_title": "ShinobuTranslator",
@@ -38,10 +39,11 @@
     }
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; object-src 'self';"
   },
   "permissions": [
     "storage",
+    "offscreen",
     "tabs",
     "contextMenus",
     "declarativeNetRequest",
@@ -64,11 +66,10 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "chunks/*",
-        "fonts/*",
-        "models/*",
-        "ort/*",
-        "onnxWorker.js"
+        "chunks/messages.js",
+        "chunks/localPipelineProtocol.js",
+        "chunks/perfTrace.js",
+        "fonts/*"
       ],
       "matches": [
         "https://x.com/*",

@@ -8,6 +8,7 @@ import {
   normalizeDiagnosticTimestamp,
   redactDiagnosticValue,
   sanitizeDiagnosticUrl,
+  toDiagnosticError,
   type DiagnosticLogEvent,
 } from '../../src/shared/diagnosticLog';
 
@@ -199,6 +200,25 @@ describe('redactDiagnosticValue', () => {
     expect(redacted.sourceImageUrl).toBe(`[IMAGE_DATA_URL_REDACTED:${dataUrl.length}]`);
     expect(redacted.prompt).toContain('[TRUNCATED:');
     expect(redacted.prompt.length).toBeLessThan(dataUrl.length + 12_100);
+  });
+
+  it('preserves nested error metadata and protects circular causes', () => {
+    const inner = new Error('worker failed') as Error & { code?: string };
+    inner.code = 'WORKER_BOOTSTRAP_FAILED';
+    const outer = new Error('bubble failed', { cause: inner });
+    Object.defineProperty(inner, 'cause', { value: outer, configurable: true });
+
+    const diagnostic = toDiagnosticError(outer);
+
+    expect(diagnostic).toMatchObject({
+      name: 'Error',
+      message: 'bubble failed',
+      cause: {
+        code: 'WORKER_BOOTSTRAP_FAILED',
+        message: 'worker failed',
+        cause: '[CIRCULAR]',
+      },
+    });
   });
 });
 

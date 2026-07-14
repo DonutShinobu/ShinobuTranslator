@@ -290,9 +290,11 @@ describe('runPipeline', () => {
     const stageError = error as PipelineStageError;
     expect(stageError).toMatchObject({
       name: 'PipelineStageError',
+      code: 'PIPELINE_STAGE_FAILED',
       stage: '文本检测',
       message: '文本检测失败: detector unavailable',
     });
+    expect(stageError.cause).toMatchObject({ message: 'detector unavailable' });
     expect(stageError.artifacts).toMatchObject({
       original: image,
       detectedRegions: [],

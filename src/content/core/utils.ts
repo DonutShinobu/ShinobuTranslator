@@ -8,40 +8,11 @@ import type {
 } from './types';
 
 export { downloadJson, toErrorMessage } from '../../shared/utils';
-
-export function base64ToBlob(base64: string, contentType: string): Blob {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return new Blob([bytes], { type: contentType || 'image/jpeg' });
-}
-
-export function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('读取图片数据失败'));
-    reader.onload = () => {
-      const result = typeof reader.result === 'string' ? reader.result : '';
-      const commaIndex = result.indexOf(',');
-      resolve(commaIndex >= 0 ? result.slice(commaIndex + 1) : result);
-    };
-    reader.readAsDataURL(blob);
-  });
-}
-
-export function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        reject(new Error('导出译图失败'));
-        return;
-      }
-      resolve(blob);
-    }, 'image/png');
-  });
-}
+export {
+  base64ToBlob,
+  blobToBase64,
+  canvasToPngBlob as canvasToBlob,
+} from '../../shared/blobCodec';
 
 export function inferFileExtension(contentType: string, sourceUrl: string): string {
   if (contentType.includes('png')) return 'png';
@@ -64,6 +35,7 @@ export function formatDuration(durationMs: number): string {
 
 const stageLabelMap: Record<string, string> = {
   load: '加载图片',
+  queued: '排队',
   preload: '加载模型',
   detect: '文本检测',
   ocr: '文字识别',
@@ -80,11 +52,12 @@ const stageLabelMap: Record<string, string> = {
 
 const runtimeModelLabels: Record<RuntimeStageStatus['model'], string> = {
   detector: '检测',
+  bubble: '气泡',
   ocr: 'OCR',
   inpaint: '去字',
 };
 
-const orderedRuntimeModels: RuntimeStageStatus['model'][] = ['detector', 'ocr', 'inpaint'];
+const orderedRuntimeModels: RuntimeStageStatus['model'][] = ['detector', 'bubble', 'ocr', 'inpaint'];
 const parallelChildStages = new Set(['translate', 'mask_refine', 'inpaint']);
 
 function formatPercent(percent: number): string {
@@ -103,6 +76,7 @@ export function formatStageLabel(timing: StageTiming): string {
 
 export function formatRuntimeProvider(stage: RuntimeStageStatus): string {
   if (!stage.enabled) return '未启用';
+  if (stage.model === 'detector' && stage.engine && stage.engine !== 'onnx') return stage.engine;
   if (!stage.provider) return '未知';
   if (stage.provider === 'wasm') return 'cpu(wasm)';
   if (stage.provider === 'webnn') return `webnn/${stage.webnnDeviceType ?? 'default'}`;

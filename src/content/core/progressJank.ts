@@ -41,7 +41,7 @@ type LongTaskSample = {
 };
 
 type WorkerHeartbeatMessage =
-  | { type: 'ready'; mode: Exclude<ProgressJankWorkerHeartbeatMode, 'unavailable' | 'error'> }
+  | { type: 'ready'; mode: 'worker-raf' | 'worker-timer' }
   | { type: 'tick'; time: number }
   | { type: 'error'; error: string };
 
@@ -165,6 +165,16 @@ function isWorkerHeartbeatMessage(value: unknown): value is WorkerHeartbeatMessa
   return message.type === 'error' && typeof message.error === 'string';
 }
 
+function sanitizeBlockedUri(value: string): string {
+  if (/^blob:/i.test(value)) return '[BLOB_URL_REDACTED]';
+  try {
+    const parsed = new URL(value);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return value.split('?')[0] ?? value;
+  }
+}
+
 function readLongFrameScripts(entry: PerformanceEntry, startedAt: number): ProgressJankLongFrameScript[] | undefined {
   const scripts = (entry as PerformanceEntry & { scripts?: unknown }).scripts;
   if (!Array.isArray(scripts) || scripts.length === 0) {
@@ -235,6 +245,9 @@ export class ProgressJankMonitor {
   private workerHeartbeat: Worker | null = null;
   private workerHeartbeatMode: ProgressJankWorkerHeartbeatMode = 'unavailable';
   private workerHeartbeatError: string | undefined;
+  private workerHeartbeatCsp: { effectiveDirective: string; blockedURI: string } | undefined;
+  private workerHeartbeatScriptUrl: string | null = null;
+  private workerHeartbeatCspListener: ((event: SecurityPolicyViolationEvent) => void) | null = null;
   private workerFirstTickAt: number | null = null;
   private lastWorkerTickAt: number | null = null;
   private longAnimationFrameSupported = false;
@@ -278,6 +291,14 @@ export class ProgressJankMonitor {
       }
       this.workerHeartbeat.terminate();
       this.workerHeartbeat = null;
+    }
+    if (this.workerHeartbeatCspListener) {
+      document.removeEventListener('securitypolicyviolation', this.workerHeartbeatCspListener);
+      this.workerHeartbeatCspListener = null;
+    }
+    if (this.workerHeartbeatScriptUrl) {
+      URL.revokeObjectURL(this.workerHeartbeatScriptUrl);
+      this.workerHeartbeatScriptUrl = null;
     }
     this.disposeTraceSink?.();
     this.disposeTraceSink = null;
@@ -357,6 +378,7 @@ export class ProgressJankMonitor {
         workerHeartbeat: workerHeartbeatAvailable,
         workerHeartbeatMode: this.workerHeartbeatMode,
         workerHeartbeatError: this.workerHeartbeatError,
+        workerHeartbeatCsp: this.workerHeartbeatCsp,
       },
       frame: buildFrameStats(frameDeltas),
       workerHeartbeat: {
@@ -364,6 +386,7 @@ export class ProgressJankMonitor {
         available: workerHeartbeatAvailable,
         mode: this.workerHeartbeatMode,
         error: this.workerHeartbeatError,
+        csp: this.workerHeartbeatCsp,
       },
       ui: {
         renderCalls: this.ui.renderCalls,
@@ -406,11 +429,22 @@ export class ProgressJankMonitor {
       return;
     }
 
-    let scriptUrl: string | null = null;
     try {
       const blob = new Blob([workerHeartbeatScript], { type: 'application/javascript' });
-      scriptUrl = URL.createObjectURL(blob);
-      const worker = new Worker(scriptUrl);
+      this.workerHeartbeatScriptUrl = URL.createObjectURL(blob);
+      this.workerHeartbeatCspListener = (event: SecurityPolicyViolationEvent) => {
+        const directive = event.effectiveDirective || event.violatedDirective || '';
+        if (!/worker-src|child-src|script-src/i.test(directive)) return;
+        const blockedURI = sanitizeBlockedUri(event.blockedURI || this.workerHeartbeatScriptUrl || 'blob:');
+        this.workerHeartbeatMode = 'blocked-by-csp';
+        this.workerHeartbeatCsp = {
+          effectiveDirective: directive || 'worker-src',
+          blockedURI,
+        };
+        this.workerHeartbeatError = `Worker heartbeat blocked by CSP (${directive || 'worker-src'}; ${blockedURI})`;
+      };
+      document.addEventListener('securitypolicyviolation', this.workerHeartbeatCspListener);
+      const worker = new Worker(this.workerHeartbeatScriptUrl);
       this.workerHeartbeat = worker;
       worker.addEventListener('message', (event: MessageEvent<unknown>) => {
         if (!isWorkerHeartbeatMessage(event.data)) return;
@@ -426,19 +460,19 @@ export class ProgressJankMonitor {
         this.recordWorkerHeartbeatTick(event.data.time);
       });
       worker.addEventListener('error', (event) => {
-        this.workerHeartbeatMode = 'error';
-        this.workerHeartbeatError = event.message || 'Worker heartbeat failed';
+        if (this.workerHeartbeatMode !== 'blocked-by-csp') {
+          this.workerHeartbeatMode = 'error';
+          this.workerHeartbeatError = event.message || 'Worker heartbeat failed';
+        }
       });
       worker.postMessage({ type: 'start' });
     } catch (error) {
-      this.workerHeartbeatMode = 'error';
-      this.workerHeartbeatError = error instanceof Error ? error.message : String(error);
+      if (this.workerHeartbeatMode !== 'blocked-by-csp') {
+        this.workerHeartbeatMode = 'error';
+        this.workerHeartbeatError = error instanceof Error ? error.message : String(error);
+      }
       this.workerHeartbeat?.terminate();
       this.workerHeartbeat = null;
-    } finally {
-      if (scriptUrl) {
-        URL.revokeObjectURL(scriptUrl);
-      }
     }
   }
 

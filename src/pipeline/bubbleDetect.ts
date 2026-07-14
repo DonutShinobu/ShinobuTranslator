@@ -4,6 +4,7 @@ import { nmsBoxes, type ScoredBox } from "./utils";
 import { getModelSession } from "../runtime/modelRegistry";
 import { runInference } from "../runtime/onnxBridge";
 import type { TensorTransport } from "../runtime/onnxWorkerTypes";
+import type { RuntimeProvider, WebNnDeviceType } from "../runtime/onnxTypes";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -17,6 +18,8 @@ export type BubbleDetection = {
 
 export type BubbleDetectResult = {
   bubbles: BubbleDetection[];
+  actualProvider: RuntimeProvider;
+  actualWebnnDeviceType?: WebNnDeviceType;
 };
 
 // ---------------------------------------------------------------------------
@@ -69,6 +72,8 @@ async function runBubbleInference(image: PipelineImage, platform: PlatformProvid
   output1: Float32Array;
   output1Shape: readonly number[];
   prep: LetterboxResult;
+  actualProvider: RuntimeProvider;
+  actualWebnnDeviceType?: WebNnDeviceType;
 }> {
   const handle = await getModelSession("bubble");
   const size = 640;
@@ -94,6 +99,8 @@ async function runBubbleInference(image: PipelineImage, platform: PlatformProvid
     output1: out1.data as Float32Array,
     output1Shape: out1.dims,
     prep,
+    actualProvider: handle.provider,
+    actualWebnnDeviceType: handle.webnnDeviceType,
   };
 }
 
@@ -246,7 +253,7 @@ function decodeMasks(
 // ---------------------------------------------------------------------------
 
 export async function detectBubbles(image: PipelineImage, platform: PlatformProvider): Promise<BubbleDetectResult> {
-  const { output0, output0Shape, output1, output1Shape, prep } = await runBubbleInference(image, platform);
+  const { output0, output0Shape, output1, output1Shape, prep, actualProvider, actualWebnnDeviceType } = await runBubbleInference(image, platform);
   const imgW = image.naturalWidth;
   const imgH = image.naturalHeight;
 
@@ -259,7 +266,7 @@ export async function detectBubbles(image: PipelineImage, platform: PlatformProv
     mask: masks[i],
   }));
 
-  return { bubbles };
+  return { bubbles, actualProvider, actualWebnnDeviceType };
 }
 
 // ---------------------------------------------------------------------------

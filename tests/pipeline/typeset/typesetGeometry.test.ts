@@ -132,6 +132,17 @@ describe("calcVertical with perColumnMaxHeight", () => {
     }
   });
 
+  it("keeps trailing kinsoku punctuation in an over-height column", () => {
+    const ctx = createMockCtx();
+    const maxHeight = 140;
+    const text = "你倒是说句话啊?";
+    const columns = calcVertical(ctx, text, maxHeight, 20, 20, 1, () => maxHeight);
+
+    expect(columns).toHaveLength(1);
+    expect(columns[0].glyphs.map((glyph) => glyph.sourceText).join("")).toBe(text);
+    expect(columns[0].height).toBeGreaterThan(maxHeight);
+  });
+
   it("carries mixed runs and tate-chu-yoko through the column layout", () => {
     const ctx = createMockCtx();
     const columns = calcVertical(ctx, "AveMujica12!?", 500, 20, 20, 1);
@@ -195,6 +206,45 @@ describe("computeFullVerticalTypeset source style", () => {
     expect(result.columns[0].glyphs.every((glyph) => glyph.advanceY === 10)).toBe(true);
     expect(result.expandedRegion.box).toEqual(region.box);
     expect(result.layoutDiagnostics.uniformScale).toBe(0.5);
+  });
+
+  it("shrinks when trailing kinsoku punctuation makes a column too tall", () => {
+    const translatedText = "甲乙丙丁戊?";
+    const region = createSourceStyledRegion({
+      translatedText,
+      translatedColumns: [translatedText],
+    });
+    const result = computeFullVerticalTypeset({
+      region,
+      fontFamily: "sans-serif",
+      measureCtx: createScaledMockCtx(),
+    });
+
+    expect(result.initialFontSize).toBe(20);
+    expect(result.fittedFontSize).toBe(16);
+    expect(result.columns).toHaveLength(1);
+    expect(result.columns[0].glyphs.at(-1)?.sourceText).toBe("?");
+    expect(result.columns[0].height).toBeLessThanOrEqual(result.verticalContentHeight + 0.5);
+  });
+
+  it("uses bubble height before shrinking a kinsoku-overflow column", () => {
+    const translatedText = "甲乙丙丁戊?";
+    const region = createSourceStyledRegion({
+      translatedText,
+      translatedColumns: [translatedText],
+      bubbleMask: createMask(40, 200, () => true),
+    });
+    const result = computeFullVerticalTypeset({
+      region,
+      fontFamily: "sans-serif",
+      measureCtx: createScaledMockCtx(),
+    });
+
+    expect(result.initialFontSize).toBe(20);
+    expect(result.fittedFontSize).toBe(20);
+    expect(result.columns).toHaveLength(1);
+    expect(result.columns[0].height).toBe(120);
+    expect(result.columns[0].height).toBeLessThanOrEqual(result.verticalContentHeight + 0.5);
   });
 
   it("includes column width in uniform overflow fitting", () => {

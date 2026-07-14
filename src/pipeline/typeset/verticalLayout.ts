@@ -190,16 +190,26 @@ export function computeFullVerticalTypeset(
   let layoutContentHeight = verticalContentHeight;
   let renderContentHeight = verticalContentHeight;
   let perColumnMaxHeight: ((columnIndex: number) => number) | undefined;
+  const baseHeightOverflow = baseLayout.columns.some(
+    (column) => column.height > layoutContentHeight + 0.5,
+  );
   const hasTargetOverflow = (candidate: typeof layout, candidateFontSize: number): boolean => {
     const columnPitch = candidate.metrics.colWidth + candidate.metrics.colSpacing;
     const paintedGroupWidth = candidateFontSize + Math.max(0, candidate.columns.length - 1) * columnPitch;
+    const hasHeightOverflow = candidate.columns.some((column, columnIndex) => (
+      column.height > (perColumnMaxHeight?.(columnIndex) ?? layoutContentHeight) + 0.5
+    ));
     return (
       candidate.columns.length > targetColumnCount ||
-      (Boolean(sourceGeometryProfile) && paintedGroupWidth > contentWidth + 0.5)
+      (Boolean(sourceGeometryProfile) && paintedGroupWidth > contentWidth + 0.5) ||
+      hasHeightOverflow
     );
   };
 
-  if (baseLayout.columns.length > targetColumnCount && inputRegion.bubbleMask) {
+  if (
+    (baseLayout.columns.length > targetColumnCount || baseHeightOverflow) &&
+    inputRegion.bubbleMask
+  ) {
     const mask = inputRegion.bubbleMask;
     const boxTop = region.box.y + boxPadding;
     const boxLeft = region.box.x + boxPadding;

@@ -5,7 +5,6 @@ import {
   createDiagnosticId,
   formatDiagnosticTextLog,
   normalizeDiagnosticTimestamp,
-  redactDiagnosticValue,
   sanitizeExtensionSettings,
 } from "../../shared/diagnosticLog";
 import type {
@@ -34,31 +33,87 @@ type DiagnosticLogStore = {
 
 const diagnosticLogMaxEvents = 2000;
 
-function isDiagnosticLogEvent(value: unknown): value is DiagnosticLogEvent {
-  if (!isRecord(value)) return false;
-  return (
-    typeof value.id === 'string' &&
-    typeof value.sessionId === 'string' &&
-    typeof value.timestamp === 'string' &&
-    typeof value.level === 'string' &&
-    typeof value.category === 'string' &&
-    isRecord(value.source) &&
-    typeof value.source.context === 'string' &&
-    typeof value.message === 'string'
-  );
+function normalizeStoredDiagnosticLogEvent(value: unknown): DiagnosticLogEvent | null {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== 'string' ||
+    typeof value.sessionId !== 'string' ||
+    typeof value.level !== 'string' ||
+    typeof value.category !== 'string' ||
+    !isRecord(value.source) ||
+    typeof value.source.context !== 'string' ||
+    typeof value.message !== 'string'
+  ) {
+    return null;
+  }
+
+  const timestamp = normalizeDiagnosticTimestamp(value.timestamp, '');
+  const normalized = createDiagnosticEvent({
+    id: value.id,
+    sessionId: value.sessionId,
+    runId: typeof value.runId === 'string' ? value.runId : undefined,
+    timestamp,
+    level: value.level as DiagnosticLogEvent['level'],
+    category: value.category as DiagnosticLogEvent['category'],
+    source: {
+      context: value.source.context as DiagnosticLogEvent['source']['context'],
+      module: typeof value.source.module === 'string' ? value.source.module : undefined,
+    },
+    message: value.message,
+    data: isRecord(value.data) ? value.data : undefined,
+    error: isRecord(value.error) && typeof value.error.message === 'string'
+      ? value.error as DiagnosticLogEvent['error']
+      : undefined,
+  }, value.sessionId);
+
+  // Persisted legacy events may not have a timestamp. Keep the empty value so
+  // the readable formatter can show "unknown-time" instead of inventing a new
+  // timestamp that would move the event to the latest run.
+  normalized.timestamp = timestamp;
+  return normalized;
 }
 
-function isDiagnosticLogStore(value: unknown): value is DiagnosticLogStore {
-  if (!isRecord(value) || !Array.isArray(value.events)) return false;
-  return value.events.every(isDiagnosticLogEvent);
+function appendTruncationReason(current: unknown, reason: string): string {
+  return typeof current === 'string' && current.length > 0
+    ? `${current}；${reason}`
+    : reason;
+}
+
+function normalizeDiagnosticLogStore(value: unknown): DiagnosticLogStore {
+  if (!isRecord(value) || !Array.isArray(value.events)) {
+    return { events: [] };
+  }
+
+  const events: DiagnosticLogEvent[] = [];
+  let invalidEventCount = 0;
+  for (const candidate of value.events) {
+    const event = normalizeStoredDiagnosticLogEvent(candidate);
+    if (event) {
+      events.push(event);
+    } else {
+      invalidEventCount += 1;
+    }
+  }
+
+  const invalidEventReason = invalidEventCount > 0
+    ? `持久化日志中有 ${invalidEventCount} 条事件格式无效，已忽略`
+    : undefined;
+  const truncationReason = invalidEventReason
+    ? appendTruncationReason(value.truncationReason, invalidEventReason)
+    : typeof value.truncationReason === 'string'
+      ? value.truncationReason
+      : undefined;
+
+  return {
+    events,
+    truncated: value.truncated === true || invalidEventCount > 0,
+    truncationReason,
+  };
 }
 
 async function readDiagnosticLogStore(): Promise<DiagnosticLogStore> {
   const saved = await storageGet(diagnosticLogStorageKey);
-  if (isDiagnosticLogStore(saved)) {
-    return saved;
-  }
-  return { events: [] };
+  return normalizeDiagnosticLogStore(saved);
 }
 
 async function writeDiagnosticLogStore(store: DiagnosticLogStore): Promise<void> {
@@ -113,7 +168,7 @@ export function deriveDiagnosticRuns(events: DiagnosticLogEvent[]): DiagnosticLo
   const runs = new Map<string, DiagnosticLogRun>();
   for (const event of events) {
     if (!event.runId) continue;
-    const timestamp = normalizeDiagnosticTimestamp(event.timestamp);
+    const timestamp = normalizeDiagnosticTimestamp(event.timestamp, '');
     const existing = runs.get(event.runId);
     if (!existing) {
       runs.set(event.runId, {
@@ -143,7 +198,7 @@ export async function exportDiagnosticLog(): Promise<DiagnosticLogTextExport> {
   const settings = await getSettings();
   const chromeApi = getChromeApi();
   const manifest = chromeApi?.runtime?.getManifest?.();
-  const events = redactDiagnosticValue(store.events) as DiagnosticLogEvent[];
+  const events = store.events;
   const exportedAt = new Date().toISOString();
   const extension = {
     version: manifest?.version,

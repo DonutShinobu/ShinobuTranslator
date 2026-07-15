@@ -468,9 +468,9 @@ function formatReadableTime(timestamp: unknown): string {
 function formatDiagnosticLogLine(event: Omit<DiagnosticLogEvent, 'id' | 'sessionId'>): string {
   const time = formatReadableTime(event.timestamp);
   const level = formatReadableLevel(event.level);
-  const context = event.source.context;
+  const context = event.source?.context ?? 'unknown';
   const run = event.runId ?? 'no-run';
-  const moduleName = event.source.module ?? event.category;
+  const moduleName = event.source?.module ?? event.category;
   const parts = [event.message];
   if (event.error?.message) {
     parts.push(`error=${JSON.stringify(event.error.message)}`);

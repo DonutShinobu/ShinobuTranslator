@@ -160,6 +160,23 @@ describe('formatDiagnosticReadableLog', () => {
     expect(() => formatDiagnosticReadableLogLines(events)).not.toThrow();
     expect(formatDiagnosticReadableLogLines(events)[0]).toContain('[unknown-time]');
   });
+
+  it('uses an unknown context when a malformed caller omits the source', () => {
+    const event = {
+      id: 'event-missing-source',
+      sessionId: 'session-1',
+      timestamp: '2026-06-27T09:28:22.875Z',
+      level: 'info',
+      category: 'pipeline.stage',
+      source: undefined,
+      message: '旧事件缺少来源',
+    } as unknown as DiagnosticLogEvent;
+
+    expect(() => formatDiagnosticReadableLogLines([event])).not.toThrow();
+    expect(formatDiagnosticReadableLogLines([event])[0]).toContain(
+      '[unknown][no-run][pipeline.stage] pipeline.stage | 旧事件缺少来源',
+    );
+  });
 });
 
 describe('normalizeDiagnosticTimestamp', () => {

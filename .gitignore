@@ -4,6 +4,8 @@ node_modules/
 # Build output
 dist/
 docs/*
+!docs/agents/
+!docs/agents/*.md
 !docs/superpowers/
 !docs/shinobu-readme-banner-soft.png
 !docs/popup-settings-deepseek-rounded.png

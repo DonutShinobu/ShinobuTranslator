@@ -15,6 +15,12 @@ import {
   type ExtensionSettings,
 } from '../shared/config';
 import { getChromeApi } from '../shared/chrome';
+import {
+  getLlmThinkingControl,
+  llmThinkingCapabilityKey,
+  resolveLlmThinkingLevel,
+  type LlmThinkingLevel,
+} from '../shared/llmThinking';
 import { sendRuntimeMessage } from '../shared/messages';
 import { downloadText } from '../shared/utils';
 
@@ -133,6 +139,7 @@ const defaultShortcutState: ShortcutState = {
 };
 
 const geminiAppAuthCacheKey = 'shinobu.geminiApp.authenticated';
+const customModelThinkingNotice = '自定义模型不支持思考相关设置';
 
 function readGeminiAppAuthCache(): boolean {
   try {
@@ -344,6 +351,17 @@ export function App() {
     updateActiveLlmProfile({ useCustomModel: checked });
   }
 
+  function updateThinkingLevel(provider: LlmProvider, model: string, level: LlmThinkingLevel): void {
+    queueSaveStatus();
+    setSettings((prev) => ({
+      ...prev,
+      llmThinkingByModel: {
+        ...prev.llmThinkingByModel,
+        [llmThinkingCapabilityKey(provider, model)]: level,
+      },
+    }));
+  }
+
   function resetGeminiAppPromptTemplate(): void {
     updateField('geminiAppPromptTemplate', optimizedGeminiAppPromptTemplate, { showSaveStatus: true });
   }
@@ -487,6 +505,32 @@ export function App() {
   const currentProviderModels =
     settings.llmProvider === 'custom' || usesGeminiApp ? [] : llmBuiltInProviderDefinitions[settings.llmProvider].models;
   const builtInCustomModelPlaceholder = currentProviderModels[0] ?? currentProfile.modelPreset;
+  const currentThinkingModel =
+    settings.llmProvider !== 'custom' &&
+    settings.llmProvider !== 'gemini' &&
+    !currentProfile.useCustomModel
+      ? currentProfile.modelPreset
+      : null;
+  const currentThinkingControl = currentThinkingModel
+    ? getLlmThinkingControl(settings.llmProvider, currentThinkingModel)
+    : null;
+  const currentThinkingLevel = currentThinkingModel
+    ? resolveLlmThinkingLevel(
+        settings.llmThinkingByModel,
+        settings.llmProvider,
+        currentThinkingModel,
+      )
+    : undefined;
+  const currentThinkingOptionIndex = currentThinkingControl?.kind === 'slider'
+    ? Math.max(
+        0,
+        currentThinkingControl.options.findIndex((option) => option.value === currentThinkingLevel),
+      )
+    : 0;
+  const currentThinkingOptionProgress = currentThinkingControl?.kind === 'slider'
+    && currentThinkingControl.options.length > 1
+    ? (currentThinkingOptionIndex / (currentThinkingControl.options.length - 1)) * 100
+    : 0;
   const usesOpenAiOAuth = settings.llmProvider === 'openai' && currentProfile.authMode === 'openai_oauth';
   const showLocalPipelineOptions = !usesNanoBanana;
   const stageTimingDetailsLocked = usesNanoBanana;
@@ -908,6 +952,7 @@ export function App() {
                         disabled={loading}
                         placeholder="例如：your-model-name"
                       />
+                      <span className="model-thinking-notice">{customModelThinkingNotice}</span>
                     </label>
                     <label className="field">
                       <span className="field-label">API Key</span>
@@ -1007,7 +1052,109 @@ export function App() {
                           <span>自定义</span>
                         </label>
                       </div>
+                      {currentProfile.useCustomModel ? (
+                        <span className="model-thinking-notice">{customModelThinkingNotice}</span>
+                      ) : null}
                     </div>
+                    {currentThinkingModel && currentThinkingControl && currentThinkingLevel ? (
+                      <div className="field thinking-field">
+                        <span className="field-label">思考强度</span>
+                        {currentThinkingControl.kind === 'fixed' ? (
+                          <span className="thinking-fixed-notice">{currentThinkingControl.notice}</span>
+                        ) : currentThinkingControl.kind === 'toggle' ? (
+                          <SegmentedControl<LlmThinkingLevel>
+                            options={currentThinkingControl.options}
+                            value={currentThinkingLevel}
+                            onChange={(level) => updateThinkingLevel(
+                              settings.llmProvider,
+                              currentThinkingModel,
+                              level,
+                            )}
+                            disabled={loading}
+                          />
+                        ) : (
+                          <div className="thinking-slider-control">
+                            <div className="thinking-slider-track">
+                              <div className="thinking-slider-rail" aria-hidden="true">
+                                <span
+                                  className={`thinking-slider-fill${
+                                    currentThinkingOptionIndex === 0
+                                      ? ' thinking-slider-fill-off'
+                                      : ''
+                                  }`}
+                                  style={{
+                                    width: currentThinkingOptionIndex === 0
+                                      ? '10px'
+                                      : `calc(${currentThinkingOptionProgress}% + ${
+                                          10 - currentThinkingOptionProgress * 0.2
+                                        }px)`,
+                                  }}
+                                />
+                                <span className="thinking-slider-ticks">
+                                  {currentThinkingControl.options.map((option, index) => (
+                                    <span
+                                      className={`thinking-slider-tick${
+                                        index <= currentThinkingOptionIndex
+                                          ? ' thinking-slider-tick-active'
+                                          : ''
+                                      }${
+                                        index === currentThinkingOptionIndex
+                                          ? ' thinking-slider-tick-selected'
+                                          : ''
+                                      }`}
+                                      key={option.value}
+                                      style={{
+                                        left: `${(index / (currentThinkingControl.options.length - 1)) * 100}%`,
+                                      }}
+                                    />
+                                  ))}
+                                </span>
+                              </div>
+                              <input
+                                className="thinking-slider"
+                                type="range"
+                                min={0}
+                                max={currentThinkingControl.options.length - 1}
+                                step={1}
+                                value={currentThinkingOptionIndex}
+                                onChange={(event) => {
+                                  const option = currentThinkingControl.options[Number(event.target.value)];
+                                  if (option) {
+                                    updateThinkingLevel(
+                                      settings.llmProvider,
+                                      currentThinkingModel,
+                                      option.value,
+                                    );
+                                  }
+                                }}
+                                aria-label="思考强度"
+                                aria-valuetext={
+                                  currentThinkingControl.options[currentThinkingOptionIndex]?.label
+                                }
+                                disabled={loading}
+                              />
+                            </div>
+                            <div className="thinking-slider-labels" aria-hidden="true">
+                              {currentThinkingControl.options.map((option, index) => (
+                                <span
+                                  className={`thinking-slider-label${
+                                    index === currentThinkingOptionIndex
+                                      ? ' thinking-slider-label-active'
+                                      : ''
+                                  }`}
+                                  key={option.value}
+                                  style={{
+                                    left: `${(index / (currentThinkingControl.options.length - 1)) * 100}%`,
+                                  }}
+                                >
+                                  {option.label}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
                     {!usesOpenAiOAuth ? (
                       <label className="field">
                         <span className="field-label">API Key</span>

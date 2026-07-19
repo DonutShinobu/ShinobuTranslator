@@ -28,7 +28,9 @@ export type OpenAiResponsesRequest = {
   tools: [];
   tool_choice: 'auto';
   parallel_tool_calls: true;
-  reasoning: null;
+  reasoning: {
+    effort: NonNullable<LlmChatCompletionRequestBody['reasoning_effort']>;
+  } | null;
   store: false;
   stream: true;
   include: string[];
@@ -93,7 +95,9 @@ export function buildOpenAiResponsesRequest(
     tools: [],
     tool_choice: 'auto',
     parallel_tool_calls: true,
-    reasoning: null,
+    reasoning: body.reasoning_effort
+      ? { effort: body.reasoning_effort }
+      : null,
     store: false,
     stream: true,
     include: [],

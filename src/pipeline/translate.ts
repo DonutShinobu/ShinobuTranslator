@@ -1,5 +1,10 @@
 import type { PipelineConfig, TextRegion, TranslationDebugInfo } from '../types';
-import { LlmColumnsParseError, llmTranslate, llmTranslateRegions } from '../translators/llm';
+import {
+  LlmColumnsParseError,
+  LlmThinkingConfigError,
+  llmTranslate,
+  llmTranslateRegions,
+} from '../translators/llm';
 import { googleWebTranslate } from '../translators/googleWeb';
 
 type LlmRegionRequest = {
@@ -56,6 +61,8 @@ async function translateOne(text: string, config: PipelineConfig): Promise<strin
     authMode: config.llmAuthMode,
     baseUrl: config.llmBaseUrl,
     model: config.llmModel,
+    useCustomModel: config.llmUseCustomModel === true,
+    thinkingLevel: config.llmUseCustomModel ? undefined : config.llmThinkingLevel,
     from: config.sourceLang,
     to: config.targetLang,
     text,
@@ -69,6 +76,8 @@ async function translateOneStructured(region: TextRegion, config: PipelineConfig
     authMode: config.llmAuthMode,
     baseUrl: config.llmBaseUrl,
     model: config.llmModel,
+    useCustomModel: config.llmUseCustomModel === true,
+    thinkingLevel: config.llmUseCustomModel ? undefined : config.llmThinkingLevel,
     from: config.sourceLang,
     to: config.targetLang,
     regions: [buildLlmRegionRequest(region)],
@@ -112,6 +121,8 @@ export async function runTranslate(regions: TextRegion[], config: PipelineConfig
         authMode: config.llmAuthMode,
         baseUrl: config.llmBaseUrl,
         model: config.llmModel,
+        useCustomModel: config.llmUseCustomModel === true,
+        thinkingLevel: config.llmUseCustomModel ? undefined : config.llmThinkingLevel,
         from: config.sourceLang,
         to: config.targetLang,
         regions: regions.map(buildLlmRegionRequest),
@@ -120,6 +131,9 @@ export async function runTranslate(regions: TextRegion[], config: PipelineConfig
       batched = batchedResult.byId;
       translationDebug.llmBatchRawResponse = batchedResult.rawContent;
     } catch (error) {
+      if (error instanceof LlmThinkingConfigError) {
+        throw error;
+      }
       batched = new Map();
       translationDebug.llmBatchFailed = true;
       translationDebug.llmBatchError = error instanceof Error ? error.message : String(error);
@@ -156,7 +170,10 @@ export async function runTranslate(regions: TextRegion[], config: PipelineConfig
             translatedColumns: translated.translatedColumns,
           });
           continue;
-        } catch {
+        } catch (error) {
+          if (error instanceof LlmThinkingConfigError) {
+            throw error;
+          }
           llmFallbackRequestCount += 1;
         }
       }

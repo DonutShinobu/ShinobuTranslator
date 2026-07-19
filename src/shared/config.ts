@@ -1,5 +1,11 @@
 import type { PipelineConfig } from '../types';
 import type { GeminiAppAuthMode, GeminiAppModel, ImageEngine } from '../types';
+import {
+  createDefaultLlmThinkingByModel,
+  normalizeLlmThinkingByModel,
+  resolveLlmThinkingLevel,
+} from './llmThinking';
+import type { LlmThinkingByModel } from './llmThinking';
 
 export const extensionSettingsStorageKey = 'mangaTranslate.settings';
 
@@ -208,6 +214,7 @@ export type ExtensionSettings = {
   translator: PipelineConfig['translator'];
   llmProvider: LlmProvider;
   llmProfiles: Record<LlmProvider, LlmProviderProfile>;
+  llmThinkingByModel: LlmThinkingByModel;
   showElapsedTime: boolean;
   showStageTimingDetails: boolean;
   stageTimingCardExpanded: boolean;
@@ -230,6 +237,7 @@ export const defaultExtensionSettings: ExtensionSettings = {
   translator: 'google_web',
   llmProvider: 'deepseek',
   llmProfiles: createDefaultLlmProfiles(),
+  llmThinkingByModel: createDefaultLlmThinkingByModel(),
   showElapsedTime: false,
   showStageTimingDetails: false,
   stageTimingCardExpanded: true,
@@ -482,6 +490,7 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     translator,
     llmProvider: provider,
     llmProfiles,
+    llmThinkingByModel: normalizeLlmThinkingByModel(raw.llmThinkingByModel),
     showElapsedTime,
     showStageTimingDetails:
       usesNanoBanana
@@ -586,6 +595,14 @@ export function toPipelineConfig(settings: ExtensionSettings): PipelineConfig {
     llmBaseUrl: resolveLlmBaseUrl(settings),
     llmApiKey: profile.apiKey,
     llmModel: resolveLlmModel(settings),
+    llmUseCustomModel: settings.llmProvider === 'custom' || profile.useCustomModel,
+    llmThinkingLevel: settings.llmProvider === 'custom' || profile.useCustomModel
+      ? undefined
+      : resolveLlmThinkingLevel(
+          settings.llmThinkingByModel,
+          settings.llmProvider,
+          resolveLlmModel(settings),
+        ),
     typesetDebug: settings.showTypesetDebug,
     eraseDebug: settings.showEraseDebug,
     collectDebugLog: settings.showTypesetDebug || settings.enableDebugLog,

@@ -10,6 +10,7 @@ describe("buildOpenAiResponsesRequest", () => {
   it("converts a chat completion request to the Codex Responses shape", () => {
     const body: LlmChatCompletionRequestBody = {
       model: "gpt-5.1",
+      reasoning_effort: "high",
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: "Only output JSON." },
@@ -30,7 +31,7 @@ describe("buildOpenAiResponsesRequest", () => {
       tools: [],
       tool_choice: "auto",
       parallel_tool_calls: true,
-      reasoning: null,
+      reasoning: { effort: "high" },
       store: false,
       stream: true,
       include: [],

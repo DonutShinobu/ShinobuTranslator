@@ -114,6 +114,40 @@ describe("built-in LLM catalog", () => {
       officialMiMoBaseUrl: "https://api.xiaomimimo.com/v1",
     });
   });
+
+  it("persists thinking levels independently by exact provider and model", () => {
+    const flashSettings = normalizeSettings({
+      translator: "llm",
+      llmProvider: "deepseek",
+      llmProfiles: {
+        deepseek: {
+          apiKey: "sk-test",
+          modelPreset: "deepseek-v4-flash",
+        },
+      },
+      llmThinkingByModel: {
+        "deepseek/deepseek-v4-flash": "high",
+        "deepseek/deepseek-v4-pro": "max",
+      },
+    });
+    const proSettings = normalizeSettings({
+      ...flashSettings,
+      llmProfiles: {
+        ...flashSettings.llmProfiles,
+        deepseek: {
+          ...flashSettings.llmProfiles.deepseek,
+          modelPreset: "deepseek-v4-pro",
+        },
+      },
+    });
+
+    expect(toPipelineConfig(flashSettings).llmThinkingLevel).toBe("high");
+    expect(toPipelineConfig(proSettings).llmThinkingLevel).toBe("max");
+    expect(proSettings.llmThinkingByModel).toMatchObject({
+      "deepseek/deepseek-v4-flash": "high",
+      "deepseek/deepseek-v4-pro": "max",
+    });
+  });
 });
 
 describe("OpenAI provider settings", () => {
@@ -151,6 +185,28 @@ describe("OpenAI provider settings", () => {
       llmApiKey: "",
       llmBaseUrl: "https://api.openai.com/v1",
       llmModel: "gpt-5.4-mini",
+      llmUseCustomModel: false,
+    });
+  });
+
+  it("marks custom models in pipeline config", () => {
+    const settings = normalizeSettings({
+      translator: "llm",
+      llmProvider: "deepseek",
+      llmProfiles: {
+        deepseek: {
+          authMode: "api_key",
+          apiKey: "sk-test",
+          modelCustom: "deepseek-custom",
+          useCustomModel: true,
+        },
+      },
+    });
+
+    expect(toPipelineConfig(settings)).toMatchObject({
+      llmProvider: "deepseek",
+      llmModel: "deepseek-custom",
+      llmUseCustomModel: true,
     });
   });
 

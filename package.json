@@ -35,6 +35,7 @@
     "models:check-paddle-ocr": "node scripts/check-paddle-ocr-model.mjs",
     "models:download": "node scripts/download-models.mjs",
     "models:upload": "node scripts/upload-models.mjs",
+    "llm-thinking:check-drift": "tsx scripts/check-llm-thinking-capability-drift.ts",
     "color:diagnostic": "tsx benchmark/color/src/color-diagnostic.ts",
     "color:comparison": "tsx benchmark/color/src/color-comparison.ts",
     "bench:perf": "tsx benchmark/perf/src/run-perf.ts"

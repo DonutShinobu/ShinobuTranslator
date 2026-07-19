@@ -1,4 +1,5 @@
 import type { PipelineCanvas, PipelineImage, PipelineImageData } from "./runtime/platform";
+import type { LlmThinkingLevel } from "./shared/llmThinking";
 
 export type Rect = {
   x: number;
@@ -66,6 +67,10 @@ export type PipelineConfig = {
   llmBaseUrl: string;
   llmApiKey: string;
   llmModel: string;
+  /** Whether the selected model bypasses built-in provider-specific model settings. */
+  llmUseCustomModel?: boolean;
+  /** Canonical thinking level for the exact selected built-in model. */
+  llmThinkingLevel?: LlmThinkingLevel;
   typesetDebug: boolean;
   eraseDebug: boolean;
   collectDebugLog: boolean;

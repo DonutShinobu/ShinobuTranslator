@@ -30,3 +30,6 @@ jobs:
 
       - name: Run quality gate
         run: npm run check
+
+      - name: Check models.dev thinking capability drift
+        run: npm run llm-thinking:check-drift

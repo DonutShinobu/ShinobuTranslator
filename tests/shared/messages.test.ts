@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isRuntimeMessage } from "../../src/shared/messages";
+import { getRuntimeErrorCode, isRuntimeMessage } from "../../src/shared/messages";
 
 describe("isRuntimeMessage", () => {
   it("accepts image and screenshot translation runtime messages", () => {
@@ -21,6 +21,8 @@ describe("isRuntimeMessage", () => {
         provider: "openai",
         authMode: "api_key",
         baseUrl: "https://api.openai.com/v1",
+        useCustomModel: false,
+        thinkingLevel: "xhigh",
       },
       diagnosticRunId: "run-1",
     })).toBe(true);
@@ -92,6 +94,26 @@ describe("isRuntimeMessage", () => {
         baseUrl: "https://api.openai.com/v1",
       },
     })).toBe(false);
+    expect(isRuntimeMessage({
+      type: "mt:llm-chat-completions",
+      body: { model: "gpt-5.4-mini", messages: [] },
+      proxyConfig: {
+        provider: "openai",
+        authMode: "api_key",
+        baseUrl: "https://api.openai.com/v1",
+        useCustomModel: "yes",
+      },
+    })).toBe(false);
+    expect(isRuntimeMessage({
+      type: "mt:llm-chat-completions",
+      body: { model: "gpt-5.4-mini", messages: [] },
+      proxyConfig: {
+        provider: "openai",
+        authMode: "api_key",
+        baseUrl: "https://api.openai.com/v1",
+        thinkingLevel: "ultra",
+      },
+    })).toBe(false);
   });
 
   it("rejects malformed Gemini App image translation messages", () => {
@@ -119,5 +141,12 @@ describe("isRuntimeMessage", () => {
         sessionId: "session-1",
       },
     })).toBe(false);
+  });
+});
+
+describe("getRuntimeErrorCode", () => {
+  it("preserves the thinking-configuration error code across the runtime seam", () => {
+    expect(getRuntimeErrorCode({ errorCode: "llm_thinking_config" })).toBe("llm_thinking_config");
+    expect(getRuntimeErrorCode(new Error("ordinary failure"))).toBeUndefined();
   });
 });

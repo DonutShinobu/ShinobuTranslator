@@ -1,19 +1,40 @@
 import type { ExtensionSettings } from '../shared/config';
-import type { LlmChatCompletionRequestBody, LlmChatCompletionsProxyConfig } from '../shared/messages';
+import type {
+  LlmChatCompletionRequestBody,
+  LlmChatCompletionsProxyConfig,
+  RuntimeErrorCode,
+} from '../shared/messages';
+import {
+  adaptLlmThinkingChatCompletionRequest,
+  isLlmThinkingConfigurationRejection,
+} from '../shared/llmThinking';
 
 export class LlmChatCompletionHttpError extends Error {
   readonly status: number;
   readonly statusText: string;
   readonly contentType: string;
   readonly responseText: string;
+  readonly errorCode?: RuntimeErrorCode;
 
-  constructor(status: number, statusText: string, contentType: string, responseText: string, detail: string | null) {
-    super(`LLM 翻译请求失败: ${detail ?? `HTTP ${status}`}`);
+  constructor(
+    status: number,
+    statusText: string,
+    contentType: string,
+    responseText: string,
+    detail: string | null,
+    errorCode?: RuntimeErrorCode,
+  ) {
+    super(
+      errorCode === 'llm_thinking_config'
+        ? `当前模型不支持所选思考设置: ${detail ?? `HTTP ${status}`}`
+        : `LLM 翻译请求失败: ${detail ?? `HTTP ${status}`}`,
+    );
     this.name = 'LlmChatCompletionHttpError';
     this.status = status;
     this.statusText = statusText;
     this.contentType = contentType;
     this.responseText = responseText;
+    this.errorCode = errorCode;
   }
 }
 
@@ -98,20 +119,45 @@ export async function proxyApiKeyChatCompletions(
   }
 
   const endpoint = resolveLlmChatCompletionsEndpoint(baseUrl);
+  const usesCustomModel =
+    proxyConfig.provider === 'custom' ||
+    (proxyConfig.useCustomModel ?? profile.useCustomModel);
+  const requestBody = adaptLlmThinkingChatCompletionRequest(body, {
+    provider: proxyConfig.provider,
+    model: body.model,
+    level: proxyConfig.thinkingLevel,
+    useCustomModel: usesCustomModel,
+  });
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify(requestBody),
   });
   const responseText = await response.text();
   const contentType = response.headers.get('content-type') ?? '';
 
   if (!response.ok) {
     const detail = extractApiErrorMessage(parseMaybeJson(responseText));
-    throw new LlmChatCompletionHttpError(response.status, response.statusText, contentType, responseText, detail);
+    const errorCode = isLlmThinkingConfigurationRejection({
+      status: response.status,
+      provider: proxyConfig.provider,
+      model: body.model,
+      useCustomModel: usesCustomModel,
+      errorDetail: `${detail ?? ''}\n${responseText}`,
+    })
+      ? 'llm_thinking_config'
+      : undefined;
+    throw new LlmChatCompletionHttpError(
+      response.status,
+      response.statusText,
+      contentType,
+      responseText,
+      detail,
+      errorCode,
+    );
   }
 
   try {

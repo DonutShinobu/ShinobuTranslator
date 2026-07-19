@@ -112,7 +112,7 @@ export async function handleLlmChatCompletions(message: LlmChatMessage): Promise
   });
   try {
     const data = proxyConfig.provider === 'openai' && proxyConfig.authMode === 'openai_oauth'
-      ? await proxyOpenAiChatCompletions(message.body)
+      ? await proxyOpenAiChatCompletions(message.body, proxyConfig)
       : await proxyApiKeyChatCompletions(settings, proxyConfig, message.body);
     await recordBackgroundDiagnosticLog(settings, {
       runId: message.diagnosticRunId,

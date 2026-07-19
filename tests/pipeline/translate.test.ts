@@ -14,6 +14,7 @@ const baseConfig: PipelineConfig = {
   llmBaseUrl: 'https://api.openai.com/v1',
   llmApiKey: 'sk-test',
   llmModel: 'gpt-5.4-mini',
+  llmThinkingLevel: 'off',
   typesetDebug: false,
   eraseDebug: false,
   collectDebugLog: false,
@@ -68,6 +69,37 @@ afterEach(() => {
 });
 
 describe('runTranslate', () => {
+  it('passes custom-model state through the LLM request', async () => {
+    const sentChatMessages = installRuntimeChatSequence([
+      JSON.stringify({
+        regions: [{ id: 'region-1', translation: '已经没事了，别哭。' }],
+      }),
+    ]);
+
+    await runTranslate(
+      [makeRegion()],
+      {
+        ...baseConfig,
+        llmProvider: 'minimax',
+        llmBaseUrl: 'https://api.minimax.io/v1',
+        llmModel: 'MiniMax-Custom',
+        llmUseCustomModel: true,
+      },
+    );
+
+    expect(sentChatMessages[0]).toMatchObject({
+      body: {
+        model: 'MiniMax-Custom',
+      },
+      proxyConfig: {
+        provider: 'minimax',
+        useCustomModel: true,
+      },
+    });
+    expect(sentChatMessages[0]).not.toHaveProperty('body.reasoning_split');
+    expect(sentChatMessages[0]).not.toHaveProperty('body.thinking');
+  });
+
   it('uses single-region structured fallback after batch parse failure', async () => {
     const sentChatMessages = installRuntimeChatSequence([
       'not json',
@@ -119,5 +151,39 @@ describe('runTranslate', () => {
       llmFallbackRegionCount: 1,
       llmFallbackRequestCount: 2,
     });
+  });
+
+  it('aborts the whole page after one thinking-configuration rejection', async () => {
+    const sentChatMessages: unknown[] = [];
+    testGlobal.chrome = {
+      runtime: {
+        sendMessage(message: unknown, callback?: (response: unknown) => void): void {
+          if (
+            typeof message === 'object'
+            && message !== null
+            && (message as { type?: unknown }).type === 'mt:llm-chat-completions'
+          ) {
+            sentChatMessages.push(message);
+            callback?.({
+              ok: false,
+              type: 'mt:llm-chat-completions',
+              error: '当前模型不支持所选思考设置: invalid reasoning_effort',
+              errorCode: 'llm_thinking_config',
+            });
+            return;
+          }
+          callback?.({ ok: true, type: 'mt:diagnostic-log-event' });
+        },
+      },
+    };
+
+    await expect(runTranslate(
+      [
+        makeRegion({ id: 'region-1' }),
+        makeRegion({ id: 'region-2' }),
+      ],
+      baseConfig,
+    )).rejects.toThrow('当前模型不支持所选思考设置');
+    expect(sentChatMessages).toHaveLength(1);
   });
 });

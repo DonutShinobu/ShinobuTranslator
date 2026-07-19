@@ -3,6 +3,8 @@ import type { DiagnosticLogEvent, DiagnosticLogTextExport } from './diagnosticLo
 import type { OpenAiOAuthStatusInfo } from './openaiOAuth';
 import type { LlmAuthMode, LlmProvider, StageTiming } from '../types';
 import { requireChromeApi } from './chrome';
+import { isLlmThinkingLevel } from './llmThinking';
+import type { LlmThinkingLevel } from './llmThinking';
 import { toErrorMessage } from './utils';
 
 export type GetSettingsMessage = {
@@ -60,9 +62,10 @@ export type LlmChatCompletionRequestBody = {
   response_format?: {
     type: 'json_object' | 'text';
   };
+  reasoning_effort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   reasoning_split?: boolean;
   thinking?: {
-    type: 'disabled' | 'adaptive';
+    type: 'disabled' | 'enabled' | 'adaptive';
   };
 };
 
@@ -70,6 +73,8 @@ export type LlmChatCompletionsProxyConfig = {
   provider: LlmProvider;
   authMode: LlmAuthMode;
   baseUrl: string;
+  useCustomModel?: boolean;
+  thinkingLevel?: LlmThinkingLevel;
 };
 
 export type LlmChatCompletionsMessage = {
@@ -269,10 +274,13 @@ export type RuntimeErrorDetail = {
   content: string;
 };
 
+export type RuntimeErrorCode = 'llm_thinking_config';
+
 export type RuntimeErrorResponse = {
   ok: false;
   type: RuntimeMessage['type'];
   error: string;
+  errorCode?: RuntimeErrorCode;
   errorDetail?: RuntimeErrorDetail;
 };
 
@@ -280,6 +288,15 @@ export type RuntimeResponse = RuntimeSuccessResponse | RuntimeErrorResponse;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+export function getRuntimeErrorCode(error: unknown): RuntimeErrorCode | undefined {
+  if (!isRecord(error)) {
+    return undefined;
+  }
+  return error.errorCode === 'llm_thinking_config'
+    ? error.errorCode
+    : undefined;
 }
 
 function isLlmProvider(value: unknown): value is LlmProvider {
@@ -309,7 +326,9 @@ function isLlmChatCompletionsMessage(value: Record<string, unknown>): value is L
     (!isRecord(proxyConfig) ||
       !isLlmProvider(proxyConfig.provider) ||
       !isLlmAuthMode(proxyConfig.authMode) ||
-      typeof proxyConfig.baseUrl !== 'string')
+      typeof proxyConfig.baseUrl !== 'string' ||
+      (proxyConfig.useCustomModel !== undefined && typeof proxyConfig.useCustomModel !== 'boolean') ||
+      (proxyConfig.thinkingLevel !== undefined && !isLlmThinkingLevel(proxyConfig.thinkingLevel)))
   ) {
     return false;
   }

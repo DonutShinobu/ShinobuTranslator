@@ -1,6 +1,7 @@
 import type { LlmAuthMode, LlmProvider } from '../types';
 import { sendRuntimeMessage } from '../shared/messages';
 import type { LlmChatCompletionRequestBody } from '../shared/messages';
+import type { LlmThinkingLevel } from '../shared/llmThinking';
 import {
   classifyLlmFetchError,
   sanitizeDiagnosticUrl,
@@ -13,6 +14,8 @@ type LlmTranslateOptions = {
   authMode: LlmAuthMode;
   baseUrl: string;
   model: string;
+  useCustomModel?: boolean;
+  thinkingLevel?: LlmThinkingLevel;
   from: string;
   to: string;
   text: string;
@@ -46,6 +49,8 @@ type LlmTranslateRegionsOptions = {
   authMode: LlmAuthMode;
   baseUrl: string;
   model: string;
+  useCustomModel?: boolean;
+  thinkingLevel?: LlmThinkingLevel;
   from: string;
   to: string;
   regions: LlmRegionInput[];
@@ -61,6 +66,8 @@ type ChatCompletionRequestOptions = {
   provider: LlmProvider;
   authMode: LlmAuthMode;
   baseUrl: string;
+  useCustomModel?: boolean;
+  thinkingLevel?: LlmThinkingLevel;
   diagnosticRunId?: string;
 };
 
@@ -76,6 +83,13 @@ export class LlmColumnsParseError extends Error {
     super(message);
     this.name = 'LlmColumnsParseError';
     this.rawContent = rawContent;
+  }
+}
+
+export class LlmThinkingConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'LlmThinkingConfigError';
   }
 }
 
@@ -187,13 +201,6 @@ async function requestChatCompletion(
   body: LlmChatCompletionRequestBody,
 ): Promise<ChatCompletionResponse> {
   const requestBody = { ...body };
-  if (options.provider === 'minimax') {
-    delete requestBody.response_format;
-    requestBody.reasoning_split = true;
-    if (body.model === 'MiniMax-M3') {
-      requestBody.thinking = { type: 'disabled' };
-    }
-  }
 
   const startedAt = Date.now();
   const endpoint = `${options.baseUrl.replace(/\/$/, '')}/chat/completions`;
@@ -228,10 +235,17 @@ async function requestChatCompletion(
         provider: options.provider,
         authMode: options.authMode,
         baseUrl: options.baseUrl,
+        useCustomModel: options.useCustomModel === true,
+        ...(options.useCustomModel || !options.thinkingLevel
+          ? {}
+          : { thinkingLevel: options.thinkingLevel }),
       },
       diagnosticRunId: options.diagnosticRunId,
     });
     if (!response.ok || response.type !== 'mt:llm-chat-completions') {
+      if (!response.ok && response.errorCode === 'llm_thinking_config') {
+        throw new LlmThinkingConfigError(response.error);
+      }
       throw new Error(response.ok ? 'LLM 翻译请求失败' : response.error);
     }
     emitDiagnosticLog({

@@ -1,4 +1,11 @@
-import type { LlmChatCompletionRequestBody } from "../../shared/messages";
+import type {
+  LlmChatCompletionRequestBody,
+  LlmChatCompletionsProxyConfig,
+} from "../../shared/messages";
+import {
+  adaptLlmThinkingChatCompletionRequest,
+  isLlmThinkingConfigurationRejection,
+} from "../../shared/llmThinking";
 import { openAiOAuthOriginator } from "../../shared/openaiOAuth";
 import type { StoredOpenAiOAuthTokens } from "../../shared/openaiOAuth";
 import {
@@ -16,6 +23,15 @@ import {
 } from "./oauthService";
 
 export const openAiCodexResponsesEndpoint = "https://chatgpt.com/backend-api/codex/responses";
+
+class OpenAiThinkingConfigError extends Error {
+  readonly errorCode = 'llm_thinking_config' as const;
+
+  constructor(detail: string) {
+    super(`当前模型不支持所选思考设置: ${detail}`);
+    this.name = 'OpenAiThinkingConfigError';
+  }
+}
 
 async function fetchOpenAiCodexResponses(
   body: LlmChatCompletionRequestBody,
@@ -85,22 +101,41 @@ function toChatCompletionsResponse(content: string, model: string): unknown {
   };
 }
 
-export async function proxyOpenAiChatCompletions(body: LlmChatCompletionRequestBody): Promise<unknown> {
+export async function proxyOpenAiChatCompletions(
+  body: LlmChatCompletionRequestBody,
+  proxyConfig: LlmChatCompletionsProxyConfig,
+): Promise<unknown> {
+  const requestBody = adaptLlmThinkingChatCompletionRequest(body, {
+    provider: 'openai',
+    model: body.model,
+    level: proxyConfig.thinkingLevel,
+    useCustomModel: proxyConfig.useCustomModel,
+  });
   let tokens = await getValidOpenAiOAuthTokens();
-  let response = await fetchOpenAiCodexResponses(body, tokens);
+  let response = await fetchOpenAiCodexResponses(requestBody, tokens);
   if (response.status === 401) {
     tokens = await refreshOpenAiOAuthTokens(tokens);
-    response = await fetchOpenAiCodexResponses(body, tokens);
+    response = await fetchOpenAiCodexResponses(requestBody, tokens);
   }
 
   if (!response.ok) {
     const data = await readJsonResponse(response);
-    throw new Error(`OpenAI ChatGPT 请求失败: ${extractResponseError(data) ?? `HTTP ${response.status}`}`);
+    const detail = extractResponseError(data) ?? `HTTP ${response.status}`;
+    if (isLlmThinkingConfigurationRejection({
+      status: response.status,
+      provider: 'openai',
+      model: body.model,
+      useCustomModel: proxyConfig.useCustomModel,
+      errorDetail: `${detail}\n${JSON.stringify(data)}`,
+    })) {
+      throw new OpenAiThinkingConfigError(detail);
+    }
+    throw new Error(`OpenAI ChatGPT 请求失败: ${detail}`);
   }
 
   const content = await readOpenAiCodexResponsesText(response);
   if (!content) {
     throw new Error('OpenAI ChatGPT 响应为空');
   }
-  return toChatCompletionsResponse(content, body.model);
+  return toChatCompletionsResponse(content, requestBody.model);
 }

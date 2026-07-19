@@ -1,6 +1,7 @@
 import type { SiteAdapter } from '../core/types';
 const imageDialogSelector = '[aria-labelledby="modal-header"][role="dialog"]';
 const originalSrcAttr = 'data-mt-original-src';
+const pendingAppliedSources = new WeakMap<HTMLImageElement, string>();
 
 function isVisibleElement(element: HTMLElement): boolean {
   const rect = element.getBoundingClientRect();
@@ -57,14 +58,49 @@ function findCurrentImage(dialog: HTMLElement): HTMLImageElement | null {
   }
 
   let best: HTMLImageElement | null = null;
-  let bestArea = 0;
+  let bestContainsViewportCenter = false;
+  let bestVisibleArea = 0;
+  let bestCenterDistance = Number.POSITIVE_INFINITY;
+  const viewportCenterX = window.innerWidth / 2;
+  const viewportCenterY = window.innerHeight / 2;
   const images = dialog.querySelectorAll<HTMLImageElement>('img');
   for (const image of images) {
     if (!isDialogMediaImage(image)) continue;
     const rect = image.getBoundingClientRect();
-    const area = rect.width * rect.height;
-    if (area > bestArea) {
-      bestArea = area;
+    const visibleWidth = Math.max(
+      0,
+      Math.min(rect.right, window.innerWidth) - Math.max(rect.left, 0),
+    );
+    const visibleHeight = Math.max(
+      0,
+      Math.min(rect.bottom, window.innerHeight) - Math.max(rect.top, 0),
+    );
+    const visibleArea = visibleWidth * visibleHeight;
+    if (visibleArea <= 0) continue;
+
+    const imageCenterX = rect.left + rect.width / 2;
+    const imageCenterY = rect.top + rect.height / 2;
+    const containsViewportCenter = rect.left <= viewportCenterX
+      && rect.right >= viewportCenterX
+      && rect.top <= viewportCenterY
+      && rect.bottom >= viewportCenterY;
+    const centerDistance = Math.hypot(
+      imageCenterX - viewportCenterX,
+      imageCenterY - viewportCenterY,
+    );
+    if (
+      (containsViewportCenter && !bestContainsViewportCenter)
+      || (
+        containsViewportCenter === bestContainsViewportCenter
+        && (
+          visibleArea > bestVisibleArea
+          || (visibleArea === bestVisibleArea && centerDistance < bestCenterDistance)
+        )
+      )
+    ) {
+      bestContainsViewportCenter = containsViewportCenter;
+      bestVisibleArea = visibleArea;
+      bestCenterDistance = centerDistance;
       best = image;
     }
   }
@@ -101,6 +137,22 @@ function updateImageCompanionBackground(image: HTMLImageElement, targetUrl: stri
   if (!previous || !(previous instanceof HTMLElement)) return;
   if (!previous.style.backgroundImage) return;
   previous.style.backgroundImage = `url("${targetUrl}")`;
+}
+
+function isExtensionSourceMutation(mutation: MutationRecord): boolean {
+  if (
+    mutation.type !== 'attributes'
+    || mutation.attributeName !== 'src'
+    || typeof HTMLImageElement === 'undefined'
+    || !(mutation.target instanceof HTMLImageElement)
+  ) {
+    return false;
+  }
+
+  const pendingSource = pendingAppliedSources.get(mutation.target);
+  if (!pendingSource) return false;
+  pendingAppliedSources.delete(mutation.target);
+  return mutation.target.src === pendingSource;
 }
 
 const referenceButtonSelector =
@@ -211,6 +263,7 @@ export const twitterAdapter: SiteAdapter = {
 
   applyImage(target, url) {
     target.element.src = url;
+    pendingAppliedSources.set(target.element, target.element.src);
     target.element.setAttribute(originalSrcAttr, target.originalUrl);
     updateImageCompanionBackground(target.element, url);
   },
@@ -218,10 +271,28 @@ export const twitterAdapter: SiteAdapter = {
   observe(onChange) {
     const root = document.querySelector('#layers') ?? document.body;
     const observer = new MutationObserver((mutations) => {
-      if (!mutations.some((m) => m.type === 'childList')) return;
-      onChange();
+      let shouldSync = false;
+      for (const mutation of mutations) {
+        if (mutation.type === 'childList') {
+          shouldSync = true;
+          continue;
+        }
+        if (
+          mutation.type === 'attributes'
+          && (mutation.attributeName === 'src' || mutation.attributeName === 'srcset')
+          && !isExtensionSourceMutation(mutation)
+        ) {
+          shouldSync = true;
+        }
+      }
+      if (shouldSync) onChange();
     });
-    observer.observe(root, { childList: true, subtree: true });
+    observer.observe(root, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['src', 'srcset'],
+    });
 
     const origPush = history.pushState;
     const origReplace = history.replaceState;

@@ -414,6 +414,15 @@ html, body {
 
 .select-root[data-open='true'] {
   z-index: 20;
+  filter:
+    drop-shadow(0 10px 12px oklch(0.42 0.025 350 / 0.08))
+    drop-shadow(0 18px 24px oklch(0.42 0.025 350 / 0.07));
+}
+
+.select-root[data-open='true'][data-placement='up'] {
+  filter:
+    drop-shadow(0 -10px 12px oklch(0.42 0.025 350 / 0.08))
+    drop-shadow(0 -18px 24px oklch(0.42 0.025 350 / 0.07));
 }
 
 .select-trigger {
@@ -503,15 +512,12 @@ html, body {
   left: 0;
   max-height: 190px;
   box-sizing: border-box;
-  overflow-y: auto;
+  overflow: hidden;
   padding: 4px;
   border: 1px solid var(--border-default);
   border-top: 0;
   border-radius: 0 0 var(--radius-md) var(--radius-md);
   background: var(--bg-surface);
-  box-shadow:
-    0 10px 18px oklch(0.42 0.025 350 / 0.10),
-    0 18px 30px oklch(0.42 0.025 350 / 0.10);
   opacity: 0;
   visibility: hidden;
   clip-path: inset(0 0 100% 0);
@@ -529,9 +535,6 @@ html, body {
   border-top: 1px solid var(--border-default);
   border-bottom: 0;
   border-radius: var(--radius-md) var(--radius-md) 0 0;
-  box-shadow:
-    0 -10px 18px oklch(0.42 0.025 350 / 0.10),
-    0 -18px 30px oklch(0.42 0.025 350 / 0.10);
   clip-path: inset(100% 0 0 0);
   transform-origin: bottom center;
 }
@@ -543,6 +546,12 @@ html, body {
   clip-path: inset(0);
   pointer-events: auto;
   transition-delay: 0s;
+}
+
+.select-options-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .select-root[data-open='true'][data-placement='up'] .select-menu {

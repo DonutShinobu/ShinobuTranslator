@@ -382,35 +382,39 @@ function SelectControl<T extends string>({
         </svg>
       </button>
       <div
-        id={listboxId}
         className="select-menu"
-        role="listbox"
-        aria-label={ariaLabel}
         aria-hidden={!open}
-        style={{ maxHeight: menuMaxHeight }}
       >
-        {availableOptions.map((option, index) => {
-          const active = index === activeIndex;
-          return (
-            <button
-              key={option.value}
-              id={`${listboxId}-option-${index}`}
-              type="button"
-              className={`select-option${active ? ' select-option-active' : ''}`}
-              role="option"
-              aria-selected="false"
-              tabIndex={-1}
-              ref={(element) => {
-                optionRefs.current[index] = element;
-              }}
-              onPointerDown={(event) => event.preventDefault()}
-              onPointerMove={() => setActiveIndex(index)}
-              onClick={() => selectOption(index)}
-            >
-              <span>{option.label}</span>
-            </button>
-          );
-        })}
+        <div
+          id={listboxId}
+          className="select-options-scroll"
+          role="listbox"
+          aria-label={ariaLabel}
+          style={{ maxHeight: Math.max(31, menuMaxHeight - 8) }}
+        >
+          {availableOptions.map((option, index) => {
+            const active = index === activeIndex;
+            return (
+              <button
+                key={option.value}
+                id={`${listboxId}-option-${index}`}
+                type="button"
+                className={`select-option${active ? ' select-option-active' : ''}`}
+                role="option"
+                aria-selected="false"
+                tabIndex={-1}
+                ref={(element) => {
+                  optionRefs.current[index] = element;
+                }}
+                onPointerDown={(event) => event.preventDefault()}
+                onPointerMove={() => setActiveIndex(index)}
+                onClick={() => selectOption(index)}
+              >
+                <span>{option.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

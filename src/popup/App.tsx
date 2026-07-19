@@ -201,6 +201,11 @@ type SelectOption<T extends string> = {
 
 type SelectPlacement = 'down' | 'up';
 
+const selectCurrentValueIndex = -1;
+const selectRowHeight = 31;
+const selectMenuMaxHeight = 191;
+const selectMenuChromeHeight = 5;
+
 function SelectControl<T extends string>({
   options,
   value,
@@ -215,9 +220,9 @@ function SelectControl<T extends string>({
   ariaLabel: string;
 }) {
   const [open, setOpen] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(selectCurrentValueIndex);
   const [placement, setPlacement] = useState<SelectPlacement>('down');
-  const [menuMaxHeight, setMenuMaxHeight] = useState(190);
+  const [menuMaxHeight, setMenuMaxHeight] = useState(selectMenuMaxHeight);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -244,31 +249,46 @@ function SelectControl<T extends string>({
   }, [disabled]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || activeIndex === selectCurrentValueIndex) return;
     optionRefs.current[activeIndex]?.scrollIntoView({ block: 'nearest' });
   }, [activeIndex, open]);
 
-  function openMenu(): void {
-    if (availableOptions.length === 0) return;
+  function getVisualOptionIndices(targetPlacement: SelectPlacement): number[] {
+    const optionIndices = availableOptions.map((_, index) => index);
+    return targetPlacement === 'down'
+      ? [selectCurrentValueIndex, ...optionIndices]
+      : [...optionIndices, selectCurrentValueIndex];
+  }
+
+  function openMenu(): SelectPlacement | null {
+    if (availableOptions.length === 0) return null;
 
     const triggerRect = triggerRef.current?.getBoundingClientRect();
     const popupRect = rootRef.current?.closest('.popup')?.getBoundingClientRect();
+    let nextPlacement = placement;
     if (triggerRect) {
       const boundaryTop = Math.max(0, popupRect?.top ?? 0);
       const boundaryBottom = Math.min(window.innerHeight, popupRect?.bottom ?? window.innerHeight);
-      const spaceAbove = Math.max(0, triggerRect.top - boundaryTop + 1);
-      const spaceBelow = Math.max(0, boundaryBottom - triggerRect.bottom + 1);
-      const desiredHeight = Math.min(190, availableOptions.length * 31 + 8);
-      const nextPlacement: SelectPlacement =
+      const spaceAbove = Math.max(0, triggerRect.top - boundaryTop);
+      const spaceBelow = Math.max(0, boundaryBottom - triggerRect.bottom);
+      const desiredHeight = Math.min(
+        selectMenuMaxHeight,
+        availableOptions.length * selectRowHeight + selectMenuChromeHeight,
+      );
+      nextPlacement =
         spaceBelow >= desiredHeight || spaceBelow >= spaceAbove ? 'down' : 'up';
       const availableHeight = nextPlacement === 'down' ? spaceBelow : spaceAbove;
 
       setPlacement(nextPlacement);
-      setMenuMaxHeight(Math.max(39, Math.min(190, Math.floor(availableHeight))));
+      setMenuMaxHeight(Math.max(
+        selectRowHeight + selectMenuChromeHeight,
+        Math.min(selectMenuMaxHeight, Math.floor(availableHeight)),
+      ));
     }
 
-    setActiveIndex(0);
+    setActiveIndex(selectCurrentValueIndex);
     setOpen(true);
+    return nextPlacement;
   }
 
   function closeMenu(restoreFocus = false): void {
@@ -277,6 +297,10 @@ function SelectControl<T extends string>({
   }
 
   function selectOption(index: number): void {
+    if (index === selectCurrentValueIndex) {
+      closeMenu(true);
+      return;
+    }
     const option = availableOptions[index];
     if (!option) return;
     onChange(option.value);
@@ -289,9 +313,21 @@ function SelectControl<T extends string>({
       return;
     }
     if (availableOptions.length === 0) return;
-    setActiveIndex((current) => (
-      current + direction + availableOptions.length
-    ) % availableOptions.length);
+    const visualIndices = getVisualOptionIndices(placement);
+    setActiveIndex((current) => {
+      const currentPosition = visualIndices.indexOf(current);
+      const nextPosition = (
+        Math.max(0, currentPosition) + direction + visualIndices.length
+      ) % visualIndices.length;
+      return visualIndices[nextPosition];
+    });
+  }
+
+  function moveActiveToBoundary(boundary: 'start' | 'end'): void {
+    const targetPlacement = open ? placement : openMenu();
+    if (!targetPlacement) return;
+    const visualIndices = getVisualOptionIndices(targetPlacement);
+    setActiveIndex(boundary === 'start' ? visualIndices[0] : visualIndices[visualIndices.length - 1]);
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>): void {
@@ -306,13 +342,11 @@ function SelectControl<T extends string>({
         break;
       case 'Home':
         event.preventDefault();
-        if (!open) openMenu();
-        setActiveIndex(0);
+        moveActiveToBoundary('start');
         break;
       case 'End':
         event.preventDefault();
-        if (!open) openMenu();
-        setActiveIndex(Math.max(0, availableOptions.length - 1));
+        moveActiveToBoundary('end');
         break;
       case 'Enter':
       case ' ':
@@ -332,10 +366,15 @@ function SelectControl<T extends string>({
       default:
         if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
           const query = event.key.toLocaleLowerCase();
-          const matchIndex = availableOptions.findIndex(
+          const availableMatchIndex = availableOptions.findIndex(
             (option) => option.label.toLocaleLowerCase().startsWith(query),
           );
-          if (matchIndex >= 0) {
+          const matchIndex = selectedOption?.label.toLocaleLowerCase().startsWith(query)
+            ? selectCurrentValueIndex
+            : availableMatchIndex >= 0
+              ? availableMatchIndex
+              : null;
+          if (matchIndex !== null) {
             event.preventDefault();
             if (!open) openMenu();
             setActiveIndex(matchIndex);
@@ -354,18 +393,27 @@ function SelectControl<T extends string>({
       <button
         ref={triggerRef}
         type="button"
-        className="select-trigger"
+        className={`select-trigger${
+          open && activeIndex === selectCurrentValueIndex ? ' select-trigger-active' : ''
+        }`}
         aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listboxId}
-        aria-activedescendant={open ? `${listboxId}-option-${activeIndex}` : undefined}
+        aria-activedescendant={
+          open && activeIndex !== selectCurrentValueIndex
+            ? `${listboxId}-option-${activeIndex}`
+            : undefined
+        }
         disabled={disabled}
         onClick={() => {
           if (open) closeMenu();
           else openMenu();
         }}
         onKeyDown={handleKeyDown}
+        onPointerMove={() => {
+          if (open) setActiveIndex(selectCurrentValueIndex);
+        }}
       >
         <span className="select-value">{selectedOption?.label ?? ''}</span>
         <svg
@@ -390,7 +438,9 @@ function SelectControl<T extends string>({
           className="select-options-scroll"
           role="listbox"
           aria-label={ariaLabel}
-          style={{ maxHeight: Math.max(31, menuMaxHeight - 8) }}
+          style={{
+            maxHeight: Math.max(selectRowHeight, menuMaxHeight - selectMenuChromeHeight),
+          }}
         >
           {availableOptions.map((option, index) => {
             const active = index === activeIndex;

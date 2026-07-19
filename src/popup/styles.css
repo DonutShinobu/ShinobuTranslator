@@ -465,15 +465,28 @@ html, body {
 }
 
 .select-root[data-open='true'] .select-trigger {
-  border-bottom-color: var(--border-subtle);
+  border-bottom-color: #fffdfe;
   border-radius: var(--radius-md) var(--radius-md) 0 0;
   box-shadow: none;
 }
 
 .select-root[data-open='true'][data-placement='up'] .select-trigger {
-  border-top-color: var(--border-subtle);
+  border-top-color: #fffdfe;
   border-bottom-color: var(--accent);
   border-radius: 0 0 var(--radius-md) var(--radius-md);
+}
+
+.select-root[data-open='true'] .select-trigger-active {
+  background: var(--accent-soft);
+  color: var(--text-primary);
+}
+
+.select-root[data-open='true'][data-placement='down'] .select-trigger-active {
+  border-bottom-color: var(--accent-soft);
+}
+
+.select-root[data-open='true'][data-placement='up'] .select-trigger-active {
+  border-top-color: var(--accent-soft);
 }
 
 .select-trigger:disabled {
@@ -507,13 +520,13 @@ html, body {
 .select-menu {
   position: absolute;
   z-index: 30;
-  top: calc(100% - 1px);
+  top: 100%;
   right: 0;
   left: 0;
-  max-height: 190px;
+  max-height: 191px;
   box-sizing: border-box;
   overflow: hidden;
-  padding: 4px;
+  padding: 0 4px 4px;
   border: 1px solid var(--border-default);
   border-top: 0;
   border-radius: 0 0 var(--radius-md) var(--radius-md);
@@ -531,7 +544,8 @@ html, body {
 
 .select-root[data-placement='up'] .select-menu {
   top: auto;
-  bottom: calc(100% - 1px);
+  bottom: 100%;
+  padding: 4px 4px 0;
   border-top: 1px solid var(--border-default);
   border-bottom: 0;
   border-radius: var(--radius-md) var(--radius-md) 0 0;
@@ -565,7 +579,7 @@ html, body {
   gap: 8px;
   width: 100%;
   min-height: 31px;
-  padding: 5px 9px 5px 10px;
+  padding: 5px 9px 5px 6px;
   border: 0;
   border-radius: var(--radius-sm);
   outline: none;
@@ -585,6 +599,7 @@ html, body {
 .select-option-active {
   background: var(--accent-soft);
   color: var(--text-primary);
+  font-weight: 600;
 }
 
 .settings-stack {

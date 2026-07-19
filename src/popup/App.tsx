@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import {
   defaultExtensionSettings,
   geminiAppModelOptions,
@@ -190,6 +190,192 @@ function SegmentedControl<T extends string>({
           {option.label}
         </button>
       ))}
+    </div>
+  );
+}
+
+type SelectOption<T extends string> = {
+  value: T;
+  label: string;
+};
+
+function SelectControl<T extends string>({
+  options,
+  value,
+  onChange,
+  disabled,
+  ariaLabel,
+}: {
+  options: SelectOption<T>[];
+  value: T;
+  onChange: (value: T) => void;
+  disabled?: boolean;
+  ariaLabel: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const generatedId = useId();
+  const listboxId = `select-listbox-${generatedId}`;
+  const selectedOption = options.find((option) => option.value === value) ?? options[0];
+  const availableOptions = options.filter((option) => option.value !== value);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function handlePointerDown(event: PointerEvent): void {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [open]);
+
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
+
+  function openMenu(): void {
+    if (availableOptions.length === 0) return;
+    setActiveIndex(0);
+    setOpen(true);
+  }
+
+  function closeMenu(restoreFocus = false): void {
+    setOpen(false);
+    if (restoreFocus) triggerRef.current?.focus();
+  }
+
+  function selectOption(index: number): void {
+    const option = availableOptions[index];
+    if (!option) return;
+    onChange(option.value);
+    closeMenu(true);
+  }
+
+  function moveActiveOption(direction: 1 | -1): void {
+    if (!open) {
+      openMenu();
+      return;
+    }
+    if (availableOptions.length === 0) return;
+    setActiveIndex((current) => (
+      current + direction + availableOptions.length
+    ) % availableOptions.length);
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>): void {
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault();
+        moveActiveOption(1);
+        break;
+      case 'ArrowUp':
+        event.preventDefault();
+        moveActiveOption(-1);
+        break;
+      case 'Home':
+        event.preventDefault();
+        if (!open) openMenu();
+        setActiveIndex(0);
+        break;
+      case 'End':
+        event.preventDefault();
+        if (!open) openMenu();
+        setActiveIndex(Math.max(0, availableOptions.length - 1));
+        break;
+      case 'Enter':
+      case ' ':
+        event.preventDefault();
+        if (open) selectOption(activeIndex);
+        else openMenu();
+        break;
+      case 'Escape':
+        if (open) {
+          event.preventDefault();
+          closeMenu();
+        }
+        break;
+      case 'Tab':
+        setOpen(false);
+        break;
+      default:
+        if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          const query = event.key.toLocaleLowerCase();
+          const matchIndex = availableOptions.findIndex(
+            (option) => option.label.toLocaleLowerCase().startsWith(query),
+          );
+          if (matchIndex >= 0) {
+            event.preventDefault();
+            if (!open) openMenu();
+            setActiveIndex(matchIndex);
+          }
+        }
+    }
+  }
+
+  return (
+    <div className="select-root" data-open={open} ref={rootRef}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="select-trigger"
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={listboxId}
+        aria-activedescendant={open ? `${listboxId}-option-${activeIndex}` : undefined}
+        disabled={disabled}
+        onClick={() => {
+          if (open) closeMenu();
+          else openMenu();
+        }}
+        onKeyDown={handleKeyDown}
+      >
+        <span className="select-value">{selectedOption?.label ?? ''}</span>
+        <svg
+          className="select-chevron"
+          viewBox="0 0 12 8"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="m1.5 1.5 4.5 4.5 4.5-4.5" />
+        </svg>
+      </button>
+      <div
+        id={listboxId}
+        className="select-menu"
+        role="listbox"
+        aria-label={ariaLabel}
+        aria-hidden={!open}
+      >
+        {availableOptions.map((option, index) => {
+          const active = index === activeIndex;
+          return (
+            <button
+              key={option.value}
+              id={`${listboxId}-option-${index}`}
+              type="button"
+              className={`select-option${active ? ' select-option-active' : ''}`}
+              role="option"
+              aria-selected="false"
+              tabIndex={-1}
+              onPointerDown={(event) => event.preventDefault()}
+              onPointerMove={() => setActiveIndex(index)}
+              onClick={() => selectOption(index)}
+            >
+              <span>{option.label}</span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -828,20 +1014,16 @@ export function App() {
                   <IconLLM />
                   大模型配置
                 </div>
-                <label className="field">
+                <div className="field">
                   <span className="field-label">LLM 提供商</span>
-                  <select
+                  <SelectControl
+                    ariaLabel="LLM 提供商"
+                    options={llmProviderOptions}
                     value={settings.llmProvider}
-                    onChange={(event) => updateLlmProvider(event.target.value as LlmProvider)}
+                    onChange={updateLlmProvider}
                     disabled={loading}
-                  >
-                    {llmProviderOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                  />
+                </div>
 
                 {settings.llmProvider === 'gemini' ? (
                   <>
@@ -1038,17 +1220,13 @@ export function App() {
                             placeholder={builtInCustomModelPlaceholder}
                           />
                         ) : (
-                          <select
+                          <SelectControl
+                            ariaLabel="模型名称"
+                            options={currentProviderModels.map((model) => ({ value: model, label: model }))}
                             value={currentProfile.modelPreset}
-                            onChange={(event) => updateActiveLlmProfile({ modelPreset: event.target.value })}
+                            onChange={(modelPreset) => updateActiveLlmProfile({ modelPreset })}
                             disabled={loading}
-                          >
-                            {currentProviderModels.map((model) => (
-                              <option key={model} value={model}>
-                                {model}
-                              </option>
-                            ))}
-                          </select>
+                          />
                         )}
                         <label className={`custom-model-toggle${loading ? ' custom-model-toggle-disabled' : ''}`}>
                           <input

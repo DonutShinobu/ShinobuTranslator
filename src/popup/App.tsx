@@ -121,6 +121,37 @@ const IconRefresh = () => (
   </svg>
 );
 
+const IconEye = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M2.1 12s3.6-7 9.9-7 9.9 7 9.9 7-3.6 7-9.9 7-9.9-7-9.9-7Z" />
+    <circle cx="12" cy="12" r="2.5" />
+  </svg>
+);
+
+const IconEyeOff = () => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M2.1 12s3.6-7 9.9-7 9.9 7 9.9 7-3.6 7-9.9 7-9.9-7-9.9-7Z" />
+    <circle cx="12" cy="12" r="2.5" />
+    <path d="m3 3 18 18" />
+  </svg>
+);
+
 const shortcutCommandDefinitions = [
   { name: 'start-screenshot-translate', label: '截图翻译' },
   { name: 'translate-hover-target', label: '翻译悬停元素' },
@@ -139,7 +170,6 @@ const defaultShortcutState: ShortcutState = {
 };
 
 const geminiAppAuthCacheKey = 'shinobu.geminiApp.authenticated';
-const customModelThinkingNotice = '自定义模型不支持思考相关设置';
 
 function readGeminiAppAuthCache(): boolean {
   try {
@@ -155,6 +185,50 @@ function writeGeminiAppAuthCache(authenticated: boolean): void {
   } catch {
     // Cache is a UI hint only; failure should not block login or settings.
   }
+}
+
+function ApiKeyField({
+  value,
+  onChange,
+  disabled,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+  placeholder: string;
+}) {
+  const [revealed, setRevealed] = useState(false);
+  const inputId = useId();
+  const toggleLabel = revealed ? '隐藏 API Key' : '显示 API Key';
+
+  return (
+    <div className="field">
+      <label className="field-label" htmlFor={inputId}>API Key</label>
+      <div className="api-key-control">
+        <input
+          id={inputId}
+          type={revealed ? 'text' : 'password'}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          disabled={disabled}
+          placeholder={placeholder}
+        />
+        <button
+          className="api-key-visibility-button"
+          type="button"
+          onClick={() => setRevealed((current) => !current)}
+          disabled={disabled}
+          title={toggleLabel}
+          aria-label={toggleLabel}
+          aria-controls={inputId}
+          aria-pressed={revealed}
+        >
+          {revealed ? <IconEye /> : <IconEyeOff />}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function SegmentedControl<T extends string>({
@@ -1170,18 +1244,15 @@ export function App() {
                       </>
                     ) : null}
                     {usesGeminiApi ? (
-                      <label className="field">
-                        <span className="field-label">API Key</span>
-                        <input
-                          type="password"
-                          value={currentProfile.apiKey}
-                          onChange={(event) =>
-                            updateActiveLlmProfile({ apiKey: event.target.value }, { showSaveStatus: true })
-                          }
-                          disabled={loading}
-                          placeholder="AIza..."
-                        />
-                      </label>
+                      <ApiKeyField
+                        key={`api-key-${settings.llmProvider}-${currentProfile.authMode}`}
+                        value={currentProfile.apiKey}
+                        onChange={(value) =>
+                          updateActiveLlmProfile({ apiKey: value }, { showSaveStatus: true })
+                        }
+                        disabled={loading}
+                        placeholder="AIza..."
+                      />
                     ) : null}
                     <div className="field">
                       <span className="field-label field-label-action">
@@ -1232,20 +1303,16 @@ export function App() {
                         disabled={loading}
                         placeholder="例如：your-model-name"
                       />
-                      <span className="model-thinking-notice">{customModelThinkingNotice}</span>
                     </label>
-                    <label className="field">
-                      <span className="field-label">API Key</span>
-                      <input
-                        type="password"
-                        value={currentProfile.apiKey}
-                        onChange={(event) =>
-                          updateActiveLlmProfile({ apiKey: event.target.value }, { showSaveStatus: true })
-                        }
-                        disabled={loading}
-                        placeholder="sk-..."
-                      />
-                    </label>
+                    <ApiKeyField
+                      key={`api-key-${settings.llmProvider}-${currentProfile.authMode}`}
+                      value={currentProfile.apiKey}
+                      onChange={(value) =>
+                        updateActiveLlmProfile({ apiKey: value }, { showSaveStatus: true })
+                      }
+                      disabled={loading}
+                      placeholder="sk-..."
+                    />
                   </>
                 ) : (
                   <>
@@ -1328,9 +1395,6 @@ export function App() {
                           <span>自定义</span>
                         </label>
                       </div>
-                      {currentProfile.useCustomModel ? (
-                        <span className="model-thinking-notice">{customModelThinkingNotice}</span>
-                      ) : null}
                     </div>
                     {currentThinkingModel && currentThinkingControl && currentThinkingLevel ? (
                       <div className="field thinking-field">
@@ -1452,18 +1516,15 @@ export function App() {
                       </div>
                     ) : null}
                     {!usesOpenAiOAuth ? (
-                      <label className="field">
-                        <span className="field-label">API Key</span>
-                        <input
-                          type="password"
-                          value={currentProfile.apiKey}
-                          onChange={(event) =>
-                            updateActiveLlmProfile({ apiKey: event.target.value }, { showSaveStatus: true })
-                          }
-                          disabled={loading}
-                          placeholder="sk-..."
-                        />
-                      </label>
+                      <ApiKeyField
+                        key={`api-key-${settings.llmProvider}-${currentProfile.authMode}`}
+                        value={currentProfile.apiKey}
+                        onChange={(value) =>
+                          updateActiveLlmProfile({ apiKey: value }, { showSaveStatus: true })
+                        }
+                        disabled={loading}
+                        placeholder="sk-..."
+                      />
                     ) : null}
                   </>
                 )}

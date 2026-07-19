@@ -39,12 +39,12 @@ export const llmBuiltInProviderDefinitions: Record<BuiltInLlmProvider, BuiltInPr
     models: ['gemini-3.1-flash-image', 'gemini-3-pro-image'],
   },
   glm: {
-    label: 'GLM (Z.AI)',
+    label: 'GLM (智谱)',
     baseUrl: 'https://api.z.ai/api/paas/v4',
     models: ['glm-5.2', 'glm-5.1', 'glm-5-turbo', 'glm-5', 'glm-4.7', 'glm-4.7-flash', 'glm-4.7-flashx'],
   },
   kimi: {
-    label: 'Kimi (Moonshot)',
+    label: 'Kimi (月之暗面)',
     baseUrl: 'https://api.moonshot.ai/v1',
     models: ['kimi-k3', 'kimi-k2.6'],
   },
@@ -66,13 +66,13 @@ export const llmBuiltInProviderDefinitions: Record<BuiltInLlmProvider, BuiltInPr
 };
 
 export const llmProviderOptions: Array<{ value: LlmProvider; label: string }> = [
-  { value: 'deepseek', label: 'DeepSeek' },
-  { value: 'gemini', label: 'Nano Banana' },
-  { value: 'glm', label: 'GLM (Z.AI)' },
-  { value: 'kimi', label: 'Kimi (Moonshot)' },
-  { value: 'minimax', label: 'MiniMax' },
-  { value: 'mimo', label: 'MiMo (小米)' },
-  { value: 'openai', label: 'OpenAI' },
+  { value: 'deepseek', label: llmBuiltInProviderDefinitions.deepseek.label },
+  { value: 'gemini', label: llmBuiltInProviderDefinitions.gemini.label },
+  { value: 'glm', label: llmBuiltInProviderDefinitions.glm.label },
+  { value: 'kimi', label: llmBuiltInProviderDefinitions.kimi.label },
+  { value: 'minimax', label: llmBuiltInProviderDefinitions.minimax.label },
+  { value: 'mimo', label: llmBuiltInProviderDefinitions.mimo.label },
+  { value: 'openai', label: llmBuiltInProviderDefinitions.openai.label },
   { value: 'custom', label: '自定义提供商' },
 ];
 

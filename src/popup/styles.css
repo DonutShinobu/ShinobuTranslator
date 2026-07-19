@@ -370,7 +370,7 @@ html, body {
   min-height: 31px;
   box-sizing: border-box;
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   padding: 5px 10px;
   font-size: 12.5px;
   font-family: inherit;
@@ -408,6 +408,60 @@ html, body {
   cursor: not-allowed;
 }
 
+.api-key-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 31px;
+  gap: 6px;
+  min-width: 0;
+}
+
+.api-key-visibility-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 31px;
+  height: 31px;
+  box-sizing: border-box;
+  padding: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease-out,
+    background 0.15s ease-out,
+    color 0.15s ease-out,
+    box-shadow 0.15s ease-out,
+    opacity 0.15s ease-out;
+}
+
+.api-key-visibility-button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.api-key-visibility-button:hover:not(:disabled) {
+  border-color: var(--border-hover);
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+
+.api-key-visibility-button:active:not(:disabled) {
+  background: var(--accent-muted);
+}
+
+.api-key-visibility-button:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 2.5px var(--accent-focus);
+}
+
+.api-key-visibility-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* ── Select ── */
 .select-root {
   position: relative;
@@ -426,6 +480,46 @@ html, body {
   filter:
     drop-shadow(0 -10px 12px oklch(0.42 0.025 350 / 0.08))
     drop-shadow(0 -18px 24px oklch(0.42 0.025 350 / 0.07));
+}
+
+@keyframes select-menu-open-down {
+  from {
+    clip-path: inset(0 0 100% 0);
+  }
+
+  to {
+    clip-path: inset(0);
+  }
+}
+
+@keyframes select-menu-open-up {
+  from {
+    clip-path: inset(100% 0 0 0);
+  }
+
+  to {
+    clip-path: inset(0);
+  }
+}
+
+@keyframes select-menu-close-down {
+  from {
+    clip-path: inset(0);
+  }
+
+  to {
+    clip-path: inset(0 0 100% 0);
+  }
+}
+
+@keyframes select-menu-close-up {
+  from {
+    clip-path: inset(0);
+  }
+
+  to {
+    clip-path: inset(100% 0 0 0);
+  }
 }
 
 .select-trigger {
@@ -550,7 +644,6 @@ html, body {
   pointer-events: none;
   transform-origin: top center;
   transition:
-    clip-path 0.2s cubic-bezier(0.22, 1, 0.36, 1),
     opacity 0.12s ease-out,
     visibility 0s linear 0.2s;
 }
@@ -609,8 +702,20 @@ html, body {
   height: 0;
 }
 
+.select-root[data-open='true'][data-placement='down'] .select-menu {
+  animation: select-menu-open-down 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 .select-root[data-open='true'][data-placement='up'] .select-menu {
-  clip-path: inset(0);
+  animation: select-menu-open-up 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.select-root[data-open='false'][data-placement='down'] .select-menu {
+  animation: select-menu-close-down 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.select-root[data-open='false'][data-placement='up'] .select-menu {
+  animation: select-menu-close-up 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .select-option {
@@ -1061,14 +1166,6 @@ html, body {
   gap: 8px;
 }
 
-.model-thinking-notice {
-  grid-column: 2;
-  margin-top: -3px;
-  color: var(--warning);
-  font-size: 10.5px;
-  line-height: 1.35;
-}
-
 .thinking-fixed-notice {
   color: var(--warning);
   font-size: 10.5px;
@@ -1274,6 +1371,7 @@ html, body {
   .select-option,
   .select-option::before {
     transition-duration: 0.01ms;
+    animation-duration: 0.01ms;
   }
 }
 

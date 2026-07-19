@@ -60,6 +60,10 @@ export type LlmChatCompletionRequestBody = {
   response_format?: {
     type: 'json_object' | 'text';
   };
+  reasoning_split?: boolean;
+  thinking?: {
+    type: 'disabled' | 'adaptive';
+  };
 };
 
 export type LlmChatCompletionsProxyConfig = {

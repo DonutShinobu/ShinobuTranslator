@@ -35,27 +35,27 @@ export const llmBuiltInProviderDefinitions: Record<BuiltInLlmProvider, BuiltInPr
   glm: {
     label: 'GLM (Z.AI)',
     baseUrl: 'https://api.z.ai/api/paas/v4',
-    models: ['glm-5.1', 'glm-5', 'glm-5-turbo', 'glm-4.7', 'glm-4.7-flash', 'glm-4.7-flashx'],
+    models: ['glm-5.2', 'glm-5.1', 'glm-5-turbo', 'glm-5', 'glm-4.7', 'glm-4.7-flash', 'glm-4.7-flashx'],
   },
   kimi: {
     label: 'Kimi (Moonshot)',
     baseUrl: 'https://api.moonshot.ai/v1',
-    models: ['kimi-k2.6', 'kimi-k2.5'],
+    models: ['kimi-k3', 'kimi-k2.6'],
   },
   minimax: {
     label: 'MiniMax',
     baseUrl: 'https://api.minimax.io/v1',
-    models: ['MiniMax-M2.7', 'MiniMax-M2.7-highspeed', 'MiniMax-M2.5', 'MiniMax-M2.5-highspeed'],
+    models: ['MiniMax-M3', 'MiniMax-M2.7', 'MiniMax-M2.7-highspeed', 'MiniMax-M2.5', 'MiniMax-M2.5-highspeed'],
   },
   mimo: {
     label: 'MiMo (小米)',
-    baseUrl: 'https://api.mimo-v2.com/v1',
-    models: ['MiMo-V2.5-Pro', 'MiMo-V2.5'],
+    baseUrl: 'https://api.xiaomimimo.com/v1',
+    models: ['mimo-v2.5-pro', 'mimo-v2.5'],
   },
   openai: {
     label: 'OpenAI',
     baseUrl: 'https://api.openai.com/v1',
-    models: ['gpt-5.4-mini', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-nano'],
+    models: ['gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-5.5-pro', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano'],
   },
 };
 
@@ -71,6 +71,23 @@ export const llmProviderOptions: Array<{ value: LlmProvider; label: string }> = 
 ];
 
 const builtInProviders = Object.keys(llmBuiltInProviderDefinitions) as BuiltInLlmProvider[];
+
+const builtInModelPresetMigrations: Partial<Record<BuiltInLlmProvider, Record<string, string>>> = {
+  kimi: {
+    'kimi-k2.5': 'kimi-k2.6',
+  },
+  mimo: {
+    'MiMo-V2.5-Pro': 'mimo-v2.5-pro',
+    'MiMo-V2.5': 'mimo-v2.5',
+  },
+};
+
+function migrateBuiltInModelPreset(provider: LlmProvider, model: string): string {
+  if (!isBuiltInProvider(provider)) {
+    return model;
+  }
+  return builtInModelPresetMigrations[provider]?.[model] ?? model;
+}
 
 function isLlmProvider(value: unknown): value is LlmProvider {
   return (
@@ -96,6 +113,9 @@ function detectBuiltInProviderByBaseUrl(baseUrl: string): BuiltInLlmProvider | n
   }
   if (normalized === 'https://gemini.google.com') {
     return 'gemini';
+  }
+  if (normalized === 'https://api.mimo-v2.com/v1') {
+    return 'mimo';
   }
   for (const provider of builtInProviders) {
     const candidate = llmBuiltInProviderDefinitions[provider].baseUrl.replace(/\/+$/, '').toLowerCase();
@@ -257,7 +277,14 @@ function normalizeGeminiAppAuthMode(): GeminiAppAuthMode {
 }
 
 function normalizeGeminiAppModel(value: unknown): GeminiAppModel {
-  if (value === 'nano_banana_2' || value === 'nano-banana-2' || value === 'gemini-3.1-flash-image') {
+  if (
+    value === 'nano_banana_2' ||
+    value === 'nano-banana-2' ||
+    value === 'gemini-3.1-flash-image' ||
+    value === 'nano_banana_2_lite' ||
+    value === 'nano-banana-2-lite' ||
+    value === 'gemini-3.1-flash-lite-image'
+  ) {
     return 'nano_banana_2';
   }
   if (value === 'nano_banana_pro' || value === 'nano-banana-pro' || value === 'gemini-3-pro-image') {
@@ -336,7 +363,7 @@ function normalizeProviderProfile(
   const raw = value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
   const apiKey = normalizeProfileString(raw?.apiKey, defaults.apiKey);
   let authMode = normalizeAuthMode(provider, raw?.authMode ?? legacy?.llmAuthMode ?? defaults.authMode);
-  const modelPresetInput = normalizeProfileString(raw?.modelPreset, '');
+  const modelPresetInput = migrateBuiltInModelPreset(provider, normalizeProfileString(raw?.modelPreset, ''));
   const modelCustomInput = normalizeProfileString(raw?.modelCustom, '');
   const useCustomModelInput = typeof raw?.useCustomModel === 'boolean' ? raw.useCustomModel : null;
   const customBaseUrlInput = normalizeProfileString(raw?.customBaseUrl, '');
@@ -356,12 +383,14 @@ function normalizeProviderProfile(
 
   if (isBuiltInProvider(provider)) {
     const modelSet = new Set(llmBuiltInProviderDefinitions[provider].models);
+    const legacyModelPresetInput = migrateBuiltInModelPreset(provider, legacy?.modelPresetInput ?? '');
+    const legacyModelFromLegacy = migrateBuiltInModelPreset(provider, legacy?.modelFromLegacy ?? '');
     const candidatePreset = modelSet.has(modelPresetInput)
       ? modelPresetInput
-      : legacy && modelSet.has(legacy.modelPresetInput)
-        ? legacy.modelPresetInput
-        : legacy && modelSet.has(legacy.modelFromLegacy)
-          ? legacy.modelFromLegacy
+      : legacy && modelSet.has(legacyModelPresetInput)
+        ? legacyModelPresetInput
+        : legacy && modelSet.has(legacyModelFromLegacy)
+          ? legacyModelFromLegacy
           : defaults.modelPreset;
 
     const useCustomModel =
@@ -369,8 +398,8 @@ function normalizeProviderProfile(
         ? false
         : useCustomModelInput === null ? (legacy?.modelToggleInput === true ? true : defaults.useCustomModel) : useCustomModelInput;
     let modelCustom = provider === 'gemini' ? '' : modelCustomInput || (legacy?.modelCustomInput ?? '');
-    if (useCustomModel && !modelCustom && legacy?.modelFromLegacy && !modelSet.has(legacy.modelFromLegacy)) {
-      modelCustom = legacy.modelFromLegacy;
+    if (useCustomModel && !modelCustom && legacyModelFromLegacy && !modelSet.has(legacyModelFromLegacy)) {
+      modelCustom = legacyModelFromLegacy;
     }
 
     return {

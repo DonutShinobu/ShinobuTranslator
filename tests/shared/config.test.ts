@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   defaultGeminiAppPromptTemplate,
+  geminiAppModelOptions,
   getGeminiAppModelLabel,
+  llmBuiltInProviderDefinitions,
   llmProviderOptions,
   normalizeSettings,
   optimizedGeminiAppPromptTemplate,
@@ -14,6 +16,105 @@ import {
   usesNanoBananaImagePipeline,
   validateSettings,
 } from "../../src/shared/config";
+
+describe("built-in LLM catalog", () => {
+  it("matches the confirmed provider model matrix and new-profile defaults", () => {
+    expect(llmBuiltInProviderDefinitions).toEqual({
+      deepseek: {
+        label: "DeepSeek",
+        baseUrl: "https://api.deepseek.com",
+        models: ["deepseek-v4-flash", "deepseek-v4-pro"],
+      },
+      gemini: {
+        label: "Nano Banana",
+        baseUrl: "https://generativelanguage.googleapis.com/v1",
+        models: ["gemini-3.1-flash-image", "gemini-3-pro-image"],
+      },
+      glm: {
+        label: "GLM (Z.AI)",
+        baseUrl: "https://api.z.ai/api/paas/v4",
+        models: [
+          "glm-5.2",
+          "glm-5.1",
+          "glm-5-turbo",
+          "glm-5",
+          "glm-4.7",
+          "glm-4.7-flash",
+          "glm-4.7-flashx",
+        ],
+      },
+      kimi: {
+        label: "Kimi (Moonshot)",
+        baseUrl: "https://api.moonshot.ai/v1",
+        models: ["kimi-k3", "kimi-k2.6"],
+      },
+      minimax: {
+        label: "MiniMax",
+        baseUrl: "https://api.minimax.io/v1",
+        models: [
+          "MiniMax-M3",
+          "MiniMax-M2.7",
+          "MiniMax-M2.7-highspeed",
+          "MiniMax-M2.5",
+          "MiniMax-M2.5-highspeed",
+        ],
+      },
+      mimo: {
+        label: "MiMo (小米)",
+        baseUrl: "https://api.xiaomimimo.com/v1",
+        models: ["mimo-v2.5-pro", "mimo-v2.5"],
+      },
+      openai: {
+        label: "OpenAI",
+        baseUrl: "https://api.openai.com/v1",
+        models: [
+          "gpt-5.6-luna",
+          "gpt-5.6-terra",
+          "gpt-5.6-sol",
+          "gpt-5.5-pro",
+          "gpt-5.5",
+          "gpt-5.4",
+          "gpt-5.4-mini",
+          "gpt-5.4-nano",
+        ],
+      },
+    });
+  });
+
+  it("migrates retired and corrected built-in identifiers without changing the selected model tier", () => {
+    const settings = normalizeSettings({
+      translator: "llm",
+      llmProvider: "kimi",
+      llmProfiles: {
+        kimi: {
+          modelPreset: "kimi-k2.5",
+        },
+        mimo: {
+          modelPreset: "MiMo-V2.5",
+        },
+      },
+    });
+    const legacyMiMo = normalizeSettings({
+      translator: "llm",
+      llmBaseUrl: "https://api.mimo-v2.com/v1",
+      llmModelPreset: "MiMo-V2.5-Pro",
+    });
+
+    expect({
+      kimiModel: settings.llmProfiles.kimi.modelPreset,
+      mimoModel: settings.llmProfiles.mimo.modelPreset,
+      detectedProvider: legacyMiMo.llmProvider,
+      legacyMiMoModel: legacyMiMo.llmProfiles.mimo.modelPreset,
+      officialMiMoBaseUrl: resolveLlmBaseUrl(legacyMiMo),
+    }).toEqual({
+      kimiModel: "kimi-k2.6",
+      mimoModel: "mimo-v2.5",
+      detectedProvider: "mimo",
+      legacyMiMoModel: "mimo-v2.5-pro",
+      officialMiMoBaseUrl: "https://api.xiaomimimo.com/v1",
+    });
+  });
+});
 
 describe("OpenAI provider settings", () => {
   it("normalizes the OpenAI provider with OAuth as the default auth mode", () => {
@@ -134,6 +235,30 @@ describe("OpenAI provider settings", () => {
     expect(requiresLlmApiKey(settings)).toBe(true);
     expect(resolveLlmBaseUrl(settings)).toBe("https://generativelanguage.googleapis.com/v1");
     expect(validateSettings(settings)).toBeNull();
+  });
+
+  it("removes Nano Banana 2 Lite and falls back saved Lite settings to Nano Banana 2", () => {
+    const settings = normalizeSettings({
+      translator: "llm",
+      llmProvider: "gemini",
+      geminiAppModel: "gemini-3.1-flash-lite-image",
+      llmProfiles: {
+        gemini: {
+          authMode: "api_key",
+          apiKey: "AIza-test",
+        },
+      },
+    });
+
+    expect({
+      options: geminiAppModelOptions.map((option) => option.value),
+      normalizedModel: settings.geminiAppModel,
+      apiModelId: resolveGeminiApiImageModel(settings.geminiAppModel),
+    }).toEqual({
+      options: ["nano_banana_2", "nano_banana_pro"],
+      normalizedModel: "nano_banana_2",
+      apiModelId: "gemini-3.1-flash-image",
+    });
   });
 
   it("requires an API key when Nano Banana uses API key auth", () => {

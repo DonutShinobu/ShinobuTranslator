@@ -13,6 +13,10 @@ type CapturedChatBody = {
   response_format?: {
     type: string;
   };
+  reasoning_split?: boolean;
+  thinking?: {
+    type: string;
+  };
 };
 
 type CapturedSourceSegment = {
@@ -155,6 +159,61 @@ describe('llmTranslate', () => {
 });
 
 describe('llmTranslateRegions', () => {
+  it('adapts MiniMax-M3 structured translation requests to the supported provider body', async () => {
+    const rawContent = JSON.stringify({
+      regions: [{ id: 'region-1', translation: '你好。' }],
+    });
+    const sentMessages: unknown[] = [];
+    installRuntimeChatCompletionMock(rawContent, sentMessages);
+
+    await llmTranslateRegions({
+      provider: 'minimax',
+      authMode: 'api_key',
+      baseUrl: 'https://api.minimax.io/v1',
+      model: 'MiniMax-M3',
+      from: 'ja',
+      to: 'zh-CHS',
+      regions: [{ id: 'region-1', direction: 'h', text: 'こんにちは' }],
+    });
+
+    const body = findCapturedChatBody(sentMessages);
+    expect(body).not.toHaveProperty('response_format');
+    expect(body).toMatchObject({
+      model: 'MiniMax-M3',
+      reasoning_split: true,
+      thinking: {
+        type: 'disabled',
+      },
+    });
+    expect(body.messages[0].content).toContain('必须严格输出 JSON');
+  });
+
+  it('keeps MiniMax-M2 reasoning separate without sending the M3 thinking switch', async () => {
+    const rawContent = JSON.stringify({
+      regions: [{ id: 'region-1', translation: '你好。' }],
+    });
+    const sentMessages: unknown[] = [];
+    installRuntimeChatCompletionMock(rawContent, sentMessages);
+
+    await llmTranslateRegions({
+      provider: 'minimax',
+      authMode: 'api_key',
+      baseUrl: 'https://api.minimax.io/v1',
+      model: 'MiniMax-M2.7',
+      from: 'ja',
+      to: 'zh-CHS',
+      regions: [{ id: 'region-1', direction: 'h', text: 'こんにちは' }],
+    });
+
+    const body = findCapturedChatBody(sentMessages);
+    expect(body).not.toHaveProperty('response_format');
+    expect(body).not.toHaveProperty('thinking');
+    expect(body).toMatchObject({
+      model: 'MiniMax-M2.7',
+      reasoning_split: true,
+    });
+  });
+
   it('sends structured reading-order payload and parses region columns', async () => {
     const rawContent = [
       '```json',

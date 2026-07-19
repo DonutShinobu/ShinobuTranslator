@@ -186,18 +186,27 @@ async function requestChatCompletion(
   options: ChatCompletionRequestOptions,
   body: LlmChatCompletionRequestBody,
 ): Promise<ChatCompletionResponse> {
+  const requestBody = { ...body };
+  if (options.provider === 'minimax') {
+    delete requestBody.response_format;
+    requestBody.reasoning_split = true;
+    if (body.model === 'MiniMax-M3') {
+      requestBody.thinking = { type: 'disabled' };
+    }
+  }
+
   const startedAt = Date.now();
   const endpoint = `${options.baseUrl.replace(/\/$/, '')}/chat/completions`;
-  const bodyJson = JSON.stringify(body);
+  const bodyJson = JSON.stringify(requestBody);
   const baseLogData = {
     provider: options.provider,
     authMode: options.authMode,
-    model: body.model,
+    model: requestBody.model,
     endpoint: sanitizeDiagnosticUrl(endpoint),
-    messageCount: body.messages.length,
-    responseFormat: body.response_format?.type ?? 'default',
+    messageCount: requestBody.messages.length,
+    responseFormat: requestBody.response_format?.type ?? 'default',
     requestBodyBytes: bodyJson.length,
-    requestBody: body,
+    requestBody,
   };
   emitDiagnosticLog({
     runId: options.diagnosticRunId,
@@ -214,7 +223,7 @@ async function requestChatCompletion(
   try {
     const response = await sendRuntimeMessage({
       type: 'mt:llm-chat-completions',
-      body,
+      body: requestBody,
       proxyConfig: {
         provider: options.provider,
         authMode: options.authMode,

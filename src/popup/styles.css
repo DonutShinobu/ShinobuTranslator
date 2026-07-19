@@ -461,6 +461,12 @@ html, body {
   box-shadow: none;
 }
 
+.select-root[data-open='true'][data-placement='up'] .select-trigger {
+  border-top-color: var(--border-subtle);
+  border-bottom-color: var(--accent);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+}
+
 .select-trigger:disabled {
   opacity: 0.4;
   cursor: not-allowed;
@@ -517,6 +523,19 @@ html, body {
     visibility 0s linear 0.2s;
 }
 
+.select-root[data-placement='up'] .select-menu {
+  top: auto;
+  bottom: calc(100% - 1px);
+  border-top: 1px solid var(--border-default);
+  border-bottom: 0;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  box-shadow:
+    0 -10px 18px oklch(0.42 0.025 350 / 0.10),
+    0 -18px 30px oklch(0.42 0.025 350 / 0.10);
+  clip-path: inset(100% 0 0 0);
+  transform-origin: bottom center;
+}
+
 .select-root[data-open='true'] .select-menu {
   border-color: var(--accent);
   opacity: 1;
@@ -524,6 +543,10 @@ html, body {
   clip-path: inset(0);
   pointer-events: auto;
   transition-delay: 0s;
+}
+
+.select-root[data-open='true'][data-placement='up'] .select-menu {
+  clip-path: inset(0);
 }
 
 .select-option {

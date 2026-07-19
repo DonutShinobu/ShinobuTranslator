@@ -199,6 +199,8 @@ type SelectOption<T extends string> = {
   label: string;
 };
 
+type SelectPlacement = 'down' | 'up';
+
 function SelectControl<T extends string>({
   options,
   value,
@@ -214,8 +216,11 @@ function SelectControl<T extends string>({
 }) {
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [placement, setPlacement] = useState<SelectPlacement>('down');
+  const [menuMaxHeight, setMenuMaxHeight] = useState(190);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const generatedId = useId();
   const listboxId = `select-listbox-${generatedId}`;
   const selectedOption = options.find((option) => option.value === value) ?? options[0];
@@ -238,8 +243,30 @@ function SelectControl<T extends string>({
     if (disabled) setOpen(false);
   }, [disabled]);
 
+  useEffect(() => {
+    if (!open) return;
+    optionRefs.current[activeIndex]?.scrollIntoView({ block: 'nearest' });
+  }, [activeIndex, open]);
+
   function openMenu(): void {
     if (availableOptions.length === 0) return;
+
+    const triggerRect = triggerRef.current?.getBoundingClientRect();
+    const popupRect = rootRef.current?.closest('.popup')?.getBoundingClientRect();
+    if (triggerRect) {
+      const boundaryTop = Math.max(0, popupRect?.top ?? 0);
+      const boundaryBottom = Math.min(window.innerHeight, popupRect?.bottom ?? window.innerHeight);
+      const spaceAbove = Math.max(0, triggerRect.top - boundaryTop + 1);
+      const spaceBelow = Math.max(0, boundaryBottom - triggerRect.bottom + 1);
+      const desiredHeight = Math.min(190, availableOptions.length * 31 + 8);
+      const nextPlacement: SelectPlacement =
+        spaceBelow >= desiredHeight || spaceBelow >= spaceAbove ? 'down' : 'up';
+      const availableHeight = nextPlacement === 'down' ? spaceBelow : spaceAbove;
+
+      setPlacement(nextPlacement);
+      setMenuMaxHeight(Math.max(39, Math.min(190, Math.floor(availableHeight))));
+    }
+
     setActiveIndex(0);
     setOpen(true);
   }
@@ -318,7 +345,12 @@ function SelectControl<T extends string>({
   }
 
   return (
-    <div className="select-root" data-open={open} ref={rootRef}>
+    <div
+      className="select-root"
+      data-open={open}
+      data-placement={placement}
+      ref={rootRef}
+    >
       <button
         ref={triggerRef}
         type="button"
@@ -355,6 +387,7 @@ function SelectControl<T extends string>({
         role="listbox"
         aria-label={ariaLabel}
         aria-hidden={!open}
+        style={{ maxHeight: menuMaxHeight }}
       >
         {availableOptions.map((option, index) => {
           const active = index === activeIndex;
@@ -367,6 +400,9 @@ function SelectControl<T extends string>({
               role="option"
               aria-selected="false"
               tabIndex={-1}
+              ref={(element) => {
+                optionRefs.current[index] = element;
+              }}
               onPointerDown={(event) => event.preventDefault()}
               onPointerMove={() => setActiveIndex(index)}
               onClick={() => selectOption(index)}

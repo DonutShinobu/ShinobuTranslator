@@ -19,6 +19,9 @@
   --text-tertiary: oklch(0.64 0.02 350);
   --text-label: oklch(0.52 0.08 350);
 
+  --scrollbar-thumb: oklch(0.67 0.025 350 / 0.72);
+  --scrollbar-thumb-hover: oklch(0.58 0.04 350 / 0.82);
+
   --success: oklch(0.55 0.15 155);
   --warning: oklch(0.60 0.15 75);
   --error: oklch(0.55 0.18 25);
@@ -427,6 +430,7 @@ html, body {
 
 .select-trigger {
   display: flex;
+  position: relative;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -450,6 +454,16 @@ html, body {
     border-radius 0.18s cubic-bezier(0.22, 1, 0.36, 1),
     background 0.16s ease-out,
     box-shadow 0.16s ease-out;
+}
+
+.select-trigger::before {
+  position: absolute;
+  inset: 1px 22.5px 1px 1px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  content: "";
+  pointer-events: none;
+  transition: background 0.13s ease-out;
 }
 
 .select-trigger:hover:not(:disabled) {
@@ -477,16 +491,11 @@ html, body {
 }
 
 .select-root[data-open='true'] .select-trigger-active {
-  background: var(--accent-soft);
   color: var(--text-primary);
 }
 
-.select-root[data-open='true'][data-placement='down'] .select-trigger-active {
-  border-bottom-color: var(--accent-soft);
-}
-
-.select-root[data-open='true'][data-placement='up'] .select-trigger-active {
-  border-top-color: var(--accent-soft);
+.select-root[data-open='true'] .select-trigger-active::before {
+  background: var(--accent-soft);
 }
 
 .select-trigger:disabled {
@@ -495,6 +504,8 @@ html, body {
 }
 
 .select-value {
+  position: relative;
+  z-index: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -502,6 +513,8 @@ html, body {
 }
 
 .select-chevron {
+  position: relative;
+  z-index: 1;
   width: 11px;
   height: 7px;
   flex: 0 0 auto;
@@ -526,7 +539,7 @@ html, body {
   max-height: 191px;
   box-sizing: border-box;
   overflow: hidden;
-  padding: 0 4px 4px;
+  padding: 0 10.5px 0 1px;
   border: 1px solid var(--border-default);
   border-top: 0;
   border-radius: 0 0 var(--radius-md) var(--radius-md);
@@ -545,7 +558,7 @@ html, body {
 .select-root[data-placement='up'] .select-menu {
   top: auto;
   bottom: 100%;
-  padding: 4px 4px 0;
+  padding: 0 10.5px 0 1px;
   border-top: 1px solid var(--border-default);
   border-bottom: 0;
   border-radius: var(--radius-md) var(--radius-md) 0 0;
@@ -565,7 +578,35 @@ html, body {
 .select-options-scroll {
   min-height: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   overscroll-behavior: contain;
+}
+
+.select-options-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.select-options-scroll::-webkit-scrollbar-track,
+.select-options-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.select-options-scroll::-webkit-scrollbar-thumb {
+  min-height: 32px;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--scrollbar-thumb);
+  background-clip: content-box;
+}
+
+.select-options-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+.select-options-scroll::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .select-root[data-open='true'][data-placement='up'] .select-menu {
@@ -574,12 +615,14 @@ html, body {
 
 .select-option {
   display: flex;
+  position: relative;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  width: 100%;
+  width: calc(100% - 4px);
   min-height: 31px;
-  padding: 5px 9px 5px 6px;
+  margin: 0 4px 0 0;
+  padding: 5px 9px;
   border: 0;
   border-radius: var(--radius-sm);
   outline: none;
@@ -591,15 +634,39 @@ html, body {
   line-height: 1.4;
   text-align: left;
   cursor: pointer;
-  transition:
-    background 0.13s ease-out,
-    color 0.13s ease-out;
+  transition: color 0.13s ease-out;
+}
+
+.select-option::before {
+  position: absolute;
+  inset: 2px 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  content: "";
+  pointer-events: none;
+  transition: background 0.13s ease-out;
+}
+
+.select-root[data-placement='down'] .select-option:last-child::before {
+  inset-block: 3px 1px;
+}
+
+.select-root[data-placement='up'] .select-option:first-child::before {
+  inset-block: 1px 3px;
+}
+
+.select-option > span {
+  position: relative;
+  z-index: 1;
 }
 
 .select-option-active {
-  background: var(--accent-soft);
   color: var(--text-primary);
   font-weight: 600;
+}
+
+.select-option-active::before {
+  background: var(--accent-soft);
 }
 
 .settings-stack {
@@ -1201,9 +1268,11 @@ html, body {
   .thinking-slider-fill,
   .thinking-slider-thumb,
   .select-trigger,
+  .select-trigger::before,
   .select-chevron,
   .select-menu,
-  .select-option {
+  .select-option,
+  .select-option::before {
     transition-duration: 0.01ms;
   }
 }

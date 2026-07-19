@@ -204,7 +204,7 @@ type SelectPlacement = 'down' | 'up';
 const selectCurrentValueIndex = -1;
 const selectRowHeight = 31;
 const selectMenuMaxHeight = 191;
-const selectMenuChromeHeight = 5;
+const selectMenuChromeHeight = 1;
 
 function SelectControl<T extends string>({
   options,

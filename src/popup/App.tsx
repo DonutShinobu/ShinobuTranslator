@@ -201,6 +201,7 @@ export function App() {
   const [shortcutsLoading, setShortcutsLoading] = useState(true);
   const [shortcuts, setShortcuts] = useState<ShortcutState>(defaultShortcutState);
   const [shortcutError, setShortcutError] = useState('');
+  const [thinkingFillReturningToOffKey, setThinkingFillReturningToOffKey] = useState<string | null>(null);
   const [openAiStatus, setOpenAiStatus] = useState<OpenAiOAuthViewState>({
     loading: false,
     busy: false,
@@ -352,12 +353,14 @@ export function App() {
   }
 
   function updateThinkingLevel(provider: LlmProvider, model: string, level: LlmThinkingLevel): void {
+    const capabilityKey = llmThinkingCapabilityKey(provider, model);
+    setThinkingFillReturningToOffKey(level === 'off' ? capabilityKey : null);
     queueSaveStatus();
     setSettings((prev) => ({
       ...prev,
       llmThinkingByModel: {
         ...prev.llmThinkingByModel,
-        [llmThinkingCapabilityKey(provider, model)]: level,
+        [capabilityKey]: level,
       },
     }));
   }
@@ -521,6 +524,9 @@ export function App() {
         currentThinkingModel,
       )
     : undefined;
+  const currentThinkingCapabilityKey = currentThinkingModel
+    ? llmThinkingCapabilityKey(settings.llmProvider, currentThinkingModel)
+    : null;
   const currentThinkingOptionIndex = currentThinkingControl?.kind === 'slider'
     ? Math.max(
         0,
@@ -531,6 +537,8 @@ export function App() {
     && currentThinkingControl.options.length > 1
     ? (currentThinkingOptionIndex / (currentThinkingControl.options.length - 1)) * 100
     : 0;
+  const currentThinkingFillHidden = currentThinkingOptionIndex === 0
+    && thinkingFillReturningToOffKey !== currentThinkingCapabilityKey;
   const usesOpenAiOAuth = settings.llmProvider === 'openai' && currentProfile.authMode === 'openai_oauth';
   const showLocalPipelineOptions = !usesNanoBanana;
   const stageTimingDetailsLocked = usesNanoBanana;
@@ -1076,20 +1084,31 @@ export function App() {
                           <div className="thinking-slider-control">
                             <div className="thinking-slider-track">
                               <div className="thinking-slider-rail" aria-hidden="true">
-                                <span
-                                  className={`thinking-slider-fill${
-                                    currentThinkingOptionIndex === 0
-                                      ? ' thinking-slider-fill-off'
-                                      : ''
-                                  }`}
-                                  style={{
-                                    width: currentThinkingOptionIndex === 0
-                                      ? '10px'
-                                      : `calc(${currentThinkingOptionProgress}% + ${
-                                          10 - currentThinkingOptionProgress * 0.2
-                                        }px)`,
-                                  }}
-                                />
+                                <span className="thinking-slider-fill-mask">
+                                  <span
+                                    className={`thinking-slider-fill${
+                                      currentThinkingFillHidden
+                                        ? ' thinking-slider-fill-hidden'
+                                        : ''
+                                    }`}
+                                    style={{
+                                      clipPath: `inset(0 calc(${
+                                        100 - currentThinkingOptionProgress
+                                      }% + ${
+                                        currentThinkingOptionProgress * 0.2 - 10
+                                      }px) 0 0)`,
+                                    }}
+                                    onTransitionEnd={(event) => {
+                                      if (
+                                        event.propertyName === 'clip-path'
+                                        && currentThinkingOptionIndex === 0
+                                        && thinkingFillReturningToOffKey === currentThinkingCapabilityKey
+                                      ) {
+                                        setThinkingFillReturningToOffKey(null);
+                                      }
+                                    }}
+                                  />
+                                </span>
                                 <span className="thinking-slider-ticks">
                                   {currentThinkingControl.options.map((option, index) => (
                                     <span
@@ -1132,6 +1151,15 @@ export function App() {
                                   currentThinkingControl.options[currentThinkingOptionIndex]?.label
                                 }
                                 disabled={loading}
+                              />
+                              <span
+                                className="thinking-slider-thumb"
+                                style={{
+                                  translate: `calc(-50% + ${currentThinkingOptionProgress}cqw - ${
+                                    currentThinkingOptionProgress * 0.2
+                                  }px) -50%`,
+                                }}
+                                aria-hidden="true"
                               />
                             </div>
                             <div className="thinking-slider-labels" aria-hidden="true">

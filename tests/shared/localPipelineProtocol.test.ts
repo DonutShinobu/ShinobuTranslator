@@ -60,6 +60,62 @@ describe('local pipeline Port protocol', () => {
     })).toBe(false);
   });
 
+  it('accepts a well-formed tweet context and rejects malformed context at the Port boundary', () => {
+    const startMessage = {
+      type: 'start',
+      jobId: 'job-1',
+      file: { name: 'source.png', type: 'image/png', size: 1, lastModified: 1 },
+      config: {
+        sourceLang: 'ja',
+        targetLang: 'zh-CHS',
+        translator: 'llm',
+        llmProvider: 'openai',
+        llmAuthMode: 'api_key',
+        llmBaseUrl: 'https://api.openai.com/v1',
+        llmApiKey: 'sk-test',
+        llmModel: 'gpt-5.4-mini',
+        typesetDebug: false,
+        eraseDebug: false,
+        collectDebugLog: false,
+        ocrEngine: 'paddleocr_v6_medium',
+        processMode: 'translate',
+      },
+      input: { chunkCount: 1, totalChars: 4 },
+    };
+
+    expect(isLocalPipelineClientMessage({
+      ...startMessage,
+      config: {
+        ...startMessage.config,
+        translationContext: {
+          source: 'x_tweet',
+          currentTweetText: '当前推文正文',
+          quotedTweetText: '引用推文正文',
+        },
+      },
+    })).toBe(true);
+    expect(isLocalPipelineClientMessage({
+      ...startMessage,
+      config: {
+        ...startMessage.config,
+        translationContext: {
+          source: 'x_tweet',
+          currentTweetText: 42,
+        },
+      },
+    })).toBe(false);
+    expect(isLocalPipelineClientMessage({
+      ...startMessage,
+      config: {
+        ...startMessage.config,
+        translationContext: {
+          source: 'page_text',
+          currentTweetText: '当前推文正文',
+        },
+      },
+    })).toBe(false);
+  });
+
   it('serializes nested and circular causes with stable error codes', () => {
     const root = new Error('root') as Error & { code?: string };
     root.code = 'WORKER_BOOTSTRAP_FAILED';

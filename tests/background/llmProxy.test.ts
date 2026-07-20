@@ -227,6 +227,30 @@ describe('proxyApiKeyChatCompletions', () => {
     } satisfies Partial<LlmChatCompletionHttpError>);
   });
 
+  it('keeps HTTP 413 visible even when the provider supplies a detail message', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response(JSON.stringify({ error: { message: 'upstream rejected request' } }), {
+        status: 413,
+        statusText: 'Payload Too Large',
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    ));
+
+    await expect(
+      proxyApiKeyChatCompletions(
+        createDeepSeekSettings(),
+        deepSeekProxyConfig,
+        {
+          model: 'deepseek-v4-flash',
+          messages: [{ role: 'user', content: 'こんにちは' }],
+        },
+      ),
+    ).rejects.toMatchObject({
+      status: 413,
+      message: 'LLM 翻译请求失败: HTTP 413: upstream rejected request',
+    });
+  });
+
   it('marks provider rejections of a built-in thinking setting as a fatal configuration error', async () => {
     const fetchMock = vi.fn(async () =>
       new Response(JSON.stringify({ error: { message: 'invalid reasoning_effort' } }), {

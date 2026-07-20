@@ -1,5 +1,10 @@
 import { createDiagnosticRunId } from '../../../shared/diagnosticLogClient';
-import type { ImageTarget, PhotoState } from '../types';
+import { usesNanoBananaImagePipeline } from '../../../shared/config';
+import type {
+  ImageTarget,
+  ImageTranslationContextResolution,
+  PhotoState,
+} from '../types';
 import type { ProgressJankMonitor } from '../progressJank';
 import { toErrorMessage } from '../utils';
 import { PhotoStateStore } from '../state/photoStateStore';
@@ -12,6 +17,7 @@ import {
 
 export type ImageTranslationCallbacks = {
   resolveTarget(key: string): ImageTarget | undefined;
+  resolveTranslationContext?(target: ImageTarget): ImageTranslationContextResolution;
   applyImage(target: ImageTarget, state: PhotoState): void;
   render(key: string): void;
 };
@@ -66,10 +72,24 @@ export class ImageTranslationController {
     jankMonitor.measureUiRender(() => this.callbacks.render(key));
 
     try {
-      const runSettings = await this.translationRunner.loadPipelineRunSettings(state);
+      const runSettingsPromise = this.translationRunner.loadPipelineRunSettings(state);
+      const clickTarget = this.callbacks.resolveTarget(key) ?? target;
+      let capturedContextResolution: ImageTranslationContextResolution | undefined;
+      try {
+        capturedContextResolution = this.callbacks.resolveTranslationContext?.(clickTarget);
+      } catch {
+        capturedContextResolution = { status: 'unavailable' };
+      }
+      const runSettings = await runSettingsPromise;
+      const translationContextResolution = (
+        runSettings.settings.translator === 'llm'
+        && !usesNanoBananaImagePipeline(runSettings.settings)
+      )
+        ? capturedContextResolution
+        : undefined;
       const diagnosticRunId = runSettings.enableDebugLog ? this.runtime.createRunId('run') : undefined;
       const source = await this.translationRunner.downloadImageFile(state.originalUrl, diagnosticRunId);
-      await this.translationRunner.runPipelineFromFile({
+      const pipelineOutcome = await this.translationRunner.runPipelineFromFile({
         state,
         file: source.file,
         runSettings,
@@ -80,9 +100,20 @@ export class ImageTranslationController {
         },
         jankMonitor,
         diagnosticRunId,
+        translationContext: translationContextResolution?.status === 'available'
+          ? translationContextResolution.context
+          : undefined,
       });
-      const currentTarget = this.callbacks.resolveTarget(key) ?? target;
-      this.callbacks.applyImage(currentTarget, state);
+      if (pipelineOutcome.translationDebug?.tweetContextLengthFallback) {
+        state.contextNoticeText = '推文上下文过长，已改为无上下文翻译';
+      } else if (
+        pipelineOutcome.translationDebug
+        && translationContextResolution?.status === 'unavailable'
+      ) {
+        state.contextNoticeText = '未找到推文作为上下文';
+      }
+      const latestTarget = this.callbacks.resolveTarget(key) ?? target;
+      this.callbacks.applyImage(latestTarget, state);
       this.callbacks.render(key);
     } catch (error) {
       this.runtime.finishJankMonitor(jankMonitor);
@@ -91,6 +122,7 @@ export class ImageTranslationController {
       state.stageText = '';
       clearTimingDisplay(state);
       state.debugLogData = undefined;
+      state.contextNoticeText = undefined;
       this.callbacks.render(key);
     }
   }

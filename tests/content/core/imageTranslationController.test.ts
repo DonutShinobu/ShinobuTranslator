@@ -1,15 +1,22 @@
 import { describe, expect, it, vi } from 'vitest';
 import { defaultExtensionSettings } from '../../../src/shared/config';
-import type { ImageTarget } from '../../../src/content/core/types';
-import type { ProgressJankMonitor } from '../../../src/content/core/progressJank';
+import type {
+  ImageTarget,
+  ImageTranslationContextResolution,
+} from '../../../src/content/core/types';
+import { ProgressJankMonitor } from '../../../src/content/core/progressJank';
 import { PhotoStateStore } from '../../../src/content/core/state/photoStateStore';
+import type { RunLocalPipeline } from '../../../src/content/core/translation/localPipelineClient';
 import { TranslationRunner } from '../../../src/content/core/translation/translationRunner';
+import { sendRuntimeMessage } from '../../../src/shared/messages';
 import {
   ImageTranslationController,
   type ImageTranslationRuntime,
 } from '../../../src/content/core/translation/imageTranslationController';
 
-function createHarness() {
+function createHarness(
+  resolveTranslationContext?: (target: ImageTarget) => ImageTranslationContextResolution,
+) {
   const store = new PhotoStateStore(200, { revokeObjectURL: vi.fn() });
   const runner = new TranslationRunner();
   const applyImage = vi.fn();
@@ -30,6 +37,7 @@ function createHarness() {
     runner,
     {
       resolveTarget: () => undefined,
+      resolveTranslationContext,
       applyImage,
       render,
     },
@@ -89,6 +97,23 @@ describe('ImageTranslationController', () => {
     expect(harness.render).toHaveBeenLastCalledWith(harness.target.key);
   });
 
+  it('captures tweet context synchronously when the click starts', async () => {
+    const resolveTranslationContext = vi.fn(() => ({ status: 'empty' as const }));
+    const harness = createHarness(resolveTranslationContext);
+    let rejectSettings!: (reason: Error) => void;
+    vi.spyOn(harness.runner, 'loadPipelineRunSettings').mockImplementation(() => (
+      new Promise((_resolve, reject) => {
+        rejectSettings = reject;
+      })
+    ));
+
+    const click = harness.controller.handleTranslateClick(harness.target);
+
+    expect(resolveTranslationContext).toHaveBeenCalledWith(harness.target);
+    rejectSettings(new Error('stop after capture'));
+    await click;
+  });
+
   it('applies a successful result produced by the runner', async () => {
     const harness = createHarness();
     vi.spyOn(harness.runner, 'loadPipelineRunSettings').mockResolvedValue({
@@ -108,11 +133,232 @@ describe('ImageTranslationController', () => {
       state.translatedUrl = 'blob:translated';
       state.mode = 'translated';
       state.status = 'translated';
+      return { translationDebug: null };
     });
 
     await harness.controller.handleTranslateClick(harness.target);
 
     expect(harness.store.get(harness.target.key)?.status).toBe('translated');
     expect(harness.applyImage).toHaveBeenCalledOnce();
+  });
+
+  it('passes captured tweet context into the local LLM pipeline', async () => {
+    const settings = {
+      ...defaultExtensionSettings,
+      translator: 'llm' as const,
+      llmProfiles: {
+        ...defaultExtensionSettings.llmProfiles,
+        deepseek: {
+          ...defaultExtensionSettings.llmProfiles.deepseek,
+          apiKey: 'sk-test',
+        },
+      },
+    };
+    const sendMessage = vi.fn(async (message: { type: string }) => {
+      if (message.type === 'mt:get-settings') {
+        return {
+          ok: true as const,
+          type: 'mt:get-settings' as const,
+          settings,
+        };
+      }
+      if (message.type === 'mt:download-image') {
+        return {
+          ok: true as const,
+          type: 'mt:download-image' as const,
+          base64: 'AQ==',
+          contentType: 'image/png',
+          sourceUrl: 'https://example.com/source.png',
+        };
+      }
+      throw new Error(`unexpected message: ${message.type}`);
+    }) as unknown as typeof sendRuntimeMessage;
+    const runLocalPipelineMock = vi.fn(async (
+      _file: File,
+      _config: Parameters<RunLocalPipeline>[1],
+    ) => ({
+      result: new Blob(['translated'], { type: 'image/png' }),
+      summary: {
+        image: { width: 100, height: 200 },
+        detectedRegionCount: 1,
+        stageTimings: [],
+        runtimeStages: [],
+        translationDebug: {
+          llmBatchRequestedRegionCount: 1,
+        },
+        ocrDebug: null,
+        typesetDebug: null,
+      },
+    }));
+    const runLocalPipeline = runLocalPipelineMock as unknown as RunLocalPipeline;
+    const runner = new TranslationRunner({
+      sendMessage,
+      runLocalPipeline,
+      urlApi: {
+        createObjectURL: vi.fn(() => 'blob:translated'),
+        revokeObjectURL: vi.fn(),
+      },
+    });
+    const store = new PhotoStateStore(200, { revokeObjectURL: vi.fn() });
+    const target: ImageTarget = {
+      element: {} as HTMLImageElement,
+      key: 'status:123::image-1',
+      originalUrl: 'https://example.com/image.jpg',
+    };
+    const context = {
+      source: 'x_tweet' as const,
+      currentTweetText: '当前推文正文',
+      quotedTweetText: '引用推文正文',
+    };
+    const monitor = new ProgressJankMonitor('image');
+    const controller = new ImageTranslationController(
+      store,
+      runner,
+      {
+        resolveTarget: () => target,
+        resolveTranslationContext: () => ({
+          status: 'available',
+          context,
+        }),
+        applyImage: vi.fn(),
+        render: vi.fn(),
+      },
+      {
+        createJankMonitor: () => monitor,
+        finishJankMonitor: vi.fn(),
+        createRunId: () => 'run-test',
+        now: () => performance.now(),
+      },
+    );
+
+    await controller.handleTranslateClick(target);
+
+    expect(runLocalPipelineMock).toHaveBeenCalledOnce();
+    expect(runLocalPipelineMock.mock.calls[0][1]).toMatchObject({
+      translationContext: context,
+    });
+  });
+
+  it.each([
+    {
+      name: 'missing tweet context',
+      contextResolution: { status: 'unavailable' } as const,
+      translationDebug: {
+        llmBatchRequestedRegionCount: 1,
+      },
+      expectedNotice: '未找到推文作为上下文',
+    },
+    {
+      name: 'tweet context length fallback',
+      contextResolution: {
+        status: 'available',
+        context: {
+          source: 'x_tweet',
+          currentTweetText: '当前推文正文',
+        },
+      } as const,
+      translationDebug: {
+        llmBatchRequestedRegionCount: 1,
+        tweetContextLengthFallback: true,
+      },
+      expectedNotice: '推文上下文过长，已改为无上下文翻译',
+    },
+    {
+      name: 'tweet DOM extraction failure',
+      contextResolution: new Error('tweet DOM changed'),
+      translationDebug: {
+        llmBatchRequestedRegionCount: 1,
+      },
+      expectedNotice: '未找到推文作为上下文',
+    },
+  ])('stores a non-blocking notice after successful LLM translation with $name', async ({
+    contextResolution,
+    translationDebug,
+    expectedNotice,
+  }) => {
+    const settings = {
+      ...defaultExtensionSettings,
+      translator: 'llm' as const,
+      llmProfiles: {
+        ...defaultExtensionSettings.llmProfiles,
+        deepseek: {
+          ...defaultExtensionSettings.llmProfiles.deepseek,
+          apiKey: 'sk-test',
+        },
+      },
+    };
+    const sendMessage = vi.fn(async (message: { type: string }) => {
+      if (message.type === 'mt:get-settings') {
+        return {
+          ok: true as const,
+          type: 'mt:get-settings' as const,
+          settings,
+        };
+      }
+      if (message.type === 'mt:download-image') {
+        return {
+          ok: true as const,
+          type: 'mt:download-image' as const,
+          base64: 'AQ==',
+          contentType: 'image/png',
+          sourceUrl: 'https://example.com/source.png',
+        };
+      }
+      throw new Error(`unexpected message: ${message.type}`);
+    }) as unknown as typeof sendRuntimeMessage;
+    const runLocalPipeline = vi.fn(async () => ({
+      result: new Blob(['translated'], { type: 'image/png' }),
+      summary: {
+        image: { width: 100, height: 200 },
+        detectedRegionCount: 1,
+        stageTimings: [],
+        runtimeStages: [],
+        translationDebug,
+        ocrDebug: null,
+        typesetDebug: null,
+      },
+    })) as unknown as RunLocalPipeline;
+    const runner = new TranslationRunner({
+      sendMessage,
+      runLocalPipeline,
+      urlApi: {
+        createObjectURL: vi.fn(() => 'blob:translated'),
+        revokeObjectURL: vi.fn(),
+      },
+    });
+    const store = new PhotoStateStore(200, { revokeObjectURL: vi.fn() });
+    const target: ImageTarget = {
+      element: {} as HTMLImageElement,
+      key: 'status:123::image-1',
+      originalUrl: 'https://example.com/image.jpg',
+    };
+    const controller = new ImageTranslationController(
+      store,
+      runner,
+      {
+        resolveTarget: () => target,
+        resolveTranslationContext: () => {
+          if (contextResolution instanceof Error) {
+            throw contextResolution;
+          }
+          return contextResolution;
+        },
+        applyImage: vi.fn(),
+        render: vi.fn(),
+      },
+      {
+        createJankMonitor: () => new ProgressJankMonitor('image'),
+        finishJankMonitor: vi.fn(),
+        createRunId: () => 'run-test',
+        now: () => performance.now(),
+      },
+    );
+
+    await controller.handleTranslateClick(target);
+
+    expect(store.get(target.key)).toMatchObject({
+      status: 'translated',
+      contextNoticeText: expectedNotice,
+    });
   });
 });

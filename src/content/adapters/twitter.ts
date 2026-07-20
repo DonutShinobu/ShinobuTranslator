@@ -1,7 +1,16 @@
-import type { SiteAdapter } from '../core/types';
+import type {
+  ImageTranslationContextResolution,
+  SiteAdapter,
+} from '../core/types';
 const imageDialogSelector = '[aria-labelledby="modal-header"][role="dialog"]';
+const quotedTweetCardSelector = '[role="link"]:has([data-testid="Tweet-User-Avatar"])';
+const quotedTweetMediaSelector = '[data-testid="tweetPhoto"], [data-testid="videoPlayer"], video';
 const originalSrcAttr = 'data-mt-original-src';
+const maxTweetContextCacheEntries = 50;
 const pendingAppliedSources = new WeakMap<HTMLImageElement, string>();
+const fallbackTweetIdentities = new WeakMap<HTMLElement, string>();
+const tweetContextCache = new Map<string, ImageTranslationContextResolution>();
+let nextFallbackTweetIdentity = 1;
 
 function isVisibleElement(element: HTMLElement): boolean {
   const rect = element.getBoundingClientRect();
@@ -34,6 +43,218 @@ function normalizeImageKey(rawUrl: string): string {
   } catch {
     return rawUrl;
   }
+}
+
+function readStatusId(rawPathOrUrl: string): string | null {
+  const match = /\/status\/(\d+)(?:\/|$)/u.exec(rawPathOrUrl);
+  return match?.[1] ?? null;
+}
+
+function getTweetIdentity(dialog: HTMLElement, originalUrl = ''): string {
+  const pathStatusId = typeof location === 'undefined'
+    ? null
+    : readStatusId(location.pathname);
+  if (pathStatusId) {
+    return `status:${pathStatusId}`;
+  }
+
+  const statusLinks = typeof dialog.querySelectorAll === 'function'
+    ? Array.from(dialog.querySelectorAll<HTMLAnchorElement>('a[href*="/status/"]'))
+    : [];
+  for (const statusLink of statusLinks) {
+    if (statusLink.closest?.(quotedTweetCardSelector)) continue;
+    const linkedStatusId = readStatusId(statusLink.href);
+    if (linkedStatusId) {
+      return `status:${linkedStatusId}`;
+    }
+  }
+
+  const timelineTweet = originalUrl
+    ? findTimelineTweet(null, originalUrl)
+    : null;
+  const timelineStatusId = timelineTweet
+    ? readCurrentTweetStatusId(timelineTweet)
+    : null;
+  if (timelineStatusId) {
+    return `status:${timelineStatusId}`;
+  }
+
+  const existing = fallbackTweetIdentities.get(dialog);
+  if (existing) return existing;
+  const identity = `dialog:${nextFallbackTweetIdentity++}`;
+  fallbackTweetIdentities.set(dialog, identity);
+  return identity;
+}
+
+function normalizeTweetBody(text: string): string {
+  return text
+    .replace(/\r\n?/gu, '\n')
+    .split('\n')
+    .map(line => line.replace(/[^\S\n]+/gu, ' ').trim())
+    .join('\n')
+    .trim();
+}
+
+function readTweetBody(element: HTMLElement): string {
+  return normalizeTweetBody(element.innerText || element.textContent || '');
+}
+
+function getTranslationContextFromTweet(
+  tweet: HTMLElement,
+): ImageTranslationContextResolution {
+  const bodies = Array.from(
+    tweet.querySelectorAll<HTMLElement>('[data-testid="tweetText"]'),
+  );
+  const quoteCards = Array.from(
+    tweet.querySelectorAll<HTMLElement>(quotedTweetCardSelector),
+  );
+  let currentTweetText = '';
+  let quotedTweetText: string | undefined;
+
+  for (const body of bodies) {
+    const text = readTweetBody(body);
+    if (quoteCards.some(card => card.contains(body))) {
+      if (!quotedTweetText) {
+        quotedTweetText = text;
+      }
+      continue;
+    }
+    if (!currentTweetText) {
+      currentTweetText = text;
+    }
+  }
+
+  for (const quoteCard of quoteCards) {
+    const hasReadableBody = bodies.some(body => quoteCard.contains(body));
+    if (!hasReadableBody && !quoteCard.querySelector(quotedTweetMediaSelector)) {
+      return { status: 'unavailable' as const };
+    }
+    quotedTweetText ??= '';
+  }
+
+  if (!currentTweetText && !quotedTweetText) {
+    return { status: 'empty' as const };
+  }
+  return {
+    status: 'available' as const,
+    context: {
+      source: 'x_tweet' as const,
+      currentTweetText,
+      ...(quotedTweetText === undefined ? {} : { quotedTweetText }),
+    },
+  };
+}
+
+function getTranslationContextFromDialog(
+  dialog: HTMLElement,
+): ImageTranslationContextResolution {
+  const tweet = dialog.querySelector<HTMLElement>('article[data-testid="tweet"]');
+  return tweet
+    ? getTranslationContextFromTweet(tweet)
+    : { status: 'unavailable' };
+}
+
+function readCurrentTweetStatusId(tweet: HTMLElement): string | null {
+  const statusLinks = Array.from(
+    tweet.querySelectorAll<HTMLAnchorElement>('a[href*="/status/"]'),
+  );
+  for (const statusLink of statusLinks) {
+    if (statusLink.closest?.(quotedTweetCardSelector)) continue;
+    const statusId = readStatusId(statusLink.href);
+    if (statusId) return statusId;
+  }
+  return null;
+}
+
+function readStatusIdFromTweetIdentity(tweetIdentity: string | null): string | null {
+  if (!tweetIdentity) return null;
+  const match = /^status:(\d+)$/u.exec(tweetIdentity);
+  return match?.[1] ?? null;
+}
+
+function findTimelineTweet(
+  tweetIdentity: string | null,
+  originalUrl: string,
+): HTMLElement | null {
+  if (
+    typeof document === 'undefined'
+    || typeof document.querySelectorAll !== 'function'
+  ) {
+    return null;
+  }
+
+  const tweets = Array.from(
+    document.querySelectorAll<HTMLElement>('article[data-testid="tweet"]'),
+  );
+  const statusId = readStatusIdFromTweetIdentity(tweetIdentity);
+  if (statusId) {
+    const statusMatch = tweets.find(tweet => readCurrentTweetStatusId(tweet) === statusId);
+    if (statusMatch) return statusMatch;
+  }
+
+  const mediaIdentity = getTwitterMediaIdentity(originalUrl);
+  if (!mediaIdentity) return null;
+  for (const tweet of tweets) {
+    const mediaImages = Array.from(tweet.querySelectorAll<HTMLImageElement>('img'));
+    for (const image of mediaImages) {
+      if (image.closest?.(quotedTweetCardSelector)) continue;
+      const imageUrl = image.currentSrc || image.src;
+      if (getTwitterMediaIdentity(imageUrl) === mediaIdentity) {
+        return tweet;
+      }
+    }
+  }
+  return null;
+}
+
+function resolveLiveTweetContext(
+  dialog: HTMLElement | null,
+  tweetIdentity: string | null,
+  originalUrl: string,
+): ImageTranslationContextResolution {
+  if (dialog) {
+    const dialogResolution = getTranslationContextFromDialog(dialog);
+    if (dialogResolution.status !== 'unavailable') {
+      return dialogResolution;
+    }
+  }
+
+  const timelineTweet = findTimelineTweet(tweetIdentity, originalUrl);
+  return timelineTweet
+    ? getTranslationContextFromTweet(timelineTweet)
+    : { status: 'unavailable' };
+}
+
+function rememberTweetContext(
+  tweetIdentity: string,
+  resolution: ImageTranslationContextResolution,
+): void {
+  if (resolution.status === 'unavailable') return;
+
+  tweetContextCache.delete(tweetIdentity);
+  tweetContextCache.set(tweetIdentity, resolution);
+  if (tweetContextCache.size <= maxTweetContextCacheEntries) return;
+
+  const oldestTweetIdentity = tweetContextCache.keys().next().value;
+  if (oldestTweetIdentity !== undefined) {
+    tweetContextCache.delete(oldestTweetIdentity);
+  }
+}
+
+function readCachedTweetContext(
+  tweetIdentity: string,
+): ImageTranslationContextResolution | undefined {
+  const cached = tweetContextCache.get(tweetIdentity);
+  if (!cached) return undefined;
+
+  tweetContextCache.delete(tweetIdentity);
+  tweetContextCache.set(tweetIdentity, cached);
+  return cached;
+}
+
+function readTweetIdentityFromImageKey(key: string): string | null {
+  const separatorIndex = key.indexOf('::');
+  return separatorIndex > 0 ? key.slice(0, separatorIndex) : null;
 }
 
 function findPhotoDialog(): HTMLElement | null {
@@ -194,9 +415,34 @@ export const twitterAdapter: SiteAdapter = {
     if (!image) return [];
     const originalUrl = readImageOriginalUrl(image);
     if (!originalUrl) return [];
-    const key = normalizeImageKey(originalUrl);
+    const tweetIdentity = getTweetIdentity(dialog, originalUrl);
+    rememberTweetContext(
+      tweetIdentity,
+      resolveLiveTweetContext(dialog, tweetIdentity, originalUrl),
+    );
+    const key = `${tweetIdentity}::${normalizeImageKey(originalUrl)}`;
     image.setAttribute(originalSrcAttr, originalUrl);
     return [{ element: image, key, originalUrl }];
+  },
+
+  getTranslationContext(target) {
+    const dialog = target.element.closest(imageDialogSelector) as HTMLElement | null;
+    const tweetIdentity = readTweetIdentityFromImageKey(target.key)
+      ?? (dialog ? getTweetIdentity(dialog, target.originalUrl) : null);
+    const liveResolution = resolveLiveTweetContext(
+      dialog,
+      tweetIdentity,
+      target.originalUrl,
+    );
+    if (liveResolution.status !== 'unavailable') {
+      if (tweetIdentity) {
+        rememberTweetContext(tweetIdentity, liveResolution);
+      }
+      return liveResolution;
+    }
+    return tweetIdentity
+      ? readCachedTweetContext(tweetIdentity) ?? liveResolution
+      : liveResolution;
   },
 
   createUiAnchor(target) {

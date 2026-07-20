@@ -6,6 +6,7 @@ import type {
   RuntimeStageStatus,
   StageTiming,
   TextRegion,
+  TranslationReferenceContext,
   TranslationDebugInfo,
 } from '../../types';
 
@@ -14,6 +15,15 @@ export interface ImageTarget {
   key: string;
   originalUrl: string;
 }
+
+export type ImageTranslationContextResolution =
+  | {
+      status: 'available';
+      context: TranslationReferenceContext;
+    }
+  | {
+      status: 'empty' | 'unavailable';
+    };
 
 /** URL-only target for pages that lack a DOM img (virtual-rendered in Pixiv reading mode). */
 export interface UrlTarget {
@@ -31,6 +41,7 @@ export interface ReadingModeBarUi {
 export interface SiteAdapter {
   match(): boolean;
   findImages(): ImageTarget[];
+  getTranslationContext?(target: ImageTarget): ImageTranslationContextResolution;
   createUiAnchor(target: ImageTarget): HTMLElement;
   applyImage(target: ImageTarget, url: string): void;
   observe(onChange: () => void): () => void;
@@ -117,6 +128,7 @@ export type PhotoState = {
   stageTimingCard?: StageTimingCardData;
   errorText: string;
   errorDetailCard?: ErrorDetailCardData;
+  contextNoticeText?: string;
 };
 
 export type OcrRegionLogItem = {
@@ -268,4 +280,12 @@ export type TypesetDebugDownloadData = {
   typeset: PipelineTypesetDebugLog;
 };
 
-export type { PipelineArtifacts, PipelineProgress, RuntimeStageStatus, StageTiming, TextRegion, TranslationDebugInfo };
+export type {
+  PipelineArtifacts,
+  PipelineProgress,
+  RuntimeStageStatus,
+  StageTiming,
+  TextRegion,
+  TranslationDebugInfo,
+  TranslationReferenceContext,
+};

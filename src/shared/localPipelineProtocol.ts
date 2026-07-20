@@ -227,6 +227,14 @@ function isValidFileMeta(value: unknown): value is LocalPipelineFileMeta {
     && Number.isFinite(value.lastModified);
 }
 
+function isValidTranslationContext(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!isRecord(value)) return false;
+  return value.source === 'x_tweet'
+    && typeof value.currentTweetText === 'string'
+    && (value.quotedTweetText === undefined || typeof value.quotedTweetText === 'string');
+}
+
 function isValidPipelineConfig(value: unknown): value is PipelineConfig {
   if (!isRecord(value)) return false;
   const stringKeys = [
@@ -244,6 +252,7 @@ function isValidPipelineConfig(value: unknown): value is PipelineConfig {
   if (value.processMode !== 'translate' && value.processMode !== 'erase' && value.processMode !== 'original') return false;
   if (typeof value.typesetDebug !== 'boolean' || typeof value.eraseDebug !== 'boolean' || typeof value.collectDebugLog !== 'boolean') return false;
   if (value.ocrCompactActiveBatch !== undefined && typeof value.ocrCompactActiveBatch !== 'boolean') return false;
+  if (!isValidTranslationContext(value.translationContext)) return false;
   return value.diagnosticRunId === undefined || typeof value.diagnosticRunId === 'string';
 }
 

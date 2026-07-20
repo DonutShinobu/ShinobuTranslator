@@ -230,6 +230,9 @@ export function injectStyles(): void {
     .mt-x-detail[data-variant='error'] {
       color: var(--mt-error-text, oklch(0.82 0.12 25 / 0.85));
     }
+    .mt-x-context-notice:empty {
+      display: none;
+    }
 
     .mt-x-stage-card {
       display: none;

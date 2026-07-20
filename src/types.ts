@@ -37,6 +37,12 @@ export type GeminiAppAuthMode = 'browser_session' | 'cookies_permission';
 
 export type GeminiAppModel = 'nano_banana_2' | 'nano_banana_pro';
 
+export type TranslationReferenceContext = {
+  source: 'x_tweet';
+  currentTweetText: string;
+  quotedTweetText?: string;
+};
+
 export type TextRegion = {
   id: string;
   box: Rect;
@@ -71,6 +77,7 @@ export type PipelineConfig = {
   llmUseCustomModel?: boolean;
   /** Canonical thinking level for the exact selected built-in model. */
   llmThinkingLevel?: LlmThinkingLevel;
+  translationContext?: TranslationReferenceContext;
   typesetDebug: boolean;
   eraseDebug: boolean;
   collectDebugLog: boolean;
@@ -211,6 +218,7 @@ export type TranslationDebugInfo = {
   llmFallbackUsed?: boolean;
   llmFallbackRegionCount?: number;
   llmFallbackRequestCount?: number;
+  tweetContextLengthFallback?: boolean;
 };
 
 export type OcrRunDebugStep = {

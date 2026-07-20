@@ -59,4 +59,26 @@ describe('proxyOpenAiChatCompletions', () => {
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it('keeps HTTP 413 visible when OAuth responses include a detail message', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () =>
+      new Response(JSON.stringify({ error: { message: 'upstream rejected request' } }), {
+        status: 413,
+        statusText: 'Payload Too Large',
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    ));
+
+    await expect(proxyOpenAiChatCompletions(
+      {
+        model: 'gpt-5.6-sol',
+        messages: [{ role: 'user', content: 'translate' }],
+      },
+      {
+        provider: 'openai',
+        authMode: 'openai_oauth',
+        baseUrl: 'https://api.openai.com/v1',
+      },
+    )).rejects.toThrow('OpenAI ChatGPT 请求失败: HTTP 413: upstream rejected request');
+  });
 });

@@ -22,6 +22,8 @@ import type {
   PipelineProgress,
   ProgressJankEntry,
   ProgressJankReport,
+  TranslationReferenceContext,
+  TranslationDebugInfo,
 } from '../types';
 import {
   base64ToBlob,
@@ -142,6 +144,11 @@ export type PipelineRunFileOptions = {
   onProgress: (stageText: string) => void;
   jankMonitor?: ProgressJankMonitor;
   diagnosticRunId?: string;
+  translationContext?: TranslationReferenceContext;
+};
+
+export type PipelineRunOutcome = {
+  translationDebug: TranslationDebugInfo | null;
 };
 
 export type TranslationRunnerDependencies = {
@@ -166,6 +173,7 @@ export class TranslationRunner {
       state.mode = 'original';
       state.errorText = '';
       state.errorDetailCard = undefined;
+      state.contextNoticeText = undefined;
       clearTimingDisplay(state);
       state.debugLogData = undefined;
       state.stageText = '准备中';
@@ -373,11 +381,14 @@ export class TranslationRunner {
       state.status = 'translated';
     }
 
-  async runPipelineFromFile(options: PipelineRunFileOptions): Promise<void> {
+  async runPipelineFromFile(options: PipelineRunFileOptions): Promise<PipelineRunOutcome> {
       const { state, file, runSettings, runStartAt, includeElapsedText, onProgress, jankMonitor } = options;
       const diagnosticRunId = options.diagnosticRunId ?? (runSettings.enableDebugLog ? createDiagnosticRunId('run') : undefined);
       let progressJank: ProgressJankReport | null = null;
       const pipelineConfig = toPipelineConfig(runSettings.settings);
+      if (options.translationContext) {
+        pipelineConfig.translationContext = options.translationContext;
+      }
       if (diagnosticRunId) {
         pipelineConfig.diagnosticRunId = diagnosticRunId;
       }
@@ -417,7 +428,7 @@ export class TranslationRunner {
               },
             });
           }
-          return;
+          return { translationDebug: null };
         }
 
         const localResult = await this.runLocalPipeline(file, pipelineConfig, (progress: PipelineProgress) => {
@@ -500,6 +511,7 @@ export class TranslationRunner {
         state.errorDetailCard = undefined;
         state.mode = 'translated';
         state.status = 'translated';
+        return { translationDebug: artifacts.translationDebug };
       } catch (error) {
         if (!progressJank) {
           progressJank = finishProgressJankMonitor(jankMonitor ?? null, diagnosticRunId);

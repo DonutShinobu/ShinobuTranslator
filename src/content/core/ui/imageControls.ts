@@ -12,6 +12,7 @@ export type UiElements = {
   buttonSpinner: HTMLSpanElement;
   buttonLabel: HTMLSpanElement;
   detailLine: HTMLDivElement;
+  contextNoticeLine: HTMLDivElement;
   errorDetailCard: HTMLDivElement;
   errorDetailCardToggleButton: HTMLButtonElement;
   errorDetailCardHeading: HTMLSpanElement;
@@ -88,6 +89,11 @@ export function createUiElements(): UiElements {
   const detailLine = document.createElement('div');
   detailLine.className = 'mt-x-detail';
   root.appendChild(detailLine);
+
+  const contextNoticeLine = document.createElement('div');
+  contextNoticeLine.className = 'mt-x-detail mt-x-context-notice';
+  contextNoticeLine.setAttribute('aria-live', 'polite');
+  root.appendChild(contextNoticeLine);
 
   const errorDetailCard = document.createElement('div');
   errorDetailCard.className = 'mt-x-stage-card mt-x-error-detail-card';
@@ -180,6 +186,7 @@ export function createUiElements(): UiElements {
     buttonSpinner,
     buttonLabel,
     detailLine,
+    contextNoticeLine,
     errorDetailCard,
     errorDetailCardToggleButton,
     errorDetailCardHeading,
@@ -202,7 +209,14 @@ export function createUiElements(): UiElements {
 }
 
 export function renderUi(ui: UiElements, state: PhotoState | null): void {
-  const { button, buttonIcon, buttonLabel, detailLine, debugDownloadButton } = ui;
+  const {
+    button,
+    buttonIcon,
+    buttonLabel,
+    contextNoticeLine,
+    detailLine,
+    debugDownloadButton,
+  } = ui;
 
   const updateStatusLine = (text: string, variant: 'normal' | 'error' = 'normal'): void => {
     detailLine.textContent = text;
@@ -215,6 +229,7 @@ export function renderUi(ui: UiElements, state: PhotoState | null): void {
     buttonIcon.innerHTML = ICONS.translate;
     buttonLabel.textContent = '翻译';
     updateStatusLine('');
+    contextNoticeLine.textContent = '';
     debugDownloadButton.style.display = 'none';
     renderErrorDetailCard(ui, null);
     renderStageTimingCard(ui, null);
@@ -222,6 +237,7 @@ export function renderUi(ui: UiElements, state: PhotoState | null): void {
     return;
   }
 
+  contextNoticeLine.textContent = state.contextNoticeText ?? '';
   const canShowDebugDownload = false;
   debugDownloadButton.style.display = canShowDebugDownload ? 'inline-flex' : 'none';
   debugDownloadButton.disabled = !canShowDebugDownload || state.status === 'running';

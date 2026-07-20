@@ -25,6 +25,7 @@ export type ScreenshotResultUiElements = {
   buttonSpinner: HTMLSpanElement;
   buttonLabel: HTMLSpanElement;
   detailLine: HTMLDivElement;
+  contextNoticeLine: HTMLDivElement;
   errorDetailCard: HTMLDivElement;
   errorDetailCardToggleButton: HTMLButtonElement;
   errorDetailCardHeading: HTMLSpanElement;

@@ -19,6 +19,7 @@ export function createInitialPhotoState(originalUrl: string): PhotoState {
     stageTimingCard: undefined,
     errorText: '',
     errorDetailCard: undefined,
+    contextNoticeText: undefined,
   };
 }
 

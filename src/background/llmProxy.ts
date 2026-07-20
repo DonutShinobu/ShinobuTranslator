@@ -27,7 +27,11 @@ export class LlmChatCompletionHttpError extends Error {
     super(
       errorCode === 'llm_thinking_config'
         ? `当前模型不支持所选思考设置: ${detail ?? `HTTP ${status}`}`
-        : `LLM 翻译请求失败: ${detail ?? `HTTP ${status}`}`,
+        : `LLM 翻译请求失败: ${
+          status === 413
+            ? `HTTP 413${detail ? `: ${detail}` : ''}`
+            : detail ?? `HTTP ${status}`
+        }`,
     );
     this.name = 'LlmChatCompletionHttpError';
     this.status = status;

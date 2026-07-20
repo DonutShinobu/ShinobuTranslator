@@ -120,7 +120,10 @@ export async function proxyOpenAiChatCompletions(
 
   if (!response.ok) {
     const data = await readJsonResponse(response);
-    const detail = extractResponseError(data) ?? `HTTP ${response.status}`;
+    const responseDetail = extractResponseError(data);
+    const detail = response.status === 413
+      ? `HTTP 413${responseDetail ? `: ${responseDetail}` : ''}`
+      : responseDetail ?? `HTTP ${response.status}`;
     if (isLlmThinkingConfigurationRejection({
       status: response.status,
       provider: 'openai',

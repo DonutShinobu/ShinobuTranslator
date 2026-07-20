@@ -46,6 +46,9 @@ export class TranslatorCore {
       this.translationRunner,
       {
         resolveTarget: (key) => this.mounted.get(key)?.target,
+        resolveTranslationContext: (target) => this.adapter.getTranslationContext?.(target) ?? {
+          status: 'empty',
+        },
         applyImage: (target, state) => this.applyStateImage(target, state),
         render: (key) => this.renderForKey(key),
       },

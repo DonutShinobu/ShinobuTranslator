@@ -31,7 +31,7 @@ describe("built-in LLM catalog", () => {
         models: ["gemini-3.1-flash-image", "gemini-3-pro-image"],
       },
       glm: {
-        label: "GLM (Z.AI)",
+        label: "GLM (智谱)",
         baseUrl: "https://api.z.ai/api/paas/v4",
         models: [
           "glm-5.2",
@@ -44,7 +44,7 @@ describe("built-in LLM catalog", () => {
         ],
       },
       kimi: {
-        label: "Kimi (Moonshot)",
+        label: "Kimi (月之暗面)",
         baseUrl: "https://api.moonshot.ai/v1",
         models: ["kimi-k3", "kimi-k2.6"],
       },

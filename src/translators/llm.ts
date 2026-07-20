@@ -97,6 +97,147 @@ type ChatCompletionResponse = {
   choices?: Array<{ message?: { content?: string } }>;
 };
 
+type ChinesePromptScript = 'simplified' | 'traditional';
+
+type TranslationPromptMessages = {
+  system: string;
+  user: string;
+};
+
+function resolveChinesePromptScript(targetLanguage: string): ChinesePromptScript {
+  return targetLanguage.trim().toLowerCase() === 'zh-cht' ? 'traditional' : 'simplified';
+}
+
+function localizeLanguageName(language: string, script: ChinesePromptScript): string {
+  const normalized = language.trim().toLowerCase();
+  if (normalized === 'ja') {
+    return '日文';
+  }
+  if (normalized === 'zh-chs') {
+    return script === 'traditional' ? '簡體中文' : '简体中文';
+  }
+  if (normalized === 'zh-cht') {
+    return script === 'traditional' ? '繁體中文' : '繁体中文';
+  }
+  return language;
+}
+
+function buildSingleTranslationPrompt(from: string, to: string, text: string): TranslationPromptMessages {
+  const script = resolveChinesePromptScript(to);
+  const localizedFrom = localizeLanguageName(from, script);
+  const localizedTo = localizeLanguageName(to, script);
+
+  if (script === 'traditional') {
+    return {
+      system: [
+        '你是專業漫畫本地化譯者和中文潤色編輯。',
+        '你的目標是把台詞改寫成自然、口語化、符合中文漫畫閱讀習慣的譯文。',
+        '不要保留日語倒裝語序，不要逐詞直譯，只輸出譯文，不輸出解釋。',
+      ].join('\n'),
+      user: [
+        `請把以下文本從 ${localizedFrom} 翻譯成 ${localizedTo}。`,
+        '請先理解完整語義，再用自然中文表達；必要時可以調整語序、合併或拆分短句。',
+        '如果原文包含換行，它可能只是漫畫豎排或橫排的視覺斷列；請把它當作同一段語義處理，不要逐行逐列直譯。',
+        '只輸出最終譯文，不要輸出註釋、括號說明或原文。',
+        '原文：',
+        text,
+      ].join('\n'),
+    };
+  }
+
+  return {
+    system: [
+      '你是专业漫画本地化译者和中文润色编辑。',
+      '你的目标是把台词改写成自然、口语化、符合中文漫画阅读习惯的译文。',
+      '不要保留日语倒装语序，不要逐词直译，只输出译文，不输出解释。',
+    ].join('\n'),
+    user: [
+      `请把以下文本从 ${localizedFrom} 翻译成 ${localizedTo}。`,
+      '请先理解完整语义，再用自然中文表达；必要时可以调整语序、合并或拆分短句。',
+      '如果原文包含换行，它可能只是漫画竖排或横排的视觉断列；请把它当作同一段语义处理，不要逐行逐列直译。',
+      '只输出最终译文，不要输出注释、括号说明或原文。',
+      '原文：',
+      text,
+    ].join('\n'),
+  };
+}
+
+function buildStructuredTranslationPrompt(
+  from: string,
+  to: string,
+  payload: Array<{
+    id: string;
+    direction: 'h' | 'v';
+    targetColumns?: number;
+    targetLines?: number;
+    sourceText: LlmSourceTextPayload;
+  }>,
+): TranslationPromptMessages {
+  const script = resolveChinesePromptScript(to);
+  const localizedFrom = localizeLanguageName(from, script);
+  const localizedTo = localizeLanguageName(to, script);
+
+  if (script === 'traditional') {
+    return {
+      system: [
+        '你是專業漫畫本地化譯者和中文潤色編輯。',
+        '你會先理解整頁上下文和每個文本框的完整語義，再寫出自然中文譯文。',
+        '不要按日語列順序逐列直譯，不要保留日語倒裝語序。',
+        'columns/lines 是排版分段，不是逐列逐句對應原文。',
+        '必須嚴格輸出 JSON，不得輸出解釋。',
+      ].join('\n'),
+      user: [
+        `請把以下文本從 ${localizedFrom} 翻譯成 ${localizedTo}，並基於整頁上下文保持語氣、稱呼和情緒一致。`,
+        '輸入是多個文本框。請按輸入順序理解上下文，但每個 region 仍獨立返回。',
+        'sourceText.plainText 是去掉換行後的完整原文，用於理解整句語義。',
+        'sourceText.textWithBreaks 保留 OCR/視覺換行，用於參考原始斷列或斷行。',
+        'sourceText.readingOrder 描述視覺閱讀順序：right-to-left 表示豎排從右到左，top-to-bottom 表示橫排行從上到下。',
+        'sourceText.columns/sourceText.lines 是結構化分段數組，格式為 [{"index":1,"label":"column1","text":"..."}]。',
+        '返回格式必須是：',
+        '{"regions":[{"id":"...","translation":"...","columns":["..."]}]}',
+        '規則：',
+        '1. regions 數組必須覆蓋所有輸入 id。',
+        '2. translation 必須是自然流暢的完整中文譯文，優先符合中文語序和中文漫畫台詞習慣。',
+        '3. 翻譯時必須允許跨 column/line 重組語義；不要把每個 column/line 當成必須逐字對應的獨立句子。',
+        '4. direction=v 時，先寫完整中文譯文，再按 targetColumns 拆成 columns；columns 按最終豎排顯示的閱讀順序返回。',
+        '5. direction=h 時，columns 表示最終橫排行分段，優先接近 targetLines。',
+        '6. columns 每段都應是自然中文片段，盡量在標點、語氣停頓或短語邊界斷開。',
+        '7. 除 JSON 外不要輸出任何內容。',
+        `輸入數據：${JSON.stringify(payload)}`,
+      ].join('\n'),
+    };
+  }
+
+  return {
+    system: [
+      '你是专业漫画本地化译者和中文润色编辑。',
+      '你会先理解整页上下文和每个文本框的完整语义，再写出自然中文译文。',
+      '不要按日语列顺序逐列直译，不要保留日语倒装语序。',
+      'columns/lines 是排版分段，不是逐列逐句对应原文。',
+      '必须严格输出 JSON，不得输出解释。',
+    ].join('\n'),
+    user: [
+      `请把以下文本从 ${localizedFrom} 翻译成 ${localizedTo}，并基于整页上下文保持语气、称呼和情绪一致。`,
+      '输入是多个文本框。请按输入顺序理解上下文，但每个 region 仍独立返回。',
+      'sourceText.plainText 是去掉换行后的完整原文，用于理解整句语义。',
+      'sourceText.textWithBreaks 保留 OCR/视觉换行，用于参考原始断列或断行。',
+      'sourceText.readingOrder 描述视觉阅读顺序：right-to-left 表示竖排从右到左，top-to-bottom 表示横排行从上到下。',
+      'sourceText.columns/sourceText.lines 是结构化分段数组，格式为 [{"index":1,"label":"column1","text":"..."}]。',
+      '返回格式必须是：',
+      '{"regions":[{"id":"...","translation":"...","columns":["..."]}]}',
+      '规则：',
+      '1. regions 数组必须覆盖所有输入 id。',
+      '2. translation 必须是自然流畅的完整中文译文，优先符合中文语序和中文漫画台词习惯。',
+      '3. 翻译时必须允许跨 column/line 重组语义；不要把每个 column/line 当成必须逐字对应的独立句子。',
+      '4. direction=v 时，先写完整中文译文，再按 targetColumns 拆成 columns；columns 按最终竖排显示的阅读顺序返回。',
+      '5. direction=h 时，columns 表示最终横排行分段，优先接近 targetLines。',
+      '6. columns 每段都应是自然中文片段，尽量在标点、语气停顿或短语边界断开。',
+      '7. 除 JSON 外不要输出任何内容。',
+      `输入数据：${JSON.stringify(payload)}`,
+    ].join('\n'),
+  };
+}
+
 function extractJsonObject(text: string): string {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fenced?.[1]) {
@@ -284,27 +425,17 @@ async function requestChatCompletion(
 
 export async function llmTranslate(options: LlmTranslateOptions): Promise<string> {
   const { model, from, to, text } = options;
+  const prompt = buildSingleTranslationPrompt(from, to, text);
   const data = await requestChatCompletion(options, {
     model,
     messages: [
       {
         role: 'system',
-        content: [
-          '你是专业漫画本地化译者和中文润色编辑。',
-          '你的目标是把台词改写成自然、口语化、符合中文漫画阅读习惯的译文。',
-          '不要保留日语倒装语序，不要逐词直译，只输出译文，不输出解释。',
-        ].join('\n'),
+        content: prompt.system,
       },
       {
         role: 'user',
-        content: [
-          `请把以下文本从 ${from} 翻译成 ${to}。`,
-          '请先理解完整语义，再用自然中文表达；必要时可以调整语序、合并或拆分短句。',
-          '如果原文包含换行，它可能只是漫画竖排或横排的视觉断列；请把它当作同一段语义处理，不要逐行逐列直译。',
-          '只输出最终译文，不要输出注释、括号说明或原文。',
-          '原文：',
-          text,
-        ].join('\n'),
+        content: prompt.user,
       },
     ],
   });
@@ -326,41 +457,18 @@ export async function llmTranslateRegions(
     targetLines: region.direction === 'h' ? Math.max(1, region.targetLines ?? 1) : undefined,
     sourceText: buildSourceTextPayload(region.text, region.direction),
   }));
+  const prompt = buildStructuredTranslationPrompt(from, to, payload);
 
   const data = await requestChatCompletion(options, {
     model,
     messages: [
       {
         role: 'system',
-        content: [
-          '你是专业漫画本地化译者和中文润色编辑。',
-          '你会先理解整页上下文和每个文本框的完整语义，再写出自然中文译文。',
-          '不要按日语列顺序逐列直译，不要保留日语倒装语序。',
-          'columns/lines 是排版分段，不是逐列逐句对应原文。',
-          '必须严格输出 JSON，不得输出解释。',
-        ].join('\n'),
+        content: prompt.system,
       },
       {
         role: 'user',
-        content: [
-          `请把以下文本从 ${from} 翻译成 ${to}，并基于整页上下文保持语气、称呼和情绪一致。`,
-          '输入是多个文本框。请按输入顺序理解上下文，但每个 region 仍独立返回。',
-          'sourceText.plainText 是去掉换行后的完整原文，用于理解整句语义。',
-          'sourceText.textWithBreaks 保留 OCR/视觉换行，用于参考原始断列或断行。',
-          'sourceText.readingOrder 描述视觉阅读顺序：right-to-left 表示竖排从右到左，top-to-bottom 表示横排行从上到下。',
-          'sourceText.columns/sourceText.lines 是结构化分段数组，格式为 [{"index":1,"label":"column1","text":"..."}]。',
-          '返回格式必须是：',
-          '{"regions":[{"id":"...","translation":"...","columns":["..."]}]}',
-          '规则：',
-          '1. regions 数组必须覆盖所有输入 id。',
-          '2. translation 必须是自然流畅的完整中文译文，优先符合中文语序和中文漫画台词习惯。',
-          '3. 翻译时必须允许跨 column/line 重组语义；不要把每个 column/line 当成必须逐字对应的独立句子。',
-          '4. direction=v 时，先写完整中文译文，再按 targetColumns 拆成 columns；columns 按最终竖排显示的阅读顺序返回。',
-          '5. direction=h 时，columns 表示最终横排行分段，优先接近 targetLines。',
-          '6. columns 每段都应是自然中文片段，尽量在标点、语气停顿或短语边界断开。',
-          '7. 除 JSON 外不要输出任何内容。',
-          `输入数据：${JSON.stringify(payload)}`,
-        ].join('\n'),
+        content: prompt.user,
       },
     ],
     response_format: {

@@ -34,9 +34,9 @@ const benchmarkApi: ShinobuBenchmarkApi = {
   renderFixtureDebug: (dataUrl, regions) => (
     shinobuRenderFixtureDebug(dataUrl, regions, browserPlatform)
   ),
-  runPipeline: async (file, config, onProgress) => {
+  runPipeline: async (file, config, onProgress, options) => {
     const { runPipeline } = await import('../pipeline/orchestrator');
-    return runPipeline(file, config, onProgress);
+    return runPipeline(file, config, onProgress, options);
   },
 };
 

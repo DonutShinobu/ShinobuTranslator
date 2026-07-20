@@ -2,9 +2,11 @@ import type {
   PipelineArtifacts,
   PipelineConfig,
   PipelineProgress,
+  PipelineStageRegions,
   PipelineTypesetDebugLog,
   RuntimeStageStatus,
   StageTiming,
+  TextRegion,
   TranslationDebugInfo,
   MaskDebugLayers,
 } from "../types";
@@ -32,6 +34,7 @@ type ProgressCallback = (progress: PipelineProgress) => void;
 
 export type PipelineRunOptions = {
   signal?: AbortSignal;
+  stopAfter?: "order";
 };
 
 type PaddleOcrRuntimeProbeMode = "legacy" | "prepare" | "warmup";
@@ -259,6 +262,47 @@ function toErrorDetail(error: unknown): string {
   return String(error);
 }
 
+type RegionQuad = NonNullable<TextRegion["quad"]>;
+type RegionBubbleMask = NonNullable<TextRegion["bubbleMask"]>;
+
+function cloneRegionQuad(quad: RegionQuad): RegionQuad {
+  return quad.map((point) => ({ ...point })) as RegionQuad;
+}
+
+function cloneTextRegions(regions: TextRegion[]): TextRegion[] {
+  const clonedMasks = new Map<RegionBubbleMask, RegionBubbleMask>();
+  return regions.map((region) => {
+    let bubbleMask: RegionBubbleMask | undefined;
+    if (region.bubbleMask) {
+      bubbleMask = clonedMasks.get(region.bubbleMask);
+      if (!bubbleMask) {
+        bubbleMask = {
+          width: region.bubbleMask.width,
+          height: region.bubbleMask.height,
+          data: new Uint8ClampedArray(region.bubbleMask.data),
+        };
+        clonedMasks.set(region.bubbleMask, bubbleMask);
+      }
+    }
+
+    return {
+      ...region,
+      box: { ...region.box },
+      quad: region.quad ? cloneRegionQuad(region.quad) : undefined,
+      fgColor: region.fgColor ? [...region.fgColor] : undefined,
+      bgColor: region.bgColor ? [...region.bgColor] : undefined,
+      translatedColumns: region.translatedColumns ? [...region.translatedColumns] : undefined,
+      sourceLineGeometries: region.sourceLineGeometries?.map((geometry) => ({
+        ...geometry,
+        box: { ...geometry.box },
+        quad: geometry.quad ? cloneRegionQuad(geometry.quad) : undefined,
+      })),
+      bubbleBox: region.bubbleBox ? { ...region.bubbleBox } : undefined,
+      bubbleMask,
+    };
+  });
+}
+
 export class PipelineStageError extends Error {
   readonly stage: string;
   readonly artifacts: PipelineArtifacts;
@@ -318,6 +362,7 @@ export async function runPipeline(
   const platform: PlatformProvider = browserPlatform;
   const stageTimings: StageTiming[] = [];
   const signal = options.signal;
+  const stopAfterOrder = options.stopAfter === "order";
 
   throwIfCancelled(signal);
   report(onProgress, "load", "加载图片");
@@ -328,6 +373,12 @@ export async function runPipeline(
   stageTimings.push({ stage: "load", label: "加载图片", durationMs: performance.now() - loadT0 });
 
   const runtimeStages: RuntimeStageStatus[] = [];
+  const stageRegions: PipelineStageRegions = {
+    detected: [],
+    ocr: [],
+    merged: [],
+    ordered: [],
+  };
 
   let latestRegions: PipelineArtifacts["detectedRegions"] = [];
   let detectionCanvas: PipelineCanvas = originalCanvas;
@@ -347,6 +398,7 @@ export async function runPipeline(
   const buildArtifacts = (): PipelineArtifacts => ({
     original: image,
     detectedRegions: latestRegions,
+    stageRegions,
     detectionCanvas,
     ocrCanvas,
     segmentationCanvas,
@@ -410,7 +462,7 @@ export async function runPipeline(
     if (ocrRuntimeProbeSchedule === "detect-start") {
       startOcrRuntimeProbe();
     }
-    if (inpaintRuntimeProbeSchedule === "detect-start") {
+    if (!stopAfterOrder && inpaintRuntimeProbeSchedule === "detect-start") {
       startInpaintRuntimeProbe();
     }
     if (bubbleRuntimeProbeSchedule === "detect-start") {
@@ -420,6 +472,7 @@ export async function runPipeline(
     const detected = await detectTextRegionsWithMask(image, platform);
     throwIfCancelled(signal);
     latestRegions = detected.regions;
+    stageRegions.detected = cloneTextRegions(latestRegions);
     detectionMaskCanvas = detected.rawMaskCanvas;
     segmentationCanvas = detected.rawMaskCanvas;
     detectionCanvas = drawRegions(originalCanvas, detected.regions, "文本检测", () => "文本框", platform);
@@ -462,7 +515,7 @@ export async function runPipeline(
     if (ocrRuntimeProbeSchedule === "after-detect") {
       startOcrRuntimeProbe();
     }
-    if (inpaintRuntimeProbeSchedule === "after-detect") {
+    if (!stopAfterOrder && inpaintRuntimeProbeSchedule === "after-detect") {
       startInpaintRuntimeProbe();
     }
     if (bubbleRuntimeProbeSchedule === "after-detect") {
@@ -479,7 +532,7 @@ export async function runPipeline(
     if (ocrRuntimeProbeSchedule === "bubble-start") {
       startOcrRuntimeProbe();
     }
-    if (inpaintRuntimeProbeSchedule === "bubble-start") {
+    if (!stopAfterOrder && inpaintRuntimeProbeSchedule === "bubble-start") {
       startInpaintRuntimeProbe();
     }
     report(onProgress, "bubble", "气泡检测");
@@ -518,7 +571,7 @@ export async function runPipeline(
     if (ocrRuntimeProbeSchedule === "after-bubble") {
       startOcrRuntimeProbe();
     }
-    if (inpaintRuntimeProbeSchedule === "after-bubble") {
+    if (!stopAfterOrder && inpaintRuntimeProbeSchedule === "after-bubble") {
       startInpaintRuntimeProbe();
     }
   } catch (error) {
@@ -529,13 +582,13 @@ export async function runPipeline(
   throwIfCancelled(signal);
   report(onProgress, "ocr", "OCR 日文识别");
   try {
-    if (inpaintRuntimeProbeSchedule === "ocr-start") {
+    if (!stopAfterOrder && inpaintRuntimeProbeSchedule === "ocr-start") {
       startInpaintRuntimeProbe();
     }
     const t0 = performance.now();
     setRuntimeStage(await startOcrRuntimeProbe());
     throwIfCancelled(signal);
-    if (inpaintRuntimeProbeSchedule === "current") {
+    if (!stopAfterOrder && inpaintRuntimeProbeSchedule === "current") {
       startInpaintRuntimeProbe();
     }
     const ocrResult = await runOcr(image, latestRegions, config.ocrEngine, platform, {
@@ -543,6 +596,7 @@ export async function runPipeline(
     });
     throwIfCancelled(signal);
     latestRegions = ocrResult.regions;
+    stageRegions.ocr = cloneTextRegions(latestRegions);
     ocrDebug = ocrResult.debug;
     ocrCanvas = drawRegions(originalCanvas, ocrResult.regions, "OCR 识别", (region) => region.sourceText, platform);
     cleanedCanvas = ocrCanvas;
@@ -570,14 +624,16 @@ export async function runPipeline(
       durationMs: ocrDurationMs,
       debug: ocrResult.debug,
     });
-    const inpaintPreloadT0 = performance.now();
-    setRuntimeStage(await startInpaintRuntimeProbe());
-    throwIfCancelled(signal);
-    stageTimings.push({
-      stage: "preload_inpaint",
-      label: "加载去字模型",
-      durationMs: performance.now() - inpaintPreloadT0,
-    });
+    if (!stopAfterOrder) {
+      const inpaintPreloadT0 = performance.now();
+      setRuntimeStage(await startInpaintRuntimeProbe());
+      throwIfCancelled(signal);
+      stageTimings.push({
+        stage: "preload_inpaint",
+        label: "加载去字模型",
+        durationMs: performance.now() - inpaintPreloadT0,
+      });
+    }
   } catch (error) {
     logPipelineStage(config, "pipeline.ocr", "OCR 识别失败", undefined, error);
     throw new PipelineStageError("OCR", toErrorDetail(error), buildArtifacts(), error);
@@ -588,6 +644,7 @@ export async function runPipeline(
   try {
     const t0 = performance.now();
     latestRegions = mergeTextLines(latestRegions, image.naturalWidth, image.naturalHeight);
+    stageRegions.merged = cloneTextRegions(latestRegions);
     stageTimings.push({ stage: "merge", label: "合并文本行", durationMs: performance.now() - t0 });
   } catch (error) {
     throw new PipelineStageError("文本行合并", toErrorDetail(error), buildArtifacts(), error);
@@ -608,12 +665,17 @@ export async function runPipeline(
   try {
     const t0 = performance.now();
     latestRegions = sortRegionsForRender(latestRegions, originalCanvas, platform);
+    stageRegions.ordered = cloneTextRegions(latestRegions);
     stageTimings.push({ stage: "order", label: "文本顺序排序", durationMs: performance.now() - t0 });
   } catch (error) {
     throw new PipelineStageError("顺序排序", toErrorDetail(error), buildArtifacts(), error);
   }
 
   const orderedRegions = latestRegions;
+  if (stopAfterOrder) {
+    report(onProgress, "done", "完成");
+    return buildArtifacts();
+  }
 
   type ParallelTranslateStatus = "pending" | "running" | "done";
   type ParallelEraseStatus = "pending" | "mask_refine" | "inpaint" | "done";

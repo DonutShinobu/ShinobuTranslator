@@ -53,6 +53,30 @@ describe('ONNX Worker production contract', () => {
     }
   });
 
+  it('serializes every ONNX Worker inference run through one global queue', () => {
+    const worker = read('src/workers/onnx-worker.ts');
+    expect(worker).toContain('const inferenceQueue = new SerialInferenceQueue()');
+    expect(worker.match(/\.run\(/g)).toHaveLength(3);
+
+    const runInference = worker.slice(
+      worker.indexOf('async function runInference('),
+      worker.indexOf('// Runtime self-check'),
+    );
+    const gpuDetect = worker.slice(
+      worker.indexOf('async function runDetectWithGpuPreprocess('),
+      worker.indexOf('async function probePaddleGraphCapture('),
+    );
+    const graphCapture = worker.slice(
+      worker.indexOf('async function probePaddleGraphCapture('),
+      worker.indexOf('// Dispose'),
+    );
+
+    for (const queuedRun of [runInference, gpuDetect, graphCapture]) {
+      expect(queuedRun).toContain('inferenceQueue.enqueue');
+      expect(queuedRun).toMatch(/\.run\(/);
+    }
+  });
+
   it('removes executable legacy modules while preserving history and conversion references', () => {
     for (const removedPath of [
       'src/pipeline/ocr/decodeAutoregressive.ts',
@@ -84,6 +108,9 @@ describe('ONNX Worker production contract', () => {
     expect(packageJson.scripts['bench:browser-x-current']).toBeUndefined();
     expect(packageJson.scripts['models:split-ocr']).toBeUndefined();
     expect(packageJson.scripts['bench:browser-paddle-profile']).toContain('run-browser-paddle-profile.ts');
+    expect(packageJson.scripts['bench:browser-pipeline-batch']).toContain(
+      'run-browser-pipeline-batch.ts',
+    );
 
     const manifest = JSON.parse(read('public/models/models.json')) as { models: Record<string, unknown> };
     expect(Object.keys(manifest.models).sort()).toEqual([

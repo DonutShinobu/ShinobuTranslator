@@ -279,6 +279,100 @@ describe('runPipeline', () => {
     expect(artifacts.resultCanvas).toBe(typesetCanvas);
   });
 
+  it('stops after order, skips inpaint preload, and preserves independent stage snapshots', async () => {
+    const progress: PipelineProgress[] = [];
+    const stageRegion: TextRegion = {
+      ...ocrRegion,
+      box: { ...ocrRegion.box },
+    };
+    const bubbleMask = {
+      width: 1,
+      height: 1,
+      data: new Uint8ClampedArray([255, 255, 255, 255]),
+    };
+    pipelineMocks.runOcr.mockResolvedValueOnce({
+      regions: [stageRegion],
+      debug: null,
+      actualProvider: 'wasm',
+    });
+    pipelineMocks.mergeTextLines.mockImplementationOnce((regions: TextRegion[]) => {
+      regions[0].sourceText = 'merged';
+      return regions;
+    });
+    pipelineMocks.detectBubbles.mockResolvedValueOnce({
+      bubbles: [{}],
+      actualProvider: 'wasm',
+    });
+    pipelineMocks.matchRegionsToBubbles.mockImplementationOnce((regions: TextRegion[]) => {
+      regions[0].bubbleBox = { x: 1, y: 2, width: 3, height: 4 };
+      regions[0].bubbleMask = bubbleMask;
+      return { unmatchedCount: 0, unmatchedRegionIds: [] };
+    });
+    pipelineMocks.sortRegionsForRender.mockImplementationOnce((regions: TextRegion[]) => {
+      regions[0].fontSize = 42;
+      return regions;
+    });
+    (
+      globalThis as typeof globalThis & {
+        __shinobuInpaintRuntimeProbeSchedule?: 'detect-start';
+      }
+    ).__shinobuInpaintRuntimeProbeSchedule = 'detect-start';
+
+    const artifacts = await runPipeline(
+      createFile(),
+      { ...baseConfig, processMode: 'original' },
+      (item) => progress.push(item),
+      { stopAfter: 'order' },
+    );
+
+    expect(uniqueConsecutiveStages(progress)).toEqual([
+      'load',
+      'preload',
+      'detect',
+      'bubble',
+      'ocr',
+      'merge',
+      'order',
+      'done',
+    ]);
+    expect(artifacts.stageTimings.map((timing) => timing.stage)).toEqual([
+      'load',
+      'preload',
+      'detect',
+      'bubble',
+      'ocr',
+      'merge',
+      'order',
+    ]);
+    expect(artifacts.runtimeStages.map((stage) => stage.model)).not.toContain('inpaint');
+    expect(pipelineMocks.getModelSession.mock.calls.some(([model]) => model === 'inpaint')).toBe(false);
+    expect(pipelineMocks.runTranslate).not.toHaveBeenCalled();
+    expect(pipelineMocks.refineTextMask).not.toHaveBeenCalled();
+    expect(pipelineMocks.runInpaint).not.toHaveBeenCalled();
+    expect(pipelineMocks.drawTypeset).not.toHaveBeenCalled();
+
+    expect(artifacts.stageRegions.detected[0]).toEqual(detectedRegion);
+    expect(artifacts.stageRegions.detected[0]).not.toBe(detectedRegion);
+    expect(artifacts.stageRegions.ocr[0].sourceText).toBe('こんにちは');
+    expect(artifacts.stageRegions.merged[0]).toMatchObject({
+      sourceText: 'merged',
+    });
+    expect(artifacts.stageRegions.merged[0].bubbleBox).toBeUndefined();
+    expect(artifacts.stageRegions.merged[0].fontSize).toBeUndefined();
+    expect(artifacts.stageRegions.ordered[0].bubbleBox).toEqual({
+      x: 1,
+      y: 2,
+      width: 3,
+      height: 4,
+    });
+    expect(artifacts.stageRegions.ordered[0].fontSize).toBe(42);
+    expect(artifacts.stageRegions.merged[0]).not.toBe(artifacts.stageRegions.ordered[0]);
+    expect(artifacts.stageRegions.ordered[0].bubbleMask).not.toBe(bubbleMask);
+    expect(artifacts.stageRegions.ordered[0].bubbleMask?.data).not.toBe(bubbleMask.data);
+    artifacts.stageRegions.merged[0].box.x = 999;
+    expect(artifacts.stageRegions.ordered[0].box.x).not.toBe(999);
+  });
+
   it('attaches completed intermediate artifacts to stage errors', async () => {
     pipelineMocks.detectTextRegionsWithMask.mockRejectedValueOnce(new Error('detector unavailable'));
 

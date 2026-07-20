@@ -348,9 +348,17 @@ export type RefineTextMaskResult = {
   debugLayers?: MaskDebugLayers;
 };
 
+export type PipelineStageRegions = {
+  detected: TextRegion[];
+  ocr: TextRegion[];
+  merged: TextRegion[];
+  ordered: TextRegion[];
+};
+
 export type PipelineArtifacts = {
   original: PipelineImage;
   detectedRegions: TextRegion[];
+  stageRegions: PipelineStageRegions;
   detectionCanvas: PipelineCanvas;
   ocrCanvas: PipelineCanvas;
   segmentationCanvas: PipelineCanvas | null;

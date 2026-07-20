@@ -17,6 +17,7 @@ import type {
 } from "../runtime/onnxWorkerTypes";
 import type { RuntimeSelfCheckReport } from "../runtime/selfCheck";
 import { preprocessLetterboxGpu } from "./gpuPreprocess";
+import { SerialInferenceQueue } from "./inferenceQueue";
 
 // ---------------------------------------------------------------------------
 // ORT environment
@@ -70,6 +71,7 @@ function getWebGpuDevice(): GPUDevice | undefined {
 
 const SESSION_CREATE_TIMEOUT_MS = 30000;
 const perModelLocks = new Map<string, Promise<void>>();
+const inferenceQueue = new SerialInferenceQueue();
 const sessions = new Map<string, {
   session: InferenceSession;
   provider: RuntimeProvider;
@@ -331,42 +333,53 @@ async function runInference(
   sessionId: string,
   feeds: Record<string, TensorTransport>
 ): Promise<InferenceResult> {
-  const entry = sessions.get(sessionId);
-  if (!entry) {
-    throw new Error(`Session 不存在: ${sessionId}`);
-  }
-
-  const ortFeeds: Record<string, ortAll.Tensor> = {};
-  for (const [name, transport] of Object.entries(feeds)) {
-    ortFeeds[name] = transportToTensor(transport);
-  }
-
-  let outputs: Record<string, ortAll.Tensor>;
-  try {
-    outputs = await entry.session.run(ortFeeds);
-  } catch (inferenceError) {
-    const result: InferenceResult = {
-      outputs: {},
-      error: toErrorMessage(inferenceError),
-    };
-    return result;
-  }
-
-  const result: InferenceResult = {
-    outputs: {},
-  };
-  const outTransferables: ArrayBuffer[] = [];
-  for (const [name, tensor] of Object.entries(outputs)) {
-    const transport = await tensorToTransport(tensor);
-    result.outputs[name] = transport;
-    if (transport.data instanceof Float32Array) {
-      outTransferables.push(transport.data.buffer as ArrayBuffer);
-    } else if (transport.data instanceof BigInt64Array) {
-      outTransferables.push(transport.data.buffer as ArrayBuffer);
+  return inferenceQueue.enqueue(async () => {
+    const entry = sessions.get(sessionId);
+    if (!entry) {
+      throw new Error(`Session 不存在: ${sessionId}`);
     }
-  }
 
-  return Comlink.transfer(result, outTransferables);
+    const ortFeeds: Record<string, ortAll.Tensor> = {};
+    for (const [name, transport] of Object.entries(feeds)) {
+      ortFeeds[name] = transportToTensor(transport);
+    }
+
+    let outputs: Record<string, ortAll.Tensor> | undefined;
+    try {
+      try {
+        outputs = await entry.session.run(ortFeeds);
+      } catch (inferenceError) {
+        const result: InferenceResult = {
+          outputs: {},
+          error: toErrorMessage(inferenceError),
+        };
+        return result;
+      }
+
+      const result: InferenceResult = {
+        outputs: {},
+      };
+      const outTransferables: ArrayBuffer[] = [];
+      for (const [name, tensor] of Object.entries(outputs)) {
+        const transport = await tensorToTransport(tensor);
+        result.outputs[name] = transport;
+        if (transport.data instanceof Float32Array) {
+          outTransferables.push(transport.data.buffer as ArrayBuffer);
+        } else if (transport.data instanceof BigInt64Array) {
+          outTransferables.push(transport.data.buffer as ArrayBuffer);
+        }
+      }
+
+      return Comlink.transfer(result, outTransferables);
+    } finally {
+      for (const tensor of Object.values(outputs ?? {})) {
+        tensor.dispose();
+      }
+      for (const tensor of Object.values(ortFeeds)) {
+        tensor.dispose();
+      }
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -545,52 +558,59 @@ async function runDetectWithGpuPreprocess(
   sessionId: string,
   imageSource: ImageBitmap
 ): Promise<GpuDetectResult> {
-  const entry = sessions.get(sessionId);
-  if (!entry) {
-    throw new Error(`Session 不存在: ${sessionId}`);
-  }
-  if (entry.provider !== "webgpu") {
-    throw new Error(`GPU 预处理仅支持 WebGPU EP，当前: ${entry.provider}`);
-  }
-
-  const inputSize = 1024;
-  const { tensor, params } = await preprocessLetterboxGpu(imageSource, inputSize);
-
-  const inputName = entry.session.inputNames[0] ?? "images";
-  const feeds: Record<string, ortAll.Tensor> = { [inputName]: tensor };
-
-  let outputs: Record<string, ortAll.Tensor>;
-  try {
-    outputs = await entry.session.run(feeds);
-  } catch (inferenceError) {
-    throw inferenceError;
-  }
-
-  const result: GpuDetectResult = {
-    outputs: {},
-    ratio: params.ratio,
-    unpaddedWidth: params.unpaddedWidth,
-    unpaddedHeight: params.unpaddedHeight,
-  };
-  const outTransferables: ArrayBuffer[] = [];
-
-  for (const [name, outTensor] of Object.entries(outputs)) {
-    let data: Float32Array | BigInt64Array | Uint8Array;
-    if (outTensor.location === "gpu-buffer") {
-      data = (await outTensor.getData()) as Float32Array;
-    } else {
-      data = outTensor.data as Float32Array | BigInt64Array | Uint8Array;
+  return inferenceQueue.enqueue(async () => {
+    const entry = sessions.get(sessionId);
+    if (!entry) {
+      throw new Error(`Session 不存在: ${sessionId}`);
     }
-    const transport: TensorTransport = { data, dims: [...outTensor.dims], type: outTensor.type as "float32" | "int64" | "bool" };
-    result.outputs[name] = transport;
-    if (data instanceof Float32Array) {
-      outTransferables.push(data.buffer as ArrayBuffer);
-    } else if (data instanceof BigInt64Array) {
-      outTransferables.push(data.buffer as ArrayBuffer);
+    if (entry.provider !== "webgpu") {
+      throw new Error(`GPU 预处理仅支持 WebGPU EP，当前: ${entry.provider}`);
     }
-  }
 
-  return Comlink.transfer(result, outTransferables);
+    let inputTensor: ortAll.Tensor | undefined;
+    let outputs: Record<string, ortAll.Tensor> | undefined;
+    try {
+      const inputSize = 1024;
+      const preprocessed = await preprocessLetterboxGpu(imageSource, inputSize);
+      inputTensor = preprocessed.tensor;
+
+      const inputName = entry.session.inputNames[0] ?? "images";
+      const feeds: Record<string, ortAll.Tensor> = { [inputName]: inputTensor };
+      outputs = await entry.session.run(feeds);
+
+      const result: GpuDetectResult = {
+        outputs: {},
+        ratio: preprocessed.params.ratio,
+        unpaddedWidth: preprocessed.params.unpaddedWidth,
+        unpaddedHeight: preprocessed.params.unpaddedHeight,
+      };
+      const outTransferables: ArrayBuffer[] = [];
+
+      for (const [name, outTensor] of Object.entries(outputs)) {
+        let data: Float32Array | BigInt64Array | Uint8Array;
+        if (outTensor.location === "gpu-buffer") {
+          data = (await outTensor.getData()) as Float32Array;
+        } else {
+          data = outTensor.data as Float32Array | BigInt64Array | Uint8Array;
+        }
+        const transport: TensorTransport = { data, dims: [...outTensor.dims], type: outTensor.type as "float32" | "int64" | "bool" };
+        result.outputs[name] = transport;
+        if (data instanceof Float32Array) {
+          outTransferables.push(data.buffer as ArrayBuffer);
+        } else if (data instanceof BigInt64Array) {
+          outTransferables.push(data.buffer as ArrayBuffer);
+        }
+      }
+
+      return Comlink.transfer(result, outTransferables);
+    } finally {
+      for (const tensor of Object.values(outputs ?? {})) {
+        tensor.dispose();
+      }
+      inputTensor?.dispose();
+      imageSource.close();
+    }
+  });
 }
 
 async function probePaddleGraphCapture(
@@ -618,6 +638,8 @@ async function probePaddleGraphCapture(
   let session: InferenceSession | null = null;
   let inputBuffer: GPUBuffer | null = null;
   let outputBuffer: GPUBuffer | null = null;
+  let inputTensor: ortAll.Tensor | null = null;
+  let outputTensor: ortAll.Tensor | null = null;
   let createSessionMs: number | undefined;
   try {
     const createT0 = performance.now();
@@ -649,23 +671,27 @@ async function probePaddleGraphCapture(
     if (!inputName || !outputName) {
       throw new Error("PaddleOCR 模型缺少输入或输出名称");
     }
-    const inputTensor = ortAll.Tensor.fromGpuBuffer(inputBuffer, {
+    inputTensor = ortAll.Tensor.fromGpuBuffer(inputBuffer, {
       dataType: "float32",
       dims: inputDims,
     });
-    const outputTensor = ortAll.Tensor.fromGpuBuffer(outputBuffer, {
+    outputTensor = ortAll.Tensor.fromGpuBuffer(outputBuffer, {
       dataType: "float32",
       dims: outputDims,
     });
     const feeds = { [inputName]: inputTensor };
     const fetches = { [outputName]: outputTensor };
-    const runMs: number[] = [];
-    for (let i = 0; i < runs; i += 1) {
-      const runT0 = performance.now();
-      await session.run(feeds, fetches);
-      await device.queue.onSubmittedWorkDone();
-      runMs.push(performance.now() - runT0);
-    }
+    const activeSession = session;
+    const runMs = await inferenceQueue.enqueue(async () => {
+      const durations: number[] = [];
+      for (let i = 0; i < runs; i += 1) {
+        const runT0 = performance.now();
+        await activeSession.run(feeds, fetches);
+        await device.queue.onSubmittedWorkDone();
+        durations.push(performance.now() - runT0);
+      }
+      return durations;
+    });
     return {
       ...baseResult,
       ok: true,
@@ -682,6 +708,8 @@ async function probePaddleGraphCapture(
     if (session) {
       await session.release();
     }
+    inputTensor?.dispose();
+    outputTensor?.dispose();
     inputBuffer?.destroy();
     outputBuffer?.destroy();
   }
@@ -692,33 +720,34 @@ async function probePaddleGraphCapture(
 // ---------------------------------------------------------------------------
 
 async function disposeSession(sessionId: string): Promise<void> {
-  const releaseEntry = (key: string, entry: { session: InferenceSession }): void => {
-    if (typeof (entry.session as { release?: () => void }).release === "function") {
-      (entry.session as { release: () => void }).release();
-    }
-    sessions.delete(key);
-  };
+  await inferenceQueue.enqueue(async () => {
+    const releaseEntry = async (key: string, entry: { session: InferenceSession }): Promise<void> => {
+      sessions.delete(key);
+      await entry.session.release();
+    };
 
-  const exact = sessions.get(sessionId);
-  if (exact) {
-    releaseEntry(sessionId, exact);
-  }
-  const prefix = `${sessionId}:`;
-  for (const [key, entry] of [...sessions.entries()]) {
-    if (key.startsWith(prefix)) {
-      releaseEntry(key, entry);
+    const exact = sessions.get(sessionId);
+    if (exact) {
+      await releaseEntry(sessionId, exact);
     }
-  }
+    const prefix = `${sessionId}:`;
+    for (const [key, entry] of [...sessions.entries()]) {
+      if (key.startsWith(prefix)) {
+        await releaseEntry(key, entry);
+      }
+    }
+  });
 }
 
 async function disposeAll(): Promise<void> {
-  for (const entry of sessions.values()) {
-    if (typeof (entry.session as { release?: () => void }).release === "function") {
-      (entry.session as { release: () => void }).release();
+  await inferenceQueue.enqueue(async () => {
+    const entries = [...sessions.values()];
+    sessions.clear();
+    perModelLocks.clear();
+    for (const entry of entries) {
+      await entry.session.release();
     }
-  }
-  sessions.clear();
-  perModelLocks.clear();
+  });
 }
 
 // ---------------------------------------------------------------------------

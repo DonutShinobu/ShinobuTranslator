@@ -80,6 +80,12 @@ function artifacts(): PipelineArtifacts {
   return {
     original: { naturalWidth: 1, naturalHeight: 1 } as PipelineArtifacts['original'],
     detectedRegions: [],
+    stageRegions: {
+      detected: [],
+      ocr: [],
+      merged: [],
+      ordered: [],
+    },
     detectionCanvas: {} as PipelineArtifacts['detectionCanvas'],
     ocrCanvas: {} as PipelineArtifacts['ocrCanvas'],
     segmentationCanvas: null,

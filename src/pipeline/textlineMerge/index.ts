@@ -135,7 +135,7 @@ function internalQuadToSourceGeometry(q: InternalQuad): SourceTextLineGeometry {
   };
 }
 
-function buildMergedRegion(group: MergedGroup, allQuads: InternalQuad[]): TextRegion {
+function buildMergedRegion(group: MergedGroup): TextRegion {
   const { quads: txtlns, fgColor, bgColor } = group;
 
   // Concatenate texts in reading order
@@ -171,7 +171,7 @@ function buildMergedRegion(group: MergedGroup, allQuads: InternalQuad[]): TextRe
   }
 
   // Compute weighted log-probability
-  const totalArea = allQuads.reduce((s, q) => s + q.area, 0);
+  const totalArea = txtlns.reduce((s, q) => s + q.area, 0);
   let totalLogProbs = 0;
   for (const q of txtlns) {
     totalLogProbs += Math.log(Math.max(1e-10, q.prob)) * q.area;
@@ -262,5 +262,5 @@ export function mergeTextLines(regions: TextRegion[], width: number, height: num
   const groups = mergeTextRegions(quads, width, height);
 
   // Build output TextRegion[]
-  return groups.map((group) => buildMergedRegion(group, quads));
+  return groups.map((group) => buildMergedRegion(group));
 }

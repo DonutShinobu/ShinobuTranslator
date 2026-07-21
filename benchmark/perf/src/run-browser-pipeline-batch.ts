@@ -9,8 +9,12 @@ import {
   toPipelineConfig,
 } from "../../../src/shared/config";
 import type {
+  OcrRunDebugInfo,
+  OcrPostFilterDebugInfo,
   PipelineConfig,
   PipelineStageRegions,
+  QuadPoint,
+  Rect,
   RuntimeStageStatus,
   StageTiming,
   TextRegion,
@@ -21,12 +25,48 @@ const DIST_DIR = join(ROOT, "dist");
 const TMP_DIR = join(ROOT, ".tmp");
 const USER_DATA_DIR = join(TMP_DIR, `browser-pipeline-batch-${Date.now()}`);
 const DEFAULT_CONCURRENCY = 2;
-const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".avif"]);
+const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif"]);
 const REQUIRED_WEBGPU_MODELS = ["detector", "bubble", "ocr"] as const;
 
 type SerializableTextRegion = Omit<TextRegion, "bubbleMask">;
 type SerializableStageRegions = {
   [Stage in keyof PipelineStageRegions]: SerializableTextRegion[];
+};
+
+type OcrScaleVariant = {
+  name: string;
+  scale: number;
+};
+
+type OcrVariantResult = OcrScaleVariant & {
+  variantRegionId: string;
+  box: Rect;
+  quad: [QuadPoint, QuadPoint, QuadPoint, QuadPoint];
+  text: string;
+  confidence: number;
+  accepted: boolean;
+};
+
+type OcrVariantRegionResult = {
+  regionId: string;
+  sourceText: string;
+  probability?: number;
+  box: Rect;
+  quad?: [QuadPoint, QuadPoint, QuadPoint, QuadPoint];
+  direction?: TextRegion["direction"];
+  variants: OcrVariantResult[];
+};
+
+type RawMaskPayload = {
+  width: number;
+  height: number;
+  pngBase64: string;
+};
+
+type RawMaskReference = {
+  width: number;
+  height: number;
+  path: string;
 };
 
 type PagePipelineResult = {
@@ -35,13 +75,18 @@ type PagePipelineResult = {
   stageRegions: SerializableStageRegions;
   runtimeStages: RuntimeStageStatus[];
   stageTimings: StageTiming[];
+  rawMask?: RawMaskPayload;
+  ocrVariantRegions?: OcrVariantRegionResult[];
+  ocrVariantDebug?: OcrRunDebugInfo;
+  ocrPostFilterDebug?: OcrPostFilterDebugInfo | null;
 };
 
-type BatchResult = PagePipelineResult & {
+type BatchResult = Omit<PagePipelineResult, "rawMask"> & {
   index: number;
   input: string;
   output: string;
   durationMs: number;
+  rawMask?: RawMaskReference;
 };
 
 type BatchFailure = {
@@ -54,6 +99,9 @@ type BatchOptions = {
   inputDir: string;
   outputDir: string;
   concurrency: number;
+  saveRawMask: boolean;
+  ocrScales: OcrScaleVariant[];
+  ocrPostFilter: NonNullable<PipelineConfig["ocrPostFilter"]>;
 };
 
 function readOption(name: string): string | undefined {
@@ -62,6 +110,37 @@ function readOption(name: string): string | undefined {
   if (inline) return inline.slice(prefix.length);
   const index = process.argv.indexOf(`--${name}`);
   return index >= 0 ? process.argv[index + 1] : undefined;
+}
+
+function hasFlag(name: string): boolean {
+  return (
+    process.argv.includes(`--${name}`)
+    || process.argv.includes(`--${name}=true`)
+  );
+}
+
+function parseOcrScales(value: string | undefined): OcrScaleVariant[] {
+  if (!value) return [];
+  const scales = value
+    .split(",")
+    .map((item) => Number(item.trim()))
+    .filter((item, index, all) => (
+      Number.isFinite(item)
+      && item >= 0.5
+      && item <= 1.5
+      && all.indexOf(item) === index
+    ));
+  if (scales.length === 0) {
+    throw new Error(`无效 OCR scales: ${value}`);
+  }
+  return scales.map((scale) => ({
+    name: Math.abs(scale - 1) < 1e-6
+      ? "original"
+      : scale < 1
+        ? "inset"
+        : "outset",
+    scale,
+  }));
 }
 
 function parseOptions(): BatchOptions {
@@ -82,10 +161,20 @@ function parseOptions(): BatchOptions {
     throw new Error(`无效并发度: ${rawConcurrency}`);
   }
 
+  const ocrScales = parseOcrScales(readOption("ocr-scales"));
+  const requestedPostFilter = readOption("ocr-post-filter")
+    ?? (ocrScales.length > 0 ? "off" : "balanced");
+  if (requestedPostFilter !== "off" && requestedPostFilter !== "balanced") {
+    throw new Error(`无效 OCR post-filter 模式: ${requestedPostFilter}`);
+  }
+
   return {
     inputDir,
     outputDir,
     concurrency: rawConcurrency,
+    saveRawMask: hasFlag("save-raw-mask"),
+    ocrScales,
+    ocrPostFilter: requestedPostFilter,
   };
 }
 
@@ -159,6 +248,8 @@ function mimeType(path: string): string {
       return "image/webp";
     case ".avif":
       return "image/avif";
+    case ".gif":
+      return "image/gif";
     default:
       return "image/jpeg";
   }
@@ -186,16 +277,25 @@ async function runImageInPage(
   page: Page,
   imagePath: string,
   config: PipelineConfig,
+  options: Pick<BatchOptions, "saveRawMask" | "ocrScales">,
 ): Promise<PagePipelineResult> {
   const bytes = await readFile(imagePath);
   const task = {
     dataUrl: `data:${mimeType(imagePath)};base64,${bytes.toString("base64")}`,
     fileName: basename(imagePath),
     config,
+    saveRawMask: options.saveRawMask,
+    ocrScales: options.ocrScales,
   };
 
   return page.evaluate<PagePipelineResult, typeof task>(
-    async ({ dataUrl, fileName, config: pipelineConfig }) => {
+    async ({
+      dataUrl,
+      fileName,
+      config: pipelineConfig,
+      saveRawMask,
+      ocrScales,
+    }) => {
       const api = (window as ShinobuBenchmarkWindow).__shinobuBenchmark__;
       if (!api) throw new Error("Benchmark API 不可用");
 
@@ -215,6 +315,134 @@ async function runImageInPage(
         })
       );
 
+      const clamp = (value: number, minimum: number, maximum: number): number => (
+        Math.max(minimum, Math.min(maximum, value))
+      );
+      const regionQuad = (
+        region: TextRegion,
+      ): [QuadPoint, QuadPoint, QuadPoint, QuadPoint] => (
+        region.quad ?? [
+          { x: region.box.x, y: region.box.y },
+          { x: region.box.x + region.box.width, y: region.box.y },
+          { x: region.box.x + region.box.width, y: region.box.y + region.box.height },
+          { x: region.box.x, y: region.box.y + region.box.height },
+        ]
+      );
+      const scaledQuad = (
+        region: TextRegion,
+        scale: number,
+      ): [QuadPoint, QuadPoint, QuadPoint, QuadPoint] => {
+        const quad = regionQuad(region);
+        const centerX = quad.reduce((sum, point) => sum + point.x, 0) / quad.length;
+        const centerY = quad.reduce((sum, point) => sum + point.y, 0) / quad.length;
+        return quad.map((point) => ({
+          x: clamp(
+            centerX + (point.x - centerX) * scale,
+            0,
+            Math.max(0, artifacts.original.naturalWidth - 1),
+          ),
+          y: clamp(
+            centerY + (point.y - centerY) * scale,
+            0,
+            Math.max(0, artifacts.original.naturalHeight - 1),
+          ),
+        })) as [QuadPoint, QuadPoint, QuadPoint, QuadPoint];
+      };
+      const quadBox = (
+        quad: [QuadPoint, QuadPoint, QuadPoint, QuadPoint],
+      ): Rect => {
+        const minX = Math.floor(Math.min(...quad.map((point) => point.x)));
+        const minY = Math.floor(Math.min(...quad.map((point) => point.y)));
+        const maxX = Math.ceil(Math.max(...quad.map((point) => point.x)));
+        const maxY = Math.ceil(Math.max(...quad.map((point) => point.y)));
+        return {
+          x: minX,
+          y: minY,
+          width: Math.max(1, maxX - minX),
+          height: Math.max(1, maxY - minY),
+        };
+      };
+
+      let ocrVariantRegions: OcrVariantRegionResult[] | undefined;
+      let ocrVariantDebug: OcrRunDebugInfo | undefined;
+      if (ocrScales.length > 0 && artifacts.stageRegions.ordered.length > 0) {
+        const variantMetadata: Array<{
+          sourceRegion: TextRegion;
+          variant: OcrScaleVariant;
+          variantRegion: TextRegion;
+        }> = [];
+        for (const sourceRegion of artifacts.stageRegions.ordered) {
+          for (const variant of ocrScales) {
+            const quad = scaledQuad(sourceRegion, variant.scale);
+            variantMetadata.push({
+              sourceRegion,
+              variant,
+              variantRegion: {
+                id: `${sourceRegion.id}::ocr-${variant.name}-${variant.scale}`,
+                box: quadBox(quad),
+                quad,
+                direction: sourceRegion.direction,
+                sourceText: "",
+                translatedText: "",
+              },
+            });
+          }
+        }
+        const rawOcr = await api.recognizeOcrRegions(
+          artifacts.original,
+          variantMetadata.map((item) => item.variantRegion),
+          pipelineConfig.ocrEngine,
+        );
+        ocrVariantDebug = rawOcr.debug;
+        const debugByRegionId = new Map(
+          (rawOcr.debug?.paddle?.regions ?? []).map((item) => [item.regionId, item]),
+        );
+        const acceptedByRegionId = new Map(
+          rawOcr.results
+            .filter((item) => item.regionId)
+            .map((item) => [item.regionId!, item]),
+        );
+        ocrVariantRegions = artifacts.stageRegions.ordered.map((sourceRegion) => ({
+          regionId: sourceRegion.id,
+          sourceText: sourceRegion.sourceText,
+          probability: sourceRegion.prob,
+          box: { ...sourceRegion.box },
+          quad: sourceRegion.quad?.map((point) => ({ ...point })) as
+            | [QuadPoint, QuadPoint, QuadPoint, QuadPoint]
+            | undefined,
+          direction: sourceRegion.direction,
+          variants: variantMetadata
+            .filter((item) => item.sourceRegion.id === sourceRegion.id)
+            .map((item) => {
+              const debug = debugByRegionId.get(item.variantRegion.id);
+              const accepted = acceptedByRegionId.get(item.variantRegion.id);
+              return {
+                ...item.variant,
+                variantRegionId: item.variantRegion.id,
+                box: { ...item.variantRegion.box },
+                quad: regionQuad(item.variantRegion),
+                text: debug?.decodedText ?? accepted?.text ?? "",
+                confidence: debug?.confidence ?? accepted?.confidence ?? 0,
+                accepted: debug?.accepted ?? Boolean(accepted),
+              };
+            }),
+        }));
+      }
+
+      let rawMask: RawMaskPayload | undefined;
+      if (saveRawMask && artifacts.segmentationCanvas) {
+        const dataUrl = artifacts.segmentationCanvas.toDataURL("image/png");
+        const separator = dataUrl.indexOf(",");
+        if (separator < 0) {
+          throw new Error("detector raw mask 无法编码为 PNG");
+        }
+        rawMask = {
+          width: artifacts.segmentationCanvas.width,
+          height: artifacts.segmentationCanvas.height,
+          pngBase64: dataUrl.slice(separator + 1),
+        };
+      }
+
       return {
         imageWidth: artifacts.original.naturalWidth,
         imageHeight: artifacts.original.naturalHeight,
@@ -226,10 +454,30 @@ async function runImageInPage(
         },
         runtimeStages: artifacts.runtimeStages,
         stageTimings: artifacts.stageTimings,
+        rawMask,
+        ocrVariantRegions,
+        ocrVariantDebug,
+        ocrPostFilterDebug: artifacts.ocrPostFilterDebug,
       };
     },
     task,
   );
+}
+
+async function persistRawMask(
+  outputDir: string,
+  relativeInput: string,
+  rawMask: RawMaskPayload | undefined,
+): Promise<RawMaskReference | undefined> {
+  if (!rawMask) return undefined;
+  const maskPath = join(outputDir, "raw-masks", `${relativeInput}.mask.png`);
+  await mkdir(dirname(maskPath), { recursive: true });
+  await writeFile(maskPath, Buffer.from(rawMask.pngBase64, "base64"));
+  return {
+    width: rawMask.width,
+    height: rawMask.height,
+    path: toPortablePath(relative(outputDir, maskPath)),
+  };
 }
 
 async function writeImageResult(
@@ -277,6 +525,7 @@ async function main(): Promise<void> {
     showEraseDebug: false,
     enableDebugLog: false,
   });
+  config.ocrPostFilter = options.ocrPostFilter;
   const startedAt = performance.now();
   const failures: BatchFailure[] = [];
   const results: Array<BatchResult | null> = Array.from({ length: images.length }, () => null);
@@ -326,10 +575,17 @@ async function main(): Promise<void> {
       const imageStartedAt = performance.now();
       console.log(`[${index + 1}/${images.length}] lane=${lane} ${relativeInput}`);
       try {
-        const pageResult = await runImageInPage(page, imagePath, config);
+        const pageResult = await runImageInPage(page, imagePath, config, options);
         assertWebGpuStages(pageResult.runtimeStages);
+        const { rawMask: rawMaskPayload, ...serializablePageResult } = pageResult;
+        const rawMask = await persistRawMask(
+          options.outputDir,
+          relativeInput,
+          rawMaskPayload,
+        );
         const recordWithoutOutput = {
-          ...pageResult,
+          ...serializablePageResult,
+          rawMask,
           index,
           input: relativeInput,
           durationMs: performance.now() - imageStartedAt,
@@ -383,6 +639,9 @@ async function main(): Promise<void> {
     inputDir: options.inputDir,
     outputDir: options.outputDir,
     concurrency: options.concurrency,
+    saveRawMask: options.saveRawMask,
+    ocrScales: options.ocrScales,
+    ocrPostFilter: options.ocrPostFilter,
     total: images.length,
     completed: completed.length,
     failed: failures.length,

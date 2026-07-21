@@ -27,18 +27,28 @@ type RunOcrOptions = {
   compactActiveBatch?: boolean;
 };
 
-function mapResultsToRegions(results: OcrRecognizeResult[], detectedRegions: TextRegion[]): TextRegion[] {
-  return results.map((result, index) => ({
-    id: detectedRegions[index]?.id ?? `ocr-${index}`,
-    box: detectedRegions[index]?.box ?? { x: 0, y: 0, width: 0, height: 0 },
-    quad: result.quad,
-    direction: result.direction,
-    prob: result.confidence,
-    fgColor: result.fgColor,
-    bgColor: result.bgColor,
-    sourceText: result.text,
-    translatedText: "",
-  }));
+export function mapResultsToRegions(
+  results: OcrRecognizeResult[],
+  detectedRegions: TextRegion[],
+): TextRegion[] {
+  const detectedById = new Map(detectedRegions.map((region) => [region.id, region]));
+  return results.map((result, index) => {
+    const detected = (
+      (result.regionId ? detectedById.get(result.regionId) : undefined)
+      ?? detectedRegions[index]
+    );
+    return {
+      id: detected?.id ?? result.regionId ?? `ocr-${index}`,
+      box: detected?.box ?? { x: 0, y: 0, width: 0, height: 0 },
+      quad: result.quad,
+      direction: result.direction,
+      prob: result.confidence,
+      fgColor: result.fgColor,
+      bgColor: result.bgColor,
+      sourceText: result.text,
+      translatedText: "",
+    };
+  });
 }
 
 function createDefaultDebug(resultCount: number): OcrRunDebugInfo {
@@ -77,7 +87,11 @@ function addExternalColorFillDebug(
   if (missingColorResults.length > 0) {
     debugInfo.colorDecodeMode = "fallback";
     debugInfo.colorFallbackRegions = missingColorResults.map((result, index) => ({
-      regionId: detectedRegions[results.indexOf(result)]?.id ?? `ocr-${index}`,
+      regionId: (
+        result.regionId
+        ?? detectedRegions[results.indexOf(result)]?.id
+        ?? `ocr-${index}`
+      ),
       durationMs: 0,
       accepted: true,
       error: "模型未返回颜色，使用图像采样补齐",

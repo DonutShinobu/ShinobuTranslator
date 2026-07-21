@@ -220,6 +220,7 @@ export type ExtensionSettings = {
   stageTimingCardExpanded: boolean;
   showTypesetDebug: boolean;
   showEraseDebug: boolean;
+  disableOcrPostFilter: boolean;
   debugOptionsExpanded: boolean;
   ocrEngine: OcrEngine;
   processMode: ProcessMode;
@@ -243,6 +244,7 @@ export const defaultExtensionSettings: ExtensionSettings = {
   stageTimingCardExpanded: true,
   showTypesetDebug: false,
   showEraseDebug: false,
+  disableOcrPostFilter: false,
   debugOptionsExpanded: false,
   ocrEngine: 'paddleocr_v6_medium',
   processMode: 'translate',
@@ -503,6 +505,9 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     showEraseDebug: usesNanoBanana
       ? false
       : sanitizeBoolean(raw.showEraseDebug, defaultExtensionSettings.showEraseDebug),
+    disableOcrPostFilter: usesNanoBanana
+      ? false
+      : sanitizeBoolean(raw.disableOcrPostFilter, defaultExtensionSettings.disableOcrPostFilter),
     debugOptionsExpanded: sanitizeBoolean(raw.debugOptionsExpanded, defaultExtensionSettings.debugOptionsExpanded),
     ocrEngine: normalizeOcrEngine(raw.ocrEngine),
     processMode: normalizeProcessMode(raw.processMode),
@@ -607,6 +612,7 @@ export function toPipelineConfig(settings: ExtensionSettings): PipelineConfig {
     eraseDebug: settings.showEraseDebug,
     collectDebugLog: settings.showTypesetDebug || settings.enableDebugLog,
     ocrEngine: settings.ocrEngine,
+    ocrPostFilter: settings.disableOcrPostFilter ? 'off' : 'balanced',
     processMode: settings.processMode,
   };
 }

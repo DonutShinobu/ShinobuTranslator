@@ -84,6 +84,8 @@ export type PipelineConfig = {
   ocrEngine: 'paddleocr_v6_medium';
   /** Internal benchmark override; production OCR picks its batch compaction policy automatically. */
   ocrCompactActiveBatch?: boolean;
+  /** OCR false-positive post-filter mode; defaults to balanced when omitted. */
+  ocrPostFilter?: 'off' | 'balanced';
   processMode: 'translate' | 'erase' | 'original';
   diagnosticRunId?: string;
 };
@@ -264,6 +266,9 @@ export type PaddleOcrRegionDebug = {
   resizedWidth: number;
   inputBytes: number;
   preprocessMs: number;
+  decodedText?: string;
+  confidence?: number;
+  accepted?: boolean;
 };
 
 export type PaddleOcrInferenceDebug = {
@@ -335,6 +340,56 @@ export type OcrRunDebugInfo = {
   paddle?: PaddleOcrRunDebug;
 };
 
+export type OcrPostFilterDebugVariant = {
+  name: string;
+  text: string;
+  confidence: number;
+  accepted: boolean;
+};
+
+export type OcrPostFilterProtectionReason =
+  | 'shared-kana'
+  | 'shared-multi-han'
+  | 'source-kana-overlap'
+  | 'large-high-confidence-han'
+  | 'strong-alternate-kana';
+
+export type OcrPostFilterDebugDecision = {
+  regionId: string;
+  sourceText: string;
+  relativeArea: number;
+  aspectRatio: number;
+  variants: OcrPostFilterDebugVariant[];
+  mask: {
+    maskFillRatioInQuad: number;
+    componentCount: number;
+    largestComponentRatio: number;
+    boundaryPixelRatio: number;
+  };
+  eligible: boolean;
+  shouldFilter: boolean;
+  majorityAgreement: boolean;
+  variantScriptDrift: boolean;
+  nonEmptyScriptDrift: boolean;
+  originalVariantConfidence: number;
+  maskSignalCount: number;
+  junkLikeSource: boolean;
+  poorConsensus: boolean;
+  protectionReason: OcrPostFilterProtectionReason | null;
+};
+
+export type OcrPostFilterDebugInfo = {
+  mode: 'off' | 'balanced';
+  ruleId: string;
+  candidateCount: number;
+  filteredCount: number;
+  filteredRegionIds: string[];
+  decisions: OcrPostFilterDebugDecision[];
+  durationMs: number;
+  skippedReason?: 'disabled' | 'no-mask' | 'no-candidates' | 'error';
+  error?: string;
+};
+
 export type MaskDebugLayers = {
   refinedMask: Uint8Array;
   perRegionDilated: Uint8Array;
@@ -368,6 +423,7 @@ export type PipelineArtifacts = {
   typesetDebugLog: PipelineTypesetDebugLog | null;
   translationDebug: TranslationDebugInfo | null;
   ocrDebug: OcrRunDebugInfo | null;
+  ocrPostFilterDebug: OcrPostFilterDebugInfo | null;
   runtimeStages: RuntimeStageStatus[];
   stageTimings: StageTiming[];
 };

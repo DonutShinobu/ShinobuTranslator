@@ -10,6 +10,9 @@ import type {
   RenderDebugResult,
   RenderFixtureRegion,
 } from '../pipeline/bake';
+import type { OcrRecognizeOutput } from '../pipeline/ocr/provider';
+import type { PipelineImage } from '../runtime/platform';
+import type { TextRegion } from '../types';
 import { browserPlatform } from '../runtime/browserPlatform';
 
 export type ShinobuBenchmarkApi = {
@@ -21,6 +24,11 @@ export type ShinobuBenchmarkApi = {
     regions: RenderFixtureRegion[],
   ): Promise<RenderDebugResult>;
   runPipeline: typeof import('../pipeline/orchestrator')['runPipeline'];
+  recognizeOcrRegions(
+    image: PipelineImage,
+    regions: TextRegion[],
+    providerName?: string,
+  ): Promise<OcrRecognizeOutput>;
 };
 
 export type ShinobuBenchmarkWindow = typeof window & {
@@ -37,6 +45,15 @@ const benchmarkApi: ShinobuBenchmarkApi = {
   runPipeline: async (file, config, onProgress, options) => {
     const { runPipeline } = await import('../pipeline/orchestrator');
     return runPipeline(file, config, onProgress, options);
+  },
+  recognizeOcrRegions: async (image, regions, providerName = 'paddleocr_v6_medium') => {
+    await import('../pipeline/ocr');
+    const { getOcrProvider } = await import('../pipeline/ocr/provider');
+    const provider = getOcrProvider(providerName);
+    if (!provider) {
+      throw new Error(`OCR 引擎未注册: ${providerName}`);
+    }
+    return provider.recognize(image, regions, browserPlatform);
   },
 };
 

@@ -78,6 +78,7 @@ export type SanitizedSettingsSnapshot = {
   showStageTimingDetails?: boolean;
   showTypesetDebug?: boolean;
   showEraseDebug?: boolean;
+  ocrPostFilter?: PipelineConfig['ocrPostFilter'];
   enableDebugLog?: boolean;
   collectDebugLog?: boolean;
 };
@@ -294,6 +295,7 @@ export function sanitizeExtensionSettings(settings: ExtensionSettings): Sanitize
     showStageTimingDetails: settings.showStageTimingDetails,
     showTypesetDebug: settings.showTypesetDebug,
     showEraseDebug: settings.showEraseDebug,
+    ocrPostFilter: settings.disableOcrPostFilter ? 'off' : 'balanced',
     enableDebugLog: settings.enableDebugLog,
   };
 }
@@ -310,6 +312,7 @@ export function sanitizePipelineConfig(config: PipelineConfig): SanitizedSetting
     ocrEngine: config.ocrEngine,
     showTypesetDebug: config.typesetDebug,
     showEraseDebug: config.eraseDebug,
+    ocrPostFilter: config.ocrPostFilter ?? 'balanced',
     collectDebugLog: config.collectDebugLog,
   };
 }

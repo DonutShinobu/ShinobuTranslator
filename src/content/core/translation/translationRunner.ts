@@ -120,6 +120,7 @@ function toPipelineArtifactsDiagnosticData(
     runtimeStages: artifacts.runtimeStages,
     translationDebug: artifacts.translationDebug,
     ocrDebug: artifacts.ocrDebug,
+    ocrPostFilterDebug: artifacts.ocrPostFilterDebug,
     progressJank,
     typesetDebug: artifacts.typesetDebug,
   };

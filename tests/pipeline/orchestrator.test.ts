@@ -133,6 +133,7 @@ const baseConfig: PipelineConfig = {
   eraseDebug: false,
   collectDebugLog: false,
   ocrEngine: 'paddleocr_v6_medium',
+  ocrPostFilter: 'off',
   processMode: 'translate',
 };
 

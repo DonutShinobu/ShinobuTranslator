@@ -434,6 +434,7 @@ function createPaddleOcrProvider(name: string, modelName: PaddleOcrModelName): O
 
       const preparedRegions: PreparedPaddleRegion[] = [];
       const resultsByIndex: Array<OcrRecognizeResult | null> = Array.from({ length: regions.length }, () => null);
+      const debugRegionById = new Map<string, PaddleOcrRunDebug['regions'][number]>();
       for (const [index, region] of regions.entries()) {
         const direction = inferDirection(region);
         const preprocessT0 = performance.now();
@@ -453,7 +454,7 @@ function createPaddleOcrProvider(name: string, modelName: PaddleOcrModelName): O
         debugInfo.preprocessTotalMs += preprocessMs;
         debugInfo.preprocessPerRegionMs.push({ regionId: region.id, durationMs: preprocessMs });
         paddleDebug.preprocessTotalMs += preprocessMs;
-        paddleDebug.regions.push({
+        const regionDebug: PaddleOcrRunDebug['regions'][number] = {
           regionId: region.id,
           direction,
           box: { ...region.box },
@@ -461,7 +462,9 @@ function createPaddleOcrProvider(name: string, modelName: PaddleOcrModelName): O
           resizedWidth: inputData.resizedWidth,
           inputBytes,
           preprocessMs,
-        });
+        };
+        paddleDebug.regions.push(regionDebug);
+        debugRegionById.set(region.id, regionDebug);
         preparedRegions.push({ index, region, direction, inputData, inputBytes });
       }
 
@@ -584,13 +587,24 @@ function createPaddleOcrProvider(name: string, modelName: PaddleOcrModelName): O
         for (let itemIndex = 0; itemIndex < group.length; itemIndex += 1) {
           const item = group[itemIndex];
           const decoded = decodedOutput.decoded[itemIndex];
+          const accepted = (
+            decoded.confidence >= PADDLEOCR_CONFIDENCE_THRESHOLD
+            && decoded.text.trim() !== ''
+          );
+          const regionDebug = debugRegionById.get(item.region.id);
+          if (regionDebug) {
+            regionDebug.decodedText = decoded.text;
+            regionDebug.confidence = decoded.confidence;
+            regionDebug.accepted = accepted;
+          }
           texts.push(decoded.text);
-          if (decoded.confidence < PADDLEOCR_CONFIDENCE_THRESHOLD || decoded.text.trim() === '') {
+          if (!accepted) {
             rejectedCount += 1;
             continue;
           }
           acceptedCount += 1;
           resultsByIndex[item.index] = {
+            regionId: item.region.id,
             text: decoded.text,
             confidence: decoded.confidence,
             quad: makeRegionQuad(item.region),

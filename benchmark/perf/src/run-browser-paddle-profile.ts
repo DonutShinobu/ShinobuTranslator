@@ -98,6 +98,14 @@ type PipelineRun = {
   regionCount: number;
   sourceCharCount: number;
   sourceTexts: string[];
+  regions: Array<{
+    id: string;
+    sourceText: string;
+    probability?: number;
+    box: { x: number; y: number; width: number; height: number };
+    bubbleBox?: { x: number; y: number; width: number; height: number };
+    originalLineCount?: number;
+  }>;
   sampleTexts: string[];
   runtimeStages: Array<{ model: string; enabled: boolean; provider?: RuntimeProvider; detail: string }>;
   stageTimings: StageTiming[];
@@ -365,7 +373,7 @@ function ensureDistReady(): void {
   const required = [
     "manifest.json",
     "content.js",
-    "chunks/orchestrator.js",
+    "benchmark-chunks/orchestrator.js",
     "onnxWorker.js",
     "models/models.json",
     "models/detector.onnx",
@@ -778,7 +786,14 @@ async function runPaddleProfile(
           type BenchmarkApi = {
             runPipeline(file: File, config: Record<string, unknown>, onProgress: () => void): Promise<{
               original: { naturalWidth: number; naturalHeight: number };
-              detectedRegions: Array<{ sourceText: string }>;
+              detectedRegions: Array<{
+                id: string;
+                sourceText: string;
+                prob?: number;
+                box: { x: number; y: number; width: number; height: number };
+                bubbleBox?: { x: number; y: number; width: number; height: number };
+                originalLineCount?: number;
+              }>;
               runtimeStages: PipelineRun["runtimeStages"];
               stageTimings: StageTiming[];
               ocrDebug: OcrDebug | null;
@@ -854,6 +869,14 @@ async function runPaddleProfile(
           const artifacts = await api.runPipeline(file, config, () => {});
           const totalMs = performance.now() - totalT0;
           const sourceTexts = artifacts.detectedRegions.map((region) => region.sourceText);
+          const regions = artifacts.detectedRegions.map((region) => ({
+            id: region.id,
+            sourceText: region.sourceText,
+            probability: region.prob,
+            box: { ...region.box },
+            bubbleBox: region.bubbleBox ? { ...region.bubbleBox } : undefined,
+            originalLineCount: region.originalLineCount,
+          }));
           return {
             runIndex,
             isColdStart: runIndex === 0,
@@ -863,6 +886,7 @@ async function runPaddleProfile(
             regionCount: artifacts.detectedRegions.length,
             sourceCharCount: sourceTexts.reduce((sum, text) => sum + text.length, 0),
             sourceTexts,
+            regions,
             sampleTexts: sourceTexts.filter((text) => text.length > 0).slice(0, 5),
             runtimeStages: artifacts.runtimeStages,
             stageTimings: artifacts.stageTimings,

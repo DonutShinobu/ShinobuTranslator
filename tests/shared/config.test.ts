@@ -236,6 +236,16 @@ describe("OpenAI provider settings", () => {
     expect(toPipelineConfig(settings)).not.toHaveProperty("debugOptionsExpanded");
   });
 
+  it("maps the debug post-filter switch to the pipeline mode", () => {
+    const enabled = normalizeSettings({});
+    const disabled = normalizeSettings({ disableOcrPostFilter: true });
+
+    expect(enabled.disableOcrPostFilter).toBe(false);
+    expect(toPipelineConfig(enabled).ocrPostFilter).toBe("balanced");
+    expect(disabled.disableOcrPostFilter).toBe(true);
+    expect(toPipelineConfig(disabled).ocrPostFilter).toBe("off");
+  });
+
   it("normalizes Gemini as a login-backed LLM provider without requiring an API key", () => {
     const settings = normalizeSettings({
       translator: "llm",
@@ -347,6 +357,7 @@ describe("OpenAI provider settings", () => {
       showStageTimingDetails: true,
       showTypesetDebug: true,
       showEraseDebug: true,
+      disableOcrPostFilter: true,
       enableDebugLog: true,
     });
 
@@ -354,6 +365,7 @@ describe("OpenAI provider settings", () => {
     expect(settings.showStageTimingDetails).toBe(false);
     expect(settings.showTypesetDebug).toBe(false);
     expect(settings.showEraseDebug).toBe(false);
+    expect(settings.disableOcrPostFilter).toBe(false);
     expect(settings.enableDebugLog).toBe(true);
   });
 

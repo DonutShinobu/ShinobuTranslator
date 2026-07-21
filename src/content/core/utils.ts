@@ -39,6 +39,7 @@ const stageLabelMap: Record<string, string> = {
   preload: '加载模型',
   detect: '文本检测',
   ocr: '文字识别',
+  ocr_postfilter: '过滤 OCR 误识别',
   merge: '合并文本',
   parallel: '并行处理',
   translate: '翻译文本',

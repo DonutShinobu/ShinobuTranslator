@@ -100,6 +100,7 @@ describe('TranslationRunner', () => {
           ],
           translationDebug: null,
           ocrDebug: null,
+          ocrPostFilterDebug: null,
           typesetDebug: null,
         },
       };

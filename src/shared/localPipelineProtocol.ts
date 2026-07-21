@@ -1,5 +1,6 @@
 import type {
   OcrRunDebugInfo,
+  OcrPostFilterDebugInfo,
   PipelineArtifacts,
   PipelineConfig,
   PipelineProgress,
@@ -34,6 +35,7 @@ export type LocalPipelineArtifactSummary = {
   runtimeStages: RuntimeStageStatus[];
   translationDebug: TranslationDebugInfo | null;
   ocrDebug: OcrRunDebugInfo | null;
+  ocrPostFilterDebug: OcrPostFilterDebugInfo | null;
   typesetDebug: PipelineTypesetDebugLog | null;
 };
 
@@ -252,6 +254,11 @@ function isValidPipelineConfig(value: unknown): value is PipelineConfig {
   if (value.processMode !== 'translate' && value.processMode !== 'erase' && value.processMode !== 'original') return false;
   if (typeof value.typesetDebug !== 'boolean' || typeof value.eraseDebug !== 'boolean' || typeof value.collectDebugLog !== 'boolean') return false;
   if (value.ocrCompactActiveBatch !== undefined && typeof value.ocrCompactActiveBatch !== 'boolean') return false;
+  if (
+    value.ocrPostFilter !== undefined
+    && value.ocrPostFilter !== 'off'
+    && value.ocrPostFilter !== 'balanced'
+  ) return false;
   if (!isValidTranslationContext(value.translationContext)) return false;
   return value.diagnosticRunId === undefined || typeof value.diagnosticRunId === 'string';
 }
@@ -338,6 +345,7 @@ export function summarizePipelineArtifacts(artifacts: PipelineArtifacts): LocalP
     runtimeStages: artifacts.runtimeStages,
     translationDebug: artifacts.translationDebug,
     ocrDebug: artifacts.ocrDebug,
+    ocrPostFilterDebug: artifacts.ocrPostFilterDebug,
     typesetDebug: artifacts.typesetDebugLog,
   };
 }

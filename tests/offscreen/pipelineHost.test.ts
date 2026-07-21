@@ -95,6 +95,7 @@ function artifacts(): PipelineArtifacts {
     typesetDebugLog: null,
     translationDebug: null,
     ocrDebug: null,
+    ocrPostFilterDebug: null,
     runtimeStages: [],
     stageTimings: [],
   };

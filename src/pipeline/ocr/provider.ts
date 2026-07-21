@@ -4,6 +4,8 @@ import { sampleEdgeColors, sampleCornerBgColor, sampleTextColors } from "./color
 import { colorDistance } from "../typeset/color";
 
 export type OcrRecognizeResult = {
+  /** Source region identity, retained even when other regions are rejected. */
+  regionId?: string;
   text: string;
   confidence: number;
   quad: [QuadPoint, QuadPoint, QuadPoint, QuadPoint];

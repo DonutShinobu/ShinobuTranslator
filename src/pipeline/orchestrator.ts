@@ -21,6 +21,10 @@ import { runInpaint } from "./inpaint";
 import { drawTypeset } from "./typeset";
 import { drawRegions } from "./visualize";
 import { mergeTextLines } from "./textlineMerge";
+import {
+  filterOcrRegions,
+} from "./ocrPostFilter";
+import { OCR_POST_FILTER_RULE_ID } from "./ocrPostFilter/rule";
 import { refineTextMask } from "./maskRefinement";
 import { sortRegionsForRender } from "./readingOrder";
 import { detectBubbles, matchRegionsToBubbles, type BubbleDetection } from "./bubbleDetect";
@@ -391,6 +395,7 @@ export async function runPipeline(
   let typesetDebugLog: PipelineTypesetDebugLog | null = null;
   let translationDebug: TranslationDebugInfo | null = null;
   let ocrDebug: PipelineArtifacts['ocrDebug'] = null;
+  let ocrPostFilterDebug: PipelineArtifacts['ocrPostFilterDebug'] = null;
   let detectionMaskCanvas: PipelineCanvas | null = null;
   let refinedMaskCanvas: PipelineCanvas | null = null;
   let debugLayers: MaskDebugLayers | null = null;
@@ -408,6 +413,7 @@ export async function runPipeline(
     typesetDebugLog,
     translationDebug,
     ocrDebug,
+    ocrPostFilterDebug,
     runtimeStages,
     stageTimings
   });
@@ -657,6 +663,82 @@ export async function runPipeline(
         `[bubble] ${matchResult.unmatchedCount} 个文字区域未匹配到气泡:`,
         matchResult.unmatchedRegionIds,
       );
+    }
+  }
+
+  if ((config.ocrPostFilter ?? "balanced") === "off") {
+    ocrPostFilterDebug = {
+      mode: "off",
+      ruleId: OCR_POST_FILTER_RULE_ID,
+      candidateCount: 0,
+      filteredCount: 0,
+      filteredRegionIds: [],
+      decisions: [],
+      durationMs: 0,
+      skippedReason: "disabled",
+    };
+  } else if (!detectionMaskCanvas) {
+    ocrPostFilterDebug = {
+      mode: "balanced",
+      ruleId: OCR_POST_FILTER_RULE_ID,
+      candidateCount: 0,
+      filteredCount: 0,
+      filteredRegionIds: [],
+      decisions: [],
+      durationMs: 0,
+      skippedReason: "no-mask",
+    };
+  } else {
+    throwIfCancelled(signal);
+    report(onProgress, "ocr_postfilter", "过滤 OCR 误识别");
+    const t0 = performance.now();
+    try {
+      const result = await filterOcrRegions(
+        image,
+        detectionMaskCanvas,
+        latestRegions,
+        {
+          platform,
+          providerName: config.ocrEngine,
+        },
+      );
+      throwIfCancelled(signal);
+      latestRegions = result.regions;
+      ocrPostFilterDebug = result.debug;
+      logPipelineStage(config, "pipeline.ocr", "OCR 后处理完成", {
+        ruleId: result.debug.ruleId,
+        candidateCount: result.debug.candidateCount,
+        filteredCount: result.debug.filteredCount,
+        filteredRegionIds: result.debug.filteredRegionIds,
+        durationMs: result.debug.durationMs,
+      });
+    } catch (error) {
+      const detail = toErrorDetail(error);
+      console.warn(`[ocr-postfilter] 后处理失败，保留全部区域: ${detail}`);
+      ocrPostFilterDebug = {
+        mode: "balanced",
+        ruleId: OCR_POST_FILTER_RULE_ID,
+        candidateCount: 0,
+        filteredCount: 0,
+        filteredRegionIds: [],
+        decisions: [],
+        durationMs: performance.now() - t0,
+        skippedReason: "error",
+        error: detail,
+      };
+      logPipelineStage(
+        config,
+        "pipeline.ocr",
+        "OCR 后处理失败，已保留全部区域",
+        undefined,
+        error,
+      );
+    } finally {
+      stageTimings.push({
+        stage: "ocr_postfilter",
+        label: "过滤 OCR 误识别",
+        durationMs: performance.now() - t0,
+      });
     }
   }
 

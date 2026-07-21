@@ -638,6 +638,7 @@ export function App() {
       showStageTimingDetails: false,
       showTypesetDebug: false,
       showEraseDebug: false,
+      disableOcrPostFilter: false,
     };
   }
 
@@ -1590,6 +1591,15 @@ export function App() {
                         disabled={loading}
                       />
                       <span className="checkbox-label">日志记录</span>
+                    </label>
+                    <label className={`checkbox-row${localDebugOptionsDisabled ? ' checkbox-disabled' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={!localDebugOptionsLocked && settings.disableOcrPostFilter}
+                        onChange={(event) => updateField('disableOcrPostFilter', event.target.checked)}
+                        disabled={localDebugOptionsDisabled}
+                      />
+                      <span className="checkbox-label">关后处理</span>
                     </label>
                   </div>
                 )}

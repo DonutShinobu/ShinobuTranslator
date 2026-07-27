@@ -6,6 +6,9 @@ dist/
 docs/*
 !docs/agents/
 !docs/agents/*.md
+!docs/adr/
+!docs/adr/*.md
+!docs/continuous-translation-design.md
 !docs/superpowers/
 !docs/shinobu-readme-banner-soft.png
 !docs/popup-settings-deepseek-rounded.png

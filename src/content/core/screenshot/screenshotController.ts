@@ -13,7 +13,7 @@ import {
 } from '../screenshot';
 import type { ScreenshotRect, ScreenshotSelection } from '../screenshot';
 import { ProgressJankMonitor } from '../progressJank';
-import { toErrorMessage } from '../utils';
+import { resolveImageReferrerPolicy, toErrorMessage } from '../utils';
 import { PhotoStateStore } from '../state/photoStateStore';
 import {
   TranslationRunner,
@@ -227,7 +227,11 @@ export class ScreenshotController {
         await waitForNextPaint();
         if (disposed) throw new Error('图片翻译已关闭');
 
-        const source = await this.translationRunner.downloadImageFile(originalUrl, diagnosticRunId);
+        const source = await this.translationRunner.downloadImageFile({
+          originalUrl,
+          referrerPolicy: resolveImageReferrerPolicy(imageElement),
+          diagnosticRunId,
+        });
         if (disposed) throw new Error('图片翻译已关闭');
 
         sourceFile = source.file;

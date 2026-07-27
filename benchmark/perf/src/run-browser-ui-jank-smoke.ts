@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { chromium } from "@playwright/test";
 import type { ConsoleMessage, Page } from "@playwright/test";
-import type { Worker as PlaywrightWorker } from "playwright-core";
+import type { Worker as PlaywrightWorker } from "@playwright/test";
 import { defaultExtensionSettings, extensionSettingsStorageKey } from "../../../src/shared/config";
 import type { ExtensionSettings, ProcessMode } from "../../../src/shared/config";
 import type { ProgressJankReport } from "../../../src/content/core/types";

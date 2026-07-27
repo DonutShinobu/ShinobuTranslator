@@ -1,6 +1,38 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RuntimeStageStatus, StageTiming } from '../../../src/content/core/types';
-import { buildStageTimingCardData, formatElapsedText } from '../../../src/content/core/utils';
+import {
+  buildStageTimingCardData,
+  formatElapsedText,
+  resolveImageReferrerPolicy,
+} from '../../../src/content/core/utils';
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe('resolveImageReferrerPolicy', () => {
+  it('prefers the image element policy over the document policy', () => {
+    vi.stubGlobal('document', {
+      querySelectorAll: vi.fn(() => [{ content: 'no-referrer' }]),
+    });
+
+    expect(resolveImageReferrerPolicy({
+      referrerPolicy: 'origin',
+    })).toBe('origin');
+  });
+
+  it('normalizes case, ignores invalid meta values, and supports legacy meta keywords', () => {
+    vi.stubGlobal('document', {
+      querySelectorAll: vi.fn(() => [
+        { content: 'ORIGIN' },
+        { content: 'not-a-policy' },
+        { content: 'ALWAYS' },
+      ]),
+    });
+
+    expect(resolveImageReferrerPolicy()).toBe('unsafe-url');
+  });
+});
 
 describe('buildStageTimingCardData', () => {
   it('builds stage percentages, translation fallback, and runtime statuses', () => {

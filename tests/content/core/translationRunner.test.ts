@@ -68,10 +68,18 @@ describe('TranslationRunner', () => {
     })) as unknown as RuntimeSender;
     const successRunner = new TranslationRunner({ sendMessage: successSender });
 
-    const source = await successRunner.downloadImageFile('https://example.com/image.png');
+    const source = await successRunner.downloadImageFile({
+      originalUrl: 'https://example.com/image.png',
+      referrerPolicy: 'strict-origin-when-cross-origin',
+    });
     expect(source.blob.type).toBe('image/png');
     expect(source.blob.size).toBe(3);
     expect(source.file.name).toBe('source.png');
+    expect(successSender).toHaveBeenCalledWith({
+      type: 'mt:download-image',
+      imageUrl: 'https://example.com/image.png',
+      referrerPolicy: 'strict-origin-when-cross-origin',
+    });
 
     const failureSender = vi.fn(async () => ({
       ok: false as const,
@@ -79,7 +87,9 @@ describe('TranslationRunner', () => {
       error: 'upstream failed',
     })) as unknown as RuntimeSender;
     const failureRunner = new TranslationRunner({ sendMessage: failureSender });
-    await expect(failureRunner.downloadImageFile('https://example.com/image.png')).rejects.toThrow('upstream failed');
+    await expect(failureRunner.downloadImageFile({
+      originalUrl: 'https://example.com/image.png',
+    })).rejects.toThrow('upstream failed');
   });
 
   it('runs the production local pipeline through the injected offscreen client', async () => {

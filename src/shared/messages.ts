@@ -5,6 +5,7 @@ import type { LlmAuthMode, LlmProvider, StageTiming } from '../types';
 import { requireChromeApi } from './chrome';
 import { isLlmThinkingLevel } from './llmThinking';
 import type { LlmThinkingLevel } from './llmThinking';
+import { isReferrerPolicy } from './referrerPolicy';
 import { toErrorMessage } from './utils';
 
 export type GetSettingsMessage = {
@@ -19,6 +20,7 @@ export type SetSettingsMessage = {
 export type DownloadImageMessage = {
   type: 'mt:download-image';
   imageUrl: string;
+  referrerPolicy?: ReferrerPolicy;
 };
 
 export type CaptureVisibleTabMessage = {
@@ -290,6 +292,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+function isDownloadImageMessage(value: Record<string, unknown>): value is DownloadImageMessage {
+  if (value.type !== 'mt:download-image' || typeof value.imageUrl !== 'string') {
+    return false;
+  }
+  try {
+    const imageUrl = new URL(value.imageUrl);
+    if (imageUrl.protocol !== 'http:' && imageUrl.protocol !== 'https:') {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+  return value.referrerPolicy === undefined || isReferrerPolicy(value.referrerPolicy);
+}
+
 export function getRuntimeErrorCode(error: unknown): RuntimeErrorCode | undefined {
   if (!isRecord(error)) {
     return undefined;
@@ -388,7 +405,7 @@ export function isRuntimeMessage(value: unknown): value is RuntimeMessage {
   return (
     type === 'mt:get-settings' ||
     type === 'mt:set-settings' ||
-    type === 'mt:download-image' ||
+    isDownloadImageMessage(value) ||
     type === 'mt:capture-visible-tab' ||
     type === 'mt:openai-oauth-status' ||
     type === 'mt:openai-oauth-login' ||

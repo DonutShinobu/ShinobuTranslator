@@ -52,8 +52,25 @@ export type ChromePort = {
   };
 };
 
+export type ChromeDnrRuleUpdate = {
+  removeRuleIds: number[];
+  addRules: Array<Record<string, unknown>>;
+};
+
+export type ChromeWebRequestHeadersDetails = {
+  documentId?: string;
+  frameId?: number;
+  tabId: number;
+  url: string;
+  responseHeaders?: Array<{
+    name: string;
+    value?: string;
+  }>;
+};
+
 export type ChromeLike = {
   runtime?: {
+    id?: string;
     getManifest?: () => {
       version?: string;
     };
@@ -97,6 +114,10 @@ export type ChromeLike = {
       get?: (keys: string | string[] | Record<string, unknown>, callback: (items: Record<string, unknown>) => void) => void;
       set?: (items: Record<string, unknown>, callback: () => void) => void;
       remove?: (keys: string | string[], callback: () => void) => void;
+    };
+    session?: {
+      get?: (keys: string | string[] | Record<string, unknown>) => Promise<Record<string, unknown>>;
+      set?: (items: Record<string, unknown>) => Promise<void>;
     };
   };
   tabs?: {
@@ -173,10 +194,20 @@ export type ChromeLike = {
     };
   };
   declarativeNetRequest?: {
-    updateDynamicRules?: (options: {
-      removeRuleIds: number[];
-      addRules: Array<Record<string, unknown>>;
-    }) => Promise<void>;
+    updateDynamicRules?: (options: ChromeDnrRuleUpdate) => Promise<void>;
+    updateSessionRules?: (options: ChromeDnrRuleUpdate) => Promise<void>;
+  };
+  webRequest?: {
+    onHeadersReceived?: {
+      addListener: (
+        listener: (details: ChromeWebRequestHeadersDetails) => void,
+        filter: {
+          urls: string[];
+          types?: Array<'main_frame' | 'sub_frame'>;
+        },
+        extraInfoSpec?: Array<'responseHeaders' | 'extraHeaders'>,
+      ) => void;
+    };
   };
   cookies?: {
     getAll?: (

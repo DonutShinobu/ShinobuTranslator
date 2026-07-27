@@ -152,6 +152,12 @@ export type PipelineRunOutcome = {
   translationDebug: TranslationDebugInfo | null;
 };
 
+export type DownloadImageFileOptions = {
+  originalUrl: string;
+  referrerPolicy?: ReferrerPolicy;
+  diagnosticRunId?: string;
+};
+
 export type TranslationRunnerDependencies = {
   sendMessage?: typeof sendRuntimeMessage;
   runLocalPipeline?: RunLocalPipeline;
@@ -209,10 +215,15 @@ export class TranslationRunner {
       };
     }
 
-  async downloadImageFile(originalUrl: string, diagnosticRunId?: string): Promise<{
+  async downloadImageFile(options: DownloadImageFileOptions): Promise<{
       file: File;
       blob: Blob;
     }> {
+      const {
+        originalUrl,
+        referrerPolicy,
+        diagnosticRunId,
+      } = options;
       const startedAt = performance.now();
       if (diagnosticRunId) {
         await emitDiagnosticLogAsync({
@@ -223,6 +234,7 @@ export class TranslationRunner {
           message: '开始下载原图',
           data: {
             originalUrl: sanitizeDiagnosticUrl(originalUrl),
+            referrerPolicy,
           },
         });
       }
@@ -230,6 +242,7 @@ export class TranslationRunner {
         const downloadResponse = await this.sendMessage({
           type: 'mt:download-image',
           imageUrl: originalUrl,
+          ...(referrerPolicy !== undefined ? { referrerPolicy } : {}),
         });
         if (!downloadResponse.ok || downloadResponse.type !== 'mt:download-image') {
           throw new Error(downloadResponse.ok ? '下载图片失败' : downloadResponse.error);
@@ -249,6 +262,7 @@ export class TranslationRunner {
               originalUrl: sanitizeDiagnosticUrl(originalUrl),
               sourceUrl: sanitizeDiagnosticUrl(downloadResponse.sourceUrl),
               contentType: downloadResponse.contentType,
+              referrerPolicy,
               blobSize: blob.size,
               base64Length: downloadResponse.base64.length,
               durationMs: performance.now() - startedAt,
@@ -269,6 +283,7 @@ export class TranslationRunner {
             message: `原图下载失败：${toErrorMessage(error)}`,
             data: {
               originalUrl: sanitizeDiagnosticUrl(originalUrl),
+              referrerPolicy,
               durationMs: performance.now() - startedAt,
             },
             error: toDiagnosticError(error),

@@ -36,10 +36,13 @@ function createServices(settings: ExtensionSettings = defaultExtensionSettings):
       clear: vi.fn(async () => {}),
     },
     images: {
-      download: vi.fn(async (imageUrl: string) => ({
+      download: vi.fn(async (
+        request: { imageUrl: string; referrerPolicy?: ReferrerPolicy },
+        _sender: ChromeMessageSender,
+      ) => ({
         base64: 'aW1hZ2U=',
         contentType: 'image/png',
-        sourceUrl: imageUrl,
+        sourceUrl: request.imageUrl,
       })),
       capture: vi.fn(async (_sender: ChromeMessageSender) => ({
         base64: 'c2NyZWVuc2hvdA==',
@@ -137,6 +140,7 @@ describe('routeBackgroundMessage', () => {
     await expect(routeBackgroundMessage({
       type: 'mt:download-image',
       imageUrl: 'https://example.com/image.png',
+      referrerPolicy: 'strict-origin-when-cross-origin',
     }, sender, services)).resolves.toEqual({
       ok: true,
       type: 'mt:download-image',
@@ -144,6 +148,10 @@ describe('routeBackgroundMessage', () => {
       contentType: 'image/png',
       sourceUrl: 'https://example.com/image.png',
     });
+    expect(services.images.download).toHaveBeenCalledWith({
+      imageUrl: 'https://example.com/image.png',
+      referrerPolicy: 'strict-origin-when-cross-origin',
+    }, sender);
     await routeBackgroundMessage({ type: 'mt:capture-visible-tab' }, sender, services);
     expect(services.images.capture).toHaveBeenCalledWith(sender);
   });

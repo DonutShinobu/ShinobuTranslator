@@ -6,7 +6,7 @@ import type {
   PhotoState,
 } from '../types';
 import type { ProgressJankMonitor } from '../progressJank';
-import { toErrorMessage } from '../utils';
+import { resolveImageReferrerPolicy, toErrorMessage } from '../utils';
 import { PhotoStateStore } from '../state/photoStateStore';
 import {
   TranslationRunner,
@@ -88,7 +88,11 @@ export class ImageTranslationController {
         ? capturedContextResolution
         : undefined;
       const diagnosticRunId = runSettings.enableDebugLog ? this.runtime.createRunId('run') : undefined;
-      const source = await this.translationRunner.downloadImageFile(state.originalUrl, diagnosticRunId);
+      const source = await this.translationRunner.downloadImageFile({
+        originalUrl: state.originalUrl,
+        referrerPolicy: resolveImageReferrerPolicy(clickTarget.element),
+        diagnosticRunId,
+      });
       const pipelineOutcome = await this.translationRunner.runPipelineFromFile({
         state,
         file: source.file,

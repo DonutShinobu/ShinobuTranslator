@@ -2,7 +2,7 @@ import { usesNanoBananaImagePipeline } from '../../../shared/config';
 import { createDiagnosticRunId } from '../../../shared/diagnosticLogClient';
 import type { ReadingModeBarUi, SiteAdapter, UrlTarget } from '../types';
 import { createReadingModeBarUi } from '../ui';
-import { toErrorMessage } from '../utils';
+import { resolveImageReferrerPolicy, toErrorMessage } from '../utils';
 import { PhotoStateStore } from '../state/photoStateStore';
 import {
   TranslationRunner,
@@ -246,7 +246,11 @@ export class ReadingModeController {
           throw new Error('阅读模式批量暂不支持 Nano Banana，请使用单张图片翻译或切回其他大模型供应商');
         }
         const diagnosticRunId = runSettings.enableDebugLog ? createDiagnosticRunId('run') : undefined;
-        const source = await this.translationRunner.downloadImageFile(originalUrl, diagnosticRunId);
+        const source = await this.translationRunner.downloadImageFile({
+          originalUrl,
+          referrerPolicy: resolveImageReferrerPolicy(),
+          diagnosticRunId,
+        });
         downloadedBlob = source.blob;
         await this.translationRunner.runPipelineFromFile({
           state,

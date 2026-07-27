@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { defaultExtensionSettings } from '../../../src/shared/config';
 import type {
   ImageTarget,
   ReadingModeBarUi,
@@ -51,6 +52,11 @@ function createFakeBar(): { ui: ReadingModeBarUi; current: FakeButton; all: Fake
   };
 }
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
 describe('ReadingModeController', () => {
   it('reuses stored translations, toggles visible pages, and tears down its bar', async () => {
     const target: ImageTarget = {
@@ -98,5 +104,68 @@ describe('ReadingModeController', () => {
 
     controller.teardown();
     expect(bar.remove).toHaveBeenCalledOnce();
+  });
+
+  it('passes the document meta referrer policy when downloading a reading-mode page', async () => {
+    vi.stubGlobal('document', {
+      querySelector: vi.fn(() => ({ content: 'origin' })),
+      querySelectorAll: vi.fn(() => [
+        { content: 'origin' },
+        { content: 'same-origin' },
+      ]),
+    });
+    vi.stubGlobal('window', {
+      requestAnimationFrame: vi.fn(() => 1),
+      cancelAnimationFrame: vi.fn(),
+    });
+    const target: ImageTarget = {
+      element: {} as HTMLImageElement,
+      key: 'page-1',
+      originalUrl: 'https://cdn.example/page-1.jpg',
+    };
+    const anchor = { appendChild: vi.fn() };
+    const adapter: SiteAdapter = {
+      match: () => true,
+      findImages: () => [],
+      createUiAnchor: () => ({} as HTMLElement),
+      applyImage: () => {},
+      observe: () => () => {},
+      createBottomBarAnchor: () => anchor as unknown as HTMLElement,
+      findAllPageUrls: () => [{ key: target.key, originalUrl: target.originalUrl, pageIndex: 0 }],
+      getVisiblePages: () => [target],
+      applyImageByKey: vi.fn(),
+    };
+    const runner = new TranslationRunner();
+    vi.spyOn(runner, 'loadPipelineRunSettings').mockResolvedValue({
+      settings: defaultExtensionSettings,
+      showElapsedTime: false,
+      showStageTimingDetails: false,
+      showRuntimeStages: false,
+      stageTimingCardExpanded: false,
+      showTypesetDebug: false,
+      enableDebugLog: false,
+    });
+    const downloadImageFile = vi.spyOn(runner, 'downloadImageFile')
+      .mockRejectedValue(new Error('stop after request capture'));
+    const bar = createFakeBar();
+    const controller = new ReadingModeController(
+      adapter,
+      new PhotoStateStore(200, { revokeObjectURL: vi.fn() }),
+      runner,
+      vi.fn(),
+      vi.fn(),
+      () => bar.ui,
+    );
+
+    controller.sync();
+    bar.current.click?.();
+
+    await vi.waitFor(() => {
+      expect(downloadImageFile).toHaveBeenCalledWith({
+        originalUrl: target.originalUrl,
+        referrerPolicy: 'same-origin',
+        diagnosticRunId: undefined,
+      });
+    });
   });
 });

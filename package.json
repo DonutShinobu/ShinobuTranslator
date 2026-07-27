@@ -25,6 +25,7 @@
     "typeset:generate-vertical-orientation": "node scripts/generate-vertical-orientation.mjs",
     "bench:ocr-debug": "tsx benchmark/perf/src/run-ocr-debug.ts",
     "bench:browser-ocr-smoke": "tsx benchmark/perf/src/run-browser-ocr-smoke.ts",
+    "bench:browser-image-download-smoke": "npm run build && tsx benchmark/perf/src/run-browser-image-download-smoke.ts",
     "bench:browser-pipeline-smoke": "tsx benchmark/perf/src/run-browser-pipeline-smoke.ts",
     "bench:browser-pipeline-batch": "npm run build:benchmark && tsx benchmark/perf/src/run-browser-pipeline-batch.ts",
     "bench:analyze-danbooru-face-misdetections": "tsx benchmark/perf/src/analyze-danbooru-face-misdetections.ts",

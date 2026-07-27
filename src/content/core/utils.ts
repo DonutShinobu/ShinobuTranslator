@@ -6,6 +6,7 @@ import type {
   StageTimingCardRuntime,
   TranslationDebugInfo,
 } from './types';
+import { isReferrerPolicy } from '../../shared/referrerPolicy';
 
 export { downloadJson, toErrorMessage } from '../../shared/utils';
 export {
@@ -13,6 +14,45 @@ export {
   blobToBase64,
   canvasToPngBlob as canvasToBlob,
 } from '../../shared/blobCodec';
+
+function toNonEmptyReferrerPolicy(value: unknown): ReferrerPolicy | undefined {
+  if (typeof value !== 'string' || !value) return undefined;
+  const normalized = value.toLowerCase();
+  return normalized && isReferrerPolicy(normalized) ? normalized : undefined;
+}
+
+function toMetaReferrerPolicy(value: unknown): ReferrerPolicy | undefined {
+  if (typeof value !== 'string' || !value) return undefined;
+  switch (value.toLowerCase()) {
+    case 'never':
+      return 'no-referrer';
+    case 'default':
+      return 'strict-origin-when-cross-origin';
+    case 'always':
+      return 'unsafe-url';
+    case 'origin-when-crossorigin':
+      return 'origin-when-cross-origin';
+    default:
+      return toNonEmptyReferrerPolicy(value);
+  }
+}
+
+export function resolveImageReferrerPolicy(
+  imageElement?: Pick<HTMLImageElement, 'referrerPolicy'>,
+): ReferrerPolicy | undefined {
+  const elementPolicy = toNonEmptyReferrerPolicy(imageElement?.referrerPolicy);
+  if (elementPolicy) return elementPolicy;
+  if (typeof document === 'undefined') return undefined;
+  // Chrome exposes element and meta policies, but not the effective navigation
+  // response policy on Document. For ordinary static markup, the last valid meta
+  // value is the policy processed most recently; the background observes the
+  // Referrer-Policy response header when there is no DOM override.
+  let metaPolicy: ReferrerPolicy | undefined;
+  for (const element of document.querySelectorAll<HTMLMetaElement>('meta[name="referrer" i]')) {
+    metaPolicy = toMetaReferrerPolicy(element.content) ?? metaPolicy;
+  }
+  return metaPolicy;
+}
 
 export function inferFileExtension(contentType: string, sourceUrl: string): string {
   if (contentType.includes('png')) return 'png';

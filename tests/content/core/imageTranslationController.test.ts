@@ -116,6 +116,9 @@ describe('ImageTranslationController', () => {
 
   it('applies a successful result produced by the runner', async () => {
     const harness = createHarness();
+    harness.target.element = {
+      referrerPolicy: 'origin',
+    } as HTMLImageElement;
     vi.spyOn(harness.runner, 'loadPipelineRunSettings').mockResolvedValue({
       settings: defaultExtensionSettings,
       showElapsedTime: false,
@@ -125,7 +128,7 @@ describe('ImageTranslationController', () => {
       showTypesetDebug: false,
       enableDebugLog: false,
     });
-    vi.spyOn(harness.runner, 'downloadImageFile').mockResolvedValue({
+    const downloadImageFile = vi.spyOn(harness.runner, 'downloadImageFile').mockResolvedValue({
       file: new File([new Uint8Array([1])], 'source.png', { type: 'image/png' }),
       blob: new Blob([new Uint8Array([1])], { type: 'image/png' }),
     });
@@ -139,6 +142,11 @@ describe('ImageTranslationController', () => {
     await harness.controller.handleTranslateClick(harness.target);
 
     expect(harness.store.get(harness.target.key)?.status).toBe('translated');
+    expect(downloadImageFile).toHaveBeenCalledWith({
+      originalUrl: harness.target.originalUrl,
+      referrerPolicy: 'origin',
+      diagnosticRunId: undefined,
+    });
     expect(harness.applyImage).toHaveBeenCalledOnce();
   });
 

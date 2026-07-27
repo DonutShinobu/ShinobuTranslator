@@ -20,9 +20,8 @@ import {
 } from './diagnostics/logStore';
 import {
   captureVisibleTab,
-  downloadImage,
-  ensurePximgRefererRule,
 } from './images/imageService';
+import { createImageDownloader } from './images/imageDownloader';
 import { registerMenusAndCommands } from './menus/registerMenus';
 import {
   getOpenAiOAuthStatus,
@@ -41,6 +40,8 @@ import { routeBackgroundMessage } from './messages/router';
 import type { BackgroundServices } from './messages/router';
 import { registerOffscreenPipelineBroker } from './localPipeline/offscreenBroker';
 
+const imageDownloader = createImageDownloader();
+
 const services: BackgroundServices = {
   settings: {
     get: getSettings,
@@ -52,7 +53,7 @@ const services: BackgroundServices = {
     clear: clearDiagnosticLog,
   },
   images: {
-    download: downloadImage,
+    download: imageDownloader.download,
     capture: captureVisibleTab,
   },
   openAi: {
@@ -78,7 +79,6 @@ function initializeBackground(): void {
     return;
   }
 
-  void ensurePximgRefererRule();
   registerOffscreenPipelineBroker(chromeApi);
 
   chromeApi.runtime.onMessage.addListener((message: unknown, sender: ChromeMessageSender, sendResponse: (response: unknown) => void) => {

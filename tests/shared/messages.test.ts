@@ -4,10 +4,29 @@ import { getRuntimeErrorCode, isRuntimeMessage } from "../../src/shared/messages
 describe("isRuntimeMessage", () => {
   it("accepts image and screenshot translation runtime messages", () => {
     expect(isRuntimeMessage({ type: "mt:download-image", imageUrl: "https://example.com/a.png" })).toBe(true);
+    expect(isRuntimeMessage({
+      type: "mt:download-image",
+      imageUrl: "https://example.com/a.png",
+      referrerPolicy: "strict-origin-when-cross-origin",
+    })).toBe(true);
     expect(isRuntimeMessage({ type: "mt:capture-visible-tab" })).toBe(true);
     expect(isRuntimeMessage({ type: "mt:context-menu-translate" })).toBe(true);
     expect(isRuntimeMessage({ type: "mt:start-screenshot-translate" })).toBe(true);
     expect(isRuntimeMessage({ type: "mt:shortcut-translate-hover" })).toBe(true);
+  });
+
+  it("rejects malformed image download messages", () => {
+    expect(isRuntimeMessage({ type: "mt:download-image" })).toBe(false);
+    expect(isRuntimeMessage({ type: "mt:download-image", imageUrl: 42 })).toBe(false);
+    expect(isRuntimeMessage({
+      type: "mt:download-image",
+      imageUrl: "data:image/png;base64,aW1hZ2U=",
+    })).toBe(false);
+    expect(isRuntimeMessage({
+      type: "mt:download-image",
+      imageUrl: "https://example.com/a.png",
+      referrerPolicy: "send-everything",
+    })).toBe(false);
   });
 
   it("accepts OpenAI OAuth and LLM proxy runtime messages", () => {

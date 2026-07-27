@@ -4,6 +4,7 @@ import type {
   RuntimeMessage,
   RuntimeResponse,
 } from '../../shared/messages';
+import type { ImageDownloadRequest } from '../images/imageDownloader';
 
 type MessageOf<T extends RuntimeMessage['type']> = Extract<RuntimeMessage, { type: T }>;
 type SuccessOf<T extends RuntimeResponse['type']> = Extract<RuntimeResponse, { ok: true; type: T }>;
@@ -20,7 +21,10 @@ export type BackgroundServices = {
     clear(): Promise<void>;
   };
   images: {
-    download(imageUrl: string): Promise<PayloadOf<'mt:download-image'>>;
+    download(
+      request: ImageDownloadRequest,
+      sender: ChromeMessageSender,
+    ): Promise<PayloadOf<'mt:download-image'>>;
     capture(sender: ChromeMessageSender): Promise<PayloadOf<'mt:capture-visible-tab'>>;
   };
   openAi: {
@@ -75,7 +79,17 @@ export async function routeBackgroundMessage(
     };
   }
   if (message.type === 'mt:download-image') {
-    return { ok: true, type: 'mt:download-image', ...await services.images.download(message.imageUrl) };
+    const request: ImageDownloadRequest = {
+      imageUrl: message.imageUrl,
+      ...(message.referrerPolicy !== undefined
+        ? { referrerPolicy: message.referrerPolicy }
+        : {}),
+    };
+    return {
+      ok: true,
+      type: 'mt:download-image',
+      ...await services.images.download(request, sender),
+    };
   }
   if (message.type === 'mt:capture-visible-tab') {
     return { ok: true, type: 'mt:capture-visible-tab', ...await services.images.capture(sender) };

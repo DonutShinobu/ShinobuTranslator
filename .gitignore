@@ -79,6 +79,7 @@ result_verify.png
 .trellis/workspace/*/debug-img/
 
 # Benchmark
+benchmark/images/
 benchmark/typeset/images/*
 !benchmark/typeset/images/.gitkeep
 benchmark/reports/

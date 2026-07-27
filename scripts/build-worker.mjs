@@ -11,6 +11,8 @@ await build({
   root: resolve(__dirname, '..'),
   publicDir: false,
   build: {
+    // The self-contained ONNX Runtime Worker is intentionally about 873 kB.
+    chunkSizeWarningLimit: 900,
     rollupOptions: {
       input: resolve(__dirname, '../src/workers/onnx-worker.ts'),
       output: {

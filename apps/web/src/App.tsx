@@ -25,7 +25,7 @@ import type { TranslationTask } from '@shinobu/translator-core';
 import brandIconUrl from '../../../public/icons/icon128.png';
 import brandWordmarkUrl from '../../../public/brand/shinobu-wordmark.svg';
 import type { PipelineProgress } from '../../../src/types';
-import { Icon } from './icons';
+import { Icon, type IconName } from './icons';
 import { describeImportRejection, getCopy } from './i18n';
 import { HistoryView } from './features/history/HistoryView';
 import { SettingsView } from './features/settings/SettingsView';
@@ -81,6 +81,7 @@ import { toWebPipelineConfig } from './runtime/webPipelineConfig';
 
 type MobilePane = 'queue' | 'preview' | 'settings';
 type PreviewMode = 'original' | 'result';
+type PreviewScale = 'fit' | number;
 type ActiveView = 'workbench' | 'history' | 'settings';
 type QueueJobStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
 type ModelRuntimeProbeState = {
@@ -99,6 +100,7 @@ type QueueJobState = {
 };
 
 const processModes: ReadonlyArray<ProcessMode> = ['translate', 'original', 'erase'];
+const previewZoomSteps = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const MODEL_CONSENT_STORAGE_KEY = 'shinobu:model-download-consent:v1';
 const LOCAL_HISTORY_VERSIONS = {
   app: '0.1.0',
@@ -145,6 +147,7 @@ export function App() {
   const [mobilePane, setMobilePane] = useState<MobilePane>('preview');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewMode, setPreviewMode] = useState<PreviewMode>('original');
+  const [previewScale, setPreviewScale] = useState<PreviewScale>('fit');
   const [jobs, setJobs] = useState<Record<string, QueueJobState>>({});
   const [batchRunning, setBatchRunning] = useState(false);
   const [batchNotice, setBatchNotice] = useState('');
@@ -163,6 +166,7 @@ export function App() {
   });
   const [modelProbeAttempt, setModelProbeAttempt] = useState(0);
   const [capabilityProbeAttempt, setCapabilityProbeAttempt] = useState(0);
+  const [providerDetailsOpen, setProviderDetailsOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const dragDepthRef = useRef(0);
@@ -198,7 +202,6 @@ export function App() {
     }),
     [imageImportLimits],
   );
-  const maxFileMiB = Math.round(imageImportLimits.maxFileBytes / (1024 * 1024));
   const selectedImage = queue.find((image) => image.id === selectedId) ?? null;
   const selectedJob = selectedId ? jobs[selectedId] : undefined;
   const activeProviderProfile = settings.providerProfiles[settings.translationProviderId];
@@ -224,6 +227,16 @@ export function App() {
         && storageSnapshot.availableBytes < IMAGE_IMPORT_STORAGE_HEADROOM_BYTES
         ? copy.storageLow(formatBytes(storageSnapshot.availableBytes))
         : undefined);
+
+  useEffect(() => {
+    if (settings.processMode === 'translate') {
+      setProviderDetailsOpen(providerConfigurationError !== null);
+    }
+  }, [settings.processMode, settings.translationProviderId]);
+
+  useEffect(() => {
+    setPreviewScale('fit');
+  }, [selectedId]);
 
   useEffect(() => {
     queueRef.current = queue;
@@ -1320,14 +1333,129 @@ export function App() {
           : copy.modelGateInstalling
         : modelPackage.state.status === 'paused'
           ? copy.modelGatePaused
-          : modelPackage.state.status === 'failed'
+      : modelPackage.state.status === 'failed'
             ? copy.modelGateFailed
             : copy.modelGatePending;
+  const startBlockerDetail = queue.length === 0
+    ? copy.queueRequired
+    : storageImportIssue
+      ?? (!pwa.online
+        ? copy.offlineHistoryOnly
+        : capability === null
+          ? copy.modelGateChecking
+          : capability.ok !== true
+            ? capability.reason
+            : modelPackage.state.status !== 'installed'
+              || modelRuntimeProbe.status !== 'ready'
+              ? modelGateDetail
+              : providerValidationError ?? copy.startUnavailable);
+  const modelInstallActionAvailable = (
+    pwa.online
+    && capability?.ok === true
+    && modelPackage.state.status !== 'installed'
+    && modelPackage.state.status !== 'checking'
+    && modelPackage.state.status !== 'installing'
+  );
+  const modelProbeRetryAvailable = (
+    modelPackage.state.status === 'installed'
+    && modelRuntimeProbe.status === 'failed'
+  );
+  const primaryActionLabel = batchRunning
+    ? copy.stopBatch
+    : startAllowed
+      ? copy.start
+      : storageImportIssue
+          ? copy.settings
+          : queue.length === 0
+            ? copy.addImages
+          : modelInstallActionAvailable
+            ? !modelConsent
+              ? copy.modelConsent
+              : modelPackage.state.status === 'paused'
+                ? copy.modelResume
+                : copy.modelRetry
+            : modelProbeRetryAvailable
+              ? copy.modelProbeRetry
+              : providerValidationError
+                ? copy.openProviderSettings
+                : copy.start;
+  const primaryActionIconName: IconName = batchRunning
+    ? 'stop'
+    : startAllowed
+      ? 'play'
+      : storageImportIssue
+        ? 'gear'
+        : queue.length === 0
+          ? 'add'
+          : modelInstallActionAvailable
+            ? 'download'
+            : modelProbeRetryAvailable
+              ? 'refresh'
+              : providerValidationError
+                ? 'gear'
+                : 'play';
+  const primaryActionDisabled = (
+    !batchRunning
+    && !startAllowed
+    && queue.length > 0
+    && !storageImportIssue
+    && !modelInstallActionAvailable
+    && !modelProbeRetryAvailable
+    && !providerValidationError
+  );
+  const handlePrimaryAction = (): void => {
+    if (batchRunning) {
+      stopBatch();
+      return;
+    }
+    if (startAllowed) {
+      void startBatch();
+      return;
+    }
+    if (storageImportIssue) {
+      setActiveView('settings');
+      void refreshStorage();
+      return;
+    }
+    if (queue.length === 0) {
+      fileInputRef.current?.click();
+      return;
+    }
+    if (modelInstallActionAvailable) {
+      acceptModelDownload();
+      return;
+    }
+    if (modelProbeRetryAvailable) {
+      setModelProbeAttempt((current) => current + 1);
+      return;
+    }
+    if (providerValidationError) {
+      setProviderDetailsOpen(true);
+      setMobilePane('settings');
+    }
+  };
   const visiblePreviewUrl = (
     previewMode === 'result' && selectedJob?.resultUrl
       ? selectedJob.resultUrl
       : previewUrl
   );
+  const previewScaleLabel = previewScale === 'fit'
+    ? copy.previewFit
+    : `${Math.round(previewScale * 100)}%`;
+  const adjustPreviewScale = (direction: -1 | 1): void => {
+    setPreviewScale((current) => {
+      const currentScale = current === 'fit' ? 1 : current;
+      const currentIndex = previewZoomSteps.indexOf(currentScale);
+      const nextIndex = Math.max(
+        0,
+        Math.min(
+          previewZoomSteps.length - 1,
+          (currentIndex < 0 ? previewZoomSteps.indexOf(1) : currentIndex) + direction,
+        ),
+      );
+      return previewZoomSteps[nextIndex];
+    });
+  };
   const activeProgress = queue
     .map((image) => jobs[image.id])
     .find((job) => job?.status === 'running')
@@ -1336,7 +1464,7 @@ export function App() {
     ? activeProgress?.detail ?? copy.batchRunning
     : batchNotice
       || storageImportIssue
-      || (startAllowed ? copy.localMode : copy.startUnavailable);
+      || (startAllowed ? copy.localMode : startBlockerDetail);
 
   return (
     <div
@@ -1375,7 +1503,7 @@ export function App() {
             aria-current={activeView === 'workbench' ? 'page' : undefined}
             onClick={() => setActiveView('workbench')}
           >
-            <Icon name="image" />
+            <Icon name="queue" />
             {copy.workbench}
           </button>
           <button
@@ -1401,16 +1529,12 @@ export function App() {
               void refreshStorage();
             }}
           >
-            <Icon name="settings" />
-            {copy.settings}
+            <Icon name="gear" />
+            {copy.settingsTitle}
           </button>
         </nav>
 
         <div className="topbar-actions">
-          <span className="privacy-status">
-            <Icon name="shield" />
-            <span>{copy.localMode}</span>
-          </span>
           <nav className="mobile-view-nav" aria-label="Primary">
             <button
               className="mobile-view-trigger"
@@ -1429,14 +1553,14 @@ export function App() {
             <button
               className="mobile-view-trigger"
               type="button"
-              aria-label={copy.settings}
+              aria-label={copy.settingsTitle}
               aria-current={activeView === 'settings' ? 'page' : undefined}
               onClick={() => {
                 setActiveView('settings');
                 void refreshStorage();
               }}
             >
-              <Icon name="settings" />
+              <Icon name="gear" />
             </button>
           </nav>
           <button
@@ -1471,10 +1595,7 @@ export function App() {
 
       {pwa.updateReady && (
         <div className="update-banner" role="status">
-          <div>
-            <strong>{copy.updateReady}</strong>
-            <span>{batchRunning ? copy.updateWaitBatch : copy.updateDetail}</span>
-          </div>
+          <strong>{copy.updateReady}</strong>
           <button
             className="button button-secondary button-compact"
             type="button"
@@ -1488,16 +1609,7 @@ export function App() {
 
       {pwaInstall.suggestionVisible && !pwaInstall.installed && (
         <div className="install-prompt" role="dialog" aria-labelledby="install-prompt-title">
-          <div>
-            <strong id="install-prompt-title">{copy.installTitle}</strong>
-            <span>
-              {pwaInstall.nativeAvailable
-                ? copy.installNativeDetail
-                : pwaInstall.platform === 'ios'
-                  ? copy.installIosDetail
-                  : copy.installManualDetail}
-            </span>
-          </div>
+          <strong id="install-prompt-title">{copy.installTitle}</strong>
           <div>
             {pwaInstall.nativeAvailable && (
               <button
@@ -1623,11 +1735,6 @@ export function App() {
                 <Icon name="add" />
                 {copy.addImages}
               </button>
-              <div className="empty-help">
-                <strong>{copy.dropHint}</strong>
-                <span>{copy.supportedHint(maxFileMiB)}</span>
-                <span>{copy.pasteHint}</span>
-              </div>
             </div>
           ) : (
             <ol className="queue-list">
@@ -1643,6 +1750,7 @@ export function App() {
                     className="queue-item"
                     data-selected={selected}
                     key={image.id}
+                    style={{ animationDelay: `${Math.min(index, 7) * 24}ms` }}
                   >
                     <button
                       className="queue-select"
@@ -1759,17 +1867,22 @@ export function App() {
           <div className="pane-header preview-header">
             <div>
               <h1>{copy.preview}</h1>
-              <p>
-                {selectedImage
-                  ? copy.imageMeta(
-                      selectedImage.width,
-                      selectedImage.height,
-                      formatBytes(selectedImage.file.size),
-                    )
-                  : copy.previewEmptyBody}
-              </p>
+              {selectedImage && (
+                <p>
+                  {copy.imageMeta(
+                    selectedImage.width,
+                    selectedImage.height,
+                    formatBytes(selectedImage.file.size),
+                  )}
+                </p>
+              )}
             </div>
-            <div className="preview-tabs" aria-label={copy.preview}>
+            <div
+              className="preview-tabs"
+              data-mode={previewMode}
+              aria-label={copy.preview}
+            >
+              <span className="preview-tab-indicator" aria-hidden="true" />
               <button
                 type="button"
                 aria-pressed={previewMode === 'original'}
@@ -1792,8 +1905,51 @@ export function App() {
           <div className="preview-stage">
             {selectedImage && visiblePreviewUrl ? (
               <>
-                <div className="image-canvas">
-                  <img src={visiblePreviewUrl} alt={selectedImage.file.name} />
+                <div className="preview-toolbar" aria-label={copy.previewZoom}>
+                  <button
+                    type="button"
+                    aria-label={copy.zoomOut}
+                    title={copy.zoomOut}
+                    disabled={previewScale !== 'fit' && previewScale <= previewZoomSteps[0]}
+                    onClick={() => adjustPreviewScale(-1)}
+                  >
+                    <Icon name="zoom-out" />
+                  </button>
+                  <button
+                    className="preview-scale-button"
+                    type="button"
+                    aria-label={copy.previewFit}
+                    title={copy.previewFit}
+                    data-active={previewScale === 'fit'}
+                    onClick={() => setPreviewScale('fit')}
+                  >
+                    <Icon name="fit" />
+                    <span>{previewScaleLabel}</span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={copy.zoomIn}
+                    title={copy.zoomIn}
+                    disabled={previewScale !== 'fit'
+                      && previewScale >= previewZoomSteps[previewZoomSteps.length - 1]}
+                    onClick={() => adjustPreviewScale(1)}
+                  >
+                    <Icon name="zoom-in" />
+                  </button>
+                </div>
+                <div
+                  className="image-canvas"
+                  data-view={previewScale === 'fit' ? 'fit' : 'zoom'}
+                >
+                  <img
+                    key={`${selectedImage.id}:${previewMode}`}
+                    src={visiblePreviewUrl}
+                    alt={selectedImage.file.name}
+                    draggable={false}
+                    style={previewScale === 'fit'
+                      ? undefined
+                      : { width: `${Math.round(selectedImage.width * previewScale)}px` }}
+                  />
                 </div>
                 <div className="preview-meta">
                   <div>
@@ -1830,19 +1986,9 @@ export function App() {
               </>
             ) : (
               <div className="preview-empty">
-                <div className="preview-empty-symbol"><Icon name="image" /></div>
-                <h2>{copy.previewEmptyTitle}</h2>
+              <div className="preview-empty-symbol"><Icon name="image" /></div>
+              <h2>{copy.previewEmptyTitle}</h2>
                 <p>{copy.previewEmptyBody}</p>
-                <button
-                  className="button button-primary"
-                  type="button"
-                  aria-keyshortcuts="Control+O Meta+O"
-                  title={`${copy.selectImage} (Ctrl/⌘+O)`}
-                  disabled={importing || storageHardBlocked}
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  {copy.selectImage}
-                </button>
               </div>
             )}
           </div>
@@ -1850,10 +1996,7 @@ export function App() {
 
         <aside className="workspace-pane settings-pane" aria-label={copy.batchSettings}>
           <div className="pane-header">
-            <div>
-              <h1>{copy.batchSettings}</h1>
-              <p>{copy.batchLockHint}</p>
-            </div>
+            <h1>{copy.batchSettings}</h1>
           </div>
 
           <div className="settings-content">
@@ -1863,6 +2006,11 @@ export function App() {
             >
               <h2>{copy.processMode}</h2>
               <div className="segmented-control" role="radiogroup" aria-label={copy.processMode}>
+                <span
+                  className="segmented-indicator"
+                  data-mode={settings.processMode}
+                  aria-hidden="true"
+                />
                 {processModes.map((mode) => (
                   <button
                     key={mode}
@@ -1913,92 +2061,137 @@ export function App() {
                     <option value={provider.id} key={provider.id}>{provider.label}</option>
                   ))}
                 </select>
-                <small>{copy.providerHint}</small>
               </label>
               {settings.processMode === 'translate' && (
-                <div
-                  className="provider-task-summary"
-                  data-state={providerConfigurationError === null ? 'ready' : 'error'}
+                <details
+                  className="provider-disclosure"
+                  open={providerDetailsOpen}
+                  onToggle={(event) => setProviderDetailsOpen(event.currentTarget.open)}
                 >
-                  <span>
-                    <Icon name={providerConfigurationError === null ? 'check' : 'warning'} />
-                  </span>
-                  <div>
-                    <strong>
-                      {providerConfigurationError === null
-                        ? copy.providerReady
-                        : providerConfigurationError}
-                    </strong>
-                    <button
-                      className="inline-action"
-                      type="button"
-                      onClick={() => {
-                        setActiveView('settings');
-                        void refreshStorage();
-                      }}
-                    >
-                      {copy.openProviderSettings}
-                    </button>
+                  <summary>
+                    <span>
+                      <strong>{copy.providerSettingsTitle}</strong>
+                      <small>
+                        {providerReady ? copy.providerReady : copy.providerGatePending}
+                      </small>
+                    </span>
+                    <span className="provider-disclosure-action" aria-hidden="true">
+                      <Icon name="chevron-down" />
+                    </span>
+                  </summary>
+                  <div className="workspace-provider-fields">
+                    <div className="workspace-provider-grid">
+                      <label className="field">
+                        <span>{copy.baseUrl}</span>
+                        <input
+                          id="batch-provider-base-url"
+                          name="provider-base-url"
+                          type="url"
+                          value={activeProviderProfile.baseUrl}
+                          disabled={batchRunning || Boolean(resumeHistoryBatchId)}
+                          spellCheck={false}
+                          onChange={(event) =>
+                            patchActiveProviderProfile({ baseUrl: event.target.value })}
+                        />
+                      </label>
+                      <label className="field">
+                        <span>{copy.model}</span>
+                        <input
+                          id="batch-provider-model"
+                          name="provider-model"
+                          type="text"
+                          value={activeProviderProfile.model}
+                          disabled={batchRunning || Boolean(resumeHistoryBatchId)}
+                          spellCheck={false}
+                          onChange={(event) =>
+                            patchActiveProviderProfile({ model: event.target.value })}
+                        />
+                      </label>
+                    </div>
+                    <label className="field">
+                      <span>{copy.apiKey}</span>
+                      <input
+                        id="batch-provider-api-key"
+                        name="provider-api-key"
+                        type="password"
+                        value={activeProviderSecret.value}
+                        disabled={
+                          batchRunning
+                          || Boolean(resumeHistoryBatchId)
+                          || activeProviderSecret.busy
+                        }
+                        autoComplete="off"
+                        spellCheck={false}
+                        onChange={(event) => updateProviderKey(event.target.value)}
+                      />
+                      {activeProviderSecret.restoreStatus === 'restoring' && (
+                        <small>{copy.deviceKeyRestoring}</small>
+                      )}
+                      {activeProviderSecret.restoreStatus === 'target-mismatch' && (
+                        <small className="field-error" role="alert">
+                          {copy.deviceKeyTargetMismatch}
+                        </small>
+                      )}
+                      {activeProviderSecret.restoreStatus === 'corrupt' && (
+                        <small className="field-error" role="alert">
+                          {copy.deviceKeyCorrupt}
+                        </small>
+                      )}
+                      {activeProviderSecret.error && (
+                        <small className="field-error" role="alert">
+                          {activeProviderSecret.error}
+                        </small>
+                      )}
+                    </label>
+                    <div className="provider-config-actions">
+                      <label className="remember-control">
+                        <input
+                          id="batch-remember-device"
+                          name="remember-provider-key"
+                          type="checkbox"
+                          checked={activeProviderSecret.persistence === 'device'}
+                          disabled={
+                            batchRunning
+                            || Boolean(resumeHistoryBatchId)
+                            || activeProviderSecret.busy
+                            || !activeProviderSecret.value.trim()
+                          }
+                          onChange={(event) => {
+                            const action = event.target.checked
+                              ? providerSecrets.remember(settings.translationProviderId)
+                              : providerSecrets.forget(settings.translationProviderId);
+                            void action.catch(() => undefined);
+                          }}
+                        />
+                        <span>{copy.rememberDevice}</span>
+                      </label>
+                      <button
+                        className="delete-config"
+                        type="button"
+                        disabled={batchRunning || Boolean(resumeHistoryBatchId)}
+                        onClick={() => void removeActiveProviderConfiguration()}
+                      >
+                        {copy.deleteProviderConfig}
+                      </button>
+                    </div>
+                    {providerConfigurationError && (
+                      <small className="provider-error" role="alert">
+                        {providerConfigurationError}
+                      </small>
+                    )}
                   </div>
-                </div>
+                </details>
               )}
             </form>
 
-            <section className="settings-section runtime-section">
-              <h2>{copy.runtime}</h2>
-              <div className="readiness-row" data-state={pwa.online ? 'ready' : 'error'}>
-                <span className="readiness-icon">
-                  <Icon name={pwa.online ? 'check' : 'clock'} />
-                </span>
-                <div>
-                  <strong>{copy.networkGate}</strong>
-                  <span>{pwa.online ? copy.onlineReady : copy.offlineHistoryOnly}</span>
-                </div>
-              </div>
-              <div className="readiness-row" data-state={queue.length > 0 ? 'ready' : 'waiting'}>
-                <span className="readiness-icon">
-                  <Icon name={queue.length > 0 ? 'check' : 'image'} />
-                </span>
-                <span>
-                  <strong>{copy.importGate}</strong>
-                  <small>{queue.length > 0 ? copy.importGateReady : copy.importGateWaiting}</small>
-                </span>
-              </div>
-              <div
-                className="readiness-row"
-                data-state={capability === null ? 'pending' : capability.ok ? 'ready' : 'error'}
-              >
-                <span className="readiness-icon">
-                  <Icon name={capability?.ok ? 'check' : 'settings'} />
-                </span>
-                <span>
-                  <strong>{copy.coreGate}</strong>
-                  <small>
-                    {capability === null
-                      ? copy.coreGatePending
-                      : capability.ok
-                        ? copy.coreGateReady(
-                          capability.supportLevel === 'beta'
-                            ? copy.supportBeta
-                            : capability.supportLevel === 'experimental'
-                              ? copy.supportExperimental
-                              : copy.supportDesktop,
-                          capability.backend === 'webgpu'
-                            ? copy.backendWebgpu
-                            : copy.backendWasm,
-                          Math.round(capability.workPixelBudget / 1_000_000),
-                        )
-                        : capability.reason}
-                  </small>
-                </span>
-              </div>
+            <section className="settings-section runtime-section model-download-section">
+              <h2>{copy.modelGate}</h2>
               <div className="readiness-row" data-state={modelGateState}>
                 <span className="readiness-icon">
                   <Icon name={modelGateState === 'ready' ? 'check' : 'clock'} />
                 </span>
                 <span>
-                  <strong>{copy.modelGate}</strong>
-                  <small>{modelGateDetail}</small>
+                  <strong>{modelGateDetail}</strong>
                   {modelRuntimeProbe.status === 'failed' && (
                     <>
                       {modelRuntimeProbe.error && (
@@ -2017,7 +2210,6 @@ export function App() {
                   )}
                   {modelPackage.state.status !== 'installed' && (
                     <>
-                      <small>{copy.modelConsentDetail}</small>
                       {modelPackage.state.storedBytes > 0 && (
                         <small>
                           {copy.modelDownloadProgress(
@@ -2065,24 +2257,6 @@ export function App() {
                   )}
                 </span>
               </div>
-              {settings.processMode === 'translate' && (
-                <div
-                  className="readiness-row"
-                  data-state={providerReady ? 'ready' : 'error'}
-                >
-                  <span className="readiness-icon">
-                    <Icon name={providerReady ? 'check' : 'warning'} />
-                  </span>
-                  <span>
-                    <strong>{copy.provider}</strong>
-                    <small>
-                      {providerReady
-                        ? copy.providerReady
-                        : providerValidationError ?? copy.providerGatePending}
-                    </small>
-                  </span>
-                </div>
-              )}
               {batchRunning && (
                 <div className="task-controls">
                   <span>{copy.batchRunning}</span>
@@ -2101,19 +2275,21 @@ export function App() {
           </div>
 
           <div className="run-footer">
+            {!batchRunning && (
+              <p className="run-hint" aria-live="polite">
+                {startAllowed ? copy.localMode : startBlockerDetail}
+              </p>
+            )}
             <button
               className="button button-primary button-run"
               type="button"
               aria-keyshortcuts="Control+Enter Meta+Enter"
               title={`${batchRunning ? copy.stopBatch : copy.start} (Ctrl/⌘+Enter)`}
-              disabled={!batchRunning && !startAllowed}
-              aria-describedby="run-gate-copy"
-              onClick={() => {
-                if (batchRunning) stopBatch();
-                else void startBatch();
-              }}
+              disabled={primaryActionDisabled}
+              onClick={handlePrimaryAction}
             >
-              {batchRunning ? copy.stopBatch : copy.start}
+              <Icon name={primaryActionIconName} weight="bold" />
+              {primaryActionLabel}
             </button>
             {resumeHistoryBatchId && !batchRunning && (
               <button
@@ -2124,14 +2300,11 @@ export function App() {
                 {copy.historyExitResume}
               </button>
             )}
-            <p id="run-gate-copy">
-              {batchNotice
-                || (startAllowed ? copy.localMode : copy.startUnavailable)}
-            </p>
           </div>
         </aside>
       </main>
 
+      {(batchRunning || mobilePane === 'settings') && (
       <div className="mobile-task-bar" aria-live="polite">
         <span title={mobileTaskDetail}>{mobileTaskDetail}</span>
         <button
@@ -2139,15 +2312,14 @@ export function App() {
           type="button"
           aria-keyshortcuts="Control+Enter Meta+Enter"
           title={`${batchRunning ? copy.stopBatch : copy.start} (Ctrl/⌘+Enter)`}
-          disabled={!batchRunning && !startAllowed}
-          onClick={() => {
-            if (batchRunning) stopBatch();
-            else void startBatch();
-          }}
+          disabled={primaryActionDisabled}
+          onClick={handlePrimaryAction}
         >
-          {batchRunning ? copy.stopBatch : copy.start}
+          <Icon name={primaryActionIconName} weight="bold" />
+          {primaryActionLabel}
         </button>
       </div>
+      )}
 
       <nav className="mobile-nav" aria-label="Workspace">
         <button
@@ -2157,7 +2329,7 @@ export function App() {
           data-active={mobilePane === 'queue'}
           onClick={() => setMobilePane('queue')}
         >
-          <Icon name="image" />
+          <Icon name="queue" />
           {copy.queue}
           {queue.length > 0 && <span>{queue.length}</span>}
         </button>
@@ -2207,28 +2379,11 @@ export function App() {
         <SettingsView
           copy={copy}
           settings={settings}
-          providerProfile={activeProviderProfile}
-          providerSecret={activeProviderSecret}
-          providerValidationError={providerConfigurationError}
-          providerLocked={batchRunning || Boolean(resumeHistoryBatchId)}
           historyLocked={batchRunning}
           storageSnapshot={storageSnapshot}
           storageChecking={storageChecking}
           diagnosticBusy={diagnosticBusy}
           onLocaleChange={(locale) => patchSettings({ uiLocale: locale })}
-          onProviderChange={(providerId) =>
-            patchSettings({ translationProviderId: providerId })}
-          onProviderProfileChange={patchActiveProviderProfile}
-          onProviderKeyChange={updateProviderKey}
-          onSetRememberDevice={(remember) => {
-            const action = remember
-              ? providerSecrets.remember(settings.translationProviderId)
-              : providerSecrets.forget(settings.translationProviderId);
-            void action.catch(() => undefined);
-          }}
-          onDeleteProviderConfiguration={() => {
-            void removeActiveProviderConfiguration();
-          }}
           onRefreshStorage={() => {
             void refreshStorage();
           }}
@@ -2258,7 +2413,6 @@ export function App() {
           <div>
             <Icon name="add" />
             <strong>{copy.dropHint}</strong>
-            <span>{copy.supportedHint(maxFileMiB)}</span>
           </div>
         </div>
       )}

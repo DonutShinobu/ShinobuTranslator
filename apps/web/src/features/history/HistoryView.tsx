@@ -61,11 +61,7 @@ export function HistoryView({
   return (
     <main className="history-page">
       <div className="history-heading">
-        <div>
-          <span className="section-kicker">{copy.localMode}</span>
-          <h1>{copy.historyTitle}</h1>
-          <p>{copy.historySubtitle}</p>
-        </div>
+        <h1>{copy.historyTitle}</h1>
         <div className="history-heading-actions">
           <input
             ref={importInputRef}
@@ -80,6 +76,7 @@ export function HistoryView({
             disabled={busy}
             onClick={() => importInputRef.current?.click()}
           >
+            <Icon name="upload" />
             {copy.historyImportProject}
           </button>
           <button
@@ -88,6 +85,7 @@ export function HistoryView({
             disabled={loading || busy}
             onClick={onRefresh}
           >
+            <Icon name="refresh" />
             {copy.historyRefresh}
           </button>
         </div>
@@ -138,6 +136,7 @@ export function HistoryView({
                     {integrity === 'partial' && (
                       <span data-history-integrity="partial">{copy.historyPartial}</span>
                     )}
+                    <Icon className="history-chevron" name="chevron-down" />
                   </div>
                 </summary>
 
@@ -165,6 +164,7 @@ export function HistoryView({
                             type="button"
                             onClick={() => onDownload(item.result!)}
                           >
+                            <Icon name="download" />
                             {copy.historyDownloadResult}
                           </button>
                         ) : (
@@ -182,6 +182,7 @@ export function HistoryView({
                         disabled={busy}
                         onClick={() => onResume(batch)}
                       >
+                        <Icon name="play" weight="bold" />
                         {copy.historyResume}
                       </button>
                     )}
@@ -191,6 +192,7 @@ export function HistoryView({
                       disabled={busy || !batch.rerunnable || integrity === 'partial'}
                       onClick={() => onClone(batch)}
                     >
+                      <Icon name="copy" />
                       {copy.historyClone}
                     </button>
                     <button
@@ -199,6 +201,7 @@ export function HistoryView({
                       disabled={busy || completed === 0}
                       onClick={() => onExportResults(inspection)}
                     >
+                      <Icon name="download" />
                       {copy.historyExportResults}
                     </button>
                     <button
@@ -207,6 +210,7 @@ export function HistoryView({
                       disabled={busy || integrity === 'partial'}
                       onClick={() => onExportProject(inspection)}
                     >
+                      <Icon name="archive" />
                       {copy.historyExportProject}
                     </button>
                     {batch.rerunnable && completed > 0 && (
@@ -216,6 +220,7 @@ export function HistoryView({
                         disabled={busy}
                         onClick={() => onKeepResults(batch)}
                       >
+                        <Icon name="archive" />
                         {copy.historyKeepResults}
                       </button>
                     )}
@@ -225,6 +230,7 @@ export function HistoryView({
                       disabled={busy}
                       onClick={() => onDelete(batch)}
                     >
+                      <Icon name="trash" />
                       {copy.historyDelete}
                     </button>
                     {!batch.rerunnable && <span>{copy.historyResultsOnly}</span>}

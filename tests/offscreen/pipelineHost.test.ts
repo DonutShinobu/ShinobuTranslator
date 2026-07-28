@@ -131,10 +131,12 @@ function sendImageJob(port: FakePort, jobId: string): void {
 describe('OffscreenPipelineHost FIFO queue', () => {
   let port: FakePort;
   let originalChrome: unknown;
+  let hosts: OffscreenPipelineHost[];
 
   beforeEach(() => {
     mocks.runPipeline.mockReset();
     mocks.disposeAllModelSessions.mockClear();
+    hosts = [];
     port = new FakePort();
     originalChrome = (globalThis as { chrome?: unknown }).chrome;
     (globalThis as { chrome?: unknown }).chrome = {
@@ -145,16 +147,23 @@ describe('OffscreenPipelineHost FIFO queue', () => {
   });
 
   afterEach(() => {
-    port.disconnect();
+    hosts.forEach((host) => host.dispose());
     (globalThis as { chrome?: unknown }).chrome = originalChrome;
+    port.disconnect();
   });
+
+  function createHost(): OffscreenPipelineHost {
+    const host = new OffscreenPipelineHost();
+    hosts.push(host);
+    return host;
+  }
 
   it('runs one task at a time and starts the next only after completion', async () => {
     const first = deferred<PipelineArtifacts>();
     mocks.runPipeline
       .mockImplementationOnce(() => first.promise)
       .mockResolvedValueOnce(artifacts());
-    const host = new OffscreenPipelineHost();
+    const host = createHost();
     host.connect();
 
     sendImageJob(port, 'job-1');
@@ -174,7 +183,7 @@ describe('OffscreenPipelineHost FIFO queue', () => {
   it('removes a queued task when it is cancelled', async () => {
     const first = deferred<PipelineArtifacts>();
     mocks.runPipeline.mockImplementationOnce(() => first.promise);
-    const host = new OffscreenPipelineHost();
+    const host = createHost();
     host.connect();
     sendImageJob(port, 'job-1');
     sendImageJob(port, 'job-2');
@@ -200,7 +209,7 @@ describe('OffscreenPipelineHost FIFO queue', () => {
         options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true });
       })
     ));
-    const host = new OffscreenPipelineHost();
+    const host = createHost();
     host.connect();
     sendImageJob(port, 'active-cancel');
     await vi.waitFor(() => expect(mocks.runPipeline).toHaveBeenCalledTimes(1));
@@ -219,7 +228,7 @@ describe('OffscreenPipelineHost FIFO queue', () => {
   it('releases sessions and asks the background to close after five idle minutes', async () => {
     vi.useFakeTimers();
     try {
-      const host = new OffscreenPipelineHost();
+      const host = createHost();
       host.connect();
 
       await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
@@ -234,7 +243,7 @@ describe('OffscreenPipelineHost FIFO queue', () => {
   it('reconnects its host Port after the background service worker restarts', async () => {
     vi.useFakeTimers();
     try {
-      const host = new OffscreenPipelineHost();
+      const host = createHost();
       host.connect();
       const firstPort = port;
       port = new FakePort();

@@ -8,7 +8,13 @@
  */
 
 import { createCanvas, loadImage, registerFont, Image, ImageData } from 'canvas';
-import type { PlatformProvider, PipelineCanvas, PipelineImage, PipelineImageData } from './platform';
+import type {
+  PipelineCanvas,
+  PipelineFontDescriptors,
+  PipelineImage,
+  PipelineImageData,
+  PlatformProvider,
+} from './platform';
 
 export const nodePlatform: PlatformProvider = {
   createCanvas(width: number, height: number): PipelineCanvas {
@@ -28,10 +34,17 @@ export const nodePlatform: PlatformProvider = {
     return new ImageData(width, height) as PipelineImageData;
   },
 
-  registerFont(path: string, family: string): void {
+  registerFont(
+    path: string,
+    family: string,
+    descriptors?: PipelineFontDescriptors,
+  ): void {
     // node-canvas registerFont takes a fontFace object {family, weight?, style?}
-    // PlatformProvider only provides the family string, so we wrap it.
-    registerFont(path, { family });
+    registerFont(path, {
+      family,
+      style: descriptors?.style,
+      weight: descriptors?.weight,
+    });
   },
 
   waitForFonts(): Promise<void> {

@@ -82,6 +82,7 @@ describe('onnxWorkerBridge bootstrap policy', () => {
     globalThis.Worker = originalWorker;
     globalThis.fetch = originalFetch;
     (globalThis as { chrome?: unknown }).chrome = originalChrome;
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -98,6 +99,41 @@ describe('onnxWorkerBridge bootstrap policy', () => {
       'chrome-extension://test/onnxWorker.js',
     ]);
     expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it('normalizes root-relative Worker and ORT paths in a Web page', async () => {
+    (globalThis as { chrome?: unknown }).chrome = undefined;
+    vi.stubGlobal('location', new URL('https://app.example/workbench'));
+    const init = vi.fn(async () => undefined);
+    const workerProxy = proxy(init);
+    comlinkState.factory = () => workerProxy;
+    const bridge = await import('../../src/runtime/onnxWorkerBridge');
+
+    await bridge.createSession('detector', '/models/detector.onnx', ['wasm']);
+
+    expect(FakeWorker.instances.map((worker) => worker.url)).toEqual([
+      'https://app.example/onnxWorker.js',
+    ]);
+    expect(init).toHaveBeenCalledWith('https://app.example/ort/');
+  });
+
+  it('uses a Vite-provided Worker URL in the Web application', async () => {
+    (globalThis as { chrome?: unknown }).chrome = undefined;
+    vi.stubGlobal('location', new URL('https://app.example/workbench'));
+    const init = vi.fn(async () => undefined);
+    comlinkState.factory = () => proxy(init);
+    const bridge = await import('../../src/runtime/onnxWorkerBridge');
+
+    bridge.configureOnnxWorkerBootstrap({
+      scriptUrl: '/src/workers/onnx-worker.ts?worker_file&type=module',
+      ortPath: '/ort/',
+    });
+    await bridge.createSession('detector', '/models/detector.onnx', ['wasm']);
+
+    expect(FakeWorker.instances.map((worker) => worker.url)).toEqual([
+      'https://app.example/src/workers/onnx-worker.ts?worker_file&type=module',
+    ]);
+    expect(init).toHaveBeenCalledWith('https://app.example/ort/');
   });
 
   it('does not fall back to Blob when the direct extension Worker fails', async () => {

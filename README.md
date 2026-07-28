@@ -5,7 +5,7 @@
 <h1 align="center">ShinobuTranslator</h1>
 
 <p align="center">
-  在浏览器里直接翻译漫画图片的 Chrome / Edge 扩展。
+  在浏览器里直接翻译漫画图片的 Chrome / Edge 扩展与本地 Web 工作台。
 </p>
 
 <p align="center">
@@ -194,20 +194,43 @@ npm install
 npm run dev
 ```
 
+扩展与 Web 工作台分别使用独立 workspace：
+
+```bash
+npm run dev:extension
+npm run dev:web
+```
+
 ### 构建扩展
 
 ```bash
 npm run build
 ```
 
-构建完成后，将浏览器扩展管理页指向生成的 `dist` 目录即可加载开发版本。
+构建完成后，将浏览器扩展管理页指向生成的 `apps/extension/dist` 目录即可加载开发版本。
+
+### 构建 Web 工作台
+
+```bash
+npm run build:web
+```
+
+Web 构建输出位于 `apps/web/dist`。构建会执行发布边界检查：私有模型文件不得进入 Pages 产物，模型只能经内容哈希网关安装到浏览器 OPFS。
 
 ### 常用检查
 
 ```bash
 npm run test
-npx tsc --noEmit
+npm run check:web-regression
+npm run check:web-production
+npm run check
 ```
+
+`npm run check:web-regression` 单独验证扩展设置迁移、截图翻译、站点 Adapter、共享核心和本地流水线。`npm run check` 会运行全部类型检查、测试、该代表性回归门禁、生产依赖许可漂移检查，以及扩展和 Web 的生产构建。
+`npm run check:web-production` 验证生产工作流、Worker 安全默认值、模型兼容清单和发布门禁之间没有漂移；正式发布还会运行 fail-closed 的 `npm run web:production:preflight -- --release`。
+Web 使用问题见 [WEB_TROUBLESHOOTING.md](WEB_TROUBLESHOOTING.md)，发布范围与限制见
+[WEB_PUBLIC_BETA_RELEASE_NOTES.md](WEB_PUBLIC_BETA_RELEASE_NOTES.md)，生产批准、发布、停机与回滚见
+[Web 生产手册](docs/web-production-runbook.md)；公开反馈前请先导出并人工检查设置页的脱敏诊断 JSON。
 
 ### 模型资源
 
@@ -220,7 +243,16 @@ npm run models:download
 ## 项目结构
 
 ```text
-src/
+apps/
+  extension/        Chrome/Edge 扩展 package、HTML 入口、MV3 manifest 与构建配置
+  web/              本地批量工作台、历史、PWA 与项目包
+  model-gateway/    Cloudflare Workers 私有 R2 模型网关
+packages/
+  translator-core/  扩展与 Web 共用的任务核心
+  browser-runtime/  Worker 宿主与浏览器运行时 Adapter
+  shared-config/    Web 配置 Schema、默认值与迁移
+  model-manifest/   Web 与网关共用的内容哈希模型清单
+src/                增量迁移中的共享实现源码，由 extension workspace 与测试直接消费
   background/       扩展后台、右键菜单、快捷键、第三方图像翻译调用
   content/          页面注入逻辑、悬浮按钮、截图翻译、译图展示
   pipeline/         检测、OCR、翻译、去字、排版流水线
@@ -228,9 +260,8 @@ src/
   runtime/          ONNX Runtime、模型加载、推理后端选择
   shared/           配置、消息、浏览器 API 封装
 public/
-  manifest.json     Chrome MV3 扩展清单
   models/           浏览器端 ONNX 模型资源
-  icons/            扩展图标
+  icons/            扩展与 Web 图标
 docs/
   *.png             README 展示图与设置截图
 benchmark/
@@ -244,7 +275,8 @@ benchmark/
 - 用户填写的 API Key 保存在浏览器扩展存储中
 - 本地视觉流水线在浏览器端运行，不依赖个人服务器
 - 使用 Google Web、LLM 或 Nano Banana 时，请自行确认对应服务的隐私政策、费用和使用条款
-- 扩展权限以 `public/manifest.json` 为准
+- 扩展权限以 `apps/extension/public/manifest.json` 为准
+- Web 版隐私边界、Cloudflare 元数据和本地存储规则见 [PRIVACY_POLICY.md](PRIVACY_POLICY.md)
 
 ## 致谢
 
@@ -256,6 +288,8 @@ benchmark/
 - [ONNX Runtime Web](https://onnxruntime.ai/)
 
 第三方模型、脚本和许可证说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+npm 生产依赖精确版本与许可证快照见
+[THIRD_PARTY_DEPENDENCIES.json](THIRD_PARTY_DEPENDENCIES.json)。
 
 ## 许可证
 

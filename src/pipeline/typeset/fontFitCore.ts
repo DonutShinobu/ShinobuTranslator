@@ -1,5 +1,6 @@
-import type { TextRegion, TypesetDebugVerticalItem, TypesetLayoutDiagnostics } from "../../types";
-import type { PipelineRenderingContext, PipelineImageData } from "../../runtime/platform";
+import type { BubbleMask, TextRegion, TypesetDebugVerticalItem, TypesetLayoutDiagnostics } from "../../types";
+import type { PipelineRenderingContext } from "../../runtime/platform";
+import { hasBubbleMaskPixel } from "../bubbleMask";
 import { clamp } from "../utils";
 import {
   KINSOKU_NSTART,
@@ -12,6 +13,7 @@ import {
 } from "./columns";
 import { segmentVerticalGraphemes, tokenizeVerticalText } from "./verticalOrientation";
 import type { VerticalToken } from "./verticalOrientation";
+import { formatTypesetFont } from "./fontRuntime";
 import {
   quadAngle,
   cloneRegionForTypeset,
@@ -647,7 +649,7 @@ function countSourceInlineUnits(
 
   const previousFont = measureCtx.font;
   try {
-    measureCtx.font = `100px ${fontFamily}`;
+    measureCtx.font = formatTypesetFont(100, fontFamily);
     const cjkUnitWidth = measureCtx.measureText("国").width;
     if (!Number.isFinite(cjkUnitWidth) || cjkUnitWidth <= 0) return fallbackUnits;
 
@@ -1576,7 +1578,7 @@ export function resolveVerticalRenderPadding(
     return strokeWidth(fontSize) + 2;
   }
 
-  ctx.font = `${fontSize}px ${fontFamily}`;
+  ctx.font = formatTypesetFont(fontSize, fontFamily);
 
   let maxOverflow = 0;
   const halfColWidth = metrics.colWidth / 2;
@@ -1718,7 +1720,7 @@ export function buildVerticalLayout(
   fontFamily: string,
   options?: BuildVerticalLayoutOptions,
 ): VerticalLayoutResult {
-  ctx.font = `${fontSize}px ${fontFamily}`;
+  ctx.font = formatTypesetFont(fontSize, fontFamily);
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   const sw = strokeWidth(fontSize);
@@ -1860,7 +1862,7 @@ export function tryShrinkHorizontalForMinorOverflow(
   }
 
   for (let fontSize = initialFontSize - 1; fontSize >= minAllowedFontSize; fontSize -= 1) {
-    ctx.font = `${fontSize}px ${fontFamily}`;
+    ctx.font = formatTypesetFont(fontSize, fontFamily);
     const candidate = calcLines(ctx, text, contentWidth, fontSize);
     if (candidate.length < baseLines.length) {
       return { fontSize, lines: candidate };
@@ -1882,7 +1884,7 @@ export function estimateVerticalPreferredProfile(
   originalContentWidth?: number,
   sourceGeometryProfile?: VerticalSourceGeometryProfile,
 ): { advanceScale: number; perColumnAdvanceScale?: number[]; colSpacingScale: number } {
-  ctx.font = `${fontSize}px ${fontFamily}`;
+  ctx.font = formatTypesetFont(fontSize, fontFamily);
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   const sw = strokeWidth(fontSize);
@@ -1976,7 +1978,7 @@ export function estimateHorizontalPreferredProfile(
   originalContentHeight?: number,
   sourceGeometryProfile?: HorizontalSourceGeometryProfile,
 ): { letterSpacingScale: number; lineHeightScale: number } {
-  ctx.font = `${fontSize}px ${fontFamily}`;
+  ctx.font = formatTypesetFont(fontSize, fontFamily);
 
   // Measure total text width with default letterSpacing ratio
   const defaultLetterSpacing = fontSize * -0.05;
@@ -2089,7 +2091,7 @@ export function resolveHorizontalContentHeight(contentHeight: number, fontSize: 
  * If no bubble mask is available, returns `contentHeight` unchanged.
  */
 export function resolveHorizontalMaskHeight(
-  bubbleMask: PipelineImageData | undefined,
+  bubbleMask: BubbleMask | undefined,
   region: TextRegion,
   contentHeight: number,
   fontSize: number,
@@ -2148,25 +2150,25 @@ export function countNeededColumnsAtFontSize(
 }
 
 export function queryMaskMaxY(
-  mask: PipelineImageData,
+  mask: BubbleMask,
   xStart: number,
   xEnd: number,
   yStart: number,
 ): number {
-  const clampedXStart = Math.max(0, Math.round(xStart));
-  const clampedXEnd = Math.min(mask.width - 1, Math.round(xEnd));
-  const maxY = mask.height - 1;
+  const clampedXStart = Math.max(mask.x, Math.round(xStart));
+  const clampedXEnd = Math.min(mask.x + mask.width - 1, Math.round(xEnd));
+  const firstY = Math.round(yStart);
+  const maxY = mask.y + mask.height - 1;
 
-  if (clampedXStart > clampedXEnd || yStart > maxY) {
-    return Math.round(yStart);
+  if (clampedXStart > clampedXEnd || firstY < mask.y || firstY > maxY) {
+    return firstY;
   }
 
-  let lastValidY = Math.round(yStart);
-  for (let y = Math.round(yStart); y <= maxY; y++) {
+  let lastValidY = firstY;
+  for (let y = firstY; y <= maxY; y++) {
     let allOutside = true;
     for (let x = clampedXStart; x <= clampedXEnd; x++) {
-      const idx = (y * mask.width + x) * 4;
-      if (mask.data[idx + 3] > 0) {
+      if (hasBubbleMaskPixel(mask, x, y)) {
         allOutside = false;
         break;
       }

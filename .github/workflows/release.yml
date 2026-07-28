@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      EXTENSION_DIST: apps/extension/dist
 
     steps:
       - name: Checkout
@@ -48,19 +50,19 @@ jobs:
         run: |
           TAG_VERSION="${{ github.event.release.tag_name }}"
           TAG_VERSION="${TAG_VERSION#v}"
-          MANIFEST_VERSION=$(jq -r .version dist/manifest.json)
+          MANIFEST_VERSION=$(jq -r .version "$EXTENSION_DIST/manifest.json")
           if [ "$TAG_VERSION" != "$MANIFEST_VERSION" ]; then
             echo "ERROR: Release tag version ($TAG_VERSION) != manifest.json version ($MANIFEST_VERSION)"
             exit 1
           fi
           echo "Version check passed: $TAG_VERSION"
 
-      - name: Verify model files in dist
+      - name: Verify model files in extension dist
         run: |
-          if find dist/models -name '*.onnx' | grep -q .; then
-            echo "ONNX files present in dist/models/"
+          if find "$EXTENSION_DIST/models" -name '*.onnx' | grep -q .; then
+            echo "ONNX files present in $EXTENSION_DIST/models/"
           else
-            echo "ERROR: Missing bundled ONNX files in dist/models/"
+            echo "ERROR: Missing bundled ONNX files in $EXTENSION_DIST/models/"
             exit 1
           fi
           node --input-type=module <<'NODE'
@@ -68,26 +70,26 @@ jobs:
           import { existsSync } from 'node:fs';
           import { join } from 'node:path';
 
-          const assets = await collectModelAssets('dist/models/models.json');
+          const dist = process.env.EXTENSION_DIST;
+          const assets = await collectModelAssets(join(dist, 'models/models.json'));
           for (const file of assets) {
-            if (!existsSync(join('dist/models', file))) {
-              console.error(`ERROR: Missing ${file} in dist/models/`);
+            if (!existsSync(join(dist, 'models', file))) {
+              console.error(`ERROR: Missing ${file} in ${dist}/models/`);
               process.exit(1);
             }
           }
           console.log(`Verified model assets: ${assets.join(', ')}`);
           NODE
-          if [ -f "dist/models/ocr.onnx" ]; then
+          if [ -f "$EXTENSION_DIST/models/ocr.onnx" ]; then
             echo "ERROR: Legacy AR ocr.onnx must not be bundled in the Paddle-only release"
             exit 1
           fi
-          echo "All manifest model files present in dist/models/"
+          echo "All manifest model files present in $EXTENSION_DIST/models/"
 
       - name: Create extension zip
         run: |
-          cd dist
-          zip -r ../ShinobuTranslator.zip .
-          cd ..
+          cd "$EXTENSION_DIST"
+          zip -r "$GITHUB_WORKSPACE/ShinobuTranslator.zip" .
 
       - name: Upload zip to release
         run: |

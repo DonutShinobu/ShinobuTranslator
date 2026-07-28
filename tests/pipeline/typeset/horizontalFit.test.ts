@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type {
-  PipelineImageData,
-  PipelineRenderingContext,
-} from "../../../src/runtime/platform";
-import type { TextRegion } from "../../../src/types";
+import type { PipelineRenderingContext } from "../../../src/runtime/platform";
+import type { BubbleMask, TextRegion } from "../../../src/types";
 import {
   buildHorizontalLineBoxes,
   buildHorizontalGlyphPlacements,
@@ -16,6 +13,10 @@ import {
   resolveHorizontalSourceLineAnchor,
   resolveHorizontalSourceLineLayouts,
 } from "../../../src/pipeline/typeset/sourceGeometry";
+
+function parseCanvasFontSize(font: string, fallback: number): number {
+  return Number.parseFloat(font.match(/([\d.]+)px/u)?.[1] ?? "") || fallback;
+}
 
 function makeRegion(overrides: Partial<TextRegion> = {}): TextRegion {
   return {
@@ -32,7 +33,7 @@ function createMeasureContext(withBounds = true): PipelineRenderingContext {
   const context = {
     font: "20px Test Sans",
     measureText(text: string) {
-      const fontSize = Number.parseFloat(context.font) || 20;
+      const fontSize = parseCanvasFontSize(context.font, 20);
       const width = [...text].length * fontSize * 0.5;
       if (!withBounds) return { width };
       return {
@@ -53,14 +54,14 @@ function createMask(
   width: number,
   height: number,
   isInside: (x: number, y: number) => boolean,
-): PipelineImageData {
-  const data = new Uint8ClampedArray(width * height * 4);
+): BubbleMask {
+  const data = new Uint8Array(width * height);
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
-      if (isInside(x, y)) data[(y * width + x) * 4 + 3] = 255;
+      if (isInside(x, y)) data[y * width + x] = 1;
     }
   }
-  return { width, height, data };
+  return { x: 0, y: 0, width, height, data };
 }
 
 describe("resolveHorizontalSourceGeometryProfile", () => {

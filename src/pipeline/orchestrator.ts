@@ -33,12 +33,15 @@ import type { WorkerSessionHandle } from "../runtime/onnxWorkerTypes";
 import { emitDiagnosticLog } from "../shared/diagnosticLogClient";
 import { toDiagnosticError, type DiagnosticLogCategory } from "../shared/diagnosticLog";
 import { createCancelledError } from "../shared/localPipelineProtocol";
+import type { TextTranslationTransport } from "../translators/transport";
 
 type ProgressCallback = (progress: PipelineProgress) => void;
 
 export type PipelineRunOptions = {
   signal?: AbortSignal;
   stopAfter?: "order";
+  platform?: PlatformProvider;
+  translationTransport?: TextTranslationTransport;
 };
 
 type PaddleOcrRuntimeProbeMode = "legacy" | "prepare" | "warmup";
@@ -267,28 +270,13 @@ function toErrorDetail(error: unknown): string {
 }
 
 type RegionQuad = NonNullable<TextRegion["quad"]>;
-type RegionBubbleMask = NonNullable<TextRegion["bubbleMask"]>;
 
 function cloneRegionQuad(quad: RegionQuad): RegionQuad {
   return quad.map((point) => ({ ...point })) as RegionQuad;
 }
 
 function cloneTextRegions(regions: TextRegion[]): TextRegion[] {
-  const clonedMasks = new Map<RegionBubbleMask, RegionBubbleMask>();
   return regions.map((region) => {
-    let bubbleMask: RegionBubbleMask | undefined;
-    if (region.bubbleMask) {
-      bubbleMask = clonedMasks.get(region.bubbleMask);
-      if (!bubbleMask) {
-        bubbleMask = {
-          width: region.bubbleMask.width,
-          height: region.bubbleMask.height,
-          data: new Uint8ClampedArray(region.bubbleMask.data),
-        };
-        clonedMasks.set(region.bubbleMask, bubbleMask);
-      }
-    }
-
     return {
       ...region,
       box: { ...region.box },
@@ -302,7 +290,9 @@ function cloneTextRegions(regions: TextRegion[]): TextRegion[] {
         quad: geometry.quad ? cloneRegionQuad(geometry.quad) : undefined,
       })),
       bubbleBox: region.bubbleBox ? { ...region.bubbleBox } : undefined,
-      bubbleMask,
+      // Stage snapshots are diagnostics, not render inputs. Retaining masks here
+      // multiplies memory without adding useful inspection data.
+      bubbleMask: undefined,
     };
   });
 }
@@ -363,7 +353,7 @@ export async function runPipeline(
   onProgress: ProgressCallback,
   options: PipelineRunOptions = {},
 ): Promise<PipelineArtifacts> {
-  const platform: PlatformProvider = browserPlatform;
+  const platform = options.platform ?? browserPlatform;
   const stageTimings: StageTiming[] = [];
   const signal = options.signal;
   const stopAfterOrder = options.stopAfter === "order";
@@ -665,6 +655,9 @@ export async function runPipeline(
       );
     }
   }
+  // Matched masks remain reachable through their regions; unmatched masks can
+  // be reclaimed before the remaining stages allocate render canvases.
+  detectedBubbles = [];
 
   if ((config.ocrPostFilter ?? "balanced") === "off") {
     ocrPostFilterDebug = {
@@ -825,7 +818,10 @@ export async function runPipeline(
         reportParallel();
         try {
           const t0 = performance.now();
-          const translated = await runTranslate(orderedRegions, config);
+          const translated = await runTranslate(orderedRegions, config, {
+            signal,
+            transport: options.translationTransport,
+          });
           throwIfCancelled(signal);
           const translatedRegions = translated.regions;
           translateTiming = { stage: "translate", label: "\u7ffb\u8bd1\u4e3a\u4e2d\u6587", durationMs: performance.now() - t0 };

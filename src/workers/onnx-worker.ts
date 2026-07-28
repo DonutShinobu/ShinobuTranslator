@@ -18,7 +18,9 @@ import type {
 import type { RuntimeSelfCheckReport } from "../runtime/selfCheck";
 import { preprocessLetterboxGpu } from "./gpuPreprocess";
 import { SerialInferenceQueue } from "./inferenceQueue";
+import { installTrustedTypesPolicy } from "../runtime/trustedTypesPolicy";
 
+installTrustedTypesPolicy();
 // ---------------------------------------------------------------------------
 // ORT environment
 // ---------------------------------------------------------------------------

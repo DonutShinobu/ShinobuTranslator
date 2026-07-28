@@ -6,7 +6,7 @@ import { fileURLToPath } from "url";
 import { chromium } from "@playwright/test";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const DIST_DIR = join(ROOT, "dist");
+const DIST_DIR = join(ROOT, "apps", "extension", "dist");
 const REPORTS_DIR = join(ROOT, "benchmark/perf/reports");
 const DEFAULT_MODEL_URL = "/models/PP-OCRv6_medium_rec.onnx";
 

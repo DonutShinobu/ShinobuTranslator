@@ -35,7 +35,12 @@ function parseGoogleTranslateResponse(data: unknown): string {
   return translated;
 }
 
-export async function googleWebTranslate(text: string, from: string, to: string): Promise<string> {
+export async function googleWebTranslate(
+  text: string,
+  from: string,
+  to: string,
+  signal?: AbortSignal,
+): Promise<string> {
   const source = normalizeLangCode(from);
   const target = normalizeLangCode(to);
   const params = new URLSearchParams({
@@ -50,6 +55,7 @@ export async function googleWebTranslate(text: string, from: string, to: string)
   const response = await fetch(endpoint, {
     method: 'GET',
     cache: 'no-store',
+    signal,
   });
   if (!response.ok) {
     throw new Error(`Google 翻译请求失败: ${response.status}`);

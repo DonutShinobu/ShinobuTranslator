@@ -8,6 +8,7 @@ import { buildHorizontalGlyphPlacements } from "./horizontalFit";
 import type { HorizontalGlyphPlacement, HorizontalLineBox } from "./horizontalFit";
 import { resolveHorizontalLetterSpacing } from "./horizontalLayout";
 import type { ResolvedColors } from "./color";
+import { formatTypesetFont } from "./fontRuntime";
 
 function drawHorizontalGlyphLine(
   ctx: PipelineRenderingContext,
@@ -48,7 +49,7 @@ export function renderHorizontal(
   const off = platform!.createCanvas(canvasW, canvasH);
   const ctx = off.getContext("2d")!;
 
-  ctx.font = `${fontSize}px ${fontFamily}`;
+  ctx.font = formatTypesetFont(fontSize, fontFamily);
   ctx.textBaseline = "alphabetic";
   const renderGlyphs = glyphPlacements ?? buildHorizontalGlyphPlacements(
     ctx,

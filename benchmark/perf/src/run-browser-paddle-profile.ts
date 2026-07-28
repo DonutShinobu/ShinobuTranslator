@@ -9,7 +9,7 @@ import type { OcrEngine, ProcessMode } from "../../../src/shared/config";
 import type { OcrRunDebugInfo, PaddleOcrRunDebug } from "../../../src/types";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const DIST_DIR = join(ROOT, "dist");
+const DIST_DIR = join(ROOT, "apps", "extension", "dist");
 const TMP_DIR = join(ROOT, ".tmp");
 const REPORTS_DIR = join(ROOT, "benchmark/perf/reports");
 const DEFAULT_X_URL = "https://x.com/nanashiwan/status/2061024890195435823/photo/1";

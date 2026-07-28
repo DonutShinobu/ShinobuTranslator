@@ -29,8 +29,25 @@ import {
 let worker: Worker | null = null;
 let proxy: Comlink.Remote<OnnxWorkerApi> | null = null;
 let workerPromise: Promise<{ worker: Worker; proxy: Comlink.Remote<OnnxWorkerApi> }> | null = null;
+let webBootstrapConfig: {
+  scriptUrl: string;
+  ortPath: string;
+} | null = null;
 const sessionProviders = new Map<string, RuntimeProvider>();
 const sessionModels = new Map<string, string>();
+
+export function configureOnnxWorkerBootstrap(config: {
+  scriptUrl: string;
+  ortPath?: string;
+}): void {
+  if (worker || workerPromise) {
+    throw new Error("ONNX Worker 已启动，不能再修改启动地址");
+  }
+  webBootstrapConfig = {
+    scriptUrl: config.scriptUrl,
+    ortPath: config.ortPath ?? "/ort/",
+  };
+}
 
 export class WorkerBootstrapError extends Error {
   readonly code = "WORKER_BOOTSTRAP_FAILED";
@@ -171,8 +188,18 @@ async function bootstrapWorker(): Promise<{ worker: Worker; proxy: Comlink.Remot
   const chromeApi = (globalThis as typeof globalThis & {
     chrome?: { runtime?: { getURL?: (path: string) => string } };
   }).chrome;
-  const scriptUrl = chromeApi?.runtime?.getURL?.("onnxWorker.js") ?? resolveAssetUrl("onnxWorker.js");
-  const ortPath = chromeApi?.runtime?.getURL?.("ort/") ?? "/ort/";
+  const rawScriptUrl = chromeApi?.runtime?.getURL?.("onnxWorker.js")
+    ?? webBootstrapConfig?.scriptUrl
+    ?? resolveAssetUrl("onnxWorker.js");
+  const rawOrtPath = chromeApi?.runtime?.getURL?.("ort/")
+    ?? webBootstrapConfig?.ortPath
+    ?? "/ort/";
+  const scriptUrl = rawScriptUrl.startsWith("/")
+    ? new URL(rawScriptUrl, globalThis.location?.href).toString()
+    : rawScriptUrl;
+  const ortPath = rawOrtPath.startsWith("/")
+    ? new URL(rawOrtPath, globalThis.location?.href).toString()
+    : rawOrtPath;
 
   if (scriptUrl.startsWith("chrome-extension://")) {
     try {

@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "manifestVersion": "2026-07-28-runtime-v1",
+  "assets": {
+    "detector": {
+      "path": "detector.onnx",
+      "sha256": "1a86ace74961413cbd650002e7bb4dcec4980ffa21b2f19b86933372071d718f",
+      "status": "conditional",
+      "reason": "The exact asset is GPL-3.0. Public distribution requires the reviewed GPL source offer/access path, attribution, license text, and modification record."
+    },
+    "inpaint": {
+      "path": "aot_inpaint_512.onnx",
+      "sha256": "acdddccfdc32780c8947946814e9eea6a8b0d5b1880fb46f3be8389510f11689",
+      "status": "blocked",
+      "reason": "The GPL-3.0 checkpoint is known, but the exact ONNX exporter, command, dependency versions, and reproducible output record are missing."
+    },
+    "bubble": {
+      "path": "bubble.onnx",
+      "sha256": "3da3317f6dffe27cf5c9396dc95d5324fb647e22adeb7bf304edbe921789f0a0",
+      "status": "blocked",
+      "reason": "The model page says Apache-2.0 while the exact ONNX metadata says Ultralytics AGPL-3.0; distribution is blocked until the conflict is resolved or the model is replaced."
+    },
+    "paddleocr-v6-medium": {
+      "path": "PP-OCRv6_medium_rec.onnx",
+      "sha256": "9c09abf0957f7968c7586464b7397b84ad2387a0497a351af40e9acc71b673ba",
+      "status": "approved",
+      "reason": "Exact PaddlePaddle revision and SHA-256 are recorded; distribute with Apache-2.0 attribution, license, and applicable NOTICE."
+    },
+    "paddleocr-v6-dictionary": {
+      "path": "paddleocr_v6_dict.txt",
+      "sha256": "b5f2bfe2bdd9448429e3e82b51c789775d9b42f2403d082b00662eb77e401c5d",
+      "status": "approved",
+      "reason": "Derived from the same fixed PP-OCRv6 package; distribute with the model's Apache-2.0 attribution and extraction record."
+    }
+  }
+}

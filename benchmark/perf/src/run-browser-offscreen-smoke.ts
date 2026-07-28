@@ -22,7 +22,7 @@ declare const chrome: {
 };
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
-const DIST_DIR = join(ROOT, 'dist');
+const DIST_DIR = join(ROOT, 'apps', 'extension', 'dist');
 const TMP_DIR = join(ROOT, '.tmp');
 const USER_DATA_DIR = join(TMP_DIR, `browser-offscreen-smoke-${Date.now()}`);
 const DEFAULT_IMAGE = join(ROOT, 'benchmark/color/fixtures/typeset-debug-log-2026-05-23T06-03-39-877Z.png');

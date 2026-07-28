@@ -8,12 +8,16 @@ import type {
 } from '../../../src/runtime/platform';
 import type { TextRegion } from '../../../src/types';
 
+function parseCanvasFontSize(font: string, fallback: number): number {
+  return Number.parseFloat(font.match(/([\d.]+)px/u)?.[1] ?? '') || fallback;
+}
+
 function createMeasureContext(): PipelineRenderingContext {
   const context = {
     font: '16px sans-serif',
     drawImage: () => {},
     measureText(text: string) {
-      const fontSize = Number.parseFloat(context.font) || 16;
+      const fontSize = parseCanvasFontSize(context.font, 16);
       const width = [...text].length * fontSize * 0.6;
       return {
         width,
@@ -153,7 +157,7 @@ describe('drawTypeset', () => {
     const originalMeasureText = measureCtx.measureText.bind(measureCtx);
     measureCtx.measureText = (text: string) => {
       const measured = originalMeasureText(text);
-      const fontSize = Number.parseFloat(measureCtx.font) || 16;
+      const fontSize = parseCanvasFontSize(measureCtx.font, 16);
       return {
         ...measured,
         fontBoundingBoxAscent: fontSize * 1.1,

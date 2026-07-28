@@ -1,0 +1,94 @@
+name: Web 版问题
+description: 报告 Shinobu Translator Web 的可复现故障
+title: "[Web] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈。请勿上传 API Key、私人图片、文件名、OCR/译文、项目包、请求正文或未经检查的控制台日志。
+        设置页可导出脱敏诊断 JSON；请先自行打开确认内容，再按需粘贴。
+
+  - type: input
+    id: version
+    attributes:
+      label: Web 版本或发布日期
+      description: 可填写页面显示的版本、Release 标签或访问日期。
+      placeholder: 例如 web-v0.1.0 / 2026-07-28
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 平台
+      options:
+        - Windows Chrome / Edge
+        - macOS Chrome / Edge
+        - Linux Chrome / Edge
+        - Android Chrome（Beta）
+        - iOS / iPadOS 26+（实验）
+        - 其他或不受支持环境
+    validations:
+      required: true
+
+  - type: input
+    id: runtime
+    attributes:
+      label: 运行能力摘要
+      description: 填写设置页中的支持等级、WebGPU/WASM 和工作 MP，不要粘贴整段原始日志。
+      placeholder: 桌面正式支持 · WebGPU 可用 · 工作档位 8 MP
+    validations:
+      required: true
+
+  - type: dropdown
+    id: stage
+    attributes:
+      label: 故障阶段
+      options:
+        - 启动或能力测试
+        - 图片导入
+        - 模型下载或校验
+        - 检测 / OCR / 去字 / 修复
+        - 文本翻译或 CORS
+        - 排版或结果导出
+        - 历史 / 恢复 / 项目包
+        - PWA / 离线 / 更新
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 最小复现步骤
+      description: 使用公开或合成素材描述步骤；不要附上私人原图或项目包。
+      placeholder: |
+        1. 打开……
+        2. 选择……
+        3. 出现……
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 实际结果与预期结果
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostic
+    attributes:
+      label: 脱敏诊断（可选）
+      description: 只粘贴设置页导出的、已经人工复核的诊断 JSON；不接受 API Key 或原始错误响应。
+      render: json
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 隐私确认
+      options:
+        - label: 我已确认本 Issue 不含 API Key、私人图片、OCR/译文、项目包、请求正文或其他敏感内容。
+          required: true
+        - label: 我理解这是志愿维护的非盈利开源项目，不承诺 SLA 或固定响应时间。
+          required: true

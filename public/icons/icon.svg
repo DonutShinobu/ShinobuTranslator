@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Shinobu Translator">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#6b3d51" flood-opacity=".2"/>
+    </filter>
+  </defs>
+  <g filter="url(#shadow)">
+    <circle cx="256" cy="256" r="188" fill="#f2bd98"/>
+    <path fill="#ec8fb7" fill-rule="evenodd" d="M256 74c100.5 0 182 81.5 182 182 0 20-3.2 39.2-9.2 57.2-17-4-27.8-17.5-39.8-30.5-15.6-17-34.2-33.2-66.4-22.8-31.8 10.3-44.8 39.8-76.6 50.8-35.8 12.4-54.2-13.6-81.2-24.6-24.7-10.1-47.4-1.8-70.5 16.8A182 182 0 0 1 256 74Zm0 109a73 73 0 1 0 0 146 73 73 0 0 0 0-146Z"/>
+    <circle cx="256" cy="256" r="73" fill="#fff8fb"/>
+  </g>
+  <g fill="none" stroke-linecap="round" stroke-width="13">
+    <path stroke="#fff3a8" d="m154 166 22 14m109-60 5 26m75 28-24 12m-176 96-24 10m164 78 16 19"/>
+    <path stroke="#9edbd1" d="m213 116-12 23m143 101 25 5m-155 139-7-25"/>
+    <path stroke="#9e79c7" d="m122 231 26-4m181 89 20-17"/>
+  </g>
+</svg>

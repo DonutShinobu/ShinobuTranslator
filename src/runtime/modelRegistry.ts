@@ -3,8 +3,12 @@ import type { OnnxSessionOptions } from './onnxSessionOptions';
 import type { WorkerSessionHandle } from './onnxWorkerTypes';
 import { createSession, disposeAll, disposeSession } from './onnxBridge';
 import { serializeOnnxSessionOptions } from './onnxSessionOptions';
-import { resolveAssetUrl } from '../shared/assetUrl';
 import { recordPerfRuntimeEvent } from '../shared/perfTrace';
+import {
+  createOriginModelAssetSource,
+  type ModelAssetSource,
+} from './modelSource';
+import { isNodeRuntime } from './runtimeTarget';
 
 type ManifestModel = {
   name: string;
@@ -27,16 +31,22 @@ type ManifestData = {
 };
 
 // ---------------------------------------------------------------------------
-// Environment detection — Node vs Browser
-// ---------------------------------------------------------------------------
-
-const isNode = typeof process !== 'undefined' && !!process.versions?.node;
-
-// ---------------------------------------------------------------------------
 // Manifest loading — Node uses fs (dynamic import), Browser uses fetch
 // ---------------------------------------------------------------------------
 
 let manifestCache: ManifestData | null = null;
+let modelAssetSource = createOriginModelAssetSource();
+
+export function configureModelAssetSource(source: ModelAssetSource): void {
+  if (
+    manifestCache
+    || sessionCache.size > 0
+    || sessionPromiseCache.size > 0
+  ) {
+    throw new Error('模型来源必须在清单或 Session 加载前配置');
+  }
+  modelAssetSource = source;
+}
 
 async function loadManifestNode(): Promise<ManifestData> {
   const { loadManifestNode: load } = await import('./modelRegistryNode');
@@ -44,7 +54,7 @@ async function loadManifestNode(): Promise<ManifestData> {
 }
 
 async function loadManifestBrowser(): Promise<ManifestData> {
-  const manifestUrl = resolveAssetUrl('models/models.json');
+  const manifestUrl = modelAssetSource.manifestUrl();
   const response = await fetch(manifestUrl, { method: 'GET' });
   if (!response.ok) {
     throw new Error(`模型清单读取失败: ${response.status}`);
@@ -56,7 +66,7 @@ export async function loadManifest(): Promise<ManifestData> {
   if (manifestCache) {
     return manifestCache;
   }
-  const data = isNode ? await loadManifestNode() : await loadManifestBrowser();
+  const data = isNodeRuntime ? await loadManifestNode() : await loadManifestBrowser();
   manifestCache = data;
   return data;
 }
@@ -66,7 +76,7 @@ export async function loadManifest(): Promise<ManifestData> {
 // ---------------------------------------------------------------------------
 
 function normalizeRuntime(value: unknown): RuntimeProvider[] {
-  if (isNode) {
+  if (isNodeRuntime) {
     return ['cuda', 'cpu'];
   }
   if (!Array.isArray(value)) {
@@ -86,34 +96,13 @@ function normalizeRuntime(value: unknown): RuntimeProvider[] {
   return out;
 }
 
-function isAbsoluteUrl(url: string): boolean {
-  return /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(url);
-}
-
 function resolveModelAssetUrl(url: string): string {
-  if (isNode) {
+  if (isNodeRuntime) {
     // In Node, model URLs are resolved to local file paths later
     // by resolveModelFilePath in modelRegistryNode.ts
-    if (url.startsWith('/') && !isAbsoluteUrl(url)) {
-      return url;
-    }
-    if (isAbsoluteUrl(url)) {
-      return url;
-    }
     return url;
   }
-  // Browser: resolve as URL
-  if (isAbsoluteUrl(url)) {
-    return url;
-  }
-  if (url.startsWith('//')) {
-    return `${window.location.protocol}${url}`;
-  }
-  if (url.startsWith('/')) {
-    return resolveAssetUrl(url);
-  }
-  const manifestUrl = resolveAssetUrl('models/models.json');
-  return new URL(url, manifestUrl).toString();
+  return modelAssetSource.resolveAsset(url, modelAssetSource.manifestUrl());
 }
 
 async function resolveModelFilePath(modelUrl: string): Promise<string> {
@@ -134,11 +123,11 @@ export async function getModel(name: ModelName): Promise<ManifestModel> {
     throw new Error(`manifest 缺少模型定义: ${name}`);
   }
   const resolvedUrl = resolveModelAssetUrl(model.url);
-  const finalUrl = isNode ? await resolveModelFilePath(resolvedUrl) : resolvedUrl;
+  const finalUrl = isNodeRuntime ? await resolveModelFilePath(resolvedUrl) : resolvedUrl;
   return {
     ...model,
     url: finalUrl,
-    dictUrl: model.dictUrl ? (isNode ? await resolveModelFilePath(resolveModelAssetUrl(model.dictUrl)) : resolveModelAssetUrl(model.dictUrl)) : undefined,
+    dictUrl: model.dictUrl ? (isNodeRuntime ? await resolveModelFilePath(resolveModelAssetUrl(model.dictUrl)) : resolveModelAssetUrl(model.dictUrl)) : undefined,
     runtime: normalizeRuntime(model.runtime),
   };
 }
@@ -156,7 +145,9 @@ export async function getModelSession(
   sessionOptions?: OnnxSessionOptions
 ): Promise<WorkerSessionHandle> {
   const model = await getModel(name);
-  const runtime = preferred && preferred.length > 0 ? preferred : model.runtime ?? (isNode ? ['cuda'] : ['wasm']);
+  const runtime = preferred && preferred.length > 0
+    ? preferred
+    : model.runtime ?? (isNodeRuntime ? ['cuda'] : ['wasm']);
   const sessionOptionsKey = serializeOnnxSessionOptions(sessionOptions);
   const cacheKey = `${name}:${runtime.join(',')}:${sessionOptionsKey}`;
   const cached = sessionCache.get(cacheKey);

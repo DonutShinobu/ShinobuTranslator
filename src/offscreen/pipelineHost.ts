@@ -18,8 +18,9 @@ import {
   type LocalPipelineHostMessage,
 } from '../shared/localPipelineProtocol';
 import { setPerfTraceSink, type PerfTraceRuntimeEvent, type PerfTraceWorkerCall } from '../shared/perfTrace';
-import type { PipelineConfig, PipelineProgress } from '../types';
+import type { PipelineArtifacts, PipelineConfig, PipelineProgress } from '../types';
 import { runPipeline } from '../pipeline/orchestrator';
+import { disposePipelineArtifacts } from '../pipeline/resources';
 import { disposeAllModelSessions } from '../runtime/modelRegistry';
 
 type RuntimeAggregate = {
@@ -67,6 +68,14 @@ function isAbortError(error: unknown): boolean {
     || Boolean(error && typeof error === 'object' && 'code' in error && (error as { code?: unknown }).code === 'TASK_CANCELLED');
 }
 
+function pipelineArtifactsFromError(error: unknown): PipelineArtifacts | null {
+  if (!error || typeof error !== 'object' || !('artifacts' in error)) return null;
+  const artifacts = (error as { artifacts?: unknown }).artifacts;
+  return artifacts && typeof artifacts === 'object'
+    ? artifacts as PipelineArtifacts
+    : null;
+}
+
 function getMessageJobId(value: unknown): string | null {
   if (!value || typeof value !== 'object') return null;
   const jobId = (value as { jobId?: unknown }).jobId;
@@ -82,8 +91,10 @@ export class OffscreenPipelineHost {
   private idleReleasePromise: Promise<void> | null = null;
   private idleGeneration = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private disposed = false;
 
   connect(): void {
+    if (this.disposed) return;
     const chromeApi = getChromeApi();
     if (!chromeApi?.runtime?.connect) return;
     if (this.reconnectTimer) {
@@ -100,6 +111,26 @@ export class OffscreenPipelineHost {
     });
     safelyPost(port, { type: 'host-ready' });
     this.scheduleIdleClose();
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.clearIdleClose();
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    const cancellation = createCancelledError('offscreen 流水线宿主已关闭');
+    this.activeJob?.abortController.abort(cancellation);
+    for (const job of this.jobs.values()) {
+      if (job !== this.activeJob) job.abortController.abort(cancellation);
+    }
+    this.queue.length = 0;
+    this.jobs.clear();
+    const port = this.port;
+    this.port = null;
+    port?.disconnect();
   }
 
   private async handleMessage(value: unknown): Promise<void> {
@@ -251,6 +282,7 @@ export class OffscreenPipelineHost {
       },
     });
 
+    let completedArtifacts: PipelineArtifacts | null = null;
     try {
       const artifacts = await runPipeline(
         job.file,
@@ -260,11 +292,12 @@ export class OffscreenPipelineHost {
         },
         { signal: job.abortController.signal },
       );
+      completedArtifacts = artifacts;
 
       const finalizeStartedAt = performance.now();
-      const resultBlob = await canvasToPngBlob(artifacts.resultCanvas as HTMLCanvasElement);
+      const resultBlob = await canvasToPngBlob(artifacts.resultCanvas);
       const debugBlob = job.config.typesetDebug && artifacts.debugOriginalCanvas
-        ? await canvasToPngBlob(artifacts.debugOriginalCanvas as HTMLCanvasElement)
+        ? await canvasToPngBlob(artifacts.debugOriginalCanvas)
         : undefined;
       artifacts.stageTimings.push({
         stage: 'finalize',
@@ -324,7 +357,12 @@ export class OffscreenPipelineHost {
         },
         error: serializePipelineError(finalError, isAbortError(finalError) ? 'TASK_CANCELLED' : 'PIPELINE_STAGE_FAILED'),
       });
+      const failedArtifacts = pipelineArtifactsFromError(error);
+      if (failedArtifacts) disposePipelineArtifacts(failedArtifacts);
     } finally {
+      if (completedArtifacts) {
+        disposePipelineArtifacts(completedArtifacts);
+      }
       removePerfSink();
     }
   }
@@ -439,7 +477,9 @@ export class OffscreenPipelineHost {
     for (const [jobId, job] of this.jobs) {
       if (job !== this.activeJob) this.jobs.delete(jobId);
     }
-    this.reconnectTimer = setTimeout(() => this.connect(), 250);
+    if (!this.disposed) {
+      this.reconnectTimer = setTimeout(() => this.connect(), 250);
+    }
   }
 
   private clearIdleClose(): void {
@@ -450,7 +490,7 @@ export class OffscreenPipelineHost {
 
   private scheduleIdleClose(): void {
     this.clearIdleClose();
-    if (this.activeJob || this.queue.length > 0 || this.jobs.size > 0) return;
+    if (this.disposed || this.activeJob || this.queue.length > 0 || this.jobs.size > 0) return;
     const generation = this.idleGeneration;
     this.idleTimer = setTimeout(() => {
       void this.releaseIdleResources(generation);

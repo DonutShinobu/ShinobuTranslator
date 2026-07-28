@@ -1,22 +1,22 @@
 import { describe, it, expect } from "vitest";
-import type { TextRegion } from "../../../src/types";
+import type { BubbleMask, TextRegion } from "../../../src/types";
 import { computeFullVerticalTypeset } from "../../../src/pipeline/typeset/verticalLayout";
 import { calcVertical, queryMaskMaxY } from "../../../src/pipeline/typeset/verticalFit";
 
-function createMask(width: number, height: number, fillFn: (x: number, y: number) => boolean): ImageData {
-  const data = new Uint8ClampedArray(width * height * 4);
+function parseCanvasFontSize(font: string, fallback: number): number {
+  return Number.parseFloat(font.match(/([\d.]+)px/u)?.[1] ?? "") || fallback;
+}
+
+function createMask(width: number, height: number, fillFn: (x: number, y: number) => boolean): BubbleMask {
+  const data = new Uint8Array(width * height);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      const idx = (y * width + x) * 4;
       if (fillFn(x, y)) {
-        data[idx] = 255;
-        data[idx + 1] = 255;
-        data[idx + 2] = 255;
-        data[idx + 3] = 255;
+        data[y * width + x] = 1;
       }
     }
   }
-  return { data, width, height, colorSpace: "srgb" } as ImageData;
+  return { x: 0, y: 0, data, width, height };
 }
 
 function createScaledMockCtx(): CanvasRenderingContext2D {
@@ -25,7 +25,7 @@ function createScaledMockCtx(): CanvasRenderingContext2D {
     textAlign: "start",
     textBaseline: "alphabetic",
     measureText: (text: string) => {
-      const fontSize = Number.parseFloat(ctx.font) || 20;
+      const fontSize = parseCanvasFontSize(ctx.font, 20);
       const glyphCount = Math.max(1, Array.from(text).length);
       const width = glyphCount === 1
         ? fontSize

@@ -1,10 +1,14 @@
 import { resolve } from 'node:path';
-import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import type { Plugin } from 'vite';
+import type { Plugin, UserConfig } from 'vite';
+import { browserRuntimeBoundaryPlugin } from '../../scripts/vite-browser-runtime-boundary';
 
 const REPO = 'DonutShinobu/ShinobuTranslator';
+const extensionRoot = import.meta.dirname;
+const repoRoot = resolve(extensionRoot, '../..');
+const extensionDist = resolve(extensionRoot, 'dist');
 
 function externalizeNodeOnlyModule(id: string): boolean {
   if (id.includes('onnxruntime-node')) return true;
@@ -15,17 +19,17 @@ function externalizeNodeOnlyModule(id: string): boolean {
   return false;
 }
 
-// Replaces model URLs in dist/models/models.json with GitHub Release URLs
+// Replaces model URLs in apps/extension/dist/models/models.json with GitHub Release URLs
 // when MODEL_RELEASE_TAG is set (e.g. MODEL_RELEASE_TAG=models-v0.4.0).
 function modelReleaseUrlPlugin(): Plugin {
   return {
     name: 'model-release-url',
     apply: 'build',
     closeBundle() {
-      rmSync(resolve(__dirname, 'dist/models/ocr.onnx'), { force: true });
+      rmSync(resolve(extensionDist, 'models/ocr.onnx'), { force: true });
       const tag = process.env.MODEL_RELEASE_TAG;
       if (!tag) return;
-      const manifestPath = resolve(__dirname, 'dist/models/models.json');
+      const manifestPath = resolve(extensionDist, 'models/models.json');
       const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
       const baseUrl = `https://github.com/${REPO}/releases/download/${tag}`;
       // Manifest paths like "/models/detector.onnx" become "detector.onnx" in Release assets
@@ -41,6 +45,22 @@ function modelReleaseUrlPlugin(): Plugin {
         }
       }
       writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+    },
+  };
+}
+
+function extensionReleaseAssetsPlugin(): Plugin {
+  return {
+    name: 'extension-release-assets',
+    apply: 'build',
+    closeBundle() {
+      copyFileSync(
+        resolve(extensionRoot, 'public/manifest.json'),
+        resolve(extensionDist, 'manifest.json'),
+      );
+      for (const webOnlyAsset of ['manifest.webmanifest', 'sw.js']) {
+        rmSync(resolve(extensionDist, webOnlyAsset), { force: true });
+      }
     },
   };
 }
@@ -154,15 +174,23 @@ function chromeExtensionContentScriptPlugin(): Plugin {
   };
 }
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ mode }): UserConfig => {
   if (mode === 'benchmark') {
     return {
+      root: extensionRoot,
+      envDir: repoRoot,
       publicDir: false,
+      server: {
+        fs: {
+          allow: [repoRoot],
+        },
+      },
       build: {
+        outDir: 'dist',
         emptyOutDir: false,
         rollupOptions: {
           input: {
-            benchmark: resolve(__dirname, 'benchmark.html'),
+            benchmark: resolve(extensionRoot, 'benchmark.html'),
           },
           output: {
             entryFileNames: 'benchmark.js',
@@ -176,19 +204,47 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
-    plugins: [react(), chromeExtensionContentScriptPlugin(), modelReleaseUrlPlugin()],
+    root: extensionRoot,
+    envDir: repoRoot,
+    publicDir: resolve(repoRoot, 'public'),
+    server: {
+      fs: {
+        allow: [repoRoot],
+      },
+    },
+    plugins: [
+      browserRuntimeBoundaryPlugin({ apply: 'serve' }),
+      react(),
+      chromeExtensionContentScriptPlugin(),
+      extensionReleaseAssetsPlugin(),
+      modelReleaseUrlPlugin(),
+    ],
+    worker: {
+      format: 'es',
+      plugins: () => [
+        browserRuntimeBoundaryPlugin({ apply: 'serve' }),
+      ],
+    },
     build: {
+      outDir: 'dist',
       rollupOptions: {
         input: {
-          popup: resolve(__dirname, 'popup.html'),
-          background: resolve(__dirname, 'src/background/index.ts'),
-          content: resolve(__dirname, 'src/content/index.ts'),
-          offscreen: resolve(__dirname, 'offscreen.html'),
+          popup: resolve(extensionRoot, 'popup.html'),
+          background: resolve(repoRoot, 'src/background/index.ts'),
+          content: resolve(repoRoot, 'src/content/index.ts'),
+          offscreen: resolve(extensionRoot, 'offscreen.html'),
         },
         output: {
           entryFileNames: (chunkInfo) => `${chunkInfo.name}.js`,
           chunkFileNames: 'chunks/[name].js',
           assetFileNames: 'assets/[name][extname]',
+          manualChunks(id) {
+            const normalized = id.replace(/\\/g, '/');
+            if (normalized.endsWith('/src/shared/perfTrace.ts')) {
+              return 'perfTrace';
+            }
+            return undefined;
+          },
         },
         // Node-only modules must be externalized for the browser build.
         // These modules are loaded via dynamic import() guarded by isNode,

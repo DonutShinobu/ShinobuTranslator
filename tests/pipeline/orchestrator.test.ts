@@ -287,9 +287,11 @@ describe('runPipeline', () => {
       box: { ...ocrRegion.box },
     };
     const bubbleMask = {
+      x: 0,
+      y: 0,
       width: 1,
       height: 1,
-      data: new Uint8ClampedArray([255, 255, 255, 255]),
+      data: new Uint8Array([1]),
     };
     pipelineMocks.runOcr.mockResolvedValueOnce({
       regions: [stageRegion],
@@ -368,8 +370,7 @@ describe('runPipeline', () => {
     });
     expect(artifacts.stageRegions.ordered[0].fontSize).toBe(42);
     expect(artifacts.stageRegions.merged[0]).not.toBe(artifacts.stageRegions.ordered[0]);
-    expect(artifacts.stageRegions.ordered[0].bubbleMask).not.toBe(bubbleMask);
-    expect(artifacts.stageRegions.ordered[0].bubbleMask?.data).not.toBe(bubbleMask.data);
+    expect(artifacts.stageRegions.ordered[0].bubbleMask).toBeUndefined();
     artifacts.stageRegions.merged[0].box.x = 999;
     expect(artifacts.stageRegions.ordered[0].box.x).not.toBe(999);
   });

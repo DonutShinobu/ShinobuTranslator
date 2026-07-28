@@ -11,7 +11,7 @@ import type { ExtensionSettings, ProcessMode } from "../../../src/shared/config"
 import type { ProgressJankReport } from "../../../src/content/core/types";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const DIST_DIR = join(ROOT, "dist");
+const DIST_DIR = join(ROOT, "apps", "extension", "dist");
 const TMP_DIR = join(ROOT, ".tmp");
 const REPORTS_DIR = join(ROOT, "benchmark/perf/reports");
 const USER_DATA_DIR = join(TMP_DIR, `browser-ui-jank-smoke-${Date.now()}`);

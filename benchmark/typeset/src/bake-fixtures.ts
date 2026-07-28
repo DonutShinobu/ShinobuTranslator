@@ -12,7 +12,7 @@ import { bakeResultRegionToFixtureRegion } from "./fixture-build";
 import { parseTypesetSuiteArgs } from "./suite-paths";
 
 const ROOT = resolve(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "../../..");
-const DIST_DIR = join(ROOT, "dist");
+const DIST_DIR = join(ROOT, "apps", "extension", "dist");
 
 type BakeFixturesOptions = {
   imagesDir: string;

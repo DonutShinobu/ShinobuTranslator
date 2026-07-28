@@ -21,6 +21,7 @@ import {
 } from "./horizontalLayout";
 import type { RegionTypesetDebug } from "./fontMetrics";
 import type { CompositeTransform } from "./geometry";
+import { formatTypesetFont } from "./fontRuntime";
 
 // ---------------------------------------------------------------------------
 // Constants (horizontal-only)
@@ -205,7 +206,7 @@ export async function drawTypeset(
       singleColumnMaxLength = horizontal.singleLineMaxLength;
 
       const colors = resolveColors(region.fgColor, region.bgColor);
-      measureCtx.font = `${horizontal.fittedFontSize}px ${fontFamily}`;
+      measureCtx.font = formatTypesetFont(horizontal.fittedFontSize, fontFamily);
       const horizontalGlyphPlacements = buildHorizontalGlyphPlacements(
         measureCtx,
         horizontal.lineBoxes,

@@ -3,17 +3,32 @@
   "version": "0.8.1",
   "private": true,
   "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "vite",
-    "typecheck:app": "tsc --noEmit -p tsconfig.json",
+    "dev": "npm run dev:extension",
+    "dev:extension": "npm run dev --workspace=@shinobu/extension",
+    "dev:web": "npm run dev --workspace=@shinobu/web",
+    "typecheck:app": "npm run typecheck:extension",
+    "typecheck:extension": "npm run typecheck --workspace=@shinobu/extension",
     "typecheck:tests": "tsc --noEmit -p tsconfig.tests.json",
     "typecheck:benchmark": "tsc --noEmit -p tsconfig.benchmark.json",
-    "typecheck": "npm run typecheck:app && npm run typecheck:tests && npm run typecheck:benchmark",
-    "build": "npm run typecheck:app && vite build && node scripts/build-worker.mjs && npm run check:artifacts",
-    "build:benchmark": "npm run typecheck:benchmark && npm run build && vite build --mode benchmark && node scripts/check-release-boundaries.mjs --benchmark",
-    "check:artifacts": "node scripts/check-release-boundaries.mjs",
-    "check": "npm run typecheck && npm run test && npm run build",
-    "preview": "vite preview",
+    "typecheck:workspaces": "npm run typecheck --workspace=@shinobu/extension && npm run typecheck --workspace=@shinobu/shared-config && npm run typecheck --workspace=@shinobu/model-manifest && npm run typecheck --workspace=@shinobu/translator-core && npm run typecheck --workspace=@shinobu/browser-runtime && npm run typecheck --workspace=@shinobu/model-gateway && npm run typecheck --workspace=@shinobu/web",
+    "typecheck": "npm run typecheck:workspaces && npm run typecheck:tests && npm run typecheck:benchmark",
+    "build": "npm run build:extension",
+    "build:extension": "npm run build --workspace=@shinobu/extension",
+    "build:web": "npm run build --workspace=@shinobu/web",
+    "build:all": "npm run build:extension && npm run build:web",
+    "build:benchmark": "npm run typecheck:benchmark && npm run build:benchmark --workspace=@shinobu/extension",
+    "check:artifacts": "node scripts/check-release-boundaries.mjs --dist apps/extension/dist",
+    "check:licenses": "node scripts/check-production-licenses.mjs",
+    "check:web-production": "node scripts/web-production-preflight.mjs --repository",
+    "check:web-regression": "vitest run tests/shared/config.test.ts tests/shared/webConfig.test.ts tests/content/core/screenshotController.test.ts tests/content/core/imageTranslationController.test.ts tests/content/adapters/ehentai.test.ts tests/content/adapters/twitter.test.ts tests/shared/translatorCore.test.ts tests/shared/browserRuntime.test.ts tests/offscreen/pipelineHost.test.ts tests/pipeline/orchestrator.test.ts tests/web/webPipelineConfig.test.ts",
+    "check": "npm run typecheck && npm run test && npm run check:web-regression && npm run check:licenses && npm run check:web-production && npm run build && npm run build:web",
+    "web:production:preflight": "node scripts/web-production-preflight.mjs",
+    "preview": "npm run preview --workspace=@shinobu/extension",
     "test": "vitest run",
     "bench:bake": "tsx benchmark/typeset/src/bake-fixtures.ts",
     "bench:bake-node": "tsx benchmark/typeset/src/bake-node.ts",
@@ -44,12 +59,14 @@
     "models:check-paddle-ocr": "node scripts/check-paddle-ocr-model.mjs",
     "models:download": "node scripts/download-models.mjs",
     "models:upload": "node scripts/upload-models.mjs",
+    "models:upload-r2": "node scripts/upload-r2-models.mjs",
     "llm-thinking:check-drift": "tsx scripts/check-llm-thinking-capability-drift.ts",
     "color:diagnostic": "tsx benchmark/color/src/color-diagnostic.ts",
     "color:comparison": "tsx benchmark/color/src/color-comparison.ts",
     "bench:perf": "tsx benchmark/perf/src/run-perf.ts"
   },
   "dependencies": {
+    "@shinobu/translator-core": "0.1.0",
     "comlink": "^4.4.2",
     "onnxruntime-web": "^1.24.1",
     "react": "^18.3.1",
@@ -71,5 +88,13 @@
   },
   "optionalDependencies": {
     "onnxruntime-node": "^1.26.0"
+  },
+  "overrides": {
+    "onnxruntime-node": {
+      "adm-zip": "^0.6.0"
+    },
+    "tsx": {
+      "esbuild": "^0.28.1"
+    }
   }
 }

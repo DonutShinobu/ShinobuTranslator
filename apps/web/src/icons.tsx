@@ -1,5 +1,6 @@
 import {
   ArchiveIcon,
+  ArrowLeftIcon,
   ArrowsOutSimpleIcon,
   CameraIcon,
   CaretDownIcon,
@@ -33,6 +34,7 @@ export type IconName =
   | 'archive'
   | 'arrow-down'
   | 'arrow-up'
+  | 'back'
   | 'camera'
   | 'check'
   | 'chevron-down'
@@ -66,6 +68,7 @@ const icons: Record<IconName, ComponentType<PhosphorIconProps>> = {
   archive: ArchiveIcon,
   'arrow-down': CaretDownIcon,
   'arrow-up': CaretUpIcon,
+  back: ArrowLeftIcon,
   camera: CameraIcon,
   check: CheckIcon,
   'chevron-down': CaretDownIcon,

@@ -71,6 +71,32 @@ export type AppCopy = {
   notNow: string;
   addImages: string;
   cameraCapture: string;
+  continuousCamera: string;
+  cameraPageCount: (count: number) => string;
+  cameraExit: string;
+  cameraViewfinder: string;
+  cameraFramePage: string;
+  cameraHoldSteady: string;
+  cameraCaptureTranslate: string;
+  cameraStarting: string;
+  cameraPermissionPrompt: string;
+  cameraAccessFailed: string;
+  cameraSecureContext: string;
+  cameraPermissionDenied: string;
+  cameraUnavailable: string;
+  cameraBusy: string;
+  cameraInterrupted: string;
+  cameraRetry: string;
+  cameraNotReady: string;
+  cameraCaptureFailed: string;
+  cameraCapturedPage: string;
+  cameraTranslatedPage: string;
+  cameraPreparing: string;
+  cameraTranslating: string;
+  cameraResultReady: string;
+  cameraNextPage: string;
+  cameraNextHint: string;
+  cameraTranslationFailed: string;
   importing: string;
   queue: string;
   queueCount: (count: number) => string;
@@ -253,7 +279,33 @@ const copies: Record<UiLocale, AppCopy> = {
     installNow: '立即安装',
     notNow: '暂不提示',
     addImages: '添加图片',
-    cameraCapture: '拍照',
+    cameraCapture: '连续拍摄',
+    continuousCamera: '连续拍摄',
+    cameraPageCount: (count) => count > 0 ? `已完成 ${count} 页` : '准备拍摄第一页',
+    cameraExit: '退出连续拍摄',
+    cameraViewfinder: '相机取景画面',
+    cameraFramePage: '将整页漫画放入取景框',
+    cameraHoldSteady: '保持平稳，尽量避免反光和阴影',
+    cameraCaptureTranslate: '拍摄并翻译',
+    cameraStarting: '正在启动相机',
+    cameraPermissionPrompt: '首次使用时，请允许浏览器访问相机。',
+    cameraAccessFailed: '无法打开相机',
+    cameraSecureContext: '连续拍摄需要通过 HTTPS 或本机安全环境打开网页。',
+    cameraPermissionDenied: '相机权限被拒绝，请在浏览器的网站设置中允许相机访问。',
+    cameraUnavailable: '没有找到可用相机，或当前浏览器不支持网页内拍摄。',
+    cameraBusy: '相机正被其他应用占用，请关闭其他相机应用后重试。',
+    cameraInterrupted: '相机连接已中断，请重新启动取景。',
+    cameraRetry: '重试相机',
+    cameraNotReady: '相机画面尚未就绪，请稍等片刻。',
+    cameraCaptureFailed: '拍摄失败，请重试。',
+    cameraCapturedPage: '刚刚拍摄的漫画页面',
+    cameraTranslatedPage: '翻译后的漫画页面',
+    cameraPreparing: '正在准备图片',
+    cameraTranslating: '正在翻译这一页',
+    cameraResultReady: '这一页已翻译完成',
+    cameraNextPage: '开始拍摄下一张',
+    cameraNextHint: '点 × 回到取景，继续拍下一页',
+    cameraTranslationFailed: '这一页翻译失败',
     importing: '正在验证图片',
     queue: '图片队列',
     queueCount: (count) => `${count} / 100 张`,
@@ -439,7 +491,33 @@ const copies: Record<UiLocale, AppCopy> = {
     installNow: '立即安裝',
     notNow: '暫不提示',
     addImages: '加入圖片',
-    cameraCapture: '拍照',
+    cameraCapture: '連續拍攝',
+    continuousCamera: '連續拍攝',
+    cameraPageCount: (count) => count > 0 ? `已完成 ${count} 頁` : '準備拍攝第一頁',
+    cameraExit: '退出連續拍攝',
+    cameraViewfinder: '相機取景畫面',
+    cameraFramePage: '將整頁漫畫放入取景框',
+    cameraHoldSteady: '保持平穩，盡量避免反光和陰影',
+    cameraCaptureTranslate: '拍攝並翻譯',
+    cameraStarting: '正在啟動相機',
+    cameraPermissionPrompt: '首次使用時，請允許瀏覽器存取相機。',
+    cameraAccessFailed: '無法開啟相機',
+    cameraSecureContext: '連續拍攝需要透過 HTTPS 或本機安全環境開啟網頁。',
+    cameraPermissionDenied: '相機權限被拒絕，請在瀏覽器的網站設定中允許相機存取。',
+    cameraUnavailable: '找不到可用相機，或目前瀏覽器不支援網頁內拍攝。',
+    cameraBusy: '相機正被其他應用程式占用，請關閉其他相機應用程式後重試。',
+    cameraInterrupted: '相機連線已中斷，請重新啟動取景。',
+    cameraRetry: '重試相機',
+    cameraNotReady: '相機畫面尚未就緒，請稍等片刻。',
+    cameraCaptureFailed: '拍攝失敗，請重試。',
+    cameraCapturedPage: '剛剛拍攝的漫畫頁面',
+    cameraTranslatedPage: '翻譯後的漫畫頁面',
+    cameraPreparing: '正在準備圖片',
+    cameraTranslating: '正在翻譯這一頁',
+    cameraResultReady: '這一頁已翻譯完成',
+    cameraNextPage: '開始拍攝下一張',
+    cameraNextHint: '點 × 回到取景，繼續拍下一頁',
+    cameraTranslationFailed: '這一頁翻譯失敗',
     importing: '正在驗證圖片',
     queue: '圖片佇列',
     queueCount: (count) => `${count} / 100 張`,

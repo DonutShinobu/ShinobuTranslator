@@ -370,6 +370,7 @@ input:focus-visible {
 }
 
 .button.camera-action,
+.button.camera-empty-action,
 .mobile-task-bar {
   display: none;
 }
@@ -2508,10 +2509,15 @@ input:focus-visible {
     display: grid;
   }
 
-  .button.camera-action {
+  .button.camera-action,
+  .button.camera-empty-action {
     display: inline-flex;
     min-width: 44px;
     min-height: 44px;
+  }
+
+  .button.camera-empty-action {
+    margin-top: 16px;
   }
 
   .pane-header {
@@ -2829,7 +2835,340 @@ input:focus-visible {
   }
 }
 
+.continuous-camera {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  isolation: isolate;
+  display: grid;
+  width: 100dvw;
+  height: 100dvh;
+  overflow: hidden;
+  background: #08090a;
+  color: #fff;
+  touch-action: manipulation;
+}
+
+.continuous-camera::after {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgb(0 0 0 / 0.46), transparent 16%),
+    linear-gradient(0deg, rgb(0 0 0 / 0.54), transparent 22%);
+  content: "";
+  pointer-events: none;
+}
+
+.continuous-camera-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #08090a;
+}
+
+.continuous-camera-back {
+  position: absolute;
+  z-index: 10;
+  top: calc(10px + env(safe-area-inset-top));
+  left: max(14px, env(safe-area-inset-left));
+}
+
+.continuous-camera-icon-button {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 0.24);
+  border-radius: 50%;
+  background: rgb(12 13 15 / 0.72);
+  color: #fff;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.24);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  cursor: pointer;
+  transition:
+    background 150ms var(--motion-standard),
+    transform 150ms var(--motion-standard);
+}
+
+.continuous-camera-icon-button:active {
+  transform: scale(0.96);
+}
+
+.continuous-camera-icon-button svg {
+  width: 22px;
+  height: 22px;
+}
+
+.continuous-camera-controls {
+  position: absolute;
+  z-index: 5;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding:
+    20px
+    max(18px, env(safe-area-inset-right))
+    calc(24px + env(safe-area-inset-bottom))
+    max(18px, env(safe-area-inset-left));
+  pointer-events: none;
+}
+
+.continuous-camera-shutter {
+  display: grid;
+  width: 74px;
+  height: 74px;
+  place-items: center;
+  padding: 0;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: rgb(0 0 0 / 0.18);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.28);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform 120ms var(--motion-standard);
+}
+
+.continuous-camera-shutter > span {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: #fff;
+  transition:
+    background 120ms var(--motion-standard),
+    transform 120ms var(--motion-standard);
+}
+
+.continuous-camera-shutter:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.continuous-camera-shutter:active:not(:disabled) > span {
+  transform: scale(0.9);
+}
+
+.continuous-camera-shutter:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.continuous-camera-capture-error {
+  max-width: min(86vw, 420px);
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgb(12 13 15 / 0.82);
+  color: #ffd5d5;
+  font-size: 12px;
+  text-align: center;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.continuous-camera-message {
+  position: absolute;
+  z-index: 8;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  width: min(88vw, 420px);
+  justify-items: center;
+  gap: 12px;
+  padding: 24px;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  border-radius: 16px;
+  background: rgb(18 19 22 / 0.92);
+  color: #fff;
+  box-shadow: 0 20px 60px rgb(0 0 0 / 0.4);
+  text-align: center;
+  transform: translate(-50%, -50%);
+}
+
+.continuous-camera-message > svg {
+  width: 30px;
+  height: 30px;
+  color: rgb(255 255 255 / 0.76);
+}
+
+.continuous-camera-message > strong {
+  font-size: 16px;
+}
+
+.continuous-camera-message > span {
+  color: rgb(255 255 255 / 0.7);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.continuous-camera-round {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  place-items: center;
+  overflow: hidden;
+  background: #08090a;
+}
+
+.continuous-camera-round > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #08090a;
+}
+
+.continuous-camera-loading {
+  position: absolute;
+  z-index: 7;
+  bottom: calc(29px + env(safe-area-inset-bottom));
+  left: 50%;
+  display: grid;
+  width: 64px;
+  height: 64px;
+  place-items: center;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  border-radius: 50%;
+  background: rgb(15 16 18 / 0.74);
+  color: #fff;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
+  transform: translateX(-50%);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.continuous-camera-loading > span {
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgb(255 255 255 / 0.34);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: continuous-camera-spin 800ms linear infinite;
+}
+
+.continuous-camera-processing {
+  position: absolute;
+  z-index: 7;
+  right: 16px;
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  left: 16px;
+  display: grid;
+  max-width: 520px;
+  justify-self: center;
+  gap: 7px;
+  padding: 16px 18px;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  border-radius: 14px;
+  background: rgb(15 16 18 / 0.9);
+  color: #fff;
+  box-shadow: 0 16px 44px rgb(0 0 0 / 0.38);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.continuous-camera-processing strong {
+  font-size: 14px;
+}
+
+.continuous-camera-processing > span:not(.continuous-camera-processing-bar) {
+  overflow: hidden;
+  color: rgb(255 255 255 / 0.68);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.continuous-camera-processing-bar {
+  position: absolute;
+  top: 0;
+  left: -42%;
+  width: 42%;
+  height: 3px;
+  background: var(--accent);
+  animation: continuous-camera-progress 1.25s ease-in-out infinite;
+}
+
+.continuous-camera-next {
+  position: absolute;
+  z-index: 9;
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  left: 50%;
+  display: inline-flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 0 22px;
+  border: 1px solid rgb(255 255 255 / 0.3);
+  border-radius: 999px;
+  background: #fff;
+  color: #101114;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.34);
+  font-size: 14px;
+  font-weight: 750;
+  transform: translateX(-50%);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  cursor: pointer;
+  transition: transform 120ms var(--motion-standard);
+}
+
+.continuous-camera-next:active {
+  transform: translateX(-50%) scale(0.96);
+}
+
+.continuous-camera-next svg {
+  width: 20px;
+  height: 20px;
+}
+
+@keyframes continuous-camera-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes continuous-camera-progress {
+  0% {
+    transform: translateX(0);
+  }
+
+  55% {
+    transform: translateX(238%);
+  }
+
+  100% {
+    transform: translateX(338%);
+  }
+}
+
+@media (orientation: landscape) and (max-height: 620px) {
+  .continuous-camera-controls {
+    padding-bottom: calc(14px + env(safe-area-inset-bottom));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .continuous-camera-loading > span {
+    animation: none;
+  }
+
+  .continuous-camera-processing-bar {
+    right: 0;
+    left: 0;
+    width: auto;
+    animation: none;
+  }
+
   *,
   *::before,
   *::after {

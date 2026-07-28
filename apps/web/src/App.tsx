@@ -29,6 +29,10 @@ import { Icon, type IconName } from './icons';
 import { describeImportRejection, getCopy } from './i18n';
 import { HistoryView } from './features/history/HistoryView';
 import { SettingsView } from './features/settings/SettingsView';
+import {
+  ContinuousCamera,
+  type ContinuousCameraRoundState,
+} from './features/camera/ContinuousCamera';
 import type {
   LocalHistoryAsset,
   LocalHistoryBatch,
@@ -167,8 +171,10 @@ export function App() {
   const [modelProbeAttempt, setModelProbeAttempt] = useState(0);
   const [capabilityProbeAttempt, setCapabilityProbeAttempt] = useState(0);
   const [providerDetailsOpen, setProviderDetailsOpen] = useState(false);
+  const [continuousCameraOpen, setContinuousCameraOpen] = useState(false);
+  const [continuousCameraRound, setContinuousCameraRound] =
+    useState<ContinuousCameraRoundState>({ status: 'ready' });
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
   const dragDepthRef = useRef(0);
   const queueRef = useRef(queue);
   const jobsRef = useRef(jobs);
@@ -180,6 +186,10 @@ export function App() {
   const historyDeleteTimerRef = useRef<number>();
   const translatorCoreRef = useRef<WebTranslatorCore | null>(null);
   const runtimeRefreshPendingRef = useRef(false);
+  const continuousCameraRoundIdRef = useRef(0);
+  const continuousCameraTaskRef =
+    useRef<TranslationTask<PipelineProgress, WebPipelineResult> | null>(null);
+  const continuousCameraUrlsRef = useRef<Set<string>>(new Set());
   const modelPackage = useModelPackage();
   const providerSecrets = useProviderSecrets(settings.providerProfiles);
   const localHistory = useLocalHistory();
@@ -306,10 +316,16 @@ export function App() {
   }, [localHistory.saveRecoveryPoint, refreshRuntimeCapability]);
 
   useEffect(() => () => {
+    continuousCameraRoundIdRef.current += 1;
     queueRef.current.forEach((image) => URL.revokeObjectURL(image.thumbnailUrl));
     Object.values(jobsRef.current).forEach((job) => {
       if (job.resultUrl) URL.revokeObjectURL(job.resultUrl);
     });
+    continuousCameraTaskRef.current?.cancel(
+      new DOMException('连续拍摄已关闭', 'AbortError'),
+    );
+    continuousCameraUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    continuousCameraUrlsRef.current.clear();
     translatorCoreRef.current?.dispose();
   }, []);
 
@@ -1235,6 +1251,226 @@ export function App() {
     && providerReady
     && pwa.online
   );
+  const continuousCameraAllowed = (
+    !batchRunning
+    && !importing
+    && !activeImportPromiseRef.current
+    && capability?.ok === true
+    && modelPackage.state.status === 'installed'
+    && modelRuntimeProbe.status === 'ready'
+    && providerReady
+    && pwa.online
+    && !storageHardBlocked
+    && !resumeHistoryBatchId
+  );
+  const continuousCameraBlocker = storageImportIssue
+    ?? (!pwa.online
+      ? copy.offlineHistoryOnly
+      : capability === null
+        ? copy.modelGateChecking
+        : capability.ok !== true
+          ? capability.reason
+          : modelPackage.state.status !== 'installed'
+            || modelRuntimeProbe.status !== 'ready'
+            ? copy.modelGatePending
+            : providerValidationError ?? copy.startUnavailable);
+
+  const releaseContinuousCameraUrls = (): void => {
+    continuousCameraUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    continuousCameraUrlsRef.current.clear();
+  };
+
+  const openContinuousCamera = (): void => {
+    if (!continuousCameraAllowed) return;
+    continuousCameraRoundIdRef.current += 1;
+    releaseContinuousCameraUrls();
+    setContinuousCameraRound({ status: 'ready' });
+    setContinuousCameraOpen(true);
+  };
+
+  const handleContinuousCameraEntry = (): void => {
+    if (continuousCameraAllowed) {
+      openContinuousCamera();
+      return;
+    }
+    if (storageImportIssue) {
+      setActiveView('settings');
+      void refreshStorage();
+      return;
+    }
+    if (providerValidationError) setProviderDetailsOpen(true);
+    setMobilePane('settings');
+  };
+
+  const continueContinuousCamera = (): void => {
+    continuousCameraRoundIdRef.current += 1;
+    releaseContinuousCameraUrls();
+    setContinuousCameraRound({ status: 'ready' });
+  };
+
+  const closeContinuousCamera = (): void => {
+    continuousCameraRoundIdRef.current += 1;
+    continuousCameraTaskRef.current?.cancel(
+      new DOMException('已退出连续拍摄', 'AbortError'),
+    );
+    releaseContinuousCameraUrls();
+    setContinuousCameraRound({ status: 'ready' });
+    setContinuousCameraOpen(false);
+  };
+
+  const translateContinuousCameraCapture = async (file: File): Promise<void> => {
+    if (
+      !continuousCameraOpen
+      || continuousCameraTaskRef.current
+      || !continuousCameraAllowed
+    ) {
+      return;
+    }
+
+    const roundId = continuousCameraRoundIdRef.current + 1;
+    continuousCameraRoundIdRef.current = roundId;
+    releaseContinuousCameraUrls();
+    const originalUrl = URL.createObjectURL(file);
+    continuousCameraUrlsRef.current.add(originalUrl);
+    setContinuousCameraRound({
+      status: 'preparing',
+      originalUrl,
+      detail: copy.importing,
+    });
+
+    let historyBatch: LocalHistoryBatch | undefined;
+    let task: TranslationTask<PipelineProgress, WebPipelineResult> | undefined;
+    let stopProgress: (() => void) | undefined;
+    try {
+      const imported = await importer.importFiles([file], []);
+      if (continuousCameraRoundIdRef.current !== roundId) {
+        imported.accepted.forEach((image) => URL.revokeObjectURL(image.thumbnailUrl));
+        return;
+      }
+      const image = imported.accepted[0];
+      if (!image) {
+        const rejection = imported.rejected[0];
+        throw new Error(rejection
+          ? describeImportRejection(settings.uiLocale, rejection.code)
+          : copy.cameraCaptureFailed);
+      }
+      continuousCameraUrlsRef.current.add(image.thumbnailUrl);
+
+      const storage = await refreshStorage();
+      if (continuousCameraRoundIdRef.current !== roundId) {
+        throw new DOMException('连续拍摄已关闭', 'AbortError');
+      }
+      const storageAssessment = assessImageImportStorage(storage, image.file.size);
+      if (!storageAssessment.allowed) {
+        throw new Error(storageAssessment.reason === 'unavailable'
+          ? copy.storageUnavailable
+          : copy.storageImportBlocked(
+              storageAssessment.requiredBytes
+                ? formatBytes(storageAssessment.requiredBytes)
+                : formatBytes(image.file.size),
+              formatBytes(storageAssessment.availableBytes ?? 0),
+            ));
+      }
+
+      historyBatch = await localHistory.createBatch({
+        settings,
+        versions: LOCAL_HISTORY_VERSIONS,
+        items: [{
+          id: image.id,
+          file: image.file,
+          thumbnail: await thumbnailBlob(image.thumbnailUrl),
+          width: image.width,
+          height: image.height,
+          workingCopy: image.workingCopy,
+        }],
+      });
+      if (continuousCameraRoundIdRef.current !== roundId) {
+        throw new DOMException('连续拍摄已关闭', 'AbortError');
+      }
+      await localHistory.updateItem(historyBatch.id, image.id, {
+        status: 'running',
+      }).catch(() => undefined);
+
+      setContinuousCameraRound({
+        status: 'translating',
+        originalUrl,
+        detail: copy.cameraTranslating,
+      });
+      const core = translatorCoreRef.current ?? createWebTranslatorCore();
+      translatorCoreRef.current = core;
+      task = core.run({
+        input: {
+          file: image.file,
+          workingCopy: {
+            width: image.workingCopy.width,
+            height: image.workingCopy.height,
+          },
+        },
+        config: toWebPipelineConfig(settings, activeProviderKey),
+      });
+      continuousCameraTaskRef.current = task;
+      activeTaskRef.current = task;
+      stopProgress = task.progress((progress) => {
+        if (continuousCameraRoundIdRef.current !== roundId) return;
+        setContinuousCameraRound({
+          status: 'translating',
+          originalUrl,
+          detail: progress.detail,
+        });
+      });
+
+      const result = await task.result;
+      const resultUrl = URL.createObjectURL(result.image);
+      if (continuousCameraRoundIdRef.current !== roundId) {
+        URL.revokeObjectURL(resultUrl);
+        return;
+      }
+      continuousCameraUrlsRef.current.add(resultUrl);
+      await localHistory.updateItem(historyBatch.id, image.id, {
+        status: 'done',
+        result: result.image,
+        summary: result.record,
+      }).catch(() => undefined);
+      await localHistory.finishBatch(historyBatch.id, 'completed').catch(() => undefined);
+      if (continuousCameraRoundIdRef.current !== roundId) return;
+
+      setContinuousCameraRound({
+        status: 'done',
+        originalUrl,
+        resultUrl,
+      });
+      pwaInstall.offerAfterSuccess();
+    } catch (error) {
+      const cancelled = task?.signal.aborted === true
+        || continuousCameraRoundIdRef.current !== roundId
+        || (error instanceof DOMException && error.name === 'AbortError');
+      const message = error instanceof Error ? error.message : String(error);
+      if (historyBatch) {
+        const imageId = historyBatch.items[0]?.id;
+        if (imageId) {
+          await localHistory.updateItem(historyBatch.id, imageId, {
+            status: cancelled ? 'cancelled' : 'failed',
+            error: message,
+          }).catch(() => undefined);
+        }
+        await localHistory.finishBatch(historyBatch.id, 'failed').catch(() => undefined);
+      }
+      if (continuousCameraRoundIdRef.current === roundId) {
+        setContinuousCameraRound({
+          status: 'error',
+          originalUrl,
+          error: message,
+        });
+      }
+    } finally {
+      stopProgress?.();
+      if (continuousCameraTaskRef.current === task) {
+        continuousCameraTaskRef.current = null;
+      }
+      if (activeTaskRef.current === task) activeTaskRef.current = null;
+      void refreshStorage();
+    }
+  };
 
   useEffect(() => {
     const handleWorkbenchShortcut = (event: KeyboardEvent): void => {
@@ -1652,28 +1888,19 @@ export function App() {
               disabled={storageHardBlocked}
               onChange={handleFileInput}
             />
-            <input
-              ref={cameraInputRef}
-              id="web-camera-import"
-              name="camera-import"
-              className="visually-hidden"
-              type="file"
-              tabIndex={-1}
-              accept="image/png,image/jpeg,image/webp,image/avif"
-              capture="environment"
-              disabled={storageHardBlocked}
-              onChange={handleFileInput}
-            />
             <div className="import-actions">
               <button
                 className="button button-secondary button-compact camera-action"
                 type="button"
+                title={continuousCameraAllowed
+                  ? copy.continuousCamera
+                  : continuousCameraBlocker}
                 disabled={
-                  importing
-                  || storageHardBlocked
-                  || Boolean(resumeHistoryBatchId && !batchRunning)
+                  batchRunning
+                  || importing
+                  || Boolean(resumeHistoryBatchId)
                 }
-                onClick={() => cameraInputRef.current?.click()}
+                onClick={handleContinuousCameraEntry}
               >
                 <Icon name="camera" />
                 {copy.cameraCapture}
@@ -1989,6 +2216,22 @@ export function App() {
               <div className="preview-empty-symbol"><Icon name="image" /></div>
               <h2>{copy.previewEmptyTitle}</h2>
                 <p>{copy.previewEmptyBody}</p>
+                <button
+                  className="button button-primary camera-empty-action"
+                  type="button"
+                  title={continuousCameraAllowed
+                    ? copy.continuousCamera
+                    : continuousCameraBlocker}
+                  disabled={
+                    batchRunning
+                    || importing
+                    || Boolean(resumeHistoryBatchId)
+                  }
+                  onClick={handleContinuousCameraEntry}
+                >
+                  <Icon name="camera" />
+                  {copy.cameraCapture}
+                </button>
               </div>
             )}
           </div>
@@ -2396,6 +2639,16 @@ export function App() {
           onExportDiagnostics={() => {
             void exportRedactedDiagnostics();
           }}
+        />
+      )}
+
+      {continuousCameraOpen && (
+        <ContinuousCamera
+          copy={copy}
+          round={continuousCameraRound}
+          onCapture={translateContinuousCameraCapture}
+          onNext={continueContinuousCamera}
+          onExit={closeContinuousCamera}
         />
       )}
 

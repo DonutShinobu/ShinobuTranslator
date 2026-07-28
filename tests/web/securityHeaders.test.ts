@@ -17,6 +17,7 @@ describe('Web production security headers', () => {
     expect(source).toContain('Cross-Origin-Opener-Policy: same-origin');
     expect(source).toContain('Cross-Origin-Embedder-Policy: require-corp');
     expect(source).toContain('Referrer-Policy: no-referrer');
-    expect(source).toContain('Permissions-Policy: camera=()');
+    expect(source).toContain('Permissions-Policy: camera=(self)');
+    expect(source).toContain('microphone=()');
   });
 });

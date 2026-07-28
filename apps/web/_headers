@@ -3,7 +3,7 @@
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Embedder-Policy: require-corp
   Cross-Origin-Resource-Policy: same-origin
-  Permissions-Policy: camera=(), geolocation=(), microphone=(), payment=(), usb=()
+  Permissions-Policy: camera=(self), geolocation=(), microphone=(), payment=(), usb=()
   Referrer-Policy: no-referrer
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY

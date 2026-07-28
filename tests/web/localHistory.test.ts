@@ -81,7 +81,7 @@ describe('local history module', () => {
     });
 
     expect(batch).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       id: 'batch-1',
       status: 'running',
       rerunnable: true,
@@ -100,6 +100,20 @@ describe('local history module', () => {
       'thumb-one'.length,
     );
     expect(JSON.stringify(batch)).not.toContain('apiKey');
+  });
+
+  it('reads legacy v1 metadata and upgrades it on the next write', async () => {
+    const { history, index } = setup();
+    const created = await history.createBatch({
+      settings: createDefaultWebSettings('zh-CN'),
+      versions,
+      items: inputItems().slice(0, 1),
+    });
+    await index.put({ ...created, schemaVersion: 1 });
+
+    expect((await history.list())[0].schemaVersion).toBe(2);
+    await history.saveRecoveryPoint(created.id, 0, 'paused');
+    expect((await index.get(created.id))?.schemaVersion).toBe(2);
   });
 
   it('records results and versioned recovery points without changing the original settings', async () => {
@@ -174,13 +188,25 @@ describe('local history module', () => {
     expect(await assets.get(resultPath)).toHaveProperty('size', 6);
   });
 
-  it('resumes the same batch, preserves completed results, and resets unfinished items', async () => {
+  it('resumes only queued or running tasks and preserves every terminal task', async () => {
     const { history } = setup();
     const batch = await history.createBatch({
       settings: createDefaultWebSettings('zh-CN'),
       versions,
       items: inputItems(),
     });
+    await history.appendItems(batch.id, [{
+      id: 'image-c',
+      file: file('three.png', 'original-three'),
+      width: 600,
+      height: 900,
+      workingCopy: {
+        required: false,
+        width: 600,
+        height: 900,
+        scale: 1,
+      },
+    }]);
     await history.updateItem(batch.id, 'image-a', {
       status: 'done',
       result: new Blob(['completed-result'], { type: 'image/png' }),
@@ -190,19 +216,26 @@ describe('local history module', () => {
       status: 'failed',
       error: 'temporary failure',
     });
+    await history.updateItem(batch.id, 'image-c', {
+      status: 'running',
+    });
     await history.finishBatch(batch.id, 'failed');
 
     const resumed = await history.resumeBatch(batch.id);
 
     expect(resumed.id).toBe(batch.id);
     expect(resumed.status).toBe('running');
-    expect(resumed.recoveryPoint.nextItemIndex).toBe(1);
+    expect(resumed.recoveryPoint.nextItemIndex).toBe(2);
     expect(resumed.items[0]).toMatchObject({
       status: 'done',
       summary: { detectedRegionCount: 2 },
       result: { size: 16 },
     });
     expect(resumed.items[1]).toMatchObject({
+      status: 'failed',
+      error: 'temporary failure',
+    });
+    expect(resumed.items[2]).toMatchObject({
       status: 'queued',
       result: undefined,
       summary: undefined,

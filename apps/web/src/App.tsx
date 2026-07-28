@@ -21,10 +21,8 @@ import {
   type UiLocale,
   type WebSettings,
 } from '@shinobu/shared-config';
-import type { TranslationTask } from '@shinobu/translator-core';
 import brandIconUrl from '../../../public/icons/icon128.png';
 import brandWordmarkUrl from '../../../public/brand/shinobu-wordmark.svg';
-import type { PipelineProgress } from '../../../src/types';
 import { Icon, type IconName } from './icons';
 import { describeImportRejection, getCopy } from './i18n';
 import { HistoryView } from './features/history/HistoryView';
@@ -58,6 +56,16 @@ import {
 import { useModelPackage } from './features/models/useModelPackage';
 import { useProviderSecrets } from './features/providers/useProviderSecrets';
 import {
+  createProcessingBatchWorkspace,
+  type ProcessingBatch,
+  type ProcessingTaskSnapshot,
+} from './features/processing/processingBatch';
+import {
+  bindProcessingBatchHost,
+  type QueueJobState,
+  type QueueJobStatus,
+} from './features/processing/processingBatchHost';
+import {
   IMAGE_IMPORT_STORAGE_HEADROOM_BYTES,
   assessImageImportStorage,
   formatByteSize as formatBytes,
@@ -78,29 +86,18 @@ import {
 import { detectWebDeviceProfile } from './runtime/deviceProfile';
 import {
   createWebTranslatorCore,
-  type WebPipelineResult,
   type WebTranslatorCore,
 } from './runtime/webPipeline';
-import { toWebPipelineConfig } from './runtime/webPipelineConfig';
 
 type MobilePane = 'queue' | 'preview' | 'settings';
 type PreviewMode = 'original' | 'result';
 type PreviewScale = 'fit' | number;
 type ActiveView = 'workbench' | 'history' | 'settings';
-type QueueJobStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
 type ModelRuntimeProbeState = {
   status: 'pending' | 'checking' | 'ready' | 'failed';
   progress?: ModelCapabilityProgress;
   provider?: 'webgpu' | 'wasm';
   error?: string;
-};
-
-type QueueJobState = {
-  status: QueueJobStatus;
-  progress?: PipelineProgress;
-  resultUrl?: string;
-  error?: string;
-  errorCode?: string;
 };
 
 const processModes: ReadonlyArray<ProcessMode> = ['translate', 'original', 'erase'];
@@ -128,15 +125,6 @@ function readModelConsent(): boolean {
     return localStorage.getItem(MODEL_CONSENT_STORAGE_KEY) === 'accepted';
   } catch {
     return false;
-  }
-}
-
-async function thumbnailBlob(url: string): Promise<Blob | undefined> {
-  try {
-    const response = await fetch(url);
-    return response.ok ? await response.blob() : undefined;
-  } catch {
-    return undefined;
   }
 }
 
@@ -179,16 +167,15 @@ export function App() {
   const queueRef = useRef(queue);
   const jobsRef = useRef(jobs);
   const batchRunningRef = useRef(batchRunning);
-  const batchControlRef = useRef<{ stop: boolean } | null>(null);
-  const activeTaskRef = useRef<TranslationTask<PipelineProgress, WebPipelineResult> | null>(null);
-  const activeHistoryBatchIdRef = useRef<string | null>(null);
+  const activeProcessingBatchRef = useRef<ProcessingBatch | null>(null);
+  const processingBatchUnsubscribeRef = useRef<(() => void) | null>(null);
+  const resumeHistoryBatchRef = useRef<LocalHistoryBatch | null>(null);
   const activeImportPromiseRef = useRef<Promise<void> | null>(null);
   const historyDeleteTimerRef = useRef<number>();
   const translatorCoreRef = useRef<WebTranslatorCore | null>(null);
   const runtimeRefreshPendingRef = useRef(false);
   const continuousCameraRoundIdRef = useRef(0);
-  const continuousCameraTaskRef =
-    useRef<TranslationTask<PipelineProgress, WebPipelineResult> | null>(null);
+  const continuousCameraCaptureActiveRef = useRef(false);
   const continuousCameraUrlsRef = useRef<Set<string>>(new Set());
   const modelPackage = useModelPackage();
   const providerSecrets = useProviderSecrets(settings.providerProfiles);
@@ -267,6 +254,41 @@ export function App() {
     setStorageChecking(false);
     return snapshot;
   }, []);
+  const processingWorkspace = useMemo(
+    () => createProcessingBatchWorkspace({
+      history: localHistory.history,
+      getCore: () => {
+        const core = translatorCoreRef.current ?? createWebTranslatorCore();
+        translatorCoreRef.current = core;
+        return core;
+      },
+      storage: {
+        async admit(pendingOriginalBytes) {
+          const assessment = assessImageImportStorage(
+            await inspectWebStorage(),
+            pendingOriginalBytes,
+          );
+          if (assessment.allowed) return;
+          if (assessment.reason === 'unavailable') {
+            throw new Error('浏览器无法确认本地存储空间');
+          }
+          throw new Error(
+            `本地存储空间不足：需要 ${formatBytes(assessment.requiredBytes)}，`
+            + `当前可用 ${formatBytes(assessment.availableBytes ?? 0)}`,
+          );
+        },
+      },
+      async readThumbnail(image) {
+        try {
+          const response = await fetch(image.thumbnailUrl);
+          return response.ok ? await response.blob() : undefined;
+        } catch {
+          return undefined;
+        }
+      },
+    }),
+    [localHistory.history],
+  );
 
   useEffect(() => {
     void refreshStorage();
@@ -287,25 +309,17 @@ export function App() {
     const handleVisibilityChange = (): void => {
       if (document.visibilityState === 'hidden') {
         runtimeRefreshPendingRef.current = true;
-        if (!batchControlRef.current) return;
-        batchControlRef.current.stop = true;
-        const batchId = activeHistoryBatchIdRef.current;
-        if (!batchId) return;
-        const nextItemIndex = queueRef.current.findIndex((image) => {
-          const status = jobsRef.current[image.id]?.status;
-          return status === 'queued' || status === 'running';
-        });
-        void localHistory.saveRecoveryPoint(
-          batchId,
-          nextItemIndex < 0 ? queueRef.current.length : nextItemIndex,
-          'paused',
-        ).catch(() => undefined);
+        const activeBatch = activeProcessingBatchRef.current;
+        if (activeBatch?.snapshot().status === 'running') {
+          void activeBatch.dispatch({ type: 'stop' }).catch(() => undefined);
+        }
         return;
       }
+      const activeSnapshot = activeProcessingBatchRef.current?.snapshot();
       if (
         document.visibilityState === 'visible'
         && runtimeRefreshPendingRef.current
-        && !activeTaskRef.current
+        && !activeSnapshot?.currentTaskId
         && !batchRunningRef.current
       ) {
         refreshRuntimeCapability();
@@ -313,7 +327,7 @@ export function App() {
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [localHistory.saveRecoveryPoint, refreshRuntimeCapability]);
+  }, [refreshRuntimeCapability]);
 
   useEffect(() => () => {
     continuousCameraRoundIdRef.current += 1;
@@ -321,9 +335,11 @@ export function App() {
     Object.values(jobsRef.current).forEach((job) => {
       if (job.resultUrl) URL.revokeObjectURL(job.resultUrl);
     });
-    continuousCameraTaskRef.current?.cancel(
-      new DOMException('连续拍摄已关闭', 'AbortError'),
-    );
+    const activeBatch = activeProcessingBatchRef.current;
+    if (activeBatch?.snapshot().status === 'running') {
+      void activeBatch.dispatch({ type: 'stop' }).catch(() => undefined);
+    }
+    processingBatchUnsubscribeRef.current?.();
     continuousCameraUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
     continuousCameraUrlsRef.current.clear();
     translatorCoreRef.current?.dispose();
@@ -433,6 +449,51 @@ export function App() {
     }
   }, [previewMode, selectedJob?.status]);
 
+  const attachProcessingBatch = (
+    batch: ProcessingBatch,
+    projectQueue: boolean,
+  ): void => {
+    processingBatchUnsubscribeRef.current?.();
+    activeProcessingBatchRef.current = batch;
+    setResumeHistoryBatchId(batch.snapshot().id);
+    const unsubscribe = bindProcessingBatchHost({
+      batch,
+      projectQueue,
+      historyStorageError: copy.historyStorageError,
+      getJobs: () => jobsRef.current,
+      replaceJobs(next) {
+        jobsRef.current = next;
+        setJobs(next);
+      },
+      setRunning(running) {
+        batchRunningRef.current = running;
+        setBatchRunning(running);
+      },
+      hasActiveImport: () => Boolean(activeImportPromiseRef.current),
+      setNotice: setBatchNotice,
+      onTerminal(snapshot) {
+        if (activeProcessingBatchRef.current === batch) {
+          activeProcessingBatchRef.current = null;
+          setResumeHistoryBatchId(undefined);
+        }
+        batchRunningRef.current = false;
+        setBatchRunning(false);
+        void localHistory.refresh();
+        void refreshStorage();
+        if (snapshot.tasks.some((task) => task.status === 'done')) {
+          pwaInstall.offerAfterSuccess();
+        }
+        if (
+          runtimeRefreshPendingRef.current
+          && document.visibilityState === 'visible'
+        ) {
+          refreshRuntimeCapability();
+        }
+      },
+    });
+    processingBatchUnsubscribeRef.current = unsubscribe;
+  };
+
   const importFiles = useCallback((files: readonly File[]): Promise<void> => {
     if (files.length === 0 || activeImportPromiseRef.current) return Promise.resolve();
     if (resumeHistoryBatchId && !batchRunningRef.current) {
@@ -443,12 +504,12 @@ export function App() {
     const operation = (async (): Promise<void> => {
       try {
         const result = await importer.importFiles(files, queueRef.current);
-        const activeBatchId = activeHistoryBatchIdRef.current;
+        const activeBatch = activeProcessingBatchRef.current;
         let accepted = result.accepted;
         if (accepted.length > 0) {
           const snapshot = await refreshStorage();
           const pendingOriginalBytes = (
-            (activeBatchId
+            (activeBatch
               ? 0
               : queueRef.current.reduce((sum, image) => sum + image.file.size, 0))
             + accepted.reduce((sum, image) => sum + image.file.size, 0)
@@ -474,19 +535,9 @@ export function App() {
           }
         }
         if (accepted.length > 0) {
-          if (activeBatchId) {
+          if (activeBatch) {
             try {
-              await localHistory.appendItems(
-                activeBatchId,
-                await Promise.all(accepted.map(async (image) => ({
-                  id: image.id,
-                  file: image.file,
-                  thumbnail: await thumbnailBlob(image.thumbnailUrl),
-                  width: image.width,
-                  height: image.height,
-                  workingCopy: image.workingCopy,
-                }))),
-              );
+              await activeBatch.dispatch({ type: 'append', images: accepted });
             } catch (error) {
               accepted.forEach((image) => URL.revokeObjectURL(image.thumbnailUrl));
               setBatchNotice(
@@ -499,7 +550,7 @@ export function App() {
           queueRef.current = nextQueue;
           setQueue(nextQueue);
           setSelectedId((current) => current ?? accepted[0].id);
-          if (activeBatchId) {
+          if (activeBatch) {
             setJobs((current) => {
               const next = { ...current };
               for (const image of accepted) {
@@ -522,6 +573,19 @@ export function App() {
     const tracked = operation.finally(() => {
       if (activeImportPromiseRef.current === tracked) {
         activeImportPromiseRef.current = null;
+        const activeBatch = activeProcessingBatchRef.current;
+        const snapshot = activeBatch?.snapshot();
+        if (
+          activeBatch
+          && snapshot?.kind === 'queue'
+          && snapshot.status === 'running'
+          && snapshot.input === 'open'
+          && !snapshot.tasks.some(
+            (task) => task.status === 'queued' || task.status === 'running',
+          )
+        ) {
+          void activeBatch.dispatch({ type: 'close-input' }).catch(() => undefined);
+        }
       }
     });
     activeImportPromiseRef.current = tracked;
@@ -607,7 +671,7 @@ export function App() {
   };
 
   const removeActiveProviderConfiguration = async (): Promise<void> => {
-    if (batchRunningRef.current) return;
+    if (batchRunningRef.current || resumeHistoryBatchId) return;
     const providerId = settings.translationProviderId;
     await providerSecrets.clear(providerId);
     setSettings((current) => ({
@@ -698,7 +762,11 @@ export function App() {
   };
 
   const keepHistoryResultsOnly = async (batch: LocalHistoryBatch): Promise<void> => {
-    if (historyBusy || !window.confirm(copy.historyKeepResultsWarning)) return;
+    if (
+      historyBusy
+      || resumeHistoryBatchId === batch.id
+      || !window.confirm(copy.historyKeepResultsWarning)
+    ) return;
     setHistoryBusy(true);
     try {
       await localHistory.keepResultsOnly(batch.id);
@@ -712,7 +780,7 @@ export function App() {
   };
 
   const stageHistoryDelete = (batch: LocalHistoryBatch): void => {
-    if (historyBusy || pendingHistoryDeleteId) return;
+    if (historyBusy || pendingHistoryDeleteId || resumeHistoryBatchId === batch.id) return;
     setPendingHistoryDeleteId(batch.id);
     historyDeleteTimerRef.current = window.setTimeout(() => {
       historyDeleteTimerRef.current = undefined;
@@ -734,7 +802,12 @@ export function App() {
   };
 
   const cloneHistoryBatch = async (batch: LocalHistoryBatch): Promise<void> => {
-    if (!batch.rerunnable || batchRunningRef.current) return;
+    if (
+      !batch.rerunnable
+      || batchRunningRef.current
+      || activeProcessingBatchRef.current
+      || resumeHistoryBatchId
+    ) return;
     try {
       const files: File[] = [];
       for (const item of [...batch.items].sort((left, right) => left.order - right.order)) {
@@ -775,6 +848,7 @@ export function App() {
       setSelectedId(imported.accepted[0]?.id ?? null);
       setPreviewMode('original');
       setSettings(structuredClone(batch.settings));
+      resumeHistoryBatchRef.current = null;
       setResumeHistoryBatchId(undefined);
       setRejections([]);
       setBatchNotice('');
@@ -786,7 +860,13 @@ export function App() {
   };
 
   const resumeHistoryBatch = async (batch: LocalHistoryBatch): Promise<void> => {
-    if (!batch.rerunnable || batchRunningRef.current || historyBusy) return;
+    if (
+      !batch.rerunnable
+      || batchRunningRef.current
+      || activeProcessingBatchRef.current
+      || resumeHistoryBatchId
+      || historyBusy
+    ) return;
     setHistoryBusy(true);
     try {
       const orderedItems = [...batch.items].sort((left, right) => left.order - right.order);
@@ -812,16 +892,15 @@ export function App() {
       const restoredJobs: Record<string, QueueJobState> = {};
       for (const item of orderedItems) {
         if (item.status === 'done') {
-          if (!item.result) throw new Error(`已完成图片缺少结果: ${item.id}`);
-          const result = await localHistory.readAsset(item.result);
-          if (!result) throw new Error(`历史结果缺失或损坏: ${item.result.fileName}`);
           restoredJobs[item.id] = {
             status: 'done',
-            resultUrl: URL.createObjectURL(result),
             progress: { stage: 'done', detail: '已从恢复点载入' },
           };
         } else {
-          restoredJobs[item.id] = { status: 'queued' };
+          restoredJobs[item.id] = {
+            status: item.status === 'running' ? 'queued' : item.status,
+            error: item.error,
+          };
         }
       }
 
@@ -853,6 +932,7 @@ export function App() {
       );
       setPreviewMode('original');
       setSettings(structuredClone(batch.settings));
+      resumeHistoryBatchRef.current = batch;
       setResumeHistoryBatchId(batch.id);
       setRejections([]);
       setBatchNotice(copy.historyResumeReady);
@@ -872,11 +952,12 @@ export function App() {
     const currentQueue = queueRef.current;
     const index = currentQueue.findIndex((image) => image.id === id);
     if (index < 0) return;
-    const historyBatchId = activeHistoryBatchIdRef.current ?? resumeHistoryBatchId;
-    if (historyBatchId) {
+    const activeBatch = activeProcessingBatchRef.current;
+    if (resumeHistoryBatchId && !activeBatch) return;
+    if (activeBatch) {
       if (job?.status !== 'queued') return;
       try {
-        await localHistory.removeQueuedItem(historyBatchId, id);
+        await activeBatch.dispatch({ type: 'remove-queued', taskId: id });
       } catch (error) {
         setBatchNotice(
           `${copy.historyStorageError}: ${error instanceof Error ? error.message : String(error)}`,
@@ -912,9 +993,10 @@ export function App() {
     ) {
       return;
     }
-    const historyBatchId = activeHistoryBatchIdRef.current ?? resumeHistoryBatchId;
+    const activeBatch = activeProcessingBatchRef.current;
+    if (resumeHistoryBatchId && !activeBatch) return;
     if (
-      historyBatchId
+      activeBatch
       && (
         jobsRef.current[id]?.status !== 'queued'
         || jobsRef.current[current[target].id]?.status !== 'queued'
@@ -924,12 +1006,12 @@ export function App() {
     }
     const next = [...current];
     [next[index], next[target]] = [next[target], next[index]];
-    if (historyBatchId) {
+    if (activeBatch) {
       try {
-        await localHistory.reorderQueuedItems(
-          historyBatchId,
-          next.map((image) => image.id),
-        );
+        await activeBatch.dispatch({
+          type: 'reorder-queued',
+          taskIds: next.map((image) => image.id),
+        });
       } catch (error) {
         setBatchNotice(
           `${copy.historyStorageError}: ${error instanceof Error ? error.message : String(error)}`,
@@ -974,21 +1056,6 @@ export function App() {
     return copy.statusCancelled;
   };
 
-  const updateJob = (id: string, patch: Partial<QueueJobState>): void => {
-    setJobs((current) => {
-      const previous: QueueJobState = current[id] ?? { status: 'queued' };
-      const next = {
-        ...current,
-        [id]: {
-          ...previous,
-          ...patch,
-        },
-      };
-      jobsRef.current = next;
-      return next;
-    });
-  };
-
   const acceptModelDownload = (): void => {
     try {
       localStorage.setItem(MODEL_CONSENT_STORAGE_KEY, 'accepted');
@@ -1000,24 +1067,76 @@ export function App() {
   };
 
   const cancelCurrent = (): void => {
-    activeTaskRef.current?.cancel(new DOMException('已取消当前图片', 'AbortError'));
+    const activeBatch = activeProcessingBatchRef.current;
+    if (!activeBatch?.snapshot().currentTaskId) return;
+    void activeBatch.dispatch({ type: 'cancel-current' }).catch((error) => {
+      setBatchNotice(error instanceof Error ? error.message : String(error));
+    });
   };
 
   const stopBatch = (): void => {
-    if (batchControlRef.current) batchControlRef.current.stop = true;
-    activeTaskRef.current?.cancel(new DOMException('已停止整个批次', 'AbortError'));
+    const activeBatch = activeProcessingBatchRef.current;
+    if (activeBatch?.snapshot().status !== 'running') return;
+    void activeBatch.dispatch({ type: 'stop' })
+      .then(() => setBatchNotice(copy.batchStopped))
+      .catch((error) => {
+        setBatchNotice(error instanceof Error ? error.message : String(error));
+      });
+  };
+
+  const retryTask = (taskId: string): void => {
+    const activeBatch = activeProcessingBatchRef.current;
+    if (!activeBatch) return;
+    void activeBatch.dispatch({ type: 'retry', taskId })
+      .then(() => setBatchNotice(''))
+      .catch((error) => {
+        setBatchNotice(error instanceof Error ? error.message : String(error));
+      });
   };
 
   const exitHistoryResume = (): void => {
     if (batchRunningRef.current) return;
+    const activeBatch = activeProcessingBatchRef.current;
+    if (activeBatch?.snapshot().status === 'paused') {
+      void activeBatch.dispatch({ type: 'detach' })
+        .then(() => {
+          if (activeProcessingBatchRef.current === activeBatch) {
+            activeProcessingBatchRef.current = null;
+          }
+          resumeHistoryBatchRef.current = null;
+          setResumeHistoryBatchId(undefined);
+          setBatchNotice('');
+        })
+        .catch((error) => {
+          setBatchNotice(error instanceof Error ? error.message : String(error));
+        });
+      return;
+    }
+    resumeHistoryBatchRef.current = null;
     setResumeHistoryBatchId(undefined);
     setBatchNotice('');
   };
 
   const startBatch = async (): Promise<void> => {
+    const existingBatch = activeProcessingBatchRef.current;
+    if (existingBatch) {
+      const snapshot = existingBatch.snapshot();
+      if (snapshot.status === 'paused' && snapshot.persistence.status === 'healthy') {
+        try {
+          await existingBatch.dispatch({ type: 'resume' });
+          setBatchNotice('');
+        } catch (error) {
+          setBatchNotice(error instanceof Error ? error.message : String(error));
+        }
+      } else if (snapshot.persistence.status === 'faulted') {
+        setBatchNotice(
+          `${copy.historyStorageError}: ${snapshot.persistence.error}`,
+        );
+      }
+      return;
+    }
     if (
-      batchRunningRef.current
-      || activeImportPromiseRef.current
+      activeImportPromiseRef.current
       || queueRef.current.length === 0
       || capability?.ok !== true
       || modelPackage.state.status !== 'installed'
@@ -1027,17 +1146,21 @@ export function App() {
       return;
     }
 
-    const control = { stop: false };
-    batchControlRef.current = control;
-    batchRunningRef.current = true;
-    setBatchRunning(true);
     setBatchNotice('');
     const resumedBatchId = resumeHistoryBatchId;
 
     const nextJobs: Record<string, QueueJobState> = {};
     for (const image of queueRef.current) {
       const previous = jobsRef.current[image.id];
-      if (resumedBatchId && previous?.status === 'done' && previous.resultUrl) {
+      if (
+        resumedBatchId
+        && previous
+        && (
+          previous.status === 'done'
+          || previous.status === 'failed'
+          || previous.status === 'cancelled'
+        )
+      ) {
         nextJobs[image.id] = previous;
       } else {
         if (previous?.resultUrl) URL.revokeObjectURL(previous.resultUrl);
@@ -1047,164 +1170,41 @@ export function App() {
     jobsRef.current = nextJobs;
     setJobs(nextJobs);
 
-    let historyBatch: LocalHistoryBatch;
     try {
+      const credential = {
+        providerId: settings.translationProviderId,
+        target: activeProviderProfile.baseUrl,
+        value: activeProviderKey,
+      };
+      let processingBatch: ProcessingBatch;
       if (resumedBatchId) {
-        historyBatch = await localHistory.resumeBatch(resumedBatchId);
+        const source = resumeHistoryBatchRef.current;
+        if (!source || source.id !== resumedBatchId) {
+          throw new Error('恢复处理批次的本地历史上下文已失效');
+        }
+        processingBatch = await processingWorkspace.resume({
+          batch: source,
+          images: queueRef.current,
+          inputLifetime: 'until-closed',
+          credential,
+        });
+        resumeHistoryBatchRef.current = null;
       } else {
-        const historyItems = await Promise.all(queueRef.current.map(async (image) => ({
-          id: image.id,
-          file: image.file,
-          thumbnail: await thumbnailBlob(image.thumbnailUrl),
-          width: image.width,
-          height: image.height,
-          workingCopy: image.workingCopy,
-        })));
-        historyBatch = await localHistory.createBatch({
+        processingBatch = await processingWorkspace.open({
+          kind: 'queue',
+          inputLifetime: 'until-closed',
+          initialImages: queueRef.current,
           settings,
           versions: LOCAL_HISTORY_VERSIONS,
-          items: historyItems,
+          credential,
         });
       }
-      setResumeHistoryBatchId(historyBatch.id);
-      activeHistoryBatchIdRef.current = historyBatch.id;
+      attachProcessingBatch(processingBatch, true);
     } catch (error) {
-      batchControlRef.current = null;
       batchRunningRef.current = false;
       setBatchRunning(false);
-      setBatchNotice(
-        `${copy.historyStorageError}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      return;
+      setBatchNotice(error instanceof Error ? error.message : String(error));
     }
-
-    const core = translatorCoreRef.current ?? createWebTranslatorCore();
-    translatorCoreRef.current = core;
-    const config = toWebPipelineConfig(settings, activeProviderKey);
-
-    while (!control.stop) {
-      const image = queueRef.current.find(
-        (item) => jobsRef.current[item.id]?.status === 'queued',
-      );
-      if (!image) {
-        const pendingImport = activeImportPromiseRef.current as Promise<void> | null;
-        if (pendingImport) {
-          await pendingImport.catch(() => undefined);
-          continue;
-        }
-        break;
-      }
-
-      updateJob(image.id, {
-        status: 'running',
-        progress: { stage: 'queued', detail: '准备 Worker 任务' },
-        error: undefined,
-        errorCode: undefined,
-      });
-      await localHistory.updateItem(historyBatch.id, image.id, {
-        status: 'running',
-      }).catch(() => undefined);
-      const task = core.run({
-        input: {
-          file: image.file,
-          workingCopy: {
-            width: image.workingCopy.width,
-            height: image.workingCopy.height,
-          },
-        },
-        config,
-      });
-      activeTaskRef.current = task;
-      const stopProgress = task.progress((progress) => {
-        updateJob(image.id, { progress });
-      });
-
-      try {
-        const result = await task.result;
-        const resultUrl = URL.createObjectURL(result.image);
-        updateJob(image.id, {
-          status: 'done',
-          resultUrl,
-          progress: { stage: 'done', detail: '处理完成' },
-        });
-        await localHistory.updateItem(historyBatch.id, image.id, {
-          status: 'done',
-          result: result.image,
-          summary: result.record,
-        }).catch(() => undefined);
-        if (selectedId === image.id) setPreviewMode('result');
-      } catch (error) {
-        const cancelled = task.signal.aborted;
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        const errorCode = (
-          error
-          && typeof error === 'object'
-          && 'code' in error
-          && typeof (error as { code?: unknown }).code === 'string'
-        )
-          ? (error as { code: string }).code
-          : cancelled
-            ? 'TASK_CANCELLED'
-            : 'PIPELINE_STAGE_FAILED';
-        updateJob(image.id, {
-          status: cancelled ? 'cancelled' : 'failed',
-          error: errorMessage,
-          errorCode,
-        });
-        await localHistory.updateItem(historyBatch.id, image.id, {
-          status: cancelled ? 'cancelled' : 'failed',
-          error: errorMessage,
-        }).catch(() => undefined);
-        if (
-          !cancelled
-          && error
-          && typeof error === 'object'
-          && 'code' in error
-          && (error as { code?: unknown }).code === 'WORKER_BOOTSTRAP_FAILED'
-        ) {
-          control.stop = true;
-        }
-      } finally {
-        stopProgress();
-        if (activeTaskRef.current === task) activeTaskRef.current = null;
-      }
-
-      const nextItemIndex = queueRef.current.findIndex(
-        (item) => jobsRef.current[item.id]?.status === 'queued',
-      );
-      await localHistory.saveRecoveryPoint(
-        historyBatch.id,
-        nextItemIndex < 0 ? queueRef.current.length : nextItemIndex,
-        control.stop ? 'paused' : 'running',
-      ).catch(() => undefined);
-    }
-
-    const hasFailedItems = Object.values(jobsRef.current).some(
-      (job) => job.status === 'failed' || job.status === 'cancelled',
-    );
-    const finalBatchStatus = control.stop ? 'paused' : hasFailedItems ? 'failed' : 'completed';
-    await localHistory.finishBatch(
-      historyBatch.id,
-      finalBatchStatus,
-    ).catch(() => undefined);
-    if (
-      finalBatchStatus === 'completed'
-      && Object.values(jobsRef.current).some((job) => job.status === 'done')
-    ) {
-      pwaInstall.offerAfterSuccess();
-    }
-    if (finalBatchStatus === 'completed') setResumeHistoryBatchId(undefined);
-    activeHistoryBatchIdRef.current = null;
-    batchControlRef.current = null;
-    batchRunningRef.current = false;
-    setBatchRunning(false);
-    if (
-      runtimeRefreshPendingRef.current
-      && document.visibilityState === 'visible'
-    ) {
-      refreshRuntimeCapability();
-    }
-    if (control.stop) setBatchNotice(copy.batchStopped);
   };
 
   const exportRedactedDiagnostics = async (): Promise<void> => {
@@ -1280,17 +1280,33 @@ export function App() {
     continuousCameraUrlsRef.current.clear();
   };
 
-  const openContinuousCamera = (): void => {
+  const openContinuousCamera = async (): Promise<void> => {
     if (!continuousCameraAllowed) return;
-    continuousCameraRoundIdRef.current += 1;
-    releaseContinuousCameraUrls();
-    setContinuousCameraRound({ status: 'ready' });
-    setContinuousCameraOpen(true);
+    try {
+      const batch = await processingWorkspace.open({
+        kind: 'continuous-camera',
+        initialImages: [],
+        settings,
+        versions: LOCAL_HISTORY_VERSIONS,
+        credential: {
+          providerId: settings.translationProviderId,
+          target: activeProviderProfile.baseUrl,
+          value: activeProviderKey,
+        },
+      });
+      attachProcessingBatch(batch, false);
+      continuousCameraRoundIdRef.current += 1;
+      releaseContinuousCameraUrls();
+      setContinuousCameraRound({ status: 'ready' });
+      setContinuousCameraOpen(true);
+    } catch (error) {
+      setBatchNotice(error instanceof Error ? error.message : String(error));
+    }
   };
 
   const handleContinuousCameraEntry = (): void => {
     if (continuousCameraAllowed) {
-      openContinuousCamera();
+      void openContinuousCamera();
       return;
     }
     if (storageImportIssue) {
@@ -1310,9 +1326,25 @@ export function App() {
 
   const closeContinuousCamera = (): void => {
     continuousCameraRoundIdRef.current += 1;
-    continuousCameraTaskRef.current?.cancel(
-      new DOMException('已退出连续拍摄', 'AbortError'),
-    );
+    const activeBatch = activeProcessingBatchRef.current;
+    if (
+      activeBatch?.snapshot().kind === 'continuous-camera'
+      && activeBatch.snapshot().input === 'open'
+    ) {
+      void activeBatch.dispatch({ type: 'close-input' })
+        .then(async () => {
+          if (activeBatch.snapshot().status === 'paused') {
+            await activeBatch.dispatch({ type: 'detach' });
+            if (activeProcessingBatchRef.current === activeBatch) {
+              activeProcessingBatchRef.current = null;
+              setResumeHistoryBatchId(undefined);
+            }
+          }
+        })
+        .catch((error) => {
+          setBatchNotice(error instanceof Error ? error.message : String(error));
+        });
+    }
     releaseContinuousCameraUrls();
     setContinuousCameraRound({ status: 'ready' });
     setContinuousCameraOpen(false);
@@ -1321,14 +1353,16 @@ export function App() {
   const translateContinuousCameraCapture = async (file: File): Promise<void> => {
     if (
       !continuousCameraOpen
-      || continuousCameraTaskRef.current
-      || !continuousCameraAllowed
+      || continuousCameraCaptureActiveRef.current
     ) {
       return;
     }
+    const processingBatch = activeProcessingBatchRef.current;
+    if (processingBatch?.snapshot().kind !== 'continuous-camera') return;
 
     const roundId = continuousCameraRoundIdRef.current + 1;
     continuousCameraRoundIdRef.current = roundId;
+    continuousCameraCaptureActiveRef.current = true;
     releaseContinuousCameraUrls();
     const originalUrl = URL.createObjectURL(file);
     continuousCameraUrlsRef.current.add(originalUrl);
@@ -1338,9 +1372,6 @@ export function App() {
       detail: copy.importing,
     });
 
-    let historyBatch: LocalHistoryBatch | undefined;
-    let task: TranslationTask<PipelineProgress, WebPipelineResult> | undefined;
-    let stopProgress: (() => void) | undefined;
     try {
       const imported = await importer.importFiles([file], []);
       if (continuousCameraRoundIdRef.current !== roundId) {
@@ -1355,84 +1386,53 @@ export function App() {
           : copy.cameraCaptureFailed);
       }
       continuousCameraUrlsRef.current.add(image.thumbnailUrl);
-
-      const storage = await refreshStorage();
       if (continuousCameraRoundIdRef.current !== roundId) {
         throw new DOMException('连续拍摄已关闭', 'AbortError');
       }
-      const storageAssessment = assessImageImportStorage(storage, image.file.size);
-      if (!storageAssessment.allowed) {
-        throw new Error(storageAssessment.reason === 'unavailable'
-          ? copy.storageUnavailable
-          : copy.storageImportBlocked(
-              storageAssessment.requiredBytes
-                ? formatBytes(storageAssessment.requiredBytes)
-                : formatBytes(image.file.size),
-              formatBytes(storageAssessment.availableBytes ?? 0),
-            ));
-      }
-
-      historyBatch = await localHistory.createBatch({
-        settings,
-        versions: LOCAL_HISTORY_VERSIONS,
-        items: [{
-          id: image.id,
-          file: image.file,
-          thumbnail: await thumbnailBlob(image.thumbnailUrl),
-          width: image.width,
-          height: image.height,
-          workingCopy: image.workingCopy,
-        }],
-      });
-      if (continuousCameraRoundIdRef.current !== roundId) {
-        throw new DOMException('连续拍摄已关闭', 'AbortError');
-      }
-      await localHistory.updateItem(historyBatch.id, image.id, {
-        status: 'running',
-      }).catch(() => undefined);
-
       setContinuousCameraRound({
         status: 'translating',
         originalUrl,
         detail: copy.cameraTranslating,
       });
-      const core = translatorCoreRef.current ?? createWebTranslatorCore();
-      translatorCoreRef.current = core;
-      task = core.run({
-        input: {
-          file: image.file,
-          workingCopy: {
-            width: image.workingCopy.width,
-            height: image.workingCopy.height,
-          },
-        },
-        config: toWebPipelineConfig(settings, activeProviderKey),
+      await processingBatch.dispatch({
+        type: 'append',
+        images: [image],
       });
-      continuousCameraTaskRef.current = task;
-      activeTaskRef.current = task;
-      stopProgress = task.progress((progress) => {
-        if (continuousCameraRoundIdRef.current !== roundId) return;
-        setContinuousCameraRound({
-          status: 'translating',
-          originalUrl,
-          detail: progress.detail,
+      const completedTask = await new Promise<ProcessingTaskSnapshot>((resolve) => {
+        let unsubscribe = (): void => undefined;
+        unsubscribe = processingBatch.subscribe((snapshot) => {
+          const task = snapshot.tasks.find((candidate) => candidate.id === image.id);
+          if (!task) return;
+          if (
+            continuousCameraRoundIdRef.current === roundId
+            && task.status === 'running'
+          ) {
+            setContinuousCameraRound({
+              status: 'translating',
+              originalUrl,
+              detail: task.progress?.detail ?? copy.cameraTranslating,
+            });
+          }
+          if (
+            task.status === 'done'
+            || task.status === 'failed'
+            || task.status === 'cancelled'
+          ) {
+            queueMicrotask(() => unsubscribe());
+            resolve(task);
+          }
         });
       });
 
-      const result = await task.result;
-      const resultUrl = URL.createObjectURL(result.image);
+      if (completedTask.status !== 'done' || !completedTask.result) {
+        throw new Error(completedTask.error ?? copy.cameraTranslationFailed);
+      }
+      const resultUrl = URL.createObjectURL(completedTask.result.image);
       if (continuousCameraRoundIdRef.current !== roundId) {
         URL.revokeObjectURL(resultUrl);
         return;
       }
       continuousCameraUrlsRef.current.add(resultUrl);
-      await localHistory.updateItem(historyBatch.id, image.id, {
-        status: 'done',
-        result: result.image,
-        summary: result.record,
-      }).catch(() => undefined);
-      await localHistory.finishBatch(historyBatch.id, 'completed').catch(() => undefined);
-      if (continuousCameraRoundIdRef.current !== roundId) return;
 
       setContinuousCameraRound({
         status: 'done',
@@ -1441,20 +1441,7 @@ export function App() {
       });
       pwaInstall.offerAfterSuccess();
     } catch (error) {
-      const cancelled = task?.signal.aborted === true
-        || continuousCameraRoundIdRef.current !== roundId
-        || (error instanceof DOMException && error.name === 'AbortError');
       const message = error instanceof Error ? error.message : String(error);
-      if (historyBatch) {
-        const imageId = historyBatch.items[0]?.id;
-        if (imageId) {
-          await localHistory.updateItem(historyBatch.id, imageId, {
-            status: cancelled ? 'cancelled' : 'failed',
-            error: message,
-          }).catch(() => undefined);
-        }
-        await localHistory.finishBatch(historyBatch.id, 'failed').catch(() => undefined);
-      }
       if (continuousCameraRoundIdRef.current === roundId) {
         setContinuousCameraRound({
           status: 'error',
@@ -1463,11 +1450,7 @@ export function App() {
         });
       }
     } finally {
-      stopProgress?.();
-      if (continuousCameraTaskRef.current === task) {
-        continuousCameraTaskRef.current = null;
-      }
-      if (activeTaskRef.current === task) activeTaskRef.current = null;
+      continuousCameraCaptureActiveRef.current = false;
       void refreshStorage();
     }
   };
@@ -2009,6 +1992,17 @@ export function App() {
                       </span>
                     </button>
                     <span className="queue-actions">
+                      {(job?.status === 'failed' || job?.status === 'cancelled') && (
+                        <button
+                          type="button"
+                          aria-label={copy.retryTask}
+                          title={copy.retryTask}
+                          disabled={!activeProcessingBatchRef.current}
+                          onClick={() => retryTask(image.id)}
+                        >
+                          <Icon name="refresh" />
+                        </button>
+                      )}
                       <button
                         type="button"
                         disabled={
@@ -2507,7 +2501,7 @@ export function App() {
                     className="button button-secondary button-compact"
                     type="button"
                     onClick={cancelCurrent}
-                    disabled={!activeTaskRef.current}
+                    disabled={!activeProcessingBatchRef.current?.snapshot().currentTaskId}
                   >
                     {copy.cancelCurrent}
                   </button>
@@ -2607,6 +2601,8 @@ export function App() {
           )}
           loading={localHistory.loading}
           busy={historyBusy || pendingHistoryDeleteId !== undefined}
+          workbenchLocked={Boolean(resumeHistoryBatchId)}
+          lockedBatchId={resumeHistoryBatchId}
           error={historyActionError ?? localHistory.error}
           onRefresh={() => void localHistory.refresh()}
           onResume={(batch) => void resumeHistoryBatch(batch)}
@@ -2622,7 +2618,7 @@ export function App() {
         <SettingsView
           copy={copy}
           settings={settings}
-          historyLocked={batchRunning}
+          historyLocked={Boolean(resumeHistoryBatchId)}
           storageSnapshot={storageSnapshot}
           storageChecking={storageChecking}
           diagnosticBusy={diagnosticBusy}

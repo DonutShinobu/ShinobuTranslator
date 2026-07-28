@@ -20,6 +20,7 @@ import {
 } from './localHistory';
 
 type UseLocalHistory = {
+  history: LocalHistory;
   entries: LocalHistoryInspection[];
   loading: boolean;
   error?: string;
@@ -46,7 +47,10 @@ type UseLocalHistory = {
   ): Promise<LocalHistoryBatch>;
   finishBatch(
     batchId: string,
-    status: Extract<LocalHistoryBatchStatus, 'completed' | 'failed' | 'paused'>,
+    status: Extract<
+      LocalHistoryBatchStatus,
+      'completed' | 'partially-completed' | 'failed' | 'paused'
+    >,
   ): Promise<LocalHistoryBatch>;
   resumeBatch(batchId: string): Promise<LocalHistoryBatch>;
   importBatch(
@@ -204,7 +208,10 @@ export function useLocalHistory(): UseLocalHistory {
 
   const finishBatch = useCallback(async (
     batchId: string,
-    status: Extract<LocalHistoryBatchStatus, 'completed' | 'failed' | 'paused'>,
+    status: Extract<
+      LocalHistoryBatchStatus,
+      'completed' | 'partially-completed' | 'failed' | 'paused'
+    >,
   ): Promise<LocalHistoryBatch> => {
     try {
       const batch = await history.finishBatch(batchId, status);
@@ -276,6 +283,7 @@ export function useLocalHistory(): UseLocalHistory {
   }, [history]);
 
   return {
+    history,
     entries,
     loading,
     error,

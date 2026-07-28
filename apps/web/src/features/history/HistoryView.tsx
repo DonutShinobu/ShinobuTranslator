@@ -14,6 +14,8 @@ type HistoryViewProps = {
   entries: LocalHistoryInspection[];
   loading: boolean;
   busy: boolean;
+  workbenchLocked: boolean;
+  lockedBatchId?: string;
   error?: string;
   onRefresh(): void;
   onResume(batch: LocalHistoryBatch): void;
@@ -40,6 +42,8 @@ export function HistoryView({
   entries,
   loading,
   busy,
+  workbenchLocked,
+  lockedBatchId,
   error,
   onRefresh,
   onResume,
@@ -114,7 +118,9 @@ export function HistoryView({
             const canResume = (
               batch.rerunnable
               && integrity === 'complete'
-              && batch.items.some((item) => item.status !== 'done')
+              && batch.items.some(
+                (item) => item.status === 'queued' || item.status === 'running',
+              )
             );
             return (
               <details className="history-batch" key={batch.id}>
@@ -179,7 +185,7 @@ export function HistoryView({
                       <button
                         className="button button-primary"
                         type="button"
-                        disabled={busy}
+                        disabled={busy || workbenchLocked}
                         onClick={() => onResume(batch)}
                       >
                         <Icon name="play" weight="bold" />
@@ -189,7 +195,12 @@ export function HistoryView({
                     <button
                       className={`button ${canResume ? 'button-secondary' : 'button-primary'}`}
                       type="button"
-                      disabled={busy || !batch.rerunnable || integrity === 'partial'}
+                      disabled={
+                        busy
+                        || workbenchLocked
+                        || !batch.rerunnable
+                        || integrity === 'partial'
+                      }
                       onClick={() => onClone(batch)}
                     >
                       <Icon name="copy" />
@@ -217,7 +228,7 @@ export function HistoryView({
                       <button
                         className="button button-secondary"
                         type="button"
-                        disabled={busy}
+                        disabled={busy || lockedBatchId === batch.id}
                         onClick={() => onKeepResults(batch)}
                       >
                         <Icon name="archive" />
@@ -227,7 +238,7 @@ export function HistoryView({
                     <button
                       className="delete-config"
                       type="button"
-                      disabled={busy}
+                      disabled={busy || lockedBatchId === batch.id}
                       onClick={() => onDelete(batch)}
                     >
                       <Icon name="trash" />

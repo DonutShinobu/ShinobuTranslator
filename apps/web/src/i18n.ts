@@ -17,7 +17,9 @@ export type AppCopy = {
   historyEmptyBody: string;
   historyStorageError: string;
   historyBatchImages: (count: number) => string;
-  historyBatchStatus: (status: 'running' | 'paused' | 'completed' | 'failed') => string;
+  historyBatchStatus: (
+    status: 'running' | 'paused' | 'completed' | 'partially-completed' | 'failed',
+  ) => string;
   historyPartial: string;
   historyModelVersion: string;
   historyDownloadResult: string;
@@ -186,6 +188,7 @@ export type AppCopy = {
   startUnavailable: string;
   stopBatch: string;
   cancelCurrent: string;
+  retryTask: string;
   batchRunning: string;
   batchStopped: string;
   statusQueued: string;
@@ -224,6 +227,7 @@ const copies: Record<UiLocale, AppCopy> = {
       running: '处理中',
       paused: '可恢复',
       completed: '已完成',
+      'partially-completed': '部分完成',
       failed: '部分失败',
     })[status],
     historyPartial: '部分损坏',
@@ -399,6 +403,7 @@ const copies: Record<UiLocale, AppCopy> = {
     startUnavailable: '请先通过运行能力和模型下载确认',
     stopBatch: '停止批次',
     cancelCurrent: '取消当前图片',
+    retryTask: '重试此图片',
     batchRunning: '批次正在串行处理',
     batchStopped: '批次已停止；已完成和待处理图片均已保留',
     statusQueued: '等待中',
@@ -436,6 +441,7 @@ const copies: Record<UiLocale, AppCopy> = {
       running: '處理中',
       paused: '可恢復',
       completed: '已完成',
+      'partially-completed': '部分完成',
       failed: '部分失敗',
     })[status],
     historyPartial: '部分損壞',
@@ -611,6 +617,7 @@ const copies: Record<UiLocale, AppCopy> = {
     startUnavailable: '請先通過執行能力和模型下載確認',
     stopBatch: '停止批次',
     cancelCurrent: '取消目前圖片',
+    retryTask: '重試此圖片',
     batchRunning: '批次正在依序處理',
     batchStopped: '批次已停止；已完成和待處理圖片均已保留',
     statusQueued: '等待中',

@@ -108,9 +108,9 @@ describe('project packages', () => {
 
     expect(validated.manifest).toMatchObject({
       format: 'shinobu-project',
-      schemaVersion: 1,
+      schemaVersion: 2,
       exportedAt: '2026-07-28T01:00:00.000Z',
-      batch: { id: 'source-batch', status: 'completed' },
+      batch: { id: 'source-batch', schemaVersion: 2, status: 'completed' },
     });
     expect(validated.manifest.files).toHaveLength(3);
     expect(JSON.stringify(validated.manifest)).not.toMatch(/api[-_]?key/iu);
@@ -202,6 +202,25 @@ describe('project packages', () => {
       ...fresh,
       'manifest.json': new TextEncoder().encode(JSON.stringify(manifest)),
     }))).rejects.toThrow(/版本过新/u);
+  });
+
+  it('accepts a legacy v1 package and normalizes both manifests to the current schema', async () => {
+    const { history, inspection } = await sourceBatch();
+    const files = unzipSync(await bytes(await buildProjectPackage(
+      inspection,
+      (reference) => history.readAsset(reference),
+    )));
+    const manifest = JSON.parse(new TextDecoder().decode(files['manifest.json']));
+    manifest.schemaVersion = 1;
+    manifest.batch.schemaVersion = 1;
+
+    const validated = await validateProjectPackage(zipBlob({
+      ...files,
+      'manifest.json': new TextEncoder().encode(JSON.stringify(manifest)),
+    }));
+
+    expect(validated.manifest.schemaVersion).toBe(2);
+    expect(validated.manifest.batch.schemaVersion).toBe(2);
   });
 
   it('excludes legacy diagnostic summaries and rejects malformed OCR records', async () => {

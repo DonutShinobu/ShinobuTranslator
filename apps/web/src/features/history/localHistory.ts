@@ -1,8 +1,14 @@
 import type { WebSettings } from '@shinobu/shared-config';
 
-export const LOCAL_HISTORY_SCHEMA_VERSION = 1 as const;
+export const LOCAL_HISTORY_SCHEMA_VERSION = 2 as const;
+export type LocalHistorySchemaVersion = 1 | typeof LOCAL_HISTORY_SCHEMA_VERSION;
 
-export type LocalHistoryBatchStatus = 'running' | 'paused' | 'completed' | 'failed';
+export type LocalHistoryBatchStatus =
+  | 'running'
+  | 'paused'
+  | 'completed'
+  | 'partially-completed'
+  | 'failed';
 export type LocalHistoryItemStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
 
 export type LocalHistoryVersions = {
@@ -44,7 +50,7 @@ export type LocalHistoryRecoveryPoint = {
 };
 
 export type LocalHistoryBatch = {
-  schemaVersion: typeof LOCAL_HISTORY_SCHEMA_VERSION;
+  schemaVersion: LocalHistorySchemaVersion;
   id: string;
   createdAt: string;
   updatedAt: string;
@@ -63,6 +69,7 @@ export type LocalHistoryInspection = {
 };
 
 export type CreateLocalHistoryBatchInput = {
+  id?: string;
   settings: WebSettings;
   versions: LocalHistoryVersions;
   items: CreateLocalHistoryItemInput[];
@@ -148,6 +155,14 @@ function requireBatch(
   batchId: string,
 ): asserts batch is LocalHistoryBatch {
   if (!batch) throw new Error(`找不到本地历史批次: ${batchId}`);
+  migrateBatchSchema(batch);
+}
+
+function migrateBatchSchema(batch: LocalHistoryBatch): void {
+  if (batch.schemaVersion !== 1 && batch.schemaVersion !== LOCAL_HISTORY_SCHEMA_VERSION) {
+    throw new Error(`本地历史 Schema 版本不受支持: ${batch.schemaVersion}`);
+  }
+  batch.schemaVersion = LOCAL_HISTORY_SCHEMA_VERSION;
 }
 
 function requireItem(batch: LocalHistoryBatch, itemId: string): LocalHistoryItem {
@@ -181,12 +196,23 @@ export class LocalHistory {
 
   async list(): Promise<LocalHistoryBatch[]> {
     return (await this.index.list())
-      .map(cloneBatch)
+      .map((stored) => {
+        const batch = cloneBatch(stored);
+        migrateBatchSchema(batch);
+        return batch;
+      })
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   }
 
+  async get(batchId: string): Promise<LocalHistoryBatch | null> {
+    const stored = await this.index.get(batchId);
+    if (!stored) return null;
+    migrateBatchSchema(stored);
+    return cloneBatch(stored);
+  }
+
   async createBatch(input: CreateLocalHistoryBatchInput): Promise<LocalHistoryBatch> {
-    const id = this.ids.create();
+    const id = input.id ?? this.ids.create();
     const timestamp = this.clock.now().toISOString();
     const items: LocalHistoryItem[] = [];
     try {
@@ -421,7 +447,10 @@ export class LocalHistory {
 
   async finishBatch(
     batchId: string,
-    status: Extract<LocalHistoryBatchStatus, 'completed' | 'failed' | 'paused'>,
+    status: Extract<
+      LocalHistoryBatchStatus,
+      'completed' | 'partially-completed' | 'failed' | 'paused'
+    >,
   ): Promise<LocalHistoryBatch> {
     const batch = await this.index.get(batchId);
     requireBatch(batch, batchId);
@@ -454,6 +483,9 @@ export class LocalHistory {
         }
         continue;
       }
+      if (item.status === 'failed' || item.status === 'cancelled') {
+        continue;
+      }
       if (!item.original) throw new Error(`恢复批次缺少原图: ${item.id}`);
       const original = await this.assets.get(item.original.path);
       if (!original || original.size !== item.original.size) {
@@ -467,8 +499,15 @@ export class LocalHistory {
     }
 
     const timestamp = this.clock.now().toISOString();
-    const nextItemIndex = batch.items.findIndex((item) => item.status !== 'done');
-    batch.status = nextItemIndex < 0 ? 'completed' : 'running';
+    const nextItemIndex = batch.items.findIndex((item) => item.status === 'queued');
+    const completedCount = batch.items.filter((item) => item.status === 'done').length;
+    batch.status = nextItemIndex >= 0
+      ? 'running'
+      : completedCount === batch.items.length
+        ? 'completed'
+        : completedCount > 0
+          ? 'partially-completed'
+          : 'failed';
     batch.updatedAt = timestamp;
     batch.recoveryPoint = {
       savedAt: timestamp,
@@ -484,6 +523,7 @@ export class LocalHistory {
   async inspect(batchId: string): Promise<LocalHistoryInspection | null> {
     const batch = await this.index.get(batchId);
     if (!batch) return null;
+    migrateBatchSchema(batch);
     const references = batch.items.flatMap((item) =>
       [item.original, item.thumbnail, item.result].filter(
         (asset): asset is LocalHistoryAsset => Boolean(asset),
@@ -532,6 +572,7 @@ export class LocalHistory {
     const id = this.ids.create();
     const timestamp = this.clock.now().toISOString();
     const batch = cloneBatch(source);
+    batch.schemaVersion = LOCAL_HISTORY_SCHEMA_VERSION;
     batch.id = id;
     batch.updatedAt = timestamp;
     batch.recoveryPoint.savedAt = timestamp;

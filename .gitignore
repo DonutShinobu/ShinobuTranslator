@@ -9,7 +9,7 @@ docs/*
 !docs/adr/
 !docs/adr/*.md
 !docs/continuous-translation-design.md
-!docs/superpowers/
+!docs/archive/
 !docs/shinobu-readme-banner-soft.png
 !docs/popup-settings-deepseek-rounded.png
 !docs/popup-settings-nano-banana-rounded.png

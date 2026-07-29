@@ -8,7 +8,7 @@
 
 **Tech Stack:** TypeScript, Playwright (bake), `canvas` npm package (node-canvas, for Node-side `measureText`), Node built-in `crypto` (sha256)
 
-**Spec:** `docs/superpowers/specs/2026-05-01-typeset-benchmark-design.md`
+**Spec:** `docs/archive/superpowers/specs/2026-05-01-typeset-benchmark-design.md`
 
 ---
 

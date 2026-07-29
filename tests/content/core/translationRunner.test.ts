@@ -95,7 +95,24 @@ describe('TranslationRunner', () => {
   it('runs the production local pipeline through the injected offscreen client', async () => {
     const resultBlob = new Blob(['translated'], { type: 'image/png' });
     const runLocalPipeline = vi.fn(async (_file, _config, onProgress) => {
-      onProgress({ stage: 'detect', detail: '文本检测' });
+      onProgress({
+        stage: 'runtime-prepare',
+        operation: 'prepare-runtime',
+      });
+      onProgress({
+        stage: 'detect',
+        operation: 'detect-text',
+        detail: '文本检测',
+      });
+      onProgress({
+        stage: 'done',
+        operation: 'complete-pipeline',
+        detail: '完成',
+      });
+      onProgress({
+        stage: 'finalize',
+        operation: 'freeze-result',
+      });
       return {
         status: 'completed' as const,
         result: resultBlob,
@@ -135,6 +152,7 @@ describe('TranslationRunner', () => {
     });
     const state = createInitialPhotoState('https://example.com/image.png');
     const settings = { ...defaultExtensionSettings, processMode: 'original' as const };
+    const onProgress = vi.fn();
 
     await runner.runPipelineFromFile({
       state,
@@ -150,10 +168,14 @@ describe('TranslationRunner', () => {
       },
       runStartAt: performance.now(),
       includeElapsedText: true,
-      onProgress: vi.fn(),
+      onProgress,
     });
 
     expect(runLocalPipeline).toHaveBeenCalledTimes(1);
+    expect(onProgress.mock.calls.map(([stageText]) => stageText)).toEqual([
+      '文本检测中',
+      '完成',
+    ]);
     expect(createObjectURL).toHaveBeenCalledWith(resultBlob);
     expect(state).toMatchObject({
       status: 'translated',

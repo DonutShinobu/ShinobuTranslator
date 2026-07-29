@@ -308,6 +308,13 @@ export class TranslationRunner {
       onProgress: (stageText: string) => void,
       jankMonitor?: ProgressJankMonitor,
     ): void {
+      if (
+        progress.stage === 'runtime-prepare'
+        || progress.stage === 'finalize'
+      ) {
+        jankMonitor?.setStage(progress.stage, progress.detail, state.stageText);
+        return;
+      }
       const stageLabel = getStageLabel(progress.stage);
       if (progress.stage === 'parallel') {
         state.stageText = progress.detail;

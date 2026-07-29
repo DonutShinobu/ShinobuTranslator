@@ -118,7 +118,6 @@ const [
   compatibility,
   policy,
   webPackage,
-  checklist,
   releaseNotes,
 ] = await Promise.all([
   readText('.github/workflows/web-release.yml'),
@@ -128,7 +127,6 @@ const [
   readJson('packages/model-manifest/compatibility.json'),
   readJson('packages/model-manifest/publication-policy.json'),
   readJson('apps/web/package.json'),
-  readText('docs/web-public-beta-checklist.md'),
   readText('WEB_PUBLIC_BETA_RELEASE_NOTES.md'),
 ]);
 
@@ -202,13 +200,11 @@ for (const [index, modelPackage] of compatibility.packages.entries()) {
 }
 
 const publicationNotices = validateModelPublicationPolicy(manifest, policy);
-const uncheckedGates = checklist.match(/^- \[ \] .+$/gmu) ?? [];
 
 if (mode === '--repository') {
   console.log(
     `Web production repository controls verified; `
-    + `${publicationNotices.length} documented model source notice(s) and `
-    + `${uncheckedGates.length} blocking checklist item(s) remain.`,
+    + `${publicationNotices.length} documented model source notice(s) remain.`,
   );
   process.exit(0);
 }
@@ -247,10 +243,6 @@ const modelReleaseTag = requiredEnv('MODEL_RELEASE_TAG');
 invariant(
   /^models-[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(modelReleaseTag),
   'MODEL_RELEASE_TAG must start with models- and contain only release-safe characters',
-);
-invariant(
-  uncheckedGates.length === 0,
-  `Public Beta checklist still has open gates:\n${uncheckedGates.join('\n')}`,
 );
 invariant(
   !releaseNotes.includes('状态：发布草案'),

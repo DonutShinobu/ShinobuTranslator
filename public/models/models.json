@@ -1,4 +1,6 @@
 {
+  "schemaVersion": 1,
+  "version": "2026-07-28-runtime-v1",
   "source": "https://github.com/zyddnys/manga-image-translator",
   "note": "请放入可在浏览器端运行的 ONNX 模型文件，文本检测/OCR/去字优先支持 WebNN",
   "models": {
@@ -6,6 +8,8 @@
       "name": "detector",
       "task": "text-detection",
       "url": "/models/detector.onnx",
+      "size": 94669756,
+      "sha256": "1a86ace74961413cbd650002e7bb4dcec4980ffa21b2f19b86933372071d718f",
       "input": [1024, 1024],
       "runtime": ["webgpu", "webnn", "wasm"]
     },
@@ -13,6 +17,8 @@
       "name": "inpaint",
       "task": "text-removal",
       "url": "/models/aot_inpaint_512.onnx",
+      "size": 22749561,
+      "sha256": "acdddccfdc32780c8947946814e9eea6a8b0d5b1880fb46f3be8389510f11689",
       "input": [512, 512],
       "runtime": ["webgpu", "webnn", "wasm"],
       "normalize": "minus_one_to_one",
@@ -24,6 +30,8 @@
       "name": "bubble",
       "task": "bubble-segmentation",
       "url": "/models/bubble.onnx",
+      "size": 11626988,
+      "sha256": "3da3317f6dffe27cf5c9396dc95d5324fb647e22adeb7bf304edbe921789f0a0",
       "input": [640, 640],
       "runtime": ["webgpu", "webnn", "wasm"]
     },
@@ -31,9 +39,13 @@
       "name": "paddleocr_v6_medium_rec",
       "task": "paddleocr-recognition",
       "url": "/models/PP-OCRv6_medium_rec.onnx",
+      "size": 76554979,
+      "sha256": "9c09abf0957f7968c7586464b7397b84ad2387a0497a351af40e9acc71b673ba",
       "input": [48, 320],
       "runtime": ["webgpu", "webnn", "wasm"],
       "dictUrl": "/models/paddleocr_v6_dict.txt",
+      "dictSize": 74947,
+      "dictSha256": "b5f2bfe2bdd9448429e3e82b51c789775d9b42f2403d082b00662eb77e401c5d",
       "normalize": "minus_one_to_one",
       "channelOrder": "bgr"
     }

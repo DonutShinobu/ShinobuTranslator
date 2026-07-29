@@ -1,7 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "types": ["@webgpu/types", "node", "vitest/globals"]
+    "types": ["@webgpu/types", "node", "vite/client", "vitest/globals"]
   },
   "include": ["src", "tests/**/*.ts"]
 }

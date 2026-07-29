@@ -3,6 +3,8 @@ description: Browser extension for manga translation
 
 exclude:
   - node_modules
+  - apps
+  - packages
   - src
   - dist
   - public

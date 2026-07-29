@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import type { TextRegion } from "../../../src/types";
 import type { PipelineRenderingContext } from "../../../src/runtime/platform";
+
+function parseCanvasFontSize(font: string, fallback: number): number {
+  return Number.parseFloat(font.match(/([\d.]+)px/u)?.[1] ?? "") || fallback;
+}
+
 import {
   clampNumber,
   resolveInitialFontSize,
@@ -792,7 +797,7 @@ describe("resolveVerticalSourceGeometryProfile", () => {
     const measureCtx = {
       font: "",
       measureText(this: { font: string }, text: string) {
-        const fontSize = Number.parseFloat(this.font) || 100;
+        const fontSize = parseCanvasFontSize(this.font, 100);
         if (text === "国") return { width: fontSize };
         if (!/^\p{Script=Latin}+$/u.test(text)) {
           throw new Error("竖排日文不应进入横向字体测量");
@@ -884,7 +889,7 @@ describe("estimateVerticalPreferredProfile", () => {
   const ctx = {
     font: "",
     measureText: (text: string) => {
-      const fontSize = Number.parseFloat(ctx.font) || 20;
+      const fontSize = parseCanvasFontSize(ctx.font, 20);
       return {
       width: Math.max(fontSize, text.length * fontSize * 0.6),
       actualBoundingBoxLeft: 0,
@@ -922,7 +927,7 @@ describe("estimateVerticalPreferredProfile", () => {
       textAlign: "start",
       textBaseline: "alphabetic",
       measureText: (text: string) => {
-        const fontSize = Number.parseFloat(contaminatedCtx.font) || 29;
+        const fontSize = parseCanvasFontSize(contaminatedCtx.font, 29);
         const centered = contaminatedCtx.textAlign === "center";
         const width = Math.max(fontSize, text.length * fontSize * 0.6);
         return {

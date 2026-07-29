@@ -17,6 +17,7 @@ import type {
   VerticalGlyph,
 } from "./fontMetrics";
 import type { ResolvedColors } from "./color";
+import { formatTypesetFont } from "./fontRuntime";
 
 function renderVerticalGlyph(
   ctx: PipelineRenderingContext,
@@ -73,7 +74,7 @@ export function renderVertical(
   const off = platform!.createCanvas(canvasW, canvasH);
   const ctx = off.getContext("2d")!;
 
-  ctx.font = `${fontSize}px ${fontFamily}`;
+  ctx.font = formatTypesetFont(fontSize, fontFamily);
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 

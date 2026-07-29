@@ -283,6 +283,9 @@ export type RuntimeErrorResponse = {
   type: RuntimeMessage['type'];
   error: string;
   errorCode?: RuntimeErrorCode;
+  status?: number;
+  retryAfterMs?: number;
+  retryable?: boolean;
   errorDetail?: RuntimeErrorDetail;
 };
 
@@ -314,6 +317,33 @@ export function getRuntimeErrorCode(error: unknown): RuntimeErrorCode | undefine
   return error.errorCode === 'llm_thinking_config'
     ? error.errorCode
     : undefined;
+}
+
+export function getRuntimeTransportMetadata(error: unknown): {
+  status?: number;
+  retryAfterMs?: number;
+  retryable?: boolean;
+} {
+  if (!isRecord(error)) return {};
+  const metadata: {
+    status?: number;
+    retryAfterMs?: number;
+    retryable?: boolean;
+  } = {};
+  if (typeof error.status === 'number' && Number.isFinite(error.status)) {
+    metadata.status = error.status;
+  }
+  if (
+    typeof error.retryAfterMs === 'number'
+    && Number.isFinite(error.retryAfterMs)
+    && error.retryAfterMs >= 0
+  ) {
+    metadata.retryAfterMs = error.retryAfterMs;
+  }
+  if (error.retryable === true || error instanceof TypeError) {
+    metadata.retryable = true;
+  }
+  return metadata;
 }
 
 function isLlmProvider(value: unknown): value is LlmProvider {

@@ -1,0 +1,24 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "shinobu-model-gateway",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-28",
+  "workers_dev": true,
+  "send_metrics": false,
+  "observability": {
+    "enabled": false
+  },
+  "vars": {
+    "ALLOWED_ORIGIN": "https://replace-with-production.pages.dev",
+    "SERVING_ENABLED": "false",
+    "TURNSTILE_REQUIRED": "false",
+    "TURNSTILE_HOSTNAME": ""
+  },
+  "r2_buckets": [
+    {
+      "binding": "MODELS",
+      "bucket_name": "shinobu-models",
+      "preview_bucket_name": "shinobu-models-preview"
+    }
+  ]
+}

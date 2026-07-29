@@ -771,8 +771,9 @@ export async function detectByOnnx(image: PipelineImage, platform: PlatformProvi
   // WebGPU path: GPU preprocess + IO binding
   if (primaryHandle.provider === "webgpu") {
     try {
-      // PipelineImage is HTMLImageElement at runtime in the browser (browserPlatform.createImage)
-      const imageBitmap = await createImageBitmap(image as HTMLImageElement);
+      const imageBitmap = platform.createImageBitmap
+        ? await platform.createImageBitmap(image)
+        : await createImageBitmap(image as HTMLImageElement);
       const gpuResult = await runDetectWithGpuPreprocess(primaryHandle.sessionId, imageBitmap);
       prep = {
         input: new Float32Array(0), // not needed for GPU path

@@ -7,6 +7,18 @@ describe("toErrorMessage", () => {
     expect(toErrorMessage(error)).toBe("something went wrong");
   });
 
+  it("maps structured pipeline failures to a stable host-facing message", () => {
+    const error = Object.assign(new Error("pipeline.failure.stage"), {
+      messageKey: "pipeline.failure.stage",
+      stage: "ocr",
+    });
+
+    expect(toErrorMessage(error)).toBe("OCR 识别失败");
+    expect(toErrorMessage({
+      messageKey: "pipeline.failure.runtime",
+    })).toBe("本地图片处理失败");
+  });
+
   it("returns string itself for string input", () => {
     expect(toErrorMessage("plain string")).toBe("plain string");
   });

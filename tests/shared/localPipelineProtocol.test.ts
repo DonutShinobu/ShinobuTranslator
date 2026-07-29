@@ -58,6 +58,23 @@ describe('local pipeline Port protocol', () => {
       index: 0,
       data: 'a'.repeat(LOCAL_PIPELINE_CHUNK_SIZE + 1),
     })).toBe(false);
+    expect(isLocalPipelineClientMessage({
+      type: 'cancel',
+      jobId: 'job-1',
+      reason: {
+        code: 'owner-ended',
+        messageKey: 'pipeline.cancelled.ownerEnded',
+        diagnosticSummary: 'owner closed',
+      },
+    })).toBe(true);
+    expect(isLocalPipelineClientMessage({
+      type: 'cancel',
+      jobId: 'job-1',
+      reason: {
+        code: 'made-up',
+        messageKey: 'pipeline.cancelled.ownerEnded',
+      },
+    })).toBe(false);
   });
 
   it('accepts a well-formed tweet context and rejects malformed context at the Port boundary', () => {
@@ -133,5 +150,47 @@ describe('local pipeline Port protocol', () => {
     const remote = new LocalPipelineRemoteError(serialized);
     expect(remote.message).toBe('outer');
     expect(remote.code).toBe('PIPELINE_STAGE_FAILED');
+  });
+
+  it('preserves only the safe shared failure envelope across the legacy Port boundary', () => {
+    const error = Object.assign(new Error('Authorization: Bearer secret-token'), {
+      code: 'PIPELINE_STAGE_FAILED',
+      cause: new Error('provider response contained secret-token'),
+      failure: {
+        code: 'IMAGE_DECODE_FAILED',
+        stage: 'decode',
+        scope: 'image',
+        retryable: true,
+        messageKey: 'pipeline.failure.imageDecode',
+        diagnostics: {
+          format: 'image/avif',
+        },
+      },
+    });
+
+    const serialized = serializePipelineError(error);
+    expect(serialized).toMatchObject({
+      code: 'IMAGE_DECODE_FAILED',
+      message: 'pipeline.failure.imageDecode',
+      scope: 'image',
+      retryable: true,
+      messageKey: 'pipeline.failure.imageDecode',
+      diagnostics: {
+        format: 'image/avif',
+      },
+    });
+    expect(JSON.stringify(serialized)).not.toContain('secret-token');
+    expect(serialized).not.toHaveProperty('stack');
+    expect(serialized).not.toHaveProperty('cause');
+
+    const remote = new LocalPipelineRemoteError(serialized);
+    expect(remote).toMatchObject({
+      scope: 'image',
+      retryable: true,
+      messageKey: 'pipeline.failure.imageDecode',
+      diagnostics: {
+        format: 'image/avif',
+      },
+    });
   });
 });

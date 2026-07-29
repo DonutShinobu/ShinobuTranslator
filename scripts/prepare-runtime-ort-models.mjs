@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT_DIR = join(ROOT, ".tmp", "model-variants", "runtime-ort-best");
-const DIST_MODELS_DIR = join(ROOT, "dist", "models");
+const DIST_MODELS_DIR = join(ROOT, "apps", "extension", "dist", "models");
 const MANIFEST_PATH = join(DIST_MODELS_DIR, "models.json");
 
 const MODELS = [

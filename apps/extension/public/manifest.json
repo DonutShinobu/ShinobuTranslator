@@ -69,6 +69,7 @@
       "resources": [
         "chunks/messages.js",
         "chunks/localPipelineProtocol.js",
+        "chunks/diagnosticLogClient.js",
         "chunks/perfTrace.js",
         "fonts/*"
       ],

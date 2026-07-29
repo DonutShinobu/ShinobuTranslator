@@ -21,7 +21,7 @@ import type {
 } from "../../../src/types";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const DIST_DIR = join(ROOT, "dist");
+const DIST_DIR = join(ROOT, "apps", "extension", "dist");
 const TMP_DIR = join(ROOT, ".tmp");
 const USER_DATA_DIR = join(TMP_DIR, `browser-pipeline-batch-${Date.now()}`);
 const DEFAULT_CONCURRENCY = 2;

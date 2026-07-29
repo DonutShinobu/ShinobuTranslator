@@ -1,5 +1,6 @@
 import type { TextRegion, TypesetLayoutDiagnostics } from "../../types";
 import type { PipelineRenderingContext } from "../../runtime/platform";
+import { formatTypesetFont } from "./fontRuntime";
 
 // ---------------------------------------------------------------------------
 // Entry function: computeFullVerticalTypeset
@@ -360,7 +361,7 @@ export function computeFullVerticalTypeset(
     sourceGeometryProfile,
   );
 
-  measureCtx.font = `${fontSize}px ${ff}`;
+  measureCtx.font = formatTypesetFont(fontSize, ff);
   const debugColumnBoxes = buildVerticalDebugColumnBoxes(
     columns,
     contentWidth,

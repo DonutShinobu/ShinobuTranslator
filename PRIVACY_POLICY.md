@@ -1,17 +1,76 @@
-# Privacy Policy for ShinobuTranslator
+# ShinobuTranslator 隐私政策
 
-**Last Updated:** May 29, 2026
+**最后更新：2026 年 7 月 28 日**
 
-**ShinobuTranslator** ("the Extension") is developed as an open-source tool. This Privacy Policy outlines our data handling practices.
+本政策适用于 Shinobu Translator Web 和 ShinobuTranslator 浏览器扩展。两者均为无账户的 GPL-3.0 开源工具，但支持的处理方式不同。源代码位于 [DonutShinobu/ShinobuTranslator](https://github.com/DonutShinobu/ShinobuTranslator)。
 
-## 1. Data Collection and Usage
-The Extension **does not** collect, store, transmit, or share any personal data, user information, or browsing history. Any text processed for translation is handled directly between your browser and the respective translation API services. We do not own, operate, or maintain any intermediary servers that intercept or store your data.
+## 1. 我们不建立的内容
 
-## 2. Permissions
-The Extension only requests permissions that are strictly necessary for its core translation functionality (such as accessing the current webpage text or making network requests to translation APIs). None of these permissions are used to track users or harvest data.
+- 不创建用户账户、用户 ID、广告标识或自定义追踪 Cookie；
+- 不加载分析、广告或远程错误上报脚本；
+- 不提供云端历史、云同步或项目方共享的翻译额度；
+- 项目方不接收用户的 API Key，也不运营图片处理或文本翻译中转服务。
 
-## 3. Open Source Transparency
-The source code for ShinobuTranslator is entirely public and open-source. Anyone can review the code at our official repository: https://github.com/DonutShinobu/ShinobuTranslator to independently verify these claims.
+## 2. Shinobu Translator Web 的数据流
 
-## 4. Contact Information
-If you have any questions or concerns regarding this Privacy Policy, please open an issue on our GitHub repository.
+### 本地处理
+
+导入的图片、缩略图、工作副本、视觉模型推理、OCR、擦除、修复、排版、结果和本地历史均在浏览器中处理或保存。图片不会发送给 Shinobu Translator、Cloudflare 模型网关或用户选择的文本翻译提供商。
+
+Web 版会直接从浏览器把以下内容发送到用户明确选择并配置的文本翻译服务：
+
+- OCR 识别出的文本；
+- 同一张图片内用于保持上下文的结构化文本和区域顺序；
+- 翻译所需的目标语言、提示词和模型参数；
+- 用户在当前会话输入或选择保存在此设备的 API Key。
+
+具体服务会依据其自身的隐私政策、保留规则、费用和使用条款处理这些数据。请求从浏览器直接发送，Shinobu Translator 不作为中间人。
+
+### Cloudflare 托管与模型下载
+
+Web 应用外壳由 Cloudflare Pages 提供，本地视觉模型通过 Cloudflare Workers 和私有 R2 下载。模型请求只包含内容哈希路径、常规 HTTP 请求头以及可选的 Range 范围，不包含用户图片、OCR、译文、翻译请求正文或 API Key。
+
+项目不添加自定义访问日志，版本化的 Worker 配置也显式关闭 Workers Observability；每次生产部署仍须在 Cloudflare 控制台复核真实状态。即使关闭可查询的调用日志，Cloudflare 仍会为了传输、安全和平台运行处理必要的网络元数据，例如 IP 地址、请求时间、User-Agent、请求路径和安全事件。Pages Web Analytics 默认不属于产品设计，生产环境必须保持关闭，除非先完成单独披露和同意设计。
+
+发生滥用时，项目可能临时启用 Cloudflare Turnstile。默认配置为关闭；如果启用，Cloudflare 会处理客户端 IP、User-Agent、TLS/浏览器信号、站点来源和验证令牌，模型网关会把连接 IP 作为可选的 `remoteip` 交给 Siteverify 验证。R2 仅保存公开发布的模型对象，项目不承诺其位于特定国家或地区。
+
+## 3. 浏览器扩展的额外数据流
+
+扩展的本地 OCR 流程与 Web 版相同：视觉处理在浏览器中完成，识别文本直接发送到用户选择的翻译服务。
+
+扩展还可能提供 Web 版不包含的第三方整图翻译模式（例如 Nano Banana）。只有用户选择并启动该模式时，输入图片、提示词和相关凭据才会直接发送给所选第三方服务。使用前请查看该服务的隐私政策和条款。
+
+扩展为完成当前网页翻译而申请的权限以 `apps/extension/public/manifest.json` 为准。权限不用于追踪浏览历史或建立用户画像。
+
+## 4. 本地存储
+
+Web 版可能在当前站点的以下浏览器存储中保存数据：
+
+- OPFS：模型、原图、工作副本、缩略图和结果 Blob；
+- IndexedDB：批次状态、配置、OCR、译文、版本和恢复点；
+- Cache Storage：应用外壳、字体和 ONNX Runtime 资源；
+- `localStorage`：界面偏好、能力测试缓存和非敏感状态；
+- 当前标签页会话：默认的翻译 API Key。
+
+用户选择“记住此设备”后，API Key 会用浏览器生成的不可导出 WebCrypto 密钥加密并写入 IndexedDB，且绑定规范化后的目标域名、端口和 API 路径前缀。这降低了磁盘直接读取风险，但不能抵御同源应用代码、浏览器环境或设备已被攻破的情况。
+
+浏览器或操作系统可能清理站点数据。用户可在应用中删除历史，或通过浏览器设置清除全部站点数据。未加密的 `.shinobu.zip` 项目包可包含原图、结果、OCR、译文和配置；任何取得文件的人都可能读取其中内容。
+
+## 5. Service Worker、离线与诊断
+
+- 翻译 API 请求和响应不会写入 Service Worker 缓存；
+- 离线时不启动新的翻译、重排或擦除任务；
+- 图片、OCR、译文、请求正文和 API Key 默认不写入诊断日志；
+- 用户主动导出的脱敏诊断内容只应包含版本、阶段、耗时、设备能力、错误码和提供商主机。
+
+## 6. 数据保留与删除
+
+项目方没有可供删除的云端用户历史。浏览器中的数据会保留到用户手动删除、浏览器清理站点数据或存储被系统回收为止。文本翻译服务和 Cloudflare 必要网络元数据的保留周期由各自政策及实际生产配置决定；如未来开启 Workers 日志、Pages Analytics 或 Turnstile，必须先更新本政策。
+
+## 7. 儿童、合法内容与跨境处理
+
+本工具不面向儿童提供专门服务。用户应确保有权处理输入图片，并自行判断所选翻译服务和托管平台所在地区及其跨境数据规则是否适合自身情况。
+
+## 8. 政策变更与联系
+
+实质性数据流发生变化时，本文件会更新日期和内容。问题或隐私请求请在 GitHub 仓库中提交 Issue；请勿在公开 Issue 中粘贴 API Key、私人图片、OCR 原文或未脱敏诊断。

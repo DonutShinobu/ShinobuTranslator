@@ -20,12 +20,7 @@ import type {
   GpuDetectResult,
 } from "./onnxWorkerTypes";
 import type { RuntimeSelfCheckReport } from "./selfCheck";
-
-// ---------------------------------------------------------------------------
-// Environment detection
-// ---------------------------------------------------------------------------
-
-const isNode = typeof process !== "undefined" && !!process.versions?.node;
+import { isNodeRuntime } from "./runtimeTarget";
 
 // ---------------------------------------------------------------------------
 // Bridge module cache — loaded once, reused across pipeline calls
@@ -45,7 +40,7 @@ let bridge: BridgeModule | null = null;
 
 async function loadBridge(): Promise<BridgeModule> {
   if (bridge) return bridge;
-  if (isNode) {
+  if (isNodeRuntime) {
     bridge = await import("./onnxNodeBridge");
   } else {
     bridge = await import("./onnxWorkerBridge");

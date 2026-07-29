@@ -5,7 +5,11 @@ import {
   llmTranslate,
   llmTranslateRegions,
 } from '../translators/llm';
-import { googleWebTranslate } from '../translators/googleWeb';
+import {
+  extensionTextTranslationTransport,
+  type TextTranslationTransport,
+} from '../translators/transport';
+import { isPipelineFailureEnvelope } from '@shinobu/image-pipeline';
 
 type LlmRegionRequest = {
   id: string;
@@ -55,13 +59,34 @@ function buildLlmRegionRequest(region: TextRegion): LlmRegionRequest {
   };
 }
 
-async function translateOne(text: string, config: PipelineConfig): Promise<string> {
+export type RunTranslateOptions = {
+  signal?: AbortSignal;
+  transport?: TextTranslationTransport;
+};
+
+function hasPipelineFailure(error: unknown): boolean {
+  return error !== null
+    && typeof error === 'object'
+    && 'failure' in error
+    && isPipelineFailureEnvelope(error.failure);
+}
+
+async function translateOne(
+  text: string,
+  config: PipelineConfig,
+  options: RunTranslateOptions,
+): Promise<string> {
   if (!text.trim()) {
     return '';
   }
 
   if (config.translator === 'google_web') {
-    return googleWebTranslate(text, config.sourceLang, config.targetLang);
+    return (options.transport ?? extensionTextTranslationTransport).translatePlain({
+      text,
+      from: config.sourceLang,
+      to: config.targetLang,
+      signal: options.signal,
+    });
   }
 
   assertTextTranslationProvider(config);
@@ -82,10 +107,17 @@ async function translateOne(text: string, config: PipelineConfig): Promise<strin
     text,
     translationContext: config.translationContext,
     diagnosticRunId: config.diagnosticRunId,
+    apiKey: config.llmApiKey,
+    signal: options.signal,
+    transport: options.transport,
   });
 }
 
-async function translateOneStructured(region: TextRegion, config: PipelineConfig): Promise<StructuredTranslationResult> {
+async function translateOneStructured(
+  region: TextRegion,
+  config: PipelineConfig,
+  options: RunTranslateOptions,
+): Promise<StructuredTranslationResult> {
   const result = await llmTranslateRegions({
     provider: config.llmProvider,
     authMode: config.llmAuthMode,
@@ -98,6 +130,9 @@ async function translateOneStructured(region: TextRegion, config: PipelineConfig
     regions: [buildLlmRegionRequest(region)],
     translationContext: config.translationContext,
     diagnosticRunId: config.diagnosticRunId,
+    apiKey: config.llmApiKey,
+    signal: options.signal,
+    transport: options.transport,
   });
   const translated = result.byId.get(region.id);
   if (!translated?.translatedText) {
@@ -111,7 +146,11 @@ export type RunTranslateResult = {
   translationDebug: TranslationDebugInfo | null;
 };
 
-export async function runTranslate(regions: TextRegion[], config: PipelineConfig): Promise<RunTranslateResult> {
+export async function runTranslate(
+  regions: TextRegion[],
+  config: PipelineConfig,
+  options: RunTranslateOptions = {},
+): Promise<RunTranslateResult> {
   if (regions.length === 0) {
     return {
       regions: [],
@@ -168,11 +207,14 @@ export async function runTranslate(regions: TextRegion[], config: PipelineConfig
         regions: regions.map(buildLlmRegionRequest),
         translationContext: requestConfig.translationContext,
         diagnosticRunId: requestConfig.diagnosticRunId,
+        apiKey: requestConfig.llmApiKey,
+        signal: options.signal,
+        transport: options.transport,
       }));
       batched = batchedResult.byId;
       translationDebug.llmBatchRawResponse = batchedResult.rawContent;
     } catch (error) {
-      if (error instanceof LlmThinkingConfigError) {
+      if (error instanceof LlmThinkingConfigError || hasPipelineFailure(error)) {
         throw error;
       }
       batched = new Map();
@@ -205,7 +247,7 @@ export async function runTranslate(regions: TextRegion[], config: PipelineConfig
         llmFallbackRequestCount += 1;
         try {
           const translated = await runLlmRequest(
-            (requestConfig) => translateOneStructured(region, requestConfig),
+            (requestConfig) => translateOneStructured(region, requestConfig, options),
           );
           next.push({
             ...region,
@@ -214,14 +256,14 @@ export async function runTranslate(regions: TextRegion[], config: PipelineConfig
           });
           continue;
         } catch (error) {
-          if (error instanceof LlmThinkingConfigError) {
+          if (error instanceof LlmThinkingConfigError || hasPipelineFailure(error)) {
             throw error;
           }
           llmFallbackRequestCount += 1;
         }
       }
       const translatedText = await runLlmRequest(
-        (requestConfig) => translateOne(region.sourceText, requestConfig),
+        (requestConfig) => translateOne(region.sourceText, requestConfig, options),
       );
       next.push({ ...region, translatedText, translatedColumns: undefined });
     }
@@ -240,7 +282,7 @@ export async function runTranslate(regions: TextRegion[], config: PipelineConfig
 
   const next: TextRegion[] = [];
   for (const region of regions) {
-    const translatedText = await translateOne(region.sourceText, config);
+    const translatedText = await translateOne(region.sourceText, config, options);
     next.push({ ...region, translatedText });
   }
   return {

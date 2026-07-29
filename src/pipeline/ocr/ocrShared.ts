@@ -1,3 +1,5 @@
+import { isNodeRuntime } from '../../runtime/runtimeTarget';
+
 /** Load and cache the dictionary used by the current Paddle CTC recognizer. */
 const charsetCache: Map<string, Promise<string[] | null>> = new Map();
 
@@ -9,9 +11,8 @@ export async function loadCharset(dictUrl?: string): Promise<string[] | null> {
   if (cached) {
     return cached;
   }
-  const isNode = typeof process !== 'undefined' && !!process.versions?.node;
   const promise = (async () => {
-    if (isNode) {
+    if (isNodeRuntime) {
       // Node: read from local file system via dynamic import of Node-only module
       const { loadCharsetNode } = await import('./ocrSharedNode');
       return loadCharsetNode(dictUrl);

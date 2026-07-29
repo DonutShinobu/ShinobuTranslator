@@ -17,6 +17,13 @@ export interface PipelineCanvas {
   height: number;
   getContext(type: '2d', options?: CanvasRenderingContext2DSettings): PipelineRenderingContext | null;
   toDataURL(type?: string): string;
+  toBlob?(
+    callback: (blob: Blob | null) => void,
+    type?: string,
+    quality?: number,
+  ): void;
+  convertToBlob?(options?: { type?: string; quality?: number }): Promise<Blob>;
+  dispose?(): void;
 }
 
 export interface PipelineRenderingContext {
@@ -91,7 +98,13 @@ export interface PipelineImage {
   naturalHeight: number;
   onload: ((ev: any) => any) | null;
   onerror: ((ev: any) => any) | null;
+  close?(): void;
 }
+
+export type PipelineFontDescriptors = {
+  style?: string;
+  weight?: string;
+};
 
 // ---------------------------------------------------------------------------
 // PlatformProvider — factory interface
@@ -107,11 +120,18 @@ export interface PlatformProvider {
   /** Load an image from a source (data URL, file path, etc.). */
   loadImage(src: string): Promise<PipelineImage>;
 
+  /** Create a transferable bitmap for GPU preprocessing when supported. */
+  createImageBitmap?(image: PipelineImage): Promise<ImageBitmap>;
+
   /** Create an ImageData object with the given dimensions. */
   createImageData(width: number, height: number): PipelineImageData;
 
   /** Register a font for canvas rendering. */
-  registerFont(path: string, family: string): void;
+  registerFont(
+    path: string,
+    family: string,
+    descriptors?: PipelineFontDescriptors,
+  ): void;
 
   /** Wait for all registered fonts to be ready for rendering. */
   waitForFonts(): Promise<void>;

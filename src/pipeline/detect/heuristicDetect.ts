@@ -232,7 +232,10 @@ export async function detectByTesseract(image: PipelineImage, platform: Platform
       preserve_interword_spaces: "1"
     });
     const preprocessed = preprocessForTesseract(image, platform);
-    const result = await worker.recognize(preprocessed.canvas as HTMLCanvasElement);
+    const tesseractInput = preprocessed.canvas.convertToBlob
+      ? await preprocessed.canvas.convertToBlob({ type: "image/png" })
+      : preprocessed.canvas as HTMLCanvasElement;
+    const result = await worker.recognize(tesseractInput);
 
     const lineUnits = extractUnits(result.data.lines);
     const lineRegions = buildRegionsFromUnits(

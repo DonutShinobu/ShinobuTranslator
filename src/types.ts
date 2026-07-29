@@ -1,5 +1,6 @@
-import type { PipelineCanvas, PipelineImage, PipelineImageData } from "./runtime/platform";
+import type { PipelineCanvas, PipelineImage } from "./runtime/platform";
 import type { LlmThinkingLevel } from "./shared/llmThinking";
+import type { PipelineProgress as ImagePipelineProgress } from "@shinobu/image-pipeline";
 
 export type Rect = {
   x: number;
@@ -25,6 +26,20 @@ export type SourceTextLineGeometry = {
   width: number;
   height: number;
   fontSize?: number;
+};
+
+/**
+ * A single-channel segmentation mask stored in image coordinates.
+ *
+ * `x` and `y` locate the local mask within the source image. A non-zero byte
+ * marks a pixel inside the detected bubble.
+ */
+export type BubbleMask = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  data: Uint8Array;
 };
 
 export type LlmProvider = 'deepseek' | 'gemini' | 'glm' | 'kimi' | 'minimax' | 'mimo' | 'openai' | 'custom';
@@ -61,7 +76,7 @@ export type TextRegion = {
   /** Pre-merge source line/column geometries in reading order. */
   sourceLineGeometries?: SourceTextLineGeometry[];
   bubbleBox?: Rect;
-  bubbleMask?: PipelineImageData;
+  bubbleMask?: BubbleMask;
 };
 
 export type PipelineConfig = {
@@ -434,7 +449,10 @@ export type StageTiming = {
   durationMs: number;
 };
 
-export type PipelineProgress = {
-  stage: string;
+export type PipelineProgress = Omit<
+  ImagePipelineProgress,
+  'operation' | 'detail'
+> & {
+  operation?: string;
   detail: string;
 };

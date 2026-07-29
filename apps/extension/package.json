@@ -1,0 +1,30 @@
+{
+  "name": "@shinobu/extension",
+  "version": "0.8.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "npm run typecheck && vite build && node ../../scripts/build-worker.mjs --out-dir dist && node ../../scripts/check-release-boundaries.mjs --dist dist",
+    "build:benchmark": "npm run build && vite build --mode benchmark && node ../../scripts/check-release-boundaries.mjs --dist dist --benchmark",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@shinobu/image-pipeline": "0.1.0",
+    "@shinobu/translator-core": "0.1.0",
+    "comlink": "^4.4.2",
+    "onnxruntime-web": "^1.24.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tesseract.js": "^5.1.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.4.1",
+    "@webgpu/types": "^0.1.70",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0"
+  }
+}

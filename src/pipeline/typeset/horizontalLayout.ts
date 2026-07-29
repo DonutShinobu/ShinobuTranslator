@@ -36,6 +36,7 @@ import type {
   HorizontalLineAnchor,
   HorizontalSourceLineLayout,
 } from "./sourceGeometry";
+import { formatTypesetFont } from "./fontRuntime";
 
 export const horizontalLetterSpacingRatio = -0.05;
 export const horizontalLineHeightRatio = 0.93;
@@ -98,7 +99,7 @@ export function calcHorizontal(
   fontFamily: string,
   letterSpacingScale: number = 1,
 ): HLine[] {
-  ctx.font = `${fontSize}px ${fontFamily}`;
+  ctx.font = formatTypesetFont(fontSize, fontFamily);
   const cleaned = text.replace(/\n+/g, " ").trim();
   if (!cleaned) return [];
 
@@ -235,7 +236,7 @@ export function resolveHorizontalRenderPadding(
     return strokeWidth(fontSize) + 2;
   }
 
-  ctx.font = `${fontSize}px ${fontFamily}`;
+  ctx.font = formatTypesetFont(fontSize, fontFamily);
   const letterSpacing = resolveHorizontalLetterSpacing(fontSize, letterSpacingScale);
   let maxOverflow = 0;
 
@@ -398,7 +399,7 @@ export function computeFullHorizontalTypeset(
     fontSize: number,
   ): number => {
     if (preferredLineSegments.length > 0) {
-      context.font = `${fontSize}px ${fontFamily}`;
+      context.font = formatTypesetFont(fontSize, fontFamily);
       return calcHorizontalFromLines(
         context,
         preferredLineSegments,
@@ -467,7 +468,7 @@ export function computeFullHorizontalTypeset(
     fontSize: number,
     letterSpacingScale: number,
   ): Pick<HorizontalCandidate, "lines" | "lineBreakReasons" | "lineSegmentIds" | "lineSegmentSources"> => {
-    measureCtx.font = `${fontSize}px ${fontFamily}`;
+    measureCtx.font = formatTypesetFont(fontSize, fontFamily);
     if (preferredLineSegments.length > 0) {
       return calcHorizontalFromLines(
         measureCtx,
@@ -693,7 +694,7 @@ export function computeFullHorizontalTypeset(
     letterSpacingScale,
     lineHeightScale,
   } = candidate;
-  measureCtx.font = `${fontSize}px ${fontFamily}`;
+  measureCtx.font = formatTypesetFont(fontSize, fontFamily);
   const strokePadding = resolveHorizontalRenderPadding(
     measureCtx,
     lines,

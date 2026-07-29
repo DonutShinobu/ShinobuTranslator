@@ -6,7 +6,39 @@
  * satisfy PipelineCanvas / PipelineImage, so we return them directly.
  */
 
-import type { PlatformProvider, PipelineCanvas, PipelineImage, PipelineImageData } from './platform';
+import type {
+  PipelineCanvas,
+  PipelineFontDescriptors,
+  PipelineImage,
+  PipelineImageData,
+  PlatformProvider,
+} from './platform';
+
+const pendingFonts = new Map<string, Promise<void>>();
+
+function registerFont(
+  path: string,
+  family: string,
+  descriptors?: PipelineFontDescriptors,
+): void {
+  const key = `${path}\u0000${family}\u0000${descriptors?.style ?? ''}\u0000${descriptors?.weight ?? ''}`;
+  if (pendingFonts.has(key)) return;
+
+  const task = (async () => {
+    const response = await fetch(path);
+    if (!response.ok) {
+      throw new Error(`字体下载失败: ${response.status}`);
+    }
+    const face = new FontFace(
+      family,
+      await response.arrayBuffer(),
+      descriptors,
+    );
+    await face.load();
+    document.fonts.add(face);
+  })();
+  pendingFonts.set(key, task);
+}
 
 export const browserPlatform: PlatformProvider = {
   createCanvas(width: number, height: number): PipelineCanvas {
@@ -29,15 +61,17 @@ export const browserPlatform: PlatformProvider = {
     });
   },
 
+  createImageBitmap(image: PipelineImage): Promise<ImageBitmap> {
+    return globalThis.createImageBitmap(image as HTMLImageElement);
+  },
+
   createImageData(width: number, height: number): PipelineImageData {
     return new ImageData(width, height);
   },
 
-  registerFont(_path: string, _family: string): void {
-    // Browser loads fonts via CSS; no manual registration needed.
-  },
+  registerFont,
 
-  waitForFonts(): Promise<void> {
-    return document.fonts.ready.then(() => {});
+  async waitForFonts(): Promise<void> {
+    await Promise.all(pendingFonts.values());
   },
 };

@@ -1,3 +1,5 @@
+import type { PipelineCanvas } from '../runtime/platform';
+
 export function base64ToBlob(base64: string, contentType: string): Blob {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
@@ -20,9 +22,15 @@ export function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
-export function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+export function canvasToPngBlob(canvas: PipelineCanvas): Promise<Blob> {
+  if (canvas.convertToBlob) {
+    return canvas.convertToBlob({ type: 'image/png' });
+  }
+  if (!canvas.toBlob) {
+    return Promise.reject(new Error('当前 Canvas 不支持 PNG 导出'));
+  }
   return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
+    canvas.toBlob?.((blob) => {
       if (!blob) {
         reject(new Error('导出译图失败'));
         return;

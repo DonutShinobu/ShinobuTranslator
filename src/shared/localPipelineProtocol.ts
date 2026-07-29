@@ -9,6 +9,12 @@ import type {
   StageTiming,
   TranslationDebugInfo,
 } from '../types';
+import {
+  isCurrentPipelineRecord,
+  type PipelineCancellationReason,
+  type PipelineFailureEnvelope,
+  type PipelineRecord,
+} from '@shinobu/image-pipeline';
 
 export const LOCAL_PIPELINE_CLIENT_PORT = 'mt:local-pipeline-client';
 export const LOCAL_PIPELINE_OFFSCREEN_PORT = 'mt:offscreen-pipeline-host';
@@ -22,6 +28,7 @@ export type LocalPipelineErrorCode =
   | 'OFFSCREEN_DISCONNECTED'
   | 'TRANSFER_PROTOCOL_ERROR'
   | 'TASK_CANCELLED'
+  | 'RUNTIME_BUSY'
   | 'WORKER_BOOTSTRAP_FAILED'
   | 'PIPELINE_STAGE_FAILED';
 
@@ -41,10 +48,14 @@ export type LocalPipelineArtifactSummary = {
 
 export type SerializedPipelineError = {
   name: string;
-  code: LocalPipelineErrorCode;
+  code: string;
   message: string;
   stack?: string;
   stage?: string;
+  scope?: PipelineFailureEnvelope['scope'];
+  retryable?: boolean;
+  messageKey?: string;
+  diagnostics?: PipelineFailureEnvelope['diagnostics'];
   cause?: SerializedPipelineError | string;
   artifacts?: LocalPipelineArtifactSummary;
 };
@@ -100,7 +111,7 @@ export type LocalPipelineClientMessage =
   | {
       type: 'cancel';
       jobId: string;
-      reason?: string;
+      reason?: PipelineCancellationReason | string;
     };
 
 export type LocalPipelineHostMessage =
@@ -123,9 +134,11 @@ export type LocalPipelineHostMessage =
   | {
       type: 'result-meta';
       jobId: string;
+      status: 'completed' | 'no-translatable-text';
       result: LocalPipelineArtifactMeta;
       debug?: LocalPipelineArtifactMeta;
       summary: LocalPipelineArtifactSummary;
+      record: PipelineRecord;
     }
   | {
       type: 'result-chunk';
@@ -145,9 +158,11 @@ export type LocalPipelineHostMessage =
     };
 
 export type LocalPipelineResult = {
+  status: 'completed' | 'no-translatable-text';
   result: Blob;
   debug?: Blob;
   summary: LocalPipelineArtifactSummary;
+  record: PipelineRecord;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -156,6 +171,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isJobMessage(value: Record<string, unknown>): boolean {
   return typeof value.jobId === 'string' && value.jobId.length > 0;
+}
+
+function isPipelineCancellationReason(value: unknown): value is PipelineCancellationReason {
+  if (!isRecord(value)) return false;
+  return (
+    value.code === 'user-requested'
+    || value.code === 'owner-ended'
+    || value.code === 'transport-disconnected'
+    || value.code === 'runtime-disposed'
+    || value.code === 'unknown'
+  )
+    && typeof value.messageKey === 'string'
+    && value.messageKey.length > 0
+    && (
+      value.diagnosticSummary === undefined
+      || typeof value.diagnosticSummary === 'string'
+    );
 }
 
 export function isLocalPipelineClientMessage(value: unknown): value is LocalPipelineClientMessage {
@@ -174,7 +206,9 @@ export function isLocalPipelineClientMessage(value: unknown): value is LocalPipe
     case 'input-complete':
       return true;
     case 'cancel':
-      return value.reason === undefined || typeof value.reason === 'string';
+      return value.reason === undefined
+        || typeof value.reason === 'string'
+        || isPipelineCancellationReason(value.reason);
     default:
       return false;
   }
@@ -199,11 +233,17 @@ export function isLocalPipelineHostMessage(value: unknown): value is LocalPipeli
     case 'progress':
       return isRecord(value.progress)
         && typeof value.progress.stage === 'string'
-        && typeof value.progress.detail === 'string';
+        && typeof value.progress.detail === 'string'
+        && (
+          value.progress.operation === undefined
+          || typeof value.progress.operation === 'string'
+        );
     case 'result-meta':
-      return isValidArtifactMeta(value.result)
+      return (value.status === 'completed' || value.status === 'no-translatable-text')
+        && isValidArtifactMeta(value.result)
         && (value.debug === undefined || isValidArtifactMeta(value.debug))
-        && isValidArtifactSummary(value.summary);
+        && isValidArtifactSummary(value.summary)
+        && isCurrentPipelineRecord(value.record);
     case 'result-chunk':
       return (value.artifact === 'result' || value.artifact === 'debug')
         && Number.isInteger(value.index)
@@ -213,8 +253,17 @@ export function isLocalPipelineHostMessage(value: unknown): value is LocalPipeli
     case 'error':
       return isRecord(value.error)
         && typeof value.error.name === 'string'
-        && isLocalPipelineErrorCode(value.error.code)
-        && typeof value.error.message === 'string';
+        && typeof value.error.code === 'string'
+        && value.error.code.length > 0
+        && typeof value.error.message === 'string'
+        && (
+          value.error.scope === undefined
+          || value.error.scope === 'image'
+          || value.error.scope === 'runtime'
+        )
+        && (value.error.retryable === undefined || typeof value.error.retryable === 'boolean')
+        && (value.error.messageKey === undefined || typeof value.error.messageKey === 'string')
+        && (value.error.diagnostics === undefined || isRecord(value.error.diagnostics));
     default:
       return false;
   }
@@ -352,7 +401,7 @@ export function summarizePipelineArtifacts(artifacts: PipelineArtifacts): LocalP
 
 function toSerializedCause(
   value: unknown,
-  fallbackCode: LocalPipelineErrorCode,
+  fallbackCode: string,
   seen: WeakSet<object>,
   depth: number,
 ): SerializedPipelineError | string | undefined {
@@ -365,16 +414,42 @@ function toSerializedCause(
   }
   if (value instanceof Error || isRecord(value)) {
     const record = value as Error & Record<string, unknown>;
-    const code = isLocalPipelineErrorCode(record.code) ? record.code : fallbackCode;
+    const hasFailureEnvelope = isRecord(record.failure);
+    const failure = hasFailureEnvelope ? record.failure as Record<string, unknown> : record;
+    const code = typeof failure.code === 'string' && failure.code
+      ? failure.code
+      : isLocalPipelineErrorCode(record.code)
+        ? record.code
+        : fallbackCode;
     const serialized: SerializedPipelineError = {
       name: typeof record.name === 'string' && record.name ? record.name : 'Error',
       code,
-      message: typeof record.message === 'string' ? record.message : String(value),
+      message: hasFailureEnvelope && typeof failure.messageKey === 'string'
+        ? failure.messageKey
+        : typeof record.message === 'string' ? record.message : String(value),
     };
-    if (typeof record.stack === 'string') serialized.stack = record.stack;
-    if (typeof record.stage === 'string') serialized.stage = record.stage;
-    const nested = toSerializedCause(record.cause, code, seen, depth + 1);
-    if (nested !== undefined) serialized.cause = nested;
+    if (!hasFailureEnvelope && typeof record.stack === 'string') serialized.stack = record.stack;
+    if (typeof failure.stage === 'string') {
+      serialized.stage = failure.stage;
+    } else if (typeof record.stage === 'string') {
+      serialized.stage = record.stage;
+    }
+    if (failure.scope === 'image' || failure.scope === 'runtime') {
+      serialized.scope = failure.scope;
+    }
+    if (typeof failure.retryable === 'boolean') {
+      serialized.retryable = failure.retryable;
+    }
+    if (typeof failure.messageKey === 'string') {
+      serialized.messageKey = failure.messageKey;
+    }
+    if (isRecord(failure.diagnostics)) {
+      serialized.diagnostics = failure.diagnostics;
+    }
+    if (!hasFailureEnvelope) {
+      const nested = toSerializedCause(record.cause, code, seen, depth + 1);
+      if (nested !== undefined) serialized.cause = nested;
+    }
     const artifacts = record.artifacts;
     if (isRecord(artifacts) && Array.isArray(artifacts.stageTimings)) {
       serialized.artifacts = summarizePipelineArtifacts(artifacts as PipelineArtifacts);
@@ -419,13 +494,18 @@ export function isLocalPipelineErrorCode(value: unknown): value is LocalPipeline
     || value === 'OFFSCREEN_DISCONNECTED'
     || value === 'TRANSFER_PROTOCOL_ERROR'
     || value === 'TASK_CANCELLED'
+    || value === 'RUNTIME_BUSY'
     || value === 'WORKER_BOOTSTRAP_FAILED'
     || value === 'PIPELINE_STAGE_FAILED';
 }
 
 export class LocalPipelineRemoteError extends Error {
-  readonly code: LocalPipelineErrorCode;
+  readonly code: string;
   readonly stage?: string;
+  readonly scope?: PipelineFailureEnvelope['scope'];
+  readonly retryable?: boolean;
+  readonly messageKey?: string;
+  readonly diagnostics?: PipelineFailureEnvelope['diagnostics'];
   readonly artifacts?: LocalPipelineArtifactSummary;
 
   constructor(readonly serialized: SerializedPipelineError) {
@@ -433,6 +513,10 @@ export class LocalPipelineRemoteError extends Error {
     this.name = serialized.name;
     this.code = serialized.code;
     this.stage = serialized.stage;
+    this.scope = serialized.scope;
+    this.retryable = serialized.retryable;
+    this.messageKey = serialized.messageKey;
+    this.diagnostics = serialized.diagnostics;
     this.artifacts = serialized.artifacts;
     if (serialized.stack) this.stack = serialized.stack;
   }

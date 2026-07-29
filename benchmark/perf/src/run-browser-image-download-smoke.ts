@@ -11,7 +11,7 @@ import {
 import type { RuntimeResponse } from '../../../src/shared/messages';
 
 const root = resolve(import.meta.dirname, '../../..');
-const distDir = join(root, 'dist');
+const distDir = join(root, 'apps', 'extension', 'dist');
 const fixtureBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
 const fixtureBytes = Buffer.from(fixtureBase64, 'base64');
 const pageFixtureHostname = 'reader.shinobu-smoke.test';

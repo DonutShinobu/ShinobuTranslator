@@ -1,8 +1,6 @@
-import type {
-  PipelineImageData,
-  PipelineRenderingContext,
-} from '../../runtime/platform';
-import type { TextRegion } from '../../types';
+import type { PipelineRenderingContext } from '../../runtime/platform';
+import type { BubbleMask, TextRegion } from '../../types';
+import { hasBubbleMaskPixel } from '../bubbleMask';
 import { getRegionQuad, quadAngle } from './geometry';
 import { maxSourceGeometryAnchorAngleRad } from './fontFitCore';
 import type { HLine, HorizontalSourceLineLayout } from './fontFitCore';
@@ -73,12 +71,12 @@ export type BuildHorizontalLineBoxesInput = {
   anchorContentCenterY?: number;
   sourcePitch?: number;
   sourceLineLayouts?: readonly HorizontalSourceLineLayout[];
-  bubbleMask?: PipelineImageData;
+  bubbleMask?: BubbleMask;
   boxPadding?: number;
 };
 
 export type ResolveHorizontalSafeIntervalInput = {
-  mask?: PipelineImageData;
+  mask?: BubbleMask;
   region: TextRegion;
   contentWidth: number;
   localTopY: number;
@@ -141,10 +139,16 @@ export function resolveHorizontalSafeInterval(
     return fallback;
   }
 
-  const imageXStart = Math.max(0, Math.round(region.box.x + boxPadding));
-  const imageXEnd = Math.min(mask.width - 1, Math.round(imageXStart + contentWidth));
-  const imageYStart = Math.max(0, Math.floor(region.box.y + boxPadding + localTopY));
-  const imageYEnd = Math.min(mask.height - 1, Math.ceil(region.box.y + boxPadding + localBottomY) - 1);
+  const contentImageX = Math.round(region.box.x + boxPadding);
+  const imageXStart = Math.max(mask.x, contentImageX);
+  const imageXEnd = Math.min(
+    mask.x + mask.width - 1,
+    Math.round(contentImageX + contentWidth),
+  );
+  const imageYStart = Math.floor(region.box.y + boxPadding + localTopY);
+  const imageYEnd = Math.ceil(region.box.y + boxPadding + localBottomY) - 1;
+  const maskYEnd = mask.y + mask.height - 1;
+  if (imageYStart < mask.y || imageYEnd > maskYEnd) return fallback;
   if (imageXStart > imageXEnd || imageYStart > imageYEnd) return fallback;
 
   const runs: Array<{ left: number; right: number }> = [];
@@ -152,7 +156,7 @@ export function resolveHorizontalSafeInterval(
   for (let x = imageXStart; x <= imageXEnd; x += 1) {
     let safe = true;
     for (let y = imageYStart; y <= imageYEnd; y += 1) {
-      if (mask.data[(y * mask.width + x) * 4 + 3] === 0) {
+      if (!hasBubbleMaskPixel(mask, x, y)) {
         safe = false;
         break;
       }
@@ -166,13 +170,13 @@ export function resolveHorizontalSafeInterval(
   if (runStart !== undefined) runs.push({ left: runStart, right: imageXEnd });
   if (runs.length === 0) return fallback;
 
-  const preferredImageX = imageXStart + preferredContentX;
+  const preferredImageX = contentImageX + preferredContentX;
   const selected = runs.find((run) => preferredImageX >= run.left && preferredImageX <= run.right)
     ?? [...runs].sort((a, b) => (b.right - b.left) - (a.right - a.left))[0];
   if (!selected) return fallback;
 
-  const left = selected.left - imageXStart + safetyMargin;
-  const right = selected.right - imageXStart - safetyMargin;
+  const left = selected.left - contentImageX + safetyMargin;
+  const right = selected.right - contentImageX - safetyMargin;
   if (!Number.isFinite(left) || !Number.isFinite(right) || right <= left) return fallback;
   return { left, right, width: right - left, source: 'mask' };
 }

@@ -1,0 +1,116 @@
+name: Release Web & Model Gateway
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: startsWith(github.event.release.tag_name, 'web-v')
+    runs-on: ubuntu-latest
+
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      WEB_PRODUCTION_ORIGIN: ${{ vars.WEB_PRODUCTION_ORIGIN }}
+      MODEL_GATEWAY_ORIGIN: ${{ vars.MODEL_GATEWAY_ORIGIN }}
+      CLOUDFLARE_PAGES_PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
+      WEB_RELEASE_TAG: ${{ github.event.release.tag_name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate production variables
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${WEB_PRODUCTION_ORIGIN:?Set WEB_PRODUCTION_ORIGIN in the production environment}"
+          : "${MODEL_GATEWAY_ORIGIN:?Set MODEL_GATEWAY_ORIGIN in the production environment}"
+          : "${CLOUDFLARE_PAGES_PROJECT:?Set CLOUDFLARE_PAGES_PROJECT in the production environment}"
+          node -e "for (const value of process.argv.slice(1)) { const url = new URL(value); if (url.protocol !== 'https:' || url.pathname !== '/' || url.search || url.hash) process.exit(1) }" \
+            "$WEB_PRODUCTION_ORIGIN" "$MODEL_GATEWAY_ORIGIN"
+
+      - name: Find latest model release
+        id: models
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG=$(gh release list --repo "${{ github.repository }}" \
+            --json tagName --jq '.[] | select(.tagName | startswith("models-")) | .tagName' \
+            | head -1)
+          test -n "$TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run fail-closed production preflight
+        env:
+          MODEL_RELEASE_TAG: ${{ steps.models.outputs.tag }}
+        run: npm run web:production:preflight -- --release
+
+      - name: Download and verify content-hashed model bytes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npm run models:download -- "${{ steps.models.outputs.tag }}" --force
+          npm run models:upload-r2 -- --dry-run
+
+      - name: Run full quality gate
+        env:
+          VITE_MODEL_GATEWAY_ORIGIN: ${{ env.MODEL_GATEWAY_ORIGIN }}
+        run: npm run check
+
+      - name: Upload content-addressed model objects
+        run: npm run models:upload-r2
+
+      - name: Deploy fail-closed model gateway
+        shell: bash
+        run: |
+          set -euo pipefail
+          TURNSTILE_HOSTNAME=$(node -e "console.log(new URL(process.argv[1]).hostname)" "$WEB_PRODUCTION_ORIGIN")
+          npx wrangler deploy \
+            --config apps/model-gateway/wrangler.jsonc \
+            --tag "$WEB_RELEASE_TAG" \
+            --message "Shinobu Web release $WEB_RELEASE_TAG" \
+            --var "ALLOWED_ORIGIN:$WEB_PRODUCTION_ORIGIN" \
+            --var "SERVING_ENABLED:true" \
+            --var "TURNSTILE_REQUIRED:false" \
+            --var "TURNSTILE_HOSTNAME:$TURNSTILE_HOSTNAME"
+
+      - name: Build production Web application
+        env:
+          VITE_MODEL_GATEWAY_ORIGIN: ${{ env.MODEL_GATEWAY_ORIGIN }}
+        run: npm run build:web
+
+      - name: Retain rollback-ready Pages artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: shinobu-web-${{ env.WEB_RELEASE_TAG }}
+          path: apps/web/dist
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Deploy production Pages version
+        run: |
+          npx wrangler pages deploy apps/web/dist \
+            --project-name "$CLOUDFLARE_PAGES_PROJECT" \
+            --branch main \
+            --commit-hash "${{ github.sha }}" \
+            --commit-message "${{ github.event.release.tag_name }}"

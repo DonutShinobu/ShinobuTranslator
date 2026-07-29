@@ -3,15 +3,24 @@ import type {
   LlmProvider,
   TranslationReferenceContext,
 } from '../types';
-import { sendRuntimeMessage } from '../shared/messages';
 import type { LlmChatCompletionRequestBody } from '../shared/messages';
-import type { LlmThinkingLevel } from '../shared/llmThinking';
+import {
+  adaptLlmThinkingChatCompletionRequest,
+  isLlmThinkingConfigurationRejection,
+  type LlmThinkingLevel,
+} from '../shared/llmThinking';
 import {
   classifyLlmFetchError,
   sanitizeDiagnosticUrl,
   toDiagnosticError,
 } from '../shared/diagnosticLog';
 import { emitDiagnosticLog, getDiagnosticExecutionContext } from '../shared/diagnosticLogClient';
+import {
+  extensionTextTranslationTransport,
+  TextTranslationTransportError,
+  type ChatCompletionResponse,
+  type TextTranslationTransport,
+} from './transport';
 
 type LlmTranslateOptions = {
   provider: LlmProvider;
@@ -25,6 +34,9 @@ type LlmTranslateOptions = {
   text: string;
   translationContext?: TranslationReferenceContext;
   diagnosticRunId?: string;
+  apiKey?: string;
+  signal?: AbortSignal;
+  transport?: TextTranslationTransport;
 };
 
 type LlmRegionInput = {
@@ -61,6 +73,9 @@ type LlmTranslateRegionsOptions = {
   regions: LlmRegionInput[];
   translationContext?: TranslationReferenceContext;
   diagnosticRunId?: string;
+  apiKey?: string;
+  signal?: AbortSignal;
+  transport?: TextTranslationTransport;
 };
 
 type RegionTranslationResult = {
@@ -75,6 +90,9 @@ type ChatCompletionRequestOptions = {
   useCustomModel?: boolean;
   thinkingLevel?: LlmThinkingLevel;
   diagnosticRunId?: string;
+  apiKey?: string;
+  signal?: AbortSignal;
+  transport?: TextTranslationTransport;
 };
 
 export type LlmRegionBatchResult = {
@@ -98,10 +116,6 @@ export class LlmThinkingConfigError extends Error {
     this.name = 'LlmThinkingConfigError';
   }
 }
-
-type ChatCompletionResponse = {
-  choices?: Array<{ message?: { content?: string } }>;
-};
 
 type ChinesePromptScript = 'simplified' | 'traditional';
 
@@ -398,6 +412,12 @@ async function requestChatCompletion(
   body: LlmChatCompletionRequestBody,
 ): Promise<ChatCompletionResponse> {
   const requestBody = { ...body };
+  const providerBody = adaptLlmThinkingChatCompletionRequest(body, {
+    provider: options.provider,
+    model: body.model,
+    level: options.thinkingLevel,
+    useCustomModel: options.useCustomModel === true,
+  });
 
   const startedAt = Date.now();
   const endpoint = `${options.baseUrl.replace(/\/$/, '')}/chat/completions`;
@@ -425,9 +445,11 @@ async function requestChatCompletion(
   });
 
   try {
-    const response = await sendRuntimeMessage({
-      type: 'mt:llm-chat-completions',
+    const response = await (
+      options.transport ?? extensionTextTranslationTransport
+    ).requestChatCompletion({
       body: requestBody,
+      providerBody,
       proxyConfig: {
         provider: options.provider,
         authMode: options.authMode,
@@ -437,14 +459,10 @@ async function requestChatCompletion(
           ? {}
           : { thinkingLevel: options.thinkingLevel }),
       },
+      apiKey: options.apiKey,
       diagnosticRunId: options.diagnosticRunId,
+      signal: options.signal,
     });
-    if (!response.ok || response.type !== 'mt:llm-chat-completions') {
-      if (!response.ok && response.errorCode === 'llm_thinking_config') {
-        throw new LlmThinkingConfigError(response.error);
-      }
-      throw new Error(response.ok ? 'LLM 翻译请求失败' : response.error);
-    }
     emitDiagnosticLog({
       runId: options.diagnosticRunId,
       level: 'info',
@@ -455,10 +473,10 @@ async function requestChatCompletion(
         ...baseLogData,
         contentDirectFetch: false,
         durationMs: Date.now() - startedAt,
-        responseData: response.data,
+        responseData: response,
       },
     });
-    return response.data as ChatCompletionResponse;
+    return response;
   } catch (error) {
     const classification = classifyLlmFetchError(error);
     emitDiagnosticLog({
@@ -475,6 +493,43 @@ async function requestChatCompletion(
       },
       error: toDiagnosticError(error),
     });
+    const transportFailure = error && typeof error === 'object'
+      ? error as {
+          status?: unknown;
+          detail?: unknown;
+          responseText?: unknown;
+        }
+      : null;
+    const status = typeof transportFailure?.status === 'number'
+      ? transportFailure.status
+      : undefined;
+    const thinkingRejected = (
+      error instanceof TextTranslationTransportError
+      && error.code === 'llm_thinking_config'
+    ) || (
+      status !== undefined
+      && isLlmThinkingConfigurationRejection({
+        status,
+        provider: options.provider,
+        model: requestBody.model,
+        useCustomModel: options.useCustomModel === true,
+        errorDetail: [
+          typeof transportFailure?.detail === 'string'
+            ? transportFailure.detail
+            : '',
+          typeof transportFailure?.responseText === 'string'
+            ? transportFailure.responseText
+            : '',
+        ].join('\n'),
+      })
+    );
+    if (thinkingRejected) {
+      throw new LlmThinkingConfigError(
+        error instanceof Error
+          ? error.message
+          : '当前模型不支持所选思考设置',
+      );
+    }
     throw error;
   }
 }

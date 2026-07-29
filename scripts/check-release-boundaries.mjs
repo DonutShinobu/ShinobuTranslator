@@ -3,7 +3,27 @@ import { join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 const root = resolve(import.meta.dirname, '..');
-const distDir = join(root, 'dist');
+
+function readOption(name) {
+  const inline = process.argv.find((argument) => argument.startsWith(`${name}=`));
+  if (inline) {
+    const value = inline.slice(name.length + 1);
+    if (!value) throw new Error(`${name} requires a path`);
+    return value;
+  }
+  const index = process.argv.indexOf(name);
+  if (index < 0) return undefined;
+  const value = process.argv[index + 1];
+  if (!value || value.startsWith('--')) {
+    throw new Error(`${name} requires a path`);
+  }
+  return value;
+}
+
+const requestedDistDir = readOption('--dist');
+const distDir = requestedDistDir
+  ? resolve(process.cwd(), requestedDistDir)
+  : join(root, 'apps', 'extension', 'dist');
 const benchmarkBuild = process.argv.includes('--benchmark');
 const forbiddenBridgeTokens = [
   '__shinobu_bake',
@@ -66,6 +86,13 @@ function collectJavaScriptFiles(directory) {
   return files;
 }
 
+function matchesResourcePattern(pattern, resource) {
+  const escaped = pattern
+    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+    .replaceAll('*', '.*');
+  return new RegExp(`^${escaped}$`).test(resource);
+}
+
 if (!existsSync(distDir)) {
   throw new Error(`Release artifact directory does not exist: ${distDir}`);
 }
@@ -100,6 +127,14 @@ for (const token of forbiddenLegacyWorkerTokens) {
 }
 
 const manifest = JSON.parse(readFileSync(join(distDir, 'manifest.json'), 'utf8'));
+const extensionPackage = JSON.parse(
+  readFileSync(join(root, 'apps', 'extension', 'package.json'), 'utf8'),
+);
+if (manifest.version !== extensionPackage.version) {
+  throw new Error(
+    `Extension manifest version ${manifest.version} does not match workspace version ${extensionPackage.version}.`,
+  );
+}
 if (manifest.minimum_chrome_version !== '109') {
   throw new Error('Release manifest must require Chromium 109 for the Offscreen API.');
 }
@@ -111,6 +146,21 @@ if (!String(manifest.content_security_policy?.extension_pages ?? '').includes("w
 }
 const exposedResources = (manifest.web_accessible_resources ?? [])
   .flatMap((entry) => Array.isArray(entry.resources) ? entry.resources : []);
+const contentSource = readFileSync(join(distDir, 'content.js'), 'utf8');
+const contentRuntimeResources = new Set(
+  [...contentSource.matchAll(/chrome\.runtime\.getURL\("([^"]+)"\)/g)]
+    .map((match) => match[1]),
+);
+for (const resource of contentRuntimeResources) {
+  if (!existsSync(join(distDir, resource))) {
+    throw new Error(`Content script references missing runtime resource: ${resource}`);
+  }
+  if (!exposedResources.some((pattern) => matchesResourcePattern(pattern, resource))) {
+    throw new Error(
+      `Content script runtime resource is not declared web-accessible: ${resource}`,
+    );
+  }
+}
 for (const privateArtifact of ['models/*', 'ort/*', 'onnxWorker.js', 'chunks/*', 'chunks/onnxWorkerBridge.js']) {
   if (exposedResources.includes(privateArtifact)) {
     throw new Error(`Release manifest exposes private offscreen runtime artifact: ${privateArtifact}`);

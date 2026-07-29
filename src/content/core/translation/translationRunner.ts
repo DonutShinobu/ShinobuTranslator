@@ -13,7 +13,10 @@ import {
   toDiagnosticError,
 } from '../../../shared/diagnosticLog';
 import { createDiagnosticRunId, emitDiagnosticLog, emitDiagnosticLogAsync } from '../../../shared/diagnosticLogClient';
-import type { LocalPipelineArtifactSummary } from '../../../shared/localPipelineProtocol';
+import type {
+  LocalPipelineArtifactSummary,
+  LocalPipelineResult,
+} from '../../../shared/localPipelineProtocol';
 import { sendRuntimeMessage } from '../../../shared/messages';
 import type { RuntimeErrorDetail } from '../../../shared/messages';
 import type {
@@ -35,7 +38,11 @@ import {
   toErrorMessage,
 } from '../utils';
 import { ProgressJankMonitor } from '../progressJank';
-import { runLocalPipeline, type RunLocalPipeline } from './localPipelineClient';
+import {
+  createExtensionTranslatorCore,
+  type ExtensionTranslatorCore,
+} from './extensionTranslatorCore';
+import type { RunLocalPipeline } from './localPipelineClient';
 
 const loggedProgressJankReports = new Set<string>();
 
@@ -160,18 +167,20 @@ export type DownloadImageFileOptions = {
 
 export type TranslationRunnerDependencies = {
   sendMessage?: typeof sendRuntimeMessage;
+  translatorCore?: ExtensionTranslatorCore;
   runLocalPipeline?: RunLocalPipeline;
   urlApi?: Pick<typeof URL, 'createObjectURL' | 'revokeObjectURL'>;
 };
 
 export class TranslationRunner {
   private readonly sendMessage: typeof sendRuntimeMessage;
-  private readonly runLocalPipeline: RunLocalPipeline;
+  private readonly translatorCore: ExtensionTranslatorCore;
   private readonly urlApi: Pick<typeof URL, 'createObjectURL' | 'revokeObjectURL'>;
 
   constructor(dependencies: TranslationRunnerDependencies = {}) {
     this.sendMessage = dependencies.sendMessage ?? sendRuntimeMessage;
-    this.runLocalPipeline = dependencies.runLocalPipeline ?? runLocalPipeline;
+    this.translatorCore = dependencies.translatorCore
+      ?? createExtensionTranslatorCore(dependencies.runLocalPipeline);
     this.urlApi = dependencies.urlApi ?? URL;
   }
 
@@ -299,6 +308,13 @@ export class TranslationRunner {
       onProgress: (stageText: string) => void,
       jankMonitor?: ProgressJankMonitor,
     ): void {
+      if (
+        progress.stage === 'runtime-prepare'
+        || progress.stage === 'finalize'
+      ) {
+        jankMonitor?.setStage(progress.stage, progress.detail, state.stageText);
+        return;
+      }
       const stageLabel = getStageLabel(progress.stage);
       if (progress.stage === 'parallel') {
         state.stageText = progress.detail;
@@ -447,7 +463,11 @@ export class TranslationRunner {
           return { translationDebug: null };
         }
 
-        const localResult = await this.runLocalPipeline(file, pipelineConfig, (progress: PipelineProgress) => {
+        const task = this.translatorCore.run({
+          input: file,
+          config: pipelineConfig,
+        });
+        const stopProgress = task.progress((progress: PipelineProgress) => {
           if (diagnosticRunId) {
             emitDiagnosticLog({
               runId: diagnosticRunId,
@@ -463,6 +483,12 @@ export class TranslationRunner {
           }
           this.updatePipelineProgress(state, progress, onProgress, jankMonitor);
         });
+        let localResult: LocalPipelineResult;
+        try {
+          localResult = await task.result;
+        } finally {
+          stopProgress();
+        }
 
         const artifacts = localResult.summary;
         const translatedUrl = this.urlApi.createObjectURL(localResult.result);

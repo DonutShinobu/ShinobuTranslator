@@ -52,14 +52,25 @@ const defaultPushId = 'feeds/mcudyrk2a4khkz';
 const defaultLanguage = 'zh-CN';
 const requestTimeoutMs = 420_000;
 const modelHeaderKey = 'x-goog-ext-525001261-jspb';
-const plusProModelHeaders: Record<string, string> = {
-  [modelHeaderKey]: '[1,null,null,null,"e6fa609c3fa255c0",null,null,0,[4],null,null,4]',
-  'x-goog-ext-73010989-jspb': '[0]',
-  'x-goog-ext-73010990-jspb': '[0]',
+const geminiAppClientId = randomUpperUuid();
+
+type GeminiAppRequestProfile = {
+  routeHash: string;
+  capabilities: number[];
+  routeMode: number;
 };
-const geminiAppModelRequestHeaders: Record<GeminiAppModel, Record<string, string>> = {
-  nano_banana_2: {},
-  nano_banana_pro: plusProModelHeaders,
+
+const geminiAppRequestProfiles: Record<GeminiAppModel, GeminiAppRequestProfile> = {
+  nano_banana_2: {
+    routeHash: '56fdd199312815e2',
+    capabilities: [4, 5, 6, 8],
+    routeMode: 1,
+  },
+  nano_banana_pro: {
+    routeHash: 'e6fa609c3fa255c0',
+    capabilities: [4, 5, 6, 8],
+    routeMode: 3,
+  },
 };
 const cookieNames = new Set([
   'SID',
@@ -225,6 +236,11 @@ function toGeminiErrorMessage(errorCode: number): string {
   return `Gemini App 请求失败，错误码 ${errorCode}`;
 }
 
+function isGeminiQuotaResponse(text: string): boolean {
+  return /额度.{0,16}(?:重置|不足|用尽|耗尽)|(?:重置|恢复).{0,16}额度/u.test(text)
+    || /(?:quota|usage limit).{0,32}(?:reset|exhausted|reached|limited)|(?:reset|restore).{0,32}(?:quota|usage limit)/iu.test(text);
+}
+
 function collectGeneratedImagesFromCandidate(candidate: unknown): GeminiGeneratedImage[] {
   const generatedSources = [
     ...asArray(getNestedValue(candidate, [12, 7, 0])),
@@ -330,8 +346,39 @@ export function getGeminiAppModelMetadataLabel(model: GeminiAppModel): string {
   return `Gemini App / ${getGeminiAppModelLabel(model)}`;
 }
 
+function getGeminiAppRequestProfile(model: GeminiAppModel): GeminiAppRequestProfile {
+  const profile = (geminiAppRequestProfiles as Partial<Record<GeminiAppModel, GeminiAppRequestProfile>>)[model];
+  if (!profile) {
+    throw new Error(`Gemini App 模型 ${String(model)} 缺少有效的网页请求配置`);
+  }
+  return profile;
+}
+
 export function getGeminiAppModelRequestHeaders(model: GeminiAppModel): Record<string, string> {
-  return { ...geminiAppModelRequestHeaders[model] };
+  const profile = getGeminiAppRequestProfile(model);
+  return {
+    [modelHeaderKey]: JSON.stringify([
+      1,
+      null,
+      null,
+      null,
+      profile.routeHash,
+      null,
+      null,
+      0,
+      profile.capabilities,
+      null,
+      null,
+      2,
+      null,
+      null,
+      profile.routeMode,
+      1,
+      geminiAppClientId,
+    ]),
+    'x-goog-ext-73010989-jspb': '[0]',
+    'x-goog-ext-73010990-jspb': '[0,0,0]',
+  };
 }
 
 function randomReqId(): number {
@@ -521,24 +568,32 @@ async function uploadImage(context: GeminiInitContext, image: Blob, filename: st
   return text.trim();
 }
 
-function buildGenerateRequest(prompt: string, fileUrl: string, filename: string, uuidValue: string): string {
+function buildGenerateRequest(
+  prompt: string,
+  fileUrl: string,
+  filename: string,
+  contentType: string,
+  language: string,
+  uuidValue: string,
+  profile: GeminiAppRequestProfile,
+): string {
   const messageContent = [
     prompt,
     0,
     null,
     [[
-      [fileUrl],
+      [fileUrl, 1, null, contentType || 'image/png'],
       filename,
     ]],
     null,
     null,
     0,
   ];
-  const req: unknown[] = new Array(69).fill(null);
+  const req: unknown[] = new Array(97).fill(null);
   req[0] = messageContent;
-  req[1] = [defaultLanguage];
+  req[1] = [language || defaultLanguage];
   req[2] = ['', '', '', null, null, null, null, null, null, ''];
-  req[6] = [1];
+  req[6] = [0];
   req[7] = 1;
   req[10] = 1;
   req[11] = 0;
@@ -547,11 +602,15 @@ function buildGenerateRequest(prompt: string, fileUrl: string, filename: string,
   req[27] = 1;
   req[30] = [4];
   req[41] = [1];
-  req[45] = 1;
+  req[49] = 14;
   req[53] = 0;
   req[59] = uuidValue;
   req[61] = [];
-  req[68] = 2;
+  req[68] = 1;
+  req[79] = profile.routeMode;
+  req[80] = 1;
+  req[91] = 0;
+  req[96] = 1;
   return JSON.stringify([null, JSON.stringify(req)]);
 }
 
@@ -560,9 +619,11 @@ async function generateImage(
   prompt: string,
   fileUrl: string,
   filename: string,
+  contentType: string,
   model: GeminiAppModel,
 ): Promise<string> {
   const uuidValue = randomUpperUuid();
+  const profile = getGeminiAppRequestProfile(model);
   const params = new URLSearchParams({
     hl: context.language,
     _reqid: String(randomReqId()),
@@ -581,7 +642,15 @@ async function generateImage(
   });
   const body = new URLSearchParams({
     at: context.accessToken,
-    'f.req': buildGenerateRequest(prompt, fileUrl, filename, uuidValue),
+    'f.req': buildGenerateRequest(
+      prompt,
+      fileUrl,
+      filename,
+      contentType,
+      context.language,
+      uuidValue,
+      profile,
+    ),
   });
   const response = await fetchWithTimeout(`${geminiGenerateUrl}?${params.toString()}`, {
     method: 'POST',
@@ -643,12 +712,22 @@ async function executeGeminiAppImageTranslate(
   );
   const prompt = buildPrompt(options.settings);
   const responseText = await timeStage('gemini_generate', 'Gemini App 生成译图', () =>
-    generateImage(context, prompt, fileUrl, options.filename, options.settings.geminiAppModel),
+    generateImage(
+      context,
+      prompt,
+      fileUrl,
+      options.filename,
+      options.contentType,
+      options.settings.geminiAppModel,
+    ),
   );
   const generated = extractGeminiGeneratedImages(responseText);
   const firstImage = generated[0];
   if (!firstImage) {
-    throw new GeminiAppRawResponseError('Gemini App 未返回可用译图', responseText);
+    const message = isGeminiQuotaResponse(responseText)
+      ? 'Gemini App 当前生图通道报告额度不足；如果网页仍可正常生成，可能是 Gemini App 私有协议发生变化'
+      : 'Gemini App 未返回可用译图';
+    throw new GeminiAppRawResponseError(message, responseText);
   }
   const downloaded = await timeStage('gemini_download', 'Gemini App 下载译图', () =>
     downloadGeneratedImage(firstImage.url, context.cookieHeader),

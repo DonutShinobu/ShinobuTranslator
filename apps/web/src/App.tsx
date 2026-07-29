@@ -9,10 +9,12 @@ import {
 } from 'react';
 import {
   WEB_SETTINGS_STORAGE_KEY,
+  createWebSettingsDraftFromLockedConfig,
   decodeWebSettings,
   defaultWebProviderProfiles,
   encodeWebSettings,
   normalizeProviderTargetBinding,
+  restoreWebSettingsFromLockedConfig,
   translationProviderOptions,
   validateProviderBaseUrl,
   type ProcessMode,
@@ -32,20 +34,19 @@ import {
   type ContinuousCameraRoundState,
 } from './features/camera/ContinuousCamera';
 import type {
-  LocalHistoryAsset,
   LocalHistoryBatch,
-  LocalHistoryInspection,
 } from './features/history/localHistory';
-import {
-  buildProjectPackage,
-  buildResultsZip,
-  validateProjectPackage,
-} from './features/history/projectPackage';
+import type {
+  HistoryIntent,
+  HistoryOutcome,
+  HistoryRejectionCode,
+  LocalHistoryWorkbenchAdapter,
+} from './features/history/localHistoryLifecycle';
 import {
   createRedactedDiagnostics,
   downloadRedactedDiagnostics,
 } from './features/diagnostics/redactedDiagnostics';
-import { useLocalHistory } from './features/history/useLocalHistory';
+import { useLocalHistoryLifecycle } from './features/history/useLocalHistoryLifecycle';
 import { decodeBrowserImage } from './features/import/browserImageDecoder';
 import {
   createImageImporter,
@@ -100,6 +101,28 @@ function readInitialSettings(): WebSettings {
   return decodeWebSettings(serialized, navigator.language).settings;
 }
 
+function historyRejectionMessage(
+  code: HistoryRejectionCode,
+  locale: UiLocale,
+): string {
+  const traditional = locale === 'zh-TW';
+  const messages: Record<HistoryRejectionCode, [string, string]> = {
+    'workbench-occupied': ['当前工作台已有草稿或活动批次', '目前工作台已有草稿或活動批次'],
+    'batch-occupied': ['此处理批次正在另一个工作台中使用', '此處理批次正在另一個工作台中使用'],
+    'partial-history': ['此本地历史部分损坏，无法执行该操作', '此本機歷史部分損壞，無法執行該操作'],
+    'results-only': ['此记录只保留结果，不能恢复或克隆', '此記錄只保留結果，不能恢復或複製'],
+    'no-results': ['此处理批次没有可导出的结果', '此處理批次沒有可匯出的結果'],
+    'nothing-to-resume': ['此处理批次没有等待恢复的图片任务', '此處理批次沒有等待恢復的圖片任務'],
+    'provider-unavailable': ['原处理批次的供应商当前不可用', '原處理批次的供應商目前不可用'],
+    'result-unavailable': ['结果文件缺失或损坏', '結果檔案遺失或損壞'],
+    'recovery-not-prepared': ['处理批次恢复准备已失效', '處理批次恢復準備已失效'],
+    'pending-operation': ['已有一项等待撤销的历史操作', '已有一項等待復原的歷史操作'],
+    'coordination-unavailable': ['当前浏览器无法安全协调多个工作台', '目前瀏覽器無法安全協調多個工作台'],
+    'batch-not-found': ['找不到本地历史批次', '找不到本機歷史批次'],
+  };
+  return messages[code][traditional ? 1 : 0];
+}
+
 export function App() {
   const [settings, setSettings] = useState<WebSettings>(readInitialSettings);
   const [activeView, setActiveView] = useState<ActiveView>('workbench');
@@ -116,11 +139,10 @@ export function App() {
   const [batchRunning, setBatchRunning] = useState(false);
   const [batchNotice, setBatchNotice] = useState('');
   const [historyActionError, setHistoryActionError] = useState<string>();
-  const [historyBusy, setHistoryBusy] = useState(false);
   const [diagnosticBusy, setDiagnosticBusy] = useState(false);
   const [storageImportError, setStorageImportError] = useState<string>();
-  const [pendingHistoryDeleteId, setPendingHistoryDeleteId] = useState<string>();
   const [resumeHistoryBatchId, setResumeHistoryBatchId] = useState<string>();
+  const [draftProviderSelectionRequired, setDraftProviderSelectionRequired] = useState(false);
   const [providerDetailsOpen, setProviderDetailsOpen] = useState(false);
   const [continuousCameraOpen, setContinuousCameraOpen] = useState(false);
   const [continuousCameraRound, setContinuousCameraRound] =
@@ -133,8 +155,9 @@ export function App() {
   const activeProcessingBatchRef = useRef<ProcessingBatch | null>(null);
   const processingBatchUnsubscribeRef = useRef<(() => void) | null>(null);
   const resumeHistoryBatchRef = useRef<LocalHistoryBatch | null>(null);
+  const preRecoverySettingsRef = useRef<WebSettings | null>(null);
+  const historyWorkbenchAdapterRef = useRef<LocalHistoryWorkbenchAdapter | null>(null);
   const activeImportPromiseRef = useRef<Promise<void> | null>(null);
-  const historyDeleteTimerRef = useRef<number>();
   const continuousCameraRoundIdRef = useRef(0);
   const continuousCameraCaptureActiveRef = useRef(false);
   const continuousCameraUrlsRef = useRef<Set<string>>(new Set());
@@ -143,11 +166,41 @@ export function App() {
     snapshot: processingRuntimeSnapshot,
   } = useProcessingRuntime();
   const providerSecrets = useProviderSecrets(settings.providerProfiles);
-  const localHistory = useLocalHistory();
+  const historyWorkbench = useMemo<LocalHistoryWorkbenchAdapter>(() => ({
+    occupied: () => historyWorkbenchAdapterRef.current?.occupied() ?? true,
+    installRecovery: (preparation) => {
+      const adapter = historyWorkbenchAdapterRef.current;
+      if (!adapter) throw new Error('History workbench adapter is unavailable');
+      return adapter.installRecovery(preparation);
+    },
+    installDraft: (preparation) => {
+      const adapter = historyWorkbenchAdapterRef.current;
+      if (!adapter) throw new Error('History workbench adapter is unavailable');
+      return adapter.installDraft(preparation);
+    },
+    discardRecovery: (batchId) => {
+      historyWorkbenchAdapterRef.current?.discardRecovery(batchId);
+    },
+  }), []);
+  const localHistory = useLocalHistoryLifecycle(historyWorkbench);
   const pwa = usePwaLifecycle();
   const pwaInstall = usePwaInstall();
 
   const copy = getCopy(settings.uiLocale);
+  const historySnapshot = localHistory.snapshot;
+  const historyCleanupFaultMessage = historySnapshot.faults.length > 0
+    ? settings.uiLocale === 'zh-TW'
+      ? `${historySnapshot.faults.length} 項本機資源仍待清理，尚未釋放 `
+        + `${formatBytes(historySnapshot.faults.reduce(
+          (total, fault) => total + fault.unreleasedBytes,
+          0,
+        ))}`
+      : `${historySnapshot.faults.length} 项本地资源仍待清理，尚未释放 `
+        + `${formatBytes(historySnapshot.faults.reduce(
+          (total, fault) => total + fault.unreleasedBytes,
+          0,
+        ))}`
+    : undefined;
   const capability = processingRuntimeSnapshot.capability ?? null;
   const modelPackageState = processingRuntimeSnapshot.modelPackage;
   const modelRuntimeProbe = processingRuntimeSnapshot.modelProbe;
@@ -172,6 +225,140 @@ export function App() {
     }),
     [imageImportLimits],
   );
+  const invalidateChangedLockedProvider = (nextSettings: WebSettings): void => {
+    const providerId = nextSettings.translationProviderId;
+    let changed = true;
+    try {
+      changed = normalizeProviderTargetBinding(
+        nextSettings.providerProfiles[providerId].baseUrl,
+      ) !== normalizeProviderTargetBinding(
+        settings.providerProfiles[providerId].baseUrl,
+      );
+    } catch {
+      // Invalid legacy targets must never retain a current provider secret.
+    }
+    if (changed) providerSecrets.invalidateTarget(providerId);
+  };
+  const clearWorkbenchFiles = (): void => {
+    queueRef.current.forEach((image) => URL.revokeObjectURL(image.thumbnailUrl));
+    Object.values(jobsRef.current).forEach((job) => {
+      if (job.resultUrl) URL.revokeObjectURL(job.resultUrl);
+    });
+  };
+  historyWorkbenchAdapterRef.current = {
+    occupied: () => Boolean(
+      activeProcessingBatchRef.current
+      || resumeHistoryBatchRef.current
+      || queueRef.current.length > 0
+    ),
+    async installRecovery(preparation) {
+      const orderedItems = [...preparation.batch.items]
+        .sort((left, right) => left.order - right.order);
+      const imported = await importer.importFiles(preparation.files, []);
+      if (imported.accepted.length !== orderedItems.length) {
+        imported.accepted.forEach((image) => URL.revokeObjectURL(image.thumbnailUrl));
+        throw new Error('历史原图未能全部通过当前版本的导入校验');
+      }
+      const nextSettings = restoreWebSettingsFromLockedConfig(
+        preparation.batch.lockedConfig,
+        settings,
+      );
+      if (!nextSettings) {
+        imported.accepted.forEach((image) => URL.revokeObjectURL(image.thumbnailUrl));
+        throw new Error('原处理批次的供应商当前不可用');
+      }
+      const restoredImages = imported.accepted.map((image, index) => ({
+        ...image,
+        id: orderedItems[index].id,
+      }));
+      const restoredJobs: Record<string, QueueJobState> = {};
+      for (const item of orderedItems) {
+        restoredJobs[item.id] = item.status === 'done'
+          ? {
+              status: 'done',
+              progress: { stage: 'done', detail: '已从恢复点载入' },
+            }
+          : {
+              status: item.status === 'running' ? 'queued' : item.status,
+              error: item.error,
+            };
+      }
+
+      invalidateChangedLockedProvider(nextSettings);
+      clearWorkbenchFiles();
+      preRecoverySettingsRef.current = structuredClone(settings);
+      queueRef.current = restoredImages;
+      jobsRef.current = restoredJobs;
+      setQueue(restoredImages);
+      setJobs(restoredJobs);
+      setSelectedId(
+        orderedItems.find((item) => item.status !== 'done')?.id
+        ?? orderedItems[0]?.id
+        ?? null,
+      );
+      setPreviewMode('original');
+      setSettings(nextSettings);
+      resumeHistoryBatchRef.current = preparation.batch;
+      setResumeHistoryBatchId(preparation.batch.id);
+      setDraftProviderSelectionRequired(false);
+      setRejections([]);
+      setBatchNotice(copy.historyResumeReady);
+      setHistoryActionError(undefined);
+      setActiveView('workbench');
+    },
+    async installDraft(preparation) {
+      const imported = await importer.importFiles(preparation.files, []);
+      if (imported.accepted.length !== preparation.files.length) {
+        imported.accepted.forEach((image) => URL.revokeObjectURL(image.thumbnailUrl));
+        throw new Error('历史原图未能全部通过当前版本的导入校验');
+      }
+      const draft = createWebSettingsDraftFromLockedConfig(
+        preparation.sourceBatch.lockedConfig,
+        settings,
+      );
+      if (!draft.providerSelectionRequired) invalidateChangedLockedProvider(draft.settings);
+      clearWorkbenchFiles();
+      preRecoverySettingsRef.current = null;
+      queueRef.current = imported.accepted;
+      jobsRef.current = {};
+      setQueue(imported.accepted);
+      setJobs({});
+      setSelectedId(imported.accepted[0]?.id ?? null);
+      setPreviewMode('original');
+      setSettings(draft.settings);
+      resumeHistoryBatchRef.current = null;
+      setResumeHistoryBatchId(undefined);
+      setDraftProviderSelectionRequired(draft.providerSelectionRequired);
+      setProviderDetailsOpen(draft.providerSelectionRequired);
+      setRejections([]);
+      setBatchNotice(
+        draft.providerSelectionRequired
+          ? '原供应商已不可用，请选择当前可用的供应商后再开始。'
+          : '',
+      );
+      setHistoryActionError(undefined);
+      setActiveView('workbench');
+    },
+    discardRecovery(batchId) {
+      if (resumeHistoryBatchRef.current?.id !== batchId) return;
+      clearWorkbenchFiles();
+      queueRef.current = [];
+      jobsRef.current = {};
+      setQueue([]);
+      setJobs({});
+      setSelectedId(null);
+      setPreviewMode('original');
+      if (preRecoverySettingsRef.current) {
+        setSettings(preRecoverySettingsRef.current);
+      }
+      preRecoverySettingsRef.current = null;
+      resumeHistoryBatchRef.current = null;
+      setResumeHistoryBatchId(undefined);
+      setDraftProviderSelectionRequired(false);
+      setRejections([]);
+      setBatchNotice('');
+    },
+  };
   const selectedImage = queue.find((image) => image.id === selectedId) ?? null;
   const selectedJob = selectedId ? jobs[selectedId] : undefined;
   const activeProviderProfile = settings.providerProfiles[settings.translationProviderId];
@@ -274,6 +461,7 @@ export function App() {
   const processingWorkspace = useMemo(
     () => createProcessingBatchWorkspace({
       history: localHistory.history,
+      coordinator: localHistory.coordinator,
       runtime: processingRuntime,
       async readThumbnail(image) {
         try {
@@ -284,7 +472,7 @@ export function App() {
         }
       },
     }),
-    [localHistory.history, processingRuntime],
+    [localHistory.coordinator, localHistory.history, processingRuntime],
   );
 
   useEffect(() => {
@@ -313,12 +501,6 @@ export function App() {
     processingBatchUnsubscribeRef.current?.();
     continuousCameraUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
     continuousCameraUrlsRef.current.clear();
-  }, []);
-
-  useEffect(() => () => {
-    if (historyDeleteTimerRef.current !== undefined) {
-      clearTimeout(historyDeleteTimerRef.current);
-    }
   }, []);
 
   useEffect(() => {
@@ -373,7 +555,7 @@ export function App() {
         }
         batchRunningRef.current = false;
         setBatchRunning(false);
-        void localHistory.refresh();
+        void localHistory.lifecycle.request({ type: 'refresh' });
         void refreshStorage();
         if (snapshot.tasks.some((task) => task.status === 'done')) {
           pwaInstall.offerAfterSuccess();
@@ -523,6 +705,10 @@ export function App() {
     ) {
       return;
     }
+    if (patch.translationProviderId !== undefined) {
+      setDraftProviderSelectionRequired(false);
+      setBatchNotice('');
+    }
     setSettings((current) => ({ ...current, ...patch }));
   };
 
@@ -530,6 +716,8 @@ export function App() {
     patch: Partial<WebSettings['providerProfiles'][TranslationProviderId]>,
   ): void => {
     if (batchRunningRef.current || resumeHistoryBatchId) return;
+    setDraftProviderSelectionRequired(false);
+    setBatchNotice('');
     const providerId = settings.translationProviderId;
     if (patch.baseUrl !== undefined) {
       let targetChanged = patch.baseUrl !== activeProviderProfile.baseUrl;
@@ -572,22 +760,6 @@ export function App() {
     }));
   };
 
-  const downloadHistoryAsset = async (reference: LocalHistoryAsset): Promise<void> => {
-    try {
-      const blob = await localHistory.readAsset(reference);
-      if (!blob) throw new Error('本地结果文件缺失或大小不一致');
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = reference.fileName;
-      anchor.click();
-      setTimeout(() => URL.revokeObjectURL(url), 0);
-      setHistoryActionError(undefined);
-    } catch (error) {
-      setHistoryActionError(error instanceof Error ? error.message : String(error));
-    }
-  };
-
   const downloadBlob = (blob: Blob, fileName: string): void => {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
@@ -597,241 +769,42 @@ export function App() {
     setTimeout(() => URL.revokeObjectURL(url), 0);
   };
 
-  const exportHistoryResults = async (
-    inspection: LocalHistoryInspection,
-  ): Promise<void> => {
-    if (historyBusy) return;
-    setHistoryBusy(true);
-    try {
-      const archive = await buildResultsZip(inspection, localHistory.readAsset);
-      downloadBlob(
-        archive,
-        `${inspection.batch.createdAt.slice(0, 10)}-shinobu-results.zip`,
-      );
-      setHistoryActionError(undefined);
-    } catch (error) {
-      setHistoryActionError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setHistoryBusy(false);
+  const handleHistoryOutcome = async (intent: HistoryIntent): Promise<HistoryOutcome> => {
+    const outcome = await localHistory.lifecycle.request(intent);
+    if (outcome.status === 'rejected') {
+      setHistoryActionError(historyRejectionMessage(outcome.code, settings.uiLocale));
+      return outcome;
     }
+    if (outcome.status === 'failed') {
+      setHistoryActionError(`${outcome.operation}: ${outcome.cause}`);
+      return outcome;
+    }
+    if (outcome.type === 'artifact-ready') {
+      if (
+        outcome.artifact.kind === 'results'
+        && outcome.artifact.omissions.length > 0
+        && !window.confirm(
+          `有 ${outcome.artifact.omissions.length} 个结果缺失或损坏，将只导出其余 `
+          + `${outcome.artifact.exportedCount} 个结果。是否继续？`,
+        )
+      ) {
+        return outcome;
+      }
+      downloadBlob(outcome.artifact.blob, outcome.artifact.fileName);
+    }
+    if (outcome.type === 'project-imported') void refreshStorage();
+    setHistoryActionError(undefined);
+    return outcome;
   };
 
-  const exportHistoryProject = async (
-    inspection: LocalHistoryInspection,
-  ): Promise<void> => {
-    if (historyBusy || !window.confirm(copy.historyExportWarning)) return;
-    setHistoryBusy(true);
-    try {
-      const archive = await buildProjectPackage(inspection, localHistory.readAsset);
-      downloadBlob(
-        archive,
-        `${inspection.batch.createdAt.slice(0, 10)}-${inspection.batch.id.slice(0, 8)}.shinobu.zip`,
-      );
-      setHistoryActionError(undefined);
-    } catch (error) {
-      setHistoryActionError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setHistoryBusy(false);
-    }
+  const exportHistoryProject = async (batchId: string): Promise<void> => {
+    if (!window.confirm(copy.historyExportWarning)) return;
+    await handleHistoryOutcome({ type: 'export-project', batchId });
   };
 
-  const importHistoryProject = async (file: File): Promise<void> => {
-    if (historyBusy) return;
-    setHistoryBusy(true);
-    try {
-      const validated = await validateProjectPackage(file);
-      await localHistory.importBatch(validated.manifest.batch, validated.assets);
-      void refreshStorage();
-      setHistoryActionError(undefined);
-    } catch (error) {
-      setHistoryActionError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setHistoryBusy(false);
-    }
-  };
-
-  const keepHistoryResultsOnly = async (batch: LocalHistoryBatch): Promise<void> => {
-    if (
-      historyBusy
-      || resumeHistoryBatchId === batch.id
-      || !window.confirm(copy.historyKeepResultsWarning)
-    ) return;
-    setHistoryBusy(true);
-    try {
-      await localHistory.keepResultsOnly(batch.id);
-      void refreshStorage();
-      setHistoryActionError(undefined);
-    } catch (error) {
-      setHistoryActionError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setHistoryBusy(false);
-    }
-  };
-
-  const stageHistoryDelete = (batch: LocalHistoryBatch): void => {
-    if (historyBusy || pendingHistoryDeleteId || resumeHistoryBatchId === batch.id) return;
-    setPendingHistoryDeleteId(batch.id);
-    historyDeleteTimerRef.current = window.setTimeout(() => {
-      historyDeleteTimerRef.current = undefined;
-      void localHistory.deleteBatch(batch.id)
-        .then(() => refreshStorage())
-        .catch((error) => {
-          setHistoryActionError(error instanceof Error ? error.message : String(error));
-        })
-        .finally(() => setPendingHistoryDeleteId(undefined));
-    }, 10_000);
-  };
-
-  const undoHistoryDelete = (): void => {
-    if (historyDeleteTimerRef.current !== undefined) {
-      clearTimeout(historyDeleteTimerRef.current);
-      historyDeleteTimerRef.current = undefined;
-    }
-    setPendingHistoryDeleteId(undefined);
-  };
-
-  const cloneHistoryBatch = async (batch: LocalHistoryBatch): Promise<void> => {
-    if (
-      !batch.rerunnable
-      || batchRunningRef.current
-      || activeProcessingBatchRef.current
-      || resumeHistoryBatchId
-    ) return;
-    try {
-      const files: File[] = [];
-      for (const item of [...batch.items].sort((left, right) => left.order - right.order)) {
-        if (!item.original) throw new Error('此记录未保留原图，不能克隆');
-        const blob = await localHistory.readAsset(item.original);
-        if (!blob) throw new Error(`原图缺失或损坏: ${item.original.fileName}`);
-        files.push(new File([blob], item.original.fileName, {
-          type: item.original.mediaType,
-          lastModified: new Date(batch.createdAt).getTime(),
-        }));
-      }
-      const imported = await importer.importFiles(files, []);
-      if (imported.accepted.length !== files.length) {
-        throw new Error('历史原图未能全部通过当前版本的导入校验');
-      }
-
-      for (const { id } of translationProviderOptions) {
-        let changed = true;
-        try {
-          changed = normalizeProviderTargetBinding(batch.settings.providerProfiles[id].baseUrl)
-            !== normalizeProviderTargetBinding(settings.providerProfiles[id].baseUrl);
-        } catch {
-          // Invalid legacy targets must never retain a current provider secret.
-        }
-        if (changed) {
-          providerSecrets.invalidateTarget(id);
-        }
-      }
-
-      queueRef.current.forEach((image) => URL.revokeObjectURL(image.thumbnailUrl));
-      Object.values(jobsRef.current).forEach((job) => {
-        if (job.resultUrl) URL.revokeObjectURL(job.resultUrl);
-      });
-      queueRef.current = imported.accepted;
-      jobsRef.current = {};
-      setQueue(imported.accepted);
-      setJobs({});
-      setSelectedId(imported.accepted[0]?.id ?? null);
-      setPreviewMode('original');
-      setSettings(structuredClone(batch.settings));
-      resumeHistoryBatchRef.current = null;
-      setResumeHistoryBatchId(undefined);
-      setRejections([]);
-      setBatchNotice('');
-      setHistoryActionError(undefined);
-      setActiveView('workbench');
-    } catch (error) {
-      setHistoryActionError(error instanceof Error ? error.message : String(error));
-    }
-  };
-
-  const resumeHistoryBatch = async (batch: LocalHistoryBatch): Promise<void> => {
-    if (
-      !batch.rerunnable
-      || batchRunningRef.current
-      || activeProcessingBatchRef.current
-      || resumeHistoryBatchId
-      || historyBusy
-    ) return;
-    setHistoryBusy(true);
-    try {
-      const orderedItems = [...batch.items].sort((left, right) => left.order - right.order);
-      const files: File[] = [];
-      for (const item of orderedItems) {
-        if (!item.original) throw new Error('恢复批次缺少原图');
-        const blob = await localHistory.readAsset(item.original);
-        if (!blob) throw new Error(`原图缺失或损坏: ${item.original.fileName}`);
-        files.push(new File([blob], item.original.fileName, {
-          type: item.original.mediaType,
-          lastModified: new Date(batch.createdAt).getTime(),
-        }));
-      }
-      const imported = await importer.importFiles(files, []);
-      if (imported.accepted.length !== orderedItems.length) {
-        throw new Error('历史原图未能全部通过当前版本的导入校验');
-      }
-
-      const restoredImages = imported.accepted.map((image, index) => ({
-        ...image,
-        id: orderedItems[index].id,
-      }));
-      const restoredJobs: Record<string, QueueJobState> = {};
-      for (const item of orderedItems) {
-        if (item.status === 'done') {
-          restoredJobs[item.id] = {
-            status: 'done',
-            progress: { stage: 'done', detail: '已从恢复点载入' },
-          };
-        } else {
-          restoredJobs[item.id] = {
-            status: item.status === 'running' ? 'queued' : item.status,
-            error: item.error,
-          };
-        }
-      }
-
-      for (const { id } of translationProviderOptions) {
-        let changed = true;
-        try {
-          changed = normalizeProviderTargetBinding(batch.settings.providerProfiles[id].baseUrl)
-            !== normalizeProviderTargetBinding(settings.providerProfiles[id].baseUrl);
-        } catch {
-          // Invalid legacy targets must never retain a current provider secret.
-        }
-        if (changed) {
-          providerSecrets.invalidateTarget(id);
-        }
-      }
-
-      queueRef.current.forEach((image) => URL.revokeObjectURL(image.thumbnailUrl));
-      Object.values(jobsRef.current).forEach((job) => {
-        if (job.resultUrl) URL.revokeObjectURL(job.resultUrl);
-      });
-      queueRef.current = restoredImages;
-      jobsRef.current = restoredJobs;
-      setQueue(restoredImages);
-      setJobs(restoredJobs);
-      setSelectedId(
-        orderedItems.find((item) => item.status !== 'done')?.id
-        ?? orderedItems[0]?.id
-        ?? null,
-      );
-      setPreviewMode('original');
-      setSettings(structuredClone(batch.settings));
-      resumeHistoryBatchRef.current = batch;
-      setResumeHistoryBatchId(batch.id);
-      setRejections([]);
-      setBatchNotice(copy.historyResumeReady);
-      setHistoryActionError(undefined);
-      setActiveView('workbench');
-    } catch (error) {
-      setHistoryActionError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setHistoryBusy(false);
-    }
+  const keepHistoryResultsOnly = async (batchId: string): Promise<void> => {
+    if (!window.confirm(copy.historyKeepResultsWarning)) return;
+    await handleHistoryOutcome({ type: 'stage-keep-results-only', batchId });
   };
 
   const removeImage = async (id: string): Promise<void> => {
@@ -998,9 +971,12 @@ export function App() {
         });
       return;
     }
-    resumeHistoryBatchRef.current = null;
-    setResumeHistoryBatchId(undefined);
-    setBatchNotice('');
+    if (resumeHistoryBatchId) {
+      void handleHistoryOutcome({
+        type: 'discard-recovery',
+        batchId: resumeHistoryBatchId,
+      });
+    }
   };
 
   const startBatch = async (): Promise<void> => {
@@ -1063,10 +1039,16 @@ export function App() {
         processingBatch = await processingWorkspace.resume({
           batch: source,
           images: queueRef.current,
+          settings,
           inputLifetime: 'until-closed',
           credential: processingCredential,
         });
+        await localHistory.lifecycle.request({
+          type: 'handoff-recovery',
+          batchId: resumedBatchId,
+        });
         resumeHistoryBatchRef.current = null;
+        preRecoverySettingsRef.current = null;
       } else {
         processingBatch = await processingWorkspace.open({
           kind: 'queue',
@@ -1076,6 +1058,7 @@ export function App() {
           versions: LOCAL_HISTORY_VERSIONS,
           credential: processingCredential,
         });
+        setDraftProviderSelectionRequired(false);
       }
       attachProcessingBatch(processingBatch, true);
     } catch (error) {
@@ -1123,6 +1106,7 @@ export function App() {
   const startAllowed = (
     queue.length > 0
     && !importing
+    && !draftProviderSelectionRequired
     && queueRuntimeDecision.status === 'ready'
   );
   const continuousCameraAllowed = (
@@ -1591,11 +1575,10 @@ export function App() {
             className={`topnav-item ${activeView === 'history' ? 'topnav-item-active' : ''}`}
             type="button"
             aria-current={activeView === 'history' ? 'page' : undefined}
-            disabled={batchRunning}
             onClick={() => {
               setActiveView('history');
               setHistoryActionError(undefined);
-              void localHistory.refresh();
+              void localHistory.lifecycle.request({ type: 'refresh' });
             }}
           >
             <Icon name="clock" />
@@ -1622,11 +1605,10 @@ export function App() {
               type="button"
               aria-label={copy.history}
               aria-current={activeView === 'history' ? 'page' : undefined}
-              disabled={batchRunning && activeView !== 'history'}
               onClick={() => {
                 setActiveView('history');
                 setHistoryActionError(undefined);
-                void localHistory.refresh();
+                void localHistory.lifecycle.request({ type: 'refresh' });
               }}
             >
               <Icon name="clock" />
@@ -2468,23 +2450,44 @@ export function App() {
         <HistoryView
           copy={copy}
           locale={settings.uiLocale}
-          entries={localHistory.entries.filter(
-            (entry) => entry.batch.id !== pendingHistoryDeleteId,
-          )}
-          loading={localHistory.loading}
-          busy={historyBusy || pendingHistoryDeleteId !== undefined}
-          workbenchLocked={Boolean(resumeHistoryBatchId)}
-          lockedBatchId={resumeHistoryBatchId}
-          error={historyActionError ?? localHistory.error}
-          onRefresh={() => void localHistory.refresh()}
-          onResume={(batch) => void resumeHistoryBatch(batch)}
-          onClone={(batch) => void cloneHistoryBatch(batch)}
-          onDownload={(reference) => void downloadHistoryAsset(reference)}
-          onExportResults={(inspection) => void exportHistoryResults(inspection)}
-          onExportProject={(inspection) => void exportHistoryProject(inspection)}
-          onImportProject={(file) => void importHistoryProject(file)}
-          onKeepResults={(batch) => void keepHistoryResultsOnly(batch)}
-          onDelete={stageHistoryDelete}
+          entries={historySnapshot.entries}
+          loading={historySnapshot.status === 'loading'}
+          busy={historySnapshot.busy}
+          error={
+            historyActionError
+            ?? historyCleanupFaultMessage
+            ?? (historySnapshot.failure
+              ? `${historySnapshot.failure.operation}: ${historySnapshot.failure.cause}`
+              : undefined)
+          }
+          onRefresh={() => void handleHistoryOutcome({ type: 'refresh' })}
+          onResume={(batchId) => void handleHistoryOutcome({
+            type: 'prepare-resume',
+            batchId,
+          })}
+          onClone={(batchId) => void handleHistoryOutcome({
+            type: 'prepare-clone',
+            batchId,
+          })}
+          onDownload={(batchId, itemId) => void handleHistoryOutcome({
+            type: 'download-result',
+            batchId,
+            itemId,
+          })}
+          onExportResults={(batchId) => void handleHistoryOutcome({
+            type: 'export-results',
+            batchId,
+          })}
+          onExportProject={(batchId) => void exportHistoryProject(batchId)}
+          onImportProject={(file) => void handleHistoryOutcome({
+            type: 'import-project',
+            file,
+          })}
+          onKeepResults={(batchId) => void keepHistoryResultsOnly(batchId)}
+          onDelete={(batchId) => void handleHistoryOutcome({
+            type: 'stage-delete',
+            batchId,
+          })}
         />
       ) : (
         <SettingsView
@@ -2499,10 +2502,9 @@ export function App() {
             void refreshStorage();
           }}
           onManageHistory={() => {
-            if (batchRunningRef.current) return;
             setActiveView('history');
             setHistoryActionError(undefined);
-            void localHistory.refresh();
+            void localHistory.lifecycle.request({ type: 'refresh' });
           }}
           onExportDiagnostics={() => {
             void exportRedactedDiagnostics();
@@ -2520,10 +2522,17 @@ export function App() {
         />
       )}
 
-      {pendingHistoryDeleteId && (
+      {historySnapshot.pending && (
         <div className="undo-toast" role="status">
-          <span>{copy.historyDeletePending}</span>
-          <button type="button" onClick={undoHistoryDelete}>
+          <span>
+            {historySnapshot.pending.type === 'delete'
+              ? copy.historyDeletePending
+              : copy.historyKeepResults}
+          </span>
+          <button
+            type="button"
+            onClick={() => void handleHistoryOutcome({ type: 'undo-pending' })}
+          >
             {copy.historyUndoDelete}
           </button>
         </div>

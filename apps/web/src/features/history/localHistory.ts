@@ -1,7 +1,11 @@
-import type { WebSettings } from '@shinobu/shared-config';
+import {
+  lockProcessingConfig,
+  type LockedProcessingConfig,
+  type WebSettings,
+} from '@shinobu/shared-config';
 
-export const LOCAL_HISTORY_SCHEMA_VERSION = 2 as const;
-export type LocalHistorySchemaVersion = 1 | typeof LOCAL_HISTORY_SCHEMA_VERSION;
+export const LOCAL_HISTORY_SCHEMA_VERSION = 3 as const;
+export type LocalHistorySchemaVersion = 1 | 2 | typeof LOCAL_HISTORY_SCHEMA_VERSION;
 
 export type LocalHistoryBatchStatus =
   | 'running'
@@ -56,7 +60,7 @@ export type LocalHistoryBatch = {
   updatedAt: string;
   status: LocalHistoryBatchStatus;
   rerunnable: boolean;
-  settings: WebSettings;
+  lockedConfig: LockedProcessingConfig;
   versions: LocalHistoryVersions;
   recoveryPoint: LocalHistoryRecoveryPoint;
   items: LocalHistoryItem[];
@@ -91,11 +95,48 @@ export type UpdateLocalHistoryItemInput = {
   error?: string;
 };
 
+export type LocalHistoryCleanupOperation =
+  | 'delete-batch'
+  | 'keep-results-only'
+  | 'remove-queued-item'
+  | 'resume-batch'
+  | 'staged-write';
+
+export type LocalHistoryCleanupRecord = {
+  id: string;
+  batchId: string;
+  operation: LocalHistoryCleanupOperation;
+  createdAt: string;
+  unreleasedBytes: number;
+  target:
+    | { type: 'batch' }
+    | {
+        type: 'assets';
+        paths: string[];
+      };
+  lastAttemptAt?: string;
+  error?: string;
+};
+
+export type LocalHistoryCleanupFault = Pick<
+  LocalHistoryCleanupRecord,
+  'id' | 'batchId' | 'operation' | 'createdAt' | 'unreleasedBytes' | 'lastAttemptAt' | 'error'
+>;
+
+export type LocalHistoryIndexCommit = {
+  putBatch?: LocalHistoryBatch;
+  deleteBatchId?: string;
+  putCleanup?: LocalHistoryCleanupRecord;
+  deleteCleanupId?: string;
+};
+
 export interface LocalHistoryIndexAdapter {
   list(): Promise<LocalHistoryBatch[]>;
   get(batchId: string): Promise<LocalHistoryBatch | null>;
   put(batch: LocalHistoryBatch): Promise<void>;
   delete(batchId: string): Promise<void>;
+  commit(input: LocalHistoryIndexCommit): Promise<void>;
+  listCleanup(): Promise<LocalHistoryCleanupRecord[]>;
 }
 
 export interface LocalHistoryAssetAdapter {
@@ -159,9 +200,22 @@ function requireBatch(
 }
 
 function migrateBatchSchema(batch: LocalHistoryBatch): void {
-  if (batch.schemaVersion !== 1 && batch.schemaVersion !== LOCAL_HISTORY_SCHEMA_VERSION) {
+  if (
+    batch.schemaVersion !== 1
+    && batch.schemaVersion !== 2
+    && batch.schemaVersion !== LOCAL_HISTORY_SCHEMA_VERSION
+  ) {
     throw new Error(`本地历史 Schema 版本不受支持: ${batch.schemaVersion}`);
   }
+  const legacy = batch as LocalHistoryBatch & {
+    lockedConfig?: LockedProcessingConfig;
+    settings?: WebSettings;
+  };
+  if (!legacy.lockedConfig) {
+    if (!legacy.settings) throw new Error('本地历史缺少锁定处理配置');
+    legacy.lockedConfig = lockProcessingConfig(legacy.settings);
+  }
+  delete legacy.settings;
   batch.schemaVersion = LOCAL_HISTORY_SCHEMA_VERSION;
 }
 
@@ -184,6 +238,18 @@ function resultFileName(originalName: string | undefined, itemId: string): strin
   const source = originalName?.trim() || itemId;
   const stem = source.replace(/\.[^.]+$/u, '');
   return `${stem || 'result'}.png`;
+}
+
+function cleanupId(
+  operation: LocalHistoryCleanupOperation,
+  batchId: string,
+  timestamp: string,
+): string {
+  return `${operation}:${batchId}:${timestamp}`;
+}
+
+function messageFor(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export class LocalHistory {
@@ -214,6 +280,18 @@ export class LocalHistory {
   async createBatch(input: CreateLocalHistoryBatchInput): Promise<LocalHistoryBatch> {
     const id = input.id ?? this.ids.create();
     const timestamp = this.clock.now().toISOString();
+    const stagedWrite: LocalHistoryCleanupRecord = {
+      id: cleanupId('staged-write', id, timestamp),
+      batchId: id,
+      operation: 'staged-write',
+      createdAt: timestamp,
+      unreleasedBytes: input.items.reduce(
+        (total, item) => total + item.file.size + (item.thumbnail?.size ?? 0),
+        0,
+      ),
+      target: { type: 'batch' },
+    };
+    await this.index.commit({ putCleanup: stagedWrite });
     const items: LocalHistoryItem[] = [];
     try {
       for (let order = 0; order < input.items.length; order += 1) {
@@ -248,7 +326,7 @@ export class LocalHistory {
         updatedAt: timestamp,
         status: 'running',
         rerunnable: true,
-        settings: structuredClone(input.settings),
+        lockedConfig: lockProcessingConfig(input.settings),
         versions: structuredClone(input.versions),
         recoveryPoint: {
           savedAt: timestamp,
@@ -256,11 +334,13 @@ export class LocalHistory {
         },
         items,
       };
-      await this.index.put(batch);
+      await this.index.commit({
+        putBatch: batch,
+        deleteCleanupId: stagedWrite.id,
+      });
       return cloneBatch(batch);
     } catch (error) {
-      await this.assets.deleteBatch(id).catch(() => undefined);
-      await this.index.delete(id).catch(() => undefined);
+      await this.executeCleanup(stagedWrite);
       throw error;
     }
   }
@@ -545,6 +625,42 @@ export class LocalHistory {
     return blob?.size === reference.size ? blob : null;
   }
 
+  async listCleanupFaults(): Promise<LocalHistoryCleanupFault[]> {
+    return (await this.index.listCleanup()).map((record) => {
+      const {
+        target: _target,
+        ...fault
+      } = structuredClone(record);
+      return fault;
+    });
+  }
+
+  async retryCleanup(batchId?: string): Promise<void> {
+    for (const record of await this.index.listCleanup()) {
+      if (batchId && record.batchId !== batchId) continue;
+      await this.executeCleanup(record);
+    }
+  }
+
+  private async executeCleanup(record: LocalHistoryCleanupRecord): Promise<void> {
+    try {
+      if (record.target.type === 'batch') {
+        await this.assets.deleteBatch(record.batchId);
+      } else {
+        for (const path of record.target.paths) await this.assets.delete(path);
+      }
+      await this.index.commit({ deleteCleanupId: record.id });
+    } catch (error) {
+      await this.index.commit({
+        putCleanup: {
+          ...record,
+          lastAttemptAt: this.clock.now().toISOString(),
+          error: messageFor(error),
+        },
+      });
+    }
+  }
+
   async keepResultsOnly(batchId: string): Promise<LocalHistoryBatch> {
     const batch = await this.index.get(batchId);
     requireBatch(batch, batchId);
@@ -557,11 +673,24 @@ export class LocalHistory {
       item.thumbnail = undefined;
     }
     batch.rerunnable = false;
-    batch.updatedAt = this.clock.now().toISOString();
-    await this.index.put(batch);
-    await Promise.all(
-      removable.map((asset) => this.assets.delete(asset.path).catch(() => undefined)),
-    );
+    const timestamp = this.clock.now().toISOString();
+    batch.updatedAt = timestamp;
+    const cleanup: LocalHistoryCleanupRecord = {
+      id: cleanupId('keep-results-only', batch.id, timestamp),
+      batchId: batch.id,
+      operation: 'keep-results-only',
+      createdAt: timestamp,
+      unreleasedBytes: removable.reduce((total, asset) => total + asset.size, 0),
+      target: {
+        type: 'assets',
+        paths: removable.map((asset) => asset.path),
+      },
+    };
+    await this.index.commit({
+      putBatch: batch,
+      ...(removable.length > 0 ? { putCleanup: cleanup } : {}),
+    });
+    if (removable.length > 0) await this.executeCleanup(cleanup);
     return cloneBatch(batch);
   }
 
@@ -576,6 +705,16 @@ export class LocalHistory {
     batch.id = id;
     batch.updatedAt = timestamp;
     batch.recoveryPoint.savedAt = timestamp;
+    const stagedWrite: LocalHistoryCleanupRecord = {
+      id: cleanupId('staged-write', id, timestamp),
+      batchId: id,
+      operation: 'staged-write',
+      createdAt: timestamp,
+      unreleasedBytes: Array.from(sourceAssets.values())
+        .reduce((total, blob) => total + blob.size, 0),
+      target: { type: 'batch' },
+    };
+    await this.index.commit({ putCleanup: stagedWrite });
 
     try {
       for (const item of batch.items) {
@@ -598,23 +737,45 @@ export class LocalHistory {
           };
         }
       }
-      await this.index.put(batch);
+      await this.index.commit({
+        putBatch: batch,
+        deleteCleanupId: stagedWrite.id,
+      });
       return cloneBatch(batch);
     } catch (error) {
-      await this.assets.deleteBatch(id).catch(() => undefined);
-      await this.index.delete(id).catch(() => undefined);
+      await this.executeCleanup(stagedWrite);
       throw error;
     }
   }
 
   async deleteBatch(batchId: string): Promise<void> {
-    await this.index.delete(batchId);
-    await this.assets.deleteBatch(batchId).catch(() => undefined);
+    const batch = await this.index.get(batchId);
+    const timestamp = this.clock.now().toISOString();
+    const cleanup: LocalHistoryCleanupRecord = {
+      id: cleanupId('delete-batch', batchId, timestamp),
+      batchId,
+      operation: 'delete-batch',
+      createdAt: timestamp,
+      unreleasedBytes: batch?.items.reduce(
+        (total, item) => total + [item.original, item.thumbnail, item.result].reduce(
+          (itemTotal, asset) => itemTotal + (asset?.size ?? 0),
+          0,
+        ),
+        0,
+      ) ?? 0,
+      target: { type: 'batch' },
+    };
+    await this.index.commit({
+      deleteBatchId: batchId,
+      putCleanup: cleanup,
+    });
+    await this.executeCleanup(cleanup);
   }
 }
 
 export class MemoryLocalHistoryIndexAdapter implements LocalHistoryIndexAdapter {
   private readonly batches = new Map<string, LocalHistoryBatch>();
+  private readonly cleanup = new Map<string, LocalHistoryCleanupRecord>();
 
   async list(): Promise<LocalHistoryBatch[]> {
     return Array.from(this.batches.values(), cloneBatch);
@@ -631,6 +792,19 @@ export class MemoryLocalHistoryIndexAdapter implements LocalHistoryIndexAdapter 
 
   async delete(batchId: string): Promise<void> {
     this.batches.delete(batchId);
+  }
+
+  async commit(input: LocalHistoryIndexCommit): Promise<void> {
+    if (input.putBatch) this.batches.set(input.putBatch.id, cloneBatch(input.putBatch));
+    if (input.deleteBatchId) this.batches.delete(input.deleteBatchId);
+    if (input.putCleanup) {
+      this.cleanup.set(input.putCleanup.id, structuredClone(input.putCleanup));
+    }
+    if (input.deleteCleanupId) this.cleanup.delete(input.deleteCleanupId);
+  }
+
+  async listCleanup(): Promise<LocalHistoryCleanupRecord[]> {
+    return Array.from(this.cleanup.values(), (record) => structuredClone(record));
   }
 }
 

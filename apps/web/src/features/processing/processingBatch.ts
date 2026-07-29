@@ -1,4 +1,7 @@
-import type { WebSettings } from '@shinobu/shared-config';
+import {
+  lockProcessingConfig,
+  type WebSettings,
+} from '@shinobu/shared-config';
 import type { PipelineProgress } from '../../../../../src/types';
 import type {
   CreateLocalHistoryItemInput,
@@ -6,6 +9,10 @@ import type {
   LocalHistoryBatch,
   LocalHistoryVersions,
 } from '../history/localHistory';
+import type {
+  HistoryBatchClaim,
+  HistoryBatchCoordinator,
+} from '../history/historyCoordination';
 import type { ImportedImage } from '../import/imageImporter';
 import type { WebPipelineResult } from '../../runtime/webPipeline';
 import type {
@@ -136,6 +143,7 @@ export type OpenProcessingBatch = {
 export type ResumeProcessingBatch = {
   batch: Pick<LocalHistoryBatch, 'id'>;
   images: readonly ImportedImage[];
+  settings: WebSettings;
   inputLifetime?: 'until-idle' | 'until-closed';
   credential: ProcessingBatchCredential;
 };
@@ -143,6 +151,7 @@ export type ResumeProcessingBatch = {
 export type ProcessingBatchWorkspaceDependencies = {
   history: LocalHistory;
   runtime: ProcessingRuntime;
+  coordinator?: HistoryBatchCoordinator;
   readThumbnail?(image: ImportedImage): Promise<Blob | undefined>;
   createId?: () => string;
 };
@@ -363,7 +372,10 @@ class ProcessingBatchImplementation implements ProcessingBatch {
   }
 
   private serializeHistoryOperation<T>(operation: () => Promise<T>): Promise<T> {
-    const result = this.historyTail.then(operation);
+    const coordinated = (): Promise<T> => this.dependencies.coordinator
+      ? this.dependencies.coordinator.withWrite(this.id, operation)
+      : operation();
+    const result = this.historyTail.then(coordinated);
     this.historyTail = result.then(() => undefined, () => undefined);
     return result;
   }
@@ -842,7 +854,9 @@ class ProcessingBatchWorkspaceImplementation implements ProcessingBatchWorkspace
     this.active = true;
     const id = this.createId();
     let runtimeLease: ProcessingRuntimeLease | undefined;
+    let historyClaim: HistoryBatchClaim | undefined;
     try {
+      historyClaim = await this.acquireHistoryClaim(id);
       runtimeLease = await this.dependencies.runtime.prepare({
         settings: input.settings,
         credential: input.credential,
@@ -856,12 +870,12 @@ class ProcessingBatchWorkspaceImplementation implements ProcessingBatchWorkspace
           input.initialImages.map((image) =>
             historyItem(image, this.dependencies.readThumbnail)),
         );
-        await this.dependencies.history.createBatch({
+        await this.withHistoryWrite(id, () => this.dependencies.history.createBatch({
           id,
           settings: structuredClone(input.settings),
           versions: structuredClone(input.versions),
           items,
-        });
+        }));
       }
       const batch = new ProcessingBatchImplementation(
         id,
@@ -875,6 +889,7 @@ class ProcessingBatchWorkspaceImplementation implements ProcessingBatchWorkspace
         this.dependencies,
         () => {
           this.active = false;
+          historyClaim?.release();
         },
         runtimeLease,
       );
@@ -882,6 +897,7 @@ class ProcessingBatchWorkspaceImplementation implements ProcessingBatchWorkspace
       return batch;
     } catch (error) {
       runtimeLease?.release();
+      historyClaim?.release();
       this.active = false;
       throw error;
     }
@@ -891,11 +907,22 @@ class ProcessingBatchWorkspaceImplementation implements ProcessingBatchWorkspace
     if (this.active) throw new Error('当前工作台已有活动处理批次');
     this.active = true;
     let runtimeLease: ProcessingRuntimeLease | undefined;
+    let historyClaim: HistoryBatchClaim | undefined;
     try {
-      const canonical = await this.dependencies.history.get(input.batch.id);
+      historyClaim = await this.acquireHistoryClaim(input.batch.id);
+      const canonical = await this.withHistoryRead(
+        input.batch.id,
+        () => this.dependencies.history.get(input.batch.id),
+      );
       if (!canonical) throw new Error(`找不到本地历史批次: ${input.batch.id}`);
+      if (
+        JSON.stringify(lockProcessingConfig(input.settings))
+        !== JSON.stringify(canonical.lockedConfig)
+      ) {
+        throw new Error('恢复处理批次的锁定处理配置不一致');
+      }
       runtimeLease = await this.dependencies.runtime.prepare({
-        settings: canonical.settings,
+        settings: input.settings,
         credential: input.credential,
         pendingOriginalBytes: 0,
       });
@@ -915,11 +942,17 @@ class ProcessingBatchWorkspaceImplementation implements ProcessingBatchWorkspace
       for (const item of canonical.items) {
         if (item.status !== 'done') continue;
         if (!item.result) throw new Error(`恢复批次已完成图片缺少结果: ${item.id}`);
-        const result = await this.dependencies.history.readAsset(item.result);
+        const result = await this.withHistoryRead(
+          input.batch.id,
+          () => this.dependencies.history.readAsset(item.result!),
+        );
         if (!result) throw new Error(`恢复批次结果缺失或损坏: ${item.result.fileName}`);
         restoredResults.set(item.id, result);
       }
-      const restored = await this.dependencies.history.resumeBatch(input.batch.id);
+      const restored = await this.withHistoryWrite(
+        input.batch.id,
+        () => this.dependencies.history.resumeBatch(input.batch.id),
+      );
       const images = [...restored.items]
         .sort((left, right) => left.order - right.order)
         .map((item) => imagesById.get(item.id)!);
@@ -929,13 +962,14 @@ class ProcessingBatchWorkspaceImplementation implements ProcessingBatchWorkspace
           kind: 'queue',
           inputLifetime: input.inputLifetime,
           initialImages: images,
-          settings: structuredClone(restored.settings),
+          settings: structuredClone(input.settings),
           versions: structuredClone(restored.versions),
           credential: { ...input.credential },
         },
         this.dependencies,
         () => {
           this.active = false;
+          historyClaim?.release();
         },
         runtimeLease,
         restored,
@@ -945,9 +979,37 @@ class ProcessingBatchWorkspaceImplementation implements ProcessingBatchWorkspace
       return batch;
     } catch (error) {
       runtimeLease?.release();
+      historyClaim?.release();
       this.active = false;
       throw error;
     }
+  }
+
+  private async acquireHistoryClaim(batchId: string): Promise<HistoryBatchClaim | undefined> {
+    if (!this.dependencies.coordinator) return undefined;
+    const acquired = await this.dependencies.coordinator.acquire(batchId);
+    if (acquired.status === 'acquired') return acquired.claim;
+    const error = new Error(
+      acquired.status === 'occupied'
+        ? '此处理批次正在另一个 Web 工作台实例中使用'
+        : '当前浏览器无法协调多个 Web 工作台实例',
+    ) as Error & { code: string };
+    error.code = acquired.status === 'occupied'
+      ? 'BATCH_OCCUPIED'
+      : 'COORDINATION_UNAVAILABLE';
+    throw error;
+  }
+
+  private withHistoryRead<T>(batchId: string, operation: () => Promise<T>): Promise<T> {
+    return this.dependencies.coordinator
+      ? this.dependencies.coordinator.withRead(batchId, operation)
+      : operation();
+  }
+
+  private withHistoryWrite<T>(batchId: string, operation: () => Promise<T>): Promise<T> {
+    return this.dependencies.coordinator
+      ? this.dependencies.coordinator.withWrite(batchId, operation)
+      : operation();
   }
 }
 

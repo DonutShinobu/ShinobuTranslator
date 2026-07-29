@@ -9,6 +9,10 @@ import {
   MemoryLocalHistoryIndexAdapter,
   type LocalHistoryClock,
 } from '../../apps/web/src/features/history/localHistory';
+import {
+  MemoryHistoryBatchCoordinator,
+  MemoryHistoryCoordinationHub,
+} from '../../apps/web/src/features/history/historyCoordination';
 import type { ImportedImage } from '../../apps/web/src/features/import/imageImporter';
 import {
   createProcessingBatchWorkspace,
@@ -556,6 +560,7 @@ describe('processing batch module', () => {
     const batch = await workspace.resume({
       batch: stored,
       images: sourceImages,
+      settings,
       credential: {
         providerId: settings.translationProviderId,
         target: provider.baseUrl,
@@ -922,6 +927,7 @@ describe('processing batch module', () => {
     await expect(workspace.resume({
       batch: stored,
       images: [],
+      settings,
       credential: {
         providerId,
         target: provider.baseUrl,
@@ -929,6 +935,47 @@ describe('processing batch module', () => {
       },
     })).rejects.toThrow(/图片与本地历史不一致/u);
     expect((await history.get(stored.id))?.status).toBe('paused');
+  });
+
+  it('holds a cross-workbench claim for the active batch lifetime', async () => {
+    const history = new LocalHistory(
+      new MemoryLocalHistoryIndexAdapter(),
+      new MemoryLocalHistoryAssetAdapter(),
+      new StepClock(),
+      { create: () => 'claimed-batch' },
+    );
+    const hub = new MemoryHistoryCoordinationHub();
+    const owner = new MemoryHistoryBatchCoordinator(hub, 'owner-tab');
+    const observer = new MemoryHistoryBatchCoordinator(hub, 'observer-tab');
+    const workspace = createProcessingBatchWorkspace({
+      history,
+      runtime: readyRuntime(successfulCore),
+      coordinator: owner,
+      createId: () => 'claimed-batch',
+    });
+    const settings = createDefaultWebSettings('zh-CN');
+    const provider = settings.providerProfiles[settings.translationProviderId];
+    const batch = await workspace.open({
+      kind: 'continuous-camera',
+      initialImages: [],
+      settings,
+      versions,
+      credential: {
+        providerId: settings.translationProviderId,
+        target: provider.baseUrl,
+        value: 'runtime-only',
+      },
+    });
+
+    await expect(observer.acquire('claimed-batch')).resolves.toEqual({
+      status: 'occupied',
+    });
+
+    await batch.dispatch({ type: 'close-input' });
+    await waitFor(batch, (snapshot) => snapshot.status === 'completed');
+    const acquired = await observer.acquire('claimed-batch');
+    expect(acquired.status).toBe('acquired');
+    if (acquired.status === 'acquired') acquired.claim.release();
   });
 
   it.each(['subscribe', 'cleanup'] as const)(

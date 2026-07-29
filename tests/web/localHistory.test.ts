@@ -71,6 +71,36 @@ function setup() {
 }
 
 describe('local history module', () => {
+  it('stores only the locked processing configuration selected for the batch', async () => {
+    const { history } = setup();
+    const settings = createDefaultWebSettings('zh-TW');
+    settings.translationProviderId = 'openai';
+    settings.providerProfiles.openai = {
+      baseUrl: 'https://example.test/v1/',
+      model: 'chosen-model',
+    };
+    settings.providerProfiles.deepseek.model = 'must-not-be-stored';
+
+    const batch = await history.createBatch({
+      settings,
+      versions,
+      items: inputItems().slice(0, 1),
+    });
+
+    expect(batch.lockedConfig).toEqual({
+      schemaVersion: 1,
+      targetLanguage: 'zh-CHT',
+      processMode: 'translate',
+      provider: {
+        id: 'openai',
+        target: 'https://example.test/v1',
+        model: 'chosen-model',
+      },
+    });
+    expect(JSON.stringify(batch)).not.toContain('uiLocale');
+    expect(JSON.stringify(batch)).not.toContain('must-not-be-stored');
+  });
+
   it('commits ordered metadata only after originals and thumbnails are stored', async () => {
     const { history, assets } = setup();
     const settings = createDefaultWebSettings('zh-CN');
@@ -81,7 +111,7 @@ describe('local history module', () => {
     });
 
     expect(batch).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       id: 'batch-1',
       status: 'running',
       rerunnable: true,
@@ -111,9 +141,9 @@ describe('local history module', () => {
     });
     await index.put({ ...created, schemaVersion: 1 });
 
-    expect((await history.list())[0].schemaVersion).toBe(2);
+    expect((await history.list())[0].schemaVersion).toBe(3);
     await history.saveRecoveryPoint(created.id, 0, 'paused');
-    expect((await index.get(created.id))?.schemaVersion).toBe(2);
+    expect((await index.get(created.id))?.schemaVersion).toBe(3);
   });
 
   it('records results and versioned recovery points without changing the original settings', async () => {
@@ -138,7 +168,7 @@ describe('local history module', () => {
     await history.saveRecoveryPoint(batch.id, 1, 'paused');
     const finished = await history.finishBatch(batch.id, 'failed');
 
-    expect(finished.settings.targetLanguage).toBe('zh-CHT');
+    expect(finished.lockedConfig.targetLanguage).toBe('zh-CHT');
     expect(finished.status).toBe('failed');
     expect(finished.items[0]).toMatchObject({
       status: 'done',
@@ -186,6 +216,49 @@ describe('local history module', () => {
     expect(compacted.rerunnable).toBe(false);
     expect(compacted.items.every((item) => !item.original && !item.thumbnail)).toBe(true);
     expect(await assets.get(resultPath)).toHaveProperty('size', 6);
+  });
+
+  it('commits results-only state and retries persistent cleanup debt', async () => {
+    class FailingDeleteAssets extends MemoryLocalHistoryAssetAdapter {
+      failDeletes = true;
+
+      override async delete(path: string): Promise<void> {
+        if (this.failDeletes) throw new Error(`OPFS unavailable: ${path}`);
+        await super.delete(path);
+      }
+    }
+    const index = new MemoryLocalHistoryIndexAdapter();
+    const assets = new FailingDeleteAssets();
+    const history = new LocalHistory(
+      index,
+      assets,
+      new StepClock(),
+      { create: () => 'cleanup-batch' },
+    );
+    const batch = await history.createBatch({
+      settings: createDefaultWebSettings('zh-CN'),
+      versions,
+      items: inputItems().slice(0, 1),
+    });
+
+    const compacted = await history.keepResultsOnly(batch.id);
+
+    expect(compacted.rerunnable).toBe(false);
+    expect(compacted.items[0].original).toBeUndefined();
+    expect(await history.listCleanupFaults()).toEqual([
+      expect.objectContaining({
+        batchId: batch.id,
+        operation: 'keep-results-only',
+        unreleasedBytes: 'original-one'.length + 'thumb-one'.length,
+        error: expect.stringContaining('OPFS unavailable'),
+      }),
+    ]);
+
+    assets.failDeletes = false;
+    await history.retryCleanup();
+
+    expect(await history.listCleanupFaults()).toEqual([]);
+    expect(assets.blobs.size).toBe(0);
   });
 
   it('resumes only queued or running tasks and preserves every terminal task', async () => {
@@ -369,6 +442,49 @@ describe('local history module', () => {
     expect(assets.blobs.size).toBe(0);
   });
 
+  it('persists staged-write cleanup when index commit and rollback both fail', async () => {
+    class FailingIndex extends MemoryLocalHistoryIndexAdapter {
+      override async put(): Promise<void> {
+        throw new Error('index unavailable');
+      }
+
+      override async commit(
+        input: Parameters<MemoryLocalHistoryIndexAdapter['commit']>[0],
+      ): Promise<void> {
+        if (input.putBatch) throw new Error('index unavailable');
+        await super.commit(input);
+      }
+    }
+    class FailingRollbackAssets extends MemoryLocalHistoryAssetAdapter {
+      override async deleteBatch(): Promise<void> {
+        throw new Error('OPFS rollback unavailable');
+      }
+    }
+    const index = new FailingIndex();
+    const assets = new FailingRollbackAssets();
+    const history = new LocalHistory(
+      index,
+      assets,
+      new StepClock(),
+      { create: () => 'staged-batch' },
+    );
+
+    await expect(history.createBatch({
+      settings: createDefaultWebSettings('zh-CN'),
+      versions,
+      items: inputItems().slice(0, 1),
+    })).rejects.toThrow('index unavailable');
+
+    expect(await history.list()).toEqual([]);
+    expect(await history.listCleanupFaults()).toEqual([
+      expect.objectContaining({
+        batchId: 'staged-batch',
+        operation: 'staged-write',
+        error: 'OPFS rollback unavailable',
+      }),
+    ]);
+  });
+
   it('deletes both the batch index and its OPFS asset namespace', async () => {
     const { history, index, assets } = setup();
     const batch = await history.createBatch({
@@ -381,5 +497,38 @@ describe('local history module', () => {
 
     expect(await index.get(batch.id)).toBeNull();
     expect(assets.blobs.size).toBe(0);
+  });
+
+  it('keeps a deleted batch hidden when its asset namespace cleanup fails', async () => {
+    class FailingBatchDeleteAssets extends MemoryLocalHistoryAssetAdapter {
+      override async deleteBatch(): Promise<void> {
+        throw new Error('OPFS directory is busy');
+      }
+    }
+    const index = new MemoryLocalHistoryIndexAdapter();
+    const assets = new FailingBatchDeleteAssets();
+    const history = new LocalHistory(
+      index,
+      assets,
+      new StepClock(),
+      { create: () => 'deleted-batch' },
+    );
+    const batch = await history.createBatch({
+      settings: createDefaultWebSettings('zh-CN'),
+      versions,
+      items: inputItems().slice(0, 1),
+    });
+
+    await history.deleteBatch(batch.id);
+
+    expect(await history.get(batch.id)).toBeNull();
+    expect(await history.listCleanupFaults()).toEqual([
+      expect.objectContaining({
+        batchId: batch.id,
+        operation: 'delete-batch',
+        unreleasedBytes: 'original-one'.length + 'thumb-one'.length,
+        error: 'OPFS directory is busy',
+      }),
+    ]);
   });
 });

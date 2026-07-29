@@ -108,9 +108,9 @@ describe('project packages', () => {
 
     expect(validated.manifest).toMatchObject({
       format: 'shinobu-project',
-      schemaVersion: 2,
+      schemaVersion: 3,
       exportedAt: '2026-07-28T01:00:00.000Z',
-      batch: { id: 'source-batch', schemaVersion: 2, status: 'completed' },
+      batch: { id: 'source-batch', schemaVersion: 3, status: 'completed' },
     });
     expect(validated.manifest.files).toHaveLength(3);
     expect(JSON.stringify(validated.manifest)).not.toMatch(/api[-_]?key/iu);
@@ -141,10 +141,45 @@ describe('project packages', () => {
       inspection,
       (reference) => history.readAsset(reference),
     );
-    const files = unzipSync(await bytes(resultZip));
+    const files = unzipSync(await bytes(resultZip.archive));
 
     expect(Object.keys(files)).toEqual(['001-page-01.png']);
     expect(new TextDecoder().decode(files['001-page-01.png'])).toBe('translated');
+    expect(resultZip.exportedCount).toBe(1);
+    expect(resultZip.omissions).toEqual([]);
+  });
+
+  it('exports surviving results and reports every omitted damaged result', async () => {
+    const { history, assets, inspection } = await sourceBatch();
+    const first = inspection.batch.items[0];
+    const surviving = new Blob(['second-result'], { type: 'image/png' });
+    await assets.put('source-batch/items/1/result', surviving);
+    inspection.batch.items.push({
+      ...structuredClone(first),
+      id: 'image-2',
+      order: 1,
+      result: {
+        path: 'source-batch/items/1/result',
+        fileName: 'page-02.png',
+        mediaType: 'image/png',
+        size: surviving.size,
+      },
+    });
+    await assets.delete(first.result!.path);
+
+    const result = await buildResultsZip(
+      inspection,
+      (reference) => history.readAsset(reference),
+    );
+    const files = unzipSync(await bytes(result.archive));
+
+    expect(Object.keys(files)).toEqual(['002-page-02.png']);
+    expect(result.exportedCount).toBe(1);
+    expect(result.omissions).toEqual([{
+      itemId: 'image-1',
+      fileName: 'page-01.png',
+      reason: 'missing-or-corrupt',
+    }]);
   });
 
   it('rejects traversal paths, HTML, undeclared files, and duplicate manifest declarations', async () => {
@@ -204,6 +239,27 @@ describe('project packages', () => {
     }))).rejects.toThrow(/版本过新/u);
   });
 
+  it('rejects a legacy package that contains a newer settings schema', async () => {
+    const { history, inspection } = await sourceBatch();
+    const files = unzipSync(await bytes(await buildProjectPackage(
+      inspection,
+      (reference) => history.readAsset(reference),
+    )));
+    const manifest = JSON.parse(new TextDecoder().decode(files['manifest.json']));
+    manifest.schemaVersion = 2;
+    manifest.batch.schemaVersion = 2;
+    manifest.batch.settings = {
+      ...createDefaultWebSettings('zh-CN'),
+      schemaVersion: 999,
+    };
+    delete manifest.batch.lockedConfig;
+
+    await expect(validateProjectPackage(zipBlob({
+      ...files,
+      'manifest.json': new TextEncoder().encode(JSON.stringify(manifest)),
+    }))).rejects.toThrow(/配置 Schema 版本过新/u);
+  });
+
   it('accepts a legacy v1 package and normalizes both manifests to the current schema', async () => {
     const { history, inspection } = await sourceBatch();
     const files = unzipSync(await bytes(await buildProjectPackage(
@@ -213,14 +269,18 @@ describe('project packages', () => {
     const manifest = JSON.parse(new TextDecoder().decode(files['manifest.json']));
     manifest.schemaVersion = 1;
     manifest.batch.schemaVersion = 1;
+    manifest.batch.settings = createDefaultWebSettings('zh-CN');
+    delete manifest.batch.lockedConfig;
 
     const validated = await validateProjectPackage(zipBlob({
       ...files,
       'manifest.json': new TextEncoder().encode(JSON.stringify(manifest)),
     }));
 
-    expect(validated.manifest.schemaVersion).toBe(2);
-    expect(validated.manifest.batch.schemaVersion).toBe(2);
+    expect(validated.manifest.schemaVersion).toBe(3);
+    expect(validated.manifest.batch.schemaVersion).toBe(3);
+    expect(validated.manifest.batch.lockedConfig.targetLanguage).toBe('zh-CHS');
+    expect('settings' in validated.manifest.batch).toBe(false);
   });
 
   it('excludes legacy diagnostic summaries and rejects malformed OCR records', async () => {
@@ -259,6 +319,13 @@ describe('project packages', () => {
       override async put(): Promise<void> {
         throw new Error('index unavailable');
       }
+
+      override async commit(
+        input: Parameters<MemoryLocalHistoryIndexAdapter['commit']>[0],
+      ): Promise<void> {
+        if (input.putBatch) throw new Error('index unavailable');
+        await super.commit(input);
+      }
     }
     const assets = new MemoryLocalHistoryAssetAdapter();
     const importing = new LocalHistory(
@@ -273,5 +340,49 @@ describe('project packages', () => {
       validated.assets,
     )).rejects.toThrow('index unavailable');
     expect(assets.blobs.size).toBe(0);
+  });
+
+  it('retains cleanup debt when an interrupted project import cannot roll back assets', async () => {
+    const { history, inspection } = await sourceBatch();
+    const validated = await validateProjectPackage(await buildProjectPackage(
+      inspection,
+      (reference) => history.readAsset(reference),
+    ));
+    class FailingIndex extends MemoryLocalHistoryIndexAdapter {
+      override async put(): Promise<void> {
+        throw new Error('index unavailable');
+      }
+
+      override async commit(
+        input: Parameters<MemoryLocalHistoryIndexAdapter['commit']>[0],
+      ): Promise<void> {
+        if (input.putBatch) throw new Error('index unavailable');
+        await super.commit(input);
+      }
+    }
+    class FailingRollbackAssets extends MemoryLocalHistoryAssetAdapter {
+      override async deleteBatch(): Promise<void> {
+        throw new Error('import rollback unavailable');
+      }
+    }
+    const importing = new LocalHistory(
+      new FailingIndex(),
+      new FailingRollbackAssets(),
+      new FixedClock(),
+      { create: () => 'interrupted-import' },
+    );
+
+    await expect(importing.importBatch(
+      validated.manifest.batch,
+      validated.assets,
+    )).rejects.toThrow('index unavailable');
+    expect(await importing.list()).toEqual([]);
+    expect(await importing.listCleanupFaults()).toEqual([
+      expect.objectContaining({
+        batchId: 'interrupted-import',
+        operation: 'staged-write',
+        error: 'import rollback unavailable',
+      }),
+    ]);
   });
 });

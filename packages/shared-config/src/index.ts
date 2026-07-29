@@ -1,5 +1,6 @@
 export const WEB_SETTINGS_SCHEMA_VERSION = 2 as const;
 export const WEB_SETTINGS_STORAGE_KEY = 'shinobu:web-settings';
+export const LOCKED_PROCESSING_CONFIG_SCHEMA_VERSION = 1 as const;
 
 export type UiLocale = 'zh-CN' | 'zh-TW';
 export type TargetLanguage = 'zh-CHS' | 'zh-CHT';
@@ -27,6 +28,17 @@ export type WebSettings = {
   processMode: ProcessMode;
   translationProviderId: TranslationProviderId;
   providerProfiles: WebProviderProfiles;
+};
+
+export type LockedProcessingConfig = {
+  schemaVersion: typeof LOCKED_PROCESSING_CONFIG_SCHEMA_VERSION;
+  targetLanguage: TargetLanguage;
+  processMode: ProcessMode;
+  provider: {
+    id: string;
+    target: string;
+    model: string;
+  };
 };
 
 export type DecodedWebSettings = {
@@ -114,6 +126,96 @@ export function createDefaultWebSettings(uiLocale: UiLocale): WebSettings {
     processMode: 'translate',
     translationProviderId: 'deepseek',
     providerProfiles: structuredClone(defaultWebProviderProfiles),
+  };
+}
+
+export function lockProcessingConfig(settings: WebSettings): LockedProcessingConfig {
+  const profile = settings.providerProfiles[settings.translationProviderId];
+  return {
+    schemaVersion: LOCKED_PROCESSING_CONFIG_SCHEMA_VERSION,
+    targetLanguage: settings.targetLanguage,
+    processMode: settings.processMode,
+    provider: {
+      id: settings.translationProviderId,
+      target: normalizeProviderBaseUrl(profile.baseUrl),
+      model: profile.model.trim(),
+    },
+  };
+}
+
+export function isKnownTranslationProviderId(value: string): value is TranslationProviderId {
+  return translationProviderIds.has(value);
+}
+
+export function decodeLockedProcessingConfig(value: unknown): LockedProcessingConfig | null {
+  if (
+    !isRecord(value)
+    || value.schemaVersion !== LOCKED_PROCESSING_CONFIG_SCHEMA_VERSION
+    || typeof value.targetLanguage !== 'string'
+    || !targetLanguages.has(value.targetLanguage)
+    || typeof value.processMode !== 'string'
+    || !processModes.has(value.processMode)
+    || !isRecord(value.provider)
+    || typeof value.provider.id !== 'string'
+    || !value.provider.id.trim()
+    || typeof value.provider.target !== 'string'
+    || typeof value.provider.model !== 'string'
+  ) {
+    return null;
+  }
+  return {
+    schemaVersion: LOCKED_PROCESSING_CONFIG_SCHEMA_VERSION,
+    targetLanguage: value.targetLanguage as TargetLanguage,
+    processMode: value.processMode as ProcessMode,
+    provider: {
+      id: value.provider.id.trim(),
+      target: normalizeProviderBaseUrl(value.provider.target),
+      model: value.provider.model.trim(),
+    },
+  };
+}
+
+export function restoreWebSettingsFromLockedConfig(
+  lockedConfig: LockedProcessingConfig,
+  current: WebSettings,
+): WebSettings | null {
+  if (!isKnownTranslationProviderId(lockedConfig.provider.id)) return null;
+  return {
+    ...structuredClone(current),
+    targetLanguage: lockedConfig.targetLanguage,
+    processMode: lockedConfig.processMode,
+    translationProviderId: lockedConfig.provider.id,
+    providerProfiles: {
+      ...structuredClone(current.providerProfiles),
+      [lockedConfig.provider.id]: {
+        baseUrl: lockedConfig.provider.target,
+        model: lockedConfig.provider.model,
+      },
+    },
+  };
+}
+
+export function createWebSettingsDraftFromLockedConfig(
+  lockedConfig: LockedProcessingConfig,
+  current: WebSettings,
+): {
+  settings: WebSettings;
+  providerSelectionRequired: boolean;
+} {
+  const restored = restoreWebSettingsFromLockedConfig(lockedConfig, current);
+  if (restored) {
+    return {
+      settings: restored,
+      providerSelectionRequired: false,
+    };
+  }
+  return {
+    settings: {
+      ...structuredClone(current),
+      targetLanguage: lockedConfig.targetLanguage,
+      processMode: lockedConfig.processMode,
+    },
+    providerSelectionRequired: true,
   };
 }
 

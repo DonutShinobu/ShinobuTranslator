@@ -1,6 +1,8 @@
 import {
   WEB_SETTINGS_SCHEMA_VERSION,
+  decodeLockedProcessingConfig,
   decodeWebSettings,
+  lockProcessingConfig,
 } from '@shinobu/shared-config';
 import {
   strToU8,
@@ -17,7 +19,7 @@ import {
 } from './localHistory';
 import { isWebPipelineRecord } from '../../domain/pipelineRecord';
 
-export const PROJECT_PACKAGE_SCHEMA_VERSION = 2 as const;
+export const PROJECT_PACKAGE_SCHEMA_VERSION = 3 as const;
 export const PROJECT_PACKAGE_MAX_FILES = 301;
 export const PROJECT_PACKAGE_MAX_FILE_BYTES = 64 * 1024 * 1024;
 export const PROJECT_PACKAGE_MAX_TOTAL_BYTES = 1024 * 1024 * 1024;
@@ -50,6 +52,18 @@ export type ProjectPackageManifest = {
 export type ValidatedProjectPackage = {
   manifest: ProjectPackageManifest;
   assets: Map<string, Blob>;
+};
+
+export type ResultsZipOmission = {
+  itemId: string;
+  fileName: string;
+  reason: 'missing-or-corrupt';
+};
+
+export type ResultsZipArchive = {
+  archive: Blob;
+  exportedCount: number;
+  omissions: ResultsZipOmission[];
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -151,10 +165,14 @@ function isAsset(value: unknown): value is LocalHistoryAsset {
 
 function assertBatch(
   value: unknown,
-  packageSchemaVersion: 1 | typeof PROJECT_PACKAGE_SCHEMA_VERSION,
+  packageSchemaVersion: 1 | 2 | typeof PROJECT_PACKAGE_SCHEMA_VERSION,
 ): asserts value is LocalHistoryBatch {
   if (!isRecord(value)) throw new Error('项目包批次元数据无效');
-  if (value.schemaVersion !== packageSchemaVersion) {
+  if (
+    value.schemaVersion !== 1
+    && value.schemaVersion !== 2
+    && value.schemaVersion !== LOCAL_HISTORY_SCHEMA_VERSION
+  ) {
     throw new Error('项目包历史 Schema 版本不受支持');
   }
   if (
@@ -162,7 +180,6 @@ function assertBatch(
     || typeof value.createdAt !== 'string'
     || typeof value.updatedAt !== 'string'
     || !Array.isArray(value.items)
-    || !isRecord(value.settings)
     || !isRecord(value.versions)
     || !isRecord(value.recoveryPoint)
   ) {
@@ -173,7 +190,7 @@ function assertBatch(
       'running',
       'paused',
       'completed',
-      ...(packageSchemaVersion === PROJECT_PACKAGE_SCHEMA_VERSION
+      ...(packageSchemaVersion >= 2
         ? ['partially-completed']
         : []),
       'failed',
@@ -194,24 +211,26 @@ function assertBatch(
   ) {
     throw new Error('项目包批次状态或版本元数据无效');
   }
+  const lockedConfig = decodeLockedProcessingConfig(value.lockedConfig);
+  if (lockedConfig) {
+    value.lockedConfig = lockedConfig;
+  } else if (isRecord(value.settings)) {
+    if (
+      typeof value.settings.schemaVersion === 'number'
+      && value.settings.schemaVersion > WEB_SETTINGS_SCHEMA_VERSION
+    ) {
+      throw new Error('项目包配置 Schema 版本过新');
+    }
+    const decodedSettings = decodeWebSettings(
+      JSON.stringify(value.settings),
+      typeof value.settings.uiLocale === 'string' ? value.settings.uiLocale : undefined,
+    );
+    value.lockedConfig = lockProcessingConfig(decodedSettings.settings);
+  } else {
+    throw new Error('项目包锁定处理配置无效');
+  }
+  delete value.settings;
   value.schemaVersion = LOCAL_HISTORY_SCHEMA_VERSION;
-  if (
-    typeof value.settings.schemaVersion !== 'number'
-    || value.settings.schemaVersion > WEB_SETTINGS_SCHEMA_VERSION
-  ) {
-    throw new Error('项目包配置 Schema 版本过新');
-  }
-  const decodedSettings = decodeWebSettings(
-    JSON.stringify(value.settings),
-    typeof value.settings.uiLocale === 'string' ? value.settings.uiLocale : undefined,
-  );
-  if (
-    value.settings.schemaVersion === WEB_SETTINGS_SCHEMA_VERSION
-    && decodedSettings.needsWrite
-  ) {
-    throw new Error('项目包配置与当前 Schema 不一致');
-  }
-  value.settings = decodedSettings.settings;
   if (value.items.length > 100) throw new Error('项目包图片数量超过上限');
   const itemIds = new Set<string>();
   const orders = new Set<number>();
@@ -282,7 +301,11 @@ function parseManifest(data: Uint8Array): ProjectPackageManifest {
   assertNoSecretKeys(value);
   if (!isRecord(value)) throw new Error('项目包 Manifest 无效');
   if (value.format !== PROJECT_FORMAT) throw new Error('不是 Shinobu 项目包');
-  if (value.schemaVersion !== 1 && value.schemaVersion !== PROJECT_PACKAGE_SCHEMA_VERSION) {
+  if (
+    value.schemaVersion !== 1
+    && value.schemaVersion !== 2
+    && value.schemaVersion !== PROJECT_PACKAGE_SCHEMA_VERSION
+  ) {
     throw new Error(
       typeof value.schemaVersion === 'number'
       && value.schemaVersion > PROJECT_PACKAGE_SCHEMA_VERSION
@@ -328,18 +351,30 @@ function parseManifest(data: Uint8Array): ProjectPackageManifest {
 export async function buildResultsZip(
   inspection: LocalHistoryInspection,
   readAsset: (reference: LocalHistoryAsset) => Promise<Blob | null>,
-): Promise<Blob> {
+): Promise<ResultsZipArchive> {
   const files: AsyncZippable = {};
+  const omissions: ResultsZipOmission[] = [];
   for (const item of [...inspection.batch.items].sort((left, right) => left.order - right.order)) {
     if (!item.result) continue;
     const blob = await readAsset(item.result);
-    if (!blob) throw new Error(`结果文件缺失或损坏: ${item.result.fileName}`);
+    if (!blob) {
+      omissions.push({
+        itemId: item.id,
+        fileName: item.result.fileName,
+        reason: 'missing-or-corrupt',
+      });
+      continue;
+    }
     const prefix = String(item.order + 1).padStart(3, '0');
     const name = safeDownloadName(item.result.fileName, `result-${prefix}.png`);
     files[`${prefix}-${name}`] = new Uint8Array(await blob.arrayBuffer());
   }
   if (Object.keys(files).length === 0) throw new Error('此批次没有可导出的结果');
-  return zipAsync(files);
+  return {
+    archive: await zipAsync(files),
+    exportedCount: Object.keys(files).length,
+    omissions,
+  };
 }
 
 export async function buildProjectPackage(

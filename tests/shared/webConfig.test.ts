@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   WEB_SETTINGS_SCHEMA_VERSION,
   createDefaultWebSettings,
+  createWebSettingsDraftFromLockedConfig,
   decodeWebSettings,
   encodeWebSettings,
   inferUiLocale,
   normalizeProviderBaseUrl,
   normalizeProviderTargetBinding,
+  restoreWebSettingsFromLockedConfig,
   validateProviderBaseUrl,
 } from '../../packages/shared-config/src';
 
@@ -70,6 +72,62 @@ describe('web settings schema', () => {
     expect(decodeWebSettings(encodeWebSettings(settings))).toEqual({
       settings,
       needsWrite: false,
+    });
+  });
+
+  it('restores locked processing choices without replacing user preferences', () => {
+    const current = createDefaultWebSettings('zh-CN');
+    current.providerProfiles.deepseek.model = 'keep-this-profile';
+    const restored = restoreWebSettingsFromLockedConfig({
+      schemaVersion: 1,
+      targetLanguage: 'zh-CHT',
+      processMode: 'translate',
+      provider: {
+        id: 'openai',
+        target: 'https://history.example/v1',
+        model: 'history-model',
+      },
+    }, current);
+
+    expect(restored).toMatchObject({
+      uiLocale: 'zh-CN',
+      targetLanguage: 'zh-CHT',
+      processMode: 'translate',
+      translationProviderId: 'openai',
+      providerProfiles: {
+        deepseek: { model: 'keep-this-profile' },
+        openai: {
+          baseUrl: 'https://history.example/v1',
+          model: 'history-model',
+        },
+      },
+    });
+    expect(current.translationProviderId).toBe('deepseek');
+  });
+
+  it('creates an editable draft when the locked provider no longer exists', () => {
+    const current = createDefaultWebSettings('zh-TW');
+    current.translationProviderId = 'kimi';
+    current.providerProfiles.kimi.model = 'current-kimi';
+
+    const draft = createWebSettingsDraftFromLockedConfig({
+      schemaVersion: 1,
+      targetLanguage: 'zh-CHS',
+      processMode: 'erase',
+      provider: {
+        id: 'removed-provider',
+        target: 'https://removed.example/v1',
+        model: 'removed-model',
+      },
+    }, current);
+
+    expect(draft).toEqual({
+      settings: {
+        ...current,
+        targetLanguage: 'zh-CHS',
+        processMode: 'erase',
+      },
+      providerSelectionRequired: true,
     });
   });
 

@@ -1,12 +1,15 @@
 import {
   type LocalHistoryAssetAdapter,
   type LocalHistoryBatch,
+  type LocalHistoryCleanupRecord,
   type LocalHistoryIndexAdapter,
+  type LocalHistoryIndexCommit,
 } from './localHistory';
 
 const DATABASE_NAME = 'shinobu-local-history';
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 const BATCH_STORE = 'batches';
+const CLEANUP_STORE = 'cleanup-journal';
 const APP_ROOT = 'shinobu-translator';
 const HISTORY_ROOT = 'history-batches';
 
@@ -46,6 +49,9 @@ async function openDatabase(): Promise<IDBDatabase> {
     if (!database.objectStoreNames.contains(BATCH_STORE)) {
       const store = database.createObjectStore(BATCH_STORE, { keyPath: 'id' });
       store.createIndex('updatedAt', 'updatedAt');
+    }
+    if (!database.objectStoreNames.contains(CLEANUP_STORE)) {
+      database.createObjectStore(CLEANUP_STORE, { keyPath: 'id' });
     }
   });
   return requestResult(request);
@@ -94,6 +100,41 @@ export class IndexedDbLocalHistoryIndexAdapter implements LocalHistoryIndexAdapt
     const completed = transactionComplete(transaction);
     transaction.objectStore(BATCH_STORE).delete(batchId);
     await completed;
+  }
+
+  async commit(input: LocalHistoryIndexCommit): Promise<void> {
+    const database = await this.databaseProvider();
+    const transaction = database.transaction(
+      [BATCH_STORE, CLEANUP_STORE],
+      'readwrite',
+    );
+    const completed = transactionComplete(transaction);
+    if (input.putBatch) {
+      transaction.objectStore(BATCH_STORE).put(cloneBatch(input.putBatch));
+    }
+    if (input.deleteBatchId) {
+      transaction.objectStore(BATCH_STORE).delete(input.deleteBatchId);
+    }
+    if (input.putCleanup) {
+      transaction.objectStore(CLEANUP_STORE).put(structuredClone(input.putCleanup));
+    }
+    if (input.deleteCleanupId) {
+      transaction.objectStore(CLEANUP_STORE).delete(input.deleteCleanupId);
+    }
+    await completed;
+  }
+
+  async listCleanup(): Promise<LocalHistoryCleanupRecord[]> {
+    const database = await this.databaseProvider();
+    const transaction = database.transaction(CLEANUP_STORE, 'readonly');
+    const completed = transactionComplete(transaction);
+    const records = await requestResult(
+      transaction.objectStore(CLEANUP_STORE).getAll() as IDBRequest<
+        LocalHistoryCleanupRecord[]
+      >,
+    );
+    await completed;
+    return records.map((record) => structuredClone(record));
   }
 }
 

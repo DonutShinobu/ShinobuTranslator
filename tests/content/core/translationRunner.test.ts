@@ -97,6 +97,7 @@ describe('TranslationRunner', () => {
     const runLocalPipeline = vi.fn(async (_file, _config, onProgress) => {
       onProgress({ stage: 'detect', detail: '文本检测' });
       return {
+        status: 'completed' as const,
         result: resultBlob,
         summary: {
           image: { width: 100, height: 200 },
@@ -112,6 +113,17 @@ describe('TranslationRunner', () => {
           ocrDebug: null,
           ocrPostFilterDebug: null,
           typesetDebug: null,
+        },
+        record: {
+          schemaVersion: 2 as const,
+          workingCopy: {
+            width: 100,
+            height: 200,
+            spec: { strategy: 'source-native' as const },
+            sourceToWorkingCopy: { kind: 'identity' as const },
+          },
+          ocr: [],
+          translations: [],
         },
       };
     });

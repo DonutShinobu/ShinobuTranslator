@@ -6,6 +6,7 @@ import { getChromeApi } from '../shared/chrome';
 import type { ChromeMessageSender } from '../shared/chrome';
 import {
   getRuntimeErrorCode,
+  getRuntimeTransportMetadata,
   isRuntimeMessage,
   type RuntimeResponse,
 } from '../shared/messages';
@@ -93,11 +94,13 @@ function initializeBackground(): void {
       .catch((error: unknown) => {
         const geminiRawResponse = getGeminiAppRawResponse(error);
         const errorCode = getRuntimeErrorCode(error);
+        const transportMetadata = getRuntimeTransportMetadata(error);
         sendResponse({
           ok: false,
           type: message.type,
           error: toErrorMessage(error),
           ...(errorCode ? { errorCode } : {}),
+          ...transportMetadata,
           ...(geminiRawResponse !== null
             ? {
                 errorDetail: {

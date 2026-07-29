@@ -5,10 +5,12 @@ import type { PipelineArtifacts } from '../../src/types';
 const mocks = vi.hoisted(() => ({
   runPipeline: vi.fn(),
   disposeAllModelSessions: vi.fn(async () => undefined),
+  blobToBase64: vi.fn(async () => 'cmVzdWx0'),
 }));
 
 vi.mock('../../src/pipeline/orchestrator', () => ({
   runPipeline: mocks.runPipeline,
+  PipelineStageError: class PipelineStageError extends Error {},
 }));
 
 vi.mock('../../src/runtime/modelRegistry', () => ({
@@ -25,7 +27,7 @@ vi.mock('../../src/shared/blobCodec', () => ({
     const binary = atob(base64);
     return new Blob([Uint8Array.from(binary, (char) => char.charCodeAt(0))], { type: contentType });
   },
-  blobToBase64: vi.fn(async () => 'cmVzdWx0'),
+  blobToBase64: mocks.blobToBase64,
   canvasToPngBlob: vi.fn(async () => new Blob(['result'], { type: 'image/png' })),
 }));
 
@@ -128,7 +130,7 @@ function sendImageJob(port: FakePort, jobId: string): void {
   port.emit({ type: 'input-complete', jobId });
 }
 
-describe('OffscreenPipelineHost FIFO queue', () => {
+describe('OffscreenPipelineHost single-task admission', () => {
   let port: FakePort;
   let originalChrome: unknown;
   let hosts: OffscreenPipelineHost[];
@@ -136,6 +138,8 @@ describe('OffscreenPipelineHost FIFO queue', () => {
   beforeEach(() => {
     mocks.runPipeline.mockReset();
     mocks.disposeAllModelSessions.mockClear();
+    mocks.blobToBase64.mockReset();
+    mocks.blobToBase64.mockResolvedValue('cmVzdWx0');
     hosts = [];
     port = new FakePort();
     originalChrome = (globalThis as { chrome?: unknown }).chrome;
@@ -158,11 +162,9 @@ describe('OffscreenPipelineHost FIFO queue', () => {
     return host;
   }
 
-  it('runs one task at a time and starts the next only after completion', async () => {
+  it('rejects unexpected overlap instead of maintaining a second queue', async () => {
     const first = deferred<PipelineArtifacts>();
-    mocks.runPipeline
-      .mockImplementationOnce(() => first.promise)
-      .mockResolvedValueOnce(artifacts());
+    mocks.runPipeline.mockImplementationOnce(() => first.promise);
     const host = createHost();
     host.connect();
 
@@ -170,17 +172,33 @@ describe('OffscreenPipelineHost FIFO queue', () => {
     sendImageJob(port, 'job-2');
 
     await vi.waitFor(() => expect(mocks.runPipeline).toHaveBeenCalledTimes(1));
-    expect(port.sent).toContainEqual({ type: 'queued', jobId: 'job-2', position: 1 });
+    expect(port.sent).toContainEqual(expect.objectContaining({
+      type: 'error',
+      jobId: 'job-2',
+      error: expect.objectContaining({ code: 'RUNTIME_BUSY' }),
+    }));
 
     first.resolve(artifacts());
 
-    await vi.waitFor(() => expect(mocks.runPipeline).toHaveBeenCalledTimes(2));
     await vi.waitFor(() => {
-      expect(port.sent).toContainEqual({ type: 'complete', jobId: 'job-2' });
+      expect(port.sent).toContainEqual({ type: 'complete', jobId: 'job-1' });
     });
+    expect(mocks.runPipeline).toHaveBeenCalledTimes(1);
+    expect(port.sent).toContainEqual(expect.objectContaining({
+      type: 'result-meta',
+      jobId: 'job-1',
+      status: 'no-translatable-text',
+      record: expect.objectContaining({
+        schemaVersion: 2,
+        workingCopy: expect.objectContaining({
+          spec: { strategy: 'source-native' },
+          sourceToWorkingCopy: { kind: 'identity' },
+        }),
+      }),
+    }));
   });
 
-  it('removes a queued task when it is cancelled', async () => {
+  it('does not retain an unexpectedly overlapping task after rejecting it', async () => {
     const first = deferred<PipelineArtifacts>();
     mocks.runPipeline.mockImplementationOnce(() => first.promise);
     const host = createHost();
@@ -189,12 +207,10 @@ describe('OffscreenPipelineHost FIFO queue', () => {
     sendImageJob(port, 'job-2');
     await vi.waitFor(() => expect(mocks.runPipeline).toHaveBeenCalledTimes(1));
 
-    port.emit({ type: 'cancel', jobId: 'job-2', reason: 'test cancel' });
-
     expect(port.sent).toContainEqual(expect.objectContaining({
       type: 'error',
       jobId: 'job-2',
-      error: expect.objectContaining({ code: 'TASK_CANCELLED' }),
+      error: expect.objectContaining({ code: 'RUNTIME_BUSY' }),
     }));
     first.resolve(artifacts());
     await vi.waitFor(() => {
@@ -222,6 +238,38 @@ describe('OffscreenPipelineHost FIFO queue', () => {
         jobId: 'active-cancel',
         error: expect.objectContaining({ code: 'TASK_CANCELLED' }),
       }));
+    });
+  });
+
+  it('does not deliver a late result when cancellation arrives during result encoding', async () => {
+    const encoded = deferred<string>();
+    mocks.runPipeline.mockResolvedValueOnce(artifacts());
+    mocks.blobToBase64.mockImplementationOnce(() => encoded.promise);
+    const host = createHost();
+    host.connect();
+    sendImageJob(port, 'late-cancel');
+    await vi.waitFor(() => expect(mocks.blobToBase64).toHaveBeenCalledOnce());
+
+    port.emit({
+      type: 'cancel',
+      jobId: 'late-cancel',
+      reason: {
+        code: 'user-requested',
+        messageKey: 'pipeline.cancelled.userRequested',
+      },
+    });
+    encoded.resolve('cmVzdWx0');
+
+    await vi.waitFor(() => {
+      expect(port.sent).toContainEqual(expect.objectContaining({
+        type: 'error',
+        jobId: 'late-cancel',
+        error: expect.objectContaining({ code: 'TASK_CANCELLED' }),
+      }));
+    });
+    expect(port.sent).not.toContainEqual({
+      type: 'complete',
+      jobId: 'late-cancel',
     });
   });
 

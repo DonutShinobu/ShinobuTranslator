@@ -1,4 +1,5 @@
 import { decodeWebSettings } from '@shinobu/shared-config';
+import { recoverPipelineRecord } from '@shinobu/image-pipeline';
 import {
   createWebTranslatorCore,
   type WebPipelineInput,
@@ -42,18 +43,28 @@ async function createSyntheticInput(): Promise<WebPipelineInput> {
       lastModified: 0,
     }),
     workingCopy: {
-      width: CANARY_EDGE,
-      height: CANARY_EDGE,
+      strategy: 'normalized',
+      sourceSize: {
+        width: CANARY_EDGE,
+        height: CANARY_EDGE,
+      },
+      size: {
+        width: CANARY_EDGE,
+        height: CANARY_EDGE,
+      },
+      imageOrientation: 'from-image',
+      background: '#ffffff',
     },
   };
 }
 
 function validateCanaryResult(result: WebPipelineResult): void {
+  const record = recoverPipelineRecord(result.record);
   if (
     result.image.type !== 'image/png'
     || result.image.size === 0
-    || result.record.image.width !== CANARY_EDGE
-    || result.record.image.height !== CANARY_EDGE
+    || record.workingCopy.width !== CANARY_EDGE
+    || record.workingCopy.height !== CANARY_EDGE
   ) {
     throw new Error('合成流水线测试没有生成有效的 512×512 PNG');
   }
@@ -84,7 +95,7 @@ export async function runSyntheticProductionCanary(options: {
       config: toWebPipelineConfig({
         ...settings,
         processMode: 'erase',
-      }, ''),
+      }),
     });
     cancelTask = task.cancel.bind(task);
     const timeout = globalThis.setTimeout(() => {
@@ -97,6 +108,6 @@ export async function runSyntheticProductionCanary(options: {
     }
   } finally {
     options.signal?.removeEventListener('abort', abort);
-    core.dispose(new DOMException('合成流水线能力测试已结束', 'AbortError'));
+    await core.dispose(new DOMException('合成流水线能力测试已结束', 'AbortError'));
   }
 }

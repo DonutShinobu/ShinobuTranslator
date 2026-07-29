@@ -2,7 +2,7 @@ import {
   lockProcessingConfig,
   type WebSettings,
 } from '@shinobu/shared-config';
-import type { PipelineProgress } from '../../../../../src/types';
+import type { PipelineProgress } from '@shinobu/image-pipeline';
 import type {
   CreateLocalHistoryItemInput,
   LocalHistory,
@@ -166,6 +166,51 @@ type ProcessingTask = ProcessingTaskSnapshot & {
 };
 
 function messageFor(error: unknown): string {
+  if (
+    error
+    && typeof error === 'object'
+    && 'messageKey' in error
+    && typeof error.messageKey === 'string'
+  ) {
+    if (
+      error.messageKey.startsWith('pipeline.cancelled.')
+      || error.messageKey.startsWith('translation.cancelled.')
+    ) return '任务已取消';
+    if (!error.messageKey.startsWith('pipeline.failure.')) {
+      return error instanceof Error ? error.message : String(error);
+    }
+    if (error.messageKey === 'pipeline.failure.stage') {
+      const labels: Readonly<Record<string, string>> = {
+        'runtime-prepare': '运行环境准备',
+        load: '图片加载',
+        preload: '模型加载',
+        detect: '文本检测',
+        bubble: '气泡检测',
+        ocr: 'OCR 识别',
+        merge: '文本行合并',
+        ocr_postfilter: 'OCR 后处理',
+        order: '文字排序',
+        translate: '文本翻译',
+        mask_refine: '文本遮罩生成',
+        inpaint: '图片去字',
+        typeset: '文字排版',
+        finalize: '结果生成',
+      };
+      const stage = 'stage' in error && typeof error.stage === 'string'
+        ? error.stage
+        : undefined;
+      return `${stage ? (labels[stage] ?? stage) : '图片处理'}失败`;
+    }
+    const messages: Readonly<Record<string, string>> = {
+      'pipeline.failure.imageLoad': '图片加载失败',
+      'pipeline.failure.imageDecode': '图片解码失败',
+      'pipeline.failure.translationUnavailable': '文本翻译服务暂时不可用',
+      'pipeline.failure.resourceRelease': '本地图片处理资源释放失败',
+      'pipeline.failure.execution': '本地图片处理失败',
+      'pipeline.failure.runtime': '本地图片处理失败',
+    };
+    return messages[error.messageKey] ?? '本地图片处理失败';
+  }
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -179,6 +224,18 @@ function codeFor(error: unknown, fallback: string): string {
     return error.code;
   }
   return fallback;
+}
+
+function scopeFor(error: unknown): 'image' | 'runtime' {
+  if (
+    error
+    && typeof error === 'object'
+    && 'scope' in error
+    && (error.scope === 'image' || error.scope === 'runtime')
+  ) {
+    return error.scope;
+  }
+  return 'runtime';
 }
 
 function reportListenerError(error: unknown): void {
@@ -227,6 +284,8 @@ class ProcessingBatchImplementation implements ProcessingBatch {
   private activeExecution: ReturnType<ProcessingRuntimeLease['run']> | undefined;
   private runtimeLease: ProcessingRuntimeLease | undefined;
   private stopRequested = false;
+  private cancelRequestedTaskId: string | undefined;
+  private claimingTaskId: string | undefined;
   private detached = false;
 
   constructor(
@@ -437,7 +496,11 @@ class ProcessingBatchImplementation implements ProcessingBatch {
       }
       const taskIndex = this.tasks.findIndex((task) => task.id === command.taskId);
       const task = this.tasks[taskIndex];
-      if (!task || task.status !== 'queued') {
+      if (
+        !task
+        || task.status !== 'queued'
+        || this.claimingTaskId === task.id
+      ) {
         throw new Error('只能移除尚未开始的图片任务');
       }
       try {
@@ -462,6 +525,30 @@ class ProcessingBatchImplementation implements ProcessingBatch {
       ) {
         throw new Error('当前处理批次不能调整图片顺序');
       }
+      if (
+        command.taskIds.length !== this.tasks.length
+        || new Set(command.taskIds).size !== this.tasks.length
+      ) {
+        throw new Error('图片任务排序必须包含且仅包含当前批次的全部任务');
+      }
+      const tasksById = new Map(this.tasks.map((task) => [task.id, task]));
+      const reordered = command.taskIds.map((id) => tasksById.get(id));
+      if (reordered.some((task) => !task)) {
+        throw new Error('图片任务排序包含未知任务');
+      }
+      for (let index = 0; index < this.tasks.length; index += 1) {
+        if (
+          reordered[index]!.id !== this.tasks[index]!.id
+          && (
+            reordered[index]!.status !== 'queued'
+            || this.tasks[index]!.status !== 'queued'
+            || this.claimingTaskId === reordered[index]!.id
+            || this.claimingTaskId === this.tasks[index]!.id
+          )
+        ) {
+          throw new Error('只能调整尚未开始任务之间的顺序');
+        }
+      }
       try {
         await this.serializeHistoryOperation(() =>
           this.dependencies.history.reorderQueuedItems(this.id, command.taskIds));
@@ -469,11 +556,10 @@ class ProcessingBatchImplementation implements ProcessingBatch {
         this.pauseForPersistence('reorder-queued-tasks', error);
         throw error;
       }
-      const tasksById = new Map(this.tasks.map((task) => [task.id, task]));
       this.tasks.splice(
         0,
         this.tasks.length,
-        ...command.taskIds.map((id) => tasksById.get(id)!),
+        ...(reordered as ProcessingTask[]),
       );
       this.emit();
       return { type: 'queued-tasks-reordered' };
@@ -485,8 +571,12 @@ class ProcessingBatchImplementation implements ProcessingBatch {
       }
       this.stopRequested = true;
       if (this.activeExecution) {
-        this.activeExecution.cancel(new DOMException('已停止整个处理批次', 'AbortError'));
-      } else {
+        this.activeExecution.cancel({
+          code: 'owner-ended',
+          messageKey: 'pipeline.cancelled.ownerEnded',
+          diagnosticSummary: '已停止整个处理批次',
+        });
+      } else if (!this.currentTaskId && !this.claimingTaskId) {
         const nextTaskIndex = this.tasks.findIndex((task) => task.status === 'queued');
         try {
           if (this.historyCreated) {
@@ -547,7 +637,15 @@ class ProcessingBatchImplementation implements ProcessingBatch {
         throw new Error('当前没有正在执行的图片任务');
       }
       const taskId = this.currentTaskId;
-      this.activeExecution.cancel(new DOMException('已取消当前图片', 'AbortError'));
+      this.activeExecution.cancel({
+        code: 'user-requested',
+        messageKey: 'pipeline.cancelled.userRequested',
+        diagnosticSummary: '已取消当前图片',
+      });
+      if (!this.activeExecution.signal.aborted) {
+        throw new Error('当前图片任务已经结束，无法取消');
+      }
+      this.cancelRequestedTaskId = taskId;
       return {
         type: 'current-cancelled',
         taskId,
@@ -679,6 +777,24 @@ class ProcessingBatchImplementation implements ProcessingBatch {
 
     while (this.status === 'running') {
       const taskIndex = this.tasks.findIndex((task) => task.status === 'queued');
+      if (this.stopRequested) {
+        try {
+          if (this.historyCreated) {
+            await this.serializeHistoryOperation(() =>
+              this.dependencies.history.saveRecoveryPoint(
+                this.id,
+                taskIndex < 0 ? this.tasks.length : taskIndex,
+                'paused',
+              ));
+          }
+          this.status = 'paused';
+          this.releaseRuntimeLease();
+          this.emit();
+        } catch (error) {
+          this.pauseForPersistence('stop-before-next-task', error);
+        }
+        return;
+      }
       if (taskIndex < 0) {
         if (this.inputOpen) return;
         if (!this.historyCreated) {
@@ -710,31 +826,85 @@ class ProcessingBatchImplementation implements ProcessingBatch {
         return;
       }
       const task = this.tasks[taskIndex];
-      this.currentTaskId = task.id;
+      this.claimingTaskId = task.id;
       try {
         await this.serializeHistoryOperation(() => this.dependencies.history.updateItem(this.id, task.id, {
           status: 'running',
         }));
       } catch (error) {
-        this.currentTaskId = undefined;
+        this.claimingTaskId = undefined;
         this.pauseForPersistence('start-task', error);
         return;
       }
       if (this.stopRequested || this.status !== 'running') {
-        this.currentTaskId = undefined;
+        try {
+          await this.serializeHistoryOperation(async () => {
+            await this.dependencies.history.updateItem(this.id, task.id, {
+              status: 'queued',
+            });
+            if (this.stopRequested) {
+              await this.dependencies.history.saveRecoveryPoint(
+                this.id,
+                taskIndex,
+                'paused',
+              );
+            }
+          });
+        } catch (error) {
+          this.claimingTaskId = undefined;
+          this.pauseForPersistence('rollback-task-claim', error);
+          return;
+        }
+        this.claimingTaskId = undefined;
+        if (this.stopRequested) {
+          this.status = 'paused';
+          this.releaseRuntimeLease();
+          this.emit();
+        }
         return;
       }
 
-      const execution = runtimeLease.run({
-        file: task.image.file,
-        workingCopy: {
-          width: task.image.workingCopy.width,
-          height: task.image.workingCopy.height,
-        },
-      });
+      let execution: ReturnType<ProcessingRuntimeLease['run']>;
+      try {
+        this.claimingTaskId = undefined;
+        this.currentTaskId = task.id;
+        execution = runtimeLease.run({
+          file: task.image.file,
+          workingCopy: {
+            strategy: 'normalized',
+            sourceSize: {
+              width: task.image.width,
+              height: task.image.height,
+            },
+            size: {
+              width: task.image.workingCopy.width,
+              height: task.image.workingCopy.height,
+            },
+            imageOrientation: 'from-image',
+            background: '#ffffff',
+          },
+        });
+      } catch (error) {
+        try {
+          await this.serializeHistoryOperation(() =>
+            this.dependencies.history.updateItem(this.id, task.id, {
+              status: 'queued',
+            }));
+        } catch (persistenceError) {
+          this.currentTaskId = undefined;
+          this.pauseForPersistence('rollback-task-admission', persistenceError);
+          return;
+        }
+        this.currentTaskId = undefined;
+        throw error;
+      }
       this.activeExecution = execution;
       task.status = 'running';
-      task.progress = { stage: 'queued', detail: '准备 Worker 任务' };
+      task.progress = {
+        stage: 'queued',
+        operation: 'await-runtime-admission',
+        detail: '准备 Worker 任务',
+      };
       this.emit();
       let stopProgress = (): void => undefined;
       let progressAttached = false;
@@ -754,7 +924,11 @@ class ProcessingBatchImplementation implements ProcessingBatch {
             throw error;
           }
           const cancelled = execution.signal.aborted;
-          const stopping = cancelled && this.stopRequested;
+          const skipping = (
+            cancelled
+            && this.cancelRequestedTaskId === task.id
+          );
+          const imageFailure = !cancelled && scopeFor(error) === 'image';
           task.status = cancelled ? 'cancelled' : 'failed';
           task.error = messageFor(error);
           task.errorCode = codeFor(
@@ -770,7 +944,7 @@ class ProcessingBatchImplementation implements ProcessingBatch {
               await this.dependencies.history.saveRecoveryPoint(
                 this.id,
                 taskIndex + 1,
-                cancelled && !stopping ? 'running' : 'paused',
+                (imageFailure || skipping) ? 'running' : 'paused',
               );
             });
           } catch (persistenceError) {
@@ -779,22 +953,32 @@ class ProcessingBatchImplementation implements ProcessingBatch {
             return;
           }
           this.currentTaskId = undefined;
-          if (!cancelled || stopping) {
+          if (this.cancelRequestedTaskId === task.id) {
+            this.cancelRequestedTaskId = undefined;
+          }
+          if ((!cancelled && !imageFailure) || (cancelled && !skipping)) {
             this.status = 'paused';
             this.releaseRuntimeLease();
           }
           this.emit();
-          if (cancelled && !stopping) continue;
+          if (imageFailure || skipping) continue;
           return;
         }
       } finally {
         if (this.activeExecution === execution) this.activeExecution = undefined;
+        if (this.cancelRequestedTaskId === task.id) {
+          this.cancelRequestedTaskId = undefined;
+        }
         stopProgress();
       }
 
       task.status = 'done';
       task.result = result;
-      task.progress = { stage: 'done', detail: '处理完成' };
+      task.progress = {
+        stage: 'done',
+        operation: 'complete',
+        detail: '处理完成',
+      };
       this.emit();
       try {
         await this.serializeHistoryOperation(() => this.dependencies.history.updateItem(this.id, task.id, {
@@ -813,10 +997,16 @@ class ProcessingBatchImplementation implements ProcessingBatch {
         await this.serializeHistoryOperation(() => this.dependencies.history.saveRecoveryPoint(
           this.id,
           taskIndex + 1,
-          'running',
+          this.stopRequested ? 'paused' : 'running',
         ));
       } catch (error) {
         this.pauseForPersistence('save-recovery-point', error);
+        return;
+      }
+      if (this.stopRequested) {
+        this.status = 'paused';
+        this.releaseRuntimeLease();
+        this.emit();
         return;
       }
       this.emit();

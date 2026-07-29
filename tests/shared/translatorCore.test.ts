@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createTranslatorCore } from '@shinobu/translator-core';
+import {
+  TranslationCancelledError,
+  createTranslatorCore,
+} from '@shinobu/translator-core';
 
 describe('translator core task contract', () => {
   it('publishes progress and resolves the execution result', async () => {
@@ -51,6 +54,47 @@ describe('translator core task contract', () => {
     task.cancel(reason);
 
     await expect(task.result).rejects.toBe(reason);
+  });
+
+  it('settles structured cancellation once and suppresses an executor late result', async () => {
+    let finish: ((value: string) => void) | undefined;
+    let publish: ((value: string) => void) | undefined;
+    const core = createTranslatorCore<null, null, string, string>(
+      async (_request, { reportProgress }) => new Promise<string>((resolve) => {
+        publish = reportProgress;
+        finish = resolve;
+      }),
+    );
+    const task = core.run({ input: null, config: null });
+    const progress = vi.fn();
+    task.progress(progress);
+    await Promise.resolve();
+    publish?.('running');
+
+    task.cancel({
+      code: 'owner-ended',
+      messageKey: 'translation.cancelled.ownerEnded',
+      diagnosticSummary: 'content context closed',
+    });
+    publish?.('late-progress');
+
+    await expect(task.result).rejects.toEqual(
+      expect.objectContaining({
+        name: 'TranslationCancelledError',
+        code: 'TASK_CANCELLED',
+        reason: {
+          code: 'owner-ended',
+          messageKey: 'translation.cancelled.ownerEnded',
+          diagnosticSummary: 'content context closed',
+        },
+      }),
+    );
+    expect(task.signal.aborted).toBe(true);
+    expect(progress).toHaveBeenCalledTimes(1);
+
+    finish?.('late-success');
+    await Promise.resolve();
+    expect(task.signal.reason).toBeInstanceOf(TranslationCancelledError);
   });
 
   it('replays the latest progress and supports unsubscribe', async () => {

@@ -12,6 +12,7 @@ type PackageManifest = {
   version: string;
   workspaces?: string[];
   scripts?: Record<string, string>;
+  dependencies?: Record<string, string>;
 };
 
 type ExtensionManifest = {
@@ -20,6 +21,39 @@ type ExtensionManifest = {
 };
 
 describe('monorepo application ownership', () => {
+  it('ratchets workspace import boundaries through the root check command', () => {
+    for (const path of [
+      'scripts/check-workspace-import-boundaries.mjs',
+      'scripts/workspace-import-boundary-baseline.json',
+    ]) {
+      expect(existsSync(pathFromRoot(path)), path).toBe(true);
+    }
+
+    const rootPackage = readJson<PackageManifest>('package.json');
+    expect(rootPackage.scripts?.['check:architecture']).toBe(
+      'node scripts/check-workspace-import-boundaries.mjs',
+    );
+    expect(rootPackage.scripts?.check).toContain('npm run check:architecture');
+  });
+
+  it('keeps the shared image pipeline behind its package boundary', () => {
+    for (const path of [
+      'packages/image-pipeline/package.json',
+      'packages/image-pipeline/tsconfig.json',
+      'packages/image-pipeline/src/index.ts',
+    ]) {
+      expect(existsSync(pathFromRoot(path)), path).toBe(true);
+    }
+
+    const imagePipeline = readJson<PackageManifest>(
+      'packages/image-pipeline/package.json',
+    );
+    expect(imagePipeline.name).toBe('@shinobu/image-pipeline');
+    expect(imagePipeline.dependencies).toEqual({
+      '@shinobu/translator-core': '0.1.0',
+    });
+  });
+
   it('keeps the extension release shell inside apps/extension', () => {
     for (const path of [
       'apps/extension/package.json',

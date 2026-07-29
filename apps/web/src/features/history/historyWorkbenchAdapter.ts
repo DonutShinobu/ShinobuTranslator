@@ -79,6 +79,7 @@ export function createHistoryWorkbenchAdapter(input: {
               status: 'done' as const,
               progress: {
                 stage: 'done' as const,
+                operation: 'restore-history',
                 detail: copy.historyRecoveryLoadedDetail,
               },
             }

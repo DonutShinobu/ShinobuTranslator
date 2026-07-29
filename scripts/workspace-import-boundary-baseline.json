@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "allowedCrossWorkspaceRelativeImports": [
+    "apps/extension/src/benchmark.ts -> ../../../src/benchmark/browserEntry",
+    "apps/extension/src/offscreen.ts -> ../../../src/offscreen/index",
+    "apps/extension/src/popup.tsx -> ../../../src/popup/main",
+    "apps/web/src/features/diagnostics/redactedDiagnostics.ts -> ../../../../../src/shared/localPipelineProtocol",
+    "apps/web/src/runtime/installedModelSource.ts -> ../../../../src/runtime/modelSource",
+    "apps/web/src/runtime/modelCapability.ts -> ../../../../src/runtime/onnxTypes",
+    "apps/web/src/runtime/modelCapability.ts -> ../../../../src/runtime/onnxWorkerBridge",
+    "apps/web/src/runtime/modelCapability.ts -> ../../../../src/runtime/onnxWorkerTypes",
+    "apps/web/src/runtime/modelCapability.ts -> ../../../../src/workers/onnx-worker.ts?worker&url",
+    "apps/web/src/runtime/offscreenPlatform.ts -> ../../../../src/runtime/platform",
+    "apps/web/src/runtime/pipeline.worker.ts -> ../../../../src/pipeline/orchestrator",
+    "apps/web/src/runtime/pipeline.worker.ts -> ../../../../src/pipeline/resources",
+    "apps/web/src/runtime/pipeline.worker.ts -> ../../../../src/pipeline/typeset/fontRuntime",
+    "apps/web/src/runtime/pipeline.worker.ts -> ../../../../src/runtime/modelRegistry",
+    "apps/web/src/runtime/pipeline.worker.ts -> ../../../../src/runtime/onnxWorkerBridge",
+    "apps/web/src/runtime/pipeline.worker.ts -> ../../../../src/shared/blobCodec",
+    "apps/web/src/runtime/pipeline.worker.ts -> ../../../../src/shared/localPipelineProtocol",
+    "apps/web/src/runtime/pipeline.worker.ts -> ../../../../src/translators/transport",
+    "apps/web/src/runtime/pipeline.worker.ts -> ../../../../src/types",
+    "apps/web/src/runtime/pipeline.worker.ts -> ../../../../src/workers/onnx-worker.ts?worker&url",
+    "apps/web/src/runtime/trustedTypes.ts -> ../../../../src/runtime/trustedTypesPolicy",
+    "apps/web/src/runtime/webPipeline.ts -> ../../../../src/shared/localPipelineProtocol",
+    "apps/web/src/runtime/webPipeline.ts -> ../../../../src/shared/localPipelineProtocol",
+    "apps/web/vite.config.ts -> ../../packages/model-manifest/manifest.json",
+    "apps/web/vite.config.ts -> ../../src/runtime/browserRuntimeTarget.ts"
+  ]
+}

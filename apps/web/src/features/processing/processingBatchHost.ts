@@ -1,4 +1,4 @@
-import type { PipelineProgress } from '../../../../../src/types';
+import type { PipelineProgress } from '@shinobu/image-pipeline';
 import type {
   ProcessingBatch,
   ProcessingBatchSnapshot,

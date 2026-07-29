@@ -4,6 +4,11 @@ import type {
 } from '../shared/messages';
 import { sendRuntimeMessage } from '../shared/messages';
 import {
+  createDirectChatCompletionRequester,
+  DirectChatCompletionError,
+  type DirectChatCompletionRequesterOptions,
+} from '@shinobu/browser-runtime';
+import {
   adaptLlmThinkingChatCompletionRequest,
   isLlmThinkingConfigurationRejection,
 } from '../shared/llmThinking';
@@ -15,6 +20,7 @@ export type ChatCompletionResponse = {
 
 export type ChatCompletionTransportRequest = {
   body: LlmChatCompletionRequestBody;
+  providerBody?: LlmChatCompletionRequestBody;
   proxyConfig: LlmChatCompletionsProxyConfig;
   apiKey?: string;
   diagnosticRunId?: string;
@@ -39,6 +45,8 @@ export class TextTranslationTransportError extends Error {
   readonly status?: number;
   readonly code?: string;
   readonly responseText?: string;
+  readonly retryAfterMs?: number;
+  readonly retryable?: boolean;
 
   constructor(
     message: string,
@@ -46,6 +54,8 @@ export class TextTranslationTransportError extends Error {
       status?: number;
       code?: string;
       responseText?: string;
+      retryAfterMs?: number;
+      retryable?: boolean;
     } = {},
   ) {
     super(message);
@@ -53,78 +63,13 @@ export class TextTranslationTransportError extends Error {
     this.status = options.status;
     this.code = options.code;
     this.responseText = options.responseText;
+    this.retryAfterMs = options.retryAfterMs;
+    this.retryable = options.retryable;
   }
 }
 
-export type DirectTextTranslationTransportOptions = {
-  fetchImpl?: typeof fetch;
-  sleep?: (delayMs: number, signal?: AbortSignal) => Promise<void>;
-  maxRetries?: number;
-};
-
-const DEFAULT_MAX_RETRIES = 2;
-const MAX_RETRY_DELAY_MS = 10_000;
-
-function defaultSleep(delayMs: number, signal?: AbortSignal): Promise<void> {
-  if (signal?.aborted) {
-    return Promise.reject(signal.reason ?? new DOMException('请求已取消', 'AbortError'));
-  }
-  return new Promise((resolve, reject) => {
-    const handleAbort = (): void => {
-      clearTimeout(timer);
-      reject(signal?.reason ?? new DOMException('请求已取消', 'AbortError'));
-    };
-    const timer = globalThis.setTimeout(() => {
-      signal?.removeEventListener('abort', handleAbort);
-      resolve();
-    }, delayMs);
-    signal?.addEventListener('abort', handleAbort, { once: true });
-  });
-}
-
-function isRetryableStatus(status: number): boolean {
-  return status === 429 || status >= 500;
-}
-
-function retryDelayMs(response: Response, retryIndex: number): number {
-  const retryAfter = response.headers.get('retry-after')?.trim();
-  if (retryAfter) {
-    const seconds = Number(retryAfter);
-    if (Number.isFinite(seconds) && seconds >= 0) {
-      return Math.min(MAX_RETRY_DELAY_MS, seconds * 1_000);
-    }
-    const at = Date.parse(retryAfter);
-    if (Number.isFinite(at)) {
-      return Math.min(MAX_RETRY_DELAY_MS, Math.max(0, at - Date.now()));
-    }
-  }
-  return Math.min(MAX_RETRY_DELAY_MS, 500 * 2 ** retryIndex);
-}
-
-function extractErrorDetail(value: unknown): string | null {
-  if (!value || typeof value !== 'object') return null;
-  const record = value as Record<string, unknown>;
-  if (
-    record.error
-    && typeof record.error === 'object'
-    && typeof (record.error as Record<string, unknown>).message === 'string'
-  ) {
-    return (record.error as Record<string, string>).message;
-  }
-  for (const key of ['message', 'detail', 'error_description', 'error']) {
-    if (typeof record[key] === 'string') return record[key];
-  }
-  return null;
-}
-
-function parseResponseText(text: string): unknown {
-  if (!text) return null;
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return { error: { message: text } };
-  }
-}
+export type DirectTextTranslationTransportOptions =
+  DirectChatCompletionRequesterOptions;
 
 export const extensionTextTranslationTransport: TextTranslationTransport = {
   async requestChatCompletion(request) {
@@ -139,6 +84,9 @@ export const extensionTextTranslationTransport: TextTranslationTransport = {
         response.ok ? 'LLM 翻译请求失败' : response.error,
         {
           code: !response.ok ? response.errorCode : undefined,
+          status: !response.ok ? response.status : undefined,
+          retryAfterMs: !response.ok ? response.retryAfterMs : undefined,
+          retryable: !response.ok ? response.retryable : undefined,
         },
       );
     }
@@ -158,12 +106,7 @@ export const extensionTextTranslationTransport: TextTranslationTransport = {
 export function createDirectTextTranslationTransport(
   options: DirectTextTranslationTransportOptions = {},
 ): TextTranslationTransport {
-  const fetchImpl = options.fetchImpl ?? fetch;
-  const sleep = options.sleep ?? defaultSleep;
-  const maxRetries = Math.max(
-    0,
-    Math.floor(options.maxRetries ?? DEFAULT_MAX_RETRIES),
-  );
+  const requester = createDirectChatCompletionRequester(options);
   return {
     async requestChatCompletion(request) {
       if (request.proxyConfig.authMode !== 'api_key') {
@@ -178,61 +121,44 @@ export function createDirectTextTranslationTransport(
         throw new TextTranslationTransportError('LLM Base URL 不能为空');
       }
 
-      const body = adaptLlmThinkingChatCompletionRequest(request.body, {
-        provider: request.proxyConfig.provider,
-        model: request.body.model,
-        level: request.proxyConfig.thinkingLevel,
-        useCustomModel: request.proxyConfig.useCustomModel === true,
-      });
-      let response: Response | null = null;
-      for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
-        response = await fetchImpl(`${baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify(body),
-          cache: 'no-store',
-          signal: request.signal,
+      const body = request.providerBody
+        ?? adaptLlmThinkingChatCompletionRequest(request.body, {
+          provider: request.proxyConfig.provider,
+          model: request.body.model,
+          level: request.proxyConfig.thinkingLevel,
+          useCustomModel: request.proxyConfig.useCustomModel === true,
         });
-        if (!isRetryableStatus(response.status) || attempt === maxRetries) break;
-        const delayMs = retryDelayMs(response, attempt);
-        await response.body?.cancel().catch(() => undefined);
-        await sleep(delayMs, request.signal);
-      }
-      if (!response) {
-        throw new TextTranslationTransportError('LLM 请求未能启动');
-      }
-      const responseText = await response.text();
-      const parsed = parseResponseText(responseText);
-      if (!response.ok) {
-        const detail = extractErrorDetail(parsed);
+      try {
+        return await requester.request({
+          endpoint: `${baseUrl}/chat/completions`,
+          apiKey,
+          body,
+          signal: request.signal,
+        }) as ChatCompletionResponse;
+      } catch (error) {
+        if (!(error instanceof DirectChatCompletionError)) throw error;
         const thinkingRejected = isLlmThinkingConfigurationRejection({
-          status: response.status,
+          status: error.status ?? 0,
           provider: request.proxyConfig.provider,
           model: request.body.model,
           useCustomModel: request.proxyConfig.useCustomModel === true,
-          errorDetail: `${detail ?? ''}\n${responseText}`,
+          errorDetail: `${error.detail ?? ''}\n${error.responseText ?? ''}`,
         });
         throw new TextTranslationTransportError(
           thinkingRejected
-            ? `当前模型不支持所选思考设置: ${detail ?? `HTTP ${response.status}`}`
-            : `LLM 翻译请求失败: ${detail ?? `HTTP ${response.status}`}`,
+            ? `当前模型不支持所选思考设置: ${
+              error.detail ?? `HTTP ${error.status ?? 0}`
+            }`
+            : error.message,
           {
-            status: response.status,
+            status: error.status,
             code: thinkingRejected ? 'llm_thinking_config' : undefined,
-            responseText,
+            responseText: error.responseText,
+            retryAfterMs: error.retryAfterMs,
+            retryable: error.retryable,
           },
         );
       }
-      if (!parsed || typeof parsed !== 'object') {
-        throw new TextTranslationTransportError('LLM 响应解析失败', {
-          status: response.status,
-          responseText,
-        });
-      }
-      return parsed as ChatCompletionResponse;
     },
 
     translatePlain(request) {

@@ -9,6 +9,7 @@ import {
   extensionTextTranslationTransport,
   type TextTranslationTransport,
 } from '../translators/transport';
+import { isPipelineFailureEnvelope } from '@shinobu/image-pipeline';
 
 type LlmRegionRequest = {
   id: string;
@@ -62,6 +63,13 @@ export type RunTranslateOptions = {
   signal?: AbortSignal;
   transport?: TextTranslationTransport;
 };
+
+function hasPipelineFailure(error: unknown): boolean {
+  return error !== null
+    && typeof error === 'object'
+    && 'failure' in error
+    && isPipelineFailureEnvelope(error.failure);
+}
 
 async function translateOne(
   text: string,
@@ -206,7 +214,7 @@ export async function runTranslate(
       batched = batchedResult.byId;
       translationDebug.llmBatchRawResponse = batchedResult.rawContent;
     } catch (error) {
-      if (error instanceof LlmThinkingConfigError) {
+      if (error instanceof LlmThinkingConfigError || hasPipelineFailure(error)) {
         throw error;
       }
       batched = new Map();
@@ -248,7 +256,7 @@ export async function runTranslate(
           });
           continue;
         } catch (error) {
-          if (error instanceof LlmThinkingConfigError) {
+          if (error instanceof LlmThinkingConfigError || hasPipelineFailure(error)) {
             throw error;
           }
           llmFallbackRequestCount += 1;

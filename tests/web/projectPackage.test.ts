@@ -115,7 +115,19 @@ describe('project packages', () => {
     expect(validated.manifest.files).toHaveLength(3);
     expect(JSON.stringify(validated.manifest)).not.toMatch(/api[-_]?key/iu);
     expect(validated.manifest.batch.items[0].summary).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
+      workingCopy: {
+        spec: {
+          strategy: 'normalized',
+          sourceSize: { width: 1200, height: 1800 },
+          size: { width: 1200, height: 1800 },
+        },
+        sourceToWorkingCopy: {
+          kind: 'scale',
+          scaleX: 1,
+          scaleY: 1,
+        },
+      },
       ocr: [{ text: 'こんにちは' }],
       translations: [{ translatedText: '你好' }],
     });
@@ -132,6 +144,44 @@ describe('project packages', () => {
     });
     expect(imported.items[0].original?.path).toMatch(/^imported-batch\//u);
     expect((await history.inspect(imported.id))?.integrity).toBe('complete');
+  });
+
+  it('migrates legacy record geometry from original and normalized working-copy metadata', async () => {
+    const { history, inspection } = await sourceBatch();
+    inspection.batch.items[0].width = 4000;
+    inspection.batch.items[0].height = 3000;
+    inspection.batch.items[0].workingCopy = {
+      required: true,
+      width: 1200,
+      height: 900,
+      scale: 0.3,
+    };
+    (inspection.batch.items[0].summary as {
+      image: { width: number; height: number };
+    }).image = { width: 1200, height: 900 };
+    const project = await buildProjectPackage(
+      inspection,
+      (reference) => history.readAsset(reference),
+    );
+    const validated = await validateProjectPackage(project);
+
+    expect(validated.manifest.batch.items[0].summary).toMatchObject({
+      schemaVersion: 2,
+      workingCopy: {
+        width: 1200,
+        height: 900,
+        spec: {
+          strategy: 'normalized',
+          sourceSize: { width: 4000, height: 3000 },
+          size: { width: 1200, height: 900 },
+        },
+        sourceToWorkingCopy: {
+          kind: 'scale',
+          scaleX: 0.3,
+          scaleY: 0.3,
+        },
+      },
+    });
   });
 
   it('exports a result-only ZIP with deterministic ordered PNG names', async () => {

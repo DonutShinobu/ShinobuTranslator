@@ -3,27 +3,39 @@ import {
   type DisposableTranslatorCore,
   type WorkerClientEndpoint,
 } from '@shinobu/browser-runtime';
-import type { LocalPipelineArtifactSummary } from '../../../../src/shared/localPipelineProtocol';
-import { LocalPipelineRemoteError } from '../../../../src/shared/localPipelineProtocol';
 import type {
+  ImagePipelineResult,
+  NormalizedWorkingCopySpec,
   PipelineConfig,
   PipelineProgress,
-} from '../../../../src/types';
-import type { WebPipelineRecord } from '../domain/pipelineRecord';
+} from '@shinobu/image-pipeline';
+import { isCurrentPipelineRecord } from '@shinobu/image-pipeline';
+import type { LocalPipelineArtifactSummary } from '../../../../src/shared/localPipelineProtocol';
+import { LocalPipelineRemoteError } from '../../../../src/shared/localPipelineProtocol';
 
-export type WebPipelineInput = {
-  file: File;
-  workingCopy: {
-    width: number;
-    height: number;
+export type WebPipelineRuntimeCapabilities = {
+  textTranslation: {
+    apiKey: string;
   };
 };
 
-export type WebPipelineResult = {
-  image: Blob;
-  debug?: Blob;
+export type WebPipelineInput = {
+  file: File;
+  workingCopy:
+    | NormalizedWorkingCopySpec
+    | {
+        width: number;
+        height: number;
+      };
+};
+
+export type WebPipelineResult = ImagePipelineResult & {
   summary: LocalPipelineArtifactSummary;
-  record: WebPipelineRecord;
+};
+
+type WebWorkerPipelineConfig = {
+  pipeline: PipelineConfig;
+  capabilities: WebPipelineRuntimeCapabilities;
 };
 
 export type WebTranslatorCore = DisposableTranslatorCore<
@@ -48,8 +60,43 @@ function revivePipelineError(value: unknown): Error {
   return new Error('翻译 Worker 返回了无法识别的错误');
 }
 
-export function createWebTranslatorCore(): WebTranslatorCore {
-  return createWorkerTranslatorCore({
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+export function isWebPipelineResult(value: unknown): value is WebPipelineResult {
+  if (
+    !isRecord(value)
+    || (value.status !== 'completed' && value.status !== 'no-translatable-text')
+    || !(value.image instanceof Blob)
+    || (value.debug !== undefined && !(value.debug instanceof Blob))
+    || !isCurrentPipelineRecord(value.record)
+    || !isRecord(value.summary)
+    || !isRecord(value.summary.image)
+  ) {
+    return false;
+  }
+  return typeof value.summary.image.width === 'number'
+    && Number.isFinite(value.summary.image.width)
+    && typeof value.summary.image.height === 'number'
+    && Number.isFinite(value.summary.image.height)
+    && Number.isInteger(value.summary.detectedRegionCount)
+    && (value.summary.detectedRegionCount as number) >= 0
+    && Array.isArray(value.summary.stageTimings)
+    && Array.isArray(value.summary.runtimeStages);
+}
+
+export function createWebTranslatorCore(
+  capabilities: WebPipelineRuntimeCapabilities = {
+    textTranslation: { apiKey: '' },
+  },
+): WebTranslatorCore {
+  const workerCore = createWorkerTranslatorCore<
+    WebPipelineInput,
+    WebWorkerPipelineConfig,
+    PipelineProgress,
+    WebPipelineResult
+  >({
     createWorker: () => new Worker(
       new URL('./pipeline.worker.ts', import.meta.url),
       {
@@ -58,5 +105,22 @@ export function createWebTranslatorCore(): WebTranslatorCore {
       },
     ) as unknown as WorkerClientEndpoint,
     reviveError: revivePipelineError,
+    validateResult: isWebPipelineResult,
   });
+  return {
+    run({ input, config }) {
+      return workerCore.run({
+        input,
+        config: {
+          pipeline: config,
+          capabilities,
+        },
+      });
+    },
+    dispose(reason) {
+      return workerCore.dispose(reason);
+    },
+  };
 }
+
+export type { WebWorkerPipelineConfig };

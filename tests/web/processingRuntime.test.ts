@@ -1,7 +1,10 @@
 import { createTranslatorCore } from '@shinobu/translator-core';
 import { describe, expect, it } from 'vitest';
 import { createDefaultWebSettings } from '../../packages/shared-config/src';
-import type { PipelineConfig, PipelineProgress } from '../../src/types';
+import type {
+  PipelineConfig,
+  PipelineProgress,
+} from '../../packages/image-pipeline/src';
 import type { WebPipelineRecord } from '../../apps/web/src/domain/pipelineRecord';
 import {
   LocalHistory,
@@ -24,15 +27,19 @@ import type {
   WebTranslatorCore,
 } from '../../apps/web/src/runtime/webPipeline';
 
-function successfulCore(observedApiKeys: string[]): WebTranslatorCore {
+function successfulCore(
+  observedApiKeys: string[],
+  apiKey = '',
+): WebTranslatorCore {
   const core = createTranslatorCore<
     WebPipelineInput,
     PipelineConfig,
     PipelineProgress,
     WebPipelineResult
-  >(async ({ input, config }) => {
-    observedApiKeys.push(config.llmApiKey);
+  >(async ({ input }) => {
+    observedApiKeys.push(apiKey);
     return {
+      status: 'completed',
       image: new Blob([`translated:${input.file.name}`], { type: 'image/png' }),
       summary: {
         image: { width: 1200, height: 1800 },
@@ -49,7 +56,7 @@ function successfulCore(observedApiKeys: string[]): WebTranslatorCore {
   });
   return {
     ...core,
-    dispose: () => undefined,
+    dispose: async () => undefined,
   };
 }
 
@@ -86,7 +93,10 @@ function readyDependencies(
       availableBytes: 999_999_990,
       persisted: true,
     }),
-    createCore: () => successfulCore(observedApiKeys),
+    createCore: (capabilities) => successfulCore(
+      observedApiKeys,
+      capabilities?.textTranslation.apiKey,
+    ),
     fallbackWorkPixelBudget: 4_000_000,
   };
 }
@@ -391,7 +401,7 @@ describe('processing runtime module', () => {
     const baseCore = dependencies.createCore();
     dependencies.createCore = () => ({
       ...baseCore,
-      dispose: () => {
+      dispose: async () => {
         disposeCount += 1;
       },
     });

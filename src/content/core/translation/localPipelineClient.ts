@@ -12,6 +12,10 @@ import {
   type LocalPipelineClientMessage,
   type LocalPipelineResult,
 } from '../../../shared/localPipelineProtocol';
+import type {
+  PipelineCancellationReason,
+  PipelineRecord,
+} from '@shinobu/image-pipeline';
 import type { PipelineConfig, PipelineProgress } from '../../../types';
 
 export type RunLocalPipeline = (
@@ -31,15 +35,31 @@ function post(port: ChromePort, message: LocalPipelineClientMessage): void {
   port.postMessage(message);
 }
 
+function userCancellationReason(reason: unknown): PipelineCancellationReason {
+  return {
+    code: 'user-requested',
+    messageKey: 'pipeline.cancelled.userRequested',
+    diagnosticSummary: reason instanceof Error
+      ? reason.message
+      : typeof reason === 'string' && reason
+        ? reason
+        : '内容页请求取消任务',
+  };
+}
+
+function cancellationRemoteError(reason: unknown): LocalPipelineRemoteError {
+  const cancellation = userCancellationReason(reason);
+  return new LocalPipelineRemoteError({
+    name: 'ImagePipelineCancelledError',
+    code: 'TASK_CANCELLED',
+    message: cancellation.messageKey,
+    messageKey: cancellation.messageKey,
+  });
+}
+
 export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, options = {}) => {
   if (options.signal?.aborted) {
-    return Promise.reject(new LocalPipelineRemoteError({
-      name: 'AbortError',
-      code: 'TASK_CANCELLED',
-      message: options.signal.reason instanceof Error
-        ? options.signal.reason.message
-        : '本地流水线任务已取消',
-    }));
+    return Promise.reject(cancellationRemoteError(options.signal.reason));
   }
   const chromeApi = getChromeApi();
   if (!chromeApi?.runtime?.connect) {
@@ -56,6 +76,8 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
     let settled = false;
     let transferStarted = false;
     let resultSummary: LocalPipelineArtifactSummary | null = null;
+    let resultRecord: PipelineRecord | null = null;
+    let resultStatus: LocalPipelineResult['status'] | null = null;
     let resultAssembler: Base64ChunkAssembler | null = null;
     let resultContentType = 'image/png';
     let debugAssembler: Base64ChunkAssembler | null = null;
@@ -85,7 +107,11 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
     };
 
     const finish = (): void => {
-      if (!resultAssembler || !resultSummary) {
+      if (options.signal?.aborted) {
+        fail(cancellationRemoteError(options.signal.reason));
+        return;
+      }
+      if (!resultAssembler || !resultSummary || !resultRecord || !resultStatus) {
         fail(createProtocolError('结果完成消息早于结果元数据'));
         return;
       }
@@ -96,10 +122,16 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
           throw createProtocolError('调试图片分块缺失');
         }
         const value: LocalPipelineResult = {
+          status: resultStatus,
           result: base64ToBlob(resultBase64, resultContentType),
           debug: debugBase64 === undefined ? undefined : base64ToBlob(debugBase64, debugContentType),
           summary: resultSummary,
+          record: resultRecord,
         };
+        if (options.signal?.aborted) {
+          fail(cancellationRemoteError(options.signal.reason));
+          return;
+        }
         settled = true;
         cleanup();
         resolve(value);
@@ -166,6 +198,8 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
           resultAssembler = new Base64ChunkAssembler(value.result);
           resultContentType = value.result.contentType;
           resultSummary = value.summary;
+          resultRecord = value.record;
+          resultStatus = value.status;
           expectsDebug = Boolean(value.debug);
           if (value.debug) {
             debugAssembler = new Base64ChunkAssembler(value.debug);
@@ -205,9 +239,7 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
         post(port, {
           type: 'cancel',
           jobId,
-          reason: options.signal?.reason instanceof Error
-            ? options.signal.reason.message
-            : '内容页请求取消任务',
+          reason: userCancellationReason(options.signal?.reason),
         });
       } catch (error) {
         fail(error);

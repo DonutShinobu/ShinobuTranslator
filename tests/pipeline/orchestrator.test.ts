@@ -387,8 +387,17 @@ describe('runPipeline', () => {
     expect(stageError).toMatchObject({
       name: 'PipelineStageError',
       code: 'PIPELINE_STAGE_FAILED',
-      stage: '文本检测',
+      stage: 'detect',
+      stageLabel: '文本检测',
       message: '文本检测失败: detector unavailable',
+      failure: {
+        code: 'PIPELINE_STAGE_FAILED',
+        stage: 'detect',
+        scope: 'runtime',
+        retryable: false,
+        messageKey: 'pipeline.failure.stage',
+        diagnostics: { name: 'PipelineStageError' },
+      },
     });
     expect(stageError.cause).toMatchObject({ message: 'detector unavailable' });
     expect(stageError.artifacts).toMatchObject({

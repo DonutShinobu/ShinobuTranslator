@@ -4,8 +4,8 @@ import {
   type TranslationProviderId,
   type WebSettings,
 } from '@shinobu/shared-config';
+import type { PipelineProgress } from '@shinobu/image-pipeline';
 import type { TranslationTask } from '@shinobu/translator-core';
-import type { PipelineProgress } from '../../../../../src/types';
 import {
   assessImageImportStorage,
   type WebStorageSnapshot,
@@ -22,6 +22,7 @@ import type { WebRuntimeCapability } from '../../runtime/capability';
 import {
   type WebPipelineInput,
   type WebPipelineResult,
+  type WebPipelineRuntimeCapabilities,
   type WebTranslatorCore,
 } from '../../runtime/webPipeline';
 import { toWebPipelineConfig } from '../../runtime/webPipelineConfig';
@@ -164,7 +165,7 @@ export type ProcessingRuntimeDependencies = {
     onProgress(progress: ModelCapabilityProgress): void;
   }): Promise<ModelCapabilityResult>;
   inspectStorage(): Promise<WebStorageSnapshot>;
-  createCore(): WebTranslatorCore;
+  createCore(capabilities?: WebPipelineRuntimeCapabilities): WebTranslatorCore;
   fallbackWorkPixelBudget: number;
 };
 
@@ -193,6 +194,8 @@ class ProcessingRuntimeImplementation implements ProcessingRuntime {
   private modelProbe: ProcessingRuntimeModelProbeState = { status: 'pending' };
   private storage: ProcessingRuntimeStorageState = { status: 'checking' };
   private core: WebTranslatorCore | undefined;
+  private coreCredential: string | undefined;
+  private coreDisposal = Promise.resolve();
   private generation = 0;
   private disposed = false;
   private commandTail = Promise.resolve();
@@ -363,10 +366,8 @@ class ProcessingRuntimeImplementation implements ProcessingRuntime {
       throw new ProcessingRuntimeBlockedError(decision);
     }
     const generation = this.generation;
-    const config = toWebPipelineConfig(
-      structuredClone(request.settings),
-      request.credential.value,
-    );
+    const config = toWebPipelineConfig(structuredClone(request.settings));
+    const credential = request.credential.value;
     let released = false;
     const assertActive = (): void => {
       if (released || this.disposed || generation !== this.generation) {
@@ -380,8 +381,18 @@ class ProcessingRuntimeImplementation implements ProcessingRuntime {
     return {
       run: (input) => {
         assertActive();
-        const core = this.core ?? this.dependencies.createCore();
-        this.core = core;
+        if (!this.core || this.coreCredential !== credential) {
+          const staleCore = this.core;
+          if (staleCore) this.enqueueCoreDisposal(staleCore, new DOMException(
+            '文本翻译 runtime capability 已改变',
+            'AbortError',
+          ));
+          this.core = this.dependencies.createCore({
+            textTranslation: { apiKey: credential },
+          });
+          this.coreCredential = credential;
+        }
+        const core = this.core;
         return core.run({ input, config });
       },
       admit: async (pendingOriginalBytes) => {
@@ -442,8 +453,8 @@ class ProcessingRuntimeImplementation implements ProcessingRuntime {
       this.installAbortOutcome = 'cancelled';
       this.installController?.abort(new DOMException('处理运行时已释放', 'AbortError'));
       this.probeController?.abort(new DOMException('处理运行时已释放', 'AbortError'));
-      this.core?.dispose(new DOMException('处理运行时已释放', 'AbortError'));
-      this.core = undefined;
+      this.invalidateCore(new DOMException('处理运行时已释放', 'AbortError'));
+      await this.coreDisposal;
       this.unsubscribeEnvironment();
       this.emit();
       this.listeners.clear();
@@ -722,8 +733,17 @@ class ProcessingRuntimeImplementation implements ProcessingRuntime {
 
   private invalidateCore(reason: unknown): void {
     this.generation += 1;
-    this.core?.dispose(reason);
+    if (this.core) this.enqueueCoreDisposal(this.core, reason);
     this.core = undefined;
+    this.coreCredential = undefined;
+  }
+
+  private enqueueCoreDisposal(core: WebTranslatorCore, reason: unknown): void {
+    const disposal = core.dispose(reason);
+    this.coreDisposal = Promise.allSettled([
+      this.coreDisposal,
+      disposal,
+    ]).then(() => undefined);
   }
 
   private consumeInstallAbortOutcome(): 'cancelled' | 'paused' | undefined {

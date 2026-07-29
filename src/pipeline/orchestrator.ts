@@ -34,6 +34,10 @@ import { emitDiagnosticLog } from "../shared/diagnosticLogClient";
 import { toDiagnosticError, type DiagnosticLogCategory } from "../shared/diagnosticLog";
 import { createCancelledError } from "../shared/localPipelineProtocol";
 import type { TextTranslationTransport } from "../translators/transport";
+import {
+  isPipelineFailureEnvelope,
+  type PipelineFailureEnvelope,
+} from "@shinobu/image-pipeline";
 
 type ProgressCallback = (progress: PipelineProgress) => void;
 
@@ -269,6 +273,13 @@ function toErrorDetail(error: unknown): string {
   return String(error);
 }
 
+function hasPipelineFailure(error: unknown): boolean {
+  return error !== null
+    && typeof error === "object"
+    && "failure" in error
+    && isPipelineFailureEnvelope(error.failure);
+}
+
 type RegionQuad = NonNullable<TextRegion["quad"]>;
 
 function cloneRegionQuad(quad: RegionQuad): RegionQuad {
@@ -299,14 +310,37 @@ function cloneTextRegions(regions: TextRegion[]): TextRegion[] {
 
 export class PipelineStageError extends Error {
   readonly stage: string;
+  readonly stageLabel: string;
   readonly artifacts: PipelineArtifacts;
-  readonly code = "PIPELINE_STAGE_FAILED";
+  readonly failure: PipelineFailureEnvelope;
 
-  constructor(stage: string, detail: string, artifacts: PipelineArtifacts, cause?: unknown) {
-    super(`${stage}失败: ${detail}`, cause === undefined ? undefined : { cause });
+  constructor(
+    stage: string,
+    stageLabel: string,
+    detail: string,
+    artifacts: PipelineArtifacts,
+    scope: PipelineFailureEnvelope["scope"],
+    cause?: unknown,
+  ) {
+    super(`${stageLabel}失败: ${detail}`, cause === undefined ? undefined : { cause });
     this.name = "PipelineStageError";
     this.stage = stage;
+    this.stageLabel = stageLabel;
     this.artifacts = artifacts;
+    this.failure = {
+      code: "PIPELINE_STAGE_FAILED",
+      stage,
+      scope,
+      retryable: false,
+      messageKey: "pipeline.failure.stage",
+      diagnostics: {
+        name: this.name,
+      },
+    };
+  }
+
+  get code(): string {
+    return this.failure.code;
   }
 }
 
@@ -519,7 +553,7 @@ export async function runPipeline(
     }
   } catch (error) {
     logPipelineStage(config, "pipeline.detect", "文本检测失败", undefined, error);
-    throw new PipelineStageError("文本检测", toErrorDetail(error), buildArtifacts(), error);
+    throw new PipelineStageError("detect", "文本检测", toErrorDetail(error), buildArtifacts(), "runtime", error);
   }
 
   let detectedBubbles: BubbleDetection[] = [];
@@ -572,7 +606,7 @@ export async function runPipeline(
     }
   } catch (error) {
     logPipelineStage(config, "pipeline.bubble", "气泡检测失败", undefined, error);
-    throw new PipelineStageError("气泡检测", toErrorDetail(error), buildArtifacts(), error);
+    throw new PipelineStageError("bubble", "气泡检测", toErrorDetail(error), buildArtifacts(), "runtime", error);
   }
 
   throwIfCancelled(signal);
@@ -632,7 +666,7 @@ export async function runPipeline(
     }
   } catch (error) {
     logPipelineStage(config, "pipeline.ocr", "OCR 识别失败", undefined, error);
-    throw new PipelineStageError("OCR", toErrorDetail(error), buildArtifacts(), error);
+    throw new PipelineStageError("ocr", "OCR", toErrorDetail(error), buildArtifacts(), "runtime", error);
   }
 
   throwIfCancelled(signal);
@@ -643,7 +677,7 @@ export async function runPipeline(
     stageRegions.merged = cloneTextRegions(latestRegions);
     stageTimings.push({ stage: "merge", label: "合并文本行", durationMs: performance.now() - t0 });
   } catch (error) {
-    throw new PipelineStageError("文本行合并", toErrorDetail(error), buildArtifacts(), error);
+    throw new PipelineStageError("merge", "文本行合并", toErrorDetail(error), buildArtifacts(), "image", error);
   }
 
   if (detectedBubbles.length > 0) {
@@ -743,10 +777,20 @@ export async function runPipeline(
     stageRegions.ordered = cloneTextRegions(latestRegions);
     stageTimings.push({ stage: "order", label: "文本顺序排序", durationMs: performance.now() - t0 });
   } catch (error) {
-    throw new PipelineStageError("顺序排序", toErrorDetail(error), buildArtifacts(), error);
+    throw new PipelineStageError("order", "顺序排序", toErrorDetail(error), buildArtifacts(), "image", error);
   }
 
   const orderedRegions = latestRegions;
+  if (!orderedRegions.some((region) => region.sourceText.trim().length > 0)) {
+    latestRegions = [];
+    stageRegions.ocr = [];
+    stageRegions.merged = [];
+    stageRegions.ordered = [];
+    cleanedCanvas = originalCanvas;
+    resultCanvas = originalCanvas;
+    report(onProgress, "done", "完成");
+    return buildArtifacts();
+  }
   if (stopAfterOrder) {
     report(onProgress, "done", "完成");
     return buildArtifacts();
@@ -830,14 +874,15 @@ export async function runPipeline(
           reportParallel();
           return translatedRegions;
         } catch (error) {
-          throw new PipelineStageError("\u7ffb\u8bd1", toErrorDetail(error), buildArtifacts(), error);
+          if (hasPipelineFailure(error)) throw error;
+          throw new PipelineStageError("translate", "\u7ffb\u8bd1", toErrorDetail(error), buildArtifacts(), "runtime", error);
         }
       })();
 
   const eraseTask = (async (): Promise<PipelineCanvas> => {
     throwIfCancelled(signal);
     if (!detectionMaskCanvas) {
-      throw new PipelineStageError("\u906e\u7f69\u7ec6\u5316", "\u68c0\u6d4b\u9636\u6bb5\u672a\u63d0\u4f9b\u539f\u59cb mask\uff0c\u5df2\u7981\u7528\u6587\u672c\u6846\u906e\u7f69\u56de\u9000", buildArtifacts());
+      throw new PipelineStageError("mask_refine", "\u906e\u7f69\u7ec6\u5316", "\u68c0\u6d4b\u9636\u6bb5\u672a\u63d0\u4f9b\u539f\u59cb mask\uff0c\u5df2\u7981\u7528\u6587\u672c\u6846\u906e\u7f69\u56de\u9000", buildArtifacts(), "runtime");
     }
 
     parallelEraseStatus = "mask_refine";
@@ -857,7 +902,7 @@ export async function runPipeline(
       }
       maskRefineTiming = { stage: "mask_refine", label: "\u7ec6\u5316\u53bb\u5b57\u906e\u7f69", durationMs: performance.now() - t0 };
     } catch (error) {
-      throw new PipelineStageError("\u906e\u7f69\u7ec6\u5316", toErrorDetail(error), buildArtifacts(), error);
+      throw new PipelineStageError("mask_refine", "\u906e\u7f69\u7ec6\u5316", toErrorDetail(error), buildArtifacts(), "runtime", error);
     }
 
     parallelEraseStatus = "inpaint";
@@ -894,7 +939,7 @@ export async function runPipeline(
       return inpaintResult.canvas;
     } catch (error) {
       logPipelineStage(config, "pipeline.inpaint", "去字推理失败", undefined, error);
-      throw new PipelineStageError("\u53bb\u5b57", toErrorDetail(error), buildArtifacts(), error);
+      throw new PipelineStageError("inpaint", "\u53bb\u5b57", toErrorDetail(error), buildArtifacts(), "runtime", error);
     }
   })();
 
@@ -914,10 +959,10 @@ export async function runPipeline(
   } catch (error) {
     await Promise.allSettled([translateTask, eraseTask]);
     flushParallelTimings();
-    if (error instanceof PipelineStageError) {
+    if (error instanceof PipelineStageError || hasPipelineFailure(error)) {
       throw error;
     }
-    throw new PipelineStageError("并行处理", toErrorDetail(error), buildArtifacts(), error);
+    throw new PipelineStageError("parallel", "并行处理", toErrorDetail(error), buildArtifacts(), "runtime", error);
   }
 
   if (config.processMode === 'erase') {
@@ -965,7 +1010,7 @@ export async function runPipeline(
       });
     } catch (error) {
       logPipelineStage(config, "pipeline.typeset", "排版失败", undefined, error);
-      throw new PipelineStageError("排版", toErrorDetail(error), buildArtifacts(), error);
+      throw new PipelineStageError("typeset", "排版", toErrorDetail(error), buildArtifacts(), "image", error);
     }
   }
 

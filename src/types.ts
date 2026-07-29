@@ -1,5 +1,6 @@
 import type { PipelineCanvas, PipelineImage } from "./runtime/platform";
 import type { LlmThinkingLevel } from "./shared/llmThinking";
+import type { PipelineProgress as ImagePipelineProgress } from "@shinobu/image-pipeline";
 
 export type Rect = {
   x: number;
@@ -448,7 +449,10 @@ export type StageTiming = {
   durationMs: number;
 };
 
-export type PipelineProgress = {
-  stage: string;
+export type PipelineProgress = Omit<
+  ImagePipelineProgress,
+  'operation' | 'detail'
+> & {
+  operation?: string;
   detail: string;
 };

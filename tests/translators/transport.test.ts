@@ -127,7 +127,7 @@ describe('text translation transport Adapters', () => {
     expect(sleep).toHaveBeenNthCalledWith(2, 1_000, undefined);
   });
 
-  it('does not retry authentication failures or ambiguous fetch errors', async () => {
+  it('does not retry authentication failures and marks network failures for the pipeline retry owner', async () => {
     const authFetch = vi.fn().mockResolvedValue(new Response('denied', { status: 403 }));
     const authTransport = createDirectTextTranslationTransport({
       fetchImpl: authFetch as typeof fetch,
@@ -147,7 +147,49 @@ describe('text translation transport Adapters', () => {
     await expect(networkTransport.requestChatCompletion({
       ...request,
       apiKey: 'sk-local',
-    })).rejects.toThrow('Failed to fetch');
+    })).rejects.toMatchObject({
+      name: 'TextTranslationTransportError',
+      retryable: true,
+    });
     expect(networkFetch).toHaveBeenCalledOnce();
+  });
+
+  it('does not mark an aborted network request as retryable', async () => {
+    const controller = new AbortController();
+    controller.abort(new DOMException('owner ended', 'AbortError'));
+    const aborted = new TypeError('Failed to fetch');
+    const networkFetch = vi.fn().mockRejectedValue(aborted);
+    const transport = createDirectTextTranslationTransport({
+      fetchImpl: networkFetch as typeof fetch,
+      maxRetries: 0,
+    });
+
+    await expect(transport.requestChatCompletion({
+      ...request,
+      apiKey: 'sk-local',
+      signal: controller.signal,
+    })).rejects.toBe(aborted);
+  });
+
+  it('marks a connection reset while reading the response body as retryable', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      text: vi.fn().mockRejectedValue(new TypeError('connection reset')),
+    });
+    const transport = createDirectTextTranslationTransport({
+      fetchImpl: fetchMock as typeof fetch,
+      maxRetries: 0,
+    });
+
+    await expect(transport.requestChatCompletion({
+      ...request,
+      apiKey: 'sk-local',
+    })).rejects.toMatchObject({
+      name: 'TextTranslationTransportError',
+      status: 200,
+      retryable: true,
+    });
   });
 });

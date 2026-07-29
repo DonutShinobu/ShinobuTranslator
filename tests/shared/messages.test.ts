@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { getRuntimeErrorCode, isRuntimeMessage } from "../../src/shared/messages";
+import {
+  getRuntimeErrorCode,
+  getRuntimeTransportMetadata,
+  isRuntimeMessage,
+} from "../../src/shared/messages";
 
 describe("isRuntimeMessage", () => {
   it("accepts image and screenshot translation runtime messages", () => {
@@ -167,5 +171,22 @@ describe("getRuntimeErrorCode", () => {
   it("preserves the thinking-configuration error code across the runtime seam", () => {
     expect(getRuntimeErrorCode({ errorCode: "llm_thinking_config" })).toBe("llm_thinking_config");
     expect(getRuntimeErrorCode(new Error("ordinary failure"))).toBeUndefined();
+  });
+});
+
+describe("getRuntimeTransportMetadata", () => {
+  it("keeps only finite retry metadata and omits absent fields", () => {
+    expect(getRuntimeTransportMetadata({ status: 503 })).toEqual({ status: 503 });
+    expect(getRuntimeTransportMetadata({ retryAfterMs: 750 })).toEqual({ retryAfterMs: 750 });
+    expect(getRuntimeTransportMetadata(new TypeError("Failed to fetch"))).toEqual({
+      retryable: true,
+    });
+    expect(getRuntimeTransportMetadata({ retryable: true })).toEqual({
+      retryable: true,
+    });
+    expect(getRuntimeTransportMetadata({
+      status: Number.NaN,
+      retryAfterMs: -1,
+    })).toEqual({});
   });
 });

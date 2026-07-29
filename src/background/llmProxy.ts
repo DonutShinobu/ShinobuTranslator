@@ -15,6 +15,7 @@ export class LlmChatCompletionHttpError extends Error {
   readonly contentType: string;
   readonly responseText: string;
   readonly errorCode?: RuntimeErrorCode;
+  readonly retryAfterMs?: number;
 
   constructor(
     status: number,
@@ -23,6 +24,7 @@ export class LlmChatCompletionHttpError extends Error {
     responseText: string,
     detail: string | null,
     errorCode?: RuntimeErrorCode,
+    retryAfterMs?: number,
   ) {
     super(
       errorCode === 'llm_thinking_config'
@@ -39,6 +41,7 @@ export class LlmChatCompletionHttpError extends Error {
     this.contentType = contentType;
     this.responseText = responseText;
     this.errorCode = errorCode;
+    this.retryAfterMs = retryAfterMs;
   }
 }
 
@@ -92,6 +95,15 @@ function parseMaybeJson(text: string): unknown {
   } catch {
     return { error: { message: text } };
   }
+}
+
+function parseRetryAfterMs(value: string | null): number | undefined {
+  const retryAfter = value?.trim();
+  if (!retryAfter) return undefined;
+  const seconds = Number(retryAfter);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1_000;
+  const at = Date.parse(retryAfter);
+  return Number.isFinite(at) ? Math.max(0, at - Date.now()) : undefined;
 }
 
 export function resolveLlmChatCompletionsEndpoint(baseUrl: string): string {
@@ -161,6 +173,7 @@ export async function proxyApiKeyChatCompletions(
       responseText,
       detail,
       errorCode,
+      parseRetryAfterMs(response.headers.get('retry-after')),
     );
   }
 

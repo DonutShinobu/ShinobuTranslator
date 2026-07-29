@@ -4,7 +4,11 @@ import type {
   TranslationReferenceContext,
 } from '../types';
 import type { LlmChatCompletionRequestBody } from '../shared/messages';
-import type { LlmThinkingLevel } from '../shared/llmThinking';
+import {
+  adaptLlmThinkingChatCompletionRequest,
+  isLlmThinkingConfigurationRejection,
+  type LlmThinkingLevel,
+} from '../shared/llmThinking';
 import {
   classifyLlmFetchError,
   sanitizeDiagnosticUrl,
@@ -408,6 +412,12 @@ async function requestChatCompletion(
   body: LlmChatCompletionRequestBody,
 ): Promise<ChatCompletionResponse> {
   const requestBody = { ...body };
+  const providerBody = adaptLlmThinkingChatCompletionRequest(body, {
+    provider: options.provider,
+    model: body.model,
+    level: options.thinkingLevel,
+    useCustomModel: options.useCustomModel === true,
+  });
 
   const startedAt = Date.now();
   const endpoint = `${options.baseUrl.replace(/\/$/, '')}/chat/completions`;
@@ -439,6 +449,7 @@ async function requestChatCompletion(
       options.transport ?? extensionTextTranslationTransport
     ).requestChatCompletion({
       body: requestBody,
+      providerBody,
       proxyConfig: {
         provider: options.provider,
         authMode: options.authMode,
@@ -482,11 +493,42 @@ async function requestChatCompletion(
       },
       error: toDiagnosticError(error),
     });
-    if (
+    const transportFailure = error && typeof error === 'object'
+      ? error as {
+          status?: unknown;
+          detail?: unknown;
+          responseText?: unknown;
+        }
+      : null;
+    const status = typeof transportFailure?.status === 'number'
+      ? transportFailure.status
+      : undefined;
+    const thinkingRejected = (
       error instanceof TextTranslationTransportError
       && error.code === 'llm_thinking_config'
-    ) {
-      throw new LlmThinkingConfigError(error.message);
+    ) || (
+      status !== undefined
+      && isLlmThinkingConfigurationRejection({
+        status,
+        provider: options.provider,
+        model: requestBody.model,
+        useCustomModel: options.useCustomModel === true,
+        errorDetail: [
+          typeof transportFailure?.detail === 'string'
+            ? transportFailure.detail
+            : '',
+          typeof transportFailure?.responseText === 'string'
+            ? transportFailure.responseText
+            : '',
+        ].join('\n'),
+      })
+    );
+    if (thinkingRejected) {
+      throw new LlmThinkingConfigError(
+        error instanceof Error
+          ? error.message
+          : '当前模型不支持所选思考设置',
+      );
     }
     throw error;
   }

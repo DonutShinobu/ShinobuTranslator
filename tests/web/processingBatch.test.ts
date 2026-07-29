@@ -1,7 +1,10 @@
 import { createTranslatorCore } from '@shinobu/translator-core';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createDefaultWebSettings } from '../../packages/shared-config/src';
-import type { PipelineConfig, PipelineProgress } from '../../src/types';
+import type {
+  PipelineConfig,
+  PipelineProgress,
+} from '../../packages/image-pipeline/src';
 import type { WebPipelineRecord } from '../../apps/web/src/domain/pipelineRecord';
 import {
   LocalHistory,
@@ -36,6 +39,16 @@ const versions = {
   model: 'model-v1',
   configSchema: 1,
 };
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
 
 class StepClock implements LocalHistoryClock {
   private tick = 0;
@@ -73,6 +86,7 @@ function successfulCore(): WebTranslatorCore {
     PipelineProgress,
     WebPipelineResult
   >(async ({ input }) => ({
+    status: 'completed',
     image: new Blob([`translated:${input.file.name}`], { type: 'image/png' }),
     summary: {
       image: { width: 1200, height: 1800 },
@@ -88,7 +102,7 @@ function successfulCore(): WebTranslatorCore {
   }));
   return {
     ...core,
-    dispose: () => undefined,
+    dispose: async () => undefined,
   };
 }
 
@@ -137,10 +151,7 @@ function readyRuntime(
     }),
     async prepare(request) {
       await admit(request.pendingOriginalBytes);
-      const config = toWebPipelineConfig(
-        structuredClone(request.settings),
-        request.credential.value,
-      );
+      const config = toWebPipelineConfig(structuredClone(request.settings));
       let released = false;
       return {
         run(input) {
@@ -259,6 +270,7 @@ describe('processing batch module', () => {
     >(async ({ input }) => {
       executed.push(input.file.name);
       return {
+        status: 'completed',
         image: new Blob(['translated'], { type: 'image/png' }),
         summary: {
           image: { width: 1200, height: 1800 },
@@ -281,7 +293,7 @@ describe('processing batch module', () => {
     );
     const workspace = createProcessingBatchWorkspace({
       history,
-      runtime: readyRuntime(() => ({ ...core, dispose: () => undefined })),
+      runtime: readyRuntime(() => ({ ...core, dispose: async () => undefined })),
       createId: () => 'batch-write-fault',
     });
     const settings = createDefaultWebSettings('zh-CN');
@@ -384,6 +396,7 @@ describe('processing batch module', () => {
         throw new Error('unclassified pipeline fault');
       }
       return {
+        status: 'completed',
         image: new Blob([`translated:${input.file.name}`], { type: 'image/png' }),
         summary: {
           image: { width: 1200, height: 1800 },
@@ -406,7 +419,7 @@ describe('processing batch module', () => {
     );
     const workspace = createProcessingBatchWorkspace({
       history,
-      runtime: readyRuntime(() => ({ ...core, dispose: () => undefined })),
+      runtime: readyRuntime(() => ({ ...core, dispose: async () => undefined })),
       createId: () => 'batch-retry',
     });
     const settings = createDefaultWebSettings('zh-CN');
@@ -440,23 +453,25 @@ describe('processing batch module', () => {
     expect(attempts).toEqual(['image-a.png', 'image-a.png', 'image-b.png']);
   });
 
-  it('continues after cancelling the current image and finishes as partially completed', async () => {
+  it('continues the batch after an image-scoped failure', async () => {
+    const attempts: string[] = [];
     const core = createTranslatorCore<
       WebPipelineInput,
       PipelineConfig,
       PipelineProgress,
       WebPipelineResult
-    >(async ({ input }, context) => {
+    >(async ({ input }) => {
+      attempts.push(input.file.name);
       if (input.file.name === 'image-a.png') {
-        return new Promise<WebPipelineResult>((_resolve, reject) => {
-          context.signal.addEventListener(
-            'abort',
-            () => reject(context.signal.reason),
-            { once: true },
-          );
+        throw Object.assign(new Error('unsupported image payload'), {
+          code: 'IMAGE_DECODE_FAILED',
+          scope: 'image' as const,
+          retryable: false,
+          messageKey: 'pipeline.failure.imageDecode',
         });
       }
       return {
+        status: 'completed',
         image: new Blob(['translated'], { type: 'image/png' }),
         summary: {
           image: { width: 1200, height: 1800 },
@@ -479,7 +494,76 @@ describe('processing batch module', () => {
     );
     const workspace = createProcessingBatchWorkspace({
       history,
-      runtime: readyRuntime(() => ({ ...core, dispose: () => undefined })),
+      runtime: readyRuntime(() => ({ ...core, dispose: async () => undefined })),
+      createId: () => 'batch-image-failure',
+    });
+    const settings = createDefaultWebSettings('zh-CN');
+    const provider = settings.providerProfiles[settings.translationProviderId];
+    const batch = await workspace.open({
+      kind: 'queue',
+      initialImages: [importedImage('image-a'), importedImage('image-b')],
+      settings,
+      versions,
+      credential: {
+        providerId: settings.translationProviderId,
+        target: provider.baseUrl,
+        value: 'runtime-only',
+      },
+    });
+
+    const completed = await waitFor(
+      batch,
+      (snapshot) => snapshot.status === 'partially-completed',
+    );
+
+    expect(completed.tasks.map(({ id, status }) => ({ id, status }))).toEqual([
+      { id: 'image-a', status: 'failed' },
+      { id: 'image-b', status: 'done' },
+    ]);
+    expect(attempts).toEqual(['image-a.png', 'image-b.png']);
+  });
+
+  it('continues after cancelling the current image and finishes as partially completed', async () => {
+    const core = createTranslatorCore<
+      WebPipelineInput,
+      PipelineConfig,
+      PipelineProgress,
+      WebPipelineResult
+    >(async ({ input }, context) => {
+      if (input.file.name === 'image-a.png') {
+        return new Promise<WebPipelineResult>((_resolve, reject) => {
+          context.signal.addEventListener(
+            'abort',
+            () => reject(context.signal.reason),
+            { once: true },
+          );
+        });
+      }
+      return {
+        status: 'completed',
+        image: new Blob(['translated'], { type: 'image/png' }),
+        summary: {
+          image: { width: 1200, height: 1800 },
+          detectedRegionCount: 0,
+          stageTimings: [],
+          runtimeStages: [],
+          translationDebug: null,
+          ocrDebug: null,
+          ocrPostFilterDebug: null,
+          typesetDebug: null,
+        },
+        record: {} as WebPipelineRecord,
+      };
+    });
+    const history = new LocalHistory(
+      new MemoryLocalHistoryIndexAdapter(),
+      new MemoryLocalHistoryAssetAdapter(),
+      new StepClock(),
+      { create: () => 'unused' },
+    );
+    const workspace = createProcessingBatchWorkspace({
+      history,
+      runtime: readyRuntime(() => ({ ...core, dispose: async () => undefined })),
       createId: () => 'batch-partial',
     });
     const settings = createDefaultWebSettings('zh-CN');
@@ -611,6 +695,7 @@ describe('processing batch module', () => {
         });
       }
       return {
+        status: 'completed',
         image: new Blob(['translated'], { type: 'image/png' }),
         summary: {
           image: { width: 1200, height: 1800 },
@@ -632,7 +717,7 @@ describe('processing batch module', () => {
       { create: () => 'unused' },
     );
     const baseRuntime = readyRuntime(
-      () => ({ ...core, dispose: () => undefined }),
+      () => ({ ...core, dispose: async () => undefined }),
       async () => undefined,
       () => {
         releaseCount += 1;
@@ -706,6 +791,81 @@ describe('processing batch module', () => {
     expect(releaseCount).toBe(2);
   });
 
+  it('serializes stop and queued edits against a task claim before runtime admission', async () => {
+    const history = new LocalHistory(
+      new MemoryLocalHistoryIndexAdapter(),
+      new MemoryLocalHistoryAssetAdapter(),
+      new StepClock(),
+      { create: () => 'unused' },
+    );
+    const claimEntered = deferred<void>();
+    const releaseClaim = deferred<void>();
+    const updateItem = history.updateItem.bind(history);
+    let blockFirstClaim = true;
+    vi.spyOn(history, 'updateItem').mockImplementation(async (batchId, itemId, input) => {
+      if (blockFirstClaim && input.status === 'running') {
+        blockFirstClaim = false;
+        claimEntered.resolve();
+        await releaseClaim.promise;
+      }
+      return updateItem(batchId, itemId, input);
+    });
+    const core = successfulCore();
+    const run = vi.spyOn(core, 'run');
+    const workspace = createProcessingBatchWorkspace({
+      history,
+      runtime: readyRuntime(() => core),
+      createId: () => 'batch-claim-race',
+    });
+    const settings = createDefaultWebSettings('zh-CN');
+    const provider = settings.providerProfiles[settings.translationProviderId];
+    const batch = await workspace.open({
+      kind: 'queue',
+      initialImages: [importedImage('image-a'), importedImage('image-b')],
+      settings,
+      versions,
+      credential: {
+        providerId: settings.translationProviderId,
+        target: provider.baseUrl,
+        value: 'runtime-only',
+      },
+    });
+    await claimEntered.promise;
+
+    await expect(batch.dispatch({
+      type: 'remove-queued',
+      taskId: 'image-a',
+    })).rejects.toThrow('只能移除尚未开始');
+    await expect(batch.dispatch({
+      type: 'reorder-queued',
+      taskIds: ['image-b', 'image-a'],
+    })).rejects.toThrow('只能调整尚未开始');
+    await expect(batch.dispatch({ type: 'stop' })).resolves.toEqual({
+      type: 'batch-stopping',
+    });
+    expect(batch.snapshot().persistence).toEqual({ status: 'healthy' });
+
+    releaseClaim.resolve();
+    const paused = await waitFor(batch, (snapshot) => snapshot.status === 'paused');
+    expect(paused).toMatchObject({
+      persistence: { status: 'healthy' },
+      tasks: [
+        { id: 'image-a', status: 'queued' },
+        { id: 'image-b', status: 'queued' },
+      ],
+    });
+    const stored = await history.get('batch-claim-race');
+    expect(stored).toMatchObject({
+      status: 'paused',
+      recoveryPoint: { nextItemIndex: 0 },
+      items: [
+        { id: 'image-a', status: 'queued' },
+        { id: 'image-b', status: 'queued' },
+      ],
+    });
+    expect(run).not.toHaveBeenCalled();
+  });
+
   it('edits queued tasks through the batch interface while preserving the running task', async () => {
     const core = createTranslatorCore<
       WebPipelineInput,
@@ -728,7 +888,7 @@ describe('processing batch module', () => {
     );
     const workspace = createProcessingBatchWorkspace({
       history,
-      runtime: readyRuntime(() => ({ ...core, dispose: () => undefined })),
+      runtime: readyRuntime(() => ({ ...core, dispose: async () => undefined })),
       createId: () => 'batch-edit',
     });
     const settings = createDefaultWebSettings('zh-CN');
@@ -786,7 +946,7 @@ describe('processing batch module', () => {
     let nextId = 0;
     const workspace = createProcessingBatchWorkspace({
       history,
-      runtime: readyRuntime(() => ({ ...failingCore, dispose: () => undefined })),
+      runtime: readyRuntime(() => ({ ...failingCore, dispose: async () => undefined })),
       createId: () => `camera-${++nextId}`,
     });
     const settings = createDefaultWebSettings('zh-CN');
@@ -898,6 +1058,9 @@ describe('processing batch module', () => {
       },
       persistence: { status: 'healthy' },
       tasks: [{ id: 'image-a', status: 'queued' }],
+    });
+    await expect(history.get('batch-bootstrap-fault')).resolves.toMatchObject({
+      items: [{ id: 'image-a', status: 'queued' }],
     });
   });
 

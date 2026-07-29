@@ -12,14 +12,36 @@ function successfulCore(): {
     const controller = new AbortController();
     return {
       result: Promise.resolve({
+        status: 'completed',
         image: new Blob(['png'], { type: 'image/png' }),
         summary: {
-          originalSize: { width: 512, height: 512 },
-          stages: [],
+          image: { width: 512, height: 512 },
+          detectedRegionCount: 0,
+          stageTimings: [],
+          runtimeStages: [],
+          translationDebug: null,
+          ocrDebug: null,
+          ocrPostFilterDebug: null,
+          typesetDebug: null,
         },
         record: {
-          schemaVersion: 1 as const,
-          image: { width: 512, height: 512 },
+          schemaVersion: 2 as const,
+          workingCopy: {
+            width: 512,
+            height: 512,
+            spec: {
+              strategy: 'normalized' as const,
+              sourceSize: { width: 512, height: 512 },
+              size: { width: 512, height: 512 },
+              imageOrientation: 'from-image' as const,
+              background: '#ffffff' as const,
+            },
+            sourceToWorkingCopy: {
+              kind: 'scale' as const,
+              scaleX: 1,
+              scaleY: 1,
+            },
+          },
           ocr: [],
           translations: [],
         },
@@ -59,11 +81,36 @@ describe('synthetic production pipeline canary', () => {
     const controller = new AbortController();
     harness.run.mockImplementationOnce(() => ({
       result: Promise.resolve({
+        status: 'completed',
         image: new Blob([], { type: 'image/png' }),
-        summary: { originalSize: { width: 512, height: 512 }, stages: [] },
-        record: {
-          schemaVersion: 1 as const,
+        summary: {
           image: { width: 512, height: 512 },
+          detectedRegionCount: 0,
+          stageTimings: [],
+          runtimeStages: [],
+          translationDebug: null,
+          ocrDebug: null,
+          ocrPostFilterDebug: null,
+          typesetDebug: null,
+        },
+        record: {
+          schemaVersion: 2 as const,
+          workingCopy: {
+            width: 512,
+            height: 512,
+            spec: {
+              strategy: 'normalized' as const,
+              sourceSize: { width: 512, height: 512 },
+              size: { width: 512, height: 512 },
+              imageOrientation: 'from-image' as const,
+              background: '#ffffff' as const,
+            },
+            sourceToWorkingCopy: {
+              kind: 'scale' as const,
+              scaleX: 1,
+              scaleY: 1,
+            },
+          },
           ocr: [],
           translations: [],
         },

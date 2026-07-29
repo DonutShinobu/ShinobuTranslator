@@ -16,8 +16,11 @@ import {
   type LocalHistoryAsset,
   type LocalHistoryBatch,
   type LocalHistoryInspection,
+  type LocalHistoryItem,
 } from './localHistory';
-import { isWebPipelineRecord } from '../../domain/pipelineRecord';
+import {
+  recoverWebPipelineRecord,
+} from '../../domain/pipelineRecord';
 
 export const PROJECT_PACKAGE_SCHEMA_VERSION = 3 as const;
 export const PROJECT_PACKAGE_MAX_FILES = 301;
@@ -104,6 +107,22 @@ function archiveAssetPath(
   asset: LocalHistoryAsset,
 ): string {
   return `assets/${order}/${kind}.${archiveExtension(asset)}`;
+}
+
+function legacyWorkingCopyForItem(item: LocalHistoryItem) {
+  return {
+    strategy: 'normalized' as const,
+    sourceSize: {
+      width: item.width,
+      height: item.height,
+    },
+    size: {
+      width: item.workingCopy.width,
+      height: item.workingCopy.height,
+    },
+    imageOrientation: 'from-image' as const,
+    background: '#ffffff' as const,
+  };
 }
 
 function toHex(bytes: Uint8Array): string {
@@ -260,8 +279,15 @@ function assertBatch(
     if (itemIds.has(item.id) || orders.has(item.order)) {
       throw new Error('项目包图片 ID 或顺序重复');
     }
-    if (item.summary !== undefined && !isWebPipelineRecord(item.summary)) {
-      throw new Error('项目包 OCR 或译文记录无效');
+    if (item.summary !== undefined) {
+      try {
+        item.summary = recoverWebPipelineRecord(
+          item.summary,
+          legacyWorkingCopyForItem(item as LocalHistoryItem),
+        );
+      } catch {
+        throw new Error('项目包 OCR 或译文记录无效');
+      }
     }
     itemIds.add(item.id);
     orders.add(item.order);
@@ -389,7 +415,16 @@ export async function buildProjectPackage(
   const declarations: ProjectPackageFile[] = [];
 
   for (const item of batch.items) {
-    if (!isWebPipelineRecord(item.summary)) item.summary = undefined;
+    if (item.summary !== undefined) {
+      try {
+        item.summary = recoverWebPipelineRecord(
+          item.summary,
+          legacyWorkingCopyForItem(item),
+        );
+      } catch {
+        item.summary = undefined;
+      }
+    }
     for (const kind of ['original', 'thumbnail', 'result'] as const) {
       const reference = item[kind];
       if (!reference) continue;

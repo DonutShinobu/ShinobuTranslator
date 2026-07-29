@@ -15,7 +15,7 @@
     "typecheck:extension": "npm run typecheck --workspace=@shinobu/extension",
     "typecheck:tests": "tsc --noEmit -p tsconfig.tests.json",
     "typecheck:benchmark": "tsc --noEmit -p tsconfig.benchmark.json",
-    "typecheck:workspaces": "npm run typecheck --workspace=@shinobu/extension && npm run typecheck --workspace=@shinobu/shared-config && npm run typecheck --workspace=@shinobu/model-manifest && npm run typecheck --workspace=@shinobu/translator-core && npm run typecheck --workspace=@shinobu/browser-runtime && npm run typecheck --workspace=@shinobu/model-gateway && npm run typecheck --workspace=@shinobu/web",
+    "typecheck:workspaces": "npm run typecheck --workspace=@shinobu/extension && npm run typecheck --workspace=@shinobu/shared-config && npm run typecheck --workspace=@shinobu/model-manifest && npm run typecheck --workspace=@shinobu/translator-core && npm run typecheck --workspace=@shinobu/image-pipeline && npm run typecheck --workspace=@shinobu/browser-runtime && npm run typecheck --workspace=@shinobu/model-gateway && npm run typecheck --workspace=@shinobu/web",
     "typecheck": "npm run typecheck:workspaces && npm run typecheck:tests && npm run typecheck:benchmark",
     "build": "npm run build:extension",
     "build:extension": "npm run build --workspace=@shinobu/extension",
@@ -26,7 +26,8 @@
     "check:licenses": "node scripts/check-production-licenses.mjs",
     "check:web-production": "node scripts/web-production-preflight.mjs --repository",
     "check:web-regression": "vitest run tests/shared/config.test.ts tests/shared/webConfig.test.ts tests/content/core/screenshotController.test.ts tests/content/core/imageTranslationController.test.ts tests/content/adapters/ehentai.test.ts tests/content/adapters/twitter.test.ts tests/shared/translatorCore.test.ts tests/shared/browserRuntime.test.ts tests/offscreen/pipelineHost.test.ts tests/pipeline/orchestrator.test.ts tests/web/webPipelineConfig.test.ts",
-    "check": "npm run typecheck && npm run test && npm run check:web-regression && npm run check:licenses && npm run check:web-production && npm run build && npm run build:web",
+    "check:architecture": "node scripts/check-workspace-import-boundaries.mjs",
+    "check": "npm run typecheck && npm run test && npm run check:web-regression && npm run check:architecture && npm run check:licenses && npm run check:web-production && npm run build && npm run build:web",
     "web:production:preflight": "node scripts/web-production-preflight.mjs",
     "preview": "npm run preview --workspace=@shinobu/extension",
     "test": "vitest run",
@@ -66,6 +67,7 @@
     "bench:perf": "tsx benchmark/perf/src/run-perf.ts"
   },
   "dependencies": {
+    "@shinobu/image-pipeline": "0.1.0",
     "@shinobu/translator-core": "0.1.0",
     "comlink": "^4.4.2",
     "onnxruntime-web": "^1.24.1",

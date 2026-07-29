@@ -27,6 +27,10 @@ export type AppCopy = {
   historyClone: string;
   historyResume: string;
   historyResumeReady: string;
+  historyOriginalValidationFailed: string;
+  historyProviderUnavailable: string;
+  historyRecoveryLoadedDetail: string;
+  historyProviderSelectionRequired: string;
   historyExitResume: string;
   historyResultsOnly: string;
   historyKeepResults: string;
@@ -237,6 +241,10 @@ const copies: Record<UiLocale, AppCopy> = {
     historyClone: '克隆为新批次',
     historyResume: '继续未完成任务',
     historyResumeReady: '恢复批次已载入；配置保持锁定，已完成结果不会重复处理。',
+    historyOriginalValidationFailed: '历史原图未能全部通过当前版本的导入校验',
+    historyProviderUnavailable: '原处理批次的供应商当前不可用',
+    historyRecoveryLoadedDetail: '已从恢复点载入',
+    historyProviderSelectionRequired: '原供应商已不可用，请选择当前可用的供应商后再开始。',
     historyExitResume: '退出恢复',
     historyResultsOnly: '此记录只保留结果，不能重新运行。',
     historyKeepResults: '只保留结果',
@@ -451,6 +459,10 @@ const copies: Record<UiLocale, AppCopy> = {
     historyClone: '複製為新批次',
     historyResume: '繼續未完成工作',
     historyResumeReady: '恢復批次已載入；設定保持鎖定，已完成結果不會重複處理。',
+    historyOriginalValidationFailed: '歷史原圖未能全部通過目前版本的匯入驗證',
+    historyProviderUnavailable: '原處理批次的供應商目前不可用',
+    historyRecoveryLoadedDetail: '已從恢復點載入',
+    historyProviderSelectionRequired: '原供應商已不可用，請選擇目前可用的供應商後再開始。',
     historyExitResume: '退出恢復',
     historyResultsOnly: '此記錄只保留結果，不能重新執行。',
     historyKeepResults: '只保留結果',

@@ -1,4 +1,5 @@
 import {
+  decodeLockedProcessingConfig,
   lockProcessingConfig,
   type LockedProcessingConfig,
   type WebSettings,
@@ -100,6 +101,7 @@ export type LocalHistoryCleanupOperation =
   | 'keep-results-only'
   | 'remove-queued-item'
   | 'resume-batch'
+  | 'replace-result'
   | 'staged-write';
 
 export type LocalHistoryCleanupRecord = {
@@ -180,6 +182,15 @@ function itemAssetPath(
   return assetPath(batchId, item.order, kind);
 }
 
+function versionedResultPath(
+  batchId: string,
+  item: LocalHistoryItem,
+  timestamp: string,
+): string {
+  const version = timestamp.replace(/[^0-9A-Za-z-]/gu, '-');
+  return `${itemAssetPath(batchId, item, 'result')}-${version}`;
+}
+
 function nextAssetSlot(batch: LocalHistoryBatch): number {
   let nextSlot = 0;
   for (const item of batch.items) {
@@ -215,6 +226,9 @@ function migrateBatchSchema(batch: LocalHistoryBatch): void {
     if (!legacy.settings) throw new Error('本地历史缺少锁定处理配置');
     legacy.lockedConfig = lockProcessingConfig(legacy.settings);
   }
+  const decoded = decodeLockedProcessingConfig(legacy.lockedConfig);
+  if (!decoded) throw new Error('本地历史锁定处理配置版本不受支持或内容损坏');
+  legacy.lockedConfig = decoded;
   delete legacy.settings;
   batch.schemaVersion = LOCAL_HISTORY_SCHEMA_VERSION;
 }
@@ -353,20 +367,56 @@ export class LocalHistory {
     const batch = await this.index.get(batchId);
     requireBatch(batch, batchId);
     const item = requireItem(batch, itemId);
+    const timestamp = this.clock.now().toISOString();
 
     if (input.result) {
-      const path = itemAssetPath(batch.id, item, 'result');
-      await this.assets.put(path, input.result);
-      item.result = toAsset(
-        path,
-        resultFileName(item.original?.fileName, item.id),
-        input.result,
-      );
+      const previousResult = item.result;
+      const path = versionedResultPath(batch.id, item, timestamp);
+      const stagedWrite: LocalHistoryCleanupRecord = {
+        id: cleanupId('staged-write', `${batch.id}:${item.id}`, timestamp),
+        batchId: batch.id,
+        operation: 'staged-write',
+        createdAt: timestamp,
+        unreleasedBytes: input.result.size,
+        target: { type: 'assets', paths: [path] },
+      };
+      await this.index.commit({ putCleanup: stagedWrite });
+      try {
+        await this.assets.put(path, input.result);
+        item.result = toAsset(
+          path,
+          resultFileName(item.original?.fileName, item.id),
+          input.result,
+        );
+        item.status = input.status;
+        item.summary = input.summary === undefined ? item.summary : structuredClone(input.summary);
+        item.error = input.error;
+        batch.updatedAt = timestamp;
+        const replacedResultCleanup: LocalHistoryCleanupRecord | undefined = previousResult
+          ? {
+              ...stagedWrite,
+              operation: 'replace-result',
+              unreleasedBytes: previousResult.size,
+              target: { type: 'assets', paths: [previousResult.path] },
+            }
+          : undefined;
+        await this.index.commit({
+          putBatch: batch,
+          ...(replacedResultCleanup
+            ? { putCleanup: replacedResultCleanup }
+            : { deleteCleanupId: stagedWrite.id }),
+        });
+        if (replacedResultCleanup) await this.executeCleanup(replacedResultCleanup);
+        return cloneBatch(batch);
+      } catch (error) {
+        await this.executeCleanup(stagedWrite);
+        throw error;
+      }
     }
     item.status = input.status;
     item.summary = input.summary === undefined ? item.summary : structuredClone(input.summary);
     item.error = input.error;
-    batch.updatedAt = this.clock.now().toISOString();
+    batch.updatedAt = timestamp;
     await this.index.put(batch);
     return cloneBatch(batch);
   }
@@ -389,14 +439,32 @@ export class LocalHistory {
       newIds.add(source.id);
     }
 
-    const writtenPaths: string[] = [];
     const appended: LocalHistoryItem[] = [];
     let slot = nextAssetSlot(batch);
+    const timestamp = this.clock.now().toISOString();
+    const plannedPaths = sources.flatMap((source, index) => {
+      const plannedSlot = slot + index;
+      return [
+        assetPath(batch.id, plannedSlot, 'original'),
+        ...(source.thumbnail ? [assetPath(batch.id, plannedSlot, 'thumbnail')] : []),
+      ];
+    });
+    const stagedWrite: LocalHistoryCleanupRecord = {
+      id: cleanupId('staged-write', batch.id, timestamp),
+      batchId: batch.id,
+      operation: 'staged-write',
+      createdAt: timestamp,
+      unreleasedBytes: sources.reduce(
+        (total, source) => total + source.file.size + (source.thumbnail?.size ?? 0),
+        0,
+      ),
+      target: { type: 'assets', paths: plannedPaths },
+    };
+    await this.index.commit({ putCleanup: stagedWrite });
     try {
       for (const source of sources) {
         const originalPath = assetPath(batch.id, slot, 'original');
         await this.assets.put(originalPath, source.file);
-        writtenPaths.push(originalPath);
         const item: LocalHistoryItem = {
           id: source.id,
           order: batch.items.length + appended.length,
@@ -409,7 +477,6 @@ export class LocalHistory {
         if (source.thumbnail) {
           const thumbnailPath = assetPath(batch.id, slot, 'thumbnail');
           await this.assets.put(thumbnailPath, source.thumbnail);
-          writtenPaths.push(thumbnailPath);
           item.thumbnail = toAsset(
             thumbnailPath,
             `${source.file.name}.thumbnail`,
@@ -421,7 +488,6 @@ export class LocalHistory {
       }
 
       batch.items.push(...appended);
-      const timestamp = this.clock.now().toISOString();
       batch.updatedAt = timestamp;
       batch.recoveryPoint = {
         savedAt: timestamp,
@@ -430,12 +496,13 @@ export class LocalHistory {
           batch.items.findIndex((item) => item.status === 'queued'),
         ),
       };
-      await this.index.put(batch);
+      await this.index.commit({
+        putBatch: batch,
+        deleteCleanupId: stagedWrite.id,
+      });
       return cloneBatch(batch);
     } catch (error) {
-      await Promise.all(
-        writtenPaths.map((path) => this.assets.delete(path).catch(() => undefined)),
-      );
+      await this.executeCleanup(stagedWrite);
       throw error;
     }
   }
@@ -460,10 +527,22 @@ export class LocalHistory {
       savedAt: timestamp,
       nextItemIndex: nextItemIndex < 0 ? batch.items.length : nextItemIndex,
     };
-    await this.index.put(batch);
-    await Promise.all(
-      removable.map((asset) => this.assets.delete(asset.path).catch(() => undefined)),
-    );
+    const cleanup: LocalHistoryCleanupRecord = {
+      id: cleanupId('remove-queued-item', batch.id, timestamp),
+      batchId: batch.id,
+      operation: 'remove-queued-item',
+      createdAt: timestamp,
+      unreleasedBytes: removable.reduce((total, asset) => total + asset.size, 0),
+      target: {
+        type: 'assets',
+        paths: removable.map((asset) => asset.path),
+      },
+    };
+    await this.index.commit({
+      putBatch: batch,
+      ...(removable.length > 0 ? { putCleanup: cleanup } : {}),
+    });
+    if (removable.length > 0) await this.executeCleanup(cleanup);
     return cloneBatch(batch);
   }
 
@@ -593,10 +672,22 @@ export class LocalHistory {
       savedAt: timestamp,
       nextItemIndex: nextItemIndex < 0 ? batch.items.length : nextItemIndex,
     };
-    await this.index.put(batch);
-    await Promise.all(
-      removableResults.map((asset) => this.assets.delete(asset.path).catch(() => undefined)),
-    );
+    const cleanup: LocalHistoryCleanupRecord = {
+      id: cleanupId('resume-batch', batch.id, timestamp),
+      batchId: batch.id,
+      operation: 'resume-batch',
+      createdAt: timestamp,
+      unreleasedBytes: removableResults.reduce((total, asset) => total + asset.size, 0),
+      target: {
+        type: 'assets',
+        paths: removableResults.map((asset) => asset.path),
+      },
+    };
+    await this.index.commit({
+      putBatch: batch,
+      ...(removableResults.length > 0 ? { putCleanup: cleanup } : {}),
+    });
+    if (removableResults.length > 0) await this.executeCleanup(cleanup);
     return cloneBatch(batch);
   }
 

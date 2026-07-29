@@ -9,12 +9,10 @@ import {
 } from 'react';
 import {
   WEB_SETTINGS_STORAGE_KEY,
-  createWebSettingsDraftFromLockedConfig,
   decodeWebSettings,
   defaultWebProviderProfiles,
   encodeWebSettings,
   normalizeProviderTargetBinding,
-  restoreWebSettingsFromLockedConfig,
   translationProviderOptions,
   validateProviderBaseUrl,
   type ProcessMode,
@@ -28,6 +26,8 @@ import brandWordmarkUrl from '../../../public/brand/shinobu-wordmark.svg';
 import { Icon, type IconName } from './icons';
 import { describeImportRejection, getCopy } from './i18n';
 import { HistoryView } from './features/history/HistoryView';
+import { createBrowserLocalHistoryEnvironment } from './features/history/browserLocalHistoryLifecycle';
+import { createHistoryWorkbenchAdapter } from './features/history/historyWorkbenchAdapter';
 import { SettingsView } from './features/settings/SettingsView';
 import {
   ContinuousCamera,
@@ -182,12 +182,15 @@ export function App() {
       historyWorkbenchAdapterRef.current?.discardRecovery(batchId);
     },
   }), []);
-  const localHistory = useLocalHistoryLifecycle(historyWorkbench);
+  const localHistory = useMemo(
+    () => createBrowserLocalHistoryEnvironment(historyWorkbench),
+    [historyWorkbench],
+  );
+  const historySnapshot = useLocalHistoryLifecycle(localHistory.lifecycle);
   const pwa = usePwaLifecycle();
   const pwaInstall = usePwaInstall();
 
   const copy = getCopy(settings.uiLocale);
-  const historySnapshot = localHistory.snapshot;
   const historyCleanupFaultMessage = historySnapshot.faults.length > 0
     ? settings.uiLocale === 'zh-TW'
       ? `${historySnapshot.faults.length} 項本機資源仍待清理，尚未釋放 `
@@ -225,6 +228,8 @@ export function App() {
     }),
     [imageImportLimits],
   );
+
+  useEffect(() => () => localHistory.dispose(), [localHistory]);
   const invalidateChangedLockedProvider = (nextSettings: WebSettings): void => {
     const providerId = nextSettings.translationProviderId;
     let changed = true;
@@ -245,120 +250,87 @@ export function App() {
       if (job.resultUrl) URL.revokeObjectURL(job.resultUrl);
     });
   };
-  historyWorkbenchAdapterRef.current = {
-    occupied: () => Boolean(
-      activeProcessingBatchRef.current
-      || resumeHistoryBatchRef.current
-      || queueRef.current.length > 0
-    ),
-    async installRecovery(preparation) {
-      const orderedItems = [...preparation.batch.items]
-        .sort((left, right) => left.order - right.order);
-      const imported = await importer.importFiles(preparation.files, []);
-      if (imported.accepted.length !== orderedItems.length) {
-        imported.accepted.forEach((image) => URL.revokeObjectURL(image.thumbnailUrl));
-        throw new Error('历史原图未能全部通过当前版本的导入校验');
-      }
-      const nextSettings = restoreWebSettingsFromLockedConfig(
-        preparation.batch.lockedConfig,
-        settings,
-      );
-      if (!nextSettings) {
-        imported.accepted.forEach((image) => URL.revokeObjectURL(image.thumbnailUrl));
-        throw new Error('原处理批次的供应商当前不可用');
-      }
-      const restoredImages = imported.accepted.map((image, index) => ({
-        ...image,
-        id: orderedItems[index].id,
-      }));
-      const restoredJobs: Record<string, QueueJobState> = {};
-      for (const item of orderedItems) {
-        restoredJobs[item.id] = item.status === 'done'
-          ? {
-              status: 'done',
-              progress: { stage: 'done', detail: '已从恢复点载入' },
-            }
-          : {
-              status: item.status === 'running' ? 'queued' : item.status,
-              error: item.error,
-            };
-      }
-
-      invalidateChangedLockedProvider(nextSettings);
-      clearWorkbenchFiles();
-      preRecoverySettingsRef.current = structuredClone(settings);
-      queueRef.current = restoredImages;
-      jobsRef.current = restoredJobs;
-      setQueue(restoredImages);
-      setJobs(restoredJobs);
-      setSelectedId(
-        orderedItems.find((item) => item.status !== 'done')?.id
-        ?? orderedItems[0]?.id
-        ?? null,
-      );
-      setPreviewMode('original');
-      setSettings(nextSettings);
-      resumeHistoryBatchRef.current = preparation.batch;
-      setResumeHistoryBatchId(preparation.batch.id);
-      setDraftProviderSelectionRequired(false);
-      setRejections([]);
-      setBatchNotice(copy.historyResumeReady);
-      setHistoryActionError(undefined);
-      setActiveView('workbench');
-    },
-    async installDraft(preparation) {
-      const imported = await importer.importFiles(preparation.files, []);
-      if (imported.accepted.length !== preparation.files.length) {
-        imported.accepted.forEach((image) => URL.revokeObjectURL(image.thumbnailUrl));
-        throw new Error('历史原图未能全部通过当前版本的导入校验');
-      }
-      const draft = createWebSettingsDraftFromLockedConfig(
-        preparation.sourceBatch.lockedConfig,
-        settings,
-      );
-      if (!draft.providerSelectionRequired) invalidateChangedLockedProvider(draft.settings);
-      clearWorkbenchFiles();
-      preRecoverySettingsRef.current = null;
-      queueRef.current = imported.accepted;
-      jobsRef.current = {};
-      setQueue(imported.accepted);
-      setJobs({});
-      setSelectedId(imported.accepted[0]?.id ?? null);
-      setPreviewMode('original');
-      setSettings(draft.settings);
-      resumeHistoryBatchRef.current = null;
-      setResumeHistoryBatchId(undefined);
-      setDraftProviderSelectionRequired(draft.providerSelectionRequired);
-      setProviderDetailsOpen(draft.providerSelectionRequired);
-      setRejections([]);
-      setBatchNotice(
-        draft.providerSelectionRequired
-          ? '原供应商已不可用，请选择当前可用的供应商后再开始。'
-          : '',
-      );
-      setHistoryActionError(undefined);
-      setActiveView('workbench');
-    },
-    discardRecovery(batchId) {
-      if (resumeHistoryBatchRef.current?.id !== batchId) return;
-      clearWorkbenchFiles();
-      queueRef.current = [];
-      jobsRef.current = {};
-      setQueue([]);
-      setJobs({});
-      setSelectedId(null);
-      setPreviewMode('original');
-      if (preRecoverySettingsRef.current) {
-        setSettings(preRecoverySettingsRef.current);
-      }
-      preRecoverySettingsRef.current = null;
-      resumeHistoryBatchRef.current = null;
-      setResumeHistoryBatchId(undefined);
-      setDraftProviderSelectionRequired(false);
-      setRejections([]);
-      setBatchNotice('');
-    },
+  const replaceWorkbenchFiles = (
+    images: ImportedImage[],
+    nextJobs: Record<string, QueueJobState>,
+    nextSelectedId: string | null,
+  ): void => {
+    clearWorkbenchFiles();
+    queueRef.current = images;
+    jobsRef.current = nextJobs;
+    setQueue(images);
+    setJobs(nextJobs);
+    setSelectedId(nextSelectedId);
+    setPreviewMode('original');
   };
+  historyWorkbenchAdapterRef.current = createHistoryWorkbenchAdapter({
+    importer,
+    copy,
+    host: {
+      occupied: () => Boolean(
+        activeProcessingBatchRef.current
+        || resumeHistoryBatchRef.current
+        || queueRef.current.length > 0
+      ),
+      currentSettings: () => settings,
+      installRecovery(installation) {
+        invalidateChangedLockedProvider(installation.settings);
+        preRecoverySettingsRef.current = structuredClone(settings);
+        replaceWorkbenchFiles(
+          installation.images,
+          installation.jobs,
+          installation.batch.items.find((item) => item.status !== 'done')?.id
+            ?? installation.batch.items[0]?.id
+            ?? null,
+        );
+        setSettings(installation.settings);
+        resumeHistoryBatchRef.current = installation.batch;
+        setResumeHistoryBatchId(installation.batch.id);
+        setDraftProviderSelectionRequired(false);
+        setRejections([]);
+        setBatchNotice(copy.historyResumeReady);
+        setHistoryActionError(undefined);
+        setActiveView('workbench');
+      },
+      installDraft(installation) {
+        if (!installation.providerSelectionRequired) {
+          invalidateChangedLockedProvider(installation.settings);
+        }
+        replaceWorkbenchFiles(
+          installation.images,
+          {},
+          installation.images[0]?.id ?? null,
+        );
+        setSettings(installation.settings);
+        preRecoverySettingsRef.current = null;
+        resumeHistoryBatchRef.current = null;
+        setResumeHistoryBatchId(undefined);
+        setDraftProviderSelectionRequired(installation.providerSelectionRequired);
+        setProviderDetailsOpen(installation.providerSelectionRequired);
+        setRejections([]);
+        setBatchNotice(
+          installation.providerSelectionRequired
+            ? copy.historyProviderSelectionRequired
+            : '',
+        );
+        setHistoryActionError(undefined);
+        setActiveView('workbench');
+      },
+      discardRecovery(batchId) {
+        if (resumeHistoryBatchRef.current?.id !== batchId) return;
+        replaceWorkbenchFiles([], {}, null);
+        if (preRecoverySettingsRef.current) {
+          setSettings(preRecoverySettingsRef.current);
+        }
+        preRecoverySettingsRef.current = null;
+        resumeHistoryBatchRef.current = null;
+        setResumeHistoryBatchId(undefined);
+        setDraftProviderSelectionRequired(false);
+        setRejections([]);
+        setBatchNotice('');
+      },
+    },
+  });
   const selectedImage = queue.find((image) => image.id === selectedId) ?? null;
   const selectedJob = selectedId ? jobs[selectedId] : undefined;
   const activeProviderProfile = settings.providerProfiles[settings.translationProviderId];

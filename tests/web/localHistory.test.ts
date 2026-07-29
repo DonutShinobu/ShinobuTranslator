@@ -146,6 +146,25 @@ describe('local history module', () => {
     expect((await index.get(created.id))?.schemaVersion).toBe(3);
   });
 
+  it('rejects invalid or too-new locked processing configuration at the storage boundary', async () => {
+    const { history, index } = setup();
+    const created = await history.createBatch({
+      settings: createDefaultWebSettings('zh-CN'),
+      versions,
+      items: inputItems().slice(0, 1),
+    });
+    await index.put({
+      ...created,
+      lockedConfig: {
+        ...created.lockedConfig,
+        schemaVersion: 99,
+      } as unknown as typeof created.lockedConfig,
+    });
+
+    await expect(history.get(created.id)).rejects.toThrow(/锁定处理配置/u);
+    await expect(history.list()).rejects.toThrow(/锁定处理配置/u);
+  });
+
   it('records results and versioned recovery points without changing the original settings', async () => {
     const { history } = setup();
     const settings = createDefaultWebSettings('zh-TW');
@@ -353,7 +372,7 @@ describe('local history module', () => {
       status: 'done',
       result: new Blob(['third-result'], { type: 'image/png' }),
     });
-    expect(completed.items[0].result?.path).toBe('batch-1/items/2/result');
+    expect(completed.items[0].result?.path).toMatch(/^batch-1\/items\/2\/result-/u);
     expect(await assets.get('batch-1/items/0/original')).toHaveProperty(
       'size',
       'original-one'.length,
@@ -383,6 +402,43 @@ describe('local history module', () => {
     await expect(history.removeQueuedItem(batch.id, 'image-a')).rejects.toThrow(
       /尚未开始/u,
     );
+  });
+
+  it('records retryable cleanup debt when removing a queued task cannot release its assets', async () => {
+    class FailingDeleteAssets extends MemoryLocalHistoryAssetAdapter {
+      failDeletes = false;
+
+      override async delete(path: string): Promise<void> {
+        if (this.failDeletes) throw new Error(`OPFS unavailable: ${path}`);
+        await super.delete(path);
+      }
+    }
+    const index = new MemoryLocalHistoryIndexAdapter();
+    const assets = new FailingDeleteAssets();
+    const history = new LocalHistory(
+      index,
+      assets,
+      new StepClock(),
+      { create: () => 'remove-cleanup-batch' },
+    );
+    const batch = await history.createBatch({
+      settings: createDefaultWebSettings('zh-CN'),
+      versions,
+      items: inputItems(),
+    });
+    assets.failDeletes = true;
+
+    const remaining = await history.removeQueuedItem(batch.id, 'image-b');
+
+    expect(remaining.items.map((item) => item.id)).toEqual(['image-a']);
+    expect(await history.listCleanupFaults()).toEqual([
+      expect.objectContaining({
+        batchId: batch.id,
+        operation: 'remove-queued-item',
+        unreleasedBytes: 'original-two'.length,
+        error: expect.stringContaining('OPFS unavailable'),
+      }),
+    ]);
   });
 
   it('refuses to resume when a completed result is missing', async () => {
@@ -415,6 +471,99 @@ describe('local history module', () => {
     await history.keepResultsOnly(batch.id);
 
     await expect(history.resumeBatch(batch.id)).rejects.toThrow(/只保留结果/u);
+  });
+
+  it('records retryable cleanup debt when resume cannot release superseded results', async () => {
+    class FailingDeleteAssets extends MemoryLocalHistoryAssetAdapter {
+      failDeletes = false;
+
+      override async delete(path: string): Promise<void> {
+        if (this.failDeletes) throw new Error(`OPFS unavailable: ${path}`);
+        await super.delete(path);
+      }
+    }
+    const index = new MemoryLocalHistoryIndexAdapter();
+    const assets = new FailingDeleteAssets();
+    const history = new LocalHistory(
+      index,
+      assets,
+      new StepClock(),
+      { create: () => 'resume-cleanup-batch' },
+    );
+    const batch = await history.createBatch({
+      settings: createDefaultWebSettings('zh-CN'),
+      versions,
+      items: inputItems().slice(0, 1),
+    });
+    await history.updateItem(batch.id, 'image-a', {
+      status: 'running',
+      result: new Blob(['superseded-result'], { type: 'image/png' }),
+    });
+    await history.finishBatch(batch.id, 'paused');
+    assets.failDeletes = true;
+
+    const resumed = await history.resumeBatch(batch.id);
+
+    expect(resumed.items[0]).toMatchObject({
+      status: 'queued',
+      result: undefined,
+    });
+    expect(await history.listCleanupFaults()).toEqual([
+      expect.objectContaining({
+        batchId: batch.id,
+        operation: 'resume-batch',
+        unreleasedBytes: 'superseded-result'.length,
+        error: expect.stringContaining('OPFS unavailable'),
+      }),
+    ]);
+  });
+
+  it('commits a replacement result while retaining retryable cleanup debt for the old blob', async () => {
+    class FailingDeleteAssets extends MemoryLocalHistoryAssetAdapter {
+      failDeletes = false;
+
+      override async delete(path: string): Promise<void> {
+        if (this.failDeletes) throw new Error(`OPFS unavailable: ${path}`);
+        await super.delete(path);
+      }
+    }
+    const index = new MemoryLocalHistoryIndexAdapter();
+    const assets = new FailingDeleteAssets();
+    const history = new LocalHistory(
+      index,
+      assets,
+      new StepClock(),
+      { create: () => 'replace-result-batch' },
+    );
+    const batch = await history.createBatch({
+      settings: createDefaultWebSettings('zh-CN'),
+      versions,
+      items: inputItems().slice(0, 1),
+    });
+    const first = await history.updateItem(batch.id, 'image-a', {
+      status: 'done',
+      result: new Blob(['old-result'], { type: 'image/png' }),
+    });
+    assets.failDeletes = true;
+
+    const replaced = await history.updateItem(batch.id, 'image-a', {
+      status: 'done',
+      result: new Blob(['new-result'], { type: 'image/png' }),
+    });
+
+    expect(replaced.items[0].result?.path).not.toBe(first.items[0].result?.path);
+    expect(await assets.get(replaced.items[0].result!.path)).toHaveProperty(
+      'size',
+      'new-result'.length,
+    );
+    expect(await history.listCleanupFaults()).toEqual([
+      expect.objectContaining({
+        batchId: batch.id,
+        operation: 'replace-result',
+        unreleasedBytes: 'old-result'.length,
+        error: expect.stringContaining('OPFS unavailable'),
+      }),
+    ]);
   });
 
   it('rolls back all visible state when a blob write fails before index commit', async () => {
@@ -483,6 +632,108 @@ describe('local history module', () => {
         error: 'OPFS rollback unavailable',
       }),
     ]);
+  });
+
+  it('journals appended assets before writing and keeps rollback debt when final index commit fails', async () => {
+    class FailingFinalCommitIndex extends MemoryLocalHistoryIndexAdapter {
+      failBatchCommit = false;
+
+      override async commit(
+        input: Parameters<MemoryLocalHistoryIndexAdapter['commit']>[0],
+      ): Promise<void> {
+        if (this.failBatchCommit && input.putBatch) throw new Error('index unavailable');
+        await super.commit(input);
+      }
+    }
+    class FailingRollbackAssets extends MemoryLocalHistoryAssetAdapter {
+      failDeletes = false;
+
+      override async delete(path: string): Promise<void> {
+        if (this.failDeletes) throw new Error(`OPFS rollback unavailable: ${path}`);
+        await super.delete(path);
+      }
+    }
+    const index = new FailingFinalCommitIndex();
+    const assets = new FailingRollbackAssets();
+    const history = new LocalHistory(
+      index,
+      assets,
+      new StepClock(),
+      { create: () => 'append-staging-batch' },
+    );
+    const batch = await history.createBatch({
+      settings: createDefaultWebSettings('zh-CN'),
+      versions,
+      items: inputItems().slice(0, 1),
+    });
+    index.failBatchCommit = true;
+    assets.failDeletes = true;
+
+    await expect(history.appendItems(batch.id, [{
+      id: 'image-c',
+      file: file('three.png', 'original-three'),
+      width: 600,
+      height: 900,
+      workingCopy: {
+        required: false,
+        width: 600,
+        height: 900,
+        scale: 1,
+      },
+    }])).rejects.toThrow('index unavailable');
+
+    expect((await history.get(batch.id))?.items.map((item) => item.id)).toEqual(['image-a']);
+    expect(await history.listCleanupFaults()).toEqual([
+      expect.objectContaining({
+        batchId: batch.id,
+        operation: 'staged-write',
+        unreleasedBytes: 'original-three'.length,
+        error: expect.stringContaining('OPFS rollback unavailable'),
+      }),
+    ]);
+  });
+
+  it('journals a result before writing and preserves the previous result if index commit fails', async () => {
+    class FailingFinalCommitIndex extends MemoryLocalHistoryIndexAdapter {
+      failBatchCommit = false;
+
+      override async commit(
+        input: Parameters<MemoryLocalHistoryIndexAdapter['commit']>[0],
+      ): Promise<void> {
+        if (this.failBatchCommit && input.putBatch) throw new Error('index unavailable');
+        await super.commit(input);
+      }
+    }
+    const index = new FailingFinalCommitIndex();
+    const assets = new MemoryLocalHistoryAssetAdapter();
+    const history = new LocalHistory(
+      index,
+      assets,
+      new StepClock(),
+      { create: () => 'result-staging-batch' },
+    );
+    const batch = await history.createBatch({
+      settings: createDefaultWebSettings('zh-CN'),
+      versions,
+      items: inputItems().slice(0, 1),
+    });
+    const first = await history.updateItem(batch.id, 'image-a', {
+      status: 'done',
+      result: new Blob(['first-result'], { type: 'image/png' }),
+    });
+    index.failBatchCommit = true;
+
+    await expect(history.updateItem(batch.id, 'image-a', {
+      status: 'done',
+      result: new Blob(['replacement'], { type: 'image/png' }),
+    })).rejects.toThrow('index unavailable');
+
+    const stored = await history.get(batch.id);
+    expect(stored?.items[0].result).toEqual(first.items[0].result);
+    expect(await assets.get(first.items[0].result!.path)).toHaveProperty(
+      'size',
+      'first-result'.length,
+    );
   });
 
   it('deletes both the batch index and its OPFS asset namespace', async () => {

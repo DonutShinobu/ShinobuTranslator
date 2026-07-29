@@ -246,6 +246,20 @@ type PendingHistoryOperation = {
   cancel: () => void;
 };
 
+type WorkbenchPreparationMode = 'resume' | 'clone';
+
+type PreparedHistoryBatch =
+  | {
+      ready: true;
+      inspection: LocalHistoryInspection;
+      files: File[];
+      claim: HistoryBatchClaim;
+    }
+  | {
+      ready: false;
+      outcome: HistoryOutcome;
+    };
+
 function availability(
   allowed: boolean,
   code: HistoryRejectionCode,
@@ -345,7 +359,7 @@ class LocalHistoryLifecycleImplementation implements LocalHistoryLifecycle {
     this.scheduler = dependencies.scheduler ?? defaultScheduler;
     this.clock = dependencies.clock ?? defaultClock;
     this.unsubscribeCoordinator = dependencies.coordinator.subscribe(() => {
-      if (!this.disposed) void this.enqueue(() => this.refresh());
+      if (!this.disposed) void this.enqueue(() => this.refresh(true));
     });
   }
 
@@ -428,7 +442,7 @@ class LocalHistoryLifecycleImplementation implements LocalHistoryLifecycle {
     for (const listener of this.listeners) listener();
   }
 
-  private async refresh(): Promise<HistoryOutcome> {
+  private async refresh(preserveFailure = false): Promise<HistoryOutcome> {
     if (this.disposed) {
       return {
         status: 'failed',
@@ -439,7 +453,7 @@ class LocalHistoryLifecycleImplementation implements LocalHistoryLifecycle {
     this.state = {
       ...this.state,
       busy: true,
-      failure: undefined,
+      failure: preserveFailure ? this.state.failure : undefined,
     };
     this.emit();
     try {
@@ -461,7 +475,7 @@ class LocalHistoryLifecycleImplementation implements LocalHistoryLifecycle {
             occupiedBatchIds,
           )),
         faults,
-        failure: undefined,
+        failure: preserveFailure ? this.state.failure : undefined,
       };
       this.emit();
       return { status: 'succeeded', type: 'refreshed' };
@@ -486,106 +500,22 @@ class LocalHistoryLifecycleImplementation implements LocalHistoryLifecycle {
   }
 
   private async prepareResume(batchId: string): Promise<HistoryOutcome> {
-    if (this.dependencies.workbench.occupied()) {
-      return {
-        status: 'rejected',
-        code: 'workbench-occupied',
-        batchId,
-      };
-    }
-    const current = this.state.entries.find((entry) => entry.batch.id === batchId);
-    if (!current) {
-      return {
-        status: 'rejected',
-        code: 'batch-not-found',
-        batchId,
-      };
-    }
-    if (!current.eligibility.resume.allowed) {
-      return {
-        status: 'rejected',
-        code: current.eligibility.resume.code,
-        batchId,
-      };
-    }
-    const acquired = await this.dependencies.coordinator.acquire(batchId);
-    if (acquired.status !== 'acquired') {
-      return {
-        status: 'rejected',
-        code: acquired.status === 'occupied'
-          ? 'batch-occupied'
-          : 'coordination-unavailable',
-        batchId,
-      };
-    }
+    let prepared: Extract<PreparedHistoryBatch, { ready: true }> | undefined;
     try {
-      const inspection = await this.dependencies.coordinator.withRead(
-        batchId,
-        () => this.dependencies.history.inspect(batchId),
-      );
-      if (!inspection) {
-        acquired.claim.release();
-        return {
-          status: 'rejected',
-          code: 'batch-not-found',
-          batchId,
-        };
-      }
-      if (inspection.integrity !== 'complete') {
-        acquired.claim.release();
-        return {
-          status: 'rejected',
-          code: 'partial-history',
-          batchId,
-        };
-      }
-      if (!inspection.batch.rerunnable) {
-        acquired.claim.release();
-        return {
-          status: 'rejected',
-          code: 'results-only',
-          batchId,
-        };
-      }
-      if (!isKnownTranslationProviderId(inspection.batch.lockedConfig.provider.id)) {
-        acquired.claim.release();
-        return {
-          status: 'rejected',
-          code: 'provider-unavailable',
-          batchId,
-        };
-      }
-      if (!inspection.batch.items.some(
-        (item) => item.status === 'queued' || item.status === 'running',
-      )) {
-        acquired.claim.release();
-        return {
-          status: 'rejected',
-          code: 'nothing-to-resume',
-          batchId,
-        };
-      }
-      const files: File[] = [];
-      for (const item of [...inspection.batch.items]
-        .sort((left, right) => left.order - right.order)) {
-        if (!item.original) throw new Error(`Missing original asset for ${item.id}`);
-        const blob = await this.dependencies.history.readAsset(item.original);
-        if (!blob) throw new Error(`Missing or corrupt original asset: ${item.original.fileName}`);
-        files.push(new File([blob], item.original.fileName, {
-          type: item.original.mediaType,
-          lastModified: new Date(inspection.batch.createdAt).getTime(),
-        }));
-      }
+      const result = await this.prepareBatch(batchId, 'resume');
+      if (!result.ready) return result.outcome;
+      prepared = result;
       await this.dependencies.workbench.installRecovery({
         kind: 'recovery',
-        batch: inspection.batch,
-        files,
+        batch: prepared.inspection.batch,
+        files: prepared.files,
       });
       this.recoveryClaim?.claim.release();
       this.recoveryClaim = {
         batchId,
-        claim: acquired.claim,
+        claim: prepared.claim,
       };
+      prepared = undefined;
       await this.refresh();
       return {
         status: 'succeeded',
@@ -593,7 +523,7 @@ class LocalHistoryLifecycleImplementation implements LocalHistoryLifecycle {
         batchId,
       };
     } catch (error) {
-      acquired.claim.release();
+      prepared?.claim.release();
       const cause = messageFor(error);
       this.state = {
         ...this.state,
@@ -612,82 +542,18 @@ class LocalHistoryLifecycleImplementation implements LocalHistoryLifecycle {
   }
 
   private async prepareClone(batchId: string): Promise<HistoryOutcome> {
-    if (this.dependencies.workbench.occupied()) {
-      return {
-        status: 'rejected',
-        code: 'workbench-occupied',
-        batchId,
-      };
-    }
-    const current = this.state.entries.find((entry) => entry.batch.id === batchId);
-    if (!current) {
-      return {
-        status: 'rejected',
-        code: 'batch-not-found',
-        batchId,
-      };
-    }
-    if (!current.eligibility.clone.allowed) {
-      return {
-        status: 'rejected',
-        code: current.eligibility.clone.code,
-        batchId,
-      };
-    }
-    const acquired = await this.dependencies.coordinator.acquire(batchId);
-    if (acquired.status !== 'acquired') {
-      return {
-        status: 'rejected',
-        code: acquired.status === 'occupied'
-          ? 'batch-occupied'
-          : 'coordination-unavailable',
-        batchId,
-      };
-    }
+    let prepared: Extract<PreparedHistoryBatch, { ready: true }> | undefined;
     try {
-      const inspection = await this.dependencies.coordinator.withRead(
-        batchId,
-        () => this.dependencies.history.inspect(batchId),
-      );
-      if (!inspection) {
-        return {
-          status: 'rejected',
-          code: 'batch-not-found',
-          batchId,
-        };
-      }
-      if (inspection.integrity !== 'complete') {
-        return {
-          status: 'rejected',
-          code: 'partial-history',
-          batchId,
-        };
-      }
-      if (!inspection.batch.rerunnable) {
-        return {
-          status: 'rejected',
-          code: 'results-only',
-          batchId,
-        };
-      }
-      const files: File[] = [];
-      for (const item of [...inspection.batch.items]
-        .sort((left, right) => left.order - right.order)) {
-        if (!item.original) throw new Error(`Missing original asset for ${item.id}`);
-        const blob = await this.dependencies.history.readAsset(item.original);
-        if (!blob) throw new Error(`Missing or corrupt original asset: ${item.original.fileName}`);
-        files.push(new File([blob], item.original.fileName, {
-          type: item.original.mediaType,
-          lastModified: new Date(inspection.batch.createdAt).getTime(),
-        }));
-      }
+      const result = await this.prepareBatch(batchId, 'clone');
+      if (!result.ready) return result.outcome;
+      prepared = result;
       const providerSelectionRequired = !isKnownTranslationProviderId(
-        inspection.batch.lockedConfig.provider.id,
+        prepared.inspection.batch.lockedConfig.provider.id,
       );
       await this.dependencies.workbench.installDraft({
         kind: 'draft',
-        sourceBatch: inspection.batch,
-        files,
+        sourceBatch: prepared.inspection.batch,
+        files: prepared.files,
         providerSelectionRequired,
       });
       await this.refresh();
@@ -713,73 +579,143 @@ class LocalHistoryLifecycleImplementation implements LocalHistoryLifecycle {
         cause,
       };
     } finally {
-      acquired.claim.release();
+      prepared?.claim.release();
     }
+  }
+
+  private async prepareBatch(
+    batchId: string,
+    mode: WorkbenchPreparationMode,
+  ): Promise<PreparedHistoryBatch> {
+    if (this.dependencies.workbench.occupied()) {
+      return {
+        ready: false,
+        outcome: {
+          status: 'rejected',
+          code: 'workbench-occupied',
+          batchId,
+        },
+      };
+    }
+    const current = this.state.entries.find((entry) => entry.batch.id === batchId);
+    if (!current) {
+      return {
+        ready: false,
+        outcome: {
+          status: 'rejected',
+          code: 'batch-not-found',
+          batchId,
+        },
+      };
+    }
+    const eligibility = mode === 'resume'
+      ? current.eligibility.resume
+      : current.eligibility.clone;
+    if (!eligibility.allowed) {
+      return {
+        ready: false,
+        outcome: {
+          status: 'rejected',
+          code: eligibility.code,
+          batchId,
+        },
+      };
+    }
+    const acquired = await this.dependencies.coordinator.acquire(batchId);
+    if (acquired.status !== 'acquired') {
+      return {
+        ready: false,
+        outcome: {
+          status: 'rejected',
+          code: acquired.status === 'occupied'
+            ? 'batch-occupied'
+            : 'coordination-unavailable',
+          batchId,
+        },
+      };
+    }
+    try {
+      const inspection = await this.dependencies.coordinator.withRead(
+        batchId,
+        () => this.dependencies.history.inspect(batchId),
+      );
+      const rejection = this.preparationRejection(inspection, mode, batchId);
+      if (rejection) {
+        acquired.claim.release();
+        return { ready: false, outcome: rejection };
+      }
+      return {
+        ready: true,
+        inspection: inspection!,
+        files: await this.readOrderedOriginals(inspection!),
+        claim: acquired.claim,
+      };
+    } catch (error) {
+      acquired.claim.release();
+      throw error;
+    }
+  }
+
+  private preparationRejection(
+    inspection: LocalHistoryInspection | null,
+    mode: WorkbenchPreparationMode,
+    batchId: string,
+  ): HistoryOutcome | undefined {
+    let code: HistoryRejectionCode | undefined;
+    if (!inspection) code = 'batch-not-found';
+    else if (inspection.integrity !== 'complete') code = 'partial-history';
+    else if (!inspection.batch.rerunnable) code = 'results-only';
+    else if (
+      mode === 'resume'
+      && !isKnownTranslationProviderId(inspection.batch.lockedConfig.provider.id)
+    ) {
+      code = 'provider-unavailable';
+    } else if (
+      mode === 'resume'
+      && !inspection.batch.items.some(
+        (item) => item.status === 'queued' || item.status === 'running',
+      )
+    ) {
+      code = 'nothing-to-resume';
+    }
+    return code
+      ? {
+          status: 'rejected',
+          code,
+          batchId,
+        }
+      : undefined;
+  }
+
+  private async readOrderedOriginals(
+    inspection: LocalHistoryInspection,
+  ): Promise<File[]> {
+    const files: File[] = [];
+    for (const item of [...inspection.batch.items]
+      .sort((left, right) => left.order - right.order)) {
+      if (!item.original) throw new Error(`Missing original asset for ${item.id}`);
+      const blob = await this.dependencies.history.readAsset(item.original);
+      if (!blob) throw new Error(`Missing or corrupt original asset: ${item.original.fileName}`);
+      files.push(new File([blob], item.original.fileName, {
+        type: item.original.mediaType,
+        lastModified: new Date(inspection.batch.createdAt).getTime(),
+      }));
+    }
+    return files;
   }
 
   private async stageDelete(batchId: string): Promise<HistoryOutcome> {
-    if (this.pendingOperation) {
-      return {
-        status: 'rejected',
-        code: 'pending-operation',
-        batchId,
-      };
-    }
-    const current = this.state.entries.find((entry) => entry.batch.id === batchId);
-    if (!current) {
-      return {
-        status: 'rejected',
-        code: 'batch-not-found',
-        batchId,
-      };
-    }
-    if (!current.eligibility.delete.allowed) {
-      return {
-        status: 'rejected',
-        code: current.eligibility.delete.code,
-        batchId,
-      };
-    }
-    const acquired = await this.dependencies.coordinator.acquire(batchId);
-    if (acquired.status !== 'acquired') {
-      return {
-        status: 'rejected',
-        code: acquired.status === 'occupied'
-          ? 'batch-occupied'
-          : 'coordination-unavailable',
-        batchId,
-      };
-    }
-    const expiresAt = new Date(this.clock.now().getTime() + 10_000).toISOString();
-    const pending: PendingHistoryOperation = {
-      type: 'delete' as const,
-      batchId,
-      claim: acquired.claim,
-      cancel: () => undefined,
-    };
-    pending.cancel = this.scheduler.schedule(
-      10_000,
-      () => this.enqueue(() => this.commitPending(pending)),
-    );
-    this.pendingOperation = pending;
-    this.state = {
-      ...this.state,
-      pending: {
-        type: 'delete',
-        batchId,
-        expiresAt,
-      },
-    };
-    this.emit();
-    return {
-      status: 'succeeded',
-      type: 'pending-staged',
-      operation: 'delete',
-      batchId,
-    };
+    return this.stagePending(batchId, 'delete');
   }
 
   private async stageKeepResultsOnly(batchId: string): Promise<HistoryOutcome> {
+    return this.stagePending(batchId, 'keep-results-only');
+  }
+
+  private async stagePending(
+    batchId: string,
+    type: PendingHistoryOperation['type'],
+  ): Promise<HistoryOutcome> {
     if (this.pendingOperation) {
       return {
         status: 'rejected',
@@ -795,10 +731,13 @@ class LocalHistoryLifecycleImplementation implements LocalHistoryLifecycle {
         batchId,
       };
     }
-    if (!current.eligibility.keepResultsOnly.allowed) {
+    const eligibility = type === 'delete'
+      ? current.eligibility.delete
+      : current.eligibility.keepResultsOnly;
+    if (!eligibility.allowed) {
       return {
         status: 'rejected',
-        code: current.eligibility.keepResultsOnly.code,
+        code: eligibility.code,
         batchId,
       };
     }
@@ -814,7 +753,7 @@ class LocalHistoryLifecycleImplementation implements LocalHistoryLifecycle {
     }
     const expiresAt = new Date(this.clock.now().getTime() + 10_000).toISOString();
     const pending: PendingHistoryOperation = {
-      type: 'keep-results-only',
+      type,
       batchId,
       claim: acquired.claim,
       cancel: () => undefined,
@@ -827,7 +766,7 @@ class LocalHistoryLifecycleImplementation implements LocalHistoryLifecycle {
     this.state = {
       ...this.state,
       pending: {
-        type: 'keep-results-only',
+        type,
         batchId,
         expiresAt,
       },
@@ -836,7 +775,7 @@ class LocalHistoryLifecycleImplementation implements LocalHistoryLifecycle {
     return {
       status: 'succeeded',
       type: 'pending-staged',
-      operation: 'keep-results-only',
+      operation: type,
       batchId,
     };
   }
@@ -869,6 +808,7 @@ class LocalHistoryLifecycleImplementation implements LocalHistoryLifecycle {
     pending: PendingHistoryOperation,
   ): Promise<void> {
     if (this.pendingOperation !== pending || this.disposed) return;
+    let failure: LocalHistorySnapshot['failure'];
     try {
       await this.dependencies.coordinator.withWrite(
         pending.batchId,
@@ -878,12 +818,9 @@ class LocalHistoryLifecycleImplementation implements LocalHistoryLifecycle {
       );
       this.dependencies.coordinator.publish(pending.batchId);
     } catch (error) {
-      this.state = {
-        ...this.state,
-        failure: {
-          operation: pending.type,
-          cause: messageFor(error),
-        },
+      failure = {
+        operation: pending.type,
+        cause: messageFor(error),
       };
     } finally {
       pending.claim.release();
@@ -893,6 +830,13 @@ class LocalHistoryLifecycleImplementation implements LocalHistoryLifecycle {
         pending: undefined,
       };
       await this.refresh();
+      if (failure) {
+        this.state = {
+          ...this.state,
+          failure,
+        };
+        this.emit();
+      }
     }
   }
 

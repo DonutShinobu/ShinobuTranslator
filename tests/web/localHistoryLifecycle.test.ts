@@ -266,6 +266,83 @@ describe('local history lifecycle module', () => {
     expect(lifecycle.snapshot().entries).toEqual([]);
   });
 
+  it('keeps a delayed logical-commit failure visible after refreshing the snapshot', async () => {
+    class FailingDeleteIndex extends MemoryLocalHistoryIndexAdapter {
+      override async commit(
+        input: Parameters<MemoryLocalHistoryIndexAdapter['commit']>[0],
+      ): Promise<void> {
+        if (input.deleteBatchId) throw new Error('index commit unavailable');
+        await super.commit(input);
+      }
+    }
+    const index = new FailingDeleteIndex();
+    const history = new LocalHistory(
+      index,
+      new MemoryLocalHistoryAssetAdapter(),
+      { now: () => new Date('2026-07-29T00:00:00.000Z') },
+      { create: () => 'batch-1' },
+    );
+    await history.createBatch({
+      settings: createDefaultWebSettings('zh-CN'),
+      versions: {
+        app: '0.1.0',
+        core: '0.8.1',
+        model: 'model-v1',
+        configSchema: 1,
+      },
+      items: [{
+        id: 'image-1',
+        file: file('page.png', 'original'),
+        width: 1200,
+        height: 1800,
+        workingCopy: {
+          required: false,
+          width: 1200,
+          height: 1800,
+          scale: 1,
+        },
+      }],
+    });
+    const timer = manualScheduler();
+    const lifecycle = createLocalHistoryLifecycle({
+      history,
+      coordinator: new MemoryHistoryBatchCoordinator(
+        new MemoryHistoryCoordinationHub(),
+        'failing-delete-tab',
+      ),
+      workbench: workbench(),
+      scheduler: timer.scheduler,
+    });
+    await lifecycle.request({ type: 'refresh' });
+    await lifecycle.request({ type: 'stage-delete', batchId: 'batch-1' });
+
+    await timer.run();
+
+    expect(await history.get('batch-1')).not.toBeNull();
+    expect(lifecycle.snapshot().failure).toEqual({
+      operation: 'delete',
+      cause: 'index commit unavailable',
+    });
+  });
+
+  it('cancels a page-local pending operation when the lifecycle is disposed', async () => {
+    const { history, hub } = await setup();
+    const timer = manualScheduler();
+    const lifecycle = createLocalHistoryLifecycle({
+      history,
+      coordinator: new MemoryHistoryBatchCoordinator(hub, 'closing-tab'),
+      workbench: workbench(),
+      scheduler: timer.scheduler,
+    });
+    await lifecycle.request({ type: 'refresh' });
+    await lifecycle.request({ type: 'stage-delete', batchId: 'batch-1' });
+
+    lifecycle.dispose();
+    await timer.run();
+
+    expect(await history.get('batch-1')).not.toBeNull();
+  });
+
   it('delays results-only cleanup until the undo window expires', async () => {
     const { history, hub } = await setup();
     await history.updateItem('batch-1', 'image-1', {

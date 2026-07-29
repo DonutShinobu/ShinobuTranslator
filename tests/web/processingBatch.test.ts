@@ -239,6 +239,15 @@ describe('processing batch module', () => {
         }
         return super.put(batch);
       }
+
+      override async commit(
+        input: Parameters<MemoryLocalHistoryIndexAdapter['commit']>[0],
+      ): Promise<void> {
+        if (input.putBatch?.items.some((item) => item.status === 'done')) {
+          throw new Error('index write failed');
+        }
+        await super.commit(input);
+      }
     }
 
     const executed: string[] = [];

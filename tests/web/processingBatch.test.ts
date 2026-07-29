@@ -15,11 +15,16 @@ import {
   type ProcessingBatch,
   type ProcessingBatchSnapshot,
 } from '../../apps/web/src/features/processing/processingBatch';
+import {
+  ProcessingRuntimeBlockedError,
+  type ProcessingRuntime,
+} from '../../apps/web/src/features/processing/processingRuntime';
 import type {
   WebPipelineInput,
   WebPipelineResult,
   WebTranslatorCore,
 } from '../../apps/web/src/runtime/webPipeline';
+import { toWebPipelineConfig } from '../../apps/web/src/runtime/webPipelineConfig';
 
 const versions = {
   app: '0.1.0',
@@ -83,6 +88,72 @@ function successfulCore(): WebTranslatorCore {
   };
 }
 
+function readyRuntime(
+  getCore: () => WebTranslatorCore,
+  admit: (pendingOriginalBytes: number) => Promise<void> = async () => undefined,
+  onRelease: () => void = () => undefined,
+): ProcessingRuntime {
+  const snapshot = {
+    status: 'ready',
+    environment: { online: true, visibility: 'visible' },
+    modelConsent: true,
+    capability: {
+      ok: true,
+      supportLevel: 'desktop',
+      backend: 'webgpu',
+      workPixelBudget: 8_000_000,
+      storagePersistent: true,
+      wasmThreads: true,
+      webgpu: true,
+    },
+    modelPackage: {
+      status: 'installed',
+      storedBytes: 500,
+      totalBytes: 500,
+    },
+    modelProbe: { status: 'ready', provider: 'webgpu' },
+    storage: {
+      status: 'ready',
+      usageBytes: 0,
+      quotaBytes: 1_000_000_000,
+      availableBytes: 1_000_000_000,
+      persisted: true,
+    },
+  } as const;
+  return {
+    snapshot: () => structuredClone(snapshot),
+    subscribe(listener) {
+      listener(structuredClone(snapshot));
+      return () => undefined;
+    },
+    assess: () => ({
+      status: 'ready',
+      backend: 'webgpu',
+      workPixelBudget: 8_000_000,
+    }),
+    async prepare(request) {
+      await admit(request.pendingOriginalBytes);
+      const config = toWebPipelineConfig(
+        structuredClone(request.settings),
+        request.credential.value,
+      );
+      let released = false;
+      return {
+        run(input) {
+          if (released) throw new Error('runtime lease released');
+          return getCore().run({ input, config });
+        },
+        admit,
+        release() {
+          released = true;
+          onRelease();
+        },
+      };
+    },
+    dispatch: async () => undefined,
+  };
+}
+
 function waitFor(
   batch: ProcessingBatch,
   predicate: (snapshot: ProcessingBatchSnapshot) => boolean,
@@ -108,10 +179,7 @@ function setup() {
   );
   const workspace = createProcessingBatchWorkspace({
     history,
-    getCore: successfulCore,
-    storage: {
-      admit: async () => undefined,
-    },
+    runtime: readyRuntime(successfulCore),
     readThumbnail: async (image) =>
       new Blob([`thumbnail:${image.id}`], { type: 'image/webp' }),
     createId: () => 'batch-1',
@@ -200,8 +268,7 @@ describe('processing batch module', () => {
     );
     const workspace = createProcessingBatchWorkspace({
       history,
-      getCore: () => ({ ...core, dispose: () => undefined }),
-      storage: { admit: async () => undefined },
+      runtime: readyRuntime(() => ({ ...core, dispose: () => undefined })),
       createId: () => 'batch-write-fault',
     });
     const settings = createDefaultWebSettings('zh-CN');
@@ -326,8 +393,7 @@ describe('processing batch module', () => {
     );
     const workspace = createProcessingBatchWorkspace({
       history,
-      getCore: () => ({ ...core, dispose: () => undefined }),
-      storage: { admit: async () => undefined },
+      runtime: readyRuntime(() => ({ ...core, dispose: () => undefined })),
       createId: () => 'batch-retry',
     });
     const settings = createDefaultWebSettings('zh-CN');
@@ -400,8 +466,7 @@ describe('processing batch module', () => {
     );
     const workspace = createProcessingBatchWorkspace({
       history,
-      getCore: () => ({ ...core, dispose: () => undefined }),
-      storage: { admit: async () => undefined },
+      runtime: readyRuntime(() => ({ ...core, dispose: () => undefined })),
       createId: () => 'batch-partial',
     });
     const settings = createDefaultWebSettings('zh-CN');
@@ -484,8 +549,7 @@ describe('processing batch module', () => {
 
     const workspace = createProcessingBatchWorkspace({
       history,
-      getCore: () => core,
-      storage: { admit: async () => undefined },
+      runtime: readyRuntime(() => core),
       createId: () => 'must-not-be-used',
     });
     const provider = settings.providerProfiles[settings.translationProviderId];
@@ -515,6 +579,7 @@ describe('processing batch module', () => {
 
   it('stops the whole batch, keeps remaining work queued, and resumes without retrying cancellation', async () => {
     const executed: string[] = [];
+    let releaseCount = 0;
     const core = createTranslatorCore<
       WebPipelineInput,
       PipelineConfig,
@@ -552,10 +617,30 @@ describe('processing batch module', () => {
       new StepClock(),
       { create: () => 'unused' },
     );
+    const baseRuntime = readyRuntime(
+      () => ({ ...core, dispose: () => undefined }),
+      async () => undefined,
+      () => {
+        releaseCount += 1;
+      },
+    );
+    let rejectNextPrepare = false;
+    const runtime: ProcessingRuntime = {
+      ...baseRuntime,
+      async prepare(request) {
+        if (rejectNextPrepare) {
+          rejectNextPrepare = false;
+          throw new ProcessingRuntimeBlockedError({
+            status: 'blocked',
+            code: 'OFFLINE',
+          });
+        }
+        return baseRuntime.prepare(request);
+      },
+    };
     const workspace = createProcessingBatchWorkspace({
       history,
-      getCore: () => ({ ...core, dispose: () => undefined }),
-      storage: { admit: async () => undefined },
+      runtime,
       createId: () => 'batch-stop',
     });
     const settings = createDefaultWebSettings('zh-CN');
@@ -579,6 +664,20 @@ describe('processing batch module', () => {
       { id: 'image-a', status: 'cancelled' },
       { id: 'image-b', status: 'queued' },
     ]);
+    expect(releaseCount).toBe(1);
+
+    rejectNextPrepare = true;
+    await expect(batch.dispatch({ type: 'resume' })).rejects.toMatchObject({
+      decision: { code: 'OFFLINE' },
+    });
+    expect(batch.snapshot()).toMatchObject({
+      status: 'paused',
+      execution: {
+        status: 'faulted',
+        code: 'BATCH_EXECUTION_FAILED',
+      },
+      persistence: { status: 'healthy' },
+    });
 
     await batch.dispatch({ type: 'resume' });
     const completed = await waitFor(
@@ -590,6 +689,7 @@ describe('processing batch module', () => {
       { id: 'image-b', status: 'done' },
     ]);
     expect(executed).toEqual(['image-a.png', 'image-b.png']);
+    expect(releaseCount).toBe(2);
   });
 
   it('edits queued tasks through the batch interface while preserving the running task', async () => {
@@ -614,8 +714,7 @@ describe('processing batch module', () => {
     );
     const workspace = createProcessingBatchWorkspace({
       history,
-      getCore: () => ({ ...core, dispose: () => undefined }),
-      storage: { admit: async () => undefined },
+      runtime: readyRuntime(() => ({ ...core, dispose: () => undefined })),
       createId: () => 'batch-edit',
     });
     const settings = createDefaultWebSettings('zh-CN');
@@ -673,8 +772,7 @@ describe('processing batch module', () => {
     let nextId = 0;
     const workspace = createProcessingBatchWorkspace({
       history,
-      getCore: () => ({ ...failingCore, dispose: () => undefined }),
-      storage: { admit: async () => undefined },
+      runtime: readyRuntime(() => ({ ...failingCore, dispose: () => undefined })),
       createId: () => `camera-${++nextId}`,
     });
     const settings = createDefaultWebSettings('zh-CN');
@@ -757,10 +855,9 @@ describe('processing batch module', () => {
     );
     const workspace = createProcessingBatchWorkspace({
       history,
-      getCore: () => {
+      runtime: readyRuntime(() => {
         throw new Error('worker factory crashed');
-      },
-      storage: { admit: async () => undefined },
+      }),
       createId: () => 'batch-bootstrap-fault',
     });
     const settings = createDefaultWebSettings('zh-CN');
@@ -788,63 +885,6 @@ describe('processing batch module', () => {
       persistence: { status: 'healthy' },
       tasks: [{ id: 'image-a', status: 'queued' }],
     });
-  });
-
-  it('validates a resumed credential against the canonical stored settings', async () => {
-    const history = new LocalHistory(
-      new MemoryLocalHistoryIndexAdapter(),
-      new MemoryLocalHistoryAssetAdapter(),
-      new StepClock(),
-      { create: () => 'canonical-batch' },
-    );
-    const settings = createDefaultWebSettings('zh-CN');
-    const providerId = settings.translationProviderId;
-    const stored = await history.createBatch({
-      settings,
-      versions,
-      items: [{
-        id: 'image-a',
-        file: importedImage('image-a').file,
-        width: 1200,
-        height: 1800,
-        workingCopy: {
-          required: false,
-          width: 1200,
-          height: 1800,
-          scale: 1,
-        },
-      }],
-    });
-    await history.finishBatch(stored.id, 'paused');
-    const stale = structuredClone(stored);
-    stale.settings.providerProfiles[providerId].baseUrl = 'https://stale.example/v1';
-    const workspace = createProcessingBatchWorkspace({
-      history,
-      getCore: successfulCore,
-      storage: { admit: async () => undefined },
-    });
-
-    await expect(workspace.resume({
-      batch: stale,
-      images: [importedImage('image-a')],
-      credential: {
-        providerId,
-        target: 'https://stale.example/v1',
-        value: 'runtime-only',
-      },
-    })).rejects.toThrow(/凭据与锁定的翻译提供商目标不匹配/u);
-    expect((await history.get(stored.id))?.status).toBe('paused');
-
-    const canonicalProvider = settings.providerProfiles[providerId];
-    await expect(workspace.resume({
-      batch: stored,
-      images: [importedImage('image-a')],
-      credential: {
-        providerId,
-        target: canonicalProvider.baseUrl,
-        value: '   ',
-      },
-    })).rejects.toThrow(/凭据不能为空/u);
   });
 
   it('validates resumed image identity before committing the recovery transition', async () => {
@@ -875,8 +915,7 @@ describe('processing batch module', () => {
     await history.finishBatch(stored.id, 'paused');
     const workspace = createProcessingBatchWorkspace({
       history,
-      getCore: successfulCore,
-      storage: { admit: async () => undefined },
+      runtime: readyRuntime(successfulCore),
     });
     const provider = settings.providerProfiles[providerId];
 
@@ -924,8 +963,7 @@ describe('processing batch module', () => {
       };
       const workspace = createProcessingBatchWorkspace({
         history,
-        getCore: () => core,
-        storage: { admit: async () => undefined },
+        runtime: readyRuntime(() => core),
         createId: () => `progress-${fault}`,
       });
       const settings = createDefaultWebSettings('zh-CN');

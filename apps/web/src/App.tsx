@@ -53,7 +53,6 @@ import {
   type ImageImportRejection,
   type ImportedImage,
 } from './features/import/imageImporter';
-import { useModelPackage } from './features/models/useModelPackage';
 import { useProviderSecrets } from './features/providers/useProviderSecrets';
 import {
   createProcessingBatchWorkspace,
@@ -65,44 +64,25 @@ import {
   type QueueJobState,
   type QueueJobStatus,
 } from './features/processing/processingBatchHost';
+import type { ProcessingRuntimeDecision } from './features/processing/processingRuntime';
+import { useProcessingRuntime } from './features/processing/useProcessingRuntime';
 import {
   IMAGE_IMPORT_STORAGE_HEADROOM_BYTES,
   assessImageImportStorage,
   formatByteSize as formatBytes,
-  inspectWebStorage,
   type WebStorageSnapshot,
 } from './features/storage/storageBudget';
 import { usePwaLifecycle } from './pwa/usePwaLifecycle';
 import { usePwaInstall } from './pwa/usePwaInstall';
 import { WEB_MODEL_PACKAGE } from './runtime/modelPackage';
-import {
-  probeInstalledProductionModels,
-  type ModelCapabilityProgress,
-} from './runtime/modelCapability';
-import {
-  probeWebRuntimeCapability,
-  type WebRuntimeCapability,
-} from './runtime/capability';
 import { detectWebDeviceProfile } from './runtime/deviceProfile';
-import {
-  createWebTranslatorCore,
-  type WebTranslatorCore,
-} from './runtime/webPipeline';
 
 type MobilePane = 'queue' | 'preview' | 'settings';
 type PreviewMode = 'original' | 'result';
 type PreviewScale = 'fit' | number;
 type ActiveView = 'workbench' | 'history' | 'settings';
-type ModelRuntimeProbeState = {
-  status: 'pending' | 'checking' | 'ready' | 'failed';
-  progress?: ModelCapabilityProgress;
-  provider?: 'webgpu' | 'wasm';
-  error?: string;
-};
-
 const processModes: ReadonlyArray<ProcessMode> = ['translate', 'original', 'erase'];
 const previewZoomSteps = [0.5, 0.75, 1, 1.25, 1.5, 2];
-const MODEL_CONSENT_STORAGE_KEY = 'shinobu:model-download-consent:v1';
 const LOCAL_HISTORY_VERSIONS = {
   app: '0.1.0',
   core: '0.8.1',
@@ -118,14 +98,6 @@ function readInitialSettings(): WebSettings {
     // Storage can be unavailable in private or constrained contexts.
   }
   return decodeWebSettings(serialized, navigator.language).settings;
-}
-
-function readModelConsent(): boolean {
-  try {
-    return localStorage.getItem(MODEL_CONSENT_STORAGE_KEY) === 'accepted';
-  } catch {
-    return false;
-  }
 }
 
 export function App() {
@@ -146,18 +118,9 @@ export function App() {
   const [historyActionError, setHistoryActionError] = useState<string>();
   const [historyBusy, setHistoryBusy] = useState(false);
   const [diagnosticBusy, setDiagnosticBusy] = useState(false);
-  const [storageSnapshot, setStorageSnapshot] = useState<WebStorageSnapshot | null>(null);
-  const [storageChecking, setStorageChecking] = useState(true);
   const [storageImportError, setStorageImportError] = useState<string>();
   const [pendingHistoryDeleteId, setPendingHistoryDeleteId] = useState<string>();
   const [resumeHistoryBatchId, setResumeHistoryBatchId] = useState<string>();
-  const [modelConsent, setModelConsent] = useState(readModelConsent);
-  const [capability, setCapability] = useState<WebRuntimeCapability | null>(null);
-  const [modelRuntimeProbe, setModelRuntimeProbe] = useState<ModelRuntimeProbeState>({
-    status: 'pending',
-  });
-  const [modelProbeAttempt, setModelProbeAttempt] = useState(0);
-  const [capabilityProbeAttempt, setCapabilityProbeAttempt] = useState(0);
   const [providerDetailsOpen, setProviderDetailsOpen] = useState(false);
   const [continuousCameraOpen, setContinuousCameraOpen] = useState(false);
   const [continuousCameraRound, setContinuousCameraRound] =
@@ -172,18 +135,28 @@ export function App() {
   const resumeHistoryBatchRef = useRef<LocalHistoryBatch | null>(null);
   const activeImportPromiseRef = useRef<Promise<void> | null>(null);
   const historyDeleteTimerRef = useRef<number>();
-  const translatorCoreRef = useRef<WebTranslatorCore | null>(null);
-  const runtimeRefreshPendingRef = useRef(false);
   const continuousCameraRoundIdRef = useRef(0);
   const continuousCameraCaptureActiveRef = useRef(false);
   const continuousCameraUrlsRef = useRef<Set<string>>(new Set());
-  const modelPackage = useModelPackage();
+  const {
+    runtime: processingRuntime,
+    snapshot: processingRuntimeSnapshot,
+  } = useProcessingRuntime();
   const providerSecrets = useProviderSecrets(settings.providerProfiles);
   const localHistory = useLocalHistory();
   const pwa = usePwaLifecycle();
   const pwaInstall = usePwaInstall();
 
   const copy = getCopy(settings.uiLocale);
+  const capability = processingRuntimeSnapshot.capability ?? null;
+  const modelPackageState = processingRuntimeSnapshot.modelPackage;
+  const modelRuntimeProbe = processingRuntimeSnapshot.modelProbe;
+  const modelConsent = processingRuntimeSnapshot.modelConsent;
+  const storageChecking = processingRuntimeSnapshot.storage.status === 'checking';
+  const storageSnapshot: WebStorageSnapshot | null =
+    processingRuntimeSnapshot.storage.status === 'checking'
+    ? null
+    : processingRuntimeSnapshot.storage;
   const deviceProfile = useMemo(() => detectWebDeviceProfile(), []);
   const imageImportLimits = useMemo(
     () => imageImportLimitsForDevice(
@@ -212,6 +185,49 @@ export function App() {
     : null;
   const providerReady = providerValidationError === null;
   const totalBytes = queue.reduce((sum, image) => sum + image.file.size, 0);
+  const processingCredential = {
+    providerId: settings.translationProviderId,
+    target: activeProviderProfile.baseUrl,
+    value: activeProviderKey,
+  };
+  const queueRuntimeDecision = processingRuntime.assess({
+    settings,
+    credential: processingCredential,
+    pendingOriginalBytes: totalBytes,
+  });
+  const cameraRuntimeDecision = processingRuntime.assess({
+    settings,
+    credential: processingCredential,
+    pendingOriginalBytes: 0,
+  });
+  const runtimeBlockerMessage = (
+    decision: ProcessingRuntimeDecision,
+  ): string => {
+    if (decision.status === 'ready') return '';
+    switch (decision.code) {
+      case 'OFFLINE':
+        return copy.offlineHistoryOnly;
+      case 'CAPABILITY_CHECKING':
+      case 'MODEL_PACKAGE_CHECKING':
+      case 'MODEL_PROBING':
+      case 'STORAGE_CHECKING':
+        return copy.modelGateChecking;
+      case 'MODEL_CONSENT_REQUIRED':
+      case 'MODEL_PACKAGE_MISSING':
+      case 'MODEL_INSTALLING':
+      case 'MODEL_INSTALL_PAUSED':
+        return copy.modelGatePending;
+      case 'STORAGE_UNAVAILABLE':
+        return copy.storageUnavailable;
+      case 'INSUFFICIENT_STORAGE':
+        return copy.storageImportBlocked(
+          formatBytes(decision.requiredBytes ?? 0),
+          formatBytes(decision.availableBytes ?? 0),
+        );
+      default:
+        return decision.detail ?? copy.startUnavailable;
+    }
+  };
   const storageHardBlocked = storageSnapshot?.status === 'unavailable'
     || (
       storageSnapshot?.status === 'ready'
@@ -248,36 +264,17 @@ export function App() {
   }, [batchRunning]);
 
   const refreshStorage = useCallback(async (): Promise<WebStorageSnapshot> => {
-    setStorageChecking(true);
-    const snapshot = await inspectWebStorage();
-    setStorageSnapshot(snapshot);
-    setStorageChecking(false);
+    await processingRuntime.dispatch({ type: 'refresh-storage' });
+    const snapshot = processingRuntime.snapshot().storage;
+    if (snapshot.status === 'checking') {
+      throw new Error('浏览器存储状态仍在检查');
+    }
     return snapshot;
-  }, []);
+  }, [processingRuntime]);
   const processingWorkspace = useMemo(
     () => createProcessingBatchWorkspace({
       history: localHistory.history,
-      getCore: () => {
-        const core = translatorCoreRef.current ?? createWebTranslatorCore();
-        translatorCoreRef.current = core;
-        return core;
-      },
-      storage: {
-        async admit(pendingOriginalBytes) {
-          const assessment = assessImageImportStorage(
-            await inspectWebStorage(),
-            pendingOriginalBytes,
-          );
-          if (assessment.allowed) return;
-          if (assessment.reason === 'unavailable') {
-            throw new Error('浏览器无法确认本地存储空间');
-          }
-          throw new Error(
-            `本地存储空间不足：需要 ${formatBytes(assessment.requiredBytes)}，`
-            + `当前可用 ${formatBytes(assessment.availableBytes ?? 0)}`,
-          );
-        },
-      },
+      runtime: processingRuntime,
       async readThumbnail(image) {
         try {
           const response = await fetch(image.thumbnailUrl);
@@ -287,47 +284,21 @@ export function App() {
         }
       },
     }),
-    [localHistory.history],
+    [localHistory.history, processingRuntime],
   );
-
-  useEffect(() => {
-    void refreshStorage();
-  }, [refreshStorage]);
-
-  const refreshRuntimeCapability = useCallback((): void => {
-    runtimeRefreshPendingRef.current = false;
-    translatorCoreRef.current?.dispose(
-      new DOMException('页面恢复，正在重建本地推理环境', 'AbortError'),
-    );
-    translatorCoreRef.current = null;
-    setModelRuntimeProbe({ status: 'pending' });
-    setCapability(null);
-    setCapabilityProbeAttempt((attempt) => attempt + 1);
-  }, []);
 
   useEffect(() => {
     const handleVisibilityChange = (): void => {
       if (document.visibilityState === 'hidden') {
-        runtimeRefreshPendingRef.current = true;
         const activeBatch = activeProcessingBatchRef.current;
         if (activeBatch?.snapshot().status === 'running') {
           void activeBatch.dispatch({ type: 'stop' }).catch(() => undefined);
         }
-        return;
-      }
-      const activeSnapshot = activeProcessingBatchRef.current?.snapshot();
-      if (
-        document.visibilityState === 'visible'
-        && runtimeRefreshPendingRef.current
-        && !activeSnapshot?.currentTaskId
-        && !batchRunningRef.current
-      ) {
-        refreshRuntimeCapability();
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [refreshRuntimeCapability]);
+  }, []);
 
   useEffect(() => () => {
     continuousCameraRoundIdRef.current += 1;
@@ -342,7 +313,6 @@ export function App() {
     processingBatchUnsubscribeRef.current?.();
     continuousCameraUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
     continuousCameraUrlsRef.current.clear();
-    translatorCoreRef.current?.dispose();
   }, []);
 
   useEffect(() => () => {
@@ -350,81 +320,6 @@ export function App() {
       clearTimeout(historyDeleteTimerRef.current);
     }
   }, []);
-
-  useEffect(() => {
-    if (!pwa.online) {
-      setCapability({
-        ok: false,
-        reason: copy.offlineHistoryOnly,
-        supportLevel: deviceProfile.supportLevel,
-        backend: 'wasm',
-        workPixelBudget: deviceProfile.initialWorkPixelBudget,
-        storagePersistent: false,
-        wasmThreads: false,
-        webgpu: false,
-      });
-      return undefined;
-    }
-    let active = true;
-    void probeWebRuntimeCapability(WEB_MODEL_PACKAGE.version, {
-      useCache: capabilityProbeAttempt === 0,
-    }).then((result) => {
-      if (active) setCapability(result);
-    });
-    return () => {
-      active = false;
-    };
-  }, [capabilityProbeAttempt, copy.offlineHistoryOnly, deviceProfile, pwa.online]);
-
-  useEffect(() => {
-    if (modelPackage.state.status !== 'installed' || capability?.ok !== true) {
-      setModelRuntimeProbe({ status: 'pending' });
-      return undefined;
-    }
-    let active = true;
-    const controller = new AbortController();
-    setModelRuntimeProbe({ status: 'checking' });
-    void probeInstalledProductionModels({
-      backend: capability.backend,
-      signal: controller.signal,
-      onProgress(progress) {
-        if (active) setModelRuntimeProbe({ status: 'checking', progress });
-      },
-    }).then((result) => {
-      if (!active) return;
-      if (
-        result.ok
-        && result.provider === 'wasm'
-        && capability.backend === 'webgpu'
-      ) {
-        setModelRuntimeProbe({ status: 'checking', provider: 'wasm' });
-        setCapability((current) => current?.ok
-          ? {
-            ...current,
-            backend: 'wasm',
-            workPixelBudget: Math.min(
-              current.workPixelBudget,
-              deviceProfile.mobile ? 4_000_000 : 6_000_000,
-            ),
-          }
-          : current);
-        return;
-      }
-      setModelRuntimeProbe(result.ok
-        ? { status: 'ready', provider: result.provider }
-        : { status: 'failed', error: result.error });
-    });
-    return () => {
-      active = false;
-      controller.abort(new DOMException('能力测试已取消', 'AbortError'));
-    };
-  }, [
-    capability?.backend,
-    capability?.ok,
-    deviceProfile.mobile,
-    modelPackage.state.status,
-    modelProbeAttempt,
-  ]);
 
   useEffect(() => {
     document.documentElement.lang = settings.uiLocale;
@@ -482,12 +377,6 @@ export function App() {
         void refreshStorage();
         if (snapshot.tasks.some((task) => task.status === 'done')) {
           pwaInstall.offerAfterSuccess();
-        }
-        if (
-          runtimeRefreshPendingRef.current
-          && document.visibilityState === 'visible'
-        ) {
-          refreshRuntimeCapability();
         }
       },
     });
@@ -1057,13 +946,10 @@ export function App() {
   };
 
   const acceptModelDownload = (): void => {
-    try {
-      localStorage.setItem(MODEL_CONSENT_STORAGE_KEY, 'accepted');
-    } catch {
-      // Consent still applies to the current session when storage is blocked.
-    }
-    setModelConsent(true);
-    void modelPackage.install();
+    void processingRuntime.dispatch({ type: 'accept-model-download' })
+      .catch((error) => {
+        setBatchNotice(error instanceof Error ? error.message : String(error));
+      });
   };
 
   const cancelCurrent = (): void => {
@@ -1138,10 +1024,7 @@ export function App() {
     if (
       activeImportPromiseRef.current
       || queueRef.current.length === 0
-      || capability?.ok !== true
-      || modelPackage.state.status !== 'installed'
-      || !providerReady
-      || !pwa.online
+      || queueRuntimeDecision.status !== 'ready'
     ) {
       return;
     }
@@ -1171,11 +1054,6 @@ export function App() {
     setJobs(nextJobs);
 
     try {
-      const credential = {
-        providerId: settings.translationProviderId,
-        target: activeProviderProfile.baseUrl,
-        value: activeProviderKey,
-      };
       let processingBatch: ProcessingBatch;
       if (resumedBatchId) {
         const source = resumeHistoryBatchRef.current;
@@ -1186,7 +1064,7 @@ export function App() {
           batch: source,
           images: queueRef.current,
           inputLifetime: 'until-closed',
-          credential,
+          credential: processingCredential,
         });
         resumeHistoryBatchRef.current = null;
       } else {
@@ -1196,7 +1074,7 @@ export function App() {
           initialImages: queueRef.current,
           settings,
           versions: LOCAL_HISTORY_VERSIONS,
-          credential,
+          credential: processingCredential,
         });
       }
       attachProcessingBatch(processingBatch, true);
@@ -1218,7 +1096,7 @@ export function App() {
         versions: LOCAL_HISTORY_VERSIONS,
         device: deviceProfile,
         capability,
-        modelPackage: modelPackage.state,
+        modelPackage: modelPackageState,
         jobs: Object.values(jobs),
         provider: {
           id: settings.translationProviderId,
@@ -1245,35 +1123,17 @@ export function App() {
   const startAllowed = (
     queue.length > 0
     && !importing
-    && capability?.ok === true
-    && modelPackage.state.status === 'installed'
-    && modelRuntimeProbe.status === 'ready'
-    && providerReady
-    && pwa.online
+    && queueRuntimeDecision.status === 'ready'
   );
   const continuousCameraAllowed = (
     !batchRunning
     && !importing
     && !activeImportPromiseRef.current
-    && capability?.ok === true
-    && modelPackage.state.status === 'installed'
-    && modelRuntimeProbe.status === 'ready'
-    && providerReady
-    && pwa.online
-    && !storageHardBlocked
+    && cameraRuntimeDecision.status === 'ready'
     && !resumeHistoryBatchId
   );
   const continuousCameraBlocker = storageImportIssue
-    ?? (!pwa.online
-      ? copy.offlineHistoryOnly
-      : capability === null
-        ? copy.modelGateChecking
-        : capability.ok !== true
-          ? capability.reason
-          : modelPackage.state.status !== 'installed'
-            || modelRuntimeProbe.status !== 'ready'
-            ? copy.modelGatePending
-            : providerValidationError ?? copy.startUnavailable);
+    ?? runtimeBlockerMessage(cameraRuntimeDecision);
 
   const releaseContinuousCameraUrls = (): void => {
     continuousCameraUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
@@ -1288,11 +1148,7 @@ export function App() {
         initialImages: [],
         settings,
         versions: LOCAL_HISTORY_VERSIONS,
-        credential: {
-          providerId: settings.translationProviderId,
-          target: activeProviderProfile.baseUrl,
-          value: activeProviderKey,
-        },
+        credential: processingCredential,
       });
       attachProcessingBatch(batch, false);
       continuousCameraRoundIdRef.current += 1;
@@ -1522,62 +1378,66 @@ export function App() {
   const modelProgressPercent = Math.min(
     100,
     Math.round(
-      (modelPackage.state.storedBytes / Math.max(1, modelPackage.state.totalBytes)) * 100,
+      (modelPackageState.storedBytes / Math.max(1, modelPackageState.totalBytes)) * 100,
     ),
   );
-  const modelGateState = modelPackage.state.status === 'installed'
+  const capabilityFailureDetail = (
+    queueRuntimeDecision.status === 'blocked'
+    && queueRuntimeDecision.code === 'CAPABILITY_FAILED'
+  )
+    ? runtimeBlockerMessage(queueRuntimeDecision)
+    : undefined;
+  const modelGateState = capabilityFailureDetail
+    ? 'error'
+    : modelPackageState.status === 'installed'
     ? modelRuntimeProbe.status === 'ready'
       ? 'ready'
       : modelRuntimeProbe.status === 'failed'
         ? 'error'
         : 'pending'
-    : modelPackage.state.status === 'failed'
+    : modelPackageState.status === 'failed'
       ? 'error'
       : 'pending';
-  const modelGateDetail = modelPackage.state.status === 'checking'
+  const modelGateDetail = capabilityFailureDetail
+    ?? (modelPackageState.status === 'checking'
     ? copy.modelGateChecking
-    : modelPackage.state.status === 'installed'
+    : modelPackageState.status === 'installed'
       ? modelRuntimeProbe.status === 'ready'
         ? copy.modelGateReady
         : modelRuntimeProbe.status === 'failed'
           ? copy.modelGateProbeFailed
-          : copy.modelGateProbing(
-            modelRuntimeProbe.progress?.modelId ?? 'runtime',
-            modelRuntimeProbe.progress?.completed ?? 0,
-            modelRuntimeProbe.progress?.total ?? 4,
-          )
-      : modelPackage.state.status === 'installing'
-        ? modelPackage.state.progress?.phase === 'verifying'
+          : modelRuntimeProbe.status === 'checking'
+            ? copy.modelGateProbing(
+              modelRuntimeProbe.progress?.modelId ?? 'runtime',
+              modelRuntimeProbe.progress?.completed ?? 0,
+              modelRuntimeProbe.progress?.total ?? 4,
+            )
+            : copy.modelGateChecking
+      : modelPackageState.status === 'installing'
+        ? modelPackageState.progress?.phase === 'verifying'
           ? copy.modelGateVerifying
           : copy.modelGateInstalling
-        : modelPackage.state.status === 'paused'
+        : modelPackageState.status === 'paused'
           ? copy.modelGatePaused
-      : modelPackage.state.status === 'failed'
+      : modelPackageState.status === 'failed'
             ? copy.modelGateFailed
-            : copy.modelGatePending;
+            : copy.modelGatePending);
   const startBlockerDetail = queue.length === 0
     ? copy.queueRequired
     : storageImportIssue
-      ?? (!pwa.online
-        ? copy.offlineHistoryOnly
-        : capability === null
-          ? copy.modelGateChecking
-          : capability.ok !== true
-            ? capability.reason
-            : modelPackage.state.status !== 'installed'
-              || modelRuntimeProbe.status !== 'ready'
-              ? modelGateDetail
-              : providerValidationError ?? copy.startUnavailable);
+      ?? runtimeBlockerMessage(queueRuntimeDecision);
+  const queueRuntimeBlockerCode = queueRuntimeDecision.status === 'blocked'
+    ? queueRuntimeDecision.code
+    : undefined;
   const modelInstallActionAvailable = (
-    pwa.online
-    && capability?.ok === true
-    && modelPackage.state.status !== 'installed'
-    && modelPackage.state.status !== 'checking'
-    && modelPackage.state.status !== 'installing'
+    queueRuntimeBlockerCode === 'MODEL_CONSENT_REQUIRED'
+    || queueRuntimeBlockerCode === 'MODEL_PACKAGE_MISSING'
+    || queueRuntimeBlockerCode === 'MODEL_INSTALL_PAUSED'
+    || queueRuntimeBlockerCode === 'MODEL_INSTALL_FAILED'
   );
   const modelProbeRetryAvailable = (
-    modelPackage.state.status === 'installed'
-    && modelRuntimeProbe.status === 'failed'
+    queueRuntimeBlockerCode === 'MODEL_PROBE_FAILED'
+    || queueRuntimeBlockerCode === 'CAPABILITY_FAILED'
   );
   const primaryActionLabel = batchRunning
     ? copy.stopBatch
@@ -1590,7 +1450,7 @@ export function App() {
           : modelInstallActionAvailable
             ? !modelConsent
               ? copy.modelConsent
-              : modelPackage.state.status === 'paused'
+              : modelPackageState.status === 'paused'
                 ? copy.modelResume
                 : copy.modelRetry
             : modelProbeRetryAvailable
@@ -1645,7 +1505,9 @@ export function App() {
       return;
     }
     if (modelProbeRetryAvailable) {
-      setModelProbeAttempt((current) => current + 1);
+      void processingRuntime.dispatch({ type: 'retry' }).catch((error) => {
+        setBatchNotice(error instanceof Error ? error.message : String(error));
+      });
       return;
     }
     if (providerValidationError) {
@@ -2429,55 +2291,65 @@ export function App() {
                 </span>
                 <span>
                   <strong>{modelGateDetail}</strong>
-                  {modelRuntimeProbe.status === 'failed' && (
+                  {modelProbeRetryAvailable && (
                     <>
-                      {modelRuntimeProbe.error && (
+                      {(capabilityFailureDetail
+                        ?? (modelRuntimeProbe.status === 'failed'
+                          ? modelRuntimeProbe.error
+                          : undefined)) && (
                         <small className="model-error" role="alert">
-                          {modelRuntimeProbe.error}
+                          {capabilityFailureDetail
+                            ?? (modelRuntimeProbe.status === 'failed'
+                              ? modelRuntimeProbe.error
+                              : '')}
                         </small>
                       )}
                       <button
                         className="inline-action"
                         type="button"
-                        onClick={() => setModelProbeAttempt((current) => current + 1)}
+                        onClick={() => {
+                          void processingRuntime.dispatch({ type: 'retry' });
+                        }}
                       >
                         {copy.modelProbeRetry}
                       </button>
                     </>
                   )}
-                  {modelPackage.state.status !== 'installed' && (
+                  {modelPackageState.status !== 'installed' && (
                     <>
-                      {modelPackage.state.storedBytes > 0 && (
+                      {modelPackageState.storedBytes > 0 && (
                         <small>
                           {copy.modelDownloadProgress(
                             modelProgressPercent,
-                            formatBytes(modelPackage.state.storedBytes),
-                            formatBytes(modelPackage.state.totalBytes),
+                            formatBytes(modelPackageState.storedBytes),
+                            formatBytes(modelPackageState.totalBytes),
                           )}
                         </small>
                       )}
-                      {modelPackage.state.status === 'installing' && (
+                      {modelPackageState.status === 'installing' && (
                         <progress
                           className="model-progress"
-                          max={modelPackage.state.totalBytes}
-                          value={modelPackage.state.storedBytes}
+                          max={modelPackageState.totalBytes}
+                          value={modelPackageState.storedBytes}
                           aria-label={copy.modelGateInstalling}
                         />
                       )}
-                      {modelPackage.state.error && (
+                      {modelPackageState.error && (
                         <small className="model-error" role="alert">
-                          {modelPackage.state.error}
+                          {modelPackageState.error}
                         </small>
                       )}
-                      {modelPackage.state.status === 'installing' ? (
+                      {modelPackageState.status === 'installing' ? (
                         <button
                           className="inline-action"
                           type="button"
-                          onClick={modelPackage.cancel}
+                          onClick={() => {
+                            void processingRuntime.dispatch({ type: 'cancel-model-download' });
+                          }}
                         >
                           {copy.modelCancel}
                         </button>
-                      ) : modelPackage.state.status !== 'checking' && (
+                      ) : modelPackageState.status !== 'checking' && (
                         <button
                           className="inline-action"
                           type="button"
@@ -2485,7 +2357,7 @@ export function App() {
                         >
                           {!modelConsent
                             ? copy.modelConsent
-                            : modelPackage.state.status === 'paused'
+                            : modelPackageState.status === 'paused'
                               ? copy.modelResume
                               : copy.modelRetry}
                         </button>

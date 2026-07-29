@@ -1,8 +1,4 @@
-import {
-  normalizeProviderTargetBinding,
-  type TranslationProviderId,
-  type WebSettings,
-} from '@shinobu/shared-config';
+import type { WebSettings } from '@shinobu/shared-config';
 import type { PipelineProgress } from '../../../../../src/types';
 import type {
   CreateLocalHistoryItemInput,
@@ -11,11 +7,12 @@ import type {
   LocalHistoryVersions,
 } from '../history/localHistory';
 import type { ImportedImage } from '../import/imageImporter';
-import {
-  type WebPipelineResult,
-  type WebTranslatorCore,
-} from '../../runtime/webPipeline';
-import { toWebPipelineConfig } from '../../runtime/webPipelineConfig';
+import type { WebPipelineResult } from '../../runtime/webPipeline';
+import type {
+  ProcessingRuntime,
+  ProcessingRuntimeCredential,
+  ProcessingRuntimeLease,
+} from './processingRuntime';
 
 export type ProcessingBatchStatus =
   | 'running'
@@ -125,11 +122,7 @@ export interface ProcessingBatch {
   dispatch(command: ProcessingBatchCommand): Promise<ProcessingBatchCommandResult>;
 }
 
-export type ProcessingBatchCredential = {
-  providerId: TranslationProviderId;
-  target: string;
-  value: string;
-};
+export type ProcessingBatchCredential = ProcessingRuntimeCredential;
 
 export type OpenProcessingBatch = {
   kind: 'queue' | 'continuous-camera';
@@ -147,14 +140,9 @@ export type ResumeProcessingBatch = {
   credential: ProcessingBatchCredential;
 };
 
-export type ProcessingBatchStorage = {
-  admit(pendingOriginalBytes: number): Promise<void>;
-};
-
 export type ProcessingBatchWorkspaceDependencies = {
   history: LocalHistory;
-  getCore(): WebTranslatorCore;
-  storage: ProcessingBatchStorage;
+  runtime: ProcessingRuntime;
   readThumbnail?(image: ImportedImage): Promise<Blob | undefined>;
   createId?: () => string;
 };
@@ -215,24 +203,6 @@ async function historyItem(
   };
 }
 
-function validateCredential(
-  settings: WebSettings,
-  credential: ProcessingBatchCredential,
-): void {
-  if (settings.processMode !== 'translate') return;
-  if (!credential.value.trim()) {
-    throw new Error('处理批次翻译凭据不能为空');
-  }
-  const profile = settings.providerProfiles[settings.translationProviderId];
-  if (
-    credential.providerId !== settings.translationProviderId
-    || normalizeProviderTargetBinding(credential.target)
-      !== normalizeProviderTargetBinding(profile.baseUrl)
-  ) {
-    throw new Error('处理批次凭据与锁定的翻译提供商目标不匹配');
-  }
-}
-
 class ProcessingBatchImplementation implements ProcessingBatch {
   private readonly listeners = new Set<ProcessingBatchListener>();
   private readonly tasks: ProcessingTask[];
@@ -245,7 +215,8 @@ class ProcessingBatchImplementation implements ProcessingBatch {
   private runPromise: Promise<void> | undefined;
   private commandTail = Promise.resolve();
   private historyTail = Promise.resolve();
-  private activeExecution: ReturnType<WebTranslatorCore['run']> | undefined;
+  private activeExecution: ReturnType<ProcessingRuntimeLease['run']> | undefined;
+  private runtimeLease: ProcessingRuntimeLease | undefined;
   private stopRequested = false;
   private detached = false;
 
@@ -254,6 +225,7 @@ class ProcessingBatchImplementation implements ProcessingBatch {
     private readonly input: OpenProcessingBatch,
     private readonly dependencies: ProcessingBatchWorkspaceDependencies,
     private readonly release: () => void,
+    runtimeLease: ProcessingRuntimeLease,
     restored?: LocalHistoryBatch,
     restoredResults: ReadonlyMap<string, Blob> = new Map(),
   ) {
@@ -277,6 +249,7 @@ class ProcessingBatchImplementation implements ProcessingBatch {
       || input.inputLifetime === 'until-closed'
     );
     this.historyCreated = Boolean(restored) || input.initialImages.length > 0;
+    this.runtimeLease = runtimeLease;
   }
 
   snapshot(): ProcessingBatchSnapshot {
@@ -363,6 +336,7 @@ class ProcessingBatchImplementation implements ProcessingBatch {
       interruptedTask.progress = undefined;
     }
     this.status = 'paused';
+    this.releaseRuntimeLease();
     this.currentTaskId = undefined;
     this.execution = {
       status: 'faulted',
@@ -401,6 +375,7 @@ class ProcessingBatchImplementation implements ProcessingBatch {
       error: messageFor(error),
     };
     this.status = 'paused';
+    this.releaseRuntimeLease();
     this.emit();
   }
 
@@ -415,6 +390,7 @@ class ProcessingBatchImplementation implements ProcessingBatch {
       }
       this.detached = true;
       this.inputOpen = false;
+      this.releaseRuntimeLease();
       this.emit();
       this.release();
       return { type: 'batch-detached' };
@@ -509,6 +485,7 @@ class ProcessingBatchImplementation implements ProcessingBatch {
             ));
           }
           this.status = 'paused';
+          this.releaseRuntimeLease();
           this.emit();
         } catch (error) {
           this.pauseForPersistence('stop-batch', error);
@@ -527,6 +504,12 @@ class ProcessingBatchImplementation implements ProcessingBatch {
         throw new Error('当前处理批次不能继续运行');
       }
       const nextTaskIndex = this.tasks.findIndex((task) => task.status === 'queued');
+      try {
+        await this.acquireRuntimeLease(0);
+      } catch (error) {
+        await this.failExecution(error);
+        throw error;
+      }
       try {
         if (this.historyCreated) {
           await this.serializeHistoryOperation(() => this.dependencies.history.saveRecoveryPoint(
@@ -571,6 +554,14 @@ class ProcessingBatchImplementation implements ProcessingBatch {
       if (!task || (task.status !== 'failed' && task.status !== 'cancelled')) {
         throw new Error('只能重试失败或已取消的图片任务');
       }
+      if (this.status === 'paused') {
+        try {
+          await this.acquireRuntimeLease(0);
+        } catch (error) {
+          await this.failExecution(error);
+          throw error;
+        }
+      }
       try {
         await this.serializeHistoryOperation(async () => {
           await this.dependencies.history.updateItem(this.id, task.id, {
@@ -591,6 +582,7 @@ class ProcessingBatchImplementation implements ProcessingBatch {
       task.result = undefined;
       task.error = undefined;
       task.errorCode = undefined;
+      this.execution = { status: 'healthy' };
       this.status = 'running';
       this.emit();
       this.kick();
@@ -624,9 +616,15 @@ class ProcessingBatchImplementation implements ProcessingBatch {
       }
       appendedIds.add(image.id);
     }
-    await this.dependencies.storage.admit(
-      command.images.reduce((total, image) => total + image.file.size, 0),
-    );
+    try {
+      await this.acquireRuntimeLease(0);
+      await this.runtimeLease!.admit(
+        command.images.reduce((total, image) => total + image.file.size, 0),
+      );
+    } catch (error) {
+      await this.failExecution(error);
+      throw error;
+    }
     try {
       const items = await Promise.all(
         command.images.map((image) =>
@@ -664,11 +662,8 @@ class ProcessingBatchImplementation implements ProcessingBatch {
   }
 
   private async run(): Promise<void> {
-    const core = this.dependencies.getCore();
-    const config = toWebPipelineConfig(
-      structuredClone(this.input.settings),
-      this.input.credential.value,
-    );
+    await this.acquireRuntimeLease(0);
+    const runtimeLease = this.runtimeLease!;
 
     while (this.status === 'running') {
       const taskIndex = this.tasks.findIndex((task) => task.status === 'queued');
@@ -676,6 +671,7 @@ class ProcessingBatchImplementation implements ProcessingBatch {
         if (this.inputOpen) return;
         if (!this.historyCreated) {
           this.status = 'completed';
+          this.releaseRuntimeLease();
           this.emit();
           this.release();
           return;
@@ -693,6 +689,7 @@ class ProcessingBatchImplementation implements ProcessingBatch {
           await this.serializeHistoryOperation(() =>
             this.dependencies.history.finishBatch(this.id, finalStatus));
           this.status = finalStatus;
+          this.releaseRuntimeLease();
           this.emit();
           this.release();
         } catch (error) {
@@ -716,15 +713,12 @@ class ProcessingBatchImplementation implements ProcessingBatch {
         return;
       }
 
-      const execution = core.run({
-        input: {
-          file: task.image.file,
-          workingCopy: {
-            width: task.image.workingCopy.width,
-            height: task.image.workingCopy.height,
-          },
+      const execution = runtimeLease.run({
+        file: task.image.file,
+        workingCopy: {
+          width: task.image.workingCopy.width,
+          height: task.image.workingCopy.height,
         },
-        config,
       });
       this.activeExecution = execution;
       task.status = 'running';
@@ -773,7 +767,10 @@ class ProcessingBatchImplementation implements ProcessingBatch {
             return;
           }
           this.currentTaskId = undefined;
-          if (!cancelled || stopping) this.status = 'paused';
+          if (!cancelled || stopping) {
+            this.status = 'paused';
+            this.releaseRuntimeLease();
+          }
           this.emit();
           if (cancelled && !stopping) continue;
           return;
@@ -813,6 +810,20 @@ class ProcessingBatchImplementation implements ProcessingBatch {
       this.emit();
     }
   }
+
+  private async acquireRuntimeLease(pendingOriginalBytes: number): Promise<void> {
+    if (this.runtimeLease) return;
+    this.runtimeLease = await this.dependencies.runtime.prepare({
+      settings: this.input.settings,
+      credential: this.input.credential,
+      pendingOriginalBytes,
+    });
+  }
+
+  private releaseRuntimeLease(): void {
+    this.runtimeLease?.release();
+    this.runtimeLease = undefined;
+  }
 }
 
 class ProcessingBatchWorkspaceImplementation implements ProcessingBatchWorkspace {
@@ -828,13 +839,18 @@ class ProcessingBatchWorkspaceImplementation implements ProcessingBatchWorkspace
     if (input.kind === 'queue' && input.initialImages.length === 0) {
       throw new Error('普通处理批次至少需要一张图片');
     }
-    validateCredential(input.settings, input.credential);
     this.active = true;
     const id = this.createId();
+    let runtimeLease: ProcessingRuntimeLease | undefined;
     try {
-      await this.dependencies.storage.admit(
-        input.initialImages.reduce((total, image) => total + image.file.size, 0),
-      );
+      runtimeLease = await this.dependencies.runtime.prepare({
+        settings: input.settings,
+        credential: input.credential,
+        pendingOriginalBytes: input.initialImages.reduce(
+          (total, image) => total + image.file.size,
+          0,
+        ),
+      });
       if (input.initialImages.length > 0) {
         const items = await Promise.all(
           input.initialImages.map((image) =>
@@ -860,10 +876,12 @@ class ProcessingBatchWorkspaceImplementation implements ProcessingBatchWorkspace
         () => {
           this.active = false;
         },
+        runtimeLease,
       );
       batch.start();
       return batch;
     } catch (error) {
+      runtimeLease?.release();
       this.active = false;
       throw error;
     }
@@ -872,10 +890,15 @@ class ProcessingBatchWorkspaceImplementation implements ProcessingBatchWorkspace
   async resume(input: ResumeProcessingBatch): Promise<ProcessingBatch> {
     if (this.active) throw new Error('当前工作台已有活动处理批次');
     this.active = true;
+    let runtimeLease: ProcessingRuntimeLease | undefined;
     try {
       const canonical = await this.dependencies.history.get(input.batch.id);
       if (!canonical) throw new Error(`找不到本地历史批次: ${input.batch.id}`);
-      validateCredential(canonical.settings, input.credential);
+      runtimeLease = await this.dependencies.runtime.prepare({
+        settings: canonical.settings,
+        credential: input.credential,
+        pendingOriginalBytes: 0,
+      });
       if (!canonical.items.some(
         (item) => item.status === 'queued' || item.status === 'running',
       )) {
@@ -914,12 +937,14 @@ class ProcessingBatchWorkspaceImplementation implements ProcessingBatchWorkspace
         () => {
           this.active = false;
         },
+        runtimeLease,
         restored,
         restoredResults,
       );
       batch.start();
       return batch;
     } catch (error) {
+      runtimeLease?.release();
       this.active = false;
       throw error;
     }

@@ -1,7 +1,9 @@
 import type { TranslationProviderId, UiLocale } from '@shinobu/shared-config';
 import { isLocalPipelineErrorCode } from '../../../../../src/shared/localPipelineProtocol';
 import type { PipelineProgress } from '../../../../../src/types';
-import type { ModelPackageState } from '../models/useModelPackage';
+import type {
+  ProcessingRuntimeModelPackageState,
+} from '../processing/processingRuntime';
 import type { WebRuntimeCapability } from '../../runtime/capability';
 import type { WebDeviceProfile } from '../../runtime/deviceProfile';
 
@@ -28,7 +30,7 @@ export type RedactedDiagnosticInput = {
   };
   device: WebDeviceProfile;
   capability: WebRuntimeCapability | null;
-  modelPackage: ModelPackageState;
+  modelPackage: ProcessingRuntimeModelPackageState;
   jobs: readonly DiagnosticJob[];
   provider: {
     id: TranslationProviderId;

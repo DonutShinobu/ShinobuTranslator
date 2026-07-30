@@ -784,7 +784,18 @@ async function runPaddleProfile(
             __shinobuPaddleOcrWarmupBatchSize?: number;
           };
           type BenchmarkApi = {
-            runPipeline(file: File, config: Record<string, unknown>, onProgress: () => void): Promise<{
+            runPipeline(
+              file: File,
+              config: Record<string, unknown>,
+              onProgress: () => void,
+              options?: {
+                runtimeCapabilities?: {
+                  ocrExecution?: {
+                    compactActiveBatch?: boolean;
+                  };
+                };
+              },
+            ): Promise<{
               original: { naturalWidth: number; naturalHeight: number };
               detectedRegions: Array<{
                 id: string;
@@ -862,11 +873,16 @@ async function runPaddleProfile(
             eraseDebug: false,
             collectDebugLog: false,
             ocrEngine,
-            ocrCompactActiveBatch,
             processMode,
           };
           const totalT0 = performance.now();
-          const artifacts = await api.runPipeline(file, config, () => {});
+          const artifacts = await api.runPipeline(file, config, () => {}, {
+            runtimeCapabilities: {
+              ocrExecution: {
+                compactActiveBatch: ocrCompactActiveBatch,
+              },
+            },
+          });
           const totalMs = performance.now() - totalT0;
           const sourceTexts = artifacts.detectedRegions.map((region) => region.sourceText);
           const regions = artifacts.detectedRegions.map((region) => ({

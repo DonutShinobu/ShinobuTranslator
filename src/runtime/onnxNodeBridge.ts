@@ -331,12 +331,16 @@ export async function runDetectWithGpuPreprocess(
 // ---------------------------------------------------------------------------
 
 export async function disposeSession(sessionId: string): Promise<void> {
-  const entry = sessions.get(sessionId);
-  if (!entry) return;
-  if (typeof (entry.session as { release?: () => void }).release === "function") {
-    (entry.session as { release: () => void }).release();
+  const matchingIds = [...sessions.keys()].filter((candidate) =>
+    candidate === sessionId || candidate.startsWith(`${sessionId}:`));
+  for (const matchingId of matchingIds) {
+    const entry = sessions.get(matchingId);
+    if (!entry) continue;
+    if (typeof (entry.session as { release?: () => void }).release === "function") {
+      (entry.session as { release: () => void }).release();
+    }
+    sessions.delete(matchingId);
   }
-  sessions.delete(sessionId);
 }
 
 export async function disposeAll(): Promise<void> {

@@ -94,6 +94,19 @@ const providerReport: ProviderExecutionReport = {
   fallbackTrace: [],
   satisfied: true,
 };
+const unsatisfiedProviderReport: ProviderExecutionReport = {
+  ...providerReport,
+  attempts: [
+    {
+      attempt: 1,
+      provider: 'wasm',
+      outcome: 'failed',
+      reason: 'execution-failed',
+    },
+  ],
+  finalProvider: undefined,
+  satisfied: false,
+};
 
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve!: (value: T) => void;
@@ -255,6 +268,40 @@ describe('OffscreenPipelineHost single-task admission', () => {
     await vi.waitFor(() => expect(mocks.runPipeline).toHaveBeenCalledOnce());
     expect(mocks.runPipeline.mock.calls[0][3]).toMatchObject({
       runtimeCapabilities: capabilities,
+    });
+  });
+
+  it('transports an unsatisfied provider report in structured failure diagnostics', async () => {
+    mocks.runPipeline.mockRejectedValueOnce(Object.assign(
+      new Error('detector failed'),
+      {
+        failure: {
+          code: 'PIPELINE_STAGE_FAILED',
+          stage: 'detect',
+          scope: 'runtime',
+          retryable: false,
+          messageKey: 'pipeline.failure.stage',
+          diagnostics: {
+            providerReports: [unsatisfiedProviderReport],
+          },
+        },
+      },
+    ));
+    const host = createHost();
+    host.connect();
+
+    sendImageJob(port, 'provider-failure');
+
+    await vi.waitFor(() => {
+      expect(port.sent).toContainEqual(expect.objectContaining({
+        type: 'error',
+        jobId: 'provider-failure',
+        error: expect.objectContaining({
+          diagnostics: {
+            providerReports: [unsatisfiedProviderReport],
+          },
+        }),
+      }));
     });
   });
 

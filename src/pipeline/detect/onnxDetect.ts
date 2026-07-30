@@ -768,6 +768,19 @@ type DetectorInference = {
   actualWebnnDeviceType?: WebNnDeviceType;
 };
 
+class DetectorPostProcessingError extends Error {
+  constructor(
+    cause: unknown,
+    readonly providerReports: ProviderExecutionReport[],
+  ) {
+    super(
+      cause instanceof Error ? cause.message : String(cause),
+      { cause },
+    );
+    this.name = "DetectorPostProcessingError";
+  }
+}
+
 async function runDetectorInference(
   handle: WorkerSessionHandle,
   image: PipelineImage,
@@ -830,90 +843,139 @@ export async function detectByOnnx(
   const actualProvider = execution.report.finalProvider;
   const providerReports = [execution.report];
 
-  const detTensor = pickDetTensor(outputTensors);
-  if (detTensor) {
-    const regions = detectCtdRegionsFromDetTensor(detTensor, image, prep);
+  try {
+    const detTensor = pickDetTensor(outputTensors);
+    if (detTensor) {
+      const regions = detectCtdRegionsFromDetTensor(detTensor, image, prep);
 
-    let maskTensor: TensorTransport = detTensor;
-    try {
-      const segTensor = pickSegTensor(outputTensors);
-      if (segTensor.dims.length === 4 && (segTensor.dims[1] ?? 0) >= 1) {
-        maskTensor = segTensor;
+      let maskTensor: TensorTransport = detTensor;
+      try {
+        const segTensor = pickSegTensor(outputTensors);
+        if (segTensor.dims.length === 4 && (segTensor.dims[1] ?? 0) >= 1) {
+          maskTensor = segTensor;
+        }
+      } catch {
+        // 当前模型无独立 seg 输出时，回退使用 det 通道 0 作为粗遮罩。
       }
-    } catch {
-      // 当前模型无独立 seg 输出时，回退使用 det 通道 0 作为粗遮罩。
-    }
 
-    const binaryMask = buildBinaryMaskFromTensor(maskTensor, prep.unpaddedWidth, prep.unpaddedHeight, 0.3, 0);
-    if (!binaryMask) {
-      return { regions, rawMaskCanvas: null, actualProvider, actualWebnnDeviceType, providerReports };
-    }
-
-    return {
-      regions,
-      rawMaskCanvas: buildMaskCanvasFromBinary(binaryMask.mask, binaryMask.width, binaryMask.height, image, platform),
-      actualProvider,
-      actualWebnnDeviceType,
-      providerReports
-    };
-  }
-
-  const blkTensor = pickBlkTensor(outputTensors);
-  if (blkTensor) {
-    const blkBoxes = boxesFromBlk(blkTensor, prep.size, prep.unpaddedWidth, prep.unpaddedHeight);
-    if (blkBoxes.length > 0) {
-      const mapped = mapBoxesToOriginal(
-        blkBoxes.map((item) => item.box),
-        image,
-        prep,
-        0.08,
-        0.1
-      )
-        .filter((box) => box.width / Math.max(1, box.height) <= 1.8)
-        .filter((box) => box.width <= image.naturalWidth * 0.35 && box.height <= image.naturalHeight * 0.45)
-        .sort((a, b) => b.width * b.height - a.width * a.height)
-        .slice(0, 72)
-        .sort((a, b) => a.y - b.y || a.x - b.x);
-
-      if (mapped.length > 0) {
-        const regions = mapped.map(makeRegion);
+      const binaryMask = buildBinaryMaskFromTensor(
+        maskTensor,
+        prep.unpaddedWidth,
+        prep.unpaddedHeight,
+        0.3,
+        0,
+      );
+      if (!binaryMask) {
         return {
           regions,
           rawMaskCanvas: null,
           actualProvider,
           actualWebnnDeviceType,
-          providerReports
+          providerReports,
         };
       }
+
+      return {
+        regions,
+        rawMaskCanvas: buildMaskCanvasFromBinary(
+          binaryMask.mask,
+          binaryMask.width,
+          binaryMask.height,
+          image,
+          platform,
+        ),
+        actualProvider,
+        actualWebnnDeviceType,
+        providerReports,
+      };
     }
+
+    const blkTensor = pickBlkTensor(outputTensors);
+    if (blkTensor) {
+      const blkBoxes = boxesFromBlk(
+        blkTensor,
+        prep.size,
+        prep.unpaddedWidth,
+        prep.unpaddedHeight,
+      );
+      if (blkBoxes.length > 0) {
+        const mapped = mapBoxesToOriginal(
+          blkBoxes.map((item) => item.box),
+          image,
+          prep,
+          0.08,
+          0.1,
+        )
+          .filter((box) => box.width / Math.max(1, box.height) <= 1.8)
+          .filter((box) =>
+            box.width <= image.naturalWidth * 0.35
+            && box.height <= image.naturalHeight * 0.45)
+          .sort((a, b) => b.width * b.height - a.width * a.height)
+          .slice(0, 72)
+          .sort((a, b) => a.y - b.y || a.x - b.x);
+
+        if (mapped.length > 0) {
+          const regions = mapped.map(makeRegion);
+          return {
+            regions,
+            rawMaskCanvas: null,
+            actualProvider,
+            actualWebnnDeviceType,
+            providerReports,
+          };
+        }
+      }
+    }
+
+    const segTensor = pickSegTensor(outputTensors);
+    const binaryMask = buildBinaryMaskFromTensor(
+      segTensor,
+      prep.unpaddedWidth,
+      prep.unpaddedHeight,
+      0.46,
+      0,
+    );
+    if (!binaryMask) {
+      return {
+        regions: [],
+        rawMaskCanvas: null,
+        actualProvider,
+        actualWebnnDeviceType,
+        providerReports,
+      };
+    }
+    const { mask, width, height } = binaryMask;
+
+    const boxes1024 = connectedComponents(mask, width, height);
+    const mapped = mapBoxesToOriginal(boxes1024, image, prep, 0.05, 0.08);
+    const merged = mergeRects(mapped, 5)
+      .filter((box) => box.width / Math.max(1, box.height) <= 1.8)
+      .filter((box) =>
+        box.width <= image.naturalWidth * 0.35
+        && box.height <= image.naturalHeight * 0.45)
+      .sort((a, b) => b.width * b.height - a.width * a.height)
+      .slice(0, 64)
+      .sort((a, b) => a.y - b.y || a.x - b.x);
+
+    if (merged.length === 0) {
+      return {
+        regions: [],
+        rawMaskCanvas: null,
+        actualProvider,
+        actualWebnnDeviceType,
+        providerReports,
+      };
+    }
+
+    const regions = merged.map(makeRegion);
+    return {
+      regions,
+      rawMaskCanvas: buildMaskCanvasFromBinary(mask, width, height, image, platform),
+      actualProvider,
+      actualWebnnDeviceType,
+      providerReports,
+    };
+  } catch (error) {
+    throw new DetectorPostProcessingError(error, providerReports);
   }
-
-  const segTensor = pickSegTensor(outputTensors);
-  const binaryMask = buildBinaryMaskFromTensor(segTensor, prep.unpaddedWidth, prep.unpaddedHeight, 0.46, 0);
-  if (!binaryMask) {
-    return { regions: [], rawMaskCanvas: null, actualProvider, actualWebnnDeviceType, providerReports };
-  }
-  const { mask, width, height } = binaryMask;
-
-  const boxes1024 = connectedComponents(mask, width, height);
-  const mapped = mapBoxesToOriginal(boxes1024, image, prep, 0.05, 0.08);
-  const merged = mergeRects(mapped, 5)
-    .filter((box) => box.width / Math.max(1, box.height) <= 1.8)
-    .filter((box) => box.width <= image.naturalWidth * 0.35 && box.height <= image.naturalHeight * 0.45)
-    .sort((a, b) => b.width * b.height - a.width * a.height)
-    .slice(0, 64)
-    .sort((a, b) => a.y - b.y || a.x - b.x);
-
-  if (merged.length === 0) {
-    return { regions: [], rawMaskCanvas: null, actualProvider, actualWebnnDeviceType, providerReports };
-  }
-
-  const regions = merged.map(makeRegion);
-  return {
-    regions,
-    rawMaskCanvas: buildMaskCanvasFromBinary(mask, width, height, image, platform),
-    actualProvider,
-    actualWebnnDeviceType,
-    providerReports
-  };
 }

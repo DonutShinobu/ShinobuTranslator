@@ -354,6 +354,9 @@ export class PipelineStageError extends Error {
       messageKey: "pipeline.failure.stage",
       diagnostics: {
         name: this.name,
+        ...(artifacts.providerReports.length > 0
+          ? { providerReports: artifacts.providerReports }
+          : {}),
       },
     };
   }
@@ -655,7 +658,8 @@ export async function runPipeline(
       startInpaintRuntimeProbe();
     }
     const ocrResult = await runOcr(image, latestRegions, config.ocrEngine, platform, {
-      compactActiveBatch: config.ocrCompactActiveBatch,
+      compactActiveBatch:
+        options.runtimeCapabilities?.ocrExecution?.compactActiveBatch,
     });
     throwIfCancelled(signal);
     latestRegions = ocrResult.regions;

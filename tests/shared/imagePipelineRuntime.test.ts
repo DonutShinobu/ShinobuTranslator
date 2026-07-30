@@ -4,6 +4,7 @@ import {
   ImagePipelineCancelledError,
   ImagePipelineExecutionError,
   ImagePipelineRuntime,
+  isProviderExecutionReport,
   type ImagePipelineRequest,
   type ImagePipelineResult,
   type PipelineConfig,
@@ -170,6 +171,46 @@ describe('image pipeline runtime contract', () => {
     expect(Object.isFrozen(observedCapabilities[0])).toBe(true);
   });
 
+  it('rejects internally contradictory provider execution reports', () => {
+    const baseReport = {
+      schemaVersion: 1,
+      contract: {
+        id: 'test.detector-policy',
+        version: 1,
+      },
+      model: 'detector',
+      stage: 'detect',
+      attempts: [
+        {
+          attempt: 1,
+          provider: 'wasm',
+          outcome: 'succeeded',
+          reason: 'completed',
+        },
+      ],
+      finalProvider: 'wasm',
+      fallbackTrace: [],
+      satisfied: true,
+    } as const;
+
+    expect(isProviderExecutionReport(baseReport)).toBe(true);
+    expect(isProviderExecutionReport({
+      ...baseReport,
+      attempts: [{
+        ...baseReport.attempts[0],
+        outcome: 'unavailable',
+        reason: 'completed',
+      }],
+      finalProvider: undefined,
+      satisfied: false,
+    })).toBe(false);
+    expect(isProviderExecutionReport({
+      ...baseReport,
+      finalProvider: undefined,
+      satisfied: false,
+    })).toBe(false);
+  });
+
   it('throws admission errors synchronously without creating a task', async () => {
     const execution = deferred<{
       status: 'completed';
@@ -217,6 +258,15 @@ describe('image pipeline runtime contract', () => {
       config: {
         ...config(),
         runtimeCapability: { apiKey: 'must-not-cross-runtime-boundary' },
+      },
+    } as ImagePipelineRequest)).toThrowError(
+      expect.objectContaining({ code: 'INVALID_REQUEST' }),
+    );
+    expect(() => runtime.run({
+      ...request(),
+      config: {
+        ...config(),
+        ocrCompactActiveBatch: false,
       },
     } as ImagePipelineRequest)).toThrowError(
       expect.objectContaining({ code: 'INVALID_REQUEST' }),

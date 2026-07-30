@@ -90,7 +90,9 @@ export function isWebPipelineResult(value: unknown): value is WebPipelineResult 
     && Number.isInteger(value.summary.detectedRegionCount)
     && (value.summary.detectedRegionCount as number) >= 0
     && Array.isArray(value.summary.stageTimings)
-    && Array.isArray(value.summary.runtimeStages);
+    && Array.isArray(value.summary.runtimeStages)
+    && Array.isArray(value.summary.providerReports)
+    && value.summary.providerReports.every(isProviderExecutionReport);
 }
 
 export function createWebTranslatorCore(

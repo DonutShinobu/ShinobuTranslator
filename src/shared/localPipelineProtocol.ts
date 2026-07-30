@@ -295,6 +295,27 @@ function isValidTranslationContext(value: unknown): boolean {
 
 function isValidPipelineConfig(value: unknown): value is PipelineConfig {
   if (!isRecord(value)) return false;
+  const allowedKeys = new Set([
+    'sourceLang',
+    'targetLang',
+    'translator',
+    'llmProvider',
+    'llmAuthMode',
+    'llmBaseUrl',
+    'llmApiKey',
+    'llmModel',
+    'llmUseCustomModel',
+    'llmThinkingLevel',
+    'translationContext',
+    'typesetDebug',
+    'eraseDebug',
+    'collectDebugLog',
+    'ocrEngine',
+    'ocrPostFilter',
+    'processMode',
+    'diagnosticRunId',
+  ]);
+  if (!Object.keys(value).every((key) => allowedKeys.has(key))) return false;
   const stringKeys = [
     'sourceLang',
     'targetLang',
@@ -309,7 +330,6 @@ function isValidPipelineConfig(value: unknown): value is PipelineConfig {
   if (value.ocrEngine !== 'paddleocr_v6_medium') return false;
   if (value.processMode !== 'translate' && value.processMode !== 'erase' && value.processMode !== 'original') return false;
   if (typeof value.typesetDebug !== 'boolean' || typeof value.eraseDebug !== 'boolean' || typeof value.collectDebugLog !== 'boolean') return false;
-  if (value.ocrCompactActiveBatch !== undefined && typeof value.ocrCompactActiveBatch !== 'boolean') return false;
   if (
     value.ocrPostFilter !== undefined
     && value.ocrPostFilter !== 'off'

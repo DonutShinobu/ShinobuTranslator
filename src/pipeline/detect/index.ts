@@ -7,6 +7,7 @@ import {
   ProviderExecutionError,
   type ProviderSessionResolver,
 } from "../../runtime/providerExecution";
+import { isProviderExecutionReport } from "@shinobu/image-pipeline";
 
 export type { DetectOutput };
 
@@ -19,6 +20,23 @@ export class DetectionExecutionError extends Error {
     super(message, cause === undefined ? undefined : { cause });
     this.name = "DetectionExecutionError";
   }
+}
+
+function providerReportsFromError(
+  error: unknown,
+): DetectOutput["providerReports"] {
+  if (error instanceof ProviderExecutionError) {
+    return [error.report];
+  }
+  if (
+    typeof error !== "object"
+    || error === null
+    || !("providerReports" in error)
+    || !Array.isArray(error.providerReports)
+  ) {
+    return [];
+  }
+  return error.providerReports.filter(isProviderExecutionReport);
 }
 
 export async function detectTextRegionsWithMask(
@@ -41,9 +59,7 @@ export async function detectTextRegionsWithMask(
     if (error instanceof DetectionExecutionError) {
       throw error;
     }
-    if (error instanceof ProviderExecutionError) {
-      providerReports.push(error.report);
-    }
+    providerReports.push(...providerReportsFromError(error));
     const reason = toErrorMessage(error);
     fallbackReasons.push(`onnx: ${reason}`);
     console.warn(`[detect] onnx detector unavailable, fallback to tesseract/heuristic: ${reason}`);

@@ -184,6 +184,55 @@ describe('provider session resolver contract', () => {
     });
   });
 
+  it('reports manifest metadata failures as a contract violation without leaking details', async () => {
+    const resolver = createProviderSessionResolver({
+      loadModel: async () => {
+        throw new Error('private manifest storage detail');
+      },
+      loadSession: vi.fn(),
+    });
+
+    const error = await resolver.execute({
+      model: 'detector',
+      stage: 'detect',
+      run: async () => 'unreachable',
+    }).then(() => null, (reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(ProviderExecutionError);
+    expect(error).toMatchObject({
+      failure: {
+        code: 'PIPELINE_PROVIDER_CONTRACT_VIOLATED',
+      },
+      report: {
+        attempts: [],
+        satisfied: false,
+      },
+    });
+    expect(JSON.stringify((error as ProviderExecutionError).failure))
+      .not.toContain('private manifest storage detail');
+  });
+
+  it('rejects malformed runtime policy rules instead of silently using manifest defaults', () => {
+    expect(() => createProviderSessionResolver({
+      policy: {
+        schemaVersion: 1,
+        contract: {
+          id: 'test.misspelled-policy',
+          version: 1,
+        },
+        rules: [
+          {
+            model: 'detctor',
+            stage: 'detect',
+            providers: ['wasm'],
+          },
+        ],
+      } as unknown as ProviderExecutionPolicy,
+      loadModel: vi.fn(),
+      loadSession: vi.fn(),
+    })).toThrowError(TypeError);
+  });
+
   it('rejects a session that silently violates the requested provider contract', async () => {
     const policy: ProviderExecutionPolicy = {
       schemaVersion: 1,

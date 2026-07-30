@@ -97,6 +97,21 @@ describe('detectTextRegionsWithMask engine reporting', () => {
     });
   });
 
+  it('preserves a satisfied provider report when ONNX post-processing falls back', async () => {
+    const report = providerReport(true);
+    mocks.detectByOnnx.mockRejectedValue(Object.assign(
+      new Error('invalid detector output'),
+      { providerReports: [report] },
+    ));
+    mocks.detectByTesseract.mockResolvedValue([region]);
+
+    await expect(detectTextRegionsWithMask(image, platform)).resolves.toMatchObject({
+      engine: 'tesseract',
+      fallbackReason: 'onnx: invalid detector output',
+      providerReports: [report],
+    });
+  });
+
   it('reports heuristic and both upstream fallback reasons', async () => {
     mocks.detectByOnnx.mockRejectedValue(new Error('worker unavailable'));
     mocks.detectByTesseract.mockRejectedValue(new Error('tesseract unavailable'));

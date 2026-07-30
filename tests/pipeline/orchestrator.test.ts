@@ -482,7 +482,10 @@ describe('runPipeline', () => {
         scope: 'runtime',
         retryable: false,
         messageKey: 'pipeline.failure.stage',
-        diagnostics: { name: 'PipelineStageError' },
+        diagnostics: {
+          name: 'PipelineStageError',
+          providerReports: [detectorProviderReport],
+        },
       },
     });
     expect(stageError.cause).toMatchObject({ message: 'detector unavailable' });

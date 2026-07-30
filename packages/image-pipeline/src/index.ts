@@ -48,14 +48,14 @@ export type ProviderExecutionPolicy = {
   rules: readonly ProviderExecutionPolicyRule[];
 };
 
-export const PRODUCTION_PROVIDER_EXECUTION_POLICY: ProviderExecutionPolicy = {
+export const PRODUCTION_PROVIDER_EXECUTION_POLICY: ProviderExecutionPolicy = Object.freeze({
   schemaVersion: 1,
-  contract: {
+  contract: Object.freeze({
     id: 'shinobu.production-provider-policy',
     version: 1,
-  },
-  rules: [],
-};
+  }),
+  rules: Object.freeze([]),
+});
 
 export type ProviderExecutionAttemptOutcome =
   | 'succeeded'
@@ -124,12 +124,23 @@ export function isProviderExecutionReport(
   ]);
   const attempts = value.attempts;
   const fallbackTrace = value.fallbackTrace;
-  const attemptsValid = attempts.every((attempt, index) =>
-    isRecord(attempt)
-    && attempt.attempt === index + 1
-    && providers.has(String(attempt.provider))
-    && outcomes.has(String(attempt.outcome))
-    && reasons.has(String(attempt.reason)));
+  const attemptsValid = attempts.every((attempt, index) => {
+    if (
+      !isRecord(attempt)
+      || attempt.attempt !== index + 1
+      || !providers.has(String(attempt.provider))
+      || !outcomes.has(String(attempt.outcome))
+      || !reasons.has(String(attempt.reason))
+    ) {
+      return false;
+    }
+    return attempt.outcome === 'succeeded'
+      ? attempt.reason === 'completed'
+      : attempt.outcome === 'unavailable'
+        ? attempt.reason === 'session-unavailable'
+        : attempt.reason === 'execution-failed'
+          || attempt.reason === 'contract-violated';
+  });
   const fallbackValid = fallbackTrace.every((fallback, index) => {
     if (!isRecord(fallback)) return false;
     const previous = attempts[index];
@@ -155,15 +166,24 @@ export function isProviderExecutionReport(
       && finalAttempt?.provider === value.finalProvider
       && finalAttempt.outcome === 'succeeded'
       && finalAttempt.reason === 'completed'
-    : value.finalProvider === undefined;
+      && attempts.slice(0, -1).every((attempt) =>
+        isRecord(attempt) && attempt.outcome !== 'succeeded')
+    : value.finalProvider === undefined
+      && attempts.every((attempt) =>
+        isRecord(attempt) && attempt.outcome !== 'succeeded');
 }
 
 export type ProviderExecutionCapability = {
   policy: ProviderExecutionPolicy;
 };
 
+export type OcrExecutionCapability = {
+  compactActiveBatch?: boolean;
+};
+
 export type ImagePipelineRuntimeCapabilities = {
   providerExecution?: ProviderExecutionCapability;
+  ocrExecution?: OcrExecutionCapability;
 };
 
 export type LlmProvider =
@@ -210,7 +230,6 @@ export type PipelineConfig = {
   eraseDebug: boolean;
   collectDebugLog: boolean;
   ocrEngine: 'paddleocr_v6_medium';
-  ocrCompactActiveBatch?: boolean;
   ocrPostFilter?: 'off' | 'balanced';
   processMode: 'translate' | 'erase' | 'original';
   diagnosticRunId?: string;
@@ -510,7 +529,6 @@ function validateConfig(config: unknown): config is PipelineConfig {
     'eraseDebug',
     'collectDebugLog',
     'ocrEngine',
-    'ocrCompactActiveBatch',
     'ocrPostFilter',
     'processMode',
     'diagnosticRunId',
@@ -569,10 +587,6 @@ function validateConfig(config: unknown): config is PipelineConfig {
     && typeof config.eraseDebug === 'boolean'
     && typeof config.collectDebugLog === 'boolean'
     && config.ocrEngine === 'paddleocr_v6_medium'
-    && (
-      config.ocrCompactActiveBatch === undefined
-      || typeof config.ocrCompactActiveBatch === 'boolean'
-    )
     && (
       config.ocrPostFilter === undefined
       || config.ocrPostFilter === 'off'

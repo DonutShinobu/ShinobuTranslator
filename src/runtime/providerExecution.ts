@@ -56,22 +56,70 @@ const supportedProviders = new Set<ProviderRuntime>([
   'cuda',
   'cpu',
 ]);
+const supportedModels = new Set<ProviderExecutionModel>([
+  'detector',
+  'bubble',
+  'paddleocr_v6_medium_rec',
+  'inpaint',
+]);
+const supportedStages = new Set<ProviderExecutionStage>([
+  'detect',
+  'bubble',
+  'ocr',
+  'inpaint',
+]);
+const supportedTargets = new Set([
+  'detect:detector',
+  'bubble:bubble',
+  'ocr:paddleocr_v6_medium_rec',
+  'inpaint:inpaint',
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function hasOnlyKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+): boolean {
+  const allowed = new Set(keys);
+  return Object.keys(value).every((key) => allowed.has(key));
+}
 
 function assertPolicy(policy: ProviderExecutionPolicy): void {
+  const value = policy as unknown;
   if (
-    policy.schemaVersion !== 1
-    || !policy.contract.id.trim()
-    || !Number.isInteger(policy.contract.version)
-    || policy.contract.version < 1
+    !isRecord(value)
+    || !hasOnlyKeys(value, ['schemaVersion', 'contract', 'rules'])
+    || value.schemaVersion !== 1
+    || !isRecord(value.contract)
+    || !hasOnlyKeys(value.contract, ['id', 'version'])
+    || typeof value.contract.id !== 'string'
+    || !value.contract.id.trim()
+    || !Number.isInteger(value.contract.version)
+    || (value.contract.version as number) < 1
+    || !Array.isArray(value.rules)
   ) {
     throw new TypeError('Provider execution policy contract is invalid');
   }
 
   const targets = new Set<string>();
-  for (const rule of policy.rules) {
+  for (const candidate of value.rules) {
+    if (
+      !isRecord(candidate)
+      || !hasOnlyKeys(candidate, ['model', 'stage', 'providers'])
+      || !supportedModels.has(candidate.model as ProviderExecutionModel)
+      || !supportedStages.has(candidate.stage as ProviderExecutionStage)
+      || !Array.isArray(candidate.providers)
+    ) {
+      throw new TypeError('Provider execution policy rule is invalid');
+    }
+    const rule = candidate as ProviderExecutionPolicy['rules'][number];
     const target = `${rule.stage}:${rule.model}`;
     if (
       targets.has(target)
+      || !supportedTargets.has(target)
       || rule.providers.length === 0
       || rule.providers.some((provider) => !supportedProviders.has(provider))
       || new Set(rule.providers).size !== rule.providers.length
@@ -80,6 +128,20 @@ function assertPolicy(policy: ProviderExecutionPolicy): void {
     }
     targets.add(target);
   }
+}
+
+function clonePolicy(
+  policy: ProviderExecutionPolicy,
+): ProviderExecutionPolicy {
+  return {
+    schemaVersion: 1,
+    contract: { ...policy.contract },
+    rules: policy.rules.map((rule) => ({
+      model: rule.model,
+      stage: rule.stage,
+      providers: [...rule.providers],
+    })),
+  };
 }
 
 function createReport(
@@ -163,10 +225,11 @@ const productionSessionLoader: ProviderSessionLoader = (model, providers) =>
 export function createProviderSessionResolver(
   options: ProviderSessionResolverOptions = {},
 ): ProviderSessionResolver {
-  const policy = options.policy ?? PRODUCTION_PROVIDER_EXECUTION_POLICY;
+  const policySource = options.policy ?? PRODUCTION_PROVIDER_EXECUTION_POLICY;
   const loadModel = options.loadModel ?? productionModelLoader;
   const loadSession = options.loadSession ?? productionSessionLoader;
-  assertPolicy(policy);
+  assertPolicy(policySource);
+  const policy = clonePolicy(policySource);
 
   return {
     async execute<T>({
@@ -176,7 +239,18 @@ export function createProviderSessionResolver(
     }: ProviderExecutionRequest<T>): Promise<ProviderExecutionResult<T>> {
       const rule = policy.rules.find((candidate) =>
         candidate.model === model && candidate.stage === stage);
-      const manifestProviders = rule ? undefined : (await loadModel(model)).runtime;
+      let manifestProviders: readonly ProviderRuntime[] | undefined;
+      if (!rule) {
+        try {
+          manifestProviders = (await loadModel(model)).runtime;
+        } catch (error) {
+          throwProviderFailure(
+            'PIPELINE_PROVIDER_CONTRACT_VIOLATED',
+            createReport(policy, model, stage, []),
+            error,
+          );
+        }
+      }
       const providers = [...(rule?.providers ?? manifestProviders ?? [])]
         .filter((provider, index, values) =>
           supportedProviders.has(provider) && values.indexOf(provider) === index);

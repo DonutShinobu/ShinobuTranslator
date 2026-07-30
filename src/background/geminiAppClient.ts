@@ -315,7 +315,7 @@ function toAccountStatusError(status: number | null): string | null {
     return null;
   }
   if (status === 1016) {
-    return '请先在 Chrome 中登录 Gemini App';
+    return '请先在浏览器中登录 Gemini App';
   }
   if (status === 1060) {
     return 'Gemini App 当前地区不可用';
@@ -440,7 +440,7 @@ async function readTextResponse(response: Response, failureMessage: string): Pro
   const text = await response.text();
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
-      throw new Error('请先在 Chrome 中登录 Gemini App，或重新打开 Gemini App 刷新登录状态');
+      throw new Error('请先在浏览器中登录 Gemini App，或重新打开 Gemini App 刷新登录状态');
     }
     throw new Error(`${failureMessage}: HTTP ${response.status}`);
   }
@@ -510,7 +510,7 @@ async function initializeGemini(
   const text = await readTextResponse(response, '初始化 Gemini App 失败');
   const accessToken = /"SNlM0e":\s*"(.*?)"/u.exec(text)?.[1] ?? null;
   if (!accessToken) {
-    throw new Error('Gemini App 登录状态不可用，请先在 Chrome 中打开 gemini.google.com 完成登录');
+    throw new Error('Gemini App 登录状态不可用，请先在浏览器中打开 gemini.google.com 完成登录');
   }
   return {
     accessToken,

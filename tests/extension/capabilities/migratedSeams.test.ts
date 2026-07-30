@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -9,6 +9,20 @@ function read(relativePath: string): string {
 }
 
 describe('migrated extension capability seams', () => {
+  it('deletes the legacy Chrome-shaped seam without a compatibility rename', () => {
+    expect(existsSync(resolve(repositoryRoot, 'src/shared/chrome.ts'))).toBe(false);
+    for (const relativePath of [
+      'apps/extension/src/background.ts',
+      'apps/extension/src/content.ts',
+      'src/background/index.ts',
+      'src/content/index.ts',
+    ]) {
+      expect(read(relativePath)).not.toMatch(
+        /\b(?:ChromeLike|getChromeApi|requireChromeApi)\b/u,
+      );
+    }
+  });
+
   it('keeps PipelineHostLifecycle outside the general extension capability contract', () => {
     expect(read('apps/extension/src/capabilities/contracts.ts')).not.toMatch(
       /\bPipelineHostLifecycle\b/u,
@@ -81,20 +95,23 @@ describe('migrated extension capability seams', () => {
   });
 
   it('composes image network capabilities with the pipeline host lifecycle', () => {
-    const source = read('src/background/index.ts');
-    expect(source).toContain(
+    const businessSource = read('src/background/index.ts');
+    expect(businessSource).toContain(
       'sessionStorage: capabilities.sessionStorage',
     );
-    expect(source).toContain(
+    expect(businessSource).toContain(
       'referrerPolicies: capabilities.referrerPolicies',
     );
-    expect(source).toContain(
+    expect(businessSource).toContain(
       'requestHeaderOverride: capabilities.requestHeaderOverride',
     );
-    expect(source).toContain(
+    expect(businessSource).not.toMatch(/\bglobalThis\.chrome\b/u);
+
+    const compositionRoot = read('apps/extension/src/background.ts');
+    expect(compositionRoot).toContain(
       'createChromePipelineHostLifecycle(nativeChrome)',
     );
-    expect(source).not.toMatch(/\bChromeLike\b/u);
+    expect(compositionRoot).not.toMatch(/\bChromeLike\b/u);
   });
 
   it.each([

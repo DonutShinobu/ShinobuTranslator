@@ -64,6 +64,8 @@ describe('monorepo application ownership', () => {
       'apps/extension/scripts/generate-manifest.mjs',
       'apps/extension/scripts/check-artifacts.mjs',
       'apps/extension/scripts/check-release-boundaries.mjs',
+      'apps/extension/src/background.ts',
+      'apps/extension/src/content.ts',
       'apps/extension/src/popup.tsx',
       'apps/extension/src/offscreen.ts',
       'apps/extension/src/benchmark.ts',

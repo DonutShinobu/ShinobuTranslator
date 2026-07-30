@@ -2,6 +2,10 @@ import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import {
+  frozenExtensionMigrationEdgeKeys,
+  scanExtensionArchitecture,
+} from './extension-architecture-policy.mjs';
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -12,7 +16,16 @@ const baselinePath = path.join(
   'scripts',
   'workspace-import-boundary-baseline.json',
 );
-const sourceExtensions = new Set(['.js', '.jsx', '.mjs', '.ts', '.tsx']);
+const sourceExtensions = new Set([
+  '.cjs',
+  '.cts',
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.mts',
+  '.ts',
+  '.tsx',
+]);
 const modulePathPattern = /['"]([^'"]+)['"]/gu;
 
 function toPosix(value) {
@@ -101,6 +114,10 @@ if (
 }
 
 const current = await findCrossWorkspaceImports();
+const frozenMigrationEdgeKeySet = new Set(frozenExtensionMigrationEdgeKeys);
+const currentLegacyImports = current.filter(
+  (entry) => !frozenMigrationEdgeKeySet.has(entry),
+);
 const counts = (entries) => {
   const result = new Map();
   for (const entry of entries) {
@@ -108,7 +125,7 @@ const counts = (entries) => {
   }
   return result;
 };
-const currentCounts = counts(current);
+const currentCounts = counts(currentLegacyImports);
 const allowedCounts = counts(baseline.allowedCrossWorkspaceRelativeImports);
 const expandDifference = (left, right) => {
   const difference = [];
@@ -120,6 +137,9 @@ const expandDifference = (left, right) => {
 };
 const additions = expandDifference(currentCounts, allowedCounts);
 const stale = expandDifference(allowedCounts, currentCounts);
+const extensionArchitectureViolations = await scanExtensionArchitecture(
+  repositoryRoot,
+);
 
 if (additions.length > 0 || stale.length > 0) {
   if (additions.length > 0) {
@@ -130,7 +150,25 @@ if (additions.length > 0 || stale.length > 0) {
     console.error('baseline 中存在已经可以删除的遗留 import：');
     for (const entry of stale) console.error(`  - ${entry}`);
   }
+}
+if (extensionArchitectureViolations.length > 0) {
+  console.error('发现扩展架构边界违规：');
+  for (const violation of extensionArchitectureViolations) {
+    console.error(`  - ${violation}`);
+  }
+}
+
+if (
+  additions.length > 0
+  || stale.length > 0
+  || extensionArchitectureViolations.length > 0
+) {
   process.exitCode = 1;
 } else {
-  console.log(`workspace import boundary check passed (${current.length} legacy imports)`);
+  console.log(
+    'workspace import boundary check passed '
+    + `(${currentLegacyImports.length} legacy imports; `
+    + `${frozenExtensionMigrationEdgeKeys.length} frozen extension migration edges)`,
+  );
+  console.log('extension architecture policy check passed');
 }

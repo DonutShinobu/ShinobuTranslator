@@ -3,7 +3,12 @@ import { pixivAdapter } from './adapters/pixiv';
 import { ehentaiAdapter } from './adapters/ehentai';
 import type { SiteAdapter } from './core/types';
 import { TranslatorCore } from './core/TranslatorCore';
-import { getChromeApi } from '../shared/chrome';
+import {
+  createChromeContentCapabilities,
+} from '../../apps/extension/src/capabilities/chromeAdapter';
+import type { JsonValue } from '../../apps/extension/src/capabilities/contracts';
+import { createRuntimeMessageSender } from '../shared/messages';
+import { createRunLocalPipeline } from './core/translation/localPipelineClient';
 import { toErrorMessage } from '../shared/utils';
 import {
   buildScreenshotElementCandidates,
@@ -29,7 +34,17 @@ function createNullAdapter(): SiteAdapter {
 
 const adapters = [twitterAdapter, pixivAdapter, ehentaiAdapter];
 const adapter = adapters.find(a => a.match()) || createNullAdapter();
-const core = new TranslatorCore(adapter);
+const nativeChrome = (globalThis as typeof globalThis & { chrome?: unknown }).chrome;
+if (!nativeChrome) {
+  throw new Error('Chrome extension capabilities are unavailable');
+}
+const capabilities = createChromeContentCapabilities(nativeChrome);
+const sendMessage = createRuntimeMessageSender(capabilities.runtimeRequests);
+const core = new TranslatorCore(adapter, {
+  sendMessage,
+  runLocalPipeline: createRunLocalPipeline(capabilities.runtimeChannels),
+  resourceUrl: (path) => capabilities.environment.resourceUrl(path),
+});
 core.start();
 
 // --- Context menu support ---
@@ -286,58 +301,67 @@ document.addEventListener('mouseleave', () => {
 }, true);
 
 // Listen for context-menu translate requests from background
-const chromeApi = getChromeApi();
-if (chromeApi?.runtime?.onMessage?.addListener) {
-  chromeApi.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+capabilities.runtimeRequests.onRequest(async (message): Promise<JsonValue | undefined> => {
     if (!isRecord(message) || typeof message.type !== 'string') {
-      return false;
+      return undefined;
     }
 
     if (message.type === 'mt:context-menu-translate') {
       const target = contextMenuTarget;
       contextMenuTarget = null;
       if (target) {
-        void (async () => {
-          try {
-            await translateTarget(target);
-            sendResponse({ ok: true, type: 'mt:context-menu-translate' });
-          } catch (error: unknown) {
-            sendResponse({ ok: false, type: 'mt:context-menu-translate', error: toErrorMessage(error) });
-          }
-        })();
-      } else {
-        sendResponse({ ok: false, type: 'mt:context-menu-translate', error: '未找到可翻译区域' });
+        try {
+          await translateTarget(target);
+          return { ok: true, type: 'mt:context-menu-translate' };
+        } catch (error: unknown) {
+          return {
+            ok: false,
+            type: 'mt:context-menu-translate',
+            error: toErrorMessage(error),
+          };
+        }
       }
-      return true;
+      return {
+        ok: false,
+        type: 'mt:context-menu-translate',
+        error: '未找到可翻译区域',
+      };
     }
 
     if (message.type === 'mt:start-screenshot-translate') {
-      core.startScreenshotTranslate().then(() => {
-        sendResponse({ ok: true, type: 'mt:start-screenshot-translate' });
-      }).catch((error: unknown) => {
-        sendResponse({ ok: false, type: 'mt:start-screenshot-translate', error: toErrorMessage(error) });
-      });
-      return true;
+      try {
+        await core.startScreenshotTranslate();
+        return { ok: true, type: 'mt:start-screenshot-translate' };
+      } catch (error) {
+        return {
+          ok: false,
+          type: 'mt:start-screenshot-translate',
+          error: toErrorMessage(error),
+        };
+      }
     }
 
     if (message.type === 'mt:shortcut-translate-hover') {
       const target = findHoverTranslateTarget();
       if (!target) {
         showShortcutToast('未找到可翻译区域');
-        sendResponse({ ok: false, type: 'mt:shortcut-translate-hover', error: '未找到可翻译区域' });
-        return true;
+        return {
+          ok: false,
+          type: 'mt:shortcut-translate-hover',
+          error: '未找到可翻译区域',
+        };
       }
-      void (async () => {
-        try {
-          await translateTarget(target);
-          sendResponse({ ok: true, type: 'mt:shortcut-translate-hover' });
-        } catch (error: unknown) {
-          sendResponse({ ok: false, type: 'mt:shortcut-translate-hover', error: toErrorMessage(error) });
-        }
-      })();
-      return true;
+      try {
+        await translateTarget(target);
+        return { ok: true, type: 'mt:shortcut-translate-hover' };
+      } catch (error) {
+        return {
+          ok: false,
+          type: 'mt:shortcut-translate-hover',
+          error: toErrorMessage(error),
+        };
+      }
     }
 
-    return false;
+    return undefined;
   });
-}

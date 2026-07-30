@@ -6,10 +6,12 @@ import {
   llmTranslateRegions,
 } from '../translators/llm';
 import {
-  extensionTextTranslationTransport,
+  unavailableTextTranslationTransport,
   type TextTranslationTransport,
 } from '../translators/transport';
 import { isPipelineFailureEnvelope } from '@shinobu/image-pipeline';
+import type { DiagnosticLogContext } from '../shared/diagnosticLog';
+import type { RuntimeMessageSender } from '../shared/messages';
 
 type LlmRegionRequest = {
   id: string;
@@ -62,6 +64,8 @@ function buildLlmRegionRequest(region: TextRegion): LlmRegionRequest {
 export type RunTranslateOptions = {
   signal?: AbortSignal;
   transport?: TextTranslationTransport;
+  diagnosticContext?: DiagnosticLogContext;
+  diagnosticMessageSender?: RuntimeMessageSender;
 };
 
 function hasPipelineFailure(error: unknown): boolean {
@@ -81,7 +85,7 @@ async function translateOne(
   }
 
   if (config.translator === 'google_web') {
-    return (options.transport ?? extensionTextTranslationTransport).translatePlain({
+    return (options.transport ?? unavailableTextTranslationTransport).translatePlain({
       text,
       from: config.sourceLang,
       to: config.targetLang,
@@ -107,6 +111,8 @@ async function translateOne(
     text,
     translationContext: config.translationContext,
     diagnosticRunId: config.diagnosticRunId,
+    diagnosticContext: options.diagnosticContext,
+    diagnosticMessageSender: options.diagnosticMessageSender,
     apiKey: config.llmApiKey,
     signal: options.signal,
     transport: options.transport,
@@ -130,6 +136,8 @@ async function translateOneStructured(
     regions: [buildLlmRegionRequest(region)],
     translationContext: config.translationContext,
     diagnosticRunId: config.diagnosticRunId,
+    diagnosticContext: options.diagnosticContext,
+    diagnosticMessageSender: options.diagnosticMessageSender,
     apiKey: config.llmApiKey,
     signal: options.signal,
     transport: options.transport,
@@ -207,6 +215,8 @@ export async function runTranslate(
         regions: regions.map(buildLlmRegionRequest),
         translationContext: requestConfig.translationContext,
         diagnosticRunId: requestConfig.diagnosticRunId,
+        diagnosticContext: options.diagnosticContext,
+        diagnosticMessageSender: options.diagnosticMessageSender,
         apiKey: requestConfig.llmApiKey,
         signal: options.signal,
         transport: options.transport,

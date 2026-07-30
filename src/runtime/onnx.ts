@@ -1,6 +1,5 @@
 import * as ortAll from "onnxruntime-web/all";
 import type { InferenceSession } from "onnxruntime-common";
-import { resolveAssetUrl } from "../shared/assetUrl";
 import { toErrorMessage } from "../shared/utils";
 import { isContextLostError, isCreateTimeoutError } from "./onnxTypes";
 import type { RuntimeProvider, WebNnDeviceType } from "./onnxTypes";
@@ -15,6 +14,7 @@ export type SessionHandle = {
 };
 
 let envInitialized = false;
+let ortAssetPath: string | null = null;
 const perModelLocks = new Map<string, Promise<void>>();
 const SESSION_CREATE_TIMEOUT_MS = 30000;
 
@@ -119,6 +119,13 @@ async function withPerModelLock<T>(modelUrl: string, task: () => Promise<T>): Pr
   }
 }
 
+export function configureOrtAssetPath(path: string): void {
+  if (envInitialized) {
+    throw new Error("ONNX Runtime 已初始化，不能再修改 ORT 资源地址");
+  }
+  ortAssetPath = path;
+}
+
 export function ensureOrtEnv(): void {
   if (envInitialized) {
     return;
@@ -132,7 +139,10 @@ export function ensureOrtEnv(): void {
     typeof window !== "undefined" && window.isSecureContext && window.crossOriginIsolated;
   const wasmThreads = canUseWasmThreads ? Math.max(1, Math.min(8, hwThreads)) : 1;
 
-  ortAll.env.wasm.wasmPaths = resolveAssetUrl("ort/");
+  if (!ortAssetPath) {
+    throw new Error("ORT 资源地址必须由组合根注入");
+  }
+  ortAll.env.wasm.wasmPaths = ortAssetPath;
   ortAll.env.wasm.numThreads = wasmThreads;
   ortAll.env.wasm.proxy = false;
 

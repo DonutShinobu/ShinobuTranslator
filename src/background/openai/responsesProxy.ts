@@ -16,10 +16,8 @@ import {
 import {
   createOpenAiRequestId,
   extractResponseError,
-  getOpenAiOAuthInstallationId,
-  getValidOpenAiOAuthTokens,
   readJsonResponse,
-  refreshOpenAiOAuthTokens,
+  type OpenAiOAuthService,
 } from "./oauthService";
 
 export const openAiCodexResponsesEndpoint = "https://chatgpt.com/backend-api/codex/responses";
@@ -36,12 +34,13 @@ class OpenAiThinkingConfigError extends Error {
 async function fetchOpenAiCodexResponses(
   body: LlmChatCompletionRequestBody,
   tokens: StoredOpenAiOAuthTokens,
+  oauth: Pick<OpenAiOAuthService, 'getInstallationId'>,
 ): Promise<Response> {
   if (!tokens.accountId) {
     throw new Error('OpenAI 登录缺少账号 ID，请退出后重新登录');
   }
 
-  const installationId = await getOpenAiOAuthInstallationId();
+  const installationId = await oauth.getInstallationId();
   const sessionId = createOpenAiRequestId();
   const threadId = createOpenAiRequestId();
   const request = buildOpenAiResponsesRequest(body, {
@@ -104,6 +103,10 @@ function toChatCompletionsResponse(content: string, model: string): unknown {
 export async function proxyOpenAiChatCompletions(
   body: LlmChatCompletionRequestBody,
   proxyConfig: LlmChatCompletionsProxyConfig,
+  oauth: Pick<
+    OpenAiOAuthService,
+    'getInstallationId' | 'getValidTokens' | 'refreshTokens'
+  >,
 ): Promise<unknown> {
   const requestBody = adaptLlmThinkingChatCompletionRequest(body, {
     provider: 'openai',
@@ -111,11 +114,11 @@ export async function proxyOpenAiChatCompletions(
     level: proxyConfig.thinkingLevel,
     useCustomModel: proxyConfig.useCustomModel,
   });
-  let tokens = await getValidOpenAiOAuthTokens();
-  let response = await fetchOpenAiCodexResponses(requestBody, tokens);
+  let tokens = await oauth.getValidTokens();
+  let response = await fetchOpenAiCodexResponses(requestBody, tokens, oauth);
   if (response.status === 401) {
-    tokens = await refreshOpenAiOAuthTokens(tokens);
-    response = await fetchOpenAiCodexResponses(requestBody, tokens);
+    tokens = await oauth.refreshTokens(tokens);
+    response = await fetchOpenAiCodexResponses(requestBody, tokens, oauth);
   }
 
   if (!response.ok) {

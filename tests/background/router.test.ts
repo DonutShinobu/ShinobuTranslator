@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
+import type {
+  ExtensionMessageSource,
+} from '../../apps/extension/src/capabilities/contracts';
+import { ExtensionOperationError } from '../../apps/extension/src/capabilities/errors';
 import { defaultExtensionSettings } from '../../src/shared/config';
 import type { ExtensionSettings } from '../../src/shared/config';
-import type { ChromeMessageSender } from '../../src/shared/chrome';
 import { createDiagnosticEvent } from '../../src/shared/diagnosticLog';
 import type { DiagnosticLogEvent } from '../../src/shared/diagnosticLog';
 import type { RuntimeMessage } from '../../src/shared/messages';
@@ -12,8 +15,12 @@ import {
 
 type MessageOf<T extends RuntimeMessage['type']> = Extract<RuntimeMessage, { type: T }>;
 
-const sender: ChromeMessageSender = {
-  tab: { id: 7, windowId: 3, url: 'https://example.com/page' },
+const sender: ExtensionMessageSource = {
+  kind: 'tab-document',
+  documentId: 'document-7',
+  tabId: 7,
+  frameId: 0,
+  url: 'https://example.com/page',
 };
 const diagnosticLog = {
   schemaVersion: 1 as const,
@@ -38,13 +45,15 @@ function createServices(settings: ExtensionSettings = defaultExtensionSettings):
     images: {
       download: vi.fn(async (
         request: { imageUrl: string; referrerPolicy?: ReferrerPolicy },
-        _sender: ChromeMessageSender,
+        _sender: Extract<ExtensionMessageSource, { kind: 'tab-document' }>,
       ) => ({
         base64: 'aW1hZ2U=',
         contentType: 'image/png',
         sourceUrl: request.imageUrl,
       })),
-      capture: vi.fn(async (_sender: ChromeMessageSender) => ({
+      capture: vi.fn(async (
+        _sender: Extract<ExtensionMessageSource, { kind: 'tab-document' }>,
+      ) => ({
         base64: 'c2NyZWVuc2hvdA==',
         contentType: 'image/png',
         sourceUrl: 'https://example.com/page',
@@ -154,6 +163,25 @@ describe('routeBackgroundMessage', () => {
     }, sender);
     await routeBackgroundMessage({ type: 'mt:capture-visible-tab' }, sender, services);
     expect(services.images.capture).toHaveBeenCalledWith(sender);
+  });
+
+  it('rejects webpage operations unless the normalized source includes a documentId', async () => {
+    const services = createServices();
+    const unknownSource = { kind: 'unknown' } satisfies ExtensionMessageSource;
+
+    await expect(routeBackgroundMessage({
+      type: 'mt:download-image',
+      imageUrl: 'https://example.com/image.png',
+    }, unknownSource, services)).rejects.toMatchObject({
+      name: 'ExtensionOperationError',
+      code: 'invalid-message-source',
+      retryable: false,
+    });
+    await expect(routeBackgroundMessage({
+      type: 'mt:capture-visible-tab',
+    }, unknownSource, services)).rejects.toBeInstanceOf(ExtensionOperationError);
+    expect(services.images.download).not.toHaveBeenCalled();
+    expect(services.images.capture).not.toHaveBeenCalled();
   });
 
   it('routes OAuth and Gemini auth through injected services', async () => {

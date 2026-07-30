@@ -1,8 +1,8 @@
 import type {
   LlmChatCompletionRequestBody,
   LlmChatCompletionsProxyConfig,
+  RuntimeMessageSender,
 } from '../shared/messages';
-import { sendRuntimeMessage } from '../shared/messages';
 import {
   createDirectChatCompletionRequester,
   DirectChatCompletionError,
@@ -71,35 +71,48 @@ export class TextTranslationTransportError extends Error {
 export type DirectTextTranslationTransportOptions =
   DirectChatCompletionRequesterOptions;
 
-export const extensionTextTranslationTransport: TextTranslationTransport = {
-  async requestChatCompletion(request) {
-    const response = await sendRuntimeMessage({
-      type: 'mt:llm-chat-completions',
-      body: request.body,
-      proxyConfig: request.proxyConfig,
-      diagnosticRunId: request.diagnosticRunId,
-    });
-    if (!response.ok || response.type !== 'mt:llm-chat-completions') {
-      throw new TextTranslationTransportError(
-        response.ok ? 'LLM 翻译请求失败' : response.error,
-        {
-          code: !response.ok ? response.errorCode : undefined,
-          status: !response.ok ? response.status : undefined,
-          retryAfterMs: !response.ok ? response.retryAfterMs : undefined,
-          retryable: !response.ok ? response.retryable : undefined,
-        },
-      );
-    }
-    return response.data as ChatCompletionResponse;
-  },
+export function createExtensionTextTranslationTransport(
+  sendMessage: RuntimeMessageSender,
+): TextTranslationTransport {
+  return {
+    async requestChatCompletion(request) {
+      const response = await sendMessage({
+        type: 'mt:llm-chat-completions',
+        body: request.body,
+        proxyConfig: request.proxyConfig,
+        diagnosticRunId: request.diagnosticRunId,
+      });
+      if (!response.ok || response.type !== 'mt:llm-chat-completions') {
+        throw new TextTranslationTransportError(
+          response.ok ? 'LLM 翻译请求失败' : response.error,
+          {
+            code: !response.ok ? response.errorCode : undefined,
+            status: !response.ok ? response.status : undefined,
+            retryAfterMs: !response.ok ? response.retryAfterMs : undefined,
+            retryable: !response.ok ? response.retryable : undefined,
+          },
+        );
+      }
+      return response.data as ChatCompletionResponse;
+    },
 
-  translatePlain(request) {
-    return googleWebTranslate(
-      request.text,
-      request.from,
-      request.to,
-      request.signal,
-    );
+    translatePlain(request) {
+      return googleWebTranslate(
+        request.text,
+        request.from,
+        request.to,
+        request.signal,
+      );
+    },
+  };
+}
+
+export const unavailableTextTranslationTransport: TextTranslationTransport = {
+  requestChatCompletion() {
+    return Promise.reject(new Error('文本翻译 transport capability 未注入'));
+  },
+  translatePlain() {
+    return Promise.reject(new Error('文本翻译 transport capability 未注入'));
   },
 };
 

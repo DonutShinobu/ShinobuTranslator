@@ -11,7 +11,6 @@ import type {
   PaddleGraphCaptureProbeResult,
 } from "./onnxWorkerTypes";
 import type { RuntimeSelfCheckReport } from "./selfCheck";
-import { resolveAssetUrl } from "../shared/assetUrl";
 import { recordPerfRuntimeEvent, recordPerfWorkerCall } from "../shared/perfTrace";
 import {
   serializePipelineError,
@@ -29,23 +28,26 @@ import {
 let worker: Worker | null = null;
 let proxy: Comlink.Remote<OnnxWorkerApi> | null = null;
 let workerPromise: Promise<{ worker: Worker; proxy: Comlink.Remote<OnnxWorkerApi> }> | null = null;
-let webBootstrapConfig: {
+let workerBootstrapConfig: {
   scriptUrl: string;
   ortPath: string;
+  allowBlobFallback: boolean;
 } | null = null;
 const sessionProviders = new Map<string, RuntimeProvider>();
 const sessionModels = new Map<string, string>();
 
 export function configureOnnxWorkerBootstrap(config: {
   scriptUrl: string;
-  ortPath?: string;
+  ortPath: string;
+  allowBlobFallback: boolean;
 }): void {
   if (worker || workerPromise) {
     throw new Error("ONNX Worker 已启动，不能再修改启动地址");
   }
-  webBootstrapConfig = {
+  workerBootstrapConfig = {
     scriptUrl: config.scriptUrl,
-    ortPath: config.ortPath ?? "/ort/",
+    ortPath: config.ortPath,
+    allowBlobFallback: config.allowBlobFallback,
   };
 }
 
@@ -184,16 +186,17 @@ async function runBootstrapAttempt(
 
 async function bootstrapWorker(): Promise<{ worker: Worker; proxy: Comlink.Remote<OnnxWorkerApi> }> {
   const attempts: WorkerBootstrapAttempt[] = [];
-
-  const chromeApi = (globalThis as typeof globalThis & {
-    chrome?: { runtime?: { getURL?: (path: string) => string } };
-  }).chrome;
-  const rawScriptUrl = chromeApi?.runtime?.getURL?.("onnxWorker.js")
-    ?? webBootstrapConfig?.scriptUrl
-    ?? resolveAssetUrl("onnxWorker.js");
-  const rawOrtPath = chromeApi?.runtime?.getURL?.("ort/")
-    ?? webBootstrapConfig?.ortPath
-    ?? "/ort/";
+  if (!workerBootstrapConfig) {
+    throw new WorkerBootstrapError(
+      attempts,
+      new Error("ONNX Worker 启动地址必须由组合根注入"),
+    );
+  }
+  const {
+    scriptUrl: rawScriptUrl,
+    ortPath: rawOrtPath,
+    allowBlobFallback,
+  } = workerBootstrapConfig;
   const scriptUrl = rawScriptUrl.startsWith("/")
     ? new URL(rawScriptUrl, globalThis.location?.href).toString()
     : rawScriptUrl;
@@ -201,7 +204,7 @@ async function bootstrapWorker(): Promise<{ worker: Worker; proxy: Comlink.Remot
     ? new URL(rawOrtPath, globalThis.location?.href).toString()
     : rawOrtPath;
 
-  if (scriptUrl.startsWith("chrome-extension://")) {
+  if (!allowBlobFallback) {
     try {
       return await runBootstrapAttempt(attempts, "direct-extension", scriptUrl, async () => {
         const candidate = new Worker(scriptUrl, { type: "module" });
@@ -214,30 +217,26 @@ async function bootstrapWorker(): Promise<{ worker: Worker; proxy: Comlink.Remot
     }
   }
 
-  if (/^https?:\/\//i.test(scriptUrl)) {
-    let directError: unknown = null;
-    try {
-      return await runBootstrapAttempt(attempts, "direct-http", scriptUrl, async () => {
-        const candidate = new Worker(scriptUrl, { type: "module" });
-        const candidateProxy = await initWorker(candidate, ortPath, "direct HTTP Worker");
-        return { worker: candidate, proxy: candidateProxy };
-      });
-    } catch (error) {
-      directError = error;
-    }
-    try {
-      return await runBootstrapAttempt(
-        attempts,
-        "blob-http",
-        scriptUrl,
-        () => initBlobWorker(scriptUrl, ortPath),
-      );
-    } catch (error) {
-      throw new WorkerBootstrapError(attempts, new AggregateError([directError, error], "HTTP Worker 启动方式均失败"));
-    }
+  let directError: unknown = null;
+  try {
+    return await runBootstrapAttempt(attempts, "direct-http", scriptUrl, async () => {
+      const candidate = new Worker(scriptUrl, { type: "module" });
+      const candidateProxy = await initWorker(candidate, ortPath, "direct HTTP Worker");
+      return { worker: candidate, proxy: candidateProxy };
+    });
+  } catch (error) {
+    directError = error;
   }
-
-  throw new WorkerBootstrapError(attempts, new Error(`不支持的 Worker 脚本 URL: ${scriptUrl}`));
+  try {
+    return await runBootstrapAttempt(
+      attempts,
+      "blob-http",
+      scriptUrl,
+      () => initBlobWorker(scriptUrl, ortPath),
+    );
+  } catch (error) {
+    throw new WorkerBootstrapError(attempts, new AggregateError([directError, error], "HTTP Worker 启动方式均失败"));
+  }
 }
 
 async function ensureWorker(): Promise<{ worker: Worker; proxy: Comlink.Remote<OnnxWorkerApi> }> {

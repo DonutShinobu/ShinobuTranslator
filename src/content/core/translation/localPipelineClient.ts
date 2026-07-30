@@ -1,5 +1,8 @@
 import { base64ToBlob, blobToBase64 } from '../../../shared/blobCodec';
-import { getChromeApi, type ChromePort } from '../../../shared/chrome';
+import type {
+  RuntimeChannel,
+  RuntimeChannelClient,
+} from '../../../../apps/extension/src/capabilities/contracts';
 import {
   Base64ChunkAssembler,
   LOCAL_PIPELINE_CLIENT_PORT,
@@ -18,6 +21,7 @@ import type {
   ProviderExecutionReport,
 } from '@shinobu/image-pipeline';
 import type { PipelineConfig, PipelineProgress } from '../../../types';
+import { normalizeJsonValue } from '../../../shared/jsonValue';
 
 export type RunLocalPipeline = (
   file: File,
@@ -32,8 +36,11 @@ function createJobId(): string {
     : `pipeline-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function post(port: ChromePort, message: LocalPipelineClientMessage): void {
-  port.postMessage(message);
+function post(
+  channel: RuntimeChannel,
+  message: LocalPipelineClientMessage,
+): Promise<void> {
+  return channel.send(normalizeJsonValue(message));
 }
 
 function userCancellationReason(reason: unknown): PipelineCancellationReason {
@@ -58,22 +65,28 @@ function cancellationRemoteError(reason: unknown): LocalPipelineRemoteError {
   });
 }
 
-export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, options = {}) => {
-  if (options.signal?.aborted) {
-    return Promise.reject(cancellationRemoteError(options.signal.reason));
-  }
-  const chromeApi = getChromeApi();
-  if (!chromeApi?.runtime?.connect) {
-    return Promise.reject(new LocalPipelineRemoteError({
-      name: 'OffscreenPipelineError',
-      code: 'OFFSCREEN_UNAVAILABLE',
-      message: '当前环境不支持扩展 Port 通信',
-    }));
-  }
+export function createRunLocalPipeline(
+  channels: RuntimeChannelClient,
+): RunLocalPipeline {
+  return async (file, config, onProgress, options = {}) => {
+    if (options.signal?.aborted) {
+      throw cancellationRemoteError(options.signal.reason);
+    }
+    let channel: RuntimeChannel;
+    try {
+      channel = await channels.open(LOCAL_PIPELINE_CLIENT_PORT);
+    } catch (error) {
+      throw new LocalPipelineRemoteError({
+        name: 'OffscreenPipelineError',
+        code: 'OFFSCREEN_UNAVAILABLE',
+        message: error instanceof Error
+          ? error.message
+          : '当前环境不支持扩展 channel 通信',
+      });
+    }
 
-  const jobId = createJobId();
-  const port = chromeApi.runtime.connect({ name: LOCAL_PIPELINE_CLIENT_PORT });
-  return new Promise<LocalPipelineResult>((resolve, reject) => {
+    const jobId = createJobId();
+    return await new Promise<LocalPipelineResult>((resolve, reject) => {
     let settled = false;
     let transferStarted = false;
     let resultSummary: LocalPipelineArtifactSummary | null = null;
@@ -85,16 +98,14 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
     let debugAssembler: Base64ChunkAssembler | null = null;
     let debugContentType = 'image/png';
     let expectsDebug = false;
+    let cancelMessage: () => void = () => undefined;
+    let cancelDisconnect: () => void = () => undefined;
 
     const cleanup = (): void => {
       options.signal?.removeEventListener('abort', onAbort);
-      port.onMessage.removeListener?.(onMessage);
-      port.onDisconnect.removeListener?.(onDisconnect);
-      try {
-        port.disconnect();
-      } catch {
-        // Already disconnected.
-      }
+      cancelMessage();
+      cancelDisconnect();
+      void channel.disconnect().catch(() => undefined);
     };
 
     const fail = (error: unknown): void => {
@@ -155,7 +166,7 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
       try {
         const base64 = await blobToBase64(file);
         const chunks = splitBase64Chunks(base64);
-        post(port, {
+        await post(channel, {
           type: 'start',
           jobId,
           file: {
@@ -170,10 +181,10 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
             totalChars: base64.length,
           },
         });
-        chunks.forEach((data, index) => {
-          post(port, { type: 'input-chunk', jobId, index, data });
-        });
-        post(port, { type: 'input-complete', jobId });
+        for (const [index, data] of chunks.entries()) {
+          await post(channel, { type: 'input-chunk', jobId, index, data });
+        }
+        await post(channel, { type: 'input-complete', jobId });
       } catch (error) {
         fail(error);
       }
@@ -239,38 +250,39 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
       fail(new LocalPipelineRemoteError({
         name: 'OffscreenPipelineError',
         code: 'OFFSCREEN_DISCONNECTED',
-        message: chromeApi.runtime?.lastError?.message || '本地流水线 Port 已断开',
+        message: '本地流水线 channel 已断开',
       }));
     };
 
     const onAbort = (): void => {
       if (settled) return;
       try {
-        post(port, {
+        void post(channel, {
           type: 'cancel',
           jobId,
           reason: userCancellationReason(options.signal?.reason),
-        });
+        }).catch(fail);
       } catch (error) {
         fail(error);
       }
     };
 
-    port.onMessage.addListener(onMessage);
-    port.onDisconnect.addListener(onDisconnect);
+    cancelMessage = channel.onMessage(onMessage);
+    cancelDisconnect = channel.onDisconnect(onDisconnect);
     options.signal?.addEventListener('abort', onAbort, { once: true });
     if (options.signal?.aborted) {
       onAbort();
     }
 
     try {
-      post(port, {
+      void post(channel, {
         type: 'prepare',
         jobId,
         diagnosticRunId: config.diagnosticRunId,
-      });
+      }).catch(fail);
     } catch (error) {
       fail(error);
     }
-  });
-};
+    });
+  };
+}

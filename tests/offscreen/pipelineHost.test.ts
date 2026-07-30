@@ -4,8 +4,12 @@ import type {
   ProviderExecutionReport,
 } from '@shinobu/image-pipeline';
 import { PRODUCTION_PROVIDER_EXECUTION_POLICY } from '@shinobu/image-pipeline';
-import type { ChromePort } from '../../src/shared/chrome';
 import type { PipelineArtifacts } from '../../src/types';
+import type {
+  JsonValue,
+  RuntimeChannel,
+  RuntimeChannelDisconnectReason,
+} from '../../apps/extension/src/capabilities/contracts';
 
 const mocks = vi.hoisted(() => ({
   runPipeline: vi.fn(),
@@ -39,39 +43,53 @@ vi.mock('../../src/shared/blobCodec', () => ({
 import { OffscreenPipelineHost } from '../../src/offscreen/pipelineHost';
 import { LOCAL_PIPELINE_OFFSCREEN_PORT } from '../../src/shared/localPipelineProtocol';
 
-class FakePort implements ChromePort {
+class FakePort implements RuntimeChannel {
   readonly name = LOCAL_PIPELINE_OFFSCREEN_PORT;
+  readonly source = { kind: 'extension-document' as const };
   readonly sent: unknown[] = [];
-  readonly messageListeners: Array<(message: unknown, port: ChromePort) => void> = [];
-  readonly disconnectListeners: Array<(port: ChromePort) => void> = [];
+  readonly messageListeners: Array<(message: JsonValue) => void> = [];
+  readonly disconnectListeners: Array<(
+    reason: RuntimeChannelDisconnectReason,
+  ) => void> = [];
+  readonly pendingMessages: JsonValue[] = [];
   disconnected = false;
+  beforeSend?: (message: JsonValue) => Promise<void>;
 
-  postMessage(message: unknown): void {
+  async send(message: JsonValue): Promise<void> {
+    if (this.disconnected) throw new Error('port disconnected');
+    await this.beforeSend?.(message);
+    if (this.disconnected) throw new Error('port disconnected');
     this.sent.push(message);
   }
 
-  disconnect(): void {
+  async disconnect(): Promise<void> {
     if (this.disconnected) return;
     this.disconnected = true;
-    for (const listener of this.disconnectListeners) listener(this);
+    for (const listener of this.disconnectListeners) {
+      listener('closed-locally');
+    }
   }
 
-  onMessage = {
-    addListener: (listener: (message: unknown, port: ChromePort) => void): void => {
-      this.messageListeners.push(listener);
-    },
-    removeListener: (): void => undefined,
-  };
+  onMessage(listener: (message: JsonValue) => void): () => void {
+    this.messageListeners.push(listener);
+    for (const message of this.pendingMessages.splice(0)) listener(message);
+    return () => undefined;
+  }
 
-  onDisconnect = {
-    addListener: (listener: (port: ChromePort) => void): void => {
-      this.disconnectListeners.push(listener);
-    },
-    removeListener: (): void => undefined,
-  };
+  onDisconnect(
+    listener: (reason: RuntimeChannelDisconnectReason) => void,
+  ): () => void {
+    this.disconnectListeners.push(listener);
+    return () => undefined;
+  }
 
   emit(message: unknown): void {
-    for (const listener of this.messageListeners) listener(message, this);
+    const value = message as JsonValue;
+    if (this.messageListeners.length === 0) {
+      this.pendingMessages.push(value);
+      return;
+    }
+    for (const listener of this.messageListeners) listener(value);
   }
 }
 
@@ -124,12 +142,18 @@ const defaultCapabilities: ImagePipelineRuntimeCapabilities = {
   },
 };
 
-function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (error: unknown) => void;
+} {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((done, fail) => {
     resolve = done;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 function artifacts(): PipelineArtifacts {
@@ -187,7 +211,6 @@ function sendImageJob(port: FakePort, jobId: string): void {
 
 describe('OffscreenPipelineHost single-task admission', () => {
   let port: FakePort;
-  let originalChrome: unknown;
   let hosts: OffscreenPipelineHost[];
 
   beforeEach(() => {
@@ -197,24 +220,32 @@ describe('OffscreenPipelineHost single-task admission', () => {
     mocks.blobToBase64.mockResolvedValue('cmVzdWx0');
     hosts = [];
     port = new FakePort();
-    originalChrome = (globalThis as { chrome?: unknown }).chrome;
-    (globalThis as { chrome?: unknown }).chrome = {
-      runtime: {
-        connect: () => port,
-      },
-    };
   });
 
   afterEach(() => {
     hosts.forEach((host) => host.dispose());
-    (globalThis as { chrome?: unknown }).chrome = originalChrome;
-    port.disconnect();
+    void port.disconnect();
   });
 
   function createHost(
     capabilities?: ImagePipelineRuntimeCapabilities,
   ): OffscreenPipelineHost {
-    const host = new OffscreenPipelineHost(capabilities ?? defaultCapabilities);
+    const host = new OffscreenPipelineHost(
+      capabilities ?? defaultCapabilities,
+      {
+        runtimeChannels: {
+          open: async () => port,
+        },
+        translationTransport: {
+          requestChatCompletion: vi.fn(),
+          translatePlain: vi.fn(),
+        },
+        diagnosticMessageSender: vi.fn(async () => ({
+          ok: true,
+          type: 'mt:diagnostic-log-event',
+        } as const)),
+      },
+    );
     hosts.push(host);
     return host;
   }
@@ -409,6 +440,35 @@ describe('OffscreenPipelineHost single-task admission', () => {
     });
   });
 
+  it('does not finish a job when a delayed result send rejects', async () => {
+    const delivery = deferred<void>();
+    let resultDeliveryStarted = false;
+    port.beforeSend = async (message) => {
+      if ((message as { type?: string }).type !== 'result-meta') return;
+      resultDeliveryStarted = true;
+      await delivery.promise;
+    };
+    mocks.runPipeline.mockResolvedValueOnce(artifacts());
+    const host = createHost();
+    host.connect();
+    sendImageJob(port, 'delayed-send-failure');
+
+    await vi.waitFor(() => expect(resultDeliveryStarted).toBe(true));
+    expect(port.sent).not.toContainEqual({
+      type: 'complete',
+      jobId: 'delayed-send-failure',
+    });
+    expect(port.disconnected).toBe(false);
+
+    delivery.reject(new Error('delayed send failed'));
+
+    await vi.waitFor(() => expect(port.disconnected).toBe(true));
+    expect(port.sent).not.toContainEqual({
+      type: 'complete',
+      jobId: 'delayed-send-failure',
+    });
+  });
+
   it('releases sessions and asks the background to close after five idle minutes', async () => {
     vi.useFakeTimers();
     try {
@@ -430,9 +490,12 @@ describe('OffscreenPipelineHost single-task admission', () => {
       const host = createHost();
       host.connect();
       const firstPort = port;
+      await vi.waitFor(() => {
+        expect(firstPort.sent).toContainEqual({ type: 'host-ready' });
+      });
       port = new FakePort();
 
-      firstPort.disconnect();
+      await firstPort.disconnect();
       await vi.advanceTimersByTimeAsync(250);
 
       expect(port.sent).toContainEqual({ type: 'host-ready' });

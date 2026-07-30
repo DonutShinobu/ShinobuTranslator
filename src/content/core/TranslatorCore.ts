@@ -11,11 +11,13 @@ import {
 import type { UiElements } from './ui';
 import type { ScreenshotRect, ScreenshotSelection } from './screenshot';
 import { TranslationRunner } from './translation/translationRunner';
+import type { RunLocalPipeline } from './translation/localPipelineClient';
 import { ImageTranslationController } from './translation/imageTranslationController';
 import { PhotoStateStore } from './state/photoStateStore';
 import { ReadingModeController } from './reading/readingModeController';
 import { CardStateController } from './ui/cardState';
 import { ScreenshotController } from './screenshot/screenshotController';
+import type { RuntimeMessageSender } from '../../shared/messages';
 
 type MountedImage = {
   key: string;
@@ -23,24 +25,40 @@ type MountedImage = {
   ui: UiElements;
 };
 
+export type TranslatorCoreDependencies = {
+  sendMessage: RuntimeMessageSender;
+  runLocalPipeline: RunLocalPipeline;
+  resourceUrl(path: string): string;
+};
+
 export class TranslatorCore {
   private adapter: SiteAdapter;
   private readonly stateStore = new PhotoStateStore();
-  private readonly translationRunner = new TranslationRunner();
-  private readonly cardStateController = new CardStateController();
-  private readonly screenshotController = new ScreenshotController(
-    this.stateStore,
-    this.translationRunner,
-    this.cardStateController,
-  );
+  private readonly translationRunner: TranslationRunner;
+  private readonly cardStateController: CardStateController;
+  private readonly screenshotController: ScreenshotController;
   private readonly imageTranslationController: ImageTranslationController;
   private readonly readingModeController: ReadingModeController;
+  private readonly resourceUrl: (path: string) => string;
   private mounted = new Map<string, MountedImage>();
   private disposeObserver: (() => void) | null = null;
   private syncTimer: number | null = null;
 
-  constructor(adapter: SiteAdapter) {
+  constructor(adapter: SiteAdapter, dependencies: TranslatorCoreDependencies) {
     this.adapter = adapter;
+    this.resourceUrl = dependencies.resourceUrl;
+    this.translationRunner = new TranslationRunner({
+      sendMessage: dependencies.sendMessage,
+      runLocalPipeline: dependencies.runLocalPipeline,
+    });
+    this.cardStateController = new CardStateController(dependencies.sendMessage);
+    this.screenshotController = new ScreenshotController(
+      this.stateStore,
+      this.translationRunner,
+      this.cardStateController,
+      undefined,
+      dependencies.sendMessage,
+    );
     this.imageTranslationController = new ImageTranslationController(
       this.stateStore,
       this.translationRunner,
@@ -77,7 +95,7 @@ export class TranslatorCore {
   }
 
   start(): void {
-    injectStyles();
+    injectStyles(this.resourceUrl);
     this.disposeObserver = this.adapter.observe(() => this.scheduleSync());
     this.sync();
   }

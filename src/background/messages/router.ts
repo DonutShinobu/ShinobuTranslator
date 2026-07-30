@@ -1,5 +1,11 @@
 import type { ExtensionSettings } from '../../shared/config';
-import type { ChromeMessageSender } from '../../shared/chrome';
+import type {
+  ExtensionMessageSource,
+} from '../../../apps/extension/src/capabilities/contracts';
+import {
+  requireTabDocumentSource,
+  type TabDocumentSource,
+} from '../../../apps/extension/src/capabilities/guards';
 import type {
   RuntimeMessage,
   RuntimeResponse,
@@ -23,9 +29,9 @@ export type BackgroundServices = {
   images: {
     download(
       request: ImageDownloadRequest,
-      sender: ChromeMessageSender,
+      sender: TabDocumentSource,
     ): Promise<PayloadOf<'mt:download-image'>>;
-    capture(sender: ChromeMessageSender): Promise<PayloadOf<'mt:capture-visible-tab'>>;
+    capture(sender: TabDocumentSource): Promise<PayloadOf<'mt:capture-visible-tab'>>;
   };
   openAi: {
     status(): Promise<PayloadOf<'mt:openai-oauth-status'>['status']>;
@@ -45,7 +51,7 @@ export type BackgroundServices = {
 
 export async function routeBackgroundMessage(
   message: RuntimeMessage,
-  sender: ChromeMessageSender,
+  sender: ExtensionMessageSource,
   services: BackgroundServices,
 ): Promise<RuntimeResponse> {
   if (message.type === 'mt:diagnostic-log-event') {
@@ -79,6 +85,10 @@ export async function routeBackgroundMessage(
     };
   }
   if (message.type === 'mt:download-image') {
+    const documentSource = requireTabDocumentSource(sender, {
+      capability: 'runtime-request',
+      operation: 'request',
+    });
     const request: ImageDownloadRequest = {
       imageUrl: message.imageUrl,
       ...(message.referrerPolicy !== undefined
@@ -88,11 +98,19 @@ export async function routeBackgroundMessage(
     return {
       ok: true,
       type: 'mt:download-image',
-      ...await services.images.download(request, sender),
+      ...await services.images.download(request, documentSource),
     };
   }
   if (message.type === 'mt:capture-visible-tab') {
-    return { ok: true, type: 'mt:capture-visible-tab', ...await services.images.capture(sender) };
+    const documentSource = requireTabDocumentSource(sender, {
+      capability: 'visible-tab-capture',
+      operation: 'capturePng',
+    });
+    return {
+      ok: true,
+      type: 'mt:capture-visible-tab',
+      ...await services.images.capture(documentSource),
+    };
   }
   if (message.type === 'mt:openai-oauth-status') {
     return { ok: true, type: 'mt:openai-oauth-status', status: await services.openAi.status() };

@@ -14,6 +14,7 @@ export type ChromeMessageSender = {
   origin?: string;
   tab?: {
     id?: number;
+    windowId?: number;
     url?: string;
   };
 };

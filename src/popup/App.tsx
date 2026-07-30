@@ -21,7 +21,7 @@ import {
   resolveLlmThinkingLevel,
   type LlmThinkingLevel,
 } from '../shared/llmThinking';
-import { sendRuntimeMessage } from '../shared/messages';
+import type { RuntimeMessageSender } from '../shared/messages';
 import { downloadText } from '../shared/utils';
 
 type SaveStatus = {
@@ -544,7 +544,13 @@ function SelectControl<T extends string>({
   );
 }
 
-export function App() {
+export function App({
+  sendMessage,
+  extensionVersion,
+}: {
+  sendMessage: RuntimeMessageSender;
+  extensionVersion: string;
+}) {
   const [settings, setSettings] = useState<ExtensionSettings>(defaultExtensionSettings);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<SaveStatus>({ kind: 'idle', message: '' });
@@ -574,7 +580,7 @@ export function App() {
   useEffect(() => {
     async function loadSettings(): Promise<void> {
       try {
-        const response = await sendRuntimeMessage({ type: 'mt:get-settings' });
+        const response = await sendMessage({ type: 'mt:get-settings' });
         if (!response.ok || response.type !== 'mt:get-settings') {
           throw new Error(response.ok ? '读取配置失败' : response.error);
         }
@@ -741,7 +747,7 @@ export function App() {
   async function refreshOpenAiOAuthStatus(): Promise<void> {
     setOpenAiStatus((prev) => ({ ...prev, loading: true, error: '' }));
     try {
-      const response = await sendRuntimeMessage({ type: 'mt:openai-oauth-status' });
+      const response = await sendMessage({ type: 'mt:openai-oauth-status' });
       if (!response.ok || response.type !== 'mt:openai-oauth-status') {
         throw new Error(response.ok ? '读取 OpenAI 登录状态失败' : response.error);
       }
@@ -760,7 +766,7 @@ export function App() {
   async function loginOpenAiOAuth(): Promise<void> {
     setOpenAiStatus((prev) => ({ ...prev, busy: true, error: '' }));
     try {
-      const response = await sendRuntimeMessage({ type: 'mt:openai-oauth-login' });
+      const response = await sendMessage({ type: 'mt:openai-oauth-login' });
       if (!response.ok || response.type !== 'mt:openai-oauth-login') {
         throw new Error(response.ok ? 'OpenAI 登录失败' : response.error);
       }
@@ -781,7 +787,7 @@ export function App() {
   async function logoutOpenAiOAuth(): Promise<void> {
     setOpenAiStatus((prev) => ({ ...prev, busy: true, error: '' }));
     try {
-      const response = await sendRuntimeMessage({ type: 'mt:openai-oauth-logout' });
+      const response = await sendMessage({ type: 'mt:openai-oauth-logout' });
       if (!response.ok || response.type !== 'mt:openai-oauth-logout') {
         throw new Error(response.ok ? 'OpenAI 退出登录失败' : response.error);
       }
@@ -815,7 +821,7 @@ export function App() {
     geminiAppAutoCheckAttemptedRef.current = true;
     setGeminiAppStatus((prev) => ({ ...prev, loading: true, error: '' }));
     try {
-      const response = await sendRuntimeMessage({ type: 'mt:gemini-app-auth-status' });
+      const response = await sendMessage({ type: 'mt:gemini-app-auth-status' });
       if (!response.ok || response.type !== 'mt:gemini-app-auth-status') {
         throw new Error(response.ok ? '读取 Gemini 登录状态失败' : response.error);
       }
@@ -834,7 +840,7 @@ export function App() {
   async function loginGeminiApp(): Promise<void> {
     setGeminiAppStatus((prev) => ({ ...prev, busy: true, error: '' }));
     try {
-      const response = await sendRuntimeMessage({ type: 'mt:gemini-app-auth-login' });
+      const response = await sendMessage({ type: 'mt:gemini-app-auth-login' });
       if (!response.ok || response.type !== 'mt:gemini-app-auth-login') {
         throw new Error(response.ok ? 'Gemini 登录失败' : response.error);
       }
@@ -914,8 +920,6 @@ export function App() {
         : geminiAppStatus.pending
           ? '未登录'
           : '未登录';
-  const extensionVersion = getChromeApi()?.runtime?.getManifest?.().version ?? '';
-
   function openShortcutManager(): void {
     const chromeApi = getChromeApi();
     if (!chromeApi?.tabs?.create) {
@@ -939,7 +943,7 @@ export function App() {
       setStatus({ kind: 'saving', message: '正在自动保存...' });
     }
     try {
-      const response = await sendRuntimeMessage({
+      const response = await sendMessage({
         type: 'mt:set-settings',
         settings: nextSettings,
       });
@@ -962,7 +966,7 @@ export function App() {
   async function downloadDiagnosticLog(): Promise<void> {
     setStatus({ kind: 'saving', message: '正在准备日志...' });
     try {
-      const response = await sendRuntimeMessage({ type: 'mt:diagnostic-log-export' });
+      const response = await sendMessage({ type: 'mt:diagnostic-log-export' });
       if (!response.ok || response.type !== 'mt:diagnostic-log-export') {
         throw new Error(response.ok ? '导出日志失败' : response.error);
       }
@@ -987,7 +991,7 @@ export function App() {
 
     setStatus({ kind: 'saving', message: '正在清空日志...' });
     try {
-      const response = await sendRuntimeMessage({ type: 'mt:diagnostic-log-clear' });
+      const response = await sendMessage({ type: 'mt:diagnostic-log-clear' });
       if (!response.ok || response.type !== 'mt:diagnostic-log-clear') {
         throw new Error(response.ok ? '清空日志失败' : response.error);
       }

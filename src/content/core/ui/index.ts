@@ -1,4 +1,4 @@
-export { injectStyles, resolveRuntimeAssetUrl } from './styles';
+export { injectStyles } from './styles';
 export { createUiElements, renderUi } from './imageControls';
 export type { UiElements } from './imageControls';
 export { createReadingModeBarUi } from './readingModeBar';

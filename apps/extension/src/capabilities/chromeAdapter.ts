@@ -108,6 +108,7 @@ export function createChromeExtensionAdapter(
     },
     pipelineHost() {
       return {
+        runtimeRequests: runtimeRequestClient(chrome.runtime),
         runtimeChannels: runtimeChannelClient(chrome.runtime),
         environment: extensionEnvironment(chrome.runtime),
       };

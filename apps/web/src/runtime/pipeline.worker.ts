@@ -54,6 +54,8 @@ import { installTrustedTypesPolicy } from './trustedTypes';
 installTrustedTypesPolicy();
 configureOnnxWorkerBootstrap({
   scriptUrl: onnxWorkerScriptUrl,
+  ortPath: '/ort/',
+  allowBlobFallback: true,
 });
 
 const platform = createOffscreenPlatform();

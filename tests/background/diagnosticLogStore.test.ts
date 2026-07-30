@@ -1,10 +1,15 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import {
-  exportDiagnosticLog,
-  recordDiagnosticLogEvent,
+  createDiagnosticLogStore,
+  type DiagnosticLogStoreService,
 } from '../../src/background/diagnostics/logStore';
+import { defaultExtensionSettings } from '../../src/shared/config';
 import type { DiagnosticLogEvent } from '../../src/shared/diagnosticLog';
+import type {
+  ExtensionStorage,
+  JsonValue,
+} from '../../apps/extension/src/capabilities/contracts';
 
 const diagnosticLogStorageKey = 'mangaTranslate.diagnosticLog';
 
@@ -20,51 +25,39 @@ function createStoredEvent(index: number): DiagnosticLogEvent {
   };
 }
 
-function requestedStorageKeys(keys: string | string[] | Record<string, unknown>): string[] {
-  if (typeof keys === 'string') return [keys];
-  if (Array.isArray(keys)) return keys;
-  return Object.keys(keys);
+let activeStore: DiagnosticLogStoreService;
+
+function toJsonValue(value: unknown): JsonValue {
+  return JSON.parse(JSON.stringify(value)) as JsonValue;
 }
 
-function installStorage(initialDiagnosticStore: unknown): Record<string, unknown> {
-  const storage: Record<string, unknown> = {
-    [diagnosticLogStorageKey]: initialDiagnosticStore,
+function installStorage(initialDiagnosticStore: unknown): Record<string, JsonValue> {
+  const values: Record<string, JsonValue> = {
+    [diagnosticLogStorageKey]: toJsonValue(initialDiagnosticStore),
   };
-  vi.stubGlobal('chrome', {
-    runtime: {
-      getManifest: () => ({ version: 'test' }),
+  const storage: ExtensionStorage = {
+    async read(keys) {
+      return Object.fromEntries(keys.map((key) => [key, values[key]]));
     },
-    storage: {
-      local: {
-        get(
-          keys: string | string[] | Record<string, unknown>,
-          callback: (items: Record<string, unknown>) => void,
-        ) {
-          const items = Object.fromEntries(
-            requestedStorageKeys(keys).map((key) => [key, storage[key]]),
-          );
-          callback(items);
-        },
-        set(items: Record<string, unknown>, callback: () => void) {
-          Object.assign(storage, items);
-          callback();
-        },
-        remove(keys: string | string[], callback: () => void) {
-          for (const key of typeof keys === 'string' ? [keys] : keys) {
-            delete storage[key];
-          }
-          callback();
-        },
-      },
+    async write(items) {
+      Object.assign(values, items);
     },
+    async remove(keys) {
+      for (const key of keys) delete values[key];
+    },
+  };
+  activeStore = createDiagnosticLogStore({
+    storage,
+    getSettings: async () => defaultExtensionSettings,
+    extensionVersion: 'test',
   });
-  return storage;
+  return values;
 }
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-  vi.restoreAllMocks();
-});
+const exportDiagnosticLog = () => activeStore.export();
+const recordDiagnosticLogEvent = (event: DiagnosticLogEvent) => (
+  activeStore.record(event)
+);
 
 describe('diagnostic log store export', () => {
   it.each([80, 81, 2000])('exports all %i valid events without a top-level truncation marker', async (eventCount) => {
@@ -83,9 +76,9 @@ describe('diagnostic log store export', () => {
     const legacyEvent = {
       ...createStoredEvent(1),
       id: 'legacy-event',
-      timestamp: undefined,
       message: 'legacy event without timestamp',
     };
+    delete (legacyEvent as Partial<DiagnosticLogEvent>).timestamp;
     installStorage({ events: [createStoredEvent(0), legacyEvent] });
 
     const exported = await exportDiagnosticLog();
@@ -100,7 +93,7 @@ describe('diagnostic log store export', () => {
     const invalidEvent = {
       ...createStoredEvent(1),
       id: 'invalid-event',
-      source: undefined,
+      source: null,
       message: 'invalid event should not be exported',
     };
     installStorage({ events: [createStoredEvent(0), invalidEvent] });
@@ -146,7 +139,7 @@ describe('diagnostic log store export', () => {
     const invalidEvent = {
       ...createStoredEvent(1),
       id: 'invalid-event',
-      source: undefined,
+      source: null,
     };
     const storage = installStorage({ events: [createStoredEvent(0), invalidEvent] });
 

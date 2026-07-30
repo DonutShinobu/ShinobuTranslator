@@ -25,23 +25,28 @@ export function captureVisibleTab(sender: ChromeMessageSender): Promise<{
     return Promise.reject(new Error('当前浏览器不支持标签页截图'));
   }
 
-  const windowId = typeof sender.tab?.windowId === 'number' ? sender.tab.windowId : undefined;
+  const windowId = typeof sender.tab?.windowId === 'number'
+    ? sender.tab.windowId
+    : undefined;
   return new Promise((resolve, reject) => {
-    chromeApi.tabs?.captureVisibleTab?.(windowId, { format: 'png' }, (dataUrl?: string) => {
-      const lastError = chromeApi.runtime?.lastError;
-      if (lastError?.message) {
-        reject(new Error(lastError.message));
-        return;
-      }
-      if (!dataUrl) {
-        reject(new Error('截图返回为空'));
-        return;
-      }
-      const parsed = parseImageDataUrl(dataUrl);
-      resolve({
-        ...parsed,
-        sourceUrl: sender.tab?.url ?? '',
-      });
-    });
+    chromeApi.tabs?.captureVisibleTab?.(
+      windowId,
+      { format: 'png' },
+      (dataUrl?: string) => {
+        const lastError = chromeApi.runtime?.lastError;
+        if (lastError?.message) {
+          reject(new Error(lastError.message));
+          return;
+        }
+        if (!dataUrl) {
+          reject(new Error('截图返回为空'));
+          return;
+        }
+        resolve({
+          ...parseImageDataUrl(dataUrl),
+          sourceUrl: sender.tab?.url ?? '',
+        });
+      },
+    );
   });
 }

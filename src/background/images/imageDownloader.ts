@@ -5,6 +5,10 @@ import {
   type ChromeMessageSender,
   type ChromeWebRequestHeadersDetails,
 } from '../../shared/chrome';
+import type {
+  ExtensionStorage,
+} from '../../../apps/extension/src/capabilities/contracts';
+import { normalizeJsonValue } from '../../shared/jsonValue';
 import { isReferrerPolicy } from '../../shared/referrerPolicy';
 import { arrayBufferToBase64, toErrorMessage } from '../../shared/utils';
 
@@ -33,7 +37,8 @@ export type ImageDownloader = {
   ): Promise<DownloadedImage>;
 };
 
-type ImageDownloaderDependencies = {
+export type ImageDownloaderDependencies = {
+  sessionStorage: ExtensionStorage;
   chromeApi?: ChromeLike | null;
   fetchImage?: typeof fetch;
   timeoutMs?: number;
@@ -118,12 +123,14 @@ async function hashDocumentUrl(value: string): Promise<string | undefined> {
   }
 }
 
-function createDocumentPolicyTracker(chromeApi: ChromeLike | null | undefined): DocumentPolicyTracker {
+function createDocumentPolicyTracker(
+  chromeApi: ChromeLike | null | undefined,
+  sessionStorage: ExtensionStorage,
+): DocumentPolicyTracker {
   const policies = new Map<string, TrackedDocumentPolicy>();
   const locallyUpdatedKeys = new Set<string>();
   const pendingUpdates = new Map<string, Promise<void>>();
   const keyRevisions = new Map<string, number>();
-  const sessionStorage = chromeApi?.storage?.session;
   let nextRevision = 0;
   let storageLoaded = false;
   let persistRequested = false;
@@ -138,7 +145,6 @@ function createDocumentPolicyTracker(chromeApi: ChromeLike | null | undefined): 
   };
 
   const queuePersist = (): void => {
-    if (!sessionStorage?.set) return;
     if (!storageLoaded) {
       persistRequested = true;
       return;
@@ -146,17 +152,18 @@ function createDocumentPolicyTracker(chromeApi: ChromeLike | null | undefined): 
     persistTail = persistTail
       .catch(() => undefined)
       .then(async () => {
-        await sessionStorage.set?.({
-          [documentPolicyStorageKey]: Object.fromEntries(policies),
+        await sessionStorage.write({
+          [documentPolicyStorageKey]: normalizeJsonValue(
+            Object.fromEntries(policies),
+          ),
         });
       })
       .catch(() => undefined);
   };
 
   const ready = (async () => {
-    if (!sessionStorage?.get) return;
     try {
-      const stored = await sessionStorage.get(documentPolicyStorageKey);
+      const stored = await sessionStorage.read([documentPolicyStorageKey]);
       const snapshot = stored[documentPolicyStorageKey];
       if (!isRecord(snapshot)) return;
       const entries: Array<[string, TrackedDocumentPolicy]> = [];
@@ -190,7 +197,6 @@ function createDocumentPolicyTracker(chromeApi: ChromeLike | null | undefined): 
       }
     }
   })();
-  if (!sessionStorage?.get) storageLoaded = true;
 
   const listener = (details: ChromeWebRequestHeadersDetails): void => {
     const keys = getDocumentPolicyKeys(details);
@@ -456,14 +462,17 @@ function formatAttemptFailure(failure: ImageAttemptFailure): string {
 }
 
 export function createImageDownloader(
-  dependencies: ImageDownloaderDependencies = {},
+  dependencies: ImageDownloaderDependencies,
 ): ImageDownloader {
   const chromeApi = dependencies.chromeApi === undefined
     ? getChromeApi()
     : dependencies.chromeApi;
   const dnr = chromeApi?.declarativeNetRequest;
   const extensionId = chromeApi?.runtime?.id;
-  const documentPolicyTracker = createDocumentPolicyTracker(chromeApi);
+  const documentPolicyTracker = createDocumentPolicyTracker(
+    chromeApi,
+    dependencies.sessionStorage,
+  );
   const fetchImage = dependencies.fetchImage ?? globalThis.fetch.bind(globalThis);
   const timeoutMs = dependencies.timeoutMs ?? defaultDownloadTimeoutMs;
   let queueTail: Promise<void> = Promise.resolve();

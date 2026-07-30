@@ -1,16 +1,11 @@
 const styleId = 'mt-overlay-style';
 
-export function resolveRuntimeAssetUrl(path: string): string | null {
-  const chromeApi = (globalThis as typeof globalThis & { chrome?: { runtime?: { getURL?: (p: string) => string } } }).chrome;
-  return chromeApi?.runtime?.getURL ? chromeApi.runtime.getURL(path) : null;
-}
-
-export function injectStyles(): void {
+export function injectStyles(resourceUrl: (path: string) => string): void {
   if (document.getElementById(styleId)) return;
   const style = document.createElement('style');
   style.id = styleId;
-  const fontCnUrl = resolveRuntimeAssetUrl('fonts/SourceHanSansCN-VF.ttf.woff2');
-  const fontTwUrl = resolveRuntimeAssetUrl('fonts/SourceHanSansTW-VF.ttf.woff2');
+  const fontCnUrl = resourceUrl('fonts/SourceHanSansCN-VF.ttf.woff2');
+  const fontTwUrl = resourceUrl('fonts/SourceHanSansTW-VF.ttf.woff2');
   const fontFaces = [
     fontCnUrl
       ? `@font-face {

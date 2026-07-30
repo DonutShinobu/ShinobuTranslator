@@ -18,8 +18,8 @@ import type {
   RuntimeResponse,
 } from "../../shared/messages";
 import {
-  recordBackgroundDiagnosticLog,
   toImageTranslateDiagnosticData,
+  type DiagnosticLogStoreService,
 } from "../diagnostics/logStore";
 import { geminiAppUrl } from "../gemini/authService";
 import { runGeminiApiImageTranslate } from "../geminiApiImageClient";
@@ -37,7 +37,24 @@ import {
   openAiCodexResponsesEndpoint,
   proxyOpenAiChatCompletions,
 } from "../openai/responsesProxy";
-import { getSettings } from "../settings/settingsStore";
+import type {
+  OpenAiOAuthService,
+} from "../openai/oauthService";
+
+export type ProviderService = {
+  llm(message: LlmChatMessage): Promise<LlmChatResponse>;
+  geminiAppImage(message: GeminiAppImageMessage): Promise<GeminiAppImageResponse>;
+  geminiApiImage(message: GeminiApiImageMessage): Promise<GeminiApiImageResponse>;
+};
+
+type ProviderServiceDependencies = {
+  getSettings(): Promise<ExtensionSettings>;
+  diagnostics: Pick<DiagnosticLogStoreService, 'recordBackground'>;
+  openAiOAuth: Pick<
+    OpenAiOAuthService,
+    'getInstallationId' | 'getValidTokens' | 'refreshTokens'
+  >;
+};
 
 type LlmChatMessage = Extract<RuntimeMessage, { type: "mt:llm-chat-completions" }>;
 type GeminiAppImageMessage = Extract<RuntimeMessage, { type: "mt:gemini-app-image-translate" }>;
@@ -87,8 +104,11 @@ function getLlmProxyErrorData(error: unknown): Record<string, unknown> {
   return {};
 }
 
-export async function handleLlmChatCompletions(message: LlmChatMessage): Promise<LlmChatResponse> {
-  const settings = await getSettings();
+async function handleLlmChatCompletions(
+  message: LlmChatMessage,
+  dependencies: ProviderServiceDependencies,
+): Promise<LlmChatResponse> {
+  const settings = await dependencies.getSettings();
   const proxyConfig = resolveLlmProxyConfig(settings, message.proxyConfig);
   const startedAt = Date.now();
   const baseLogData = {
@@ -102,7 +122,7 @@ export async function handleLlmChatCompletions(message: LlmChatMessage): Promise
     backgroundDirectFetch: true,
     contentDirectFetch: false,
   };
-  await recordBackgroundDiagnosticLog(settings, {
+  await dependencies.diagnostics.recordBackground(settings, {
     runId: message.diagnosticRunId,
     level: 'info',
     category: 'llm.api',
@@ -112,9 +132,13 @@ export async function handleLlmChatCompletions(message: LlmChatMessage): Promise
   });
   try {
     const data = proxyConfig.provider === 'openai' && proxyConfig.authMode === 'openai_oauth'
-      ? await proxyOpenAiChatCompletions(message.body, proxyConfig)
+      ? await proxyOpenAiChatCompletions(
+        message.body,
+        proxyConfig,
+        dependencies.openAiOAuth,
+      )
       : await proxyApiKeyChatCompletions(settings, proxyConfig, message.body);
-    await recordBackgroundDiagnosticLog(settings, {
+    await dependencies.diagnostics.recordBackground(settings, {
       runId: message.diagnosticRunId,
       level: 'info',
       category: 'llm.api',
@@ -136,7 +160,7 @@ export async function handleLlmChatCompletions(message: LlmChatMessage): Promise
       error,
       error instanceof LlmChatCompletionHttpError ? error.status : undefined,
     );
-    await recordBackgroundDiagnosticLog(settings, {
+    await dependencies.diagnostics.recordBackground(settings, {
       runId: message.diagnosticRunId,
       level: 'error',
       category: 'llm.api',
@@ -154,8 +178,11 @@ export async function handleLlmChatCompletions(message: LlmChatMessage): Promise
   }
 }
 
-export async function handleGeminiAppImageTranslate(message: GeminiAppImageMessage): Promise<GeminiAppImageResponse> {
-  const settings = await getSettings();
+async function handleGeminiAppImageTranslate(
+  message: GeminiAppImageMessage,
+  dependencies: ProviderServiceDependencies,
+): Promise<GeminiAppImageResponse> {
+  const settings = await dependencies.getSettings();
   const validationError = usesGeminiAppImagePipeline(settings)
     ? validateSettings(settings)
     : '请先在扩展弹窗中选择“大模型”，将 LLM 提供商设为 Nano Banana，并选择 Gemini 登录认证';
@@ -172,7 +199,7 @@ export async function handleGeminiAppImageTranslate(message: GeminiAppImageMessa
     backgroundDirectFetch: true,
     contentDirectFetch: false,
   };
-  await recordBackgroundDiagnosticLog(settings, {
+  await dependencies.diagnostics.recordBackground(settings, {
     runId: message.diagnosticRunId,
     level: 'info',
     category: 'llm.api',
@@ -187,7 +214,7 @@ export async function handleGeminiAppImageTranslate(message: GeminiAppImageMessa
       filename: message.image.filename,
       settings,
     });
-    await recordBackgroundDiagnosticLog(settings, {
+    await dependencies.diagnostics.recordBackground(settings, {
       runId: message.diagnosticRunId,
       level: 'info',
       category: 'llm.api',
@@ -214,7 +241,7 @@ export async function handleGeminiAppImageTranslate(message: GeminiAppImageMessa
   } catch (error) {
     const classification = classifyLlmFetchError(error);
     const rawResponse = getGeminiAppRawResponse(error);
-    await recordBackgroundDiagnosticLog(settings, {
+    await dependencies.diagnostics.recordBackground(settings, {
       runId: message.diagnosticRunId,
       level: 'error',
       category: 'llm.api',
@@ -232,8 +259,11 @@ export async function handleGeminiAppImageTranslate(message: GeminiAppImageMessa
   }
 }
 
-export async function handleGeminiApiImageTranslate(message: GeminiApiImageMessage): Promise<GeminiApiImageResponse> {
-  const settings = await getSettings();
+async function handleGeminiApiImageTranslate(
+  message: GeminiApiImageMessage,
+  dependencies: ProviderServiceDependencies,
+): Promise<GeminiApiImageResponse> {
+  const settings = await dependencies.getSettings();
   const validationError = usesGeminiApiImagePipeline(settings)
     ? validateSettings(settings)
     : '请先在扩展弹窗中选择“大模型”，将 LLM 提供商设为 Nano Banana，并选择 API Key 认证';
@@ -253,7 +283,7 @@ export async function handleGeminiApiImageTranslate(message: GeminiApiImageMessa
     backgroundDirectFetch: true,
     contentDirectFetch: false,
   };
-  await recordBackgroundDiagnosticLog(settings, {
+  await dependencies.diagnostics.recordBackground(settings, {
     runId: message.diagnosticRunId,
     level: 'info',
     category: 'llm.api',
@@ -268,7 +298,7 @@ export async function handleGeminiApiImageTranslate(message: GeminiApiImageMessa
       filename: message.image.filename,
       settings,
     });
-    await recordBackgroundDiagnosticLog(settings, {
+    await dependencies.diagnostics.recordBackground(settings, {
       runId: message.diagnosticRunId,
       level: 'info',
       category: 'llm.api',
@@ -291,7 +321,7 @@ export async function handleGeminiApiImageTranslate(message: GeminiApiImageMessa
     };
   } catch (error) {
     const classification = classifyLlmFetchError(error);
-    await recordBackgroundDiagnosticLog(settings, {
+    await dependencies.diagnostics.recordBackground(settings, {
       runId: message.diagnosticRunId,
       level: 'error',
       category: 'llm.api',
@@ -306,4 +336,20 @@ export async function handleGeminiApiImageTranslate(message: GeminiApiImageMessa
     });
     throw error;
   }
+}
+
+export function createProviderService(
+  dependencies: ProviderServiceDependencies,
+): ProviderService {
+  return {
+    llm: (message) => handleLlmChatCompletions(message, dependencies),
+    geminiAppImage: (message) => handleGeminiAppImageTranslate(
+      message,
+      dependencies,
+    ),
+    geminiApiImage: (message) => handleGeminiApiImageTranslate(
+      message,
+      dependencies,
+    ),
+  };
 }

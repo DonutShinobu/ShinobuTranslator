@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createImageDownloader } from '../../src/background/images/imageDownloader';
+import {
+  createImageDownloader as createImageDownloaderWithCapabilities,
+  type ImageDownloaderDependencies,
+} from '../../src/background/images/imageDownloader';
+import type {
+  ExtensionStorage,
+  JsonValue,
+} from '../../apps/extension/src/capabilities/contracts';
 import type {
   ChromeDnrRuleUpdate,
   ChromeWebRequestHeadersDetails,
@@ -8,6 +15,34 @@ import type {
 const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
 
 type RuleUpdate = ChromeDnrRuleUpdate;
+
+function createTestSessionStorage(
+  initial: Readonly<Record<string, JsonValue>> = {},
+): ExtensionStorage {
+  const values: Record<string, JsonValue> = { ...initial };
+  return {
+    async read(keys) {
+      return Object.fromEntries(keys.map((key) => [key, values[key]]));
+    },
+    async write(next) {
+      Object.assign(values, next);
+    },
+    async remove(keys) {
+      for (const key of keys) delete values[key];
+    },
+  };
+}
+
+function createImageDownloader(
+  dependencies: Omit<ImageDownloaderDependencies, 'sessionStorage'> & {
+    sessionStorage?: ExtensionStorage;
+  },
+) {
+  return createImageDownloaderWithCapabilities({
+    ...dependencies,
+    sessionStorage: dependencies.sessionStorage ?? createTestSessionStorage(),
+  });
+}
 
 function createJpegResponse(
   options: {
@@ -339,6 +374,53 @@ describe('ImageDownloader', () => {
     expect(updateSessionRules.mock.calls
       .map(([update]) => update as RuleUpdate)
       .filter((update) => update.addRules.length > 0)).toHaveLength(0);
+  });
+
+  it('persists tracked document policies through the injected session storage capability', async () => {
+    let headersListener: ((details: ChromeWebRequestHeadersDetails) => void) | undefined;
+    const read = vi.fn(async (keys: readonly string[]) => (
+      Object.fromEntries(keys.map((key) => [key, undefined]))
+    ));
+    const write = vi.fn(async (_values: Readonly<Record<string, JsonValue>>) => {});
+    createImageDownloader({
+      chromeApi: {
+        webRequest: {
+          onHeadersReceived: {
+            addListener(listener) {
+              headersListener = listener;
+            },
+          },
+        },
+      },
+      sessionStorage: {
+        read,
+        write,
+        remove: vi.fn(async () => {}),
+      },
+      fetchImage: vi.fn(async () => createJpegResponse()),
+    });
+
+    await vi.waitFor(() => {
+      expect(read).toHaveBeenCalledWith([
+        'mangaTranslate.documentReferrerPolicies',
+      ]);
+    });
+    headersListener?.({
+      documentId: 'document-1',
+      tabId: 7,
+      frameId: 0,
+      url: 'https://reader.example/chapter/1',
+      responseHeaders: [{
+        name: 'Referrer-Policy',
+        value: 'origin',
+      }],
+    });
+
+    await vi.waitFor(() => {
+      expect(write).toHaveBeenCalledWith({
+        'mangaTranslate.documentReferrerPolicies': expect.any(Object),
+      });
+    });
   });
 
   it('does not reuse a tracked policy after the same frame navigates to a different document URL', async () => {

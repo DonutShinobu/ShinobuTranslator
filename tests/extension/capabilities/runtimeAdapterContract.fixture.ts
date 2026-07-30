@@ -114,6 +114,7 @@ export function runRuntimeAdapterContract(
       kind: 'tab-document',
       documentId: 'document-1',
       tabId: 7,
+      windowId: 3,
       frameId: 0,
       url: 'https://example.test/page',
     };
@@ -123,12 +124,16 @@ export function runRuntimeAdapterContract(
         documentId: actualSource.kind === 'tab-document'
           ? actualSource.documentId
           : null,
+        windowId: actualSource.kind === 'tab-document'
+          ? actualSource.windowId ?? null
+          : null,
       }),
     );
 
     await expect(driver.dispatchRequest({ type: 'incoming' }, source)).resolves.toEqual({
       request: { type: 'incoming' },
       documentId: 'document-1',
+      windowId: 3,
     });
 
     cancel();

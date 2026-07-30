@@ -47,6 +47,16 @@ export type ChromeRuntime = {
     addListener(listener: (port: ChromePort) => void): void;
     removeListener(listener: (port: ChromePort) => void): void;
   };
+  onInstalled: {
+    addListener(listener: (details: {
+      reason?: string;
+      previousVersion?: string;
+    }) => void): void;
+    removeListener(listener: (details: {
+      reason?: string;
+      previousVersion?: string;
+    }) => void): void;
+  };
 };
 
 export type ChromeLastError = NonNullable<ChromeRuntime['lastError']>;
@@ -93,6 +103,11 @@ export type ChromeStorageArea = {
 };
 
 export type ChromeTabs = {
+  sendMessage(
+    tabId: number,
+    message: unknown,
+    callback: (response: unknown) => void,
+  ): void;
   sendMessage(
     tabId: number,
     message: unknown,

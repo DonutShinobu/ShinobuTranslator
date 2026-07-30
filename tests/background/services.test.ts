@@ -9,9 +9,15 @@ import type {
   JsonValue,
 } from '../../apps/extension/src/capabilities/contracts';
 import {
+  captureVisibleTab,
   parseImageDataUrl,
 } from '../../src/background/images/imageService';
 import {
+  loginGeminiApp,
+  openGeminiAppAuthTab,
+} from '../../src/background/gemini/authService';
+import {
+  createOpenAiOAuthService,
   openAiOAuthInstallationIdStorageKey,
   openAiOAuthLastErrorStorageKey,
   openAiOAuthPendingStorageKey,
@@ -54,50 +60,80 @@ describe('background stable identifiers', () => {
   });
 
   it('registers menus and forwards menu/command actions with stable messages', async () => {
-    const create = vi.fn();
-    const sendMessage = vi.fn(async () => undefined);
-    let onClicked: ((info: { menuItemId?: string | number }, tab?: { id?: number }) => void) | undefined;
-    let onCommand: ((command: string, tab?: { id?: number }) => void) | undefined;
-    vi.stubGlobal('chrome', {
-      runtime: {},
-      tabs: { sendMessage },
-      contextMenus: {
-        create,
-        removeAll(callback?: () => void) {
-          callback?.();
+    const replace = vi.fn(async () => {});
+    const send = vi.fn(async (target: { tabId: number }) => (
+      target.tabId === 8
+        ? { status: 'unavailable' as const }
+        : { status: 'no-response' as const }
+    ));
+    let installed: ((change: { reason: 'installed' | 'upgraded' | 'other' }) => void) | undefined;
+    let selected: ((selection: { menuId: string; tabId?: number }) => void) | undefined;
+    let triggered: ((trigger: { command: string; tabId?: number }) => void) | undefined;
+
+    registerMenusAndCommands({
+      installation: {
+        onInstalled(listener) {
+          installed = listener;
+          return () => {};
         },
-        onClicked: {
-          addListener(listener: typeof onClicked) {
-            onClicked = listener;
-          },
+      },
+      menus: {
+        replace,
+        onSelected(listener) {
+          selected = listener;
+          return () => {};
         },
       },
       commands: {
-        onCommand: {
-          addListener(listener: typeof onCommand) {
-            onCommand = listener;
-          },
+        async bindings() {
+          return [];
         },
+        onTriggered(listener) {
+          triggered = listener;
+          return () => {};
+        },
+        async openSettings() {},
       },
+      tabMessages: { send },
     });
 
-    registerMenusAndCommands();
+    expect(selected).toBeTypeOf('function');
+    expect(triggered).toBeTypeOf('function');
+    expect(replace).not.toHaveBeenCalled();
 
-    expect(create).toHaveBeenCalledTimes(2);
-    expect(create).toHaveBeenNthCalledWith(1, expect.objectContaining({ id: translateImageMenuId }));
-    expect(create).toHaveBeenNthCalledWith(2, expect.objectContaining({ id: translateScreenshotMenuId }));
+    installed?.({ reason: 'other' });
+    await Promise.resolve();
+    expect(replace).not.toHaveBeenCalled();
+    installed?.({ reason: 'installed' });
+    await Promise.resolve();
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(replace).toHaveBeenCalledWith([
+      {
+        id: translateImageMenuId,
+        title: '翻译图片',
+        contexts: ['all'],
+      },
+      {
+        id: translateScreenshotMenuId,
+        title: '截图翻译',
+        contexts: ['all'],
+      },
+    ]);
+    installed?.({ reason: 'upgraded' });
+    await Promise.resolve();
+    expect(replace).toHaveBeenCalledTimes(2);
 
-    onClicked?.({ menuItemId: translateImageMenuId }, { id: 7 });
-    onClicked?.({ menuItemId: translateScreenshotMenuId }, { id: 8 });
-    onCommand?.(startScreenshotTranslateCommand, { id: 9 });
-    onCommand?.(translateHoverTargetCommand, { id: 10 });
+    selected?.({ menuId: translateImageMenuId, tabId: 7 });
+    selected?.({ menuId: translateScreenshotMenuId, tabId: 8 });
+    triggered?.({ command: startScreenshotTranslateCommand, tabId: 9 });
+    triggered?.({ command: translateHoverTargetCommand, tabId: 10 });
     await Promise.resolve();
 
-    expect(sendMessage.mock.calls).toEqual([
-      [7, { type: 'mt:context-menu-translate' }],
-      [8, { type: 'mt:start-screenshot-translate' }],
-      [9, { type: 'mt:start-screenshot-translate' }],
-      [10, { type: 'mt:shortcut-translate-hover' }],
+    expect(send.mock.calls).toEqual([
+      [{ tabId: 7 }, { type: 'mt:context-menu-translate' }],
+      [{ tabId: 8 }, { type: 'mt:start-screenshot-translate' }],
+      [{ tabId: 9 }, { type: 'mt:start-screenshot-translate' }],
+      [{ tabId: 10 }, { type: 'mt:shortcut-translate-hover' }],
     ]);
   });
 });
@@ -134,5 +170,83 @@ describe('image service', () => {
       base64: 'aW1hZ2U=',
     });
     expect(() => parseImageDataUrl('https://example.com/image.png')).toThrow('截图数据格式无效');
+  });
+
+  it('captures a visible tab as PNG through the capability result', async () => {
+    const capturePng = vi.fn(async () => ({
+      status: 'captured' as const,
+      dataUrl: 'data:image/png;base64,c2NyZWVuc2hvdA==',
+    }));
+
+    await expect(captureVisibleTab(
+      { capturePng },
+      {
+        windowId: 3,
+        sourceUrl: 'https://example.com/chapter',
+      },
+    )).resolves.toEqual({
+      base64: 'c2NyZWVuc2hvdA==',
+      contentType: 'image/png',
+      sourceUrl: 'https://example.com/chapter',
+    });
+    expect(capturePng).toHaveBeenCalledWith(3);
+  });
+});
+
+describe('authentication tabs', () => {
+  it('opens Gemini login through the authentication-tab capability', async () => {
+    const authenticationTabs = {
+      open: vi.fn(async () => ({ status: 'opened' as const, tabId: 31 })),
+      close: vi.fn(async () => ({ status: 'closed' as const })),
+      onNavigation: vi.fn(() => () => {}),
+      onClosed: vi.fn(() => () => {}),
+    };
+
+    await expect(openGeminiAppAuthTab(authenticationTabs)).resolves.toBeUndefined();
+    await expect(loginGeminiApp(defaultExtensionSettings, authenticationTabs))
+      .resolves.toEqual({ authenticated: false, pending: true });
+    expect(authenticationTabs.open).toHaveBeenCalledTimes(2);
+  });
+
+  it('uses structured tab lifecycle results for OpenAI login and close', async () => {
+    const values: Record<string, JsonValue> = {};
+    const storage: ExtensionStorage = {
+      async read(keys) {
+        return Object.fromEntries(keys.map((key) => [key, values[key]]));
+      },
+      async write(next) {
+        Object.assign(values, next);
+      },
+      async remove(keys) {
+        for (const key of keys) delete values[key];
+      },
+    };
+    const authenticationTabs = {
+      open: vi.fn(async () => ({ status: 'opened' as const, tabId: 41 })),
+      close: vi.fn(async () => ({ status: 'unavailable' as const })),
+      onNavigation: vi.fn(() => () => {}),
+      onClosed: vi.fn(() => () => {}),
+    };
+    const openAiOAuth = createOpenAiOAuthService({
+      storage,
+      authenticationTabs,
+    });
+
+    await expect(openAiOAuth.login()).resolves.toEqual({
+      authenticated: false,
+      pending: true,
+    });
+    await openAiOAuth.handleTabRemoved(41);
+    await expect(openAiOAuth.status()).resolves.toMatchObject({
+      authenticated: false,
+      pending: false,
+      error: 'OpenAI 登录窗口已关闭，请重新登录',
+    });
+
+    await openAiOAuth.login();
+    await expect(openAiOAuth.logout()).resolves.toEqual({
+      authenticated: false,
+    });
+    expect(authenticationTabs.close).toHaveBeenCalledWith(41);
   });
 });

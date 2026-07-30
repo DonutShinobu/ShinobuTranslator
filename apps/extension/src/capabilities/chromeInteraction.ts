@@ -1,6 +1,7 @@
 import type {
   AuthenticationTabCloseResult,
   AuthenticationTabLifecycle,
+  ExtensionInstallationLifecycle,
   NativeCommands,
   NativeMenus,
   TabMessageTransport,
@@ -24,6 +25,56 @@ import {
   type ChromeRuntime,
   type ChromeTabs,
 } from './chromeInternal';
+
+export function extensionInstallation(
+  runtime: ChromeRuntime,
+): ExtensionInstallationLifecycle {
+  if (!isObject(runtime.onInstalled)) {
+    throw new ExtensionContractError({
+      capability: 'extension-installation',
+      operation: 'onInstalled',
+      code: 'context-unavailable',
+      retryable: false,
+      diagnostic: {
+        missing: 'runtime.onInstalled',
+      },
+    });
+  }
+  requireFunction(
+    runtime.onInstalled.addListener,
+    'extension-installation',
+    'onInstalled',
+  );
+  requireFunction(
+    runtime.onInstalled.removeListener,
+    'extension-installation',
+    'cancel:onInstalled',
+  );
+  return {
+    onInstalled(listener) {
+      const rawListener = (details: {
+        reason?: string;
+        previousVersion?: string;
+      }): void => {
+        const reason = details.reason === 'install'
+          ? 'installed'
+          : details.reason === 'update'
+            ? 'upgraded'
+            : 'other';
+        listener({
+          reason,
+          ...(details.previousVersion
+            ? { previousVersion: details.previousVersion }
+            : {}),
+        });
+      };
+      runtime.onInstalled.addListener(rawListener);
+      return idempotentCancel(() => {
+        runtime.onInstalled.removeListener(rawListener);
+      });
+    },
+  };
+}
 
 export function authenticationTabs(
   runtime: ChromeRuntime,
@@ -195,12 +246,21 @@ export function tabMessageTransport(
         runtime,
         'tab-message',
         'send',
-        (complete) => tabs.sendMessage(
-          target.tabId,
-          message,
-          { documentId: target.documentId },
-          (value) => complete({ status: 'received', value }),
-        ),
+        (complete) => {
+          const receive = (value: unknown): void => {
+            complete({ status: 'received', value });
+          };
+          if (target.documentId) {
+            tabs.sendMessage(
+              target.tabId,
+              message,
+              { documentId: target.documentId },
+              receive,
+            );
+          } else {
+            tabs.sendMessage(target.tabId, message, receive);
+          }
+        },
         (error) => isUnavailableMessageError(error)
           ? { handled: true, value: { status: 'unavailable' } }
           : { handled: false },

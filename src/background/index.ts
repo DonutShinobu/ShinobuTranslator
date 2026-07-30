@@ -64,6 +64,7 @@ function initializeBackground(): void {
   });
   const openAiOAuth = createOpenAiOAuthService({
     storage: capabilities.persistentStorage,
+    authenticationTabs: capabilities.authenticationTabs,
   });
   const providers = createProviderService({
     getSettings: settingsStore.get,
@@ -87,7 +88,15 @@ function initializeBackground(): void {
         request,
         toLegacyMessageSender(source),
       ),
-      capture: (source) => captureVisibleTab(toLegacyMessageSender(source)),
+      capture: (source) => captureVisibleTab(
+        capabilities.visibleTabCapture,
+        {
+          ...(source.windowId === undefined
+            ? {}
+            : { windowId: source.windowId }),
+          sourceUrl: source.url ?? '',
+        },
+      ),
     },
     openAi: {
       status: openAiOAuth.status,
@@ -96,7 +105,10 @@ function initializeBackground(): void {
     },
     geminiAuth: {
       status: readGeminiAppAuthStatus,
-      login: loginGeminiApp,
+      login: (settings) => loginGeminiApp(
+        settings,
+        capabilities.authenticationTabs,
+      ),
     },
     providers,
   };
@@ -133,12 +145,10 @@ function initializeBackground(): void {
     }
   });
 
-  chromeApi.tabs?.onUpdated?.addListener((tabId, changeInfo) => {
-    if (typeof changeInfo.url === 'string') {
-      void openAiOAuth.handleCallbackUrl(tabId, changeInfo.url);
-    }
+  capabilities.authenticationTabs.onNavigation(({ tabId, url }) => {
+    void openAiOAuth.handleCallbackUrl(tabId, url);
   });
-  chromeApi.tabs?.onRemoved?.addListener((tabId) => {
+  capabilities.authenticationTabs.onClosed((tabId) => {
     void openAiOAuth.handleTabRemoved(tabId);
   });
 
@@ -147,7 +157,7 @@ function initializeBackground(): void {
     .then(settingsStore.set)
     .catch(() => undefined);
 
-  registerMenusAndCommands();
+  registerMenusAndCommands(capabilities);
 }
 
 initializeBackground();

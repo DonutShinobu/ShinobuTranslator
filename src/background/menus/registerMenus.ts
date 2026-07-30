@@ -1,4 +1,7 @@
-import { getChromeApi } from '../../shared/chrome';
+import type {
+  BackgroundExtensionCapabilities,
+  NativeMenuDeclaration,
+} from '../../../apps/extension/src/capabilities/contracts';
 import type { RuntimeMessage } from '../../shared/messages';
 
 export const translateImageMenuId = 'translate-image';
@@ -6,55 +9,81 @@ export const translateScreenshotMenuId = 'translate-screenshot';
 export const startScreenshotTranslateCommand = 'start-screenshot-translate';
 export const translateHoverTargetCommand = 'translate-hover-target';
 
-function createContextMenus(): void {
-  const chromeApi = getChromeApi();
-  if (!chromeApi?.contextMenus?.create) return;
-  chromeApi.contextMenus.create({
+const menuDeclarations: readonly NativeMenuDeclaration[] = [
+  {
     id: translateImageMenuId,
     title: '翻译图片',
     contexts: ['all'],
-  });
-  chromeApi.contextMenus.create({
+  },
+  {
     id: translateScreenshotMenuId,
     title: '截图翻译',
     contexts: ['all'],
-  });
-}
+  },
+];
 
-function sendTabMessage(tabId: number, message: RuntimeMessage): void {
-  const chromeApi = getChromeApi();
-  if (!chromeApi?.tabs?.sendMessage) return;
-  chromeApi.tabs.sendMessage(tabId, message).catch(() => {
-    // content script may not be injected yet — ignore
-  });
-}
+type NativeInteractionCapabilities = Pick<
+  BackgroundExtensionCapabilities,
+  'installation' | 'menus' | 'commands' | 'tabMessages'
+>;
 
-export function registerMenusAndCommands(): void {
-  const chromeApi = getChromeApi();
-  if (chromeApi?.contextMenus?.create) {
-    if (chromeApi.contextMenus.removeAll) {
-      chromeApi.contextMenus.removeAll(() => createContextMenus());
-    } else {
-      createContextMenus();
-    }
-    chromeApi.contextMenus.onClicked?.addListener((info, tab) => {
-      if (typeof tab?.id !== 'number') return;
-      if (info.menuItemId === translateImageMenuId) {
-        sendTabMessage(tab.id, { type: 'mt:context-menu-translate' });
-      } else if (info.menuItemId === translateScreenshotMenuId) {
-        sendTabMessage(tab.id, { type: 'mt:start-screenshot-translate' });
-      }
-    });
+type NativeInteractionMessage = Extract<
+  RuntimeMessage,
+  {
+    type:
+      | 'mt:context-menu-translate'
+      | 'mt:start-screenshot-translate'
+      | 'mt:shortcut-translate-hover';
   }
+>;
 
-  chromeApi?.commands?.onCommand?.addListener((command, tab) => {
-    if (typeof tab?.id !== 'number') return;
-    if (command === startScreenshotTranslateCommand) {
-      sendTabMessage(tab.id, { type: 'mt:start-screenshot-translate' });
-      return;
-    }
-    if (command === translateHoverTargetCommand) {
-      sendTabMessage(tab.id, { type: 'mt:shortcut-translate-hover' });
+function sendTabMessage(
+  capabilities: NativeInteractionCapabilities,
+  tabId: number | undefined,
+  message: NativeInteractionMessage,
+): void {
+  if (tabId === undefined) return;
+  void capabilities.tabMessages.send({ tabId }, message).catch(() => {
+    // Native interactions have no response surface. Structured operation errors
+    // are intentionally contained while an unavailable receiver is a normal result.
+  });
+}
+
+export function registerMenusAndCommands(
+  capabilities: NativeInteractionCapabilities,
+): void {
+  capabilities.installation.onInstalled(
+    ({ reason }) => {
+      if (reason !== 'installed' && reason !== 'upgraded') return;
+      void capabilities.menus.replace(menuDeclarations).catch(() => {
+        // Menu installation is retried by the next install or upgrade event.
+      });
+    },
+  );
+  capabilities.menus.onSelected(({ menuId, tabId }) => {
+    if (menuId === translateImageMenuId) {
+      sendTabMessage(capabilities, tabId, {
+        type: 'mt:context-menu-translate',
+      });
+    } else if (menuId === translateScreenshotMenuId) {
+      sendTabMessage(capabilities, tabId, {
+        type: 'mt:start-screenshot-translate',
+      });
     }
   });
+  capabilities.commands.onTriggered(({
+    command,
+    tabId,
+  }) => {
+    if (command === startScreenshotTranslateCommand) {
+      sendTabMessage(capabilities, tabId, {
+        type: 'mt:start-screenshot-translate',
+      });
+    } else if (command === translateHoverTargetCommand) {
+      sendTabMessage(capabilities, tabId, {
+        type: 'mt:shortcut-translate-hover',
+      });
+    }
+  });
+
 }

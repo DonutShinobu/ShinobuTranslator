@@ -67,6 +67,10 @@ function createBackgroundHarness() {
     (value: [{ menuItemId?: string | number }, { id?: number } | undefined]) => void
   >();
   const onCommand = createListenerEvent<[string, { id?: number } | undefined]>();
+  const onInstalled = createListenerEvent<{
+    reason?: string;
+    previousVersion?: string;
+  }>();
   const permissionAdded = createListenerEvent<Record<string, unknown>>();
   const permissionRemoved = createListenerEvent<Record<string, unknown>>();
   const headersListeners = new Set<(details: Record<string, unknown>) => void>();
@@ -98,6 +102,7 @@ function createBackgroundHarness() {
       },
     },
     onConnect: onConnect.raw,
+    onInstalled: onInstalled.raw,
   };
   const port: RawPort = {
     name: 'pipeline-host',
@@ -122,10 +127,20 @@ function createBackgroundHarness() {
       sendMessage(
         tabId: number,
         message: unknown,
-        options: { documentId: string },
-        callback: (response: unknown) => void,
+        optionsOrCallback: { documentId: string } | ((response: unknown) => void),
+        maybeCallback?: (response: unknown) => void,
       ): void {
-        sentTabMessages.push({ tabId, message, options });
+        const options = typeof optionsOrCallback === 'function'
+          ? undefined
+          : optionsOrCallback;
+        const callback = typeof optionsOrCallback === 'function'
+          ? optionsOrCallback
+          : maybeCallback!;
+        sentTabMessages.push({
+          tabId,
+          message,
+          ...(options ? { options } : {}),
+        });
         if (tabMessageFailure) {
           runtime.lastError = {
             message: tabMessageFailure === 'unavailable'
@@ -269,6 +284,9 @@ function createBackgroundHarness() {
     sentTabMessages,
     createdMenus,
     onClicked,
+    emitInstallation(reason: 'install' | 'update' | 'chrome_update') {
+      onInstalled.emit({ reason });
+    },
     grantCookieAccess() {
       cookieAccessGranted = true;
     },
@@ -392,6 +410,17 @@ describe('Chrome background capability adapter', () => {
       message: { type: 'translate' },
       options: { documentId: 'document-9' },
     }]);
+    await expect(harness.background.tabMessages.send(
+      { tabId: 10 },
+      { type: 'translate-current-document' },
+    )).resolves.toEqual({
+      status: 'response',
+      value: { ok: true },
+    });
+    expect(harness.sentTabMessages.at(-1)).toEqual({
+      tabId: 10,
+      message: { type: 'translate-current-document' },
+    });
     harness.makeNextTabMessageUnavailable();
     await expect(harness.background.tabMessages.send(
       { tabId: 9, documentId: 'document-9' },
@@ -454,6 +483,21 @@ describe('Chrome background capability adapter', () => {
       menuId: 'translate-image',
       tabId: 4,
     }]);
+    cancel();
+  });
+
+  it('normalizes install and upgrade events without exposing Chrome reasons', () => {
+    const harness = createBackgroundHarness();
+    const changes: string[] = [];
+    const cancel = harness.background.installation.onInstalled(
+      ({ reason }) => changes.push(reason),
+    );
+
+    harness.emitInstallation('install');
+    harness.emitInstallation('update');
+    harness.emitInstallation('chrome_update');
+
+    expect(changes).toEqual(['installed', 'upgraded', 'other']);
     cancel();
   });
 

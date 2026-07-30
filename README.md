@@ -246,7 +246,7 @@ npm run models:download
 
 ```text
 apps/
-  extension/        Chrome/Edge 扩展 package、HTML 入口、MV3 manifest 与构建配置
+  extension/        Chrome/Firefox 扩展 package、HTML 入口、声明式 MV3 manifest 与双目标构建
   web/              本地批量工作台、历史、PWA 与项目包
   model-gateway/    Cloudflare Workers 私有 R2 模型网关
 packages/
@@ -277,7 +277,8 @@ benchmark/
 - 用户填写的 API Key 保存在浏览器扩展存储中
 - 本地视觉流水线在浏览器端运行，不依赖个人服务器
 - 使用 Google Web、LLM 或 Nano Banana 时，请自行确认对应服务的隐私政策、费用和使用条款
-- 扩展权限以 `apps/extension/public/manifest.json` 为准
+- 扩展公共权限以 `apps/extension/manifest/common.json` 为基线；平台差异仅由
+  `apps/extension/manifest/targets/chrome.json` 与 `firefox.json` 的受限覆盖声明
 - Web 版隐私边界、Cloudflare 元数据和本地存储规则见 [PRIVACY_POLICY.md](PRIVACY_POLICY.md)
 
 ## 致谢

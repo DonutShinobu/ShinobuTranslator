@@ -98,6 +98,14 @@ async function runCli(argumentsList) {
     console.log(JSON.stringify(extensionBuildTargets));
     return;
   }
+  const printedTarget = readCliOption(
+    argumentsList,
+    '--print-target-out-dir',
+  );
+  if (printedTarget) {
+    console.log(resolveExtensionBuildTarget(printedTarget).outDir);
+    return;
+  }
   await buildRequestedTargets(readCliOption(argumentsList, '--target'));
 }
 

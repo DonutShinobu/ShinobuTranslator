@@ -10,8 +10,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      EXTENSION_DIST: apps/extension/dist
 
     steps:
       - name: Checkout
@@ -25,6 +23,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Resolve Chrome extension output
+        run: |
+          EXTENSION_DIST=$(node apps/extension/scripts/build.mjs --print-target-out-dir chrome)
+          echo "EXTENSION_DIST=$EXTENSION_DIST" >> "$GITHUB_ENV"
+          echo "Chrome extension output: $EXTENSION_DIST"
 
       - name: Find latest model release tag
         id: models

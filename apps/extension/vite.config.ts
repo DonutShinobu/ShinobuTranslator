@@ -88,15 +88,16 @@ function buildNamespaceAssignments(namespace: string, bindings: string): string 
     .join('');
 }
 
-// Chrome extension compat: content scripts are classic scripts (no import/export).
-// This plugin bridges the gap between Vite's ES module output and Chrome's classic script injection:
-// 1. Replaces import.meta.url with a chrome.runtime.getURL polyfill
-// 2. Replaces dynamic import("./chunks/...") with import(chrome.runtime.getURL("chunks/..."))
+// Browser extension content scripts are classic scripts (no top-level import/export)
+// in both Chrome and Firefox. This plugin bridges Vite's ES module output to that
+// WebExtensions execution model:
+// 1. Replaces import.meta.url with the cross-browser chrome.runtime.getURL namespace
+// 2. Resolves dynamic imports through chrome.runtime.getURL
 // 3. Strips exports from content.js and sets up window.__shinobu_shared for chunk access
-// 4. Replaces static import{...}from "../content.js" in chunks with window.__shinobu_shared lookup
-function chromeExtensionContentScriptPlugin(): Plugin {
+// 4. Replaces chunk imports from the parent content bundle with window.__shinobu_shared lookups
+function browserClassicContentScriptPlugin(): Plugin {
   return {
-    name: 'chrome-extension-content-script',
+    name: 'browser-classic-content-script',
     enforce: 'post',
     generateBundle(_options, bundle) {
       // Phase 1: Process content.js — strip exports, set up global bridge
@@ -145,11 +146,11 @@ function chromeExtensionContentScriptPlugin(): Plugin {
         }
       }
 
-      // Phase 2: Process chunks — replace static import from "../content.js" with global lookup
+      // Phase 2: Replace chunk imports from the parent content bundle with global lookups
       for (const [fileName, chunk] of Object.entries(bundle)) {
         if (chunk.type !== 'chunk' || !fileName.startsWith('chunks/')) continue;
 
-        // Replace: import{g as ft, a as J, ...} from "../content.js"
+        // Replace a named import from the parent content bundle.
         // With:    const {g: ft, a: J, ...} = window.__shinobu_shared;
         // Note: import uses "as" for renaming, destructuring uses ":"
         chunk.code = chunk.code.replace(
@@ -222,7 +223,7 @@ export default defineConfig(({ command, mode }): UserConfig => {
     plugins: [
       browserRuntimeBoundaryPlugin({ apply: 'serve' }),
       react(),
-      chromeExtensionContentScriptPlugin(),
+      browserClassicContentScriptPlugin(),
       extensionReleaseAssetsPlugin(target.absoluteOutDir),
       modelReleaseUrlPlugin(target.absoluteOutDir),
     ],

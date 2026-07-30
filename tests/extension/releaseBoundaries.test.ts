@@ -433,6 +433,116 @@ describe('extension release boundaries', () => {
   );
 
   it(
+    'rejects a const getURL resource that is not web-accessible',
+    () => {
+      const directory = createReleaseFixture('chrome');
+      writeArtifact(
+        directory,
+        'content.js',
+        [
+          'const runtimePath = "background.js";',
+          'const alias = runtimePath;',
+          'import(chrome.runtime.getURL(alias));',
+        ].join('\n'),
+      );
+
+      const result = runReleaseBoundary('chrome', directory);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(
+        'Content script runtime resource is not declared web-accessible: background.js',
+      );
+    },
+    15_000,
+  );
+
+  it(
+    'rejects a single-quoted getURL resource that is not web-accessible',
+    () => {
+      const directory = createReleaseFixture('chrome');
+      writeArtifact(
+        directory,
+        'content.js',
+        "chrome.runtime.getURL('background.js');\n",
+      );
+
+      const result = runReleaseBoundary('chrome', directory);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(
+        'Content script runtime resource is not declared web-accessible: background.js',
+      );
+    },
+    15_000,
+  );
+
+  it(
+    'rejects concatenated and template getURL resources that are not web-accessible',
+    () => {
+      const cases = [
+        'chrome.runtime.getURL("back" + "ground.js");\n',
+        'chrome.runtime.getURL(`background.js`);\n',
+      ];
+
+      for (const source of cases) {
+        const directory = createReleaseFixture('chrome');
+        writeArtifact(directory, 'content.js', source);
+
+        const result = runReleaseBoundary('chrome', directory);
+
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain(
+          'Content script runtime resource is not declared web-accessible: background.js',
+        );
+      }
+    },
+    20_000,
+  );
+
+  it(
+    'accepts declared getURL resources without treating ordinary imports as exposed',
+    () => {
+      const cases = [
+        [
+          "const runtimePath = 'chunks/config.js';",
+          'import(chrome.runtime.getURL(runtimePath));',
+        ].join('\n'),
+        'import("./background.js");\n',
+      ];
+
+      for (const source of cases) {
+        const directory = createReleaseFixture('chrome');
+        writeArtifact(directory, 'content.js', source);
+
+        const result = runReleaseBoundary('chrome', directory);
+
+        expect(result.status, result.stderr).toBe(0);
+      }
+    },
+    20_000,
+  );
+
+  it(
+    'rejects a getURL resource that cannot be statically resolved',
+    () => {
+      const directory = createReleaseFixture('chrome');
+      writeArtifact(
+        directory,
+        'content.js',
+        'chrome.runtime.getURL(getRuntimeModulePath());\n',
+      );
+
+      const result = runReleaseBoundary('chrome', directory);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(
+        'Artifact content.js contains chrome.runtime.getURL reference that cannot be statically resolved at 1:1.',
+      );
+    },
+    15_000,
+  );
+
+  it(
     'rejects a literal dynamic import outside the packaged graph',
     () => {
       const directory = createReleaseFixture('chrome');

@@ -417,7 +417,7 @@ function evaluateStaticImportReference(
   return reference;
 }
 
-function collectDynamicImportReferences(sourcePath, source) {
+function collectJavaScriptReferences(sourcePath, source) {
   const sourceFile = ts.createSourceFile(
     sourcePath,
     source,
@@ -431,7 +431,28 @@ function collectDynamicImportReferences(sourcePath, source) {
     sourceFile,
   );
   const references = [];
+  const runtimeResourceReferences = [];
   const visit = (node) => {
+    if (
+      ts.isCallExpression(node)
+      && isChromeRuntimeGetUrlCall(node, typeChecker)
+    ) {
+      const reference = evaluateStaticImportReference(
+        node,
+        typeChecker,
+      );
+      if (reference === undefined) {
+        const location = sourceFile.getLineAndCharacterOfPosition(
+          node.getStart(sourceFile),
+        );
+        throw new Error(
+          `Artifact ${sourcePath} contains chrome.runtime.getURL reference that cannot be statically resolved at ${
+            location.line + 1
+          }:${location.character + 1}.`,
+        );
+      }
+      runtimeResourceReferences.push(reference);
+    }
     if (
       ts.isCallExpression(node)
       && node.expression.kind === ts.SyntaxKind.ImportKeyword
@@ -457,11 +478,12 @@ function collectDynamicImportReferences(sourcePath, source) {
     ts.forEachChild(node, visit);
   };
   visit(sourceFile);
-  return references;
+  return { references, runtimeResourceReferences };
 }
 
 function collectArtifactReferences(path, source) {
   const references = [];
+  const runtimeResourceReferences = [];
   const addMatches = (expression) => {
     for (const match of source.matchAll(expression)) {
       references.push(match[1]);
@@ -479,15 +501,23 @@ function collectArtifactReferences(path, source) {
         );
       }
     }
-    references.push(...collectDynamicImportReferences(path, source));
+    const javaScriptReferences = collectJavaScriptReferences(
+      path,
+      source,
+    );
+    references.push(...javaScriptReferences.references);
+    runtimeResourceReferences.push(
+      ...javaScriptReferences.runtimeResourceReferences,
+    );
   } else if (path.endsWith('.css')) {
     addMatches(/\burl\(\s*["']?([^"')]+)["']?\s*\)/giu);
   }
-  return references;
+  return { references, runtimeResourceReferences };
 }
 
 function assertArtifactReferences(artifactPaths) {
   const artifactPathSet = new Set(artifactPaths);
+  const contentRuntimeResources = new Set();
   for (const ownerPath of artifactPaths) {
     if (
       !ownerPath.endsWith('.html')
@@ -498,10 +528,11 @@ function assertArtifactReferences(artifactPaths) {
       continue;
     }
     const source = readFileSync(join(distDir, ownerPath), 'utf8');
-    for (const reference of collectArtifactReferences(
+    const collectedReferences = collectArtifactReferences(
       ownerPath,
       source,
-    )) {
+    );
+    for (const reference of collectedReferences.references) {
       const referencedPath = resolvePackagedReference(
         ownerPath,
         reference,
@@ -516,7 +547,23 @@ function assertArtifactReferences(artifactPaths) {
         );
       }
     }
+    for (
+      const reference of collectedReferences.runtimeResourceReferences
+    ) {
+      const referencedPath = resolvePackagedReference(
+        ownerPath,
+        reference,
+        true,
+      );
+      if (
+        ownerPath === 'content.js'
+        && referencedPath !== undefined
+      ) {
+        contentRuntimeResources.add(referencedPath);
+      }
+    }
   }
+  return contentRuntimeResources;
 }
 
 function assertSafeManifestArtifactPath(path, label) {
@@ -764,7 +811,8 @@ if (!benchmarkBuild) {
     }
   }
 }
-assertArtifactReferences(artifactPaths);
+const contentRuntimeResources =
+  assertArtifactReferences(artifactPaths);
 for (const [entryIndex, entry] of (
   manifest.web_accessible_resources ?? []
 ).entries()) {
@@ -829,11 +877,6 @@ if (!String(manifest.content_security_policy?.extension_pages ?? '').includes("w
 }
 const exposedResources = (manifest.web_accessible_resources ?? [])
   .flatMap((entry) => Array.isArray(entry.resources) ? entry.resources : []);
-const contentSource = readFileSync(join(distDir, 'content.js'), 'utf8');
-const contentRuntimeResources = new Set(
-  [...contentSource.matchAll(/chrome\.runtime\.getURL\("([^"]+)"\)/g)]
-    .map((match) => match[1]),
-);
 for (const resource of contentRuntimeResources) {
   if (!existsSync(join(distDir, resource))) {
     throw new Error(`Content script references missing runtime resource: ${resource}`);

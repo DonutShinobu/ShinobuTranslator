@@ -80,6 +80,23 @@ describe('migrated extension capability seams', () => {
     expect(source).not.toMatch(/\bupdate(?:Dynamic|Session)Rules\b/u);
   });
 
+  it('composes image network capabilities with the pipeline host lifecycle', () => {
+    const source = read('src/background/index.ts');
+    expect(source).toContain(
+      'sessionStorage: capabilities.sessionStorage',
+    );
+    expect(source).toContain(
+      'referrerPolicies: capabilities.referrerPolicies',
+    );
+    expect(source).toContain(
+      'requestHeaderOverride: capabilities.requestHeaderOverride',
+    );
+    expect(source).toContain(
+      'createChromePipelineHostLifecycle(nativeChrome)',
+    );
+    expect(source).not.toMatch(/\bChromeLike\b/u);
+  });
+
   it.each([
     'src/runtime/onnx.ts',
     'src/runtime/onnxWorkerBridge.ts',

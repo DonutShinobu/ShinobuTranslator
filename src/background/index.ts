@@ -1,5 +1,4 @@
 import { defaultExtensionSettings } from '../shared/config';
-import type { ChromeLike } from '../shared/chrome';
 import {
   createAuthenticationAccess,
 } from '../../apps/extension/src/capabilities/authentication';
@@ -53,7 +52,6 @@ function initializeBackground(): void {
     permissions: capabilities.permissions,
     cookies: capabilities.cookies,
   });
-  const chromeApi = nativeChrome as ChromeLike;
   const settingsStore = createSettingsStore(capabilities.persistentStorage);
   const diagnostics = createDiagnosticLogStore({
     storage: capabilities.persistentStorage,

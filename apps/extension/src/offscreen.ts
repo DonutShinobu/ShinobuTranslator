@@ -1,5 +1,8 @@
 import { startOffscreenPipelineHost } from '../../../src/offscreen/index';
 import { createChromeExtensionAdapter } from './capabilities/chromeAdapter';
+import {
+  createChromePipelineHostLifecycle,
+} from './pipelineHost/chromeLifecycle';
 
 const nativeChrome = (globalThis as typeof globalThis & {
   chrome?: unknown;
@@ -11,4 +14,5 @@ if (!nativeChrome) {
 
 startOffscreenPipelineHost(
   createChromeExtensionAdapter(nativeChrome).pipelineHost(),
+  createChromePipelineHostLifecycle(nativeChrome),
 );

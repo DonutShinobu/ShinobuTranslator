@@ -2,15 +2,19 @@ import { describe, expect, it, vi } from 'vitest';
 import { OffscreenPipelineBroker } from '../../src/background/localPipeline/offscreenBroker';
 import type { ChromeLike } from '../../src/shared/chrome';
 import type {
-  ExtensionEnvironment,
   JsonValue,
   RuntimeChannel,
   RuntimeChannelDisconnectReason,
   RuntimeChannelServer,
 } from '../../apps/extension/src/capabilities/contracts';
 import {
-  LOCAL_PIPELINE_CLIENT_PORT,
+  createChromePipelineHostLifecycle,
+} from '../../apps/extension/src/pipelineHost/chromeLifecycle';
+import {
   LOCAL_PIPELINE_OFFSCREEN_PORT,
+} from '../../apps/extension/src/pipelineHost/contracts';
+import {
+  LOCAL_PIPELINE_CLIENT_PORT,
 } from '../../src/shared/localPipelineProtocol';
 
 class FakePort implements RuntimeChannel {
@@ -73,10 +77,6 @@ class FakePort implements RuntimeChannel {
 const runtimeChannels: RuntimeChannelServer = {
   onChannel: () => () => undefined,
 };
-const environment: ExtensionEnvironment = {
-  metadata: { version: 'test' },
-  resourceUrl: (path) => `chrome-extension://test/${path}`,
-};
 
 function deferred<T>(): {
   promise: Promise<T>;
@@ -93,7 +93,10 @@ function deferred<T>(): {
 }
 
 function createBroker(chromeApi: ChromeLike): OffscreenPipelineBroker {
-  return new OffscreenPipelineBroker(chromeApi, runtimeChannels, environment);
+  return new OffscreenPipelineBroker(
+    createChromePipelineHostLifecycle(chromeApi),
+    runtimeChannels,
+  );
 }
 
 const pipelineConfig = {

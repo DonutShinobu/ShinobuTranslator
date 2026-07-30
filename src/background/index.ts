@@ -18,6 +18,9 @@ import { normalizeJsonValue } from '../shared/jsonValue';
 import {
   createChromeExtensionAdapter,
 } from '../../apps/extension/src/capabilities/chromeAdapter';
+import {
+  createChromePipelineHostLifecycle,
+} from '../../apps/extension/src/pipelineHost/chromeLifecycle';
 import type {
   JsonValue,
 } from '../../apps/extension/src/capabilities/contracts';
@@ -113,9 +116,8 @@ function initializeBackground(): void {
   };
 
   registerOffscreenPipelineBroker(
-    chromeApi,
+    createChromePipelineHostLifecycle(nativeChrome),
     capabilities.runtimeChannels,
-    capabilities.environment,
   );
 
   capabilities.runtimeRequests.onRequest(async (request, source) => {

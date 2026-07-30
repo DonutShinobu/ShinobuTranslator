@@ -10,6 +10,12 @@ import type {
   RuntimeChannel,
   RuntimeChannelDisconnectReason,
 } from '../../apps/extension/src/capabilities/contracts';
+import type {
+  PipelineHostConnection,
+} from '../../apps/extension/src/pipelineHost/contracts';
+import {
+  LOCAL_PIPELINE_OFFSCREEN_PORT,
+} from '../../apps/extension/src/pipelineHost/contracts';
 
 const mocks = vi.hoisted(() => ({
   runPipeline: vi.fn(),
@@ -41,7 +47,6 @@ vi.mock('../../src/shared/blobCodec', () => ({
 }));
 
 import { OffscreenPipelineHost } from '../../src/offscreen/pipelineHost';
-import { LOCAL_PIPELINE_OFFSCREEN_PORT } from '../../src/shared/localPipelineProtocol';
 
 class FakePort implements RuntimeChannel {
   readonly name = LOCAL_PIPELINE_OFFSCREEN_PORT;
@@ -230,12 +235,13 @@ describe('OffscreenPipelineHost single-task admission', () => {
   function createHost(
     capabilities?: ImagePipelineRuntimeCapabilities,
   ): OffscreenPipelineHost {
+    const lifecycle: PipelineHostConnection = {
+      connect: async () => port,
+    };
     const host = new OffscreenPipelineHost(
       capabilities ?? defaultCapabilities,
       {
-        runtimeChannels: {
-          open: async () => port,
-        },
+        lifecycle,
         translationTransport: {
           requestChatCompletion: vi.fn(),
           translatePlain: vi.fn(),

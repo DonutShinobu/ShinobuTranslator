@@ -1,9 +1,10 @@
-import type { ChromeLike } from '../../shared/chrome';
 import type {
-  ExtensionEnvironment,
   RuntimeChannel,
   RuntimeChannelServer,
 } from '../../../apps/extension/src/capabilities/contracts';
+import type {
+  PipelineHostDocumentLifecycle,
+} from '../../../apps/extension/src/pipelineHost/contracts';
 import {
   ImagePipelineCancelledError,
   type PipelineCancellationReason,
@@ -11,8 +12,6 @@ import {
 import {
   LOCAL_PIPELINE_CLIENT_PORT,
   LOCAL_PIPELINE_CHUNK_SIZE,
-  LOCAL_PIPELINE_OFFSCREEN_DOCUMENT,
-  LOCAL_PIPELINE_OFFSCREEN_PORT,
   isLocalPipelineClientMessage,
   isLocalPipelineErrorCode,
   isLocalPipelineHostMessage,
@@ -92,9 +91,8 @@ export class OffscreenPipelineBroker {
   private admissionPumpPromise: Promise<void> | null = null;
 
   constructor(
-    private readonly chromeApi: ChromeLike,
+    private readonly lifecycle: PipelineHostDocumentLifecycle,
     private readonly runtimeChannels: RuntimeChannelServer,
-    private readonly environment: ExtensionEnvironment,
   ) {}
 
   register(): void {
@@ -102,7 +100,7 @@ export class OffscreenPipelineBroker {
   }
 
   handlePort(port: RuntimeChannel): void {
-    if (port.name === LOCAL_PIPELINE_OFFSCREEN_PORT) {
+    if (this.lifecycle.accepts(port)) {
       this.attachHost(port);
       return;
     }
@@ -291,18 +289,6 @@ export class OffscreenPipelineBroker {
   }
 
   private attachHost(port: RuntimeChannel): void {
-    const expectedUrl = this.environment.resourceUrl(
-      LOCAL_PIPELINE_OFFSCREEN_DOCUMENT,
-    );
-    const source = port.source;
-    if (
-      source.kind !== 'extension-document'
-      || (source.url !== undefined && source.url !== expectedUrl)
-    ) {
-      void port.disconnect();
-      return;
-    }
-
     if (this.hostPort && this.hostPort !== port) {
       void this.hostPort.disconnect();
     }
@@ -612,14 +598,13 @@ export class OffscreenPipelineBroker {
     if (this.creationPromise) return this.creationPromise;
 
     this.creationPromise = (async () => {
-      const offscreenApi = this.chromeApi.offscreen;
-      if (!offscreenApi?.createDocument) {
+      if (!this.lifecycle.isAvailable()) {
         throw codedError('OFFSCREEN_UNAVAILABLE', '当前 Chromium 不支持扩展 offscreen document');
       }
 
-      const exists = await this.hasOffscreenDocument();
+      const exists = await this.lifecycle.exists();
       if (!exists) {
-        await this.createOffscreenDocument(offscreenApi);
+        await this.createHost();
       }
 
       try {
@@ -627,17 +612,21 @@ export class OffscreenPipelineBroker {
       } catch (initialError) {
         // An offscreen document can outlive a crashed script or a stale Port.
         // Recreate it once so the next task is not permanently wedged.
-        if (!offscreenApi.closeDocument) throw initialError;
         this.expectedHostClose = true;
+        let closeSupported = true;
         try {
-          await offscreenApi.closeDocument();
+          closeSupported = await this.lifecycle.close();
         } catch {
           // It may already have disappeared between getContexts and close.
+        }
+        if (!closeSupported) {
+          this.expectedHostClose = false;
+          throw initialError;
         }
         this.hostPort = null;
         this.hostReady = false;
         this.expectedHostClose = false;
-        await this.createOffscreenDocument(offscreenApi);
+        await this.createHost();
         try {
           return await this.waitForHost();
         } catch (retryError) {
@@ -655,45 +644,17 @@ export class OffscreenPipelineBroker {
     return this.creationPromise;
   }
 
-  private async createOffscreenDocument(offscreenApi: NonNullable<ChromeLike['offscreen']>): Promise<void> {
-    if (!offscreenApi.createDocument) {
-      throw codedError('OFFSCREEN_UNAVAILABLE', '当前 Chromium 不支持扩展 offscreen document');
-    }
+  private async createHost(): Promise<void> {
     try {
-      await offscreenApi.createDocument({
-        url: LOCAL_PIPELINE_OFFSCREEN_DOCUMENT,
-        reasons: ['WORKERS'],
-        justification: '在扩展同源上下文中运行本地 ONNX 图片翻译流水线',
-      });
+      await this.lifecycle.create();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (!/single offscreen|already exists|only one offscreen/i.test(message)) {
-        throw codedError('OFFSCREEN_CREATE_FAILED', `创建 offscreen document 失败: ${message}`, error);
-      }
+      throw codedError(
+        'OFFSCREEN_CREATE_FAILED',
+        `创建 offscreen document 失败: ${message}`,
+        error,
+      );
     }
-  }
-
-  private async hasOffscreenDocument(): Promise<boolean> {
-    const targetUrl = this.environment.resourceUrl(
-      LOCAL_PIPELINE_OFFSCREEN_DOCUMENT,
-    );
-    const runtimeApi = this.chromeApi.runtime;
-    if (runtimeApi?.getContexts) {
-      const contexts = await runtimeApi.getContexts({
-        contextTypes: ['OFFSCREEN_DOCUMENT'],
-        documentUrls: [targetUrl],
-      });
-      return contexts.length > 0;
-    }
-
-    const serviceWorkerScope = globalThis as typeof globalThis & {
-      clients?: { matchAll: () => Promise<Array<{ url: string }>> };
-    };
-    if (serviceWorkerScope.clients?.matchAll) {
-      const clients = await serviceWorkerScope.clients.matchAll();
-      return clients.some((client) => client.url === targetUrl);
-    }
-    return false;
   }
 
   private waitForHost(): Promise<RuntimeChannel> {
@@ -728,13 +689,13 @@ export class OffscreenPipelineBroker {
   }
 
   private async closeIdleDocument(): Promise<void> {
-    if (!this.chromeApi.offscreen?.closeDocument) return;
     if (this.closingPromise) return this.closingPromise;
     const closingHost = this.hostPort;
     this.expectedHostClose = true;
     this.pendingIdleClose = false;
-    const closing = this.chromeApi.offscreen.closeDocument()
-      .then(() => {
+    const closing = this.lifecycle.close()
+      .then((closed) => {
+        if (!closed) return;
         if (this.hostPort === closingHost) {
           this.hostPort = null;
           this.hostReady = false;
@@ -754,14 +715,12 @@ export class OffscreenPipelineBroker {
 }
 
 export function registerOffscreenPipelineBroker(
-  chromeApi: ChromeLike,
+  lifecycle: PipelineHostDocumentLifecycle,
   runtimeChannels: RuntimeChannelServer,
-  environment: ExtensionEnvironment,
 ): OffscreenPipelineBroker {
   const broker = new OffscreenPipelineBroker(
-    chromeApi,
+    lifecycle,
     runtimeChannels,
-    environment,
   );
   broker.register();
   return broker;

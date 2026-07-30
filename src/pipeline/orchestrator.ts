@@ -35,9 +35,13 @@ import { toDiagnosticError, type DiagnosticLogCategory } from "../shared/diagnos
 import { createCancelledError } from "../shared/localPipelineProtocol";
 import type { TextTranslationTransport } from "../translators/transport";
 import {
+  isProviderExecutionReport,
   isPipelineFailureEnvelope,
+  type ImagePipelineRuntimeCapabilities,
   type PipelineFailureEnvelope,
+  type ProviderExecutionReport,
 } from "@shinobu/image-pipeline";
+import { createProviderSessionResolver } from "../runtime/providerExecution";
 
 type ProgressCallback = (progress: PipelineProgress) => void;
 
@@ -46,6 +50,7 @@ export type PipelineRunOptions = {
   stopAfter?: "order";
   platform?: PlatformProvider;
   translationTransport?: TextTranslationTransport;
+  runtimeCapabilities?: ImagePipelineRuntimeCapabilities;
 };
 
 type PaddleOcrRuntimeProbeMode = "legacy" | "prepare" | "warmup";
@@ -308,6 +313,20 @@ function cloneTextRegions(regions: TextRegion[]): TextRegion[] {
   });
 }
 
+function providerReportsFromError(
+  error: unknown,
+): ProviderExecutionReport[] {
+  if (
+    typeof error !== "object"
+    || error === null
+    || !("providerReports" in error)
+    || !Array.isArray(error.providerReports)
+  ) {
+    return [];
+  }
+  return error.providerReports.filter(isProviderExecutionReport);
+}
+
 export class PipelineStageError extends Error {
   readonly stage: string;
   readonly stageLabel: string;
@@ -391,6 +410,9 @@ export async function runPipeline(
   const stageTimings: StageTiming[] = [];
   const signal = options.signal;
   const stopAfterOrder = options.stopAfter === "order";
+  const providerSessionResolver = createProviderSessionResolver({
+    policy: options.runtimeCapabilities?.providerExecution?.policy,
+  });
 
   throwIfCancelled(signal);
   report(onProgress, "load", "加载图片");
@@ -401,6 +423,7 @@ export async function runPipeline(
   stageTimings.push({ stage: "load", label: "加载图片", durationMs: performance.now() - loadT0 });
 
   const runtimeStages: RuntimeStageStatus[] = [];
+  const providerReports: ProviderExecutionReport[] = [];
   const stageRegions: PipelineStageRegions = {
     detected: [],
     ocr: [],
@@ -439,6 +462,7 @@ export async function runPipeline(
     ocrDebug,
     ocrPostFilterDebug,
     runtimeStages,
+    providerReports,
     stageTimings
   });
 
@@ -454,7 +478,6 @@ export async function runPipeline(
   throwIfCancelled(signal);
   report(onProgress, "preload", "加载检测模型");
   const preloadT0 = performance.now();
-  setRuntimeStage(await probeRuntime("detector"));
   throwIfCancelled(signal);
   stageTimings.push({ stage: "preload", label: "加载检测模型", durationMs: performance.now() - preloadT0 });
 
@@ -499,8 +522,13 @@ export async function runPipeline(
       startBubbleRuntimeProbe();
     }
     const t0 = performance.now();
-    const detected = await detectTextRegionsWithMask(image, platform);
+    const detected = await detectTextRegionsWithMask(
+      image,
+      platform,
+      providerSessionResolver,
+    );
     throwIfCancelled(signal);
+    providerReports.push(...detected.providerReports);
     latestRegions = detected.regions;
     stageRegions.detected = cloneTextRegions(latestRegions);
     detectionMaskCanvas = detected.rawMaskCanvas;
@@ -509,7 +537,6 @@ export async function runPipeline(
     ocrCanvas = detectionCanvas;
     cleanedCanvas = ocrCanvas;
     resultCanvas = cleanedCanvas;
-    const detectorRuntime = getRuntimeStage("detector");
     if (detected.engine !== "onnx") {
       setRuntimeStage({
         model: "detector",
@@ -517,20 +544,25 @@ export async function runPipeline(
         engine: detected.engine,
         detail: `detector 已回退到 ${detected.engine ?? "unknown"}: ${detected.fallbackReason ?? "未提供原因"}`,
       });
-    } else if (detected.actualProvider && detected.actualProvider !== detectorRuntime?.provider) {
+    } else if (detected.actualProvider) {
       const providerLabel = detected.actualProvider === "webnn"
         ? `${detected.actualProvider}/${detected.actualWebnnDeviceType ?? "default"}`
         : detected.actualProvider;
+      const detectorReport = detected.providerReports.find(
+        (candidate) =>
+          candidate.model === "detector" && candidate.stage === "detect",
+      );
+      const fallbackUsed = (detectorReport?.fallbackTrace.length ?? 0) > 0;
       setRuntimeStage({
         model: "detector",
         enabled: true,
         engine: "onnx",
         provider: detected.actualProvider,
         webnnDeviceType: detected.actualWebnnDeviceType,
-        detail: `detector 推理已回退到 (${providerLabel})`
+        detail: fallbackUsed
+          ? `detector 推理已回退到 (${providerLabel})`
+          : `detector 模型已加载 (${providerLabel})`
       });
-    } else if (detectorRuntime) {
-      setRuntimeStage({ ...detectorRuntime, engine: "onnx" });
     }
     const durationMs = performance.now() - t0;
     stageTimings.push({ stage: "detect", label: "文本检测", durationMs });
@@ -552,6 +584,7 @@ export async function runPipeline(
       startBubbleRuntimeProbe();
     }
   } catch (error) {
+    providerReports.push(...providerReportsFromError(error));
     logPipelineStage(config, "pipeline.detect", "文本检测失败", undefined, error);
     throw new PipelineStageError("detect", "文本检测", toErrorDetail(error), buildArtifacts(), "runtime", error);
   }

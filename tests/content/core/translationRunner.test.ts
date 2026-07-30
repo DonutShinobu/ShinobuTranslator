@@ -116,6 +116,7 @@ describe('TranslationRunner', () => {
       return {
         status: 'completed' as const,
         result: resultBlob,
+        providerReports: [],
         summary: {
           image: { width: 100, height: 200 },
           detectedRegionCount: 2,
@@ -126,6 +127,7 @@ describe('TranslationRunner', () => {
             { model: 'ocr' as const, enabled: true, provider: 'wasm' as const, detail: 'ok' },
             { model: 'inpaint' as const, enabled: true, provider: 'wasm' as const, detail: 'ok' },
           ],
+          providerReports: [],
           translationDebug: null,
           ocrDebug: null,
           ocrPostFilterDebug: null,

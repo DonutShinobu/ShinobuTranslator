@@ -8,6 +8,7 @@ import {
   type ImagePipelineResult,
   type PipelineConfig,
   type PipelineProgress,
+  type ProviderExecutionPolicy,
 } from '@shinobu/image-pipeline';
 
 function deferred<T>() {
@@ -55,6 +56,7 @@ function result(): ImagePipelineResult {
   return {
     status: 'completed',
     image: new Blob(['result'], { type: 'image/png' }),
+    providerReports: [],
     record: {
       schemaVersion: 2,
       workingCopy: {
@@ -117,6 +119,55 @@ describe('image pipeline runtime contract', () => {
 
     await runtime.run(request()).result;
     expect(prepare).toHaveBeenCalledOnce();
+  });
+
+  it('injects a versioned provider policy as an immutable runtime capability', async () => {
+    const policy: ProviderExecutionPolicy = {
+      schemaVersion: 1,
+      contract: {
+        id: 'test.detector-wasm-only',
+        version: 3,
+      },
+      rules: [
+        {
+          model: 'detector',
+          stage: 'detect',
+          providers: ['wasm'],
+        },
+      ],
+    };
+    const observedCapabilities: unknown[] = [];
+    const runtime = new ImagePipelineRuntime({
+      capabilities: {
+        providerExecution: { policy },
+      },
+      async prepare(context) {
+        observedCapabilities.push(context.capabilities);
+      },
+      async execute(_request, context) {
+        observedCapabilities.push(context.capabilities);
+        return { status: 'completed' as const, artifacts: { id: 'live' } };
+      },
+      finalize: async () => result(),
+      release: vi.fn(),
+    });
+    policy.contract.version = 99;
+
+    await runtime.run(request()).result;
+
+    expect(observedCapabilities).toHaveLength(2);
+    expect(observedCapabilities[0]).toEqual({
+      providerExecution: {
+        policy: expect.objectContaining({
+          contract: {
+            id: 'test.detector-wasm-only',
+            version: 3,
+          },
+        }),
+      },
+    });
+    expect(observedCapabilities[1]).toBe(observedCapabilities[0]);
+    expect(Object.isFrozen(observedCapabilities[0])).toBe(true);
   });
 
   it('throws admission errors synchronously without creating a task', async () => {

@@ -1,4 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type {
+  ImagePipelineRuntimeCapabilities,
+  ProviderExecutionReport,
+} from '@shinobu/image-pipeline';
 import type { ChromePort } from '../../src/shared/chrome';
 import type { PipelineArtifacts } from '../../src/types';
 
@@ -70,6 +74,27 @@ class FakePort implements ChromePort {
   }
 }
 
+const providerReport: ProviderExecutionReport = {
+  schemaVersion: 1,
+  contract: {
+    id: 'shinobu.production-provider-policy',
+    version: 1,
+  },
+  model: 'detector',
+  stage: 'detect',
+  attempts: [
+    {
+      attempt: 1,
+      provider: 'wasm',
+      outcome: 'succeeded',
+      reason: 'completed',
+    },
+  ],
+  finalProvider: 'wasm',
+  fallbackTrace: [],
+  satisfied: true,
+};
+
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => {
@@ -99,6 +124,7 @@ function artifacts(): PipelineArtifacts {
     ocrDebug: null,
     ocrPostFilterDebug: null,
     runtimeStages: [],
+    providerReports: [providerReport],
     stageTimings: [],
   };
 }
@@ -156,8 +182,10 @@ describe('OffscreenPipelineHost single-task admission', () => {
     port.disconnect();
   });
 
-  function createHost(): OffscreenPipelineHost {
-    const host = new OffscreenPipelineHost();
+  function createHost(
+    capabilities?: ImagePipelineRuntimeCapabilities,
+  ): OffscreenPipelineHost {
+    const host = new OffscreenPipelineHost(capabilities);
     hosts.push(host);
     return host;
   }
@@ -188,6 +216,7 @@ describe('OffscreenPipelineHost single-task admission', () => {
       type: 'result-meta',
       jobId: 'job-1',
       status: 'no-translatable-text',
+      providerReports: [providerReport],
       record: expect.objectContaining({
         schemaVersion: 2,
         workingCopy: expect.objectContaining({
@@ -196,6 +225,37 @@ describe('OffscreenPipelineHost single-task admission', () => {
         }),
       }),
     }));
+  });
+
+  it('passes an injected provider policy to the pipeline as a runtime capability', async () => {
+    const capabilities: ImagePipelineRuntimeCapabilities = {
+      providerExecution: {
+        policy: {
+          schemaVersion: 1,
+          contract: {
+            id: 'test.detector-wasm-only',
+            version: 2,
+          },
+          rules: [
+            {
+              model: 'detector',
+              stage: 'detect',
+              providers: ['wasm'],
+            },
+          ],
+        },
+      },
+    };
+    mocks.runPipeline.mockResolvedValueOnce(artifacts());
+    const host = createHost(capabilities);
+    host.connect();
+
+    sendImageJob(port, 'runtime-capability');
+
+    await vi.waitFor(() => expect(mocks.runPipeline).toHaveBeenCalledOnce());
+    expect(mocks.runPipeline.mock.calls[0][3]).toMatchObject({
+      runtimeCapabilities: capabilities,
+    });
   });
 
   it('does not retain an unexpectedly overlapping task after rejecting it', async () => {

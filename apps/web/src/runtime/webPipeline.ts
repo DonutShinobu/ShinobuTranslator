@@ -8,8 +8,12 @@ import type {
   NormalizedWorkingCopySpec,
   PipelineConfig,
   PipelineProgress,
+  ProviderExecutionCapability,
 } from '@shinobu/image-pipeline';
-import { isCurrentPipelineRecord } from '@shinobu/image-pipeline';
+import {
+  isCurrentPipelineRecord,
+  isProviderExecutionReport,
+} from '@shinobu/image-pipeline';
 import type { LocalPipelineArtifactSummary } from '../../../../src/shared/localPipelineProtocol';
 import { LocalPipelineRemoteError } from '../../../../src/shared/localPipelineProtocol';
 
@@ -17,6 +21,7 @@ export type WebPipelineRuntimeCapabilities = {
   textTranslation: {
     apiKey: string;
   };
+  providerExecution?: ProviderExecutionCapability;
 };
 
 export type WebPipelineInput = {
@@ -71,6 +76,8 @@ export function isWebPipelineResult(value: unknown): value is WebPipelineResult 
     || !(value.image instanceof Blob)
     || (value.debug !== undefined && !(value.debug instanceof Blob))
     || !isCurrentPipelineRecord(value.record)
+    || !Array.isArray(value.providerReports)
+    || !value.providerReports.every(isProviderExecutionReport)
     || !isRecord(value.summary)
     || !isRecord(value.summary.image)
   ) {

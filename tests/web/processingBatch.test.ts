@@ -88,11 +88,13 @@ function successfulCore(): WebTranslatorCore {
   >(async ({ input }) => ({
     status: 'completed',
     image: new Blob([`translated:${input.file.name}`], { type: 'image/png' }),
+    providerReports: [],
     summary: {
       image: { width: 1200, height: 1800 },
       detectedRegionCount: 0,
       stageTimings: [],
       runtimeStages: [],
+      providerReports: [],
       translationDebug: null,
       ocrDebug: null,
       ocrPostFilterDebug: null,
@@ -272,11 +274,13 @@ describe('processing batch module', () => {
       return {
         status: 'completed',
         image: new Blob(['translated'], { type: 'image/png' }),
+        providerReports: [],
         summary: {
           image: { width: 1200, height: 1800 },
           detectedRegionCount: 0,
           stageTimings: [],
           runtimeStages: [],
+          providerReports: [],
           translationDebug: null,
           ocrDebug: null,
           ocrPostFilterDebug: null,
@@ -398,11 +402,13 @@ describe('processing batch module', () => {
       return {
         status: 'completed',
         image: new Blob([`translated:${input.file.name}`], { type: 'image/png' }),
+        providerReports: [],
         summary: {
           image: { width: 1200, height: 1800 },
           detectedRegionCount: 0,
           stageTimings: [],
           runtimeStages: [],
+          providerReports: [],
           translationDebug: null,
           ocrDebug: null,
           ocrPostFilterDebug: null,
@@ -473,11 +479,13 @@ describe('processing batch module', () => {
       return {
         status: 'completed',
         image: new Blob(['translated'], { type: 'image/png' }),
+        providerReports: [],
         summary: {
           image: { width: 1200, height: 1800 },
           detectedRegionCount: 0,
           stageTimings: [],
           runtimeStages: [],
+          providerReports: [],
           translationDebug: null,
           ocrDebug: null,
           ocrPostFilterDebug: null,
@@ -542,11 +550,13 @@ describe('processing batch module', () => {
       return {
         status: 'completed',
         image: new Blob(['translated'], { type: 'image/png' }),
+        providerReports: [],
         summary: {
           image: { width: 1200, height: 1800 },
           detectedRegionCount: 0,
           stageTimings: [],
           runtimeStages: [],
+          providerReports: [],
           translationDebug: null,
           ocrDebug: null,
           ocrPostFilterDebug: null,
@@ -697,11 +707,13 @@ describe('processing batch module', () => {
       return {
         status: 'completed',
         image: new Blob(['translated'], { type: 'image/png' }),
+        providerReports: [],
         summary: {
           image: { width: 1200, height: 1800 },
           detectedRegionCount: 0,
           stageTimings: [],
           runtimeStages: [],
+          providerReports: [],
           translationDebug: null,
           ocrDebug: null,
           ocrPostFilterDebug: null,

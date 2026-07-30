@@ -5,6 +5,11 @@ import type {
   PlatformProvider,
 } from '../../src/runtime/platform';
 import type { PipelineConfig, PipelineProgress, TextRegion } from '../../src/types';
+import type {
+  ProviderExecutionPolicy,
+  ProviderExecutionReport,
+} from '@shinobu/image-pipeline';
+import type { ProviderSessionResolver } from '../../src/runtime/providerExecution';
 
 const pipelineMocks = vi.hoisted(() => ({
   fileToImage: vi.fn(),
@@ -119,6 +124,26 @@ const translatedRegion: TextRegion = {
   ...ocrRegion,
   translatedText: '你好',
 };
+const detectorProviderReport: ProviderExecutionReport = {
+  schemaVersion: 1,
+  contract: {
+    id: 'shinobu.production-provider-policy',
+    version: 1,
+  },
+  model: 'detector',
+  stage: 'detect',
+  attempts: [
+    {
+      attempt: 1,
+      provider: 'wasm',
+      outcome: 'succeeded',
+      reason: 'completed',
+    },
+  ],
+  finalProvider: 'wasm',
+  fallbackTrace: [],
+  satisfied: true,
+};
 
 const baseConfig: PipelineConfig = {
   sourceLang: 'ja',
@@ -156,6 +181,7 @@ beforeEach(() => {
     regions: [detectedRegion],
     rawMaskCanvas: detectionMaskCanvas,
     actualProvider: 'wasm',
+    providerReports: [detectorProviderReport],
   });
   pipelineMocks.runOcr.mockResolvedValue({
     regions: [ocrRegion],
@@ -244,8 +270,65 @@ describe('runPipeline', () => {
     ]);
     expect(artifacts.detectedRegions).toEqual([translatedRegion]);
     expect(artifacts.resultCanvas).toBe(typesetCanvas);
+    expect(artifacts.providerReports).toEqual([detectorProviderReport]);
     expect(pipelineMocks.runTranslate).toHaveBeenCalledOnce();
     expect(pipelineMocks.drawTypeset).toHaveBeenCalledOnce();
+  });
+
+  it('injects the runtime capability policy into detector provider resolution', async () => {
+    const policy: ProviderExecutionPolicy = {
+      schemaVersion: 1,
+      contract: {
+        id: 'test.detector-wasm-only',
+        version: 4,
+      },
+      rules: [
+        {
+          model: 'detector',
+          stage: 'detect',
+          providers: ['wasm'],
+        },
+      ],
+    };
+    pipelineMocks.detectTextRegionsWithMask.mockImplementationOnce(async (
+      _image: PipelineImage,
+      _platform: PlatformProvider,
+      resolver: ProviderSessionResolver,
+    ) => {
+      const execution = await resolver.execute({
+        model: 'detector',
+        stage: 'detect',
+        run: async (session) => session.provider,
+      });
+      return {
+        regions: [detectedRegion],
+        rawMaskCanvas: detectionMaskCanvas,
+        actualProvider: execution.value,
+        providerReports: [execution.report],
+      };
+    });
+
+    const artifacts = await runPipeline(
+      createFile(),
+      baseConfig,
+      () => {},
+      {
+        runtimeCapabilities: {
+          providerExecution: { policy },
+        },
+      },
+    );
+
+    expect(pipelineMocks.getModelSession.mock.calls.filter(
+      ([model]) => model === 'detector',
+    )).toEqual([
+      ['detector', ['wasm']],
+    ]);
+    expect(artifacts.providerReports[0]).toMatchObject({
+      contract: policy.contract,
+      finalProvider: 'wasm',
+      satisfied: true,
+    });
   });
 
   it('skips translation and typesetting in erase mode', async () => {
@@ -376,7 +459,10 @@ describe('runPipeline', () => {
   });
 
   it('attaches completed intermediate artifacts to stage errors', async () => {
-    pipelineMocks.detectTextRegionsWithMask.mockRejectedValueOnce(new Error('detector unavailable'));
+    pipelineMocks.detectTextRegionsWithMask.mockRejectedValueOnce(Object.assign(
+      new Error('detector unavailable'),
+      { providerReports: [detectorProviderReport] },
+    ));
 
     const error = await runPipeline(createFile(), baseConfig, () => {}).catch(
       (caught: unknown) => caught,
@@ -406,6 +492,7 @@ describe('runPipeline', () => {
       detectionCanvas: originalCanvas,
       cleanedCanvas: originalCanvas,
       resultCanvas: originalCanvas,
+      providerReports: [detectorProviderReport],
     });
     expect(stageError.artifacts.stageTimings.map((timing) => timing.stage)).toEqual([
       'load',

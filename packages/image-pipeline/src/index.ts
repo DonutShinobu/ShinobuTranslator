@@ -8,6 +8,164 @@ import {
 
 export const PIPELINE_RECORD_SCHEMA_VERSION = 2 as const;
 
+export type ProviderRuntime =
+  | 'webgpu'
+  | 'webnn'
+  | 'wasm'
+  | 'cuda'
+  | 'cpu';
+
+export type ProviderExecutionModel =
+  | 'detector'
+  | 'bubble'
+  | 'paddleocr_v6_medium_rec'
+  | 'inpaint';
+
+export type ProviderExecutionStage =
+  | 'detect'
+  | 'bubble'
+  | 'ocr'
+  | 'inpaint';
+
+export type ProviderExecutionContract = {
+  id: string;
+  version: number;
+};
+
+export type ProviderExecutionPolicyRule = {
+  model: ProviderExecutionModel;
+  stage: ProviderExecutionStage;
+  providers: readonly ProviderRuntime[];
+};
+
+export type ProviderExecutionPolicy = {
+  schemaVersion: 1;
+  contract: ProviderExecutionContract;
+  /**
+   * Runtime-only overrides. Targets without a rule use the production provider
+   * order from the model manifest.
+   */
+  rules: readonly ProviderExecutionPolicyRule[];
+};
+
+export const PRODUCTION_PROVIDER_EXECUTION_POLICY: ProviderExecutionPolicy = {
+  schemaVersion: 1,
+  contract: {
+    id: 'shinobu.production-provider-policy',
+    version: 1,
+  },
+  rules: [],
+};
+
+export type ProviderExecutionAttemptOutcome =
+  | 'succeeded'
+  | 'unavailable'
+  | 'failed';
+
+export type ProviderExecutionAttemptReason =
+  | 'completed'
+  | 'session-unavailable'
+  | 'execution-failed'
+  | 'contract-violated';
+
+export type ProviderExecutionAttempt = {
+  attempt: number;
+  provider: ProviderRuntime;
+  outcome: ProviderExecutionAttemptOutcome;
+  reason: ProviderExecutionAttemptReason;
+};
+
+export type ProviderFallbackTrace = {
+  from: ProviderRuntime;
+  to: ProviderRuntime;
+  reason: ProviderExecutionAttemptReason;
+};
+
+export type ProviderExecutionReport = {
+  schemaVersion: 1;
+  contract: ProviderExecutionContract;
+  model: ProviderExecutionModel;
+  stage: ProviderExecutionStage;
+  attempts: ProviderExecutionAttempt[];
+  finalProvider?: ProviderRuntime;
+  fallbackTrace: ProviderFallbackTrace[];
+  satisfied: boolean;
+};
+
+export function isProviderExecutionReport(
+  value: unknown,
+): value is ProviderExecutionReport {
+  if (
+    !isRecord(value)
+    || value.schemaVersion !== 1
+    || !isRecord(value.contract)
+    || typeof value.contract.id !== 'string'
+    || value.contract.id.length === 0
+    || !Number.isSafeInteger(value.contract.version)
+    || (value.contract.version as number) < 1
+    || !['detector', 'bubble', 'paddleocr_v6_medium_rec', 'inpaint'].includes(
+      String(value.model),
+    )
+    || !['detect', 'bubble', 'ocr', 'inpaint'].includes(String(value.stage))
+    || !Array.isArray(value.attempts)
+    || !Array.isArray(value.fallbackTrace)
+    || typeof value.satisfied !== 'boolean'
+  ) {
+    return false;
+  }
+
+  const providers = new Set(['webgpu', 'webnn', 'wasm', 'cuda', 'cpu']);
+  const outcomes = new Set(['succeeded', 'unavailable', 'failed']);
+  const reasons = new Set([
+    'completed',
+    'session-unavailable',
+    'execution-failed',
+    'contract-violated',
+  ]);
+  const attempts = value.attempts;
+  const fallbackTrace = value.fallbackTrace;
+  const attemptsValid = attempts.every((attempt, index) =>
+    isRecord(attempt)
+    && attempt.attempt === index + 1
+    && providers.has(String(attempt.provider))
+    && outcomes.has(String(attempt.outcome))
+    && reasons.has(String(attempt.reason)));
+  const fallbackValid = fallbackTrace.every((fallback, index) => {
+    if (!isRecord(fallback)) return false;
+    const previous = attempts[index];
+    const next = attempts[index + 1];
+    return Boolean(previous)
+      && Boolean(next)
+      && fallback.from === previous.provider
+      && fallback.to === next.provider
+      && fallback.reason === previous.reason;
+  });
+  if (
+    !attemptsValid
+    || !fallbackValid
+    || fallbackTrace.length !== Math.max(0, attempts.length - 1)
+  ) {
+    return false;
+  }
+
+  const finalAttempt = attempts.at(-1);
+  return value.satisfied
+    ? typeof value.finalProvider === 'string'
+      && providers.has(value.finalProvider)
+      && finalAttempt?.provider === value.finalProvider
+      && finalAttempt.outcome === 'succeeded'
+      && finalAttempt.reason === 'completed'
+    : value.finalProvider === undefined;
+}
+
+export type ProviderExecutionCapability = {
+  policy: ProviderExecutionPolicy;
+};
+
+export type ImagePipelineRuntimeCapabilities = {
+  providerExecution?: ProviderExecutionCapability;
+};
+
 export type LlmProvider =
   | 'deepseek'
   | 'gemini'
@@ -210,6 +368,7 @@ export type ImagePipelineResult = {
   image: Blob;
   debug?: Blob;
   record: PipelineRecord;
+  providerReports: readonly ProviderExecutionReport[];
   diagnostics?: Readonly<Record<string, unknown>>;
 };
 
@@ -225,6 +384,7 @@ type RetryableOperation = {
 
 type RuntimeExecutionContext = {
   signal: AbortSignal;
+  capabilities: Readonly<ImagePipelineRuntimeCapabilities>;
   reportProgress(progress: PipelineProgress): void;
   runOperation<T>(
     operation: RetryableOperation,
@@ -233,6 +393,7 @@ type RuntimeExecutionContext = {
 };
 
 type RuntimeOptions<Artifacts> = {
+  capabilities?: ImagePipelineRuntimeCapabilities;
   prepare?(context: RuntimeExecutionContext): Promise<void>;
   execute(
     request: ImagePipelineRequest,
@@ -589,8 +750,11 @@ export class ImagePipelineRuntime<Artifacts> {
   private prepared = false;
   private closed = false;
   private disposal: Promise<void> | null = null;
+  private readonly capabilities: Readonly<ImagePipelineRuntimeCapabilities>;
 
-  constructor(private readonly options: RuntimeOptions<Artifacts>) {}
+  constructor(private readonly options: RuntimeOptions<Artifacts>) {
+    this.capabilities = cloneAndFreeze(options.capabilities ?? {});
+  }
 
   run(
     request: ImagePipelineRequest,
@@ -635,6 +799,7 @@ export class ImagePipelineRuntime<Artifacts> {
     };
     const context: RuntimeExecutionContext = {
       signal: controller.signal,
+      capabilities: this.capabilities,
       reportProgress,
       runOperation: async <T>(
         retryOperation: RetryableOperation,

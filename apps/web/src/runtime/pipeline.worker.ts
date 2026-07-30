@@ -139,6 +139,9 @@ function createRuntime(
   capabilities: WebPipelineRuntimeCapabilities,
 ): ImagePipelineRuntime<PipelineArtifacts> {
   return new ImagePipelineRuntime({
+    capabilities: {
+      providerExecution: capabilities.providerExecution,
+    },
     async prepare() {
       const installed = await modelSourceResource;
       configureModelAssetSource(installed.source);
@@ -191,6 +194,7 @@ function createRuntime(
           signal: context.signal,
           platform,
           translationTransport: retryingTranslationTransport,
+          runtimeCapabilities: context.capabilities,
         },
       );
       return {
@@ -216,6 +220,7 @@ function createRuntime(
         status: output.status,
         image,
         debug,
+        providerReports: output.artifacts.providerReports,
         record: createWebPipelineRecord(
           output.artifacts,
           request.workingCopy,

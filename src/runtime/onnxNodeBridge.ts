@@ -96,27 +96,27 @@ export async function createSession(
   _sessionOptions?: OnnxSessionOptions
 ): Promise<WorkerSessionHandle> {
   // In Node context, modelUrl is a local file path (absolute).
-  const existing = sessions.get(modelKey);
+  const normalized = preferred.filter((provider, index) =>
+    preferred.indexOf(provider) === index);
+  const sessionId = `${modelKey}:${normalized.join(",")}`;
+  const existing = sessions.get(sessionId);
   if (existing) {
     return {
-      sessionId: modelKey,
+      sessionId,
       provider: existing.provider,
       inputNames: [...existing.session.inputNames],
       outputNames: [...existing.session.outputNames],
     };
   }
 
-  // Build EP order: prefer CUDA, fall back to CPU.
+  // Provider fallback is owned by the shared resolver. This bridge creates
+  // exactly one of the explicitly requested Node providers at a time.
   // Node bridge only knows cuda and cpu; other providers are ignored.
   const epOrder: string[] = [];
-  for (const p of preferred) {
-    if (p === "cuda") {
-      epOrder.push("cuda");
+  for (const provider of normalized) {
+    if (provider === "cuda" || provider === "cpu") {
+      epOrder.push(provider);
     }
-  }
-  // Always add cpu as fallback
-  if (!epOrder.includes("cpu")) {
-    epOrder.push("cpu");
   }
 
   // Try each EP configuration
@@ -124,12 +124,9 @@ export async function createSession(
   for (const ep of epOrder) {
     const result = await tryCreateSession(modelUrl, [ep]);
     if (result) {
-      sessions.set(modelKey, { session: result.session, provider: result.provider, modelPath: modelUrl });
-      if (result.provider === "cpu" && preferred.includes("cuda")) {
-        console.warn("[onnxNodeBridge] CUDA 不可用，回退到 CPU");
-      }
+      sessions.set(sessionId, { session: result.session, provider: result.provider, modelPath: modelUrl });
       return {
-        sessionId: modelKey,
+        sessionId,
         provider: result.provider,
         inputNames: [...result.session.inputNames],
         outputNames: [...result.session.outputNames],

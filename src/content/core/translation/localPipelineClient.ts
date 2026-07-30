@@ -15,6 +15,7 @@ import {
 import type {
   PipelineCancellationReason,
   PipelineRecord,
+  ProviderExecutionReport,
 } from '@shinobu/image-pipeline';
 import type { PipelineConfig, PipelineProgress } from '../../../types';
 
@@ -77,6 +78,7 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
     let transferStarted = false;
     let resultSummary: LocalPipelineArtifactSummary | null = null;
     let resultRecord: PipelineRecord | null = null;
+    let resultProviderReports: readonly ProviderExecutionReport[] | null = null;
     let resultStatus: LocalPipelineResult['status'] | null = null;
     let resultAssembler: Base64ChunkAssembler | null = null;
     let resultContentType = 'image/png';
@@ -111,7 +113,13 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
         fail(cancellationRemoteError(options.signal.reason));
         return;
       }
-      if (!resultAssembler || !resultSummary || !resultRecord || !resultStatus) {
+      if (
+        !resultAssembler
+        || !resultSummary
+        || !resultRecord
+        || !resultProviderReports
+        || !resultStatus
+      ) {
         fail(createProtocolError('结果完成消息早于结果元数据'));
         return;
       }
@@ -127,6 +135,7 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
           debug: debugBase64 === undefined ? undefined : base64ToBlob(debugBase64, debugContentType),
           summary: resultSummary,
           record: resultRecord,
+          providerReports: resultProviderReports,
         };
         if (options.signal?.aborted) {
           fail(cancellationRemoteError(options.signal.reason));
@@ -199,6 +208,7 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
           resultContentType = value.result.contentType;
           resultSummary = value.summary;
           resultRecord = value.record;
+          resultProviderReports = value.providerReports;
           resultStatus = value.status;
           expectsDebug = Boolean(value.debug);
           if (value.debug) {

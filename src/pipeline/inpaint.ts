@@ -1,16 +1,20 @@
 import type { PlatformProvider, PipelineCanvas } from "../runtime/platform";
-import { getModel, getModelSession } from "../runtime/modelRegistry";
-import { isContextLostRuntimeError } from "../runtime/onnxTypes";
-import type { RuntimeProvider, WebNnDeviceType } from "../runtime/onnxTypes";
+import { getModel } from "../runtime/modelRegistry";
+import type { WebNnDeviceType } from "../runtime/onnxTypes";
 import { runInference } from "../runtime/onnxBridge";
 import type { WorkerSessionHandle, TensorTransport } from "../runtime/onnxWorkerTypes";
-import { toErrorMessage } from "../shared/utils";
 import { clamp } from "./utils";
+import type {
+  ProviderExecutionReport,
+  ProviderRuntime,
+} from "@shinobu/image-pipeline";
+import type { ProviderSessionResolver } from "../runtime/providerExecution";
 
 export type InpaintResult = {
   canvas: PipelineCanvas;
-  actualProvider: RuntimeProvider;
+  actualProvider: ProviderRuntime;
   actualWebnnDeviceType?: WebNnDeviceType;
+  providerReports: ProviderExecutionReport[];
 };
 
 type InpaintInputNormalize = "zero_to_one" | "minus_one_to_one";
@@ -243,9 +247,9 @@ async function runInpaintByOnnx(
   originalCanvas: PipelineCanvas,
   refinedMaskCanvas: PipelineCanvas,
   platform: PlatformProvider,
+  resolver: ProviderSessionResolver,
 ): Promise<InpaintResult> {
   const model = await getModel("inpaint");
-  const primaryHandle = await getModelSession("inpaint", ["webgpu", "webnn", "wasm"]);
   const size = model.input?.[0] ?? 512;
   const normalize = model.normalize ?? "zero_to_one";
   const outputNormalize = model.outputNormalize ?? normalize;
@@ -254,7 +258,7 @@ async function runInpaintByOnnx(
     throw new Error("去字 ONNX 缺少有效 refined mask，已禁用文本框遮罩回退");
   }
   const feeds = preprocessInpaintImage(originalCanvas, refinedMaskCanvas, size, normalize, maskFill, platform);
-  const runWithHandle = async (handle: WorkerSessionHandle): Promise<Record<string, TensorTransport>> => {
+  const runWithHandle = async (handle: WorkerSessionHandle): Promise<Uint8ClampedArray> => {
     const imageName = handle.inputNames[0];
     const maskName = model.maskInputName ?? handle.inputNames[1];
     if (!imageName || !maskName) {
@@ -265,97 +269,92 @@ async function runInpaintByOnnx(
       [maskName]: feeds.mask
     });
     if (result.error) throw new Error(result.error);
-    return result.outputs;
-  };
-
-  const decodeOutputs = (outputs: Record<string, TensorTransport>): Uint8ClampedArray => {
-    const outTensor = pickInpaintTensor(outputs);
+    const outTensor = pickInpaintTensor(result.outputs);
     if (!outTensor) {
       throw new Error("去字 ONNX 模型输出未匹配到图像张量");
     }
-    return decodeInpaintTensor(outTensor, size, size, outputNormalize);
+    const inpaintedRgba = decodeInpaintTensor(
+      outTensor,
+      size,
+      size,
+      outputNormalize,
+    );
+    if (
+      handle.provider === "webnn"
+      && isLikelyInvalidInpaintResult(
+        feeds.sourceRgba,
+        inpaintedRgba,
+        feeds.maskBinary,
+      )
+    ) {
+      throw new Error("去字 WebNN 输出未满足有效性检查");
+    }
+    return inpaintedRgba;
   };
+  const execution = await resolver.execute({
+    model: "inpaint",
+    stage: "inpaint",
+    run: async (handle) => ({
+      inpaintedRgba: await runWithHandle(handle),
+      actualWebnnDeviceType: handle.webnnDeviceType,
+    }),
+  });
+  const actualProvider = execution.report.finalProvider!;
+  const providerReports = [execution.report];
 
-  let actualProvider: RuntimeProvider = primaryHandle.provider;
-  let actualWebnnDeviceType = primaryHandle.webnnDeviceType;
-  let outputTensors: Record<string, TensorTransport>;
   try {
-    outputTensors = await runWithHandle(primaryHandle);
+    const outputWidth = originalCanvas.width;
+    const outputHeight = originalCanvas.height;
+    const originalSourceRgba = readCanvasRgba(originalCanvas, outputWidth, outputHeight, platform);
+    const originalMaskBinary = readMaskBinary(refinedMaskCanvas, outputWidth, outputHeight, platform);
+    const inpaintedRgbaAtOriginalSize = resizeRgba(
+      execution.value.inpaintedRgba,
+      size,
+      size,
+      outputWidth,
+      outputHeight,
+      platform,
+    );
+    const canvas = composeInpaintResult(
+      originalSourceRgba,
+      inpaintedRgbaAtOriginalSize,
+      originalMaskBinary,
+      outputWidth,
+      outputHeight,
+      platform
+    );
+
+    return {
+      canvas,
+      actualProvider,
+      actualWebnnDeviceType: execution.value.actualWebnnDeviceType,
+      providerReports,
+    };
   } catch (error) {
-    const message = toErrorMessage(error);
-    const reason = isContextLostRuntimeError(error) ? "context lost" : "run failed";
-    if (primaryHandle.provider === "wasm") {
-      throw error;
-    }
-
-    const fallbackPlans: RuntimeProvider[][] = [];
-    if (primaryHandle.provider === "webgpu") {
-      fallbackPlans.push(["webnn", "wasm"]);
-    }
-    fallbackPlans.push(["wasm"]);
-
-    let recovered: Record<string, TensorTransport> | null = null;
-    let lastFallbackError: unknown = null;
-    console.warn(`[inpaint] ${primaryHandle.provider} ${reason}, 尝试回退: ${message}`);
-
-    for (const preferred of fallbackPlans) {
-      try {
-        const handle = await getModelSession("inpaint", preferred);
-        recovered = await runWithHandle(handle);
-        if (handle.provider !== primaryHandle.provider) {
-          console.warn(`[inpaint] 已回退到 ${handle.provider}`);
-          actualProvider = handle.provider;
-          actualWebnnDeviceType = handle.webnnDeviceType;
-        }
-        break;
-      } catch (fallbackError) {
-        lastFallbackError = fallbackError;
-      }
-    }
-
-    if (!recovered) {
-      const fallbackMessage = lastFallbackError ? toErrorMessage(lastFallbackError) : "未知错误";
-      throw new Error(`去字推理失败且回退失败: ${message} | fallback: ${fallbackMessage}`);
-    }
-
-    outputTensors = recovered;
+    throw new InpaintPostProcessingError(error, providerReports);
   }
+}
 
-  let inpaintedRgba = decodeOutputs(outputTensors);
-
-  if (
-    actualProvider === "webnn" &&
-    isLikelyInvalidInpaintResult(feeds.sourceRgba, inpaintedRgba, feeds.maskBinary)
+class InpaintPostProcessingError extends Error {
+  constructor(
+    cause: unknown,
+    readonly providerReports: ProviderExecutionReport[],
   ) {
-    const wasmHandle = await getModelSession("inpaint", ["wasm"]);
-    const wasmOutputTensors = await runWithHandle(wasmHandle);
-    inpaintedRgba = decodeOutputs(wasmOutputTensors);
-    actualProvider = "wasm";
-    actualWebnnDeviceType = undefined;
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = "InpaintPostProcessingError";
   }
-
-  const outputWidth = originalCanvas.width;
-  const outputHeight = originalCanvas.height;
-  const originalSourceRgba = readCanvasRgba(originalCanvas, outputWidth, outputHeight, platform);
-  const originalMaskBinary = readMaskBinary(refinedMaskCanvas, outputWidth, outputHeight, platform);
-  const inpaintedRgbaAtOriginalSize = resizeRgba(inpaintedRgba, size, size, outputWidth, outputHeight, platform);
-
-  const canvas = composeInpaintResult(
-    originalSourceRgba,
-    inpaintedRgbaAtOriginalSize,
-    originalMaskBinary,
-    outputWidth,
-    outputHeight,
-    platform
-  );
-
-  return { canvas, actualProvider, actualWebnnDeviceType };
 }
 
 export async function runInpaint(
   originalCanvas: PipelineCanvas,
   refinedMaskCanvas: PipelineCanvas,
   platform: PlatformProvider,
+  resolver: ProviderSessionResolver,
 ): Promise<InpaintResult> {
-  return runInpaintByOnnx(originalCanvas, refinedMaskCanvas, platform);
+  return runInpaintByOnnx(
+    originalCanvas,
+    refinedMaskCanvas,
+    platform,
+    resolver,
+  );
 }

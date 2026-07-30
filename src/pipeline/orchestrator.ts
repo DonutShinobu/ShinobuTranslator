@@ -15,7 +15,6 @@ import { browserPlatform } from "../runtime/browserPlatform";
 import { fileToImage, imageToCanvas } from "./image";
 import { detectTextRegionsWithMask } from "./detect";
 import { runOcr } from "./ocr";
-import { preparePaddleOcrRuntime, warmupPaddleOcrRuntime } from "./ocr/paddleocrProvider";
 import { runTranslate } from "./translate";
 import { runInpaint } from "./inpaint";
 import { drawTypeset } from "./typeset";
@@ -28,8 +27,6 @@ import { OCR_POST_FILTER_RULE_ID } from "./ocrPostFilter/rule";
 import { refineTextMask } from "./maskRefinement";
 import { sortRegionsForRender } from "./readingOrder";
 import { detectBubbles, matchRegionsToBubbles, type BubbleDetection } from "./bubbleDetect";
-import { getModelSession } from "../runtime/modelRegistry";
-import type { WorkerSessionHandle } from "../runtime/onnxWorkerTypes";
 import { emitDiagnosticLog } from "../shared/diagnosticLogClient";
 import {
   toDiagnosticError,
@@ -46,7 +43,10 @@ import {
   type PipelineFailureEnvelope,
   type ProviderExecutionReport,
 } from "@shinobu/image-pipeline";
-import { createProviderSessionResolver } from "../runtime/providerExecution";
+import {
+  createProviderSessionResolver,
+  ProviderExecutionError,
+} from "../runtime/providerExecution";
 
 type ProgressCallback = (progress: PipelineProgress) => void;
 
@@ -59,70 +59,6 @@ export type PipelineRunOptions = {
   diagnosticContext?: DiagnosticLogContext;
   diagnosticMessageSender?: RuntimeMessageSender;
 };
-
-type PaddleOcrRuntimeProbeMode = "legacy" | "prepare" | "warmup";
-type PaddleOcrRuntimeProbeSchedule = "detect-start" | "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
-type InpaintRuntimeProbeSchedule = "current" | "detect-start" | "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
-type BubbleRuntimeProbeSchedule = "current" | "detect-start" | "after-detect";
-
-type PipelineRuntimeFlags = typeof globalThis & {
-  __shinobuPaddleOcrRuntimeProbe?: PaddleOcrRuntimeProbeMode;
-  __shinobuPaddleOcrRuntimeProbeSchedule?: PaddleOcrRuntimeProbeSchedule;
-  __shinobuInpaintRuntimeProbeSchedule?: InpaintRuntimeProbeSchedule;
-  __shinobuBubbleRuntimeProbeSchedule?: BubbleRuntimeProbeSchedule;
-  __shinobuPaddleOcrWarmupInputWidth?: number;
-  __shinobuPaddleOcrWarmupBatchSize?: number;
-};
-
-function getPaddleOcrRuntimeProbeMode(): PaddleOcrRuntimeProbeMode {
-  return (globalThis as PipelineRuntimeFlags).__shinobuPaddleOcrRuntimeProbe ?? "legacy";
-}
-
-function getPaddleOcrRuntimeProbeSchedule(): PaddleOcrRuntimeProbeSchedule {
-  return (globalThis as PipelineRuntimeFlags).__shinobuPaddleOcrRuntimeProbeSchedule ?? "detect-start";
-}
-
-function getInpaintRuntimeProbeSchedule(): InpaintRuntimeProbeSchedule {
-  return (globalThis as PipelineRuntimeFlags).__shinobuInpaintRuntimeProbeSchedule ?? "current";
-}
-
-function getBubbleRuntimeProbeSchedule(): BubbleRuntimeProbeSchedule {
-  return (globalThis as PipelineRuntimeFlags).__shinobuBubbleRuntimeProbeSchedule ?? "current";
-}
-
-async function probePaddleOcrRuntime(): Promise<RuntimeStageStatus> {
-  const mode = getPaddleOcrRuntimeProbeMode();
-  if (mode === "warmup") {
-    const flags = globalThis as PipelineRuntimeFlags;
-    const warmup = await warmupPaddleOcrRuntime({
-      inputWidth: flags.__shinobuPaddleOcrWarmupInputWidth,
-      batchSize: flags.__shinobuPaddleOcrWarmupBatchSize,
-    });
-    const providerLabel = warmup.provider === "webnn"
-      ? `${warmup.provider}/${warmup.webnnDeviceType ?? "default"}`
-      : warmup.provider;
-    return {
-      model: "ocr",
-      enabled: true,
-      provider: warmup.provider,
-      webnnDeviceType: warmup.provider === "webnn" ? warmup.webnnDeviceType ?? "default" : undefined,
-      detail: `Paddle OCR warmup 完成 (${providerLabel}, ${warmup.inputDims.join("x")}, run=${Math.round(warmup.runMs)}ms)`,
-    };
-  }
-
-  const runtime = await preparePaddleOcrRuntime();
-  const webnnDeviceType = runtime.sessionHandle.provider === "webnn" ? runtime.sessionHandle.webnnDeviceType ?? "default" : undefined;
-  const providerLabel = runtime.sessionHandle.provider === "webnn"
-    ? `${runtime.sessionHandle.provider}/${webnnDeviceType}`
-    : runtime.sessionHandle.provider;
-  return {
-    model: "ocr",
-    enabled: true,
-    provider: runtime.sessionHandle.provider,
-    webnnDeviceType,
-    detail: `Paddle OCR 模型已加载 (${runtime.modelName}, ${providerLabel})`,
-  };
-}
 
 function buildEraseDebugCanvas(
   originalCanvas: PipelineCanvas,
@@ -327,6 +263,9 @@ function cloneTextRegions(regions: TextRegion[]): TextRegion[] {
 function providerReportsFromError(
   error: unknown,
 ): ProviderExecutionReport[] {
+  if (error instanceof ProviderExecutionError) {
+    return [error.report];
+  }
   if (
     typeof error !== "object"
     || error === null
@@ -374,43 +313,6 @@ export class PipelineStageError extends Error {
 
   get code(): string {
     return this.failure.code;
-  }
-}
-
-async function probeRuntime(model: "detector" | "bubble" | "ocr" | "inpaint"): Promise<RuntimeStageStatus> {
-  try {
-    let handle: WorkerSessionHandle;
-    if (model === "ocr") {
-      if (getPaddleOcrRuntimeProbeMode() !== "legacy") {
-        return await probePaddleOcrRuntime();
-      }
-      const paddleRuntime = await preparePaddleOcrRuntime();
-      handle = paddleRuntime.sessionHandle;
-    } else {
-      handle = await getModelSession(model);
-    }
-    const webnnDeviceType = handle.provider === "webnn" ? handle.webnnDeviceType ?? "default" : undefined;
-    const providerLabel = handle.provider === "webnn" ? `${handle.provider}/${webnnDeviceType}` : handle.provider;
-    return {
-      model,
-      enabled: true,
-      provider: handle.provider,
-      webnnDeviceType,
-      detail: `${model} 模型已加载 (${providerLabel})`
-    };
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    const stageDetail =
-      model === "ocr"
-        ? `${model} 模型未启用，OCR 阶段已禁用回退: ${detail}`
-        : model === "bubble"
-          ? `${model} 模型未启用，气泡检测无法继续: ${detail}`
-          : `${model} 模型未启用，使用检测回退流程: ${detail}`;
-    return {
-      model,
-      enabled: false,
-      detail: stageDetail
-    };
   }
 }
 
@@ -506,9 +408,6 @@ export async function runPipeline(
     else runtimeStages.push(status);
   };
 
-  const getRuntimeStage = (model: RuntimeStageStatus["model"]): RuntimeStageStatus | undefined =>
-    runtimeStages.find((stage) => stage.model === model);
-
   throwIfCancelled(signal);
   report(onProgress, "preload", "加载检测模型");
   const preloadT0 = performance.now();
@@ -541,54 +440,17 @@ export async function runPipeline(
     durationMs: performance.now() - preloadT0,
   });
 
-  let ocrRuntimeProbePromise: Promise<RuntimeStageStatus> | null = null;
-  let inpaintRuntimeProbePromise: Promise<RuntimeStageStatus> | null = null;
-  let bubbleRuntimeProbePromise: Promise<RuntimeStageStatus> | null = null;
-  const ocrRuntimeProbeSchedule = getPaddleOcrRuntimeProbeSchedule();
-  const inpaintRuntimeProbeSchedule = getInpaintRuntimeProbeSchedule();
-  const bubbleRuntimeProbeSchedule = getBubbleRuntimeProbeSchedule();
-
-  const startOcrRuntimeProbe = (): Promise<RuntimeStageStatus> => {
-    if (!ocrRuntimeProbePromise) {
-      ocrRuntimeProbePromise = probeRuntime("ocr");
-    }
-    return ocrRuntimeProbePromise;
-  };
-
-  const startInpaintRuntimeProbe = (): Promise<RuntimeStageStatus> => {
-    if (!inpaintRuntimeProbePromise) {
-      inpaintRuntimeProbePromise = probeRuntime("inpaint");
-    }
-    return inpaintRuntimeProbePromise;
-  };
-
-  const startBubbleRuntimeProbe = (): Promise<RuntimeStageStatus> => {
-    if (!bubbleRuntimeProbePromise) {
-      bubbleRuntimeProbePromise = probeRuntime("bubble");
-    }
-    return bubbleRuntimeProbePromise;
-  };
-
   throwIfCancelled(signal);
   report(onProgress, "detect", "文本检测");
   try {
-    if (ocrRuntimeProbeSchedule === "detect-start") {
-      startOcrRuntimeProbe();
-    }
-    if (!stopAfterOrder && inpaintRuntimeProbeSchedule === "detect-start") {
-      startInpaintRuntimeProbe();
-    }
-    if (bubbleRuntimeProbeSchedule === "detect-start") {
-      startBubbleRuntimeProbe();
-    }
     const t0 = performance.now();
     const detected = await detectTextRegionsWithMask(
       image,
       platform,
       providerSessionResolver,
     );
-    throwIfCancelled(signal);
     providerReports.push(...detected.providerReports);
+    throwIfCancelled(signal);
     latestRegions = detected.regions;
     stageRegions.detected = cloneTextRegions(latestRegions);
     detectionMaskCanvas = detected.rawMaskCanvas;
@@ -634,15 +496,6 @@ export async function runPipeline(
       regionCount: detected.regions.length,
       durationMs,
     });
-    if (ocrRuntimeProbeSchedule === "after-detect") {
-      startOcrRuntimeProbe();
-    }
-    if (!stopAfterOrder && inpaintRuntimeProbeSchedule === "after-detect") {
-      startInpaintRuntimeProbe();
-    }
-    if (bubbleRuntimeProbeSchedule === "after-detect") {
-      startBubbleRuntimeProbe();
-    }
   } catch (error) {
     providerReports.push(...providerReportsFromError(error));
     logPipelineStage(config, "pipeline.detect", "文本检测失败", undefined, error);
@@ -652,25 +505,14 @@ export async function runPipeline(
   let detectedBubbles: BubbleDetection[] = [];
   throwIfCancelled(signal);
   try {
-    if (ocrRuntimeProbeSchedule === "bubble-start") {
-      startOcrRuntimeProbe();
-    }
-    if (!stopAfterOrder && inpaintRuntimeProbeSchedule === "bubble-start") {
-      startInpaintRuntimeProbe();
-    }
     report(onProgress, "bubble", "气泡检测");
-    if (bubbleRuntimeProbeSchedule !== "current") {
-      const bubblePreloadT0 = performance.now();
-      setRuntimeStage(await startBubbleRuntimeProbe());
-      throwIfCancelled(signal);
-      stageTimings.push({
-        stage: "preload_bubble",
-        label: "加载气泡模型",
-        durationMs: performance.now() - bubblePreloadT0,
-      });
-    }
     const t0 = performance.now();
-    const bubbleResult = await detectBubbles(image, platform);
+    const bubbleResult = await detectBubbles(
+      image,
+      platform,
+      providerSessionResolver,
+    );
+    providerReports.push(...bubbleResult.providerReports);
     throwIfCancelled(signal);
     detectedBubbles = bubbleResult.bubbles;
     const bubbleProviderLabel = bubbleResult.actualProvider === "webnn"
@@ -691,13 +533,8 @@ export async function runPipeline(
       webnnDeviceType: bubbleResult.actualWebnnDeviceType,
       durationMs,
     });
-    if (ocrRuntimeProbeSchedule === "after-bubble") {
-      startOcrRuntimeProbe();
-    }
-    if (!stopAfterOrder && inpaintRuntimeProbeSchedule === "after-bubble") {
-      startInpaintRuntimeProbe();
-    }
   } catch (error) {
+    providerReports.push(...providerReportsFromError(error));
     logPipelineStage(config, "pipeline.bubble", "气泡检测失败", undefined, error);
     throw new PipelineStageError("bubble", "气泡检测", toErrorDetail(error), buildArtifacts(), "runtime", error);
   }
@@ -705,19 +542,19 @@ export async function runPipeline(
   throwIfCancelled(signal);
   report(onProgress, "ocr", "OCR 日文识别");
   try {
-    if (!stopAfterOrder && inpaintRuntimeProbeSchedule === "ocr-start") {
-      startInpaintRuntimeProbe();
-    }
     const t0 = performance.now();
-    setRuntimeStage(await startOcrRuntimeProbe());
-    throwIfCancelled(signal);
-    if (!stopAfterOrder && inpaintRuntimeProbeSchedule === "current") {
-      startInpaintRuntimeProbe();
-    }
-    const ocrResult = await runOcr(image, latestRegions, config.ocrEngine, platform, {
-      compactActiveBatch:
-        options.runtimeCapabilities?.ocrExecution?.compactActiveBatch,
-    });
+    const ocrResult = await runOcr(
+      image,
+      latestRegions,
+      config.ocrEngine,
+      platform,
+      providerSessionResolver,
+      {
+        compactActiveBatch:
+          options.runtimeCapabilities?.ocrExecution?.compactActiveBatch,
+      },
+    );
+    providerReports.push(...ocrResult.providerReports);
     throwIfCancelled(signal);
     latestRegions = ocrResult.regions;
     stageRegions.ocr = cloneTextRegions(latestRegions);
@@ -725,19 +562,16 @@ export async function runPipeline(
     ocrCanvas = drawRegions(originalCanvas, ocrResult.regions, "OCR 识别", (region) => region.sourceText, platform);
     cleanedCanvas = ocrCanvas;
     resultCanvas = cleanedCanvas;
-    const ocrRuntime = getRuntimeStage("ocr");
-    if (ocrResult.actualProvider !== ocrRuntime?.provider) {
-      const providerLabel = ocrResult.actualProvider === "webnn"
-        ? `${ocrResult.actualProvider}/${ocrResult.actualWebnnDeviceType ?? "default"}`
-        : ocrResult.actualProvider;
-      setRuntimeStage({
-        model: "ocr",
-        enabled: true,
-        provider: ocrResult.actualProvider,
-        webnnDeviceType: ocrResult.actualWebnnDeviceType,
-        detail: `ocr 推理已回退到 (${providerLabel})`
-      });
-    }
+    const providerLabel = ocrResult.actualProvider === "webnn"
+      ? `${ocrResult.actualProvider}/${ocrResult.actualWebnnDeviceType ?? "default"}`
+      : ocrResult.actualProvider;
+    setRuntimeStage({
+      model: "ocr",
+      enabled: true,
+      provider: ocrResult.actualProvider,
+      webnnDeviceType: ocrResult.actualWebnnDeviceType,
+      detail: `ocr 模型已运行 (${providerLabel})`,
+    });
     const ocrDurationMs = performance.now() - t0;
     stageTimings.push({ stage: "ocr", label: "OCR 日文识别", durationMs: ocrDurationMs });
     logPipelineStage(config, "pipeline.ocr", "OCR 识别完成", {
@@ -748,17 +582,8 @@ export async function runPipeline(
       durationMs: ocrDurationMs,
       debug: ocrResult.debug,
     });
-    if (!stopAfterOrder) {
-      const inpaintPreloadT0 = performance.now();
-      setRuntimeStage(await startInpaintRuntimeProbe());
-      throwIfCancelled(signal);
-      stageTimings.push({
-        stage: "preload_inpaint",
-        label: "加载去字模型",
-        durationMs: performance.now() - inpaintPreloadT0,
-      });
-    }
   } catch (error) {
+    providerReports.push(...providerReportsFromError(error));
     logPipelineStage(config, "pipeline.ocr", "OCR 识别失败", undefined, error);
     throw new PipelineStageError("ocr", "OCR", toErrorDetail(error), buildArtifacts(), "runtime", error);
   }
@@ -821,8 +646,10 @@ export async function runPipeline(
         {
           platform,
           providerName: config.ocrEngine,
+          resolver: providerSessionResolver,
         },
       );
+      providerReports.push(...result.providerReports);
       throwIfCancelled(signal);
       latestRegions = result.regions;
       ocrPostFilterDebug = result.debug;
@@ -834,6 +661,7 @@ export async function runPipeline(
         durationMs: result.debug.durationMs,
       });
     } catch (error) {
+      providerReports.push(...providerReportsFromError(error));
       const detail = toErrorDetail(error);
       console.warn(`[ocr-postfilter] 后处理失败，保留全部区域: ${detail}`);
       ocrPostFilterDebug = {
@@ -1008,23 +836,26 @@ export async function runPipeline(
       if (!refinedMaskCanvas) {
         throw new Error("\u53bb\u5b57\u524d\u7f3a\u5c11 refined mask\uff0c\u5df2\u7981\u7528\u6587\u672c\u6846\u906e\u7f69\u56de\u9000");
       }
-      const inpaintResult = await runInpaint(originalCanvas, refinedMaskCanvas, platform);
+      const inpaintResult = await runInpaint(
+        originalCanvas,
+        refinedMaskCanvas,
+        platform,
+        providerSessionResolver,
+      );
+      providerReports.push(...inpaintResult.providerReports);
       throwIfCancelled(signal);
       const inpaintDurationMs = performance.now() - t0;
       inpaintTiming = { stage: "inpaint", label: "\u53bb\u5b57", durationMs: inpaintDurationMs };
-      const inpaintRuntime = getRuntimeStage("inpaint");
-      if (inpaintResult.actualProvider !== inpaintRuntime?.provider) {
-        const providerLabel = inpaintResult.actualProvider === "webnn"
-          ? `${inpaintResult.actualProvider}/${inpaintResult.actualWebnnDeviceType ?? "default"}`
-          : inpaintResult.actualProvider;
-        setRuntimeStage({
-          model: "inpaint",
-          enabled: true,
-          provider: inpaintResult.actualProvider,
-          webnnDeviceType: inpaintResult.actualWebnnDeviceType,
-          detail: `inpaint \u63a8\u7406\u5df2\u56de\u9000\u5230 (${providerLabel})`
-        });
-      }
+      const providerLabel = inpaintResult.actualProvider === "webnn"
+        ? `${inpaintResult.actualProvider}/${inpaintResult.actualWebnnDeviceType ?? "default"}`
+        : inpaintResult.actualProvider;
+      setRuntimeStage({
+        model: "inpaint",
+        enabled: true,
+        provider: inpaintResult.actualProvider,
+        webnnDeviceType: inpaintResult.actualWebnnDeviceType,
+        detail: `inpaint 模型已运行 (${providerLabel})`,
+      });
       logPipelineStage(config, "pipeline.inpaint", "去字推理完成", {
         provider: inpaintResult.actualProvider,
         webnnDeviceType: inpaintResult.actualWebnnDeviceType,
@@ -1034,6 +865,7 @@ export async function runPipeline(
       reportParallel();
       return inpaintResult.canvas;
     } catch (error) {
+      providerReports.push(...providerReportsFromError(error));
       logPipelineStage(config, "pipeline.inpaint", "去字推理失败", undefined, error);
       throw new PipelineStageError("inpaint", "\u53bb\u5b57", toErrorDetail(error), buildArtifacts(), "runtime", error);
     }

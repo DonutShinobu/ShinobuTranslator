@@ -57,17 +57,23 @@ const benchmarkApi: ShinobuBenchmarkApi = {
     createProductionProviderSessionResolver(),
   ),
   renderFixtureDebug: (dataUrl, regions) => (
-    shinobuRenderFixtureDebug(dataUrl, regions, browserPlatform)
+    shinobuRenderFixtureDebug(
+      dataUrl,
+      regions,
+      browserPlatform,
+      createProductionProviderSessionResolver(),
+    )
   ),
   runPipeline: async (file, config, onProgress, options) => {
     const { runPipeline } = await import('../pipeline/orchestrator');
+    const providerExecution = createProductionProviderExecutionCapability(
+      options?.runtimeCapabilities?.providerExecution?.policy,
+    );
     return runPipeline(file, config, onProgress, {
       ...options,
       runtimeCapabilities: {
         ...options?.runtimeCapabilities,
-        providerExecution:
-          options?.runtimeCapabilities?.providerExecution
-          ?? createProductionProviderExecutionCapability(),
+        providerExecution,
       },
     });
   },
@@ -78,7 +84,13 @@ const benchmarkApi: ShinobuBenchmarkApi = {
     if (!provider) {
       throw new Error(`OCR 引擎未注册: ${providerName}`);
     }
-    return provider.recognize(image, regions, browserPlatform);
+    const execution = await createProductionProviderSessionResolver().execute({
+      model: 'paddleocr_v6_medium_rec',
+      stage: 'ocr',
+      run: (session) =>
+        provider.recognize(image, regions, session, browserPlatform),
+    });
+    return execution.value;
   },
 };
 

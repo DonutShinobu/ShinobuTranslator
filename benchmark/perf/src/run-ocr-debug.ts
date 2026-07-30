@@ -213,10 +213,17 @@ async function runEngine(
   runCount: number,
 ): Promise<EngineResult> {
   const runs: EngineRunResult[] = [];
+  const providerSessionResolver = createProductionProviderSessionResolver();
   try {
     for (let i = 0; i < runCount; i += 1) {
       const ocrT0 = performance.now();
-      const ocr = await runOcr(image, regions, engine, nodePlatform);
+      const ocr = await runOcr(
+        image,
+        regions,
+        engine,
+        nodePlatform,
+        providerSessionResolver,
+      );
       const ocrMs = performance.now() - ocrT0;
       runs.push({
         runIndex: i,

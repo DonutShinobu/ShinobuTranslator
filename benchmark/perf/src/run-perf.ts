@@ -166,6 +166,7 @@ function summarizeOcrDebug(debug: OcrRunDebugInfo): OcrDebugSummary {
 
 async function runPipelineOnce(imageDataUrl: string): Promise<{ stages: StageTiming[]; ocrDebug?: OcrDebugSummary }> {
   const stages: StageTiming[] = [];
+  const providerSessionResolver = createProductionProviderSessionResolver();
 
   const time = async <T>(stage: string, label: string, fn: () => Promise<T>): Promise<T> => {
     const t0 = performance.now();
@@ -185,17 +186,31 @@ async function runPipelineOnce(imageDataUrl: string): Promise<{ stages: StageTim
     () => detectTextRegionsWithMask(
       image,
       nodePlatform,
-      createProductionProviderSessionResolver(),
+      providerSessionResolver,
     ),
   );
   let regions = detected.regions;
   const detectionMaskCanvas = detected.rawMaskCanvas;
 
   // bubble
-  const bubbleResult = await time("bubble", "气泡检测", () => detectBubbles(image, nodePlatform));
+  const bubbleResult = await time(
+    "bubble",
+    "气泡检测",
+    () => detectBubbles(image, nodePlatform, providerSessionResolver),
+  );
 
   // ocr
-  const ocrResult = await time("ocr", "OCR 日文识别", () => runOcr(image, regions, undefined, nodePlatform));
+  const ocrResult = await time(
+    "ocr",
+    "OCR 日文识别",
+    () => runOcr(
+      image,
+      regions,
+      undefined,
+      nodePlatform,
+      providerSessionResolver,
+    ),
+  );
   regions = ocrResult.regions;
   const ocrDebug = summarizeOcrDebug(ocrResult.debug);
 
@@ -242,7 +257,12 @@ async function runPipelineOnce(imageDataUrl: string): Promise<{ stages: StageTim
       maskRefineTiming = { stage: "mask_refine", label: "细化去字遮罩", durationMs: performance.now() - mrT0 };
 
       const ipT0 = performance.now();
-      const inpaintResult = await runInpaint(originalCanvas, refineResult.refinedMaskCanvas, nodePlatform);
+      const inpaintResult = await runInpaint(
+        originalCanvas,
+        refineResult.refinedMaskCanvas,
+        nodePlatform,
+        providerSessionResolver,
+      );
       inpaintTiming = { stage: "inpaint", label: "去字", durationMs: performance.now() - ipT0 };
       return inpaintResult.canvas;
     })(),

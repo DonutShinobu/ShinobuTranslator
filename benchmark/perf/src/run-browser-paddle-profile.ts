@@ -30,10 +30,6 @@ type PaddleBatchCliMode = "default" | "serial" | "width-bucket";
 type PaddleProviderCliMode = "default" | "webgpu" | "webnn" | "wasm";
 type PaddleColdFirstCliMode = "default" | "on" | "off";
 type PaddleModelCliMode = "medium";
-type PaddleRuntimeProbeCliMode = "legacy" | "prepare" | "warmup";
-type PaddleRuntimeProbeScheduleCliMode = "detect-start" | "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
-type InpaintRuntimeProbeScheduleCliMode = "current" | "detect-start" | "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
-type BubbleRuntimeProbeScheduleCliMode = "current" | "detect-start" | "after-detect";
 
 type StageTiming = {
   stage: string;
@@ -139,12 +135,7 @@ type PaddleProfileResult = {
   paddleProviderMode?: PaddleProviderCliMode;
   paddleColdFirstMode?: PaddleColdFirstCliMode;
   paddleModelMode?: PaddleModelCliMode;
-  paddleRuntimeProbeMode?: PaddleRuntimeProbeCliMode;
-  paddleRuntimeProbeSchedule?: PaddleRuntimeProbeScheduleCliMode;
-  inpaintRuntimeProbeSchedule?: InpaintRuntimeProbeScheduleCliMode;
-  bubbleRuntimeProbeSchedule?: BubbleRuntimeProbeScheduleCliMode;
   paddleFixedInputWidth?: number;
-  paddleGraphCapture?: boolean;
   runs: PipelineRun[];
   warmMedian: {
     totalMs: number;
@@ -287,48 +278,6 @@ function pickPaddleModelMode(): PaddleModelCliMode {
   throw new Error(`Invalid --paddle-model value: ${raw}`);
 }
 
-function pickPaddleRuntimeProbeMode(): PaddleRuntimeProbeCliMode {
-  if (process.argv.includes("--paddle-prepare")) {
-    return "prepare";
-  }
-  if (process.argv.includes("--paddle-warmup")) {
-    return "warmup";
-  }
-  const raw = argValue("paddle-runtime-probe");
-  if (!raw) return "legacy";
-  if (raw === "legacy" || raw === "prepare" || raw === "warmup") {
-    return raw;
-  }
-  throw new Error(`Invalid --paddle-runtime-probe value: ${raw}`);
-}
-
-function pickPaddleRuntimeProbeSchedule(): PaddleRuntimeProbeScheduleCliMode {
-  const raw = argValue("paddle-probe-schedule") ?? argValue("paddle-prepare-schedule");
-  if (!raw) return "detect-start";
-  if (raw === "detect-start" || raw === "after-detect" || raw === "bubble-start" || raw === "after-bubble" || raw === "ocr-start") {
-    return raw;
-  }
-  throw new Error(`Invalid --paddle-probe-schedule value: ${raw}`);
-}
-
-function pickInpaintRuntimeProbeSchedule(): InpaintRuntimeProbeScheduleCliMode {
-  const raw = argValue("inpaint-probe-schedule");
-  if (!raw) return "current";
-  if (raw === "current" || raw === "detect-start" || raw === "after-detect" || raw === "bubble-start" || raw === "after-bubble" || raw === "ocr-start") {
-    return raw;
-  }
-  throw new Error(`Invalid --inpaint-probe-schedule value: ${raw}`);
-}
-
-function pickBubbleRuntimeProbeSchedule(): BubbleRuntimeProbeScheduleCliMode {
-  const raw = argValue("bubble-probe-schedule");
-  if (!raw) return "current";
-  if (raw === "current" || raw === "detect-start" || raw === "after-detect") {
-    return raw;
-  }
-  throw new Error(`Invalid --bubble-probe-schedule value: ${raw}`);
-}
-
 function pickPaddleFixedInputWidth(): number | undefined {
   const raw = argValue("paddle-fixed-width");
   if (!raw) return undefined;
@@ -337,10 +286,6 @@ function pickPaddleFixedInputWidth(): number | undefined {
     throw new Error(`Invalid --paddle-fixed-width value: ${raw}`);
   }
   return parsed;
-}
-
-function pickPaddleGraphCapture(): boolean {
-  return process.argv.includes("--paddle-graph-capture");
 }
 
 function pickOcrCompactActiveBatch(): boolean | undefined {
@@ -679,12 +624,7 @@ async function runPaddleProfile(
   paddleProviderMode: PaddleProviderCliMode,
   paddleColdFirstMode: PaddleColdFirstCliMode,
   paddleModelMode: PaddleModelCliMode,
-  paddleRuntimeProbeMode: PaddleRuntimeProbeCliMode,
-  paddleRuntimeProbeSchedule: PaddleRuntimeProbeScheduleCliMode,
-  inpaintRuntimeProbeSchedule: InpaintRuntimeProbeScheduleCliMode,
-  bubbleRuntimeProbeSchedule: BubbleRuntimeProbeScheduleCliMode,
   paddleFixedInputWidth: number | undefined,
-  paddleGraphCapture: boolean,
 ): Promise<PaddleProfileResult> {
   const label = "paddle-profile";
   const userDataDir = join(TMP_DIR, `paddle-profile-web-${Date.now()}`);
@@ -741,12 +681,7 @@ async function runPaddleProfile(
         paddleProviderMode: PaddleProviderCliMode;
         paddleColdFirstMode: PaddleColdFirstCliMode;
         paddleModelMode: PaddleModelCliMode;
-        paddleRuntimeProbeMode: PaddleRuntimeProbeCliMode;
-        paddleRuntimeProbeSchedule: PaddleRuntimeProbeScheduleCliMode;
-        inpaintRuntimeProbeSchedule: InpaintRuntimeProbeScheduleCliMode;
-        bubbleRuntimeProbeSchedule: BubbleRuntimeProbeScheduleCliMode;
         paddleFixedInputWidth?: number;
-        paddleGraphCapture: boolean;
       }>(
         async ({
           dataUrl,
@@ -759,30 +694,13 @@ async function runPaddleProfile(
           paddleProviderMode,
           paddleColdFirstMode,
           paddleModelMode,
-          paddleRuntimeProbeMode,
-          paddleRuntimeProbeSchedule,
-          inpaintRuntimeProbeSchedule,
-          bubbleRuntimeProbeSchedule,
           paddleFixedInputWidth,
-          paddleGraphCapture,
         }) => {
           type PaddleRuntimeFlags = typeof globalThis & {
             __shinobuPaddleOcrWidthBucketBatch?: boolean;
-            __shinobuPaddleOcrProviders?: RuntimeProvider[];
             __shinobuPaddleOcrColdFirstSerial?: boolean;
             __shinobuPaddleOcrModelName?: "paddleocr_v6_medium_rec";
-            __shinobuPaddleOcrRuntimeProbe?: "legacy" | "prepare" | "warmup";
-            __shinobuPaddleOcrRuntimeProbeSchedule?: "detect-start" | "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
-            __shinobuInpaintRuntimeProbeSchedule?: "current" | "detect-start" | "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
-            __shinobuBubbleRuntimeProbeSchedule?: "current" | "detect-start" | "after-detect";
             __shinobuPaddleOcrFixedInputWidth?: number;
-            __shinobuPaddleOcrSessionOptions?: {
-              enableGraphCapture?: boolean;
-              preferredOutputLocation?: "gpu-buffer";
-              freeDimensionOverrides?: Record<string, number>;
-            };
-            __shinobuPaddleOcrWarmupInputWidth?: number;
-            __shinobuPaddleOcrWarmupBatchSize?: number;
           };
           type BenchmarkApi = {
             runPipeline(
@@ -791,6 +709,20 @@ async function runPaddleProfile(
               onProgress: () => void,
               options?: {
                 runtimeCapabilities?: {
+                  providerExecution?: {
+                    policy: {
+                      schemaVersion: 1;
+                      contract: {
+                        id: string;
+                        version: number;
+                      };
+                      rules: Array<{
+                        model: "paddleocr_v6_medium_rec";
+                        stage: "ocr";
+                        providers: RuntimeProvider[];
+                      }>;
+                    };
+                  };
                   ocrExecution?: {
                     compactActiveBatch?: boolean;
                   };
@@ -819,11 +751,6 @@ async function runPaddleProfile(
           } else {
             delete runtimeFlags.__shinobuPaddleOcrWidthBucketBatch;
           }
-          if (paddleProviderMode === "default") {
-            delete runtimeFlags.__shinobuPaddleOcrProviders;
-          } else {
-            runtimeFlags.__shinobuPaddleOcrProviders = [paddleProviderMode];
-          }
           if (paddleColdFirstMode === "default") {
             delete runtimeFlags.__shinobuPaddleOcrColdFirstSerial;
           } else {
@@ -832,30 +759,10 @@ async function runPaddleProfile(
           runtimeFlags.__shinobuPaddleOcrModelName = paddleModelMode === "medium"
             ? "paddleocr_v6_medium_rec"
             : undefined;
-          runtimeFlags.__shinobuPaddleOcrRuntimeProbe = paddleRuntimeProbeMode;
-          runtimeFlags.__shinobuPaddleOcrRuntimeProbeSchedule = paddleRuntimeProbeSchedule;
-          runtimeFlags.__shinobuInpaintRuntimeProbeSchedule = inpaintRuntimeProbeSchedule;
-          runtimeFlags.__shinobuBubbleRuntimeProbeSchedule = bubbleRuntimeProbeSchedule;
           if (typeof paddleFixedInputWidth === "number") {
             runtimeFlags.__shinobuPaddleOcrFixedInputWidth = paddleFixedInputWidth;
-            runtimeFlags.__shinobuPaddleOcrWarmupInputWidth = paddleFixedInputWidth;
           } else {
             delete runtimeFlags.__shinobuPaddleOcrFixedInputWidth;
-            delete runtimeFlags.__shinobuPaddleOcrWarmupInputWidth;
-          }
-          runtimeFlags.__shinobuPaddleOcrWarmupBatchSize = 1;
-          if (paddleGraphCapture) {
-            const fixedWidth = paddleFixedInputWidth ?? 320;
-            runtimeFlags.__shinobuPaddleOcrSessionOptions = {
-              enableGraphCapture: true,
-              preferredOutputLocation: "gpu-buffer",
-              freeDimensionOverrides: {
-                "DynamicDimension.0": 1,
-                "DynamicDimension.1": fixedWidth,
-              },
-            };
-          } else {
-            delete runtimeFlags.__shinobuPaddleOcrSessionOptions;
           }
           const api = (globalThis as typeof globalThis & { __shinobuBenchmark__?: BenchmarkApi }).__shinobuBenchmark__;
           if (!api) throw new Error("Benchmark API is unavailable");
@@ -879,6 +786,22 @@ async function runPaddleProfile(
           const totalT0 = performance.now();
           const artifacts = await api.runPipeline(file, config, () => {}, {
             runtimeCapabilities: {
+              providerExecution: {
+                policy: {
+                  schemaVersion: 1,
+                  contract: {
+                    id: "shinobu.benchmark-provider-policy",
+                    version: 1,
+                  },
+                  rules: paddleProviderMode === "default"
+                    ? []
+                    : [{
+                        model: "paddleocr_v6_medium_rec",
+                        stage: "ocr",
+                        providers: [paddleProviderMode],
+                      }],
+                },
+              },
               ocrExecution: {
                 compactActiveBatch: ocrCompactActiveBatch,
               },
@@ -935,12 +858,7 @@ async function runPaddleProfile(
           paddleProviderMode,
           paddleColdFirstMode,
           paddleModelMode,
-          paddleRuntimeProbeMode,
-          paddleRuntimeProbeSchedule,
-          inpaintRuntimeProbeSchedule,
-          bubbleRuntimeProbeSchedule,
           paddleFixedInputWidth,
-          paddleGraphCapture,
         }
       );
       run.ocrSummary = summarizeOcr(run);
@@ -956,12 +874,7 @@ async function runPaddleProfile(
       paddleProviderMode,
       paddleColdFirstMode,
       paddleModelMode,
-      paddleRuntimeProbeMode,
-      paddleRuntimeProbeSchedule,
-      inpaintRuntimeProbeSchedule,
-      bubbleRuntimeProbeSchedule,
       paddleFixedInputWidth,
-      paddleGraphCapture,
       runs: results,
       warmMedian: computeWarmMedian(results),
     };
@@ -1013,23 +926,8 @@ function printSummary(report: PaddleProfileReport): void {
   if (result.paddleModelMode) {
     console.log(`  Paddle model:      ${result.paddleModelMode}`);
   }
-  if (result.paddleRuntimeProbeMode) {
-    console.log(`  Paddle probe:      ${result.paddleRuntimeProbeMode}`);
-  }
-  if (result.paddleRuntimeProbeSchedule) {
-    console.log(`  Paddle schedule:   ${result.paddleRuntimeProbeSchedule}`);
-  }
-  if (result.inpaintRuntimeProbeSchedule) {
-    console.log(`  Inpaint schedule:  ${result.inpaintRuntimeProbeSchedule}`);
-  }
-  if (result.bubbleRuntimeProbeSchedule) {
-    console.log(`  Bubble schedule:   ${result.bubbleRuntimeProbeSchedule}`);
-  }
   if (typeof result.paddleFixedInputWidth === "number") {
     console.log(`  Paddle fixed W:    ${result.paddleFixedInputWidth}`);
-  }
-  if (result.paddleGraphCapture) {
-    console.log("  Paddle graph cap:  true");
   }
   console.log(`  warm median total: ${formatMs(result.warmMedian.totalMs)}`);
   console.log(`  warm median OCR:   ${formatMs(result.warmMedian.ocrStageMs)}`);
@@ -1058,12 +956,7 @@ async function main(): Promise<void> {
   const paddleProviderMode = pickPaddleProviderMode();
   const paddleColdFirstMode = pickPaddleColdFirstMode();
   const paddleModelMode = pickPaddleModelMode();
-  const paddleRuntimeProbeMode = pickPaddleRuntimeProbeMode();
-  const paddleRuntimeProbeSchedule = pickPaddleRuntimeProbeSchedule();
-  const inpaintRuntimeProbeSchedule = pickInpaintRuntimeProbeSchedule();
-  const bubbleRuntimeProbeSchedule = pickBubbleRuntimeProbeSchedule();
   const paddleFixedInputWidth = pickPaddleFixedInputWidth();
-  const paddleGraphCapture = pickPaddleGraphCapture();
   ensureDistReady();
   mkdirSync(TMP_DIR, { recursive: true });
   mkdirSync(REPORTS_DIR, { recursive: true });
@@ -1072,7 +965,7 @@ async function main(): Promise<void> {
   const imagePathOverride = pickImagePathOverride();
   const runs = pickRunCount();
   const ocrCompactActiveBatch = pickOcrCompactActiveBatch();
-  console.log(`Browser profile config: ocr=${ocrEngine}, process=${processMode}, paddleBatch=${paddleBatchMode}, paddleProvider=${paddleProviderMode}, paddleColdFirst=${paddleColdFirstMode}, paddleModel=${paddleModelMode}, paddleProbe=${paddleRuntimeProbeMode}, paddleSchedule=${paddleRuntimeProbeSchedule}, inpaintSchedule=${inpaintRuntimeProbeSchedule}, bubbleSchedule=${bubbleRuntimeProbeSchedule}, paddleFixedW=${paddleFixedInputWidth ?? "default"}, paddleGraphCapture=${paddleGraphCapture}, runs=${runs}`);
+  console.log(`Browser profile config: ocr=${ocrEngine}, process=${processMode}, paddleBatch=${paddleBatchMode}, paddleProvider=${paddleProviderMode}, paddleColdFirst=${paddleColdFirstMode}, paddleModel=${paddleModelMode}, paddleFixedW=${paddleFixedInputWidth ?? "default"}, runs=${runs}`);
   console.log(imagePathOverride ? `Loading local image: ${imagePathOverride}` : `Resolving X image: ${xUrl}`);
   const image = imagePathOverride ? loadImageFromFile(imagePathOverride) : await resolveXImage(xUrl, imageUrlOverride);
   console.log(`Resolved image: ${image.imageUrl} (${image.contentType}, ${image.bytes} bytes)`);
@@ -1089,12 +982,7 @@ async function main(): Promise<void> {
       paddleProviderMode,
       paddleColdFirstMode,
       paddleModelMode,
-      paddleRuntimeProbeMode,
-      paddleRuntimeProbeSchedule,
-      inpaintRuntimeProbeSchedule,
-      bubbleRuntimeProbeSchedule,
       paddleFixedInputWidth,
-      paddleGraphCapture,
     );
     const report: PaddleProfileReport = {
       createdAt: new Date().toISOString(),

@@ -22,8 +22,6 @@ const pipelineMocks = vi.hoisted(() => ({
   imageToCanvas: vi.fn(),
   detectTextRegionsWithMask: vi.fn(),
   runOcr: vi.fn(),
-  preparePaddleOcrRuntime: vi.fn(),
-  warmupPaddleOcrRuntime: vi.fn(),
   runTranslate: vi.fn(),
   runInpaint: vi.fn(),
   drawTypeset: vi.fn(),
@@ -33,7 +31,6 @@ const pipelineMocks = vi.hoisted(() => ({
   sortRegionsForRender: vi.fn(),
   detectBubbles: vi.fn(),
   matchRegionsToBubbles: vi.fn(),
-  getModelSession: vi.fn(),
   browserPlatform: {
     createCanvas: vi.fn(),
     createImage: vi.fn(),
@@ -56,10 +53,6 @@ vi.mock('../../src/pipeline/detect', () => ({
 }));
 vi.mock('../../src/pipeline/ocr', () => ({
   runOcr: pipelineMocks.runOcr,
-}));
-vi.mock('../../src/pipeline/ocr/paddleocrProvider', () => ({
-  preparePaddleOcrRuntime: pipelineMocks.preparePaddleOcrRuntime,
-  warmupPaddleOcrRuntime: pipelineMocks.warmupPaddleOcrRuntime,
 }));
 vi.mock('../../src/pipeline/translate', () => ({
   runTranslate: pipelineMocks.runTranslate,
@@ -85,9 +78,6 @@ vi.mock('../../src/pipeline/readingOrder', () => ({
 vi.mock('../../src/pipeline/bubbleDetect', () => ({
   detectBubbles: pipelineMocks.detectBubbles,
   matchRegionsToBubbles: pipelineMocks.matchRegionsToBubbles,
-}));
-vi.mock('../../src/runtime/modelRegistry', () => ({
-  getModelSession: pipelineMocks.getModelSession,
 }));
 
 import { PipelineStageError, runPipeline } from '../../src/pipeline/orchestrator';
@@ -150,6 +140,21 @@ const detectorProviderReport: ProviderExecutionReport = {
   fallbackTrace: [],
   satisfied: true,
 };
+const bubbleProviderReport: ProviderExecutionReport = {
+  ...detectorProviderReport,
+  model: 'bubble',
+  stage: 'bubble',
+};
+const ocrProviderReport: ProviderExecutionReport = {
+  ...detectorProviderReport,
+  model: 'paddleocr_v6_medium_rec',
+  stage: 'ocr',
+};
+const inpaintProviderReport: ProviderExecutionReport = {
+  ...detectorProviderReport,
+  model: 'inpaint',
+  stage: 'inpaint',
+};
 
 const baseConfig: PipelineConfig = {
   sourceLang: 'ja',
@@ -193,8 +198,7 @@ function uniqueConsecutiveStages(progress: PipelineProgress[]): string[] {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
-  const sessionHandle = { provider: 'wasm' as const };
+  vi.resetAllMocks();
   pipelineMocks.fileToImage.mockResolvedValue(image);
   pipelineMocks.imageToCanvas.mockReturnValue(originalCanvas);
   pipelineMocks.detectTextRegionsWithMask.mockResolvedValue({
@@ -207,16 +211,7 @@ beforeEach(() => {
     regions: [ocrRegion],
     debug: null,
     actualProvider: 'wasm',
-  });
-  pipelineMocks.preparePaddleOcrRuntime.mockResolvedValue({
-    modelName: 'paddleocr_v6_medium_rec',
-    sessionHandle,
-  });
-  pipelineMocks.warmupPaddleOcrRuntime.mockResolvedValue({
-    modelName: 'paddleocr_v6_medium_rec',
-    provider: 'wasm',
-    inputDims: [1, 3, 48, 320],
-    runMs: 1,
+    providerReports: [ocrProviderReport],
   });
   pipelineMocks.runTranslate.mockResolvedValue({
     regions: [translatedRegion],
@@ -225,6 +220,7 @@ beforeEach(() => {
   pipelineMocks.runInpaint.mockResolvedValue({
     canvas: cleanedCanvas,
     actualProvider: 'wasm',
+    providerReports: [inpaintProviderReport],
   });
   pipelineMocks.drawTypeset.mockResolvedValue({
     canvas: typesetCanvas,
@@ -234,25 +230,17 @@ beforeEach(() => {
   pipelineMocks.mergeTextLines.mockImplementation((regions: TextRegion[]) => regions);
   pipelineMocks.refineTextMask.mockReturnValue({ refinedMaskCanvas });
   pipelineMocks.sortRegionsForRender.mockImplementation((regions: TextRegion[]) => regions);
-  pipelineMocks.detectBubbles.mockResolvedValue({ bubbles: [] });
+  pipelineMocks.detectBubbles.mockResolvedValue({
+    bubbles: [],
+    actualProvider: 'wasm',
+    providerReports: [bubbleProviderReport],
+  });
   pipelineMocks.matchRegionsToBubbles.mockReturnValue({
     unmatchedCount: 0,
     unmatchedRegionIds: [],
   });
-  pipelineMocks.getModelSession.mockResolvedValue(sessionHandle);
   pipelineMocks.browserPlatform.createCanvas.mockImplementation(createCanvas);
   pipelineMocks.browserPlatform.waitForFonts.mockResolvedValue(undefined);
-
-  const runtimeFlags = globalThis as typeof globalThis & {
-    __shinobuPaddleOcrRuntimeProbe?: unknown;
-    __shinobuPaddleOcrRuntimeProbeSchedule?: unknown;
-    __shinobuInpaintRuntimeProbeSchedule?: unknown;
-    __shinobuBubbleRuntimeProbeSchedule?: unknown;
-  };
-  delete runtimeFlags.__shinobuPaddleOcrRuntimeProbe;
-  delete runtimeFlags.__shinobuPaddleOcrRuntimeProbeSchedule;
-  delete runtimeFlags.__shinobuInpaintRuntimeProbeSchedule;
-  delete runtimeFlags.__shinobuBubbleRuntimeProbeSchedule;
 });
 
 describe('runPipeline', () => {
@@ -265,7 +253,6 @@ describe('runPipeline', () => {
     )).rejects.toThrow('Provider execution capability is required');
 
     expect(pipelineMocks.fileToImage).not.toHaveBeenCalled();
-    expect(pipelineMocks.getModelSession).not.toHaveBeenCalled();
   });
 
   it('preserves the full translate-stage order and returns typeset output', async () => {
@@ -296,7 +283,6 @@ describe('runPipeline', () => {
       'detect',
       'bubble',
       'ocr',
-      'preload_inpaint',
       'merge',
       'order',
       'translate',
@@ -307,7 +293,12 @@ describe('runPipeline', () => {
     ]);
     expect(artifacts.detectedRegions).toEqual([translatedRegion]);
     expect(artifacts.resultCanvas).toBe(typesetCanvas);
-    expect(artifacts.providerReports).toEqual([detectorProviderReport]);
+    expect(artifacts.providerReports).toEqual([
+      detectorProviderReport,
+      bubbleProviderReport,
+      ocrProviderReport,
+      inpaintProviderReport,
+    ]);
     expect(pipelineMocks.runTranslate).toHaveBeenCalledOnce();
     expect(pipelineMocks.drawTypeset).toHaveBeenCalledOnce();
   });
@@ -388,6 +379,238 @@ describe('runPipeline', () => {
     });
   });
 
+  it('uses the injected resolver for every reached model stage', async () => {
+    const policy: ProviderExecutionPolicy = {
+      schemaVersion: 1,
+      contract: {
+        id: 'test.all-stages-wasm',
+        version: 2,
+      },
+      rules: [
+        { model: 'detector', stage: 'detect', providers: ['wasm'] },
+        { model: 'bubble', stage: 'bubble', providers: ['wasm'] },
+        {
+          model: 'paddleocr_v6_medium_rec',
+          stage: 'ocr',
+          providers: ['wasm'],
+        },
+        { model: 'inpaint', stage: 'inpaint', providers: ['wasm'] },
+      ],
+    };
+    const loadSession = vi.fn(async (
+      model: ProviderExecutionModel,
+      providers: readonly ProviderRuntime[],
+    ) => ({
+      sessionId: `${model}:${providers[0]}`,
+      provider: providers[0],
+      inputNames: ['images', 'mask'],
+      outputNames: ['output'],
+    }));
+    pipelineMocks.detectTextRegionsWithMask.mockImplementationOnce(async (
+      _image: PipelineImage,
+      _platform: PlatformProvider,
+      resolver: ProviderSessionResolver,
+    ) => {
+      const execution = await resolver.execute({
+        model: 'detector',
+        stage: 'detect',
+        run: async (session) => session.provider,
+      });
+      return {
+        regions: [detectedRegion],
+        rawMaskCanvas: detectionMaskCanvas,
+        actualProvider: execution.value,
+        providerReports: [execution.report],
+      };
+    });
+    pipelineMocks.detectBubbles.mockImplementationOnce(async (
+      _image: PipelineImage,
+      _platform: PlatformProvider,
+      resolver: ProviderSessionResolver,
+    ) => {
+      const execution = await resolver.execute({
+        model: 'bubble',
+        stage: 'bubble',
+        run: async (session) => session.provider,
+      });
+      return {
+        bubbles: [],
+        actualProvider: execution.value,
+        providerReports: [execution.report],
+      };
+    });
+    pipelineMocks.runOcr.mockImplementationOnce(async (
+      _image: PipelineImage,
+      _regions: TextRegion[],
+      _providerName: string,
+      _platform: PlatformProvider,
+      resolver: ProviderSessionResolver,
+    ) => {
+      const execution = await resolver.execute({
+        model: 'paddleocr_v6_medium_rec',
+        stage: 'ocr',
+        run: async (session) => session.provider,
+      });
+      return {
+        regions: [ocrRegion],
+        debug: null,
+        actualProvider: execution.value,
+        providerReports: [execution.report],
+      };
+    });
+    pipelineMocks.runInpaint.mockImplementationOnce(async (
+      _original: PipelineCanvas,
+      _mask: PipelineCanvas,
+      _platform: PlatformProvider,
+      resolver: ProviderSessionResolver,
+    ) => {
+      const execution = await resolver.execute({
+        model: 'inpaint',
+        stage: 'inpaint',
+        run: async (session) => session.provider,
+      });
+      return {
+        canvas: cleanedCanvas,
+        actualProvider: execution.value,
+        providerReports: [execution.report],
+      };
+    });
+
+    const artifacts = await runPipeline(
+      createFile(),
+      baseConfig,
+      () => {},
+      {
+        runtimeCapabilities: {
+          providerExecution: {
+            policy,
+            modelSession: {
+              loadModel: vi.fn(),
+              loadSession,
+            },
+          },
+        },
+      },
+    );
+
+    expect(loadSession.mock.calls.map(([model]) => model)).toEqual([
+      'detector',
+      'bubble',
+      'paddleocr_v6_medium_rec',
+      'inpaint',
+    ]);
+    expect(artifacts.providerReports.map((report) => ({
+      model: report.model,
+      stage: report.stage,
+      contract: report.contract,
+      finalProvider: report.finalProvider,
+      satisfied: report.satisfied,
+    }))).toEqual([
+      {
+        model: 'detector',
+        stage: 'detect',
+        contract: policy.contract,
+        finalProvider: 'wasm',
+        satisfied: true,
+      },
+      {
+        model: 'bubble',
+        stage: 'bubble',
+        contract: policy.contract,
+        finalProvider: 'wasm',
+        satisfied: true,
+      },
+      {
+        model: 'paddleocr_v6_medium_rec',
+        stage: 'ocr',
+        contract: policy.contract,
+        finalProvider: 'wasm',
+        satisfied: true,
+      },
+      {
+        model: 'inpaint',
+        stage: 'inpaint',
+        contract: policy.contract,
+        finalProvider: 'wasm',
+        satisfied: true,
+      },
+    ]);
+  });
+
+  it('does not attempt later providers when the bubble stage fails', async () => {
+    const loadSession = vi.fn(async (
+      model: ProviderExecutionModel,
+      providers: readonly ProviderRuntime[],
+    ) => ({
+      sessionId: `${model}:${providers[0]}`,
+      provider: providers[0],
+      inputNames: ['images'],
+      outputNames: ['output'],
+    }));
+    pipelineMocks.detectBubbles.mockImplementationOnce(async (
+      _image: PipelineImage,
+      _platform: PlatformProvider,
+      resolver: ProviderSessionResolver,
+    ) => {
+      const error = await resolver.execute({
+        model: 'bubble',
+        stage: 'bubble',
+        run: async () => {
+          throw new Error('GPU context lost');
+        },
+      }).then(() => null, (caught: unknown) => caught);
+      throw Object.assign(new Error('bubble provider failed'), {
+        providerReports: [
+          (error as { report: ProviderExecutionReport }).report,
+        ],
+      });
+    });
+
+    const error = await runPipeline(
+      createFile(),
+      baseConfig,
+      () => {},
+      {
+        runtimeCapabilities: {
+          providerExecution: {
+            policy: {
+              schemaVersion: 1,
+              contract: {
+                id: 'test.stop-after-bubble',
+                version: 1,
+              },
+              rules: [
+                { model: 'detector', stage: 'detect', providers: ['wasm'] },
+                { model: 'bubble', stage: 'bubble', providers: ['wasm'] },
+                {
+                  model: 'paddleocr_v6_medium_rec',
+                  stage: 'ocr',
+                  providers: ['wasm'],
+                },
+                { model: 'inpaint', stage: 'inpaint', providers: ['wasm'] },
+              ],
+            },
+            modelSession: {
+              loadModel: vi.fn(),
+              loadSession,
+            },
+          },
+        },
+      },
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(PipelineStageError);
+    expect((error as PipelineStageError).artifacts.providerReports.map(
+      (report) => report.model,
+    )).toEqual(['detector', 'bubble']);
+    expect(loadSession.mock.calls.map(([model]) => model)).toEqual([
+      'detector',
+      'bubble',
+    ]);
+    expect(pipelineMocks.runOcr).not.toHaveBeenCalled();
+    expect(pipelineMocks.runInpaint).not.toHaveBeenCalled();
+  });
+
   it('skips translation and typesetting in erase mode', async () => {
     const artifacts = await runPipeline(
       createFile(),
@@ -422,7 +645,7 @@ describe('runPipeline', () => {
     expect(artifacts.resultCanvas).toBe(typesetCanvas);
   });
 
-  it('stops after order, skips inpaint preload, and preserves independent stage snapshots', async () => {
+  it('stops after order without reaching inpaint and preserves independent stage snapshots', async () => {
     const progress: PipelineProgress[] = [];
     const stageRegion: TextRegion = {
       ...ocrRegion,
@@ -439,6 +662,7 @@ describe('runPipeline', () => {
       regions: [stageRegion],
       debug: null,
       actualProvider: 'wasm',
+      providerReports: [ocrProviderReport],
     });
     pipelineMocks.mergeTextLines.mockImplementationOnce((regions: TextRegion[]) => {
       regions[0].sourceText = 'merged';
@@ -447,6 +671,7 @@ describe('runPipeline', () => {
     pipelineMocks.detectBubbles.mockResolvedValueOnce({
       bubbles: [{}],
       actualProvider: 'wasm',
+      providerReports: [bubbleProviderReport],
     });
     pipelineMocks.matchRegionsToBubbles.mockImplementationOnce((regions: TextRegion[]) => {
       regions[0].bubbleBox = { x: 1, y: 2, width: 3, height: 4 };
@@ -457,12 +682,6 @@ describe('runPipeline', () => {
       regions[0].fontSize = 42;
       return regions;
     });
-    (
-      globalThis as typeof globalThis & {
-        __shinobuInpaintRuntimeProbeSchedule?: 'detect-start';
-      }
-    ).__shinobuInpaintRuntimeProbeSchedule = 'detect-start';
-
     const artifacts = await runPipeline(
       createFile(),
       { ...baseConfig, processMode: 'original' },
@@ -493,7 +712,6 @@ describe('runPipeline', () => {
       'order',
     ]);
     expect(artifacts.runtimeStages.map((stage) => stage.model)).not.toContain('inpaint');
-    expect(pipelineMocks.getModelSession.mock.calls.some(([model]) => model === 'inpaint')).toBe(false);
     expect(pipelineMocks.runTranslate).not.toHaveBeenCalled();
     expect(pipelineMocks.refineTextMask).not.toHaveBeenCalled();
     expect(pipelineMocks.runInpaint).not.toHaveBeenCalled();

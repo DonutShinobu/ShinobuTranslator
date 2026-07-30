@@ -9,11 +9,8 @@ import type {
 } from '../../types';
 import type { PlatformProvider, PipelineImage } from '../../runtime/platform';
 import type { ModelName } from '../../runtime/modelRegistry';
-import type { RuntimeProvider, WebNnDeviceType } from '../../runtime/onnxTypes';
-import type { OnnxSessionOptions } from '../../runtime/onnxSessionOptions';
 import type { TensorTransport } from '../../runtime/onnxWorkerTypes';
-import { getModel, getModelSession } from '../../runtime/modelRegistry';
-import { serializeOnnxSessionOptions } from '../../runtime/onnxSessionOptions';
+import { getModel } from '../../runtime/modelRegistry';
 import { buildPaddleOcrInput } from './paddleocrPreprocess';
 import type { PaddleOcrInputData } from './paddleocrPreprocess';
 import { decodePaddleCtc } from './paddleocrDecode';
@@ -21,6 +18,7 @@ import type { PaddleCtcResult } from './paddleocrDecode';
 import { loadCharset } from './ocrShared';
 import { runInference } from '../../runtime/onnxBridge';
 import type { Direction } from './preprocess';
+import type { ProviderExecutionSession } from '@shinobu/image-pipeline';
 
 const PADDLEOCR_CONFIDENCE_THRESHOLD = 0.2;
 const PADDLEOCR_BATCH_BUCKET_WIDTH = 32;
@@ -30,10 +28,8 @@ type PaddleOcrModelName = Extract<ModelName, 'paddleocr_v6_medium_rec'>;
 
 type PaddleOcrRuntimeFlags = typeof globalThis & {
   __shinobuPaddleOcrWidthBucketBatch?: boolean;
-  __shinobuPaddleOcrProviders?: RuntimeProvider[];
   __shinobuPaddleOcrColdFirstSerial?: boolean;
   __shinobuPaddleOcrModelName?: PaddleOcrModelName;
-  __shinobuPaddleOcrSessionOptions?: OnnxSessionOptions;
   __shinobuPaddleOcrFixedInputWidth?: number;
 };
 
@@ -54,30 +50,17 @@ type PaddleBatchDecodeOutput = {
 type PreparedPaddleRuntime = {
   modelName: PaddleOcrModelName;
   model: Awaited<ReturnType<typeof getModel>>;
-  sessionHandle: Awaited<ReturnType<typeof getModelSession>>;
+  sessionHandle: ProviderExecutionSession;
   ctcCharset: string[];
   inputHeight: number;
   maxInputWidth: number;
   normalize: 'zero_to_one' | 'minus_one_to_one';
   channelOrder: 'rgb' | 'bgr';
-  sessionOptions?: OnnxSessionOptions;
   timings: {
     modelLoadMs: number;
     sessionLoadMs: number;
     charsetLoadMs: number;
   };
-};
-
-export type PaddleOcrWarmupResult = {
-  modelName: PaddleOcrModelName;
-  provider: RuntimeProvider;
-  webnnDeviceType?: WebNnDeviceType;
-  inputDims: number[];
-  outputDims?: number[];
-  sessionLoadMs: number;
-  charsetLoadMs: number;
-  runMs: number;
-  outputBytes: number;
 };
 
 function inferDirection(region: TextRegion): Direction {
@@ -116,20 +99,6 @@ function resolvePaddleOcrModelName(defaultModelName: PaddleOcrModelName): Paddle
   return configured === 'paddleocr_v6_medium_rec' ? configured : defaultModelName;
 }
 
-function resolvePaddleSessionOptions(): OnnxSessionOptions | undefined {
-  const configured = (globalThis as PaddleOcrRuntimeFlags).__shinobuPaddleOcrSessionOptions;
-  if (!configured) {
-    return undefined;
-  }
-  return {
-    enableGraphCapture: configured.enableGraphCapture,
-    preferredOutputLocation: configured.preferredOutputLocation,
-    freeDimensionOverrides: configured.freeDimensionOverrides
-      ? { ...configured.freeDimensionOverrides }
-      : undefined,
-  };
-}
-
 function resolvePaddleFixedInputWidth(maxInputWidth: number): number | undefined {
   const configured = (globalThis as PaddleOcrRuntimeFlags).__shinobuPaddleOcrFixedInputWidth;
   if (typeof configured !== 'number' || !Number.isFinite(configured) || configured <= 0) {
@@ -138,29 +107,14 @@ function resolvePaddleFixedInputWidth(maxInputWidth: number): number | undefined
   return Math.max(1, Math.min(maxInputWidth, Math.round(configured)));
 }
 
-function resolvePaddleRuntimeProviders(modelRuntime: RuntimeProvider[] | undefined): RuntimeProvider[] {
-  const configured = (globalThis as PaddleOcrRuntimeFlags).__shinobuPaddleOcrProviders;
-  if (configured && configured.length > 0) {
-    return configured;
-  }
-  return modelRuntime ?? ['webgpu', 'webnn', 'wasm'];
-}
-
-export async function preparePaddleOcrRuntime(
+async function preparePaddleOcrRuntime(
+  sessionHandle: ProviderExecutionSession,
   defaultModelName: PaddleOcrModelName = 'paddleocr_v6_medium_rec',
 ): Promise<PreparedPaddleRuntime> {
   const modelName = resolvePaddleOcrModelName(defaultModelName);
   const modelT0 = performance.now();
   const model = await getModel(modelName);
   const modelLoadMs = performance.now() - modelT0;
-  const sessionOptions = resolvePaddleSessionOptions();
-  const sessionT0 = performance.now();
-  const sessionHandle = await getModelSession(
-    modelName,
-    resolvePaddleRuntimeProviders(model.runtime),
-    sessionOptions,
-  );
-  const sessionLoadMs = performance.now() - sessionT0;
   const charsetT0 = performance.now();
   const charset = await loadCharset(model.dictUrl);
   const charsetLoadMs = performance.now() - charsetT0;
@@ -177,53 +131,11 @@ export async function preparePaddleOcrRuntime(
     maxInputWidth: model.input[1],
     normalize: model.normalize ?? 'minus_one_to_one',
     channelOrder: model.channelOrder ?? 'rgb',
-    sessionOptions,
     timings: {
       modelLoadMs,
-      sessionLoadMs,
+      sessionLoadMs: 0,
       charsetLoadMs,
     },
-  };
-}
-
-export async function warmupPaddleOcrRuntime(options: {
-  inputWidth?: number;
-  batchSize?: number;
-} = {}): Promise<PaddleOcrWarmupResult> {
-  const runtime = await preparePaddleOcrRuntime();
-  const inputWidth = Math.max(1, Math.min(runtime.maxInputWidth, Math.round(options.inputWidth ?? runtime.maxInputWidth)));
-  const batchSize = Math.max(1, Math.round(options.batchSize ?? 1));
-  const imageInputName = runtime.sessionHandle.inputNames[0];
-  const outputName = runtime.sessionHandle.outputNames[0];
-  if (!imageInputName) {
-    throw new Error('PaddleOCR 模型缺少输入名称');
-  }
-  const inputDims = [batchSize, 3, runtime.inputHeight, inputWidth];
-  const inputData = new Float32Array(batchSize * 3 * runtime.inputHeight * inputWidth);
-  const runT0 = performance.now();
-  const inferenceResult = await runInference(runtime.sessionHandle.sessionId, {
-    [imageInputName]: {
-      data: inputData,
-      dims: inputDims,
-      type: 'float32',
-    },
-  });
-  const runMs = performance.now() - runT0;
-  if (inferenceResult.error) {
-    throw new Error(inferenceResult.error);
-  }
-  warmedPaddleSessionIds.add(runtime.sessionHandle.sessionId);
-  const output = outputName ? inferenceResult.outputs[outputName] : Object.values(inferenceResult.outputs)[0];
-  return {
-    modelName: runtime.modelName,
-    provider: runtime.sessionHandle.provider,
-    webnnDeviceType: runtime.sessionHandle.webnnDeviceType,
-    inputDims,
-    outputDims: output ? [...output.dims] : undefined,
-    sessionLoadMs: runtime.timings.sessionLoadMs,
-    charsetLoadMs: runtime.timings.charsetLoadMs,
-    runMs,
-    outputBytes: tensorByteLength(output),
   };
 }
 
@@ -394,11 +306,16 @@ function addPaddleChunk(
 function createPaddleOcrProvider(name: string, modelName: PaddleOcrModelName): OcrProvider {
   return {
     name,
-    async recognize(image: PipelineImage, regions: TextRegion[], platform?: PlatformProvider): Promise<OcrRecognizeOutput> {
+    async recognize(
+      image: PipelineImage,
+      regions: TextRegion[],
+      session: ProviderExecutionSession,
+      platform?: PlatformProvider,
+    ): Promise<OcrRecognizeOutput> {
       if (!platform) {
         throw new Error('PaddleOCR 需要可用的运行平台');
       }
-      const runtime = await preparePaddleOcrRuntime(modelName);
+      const runtime = await preparePaddleOcrRuntime(session, modelName);
       const {
         modelName: resolvedModelName,
         sessionHandle,
@@ -407,7 +324,6 @@ function createPaddleOcrProvider(name: string, modelName: PaddleOcrModelName): O
         maxInputWidth,
         normalize,
         channelOrder,
-        sessionOptions,
         timings,
       } = runtime;
       const requestedFixedInputWidth = resolvePaddleFixedInputWidth(maxInputWidth);
@@ -420,7 +336,6 @@ function createPaddleOcrProvider(name: string, modelName: PaddleOcrModelName): O
         timings,
         {
           fixedInputWidth: requestedFixedInputWidth,
-          sessionOptionsKey: serializeOnnxSessionOptions(sessionOptions),
         },
       );
       debugInfo.candidateCount = regions.length;

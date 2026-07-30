@@ -12,7 +12,16 @@ const baselinePath = path.join(
   'scripts',
   'workspace-import-boundary-baseline.json',
 );
-const sourceExtensions = new Set(['.js', '.jsx', '.mjs', '.ts', '.tsx']);
+const sourceExtensions = new Set([
+  '.cjs',
+  '.cts',
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.mts',
+  '.ts',
+  '.tsx',
+]);
 const modulePathPattern = /['"]([^'"]+)['"]/gu;
 const frozenExtensionMigrationEdgeKeys = Object.freeze([
   'apps/extension/src/background.ts -> ../../../src/background/index',

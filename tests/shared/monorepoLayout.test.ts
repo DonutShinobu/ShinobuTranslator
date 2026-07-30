@@ -6,6 +6,8 @@ const root = process.cwd();
 const pathFromRoot = (path: string): string => resolve(root, path);
 const readJson = <T>(path: string): T =>
   JSON.parse(readFileSync(pathFromRoot(path), 'utf8')) as T;
+const readText = (path: string): string =>
+  readFileSync(pathFromRoot(path), 'utf8');
 
 type PackageManifest = {
   name: string;
@@ -29,6 +31,23 @@ describe('monorepo application ownership', () => {
       'node scripts/check-workspace-import-boundaries.mjs',
     );
     expect(rootPackage.scripts?.check).toContain('npm run check:architecture');
+  });
+
+  it('checks every supported JavaScript and TypeScript module extension', () => {
+    const boundaryCheck = readText('scripts/check-workspace-import-boundaries.mjs');
+
+    for (const extension of [
+      '.cjs',
+      '.cts',
+      '.js',
+      '.jsx',
+      '.mjs',
+      '.mts',
+      '.ts',
+      '.tsx',
+    ]) {
+      expect(boundaryCheck).toContain(`'${extension}'`);
+    }
   });
 
   it('keeps the shared image pipeline behind its package boundary', () => {

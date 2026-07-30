@@ -22,6 +22,9 @@ import type { BakeInfo, Fixture } from "./types";
 import type { BakeDirection } from "../../../src/pipeline/bake";
 import { shinobuBake } from "../../../src/pipeline/bake";
 import { nodePlatform } from "../../../src/runtime/nodePlatform";
+import {
+  createProductionProviderSessionResolver,
+} from "../../../src/runtime/productionProviderExecution";
 import { parseBakeDirectionArgs } from "./bake-options";
 import { bakeResultRegionToFixtureRegion } from "./fixture-build";
 import { parseTypesetSuiteArgs, resolveTypesetBenchmarkPath } from "./suite-paths";
@@ -209,9 +212,14 @@ async function main(): Promise<void> {
     try {
       const dataUrl = imageToDataUrl(imgPath);
 
-      const result = await shinobuBake(dataUrl, nodePlatform, {
-        direction: options.direction,
-      });
+      const result = await shinobuBake(
+        dataUrl,
+        nodePlatform,
+        createProductionProviderSessionResolver(),
+        {
+          direction: options.direction,
+        },
+      );
 
       const fixtureRegions = result.regions.map(bakeResultRegionToFixtureRegion);
 

@@ -8,7 +8,7 @@ import type {
   NormalizedWorkingCopySpec,
   PipelineConfig,
   PipelineProgress,
-  ProviderExecutionCapability,
+  ProviderExecutionPolicy,
 } from '@shinobu/image-pipeline';
 import {
   isCurrentPipelineRecord,
@@ -21,7 +21,9 @@ export type WebPipelineRuntimeCapabilities = {
   textTranslation: {
     apiKey: string;
   };
-  providerExecution?: ProviderExecutionCapability;
+  providerExecution?: {
+    policy: ProviderExecutionPolicy;
+  };
 };
 
 export type WebPipelineInput = {

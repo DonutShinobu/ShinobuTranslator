@@ -12,6 +12,9 @@ import { fileURLToPath } from "url";
 import { detectTextRegionsWithMask } from "../../../src/pipeline/detect";
 import { runOcr } from "../../../src/pipeline/ocr";
 import { nodePlatform } from "../../../src/runtime/nodePlatform";
+import {
+  createProductionProviderSessionResolver,
+} from "../../../src/runtime/productionProviderExecution";
 import type { OcrEngine } from "../../../src/shared/config";
 
 const ROOT = resolve(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -244,7 +247,11 @@ async function main(): Promise<void> {
   const image = await nodePlatform.loadImage(imageToDataUrl(imagePath));
 
   const detectT0 = performance.now();
-  const detected = await detectTextRegionsWithMask(image, nodePlatform);
+  const detected = await detectTextRegionsWithMask(
+    image,
+    nodePlatform,
+    createProductionProviderSessionResolver(),
+  );
   const detectMs = performance.now() - detectT0;
 
   const engineResults: EngineResult[] = [];

@@ -413,8 +413,14 @@ export async function runPipeline(
   const stageTimings: StageTiming[] = [];
   const signal = options.signal;
   const stopAfterOrder = options.stopAfter === "order";
+  if (!options.runtimeCapabilities?.providerExecution) {
+    throw new Error("Provider execution capability is required");
+  }
+  const providerExecution = options.runtimeCapabilities.providerExecution;
   const providerSessionResolver = createProviderSessionResolver({
-    policy: options.runtimeCapabilities?.providerExecution?.policy,
+    policy: providerExecution.policy,
+    loadModel: providerExecution.modelSession.loadModel,
+    loadSession: providerExecution.modelSession.loadSession,
   });
 
   throwIfCancelled(signal);

@@ -8,6 +8,7 @@ import { mergeTextLines } from "./textlineMerge";
 import { sortRegionsForRender } from "./readingOrder";
 import { drawTypeset } from "./typeset";
 import { detectBubbles, matchRegionsToBubbles } from "./bubbleDetect";
+import type { ProviderSessionResolver } from "../runtime/providerExecution";
 
 export type DetectedColumn = {
   centerX: number;
@@ -125,18 +126,26 @@ function sourceGeometryToDetectedColumn(line: SourceTextLineGeometry): DetectedC
   };
 }
 
-export async function shinobuRender(dataUrl: string, platform: PlatformProvider): Promise<string> {
-  const result = await shinobuRenderDebug(dataUrl, platform);
+export async function shinobuRender(
+  dataUrl: string,
+  platform: PlatformProvider,
+  resolver: ProviderSessionResolver,
+): Promise<string> {
+  const result = await shinobuRenderDebug(dataUrl, platform, resolver);
   return result.dataUrl;
 }
 
-export async function shinobuRenderDebug(dataUrl: string, platform: PlatformProvider): Promise<RenderDebugResult> {
+export async function shinobuRenderDebug(
+  dataUrl: string,
+  platform: PlatformProvider,
+  resolver: ProviderSessionResolver,
+): Promise<RenderDebugResult> {
   const image = await loadImage(dataUrl, platform);
   const canvas = imageToCanvas(image, platform);
   const w = image.naturalWidth;
   const h = image.naturalHeight;
 
-  const detected = await detectTextRegionsWithMask(image, platform);
+  const detected = await detectTextRegionsWithMask(image, platform, resolver);
   const ocrResult = await runOcr(image, detected.regions, undefined, platform);
 
   let regions = mergeTextLines(ocrResult.regions, w, h);
@@ -225,6 +234,7 @@ function resolveBakeRegionDirection(region: TextRegion): TextDirection {
 export async function shinobuBake(
   dataUrl: string,
   platform: PlatformProvider,
+  resolver: ProviderSessionResolver,
   options: ShinobuBakeOptions = {},
 ): Promise<BakeResult> {
   const image = await loadImage(dataUrl, platform);
@@ -232,7 +242,7 @@ export async function shinobuBake(
   const w = image.naturalWidth;
   const h = image.naturalHeight;
 
-  const detected = await detectTextRegionsWithMask(image, platform);
+  const detected = await detectTextRegionsWithMask(image, platform, resolver);
   const ocrResult = await runOcr(image, detected.regions, undefined, platform);
 
   const selectedDirection = options.direction ?? "all";

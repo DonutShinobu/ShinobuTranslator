@@ -1,41 +1,35 @@
 import {
+  isProviderExecutionPolicy,
+  isProviderRuntime,
   PRODUCTION_PROVIDER_EXECUTION_POLICY,
   type PipelineFailureEnvelope,
   type ProviderExecutionAttempt,
   type ProviderExecutionModel,
   type ProviderExecutionPolicy,
   type ProviderExecutionReport,
+  type ProviderExecutionSession,
   type ProviderExecutionStage,
+  type ProviderExecutionModelMetadata,
   type ProviderRuntime,
 } from '@shinobu/image-pipeline';
-import {
-  getModel,
-  getModelSession,
-  type ModelName,
-} from './modelRegistry';
-import type { WorkerSessionHandle } from './onnxWorkerTypes';
-
-type ProviderModelMetadata = {
-  runtime?: readonly ProviderRuntime[];
-};
 
 type ProviderSessionLoader = (
   model: ProviderExecutionModel,
-  providers: ProviderRuntime[],
-) => Promise<WorkerSessionHandle>;
+  providers: readonly ProviderRuntime[],
+) => Promise<ProviderExecutionSession>;
 
 export type ProviderSessionResolverOptions = {
   policy?: ProviderExecutionPolicy;
-  loadModel?: (
+  loadModel: (
     model: ProviderExecutionModel,
-  ) => Promise<ProviderModelMetadata>;
-  loadSession?: ProviderSessionLoader;
+  ) => Promise<ProviderExecutionModelMetadata>;
+  loadSession: ProviderSessionLoader;
 };
 
 export type ProviderExecutionRequest<T> = {
   model: ProviderExecutionModel;
   stage: ProviderExecutionStage;
-  run(session: WorkerSessionHandle): Promise<T>;
+  run(session: ProviderExecutionSession): Promise<T>;
 };
 
 export type ProviderExecutionResult<T> = {
@@ -49,84 +43,9 @@ export type ProviderSessionResolver = {
   ): Promise<ProviderExecutionResult<T>>;
 };
 
-const supportedProviders = new Set<ProviderRuntime>([
-  'webgpu',
-  'webnn',
-  'wasm',
-  'cuda',
-  'cpu',
-]);
-const supportedModels = new Set<ProviderExecutionModel>([
-  'detector',
-  'bubble',
-  'paddleocr_v6_medium_rec',
-  'inpaint',
-]);
-const supportedStages = new Set<ProviderExecutionStage>([
-  'detect',
-  'bubble',
-  'ocr',
-  'inpaint',
-]);
-const supportedTargets = new Set([
-  'detect:detector',
-  'bubble:bubble',
-  'ocr:paddleocr_v6_medium_rec',
-  'inpaint:inpaint',
-]);
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
-
-function hasOnlyKeys(
-  value: Record<string, unknown>,
-  keys: readonly string[],
-): boolean {
-  const allowed = new Set(keys);
-  return Object.keys(value).every((key) => allowed.has(key));
-}
-
 function assertPolicy(policy: ProviderExecutionPolicy): void {
-  const value = policy as unknown;
-  if (
-    !isRecord(value)
-    || !hasOnlyKeys(value, ['schemaVersion', 'contract', 'rules'])
-    || value.schemaVersion !== 1
-    || !isRecord(value.contract)
-    || !hasOnlyKeys(value.contract, ['id', 'version'])
-    || typeof value.contract.id !== 'string'
-    || !value.contract.id.trim()
-    || !Number.isInteger(value.contract.version)
-    || (value.contract.version as number) < 1
-    || !Array.isArray(value.rules)
-  ) {
+  if (!isProviderExecutionPolicy(policy)) {
     throw new TypeError('Provider execution policy contract is invalid');
-  }
-
-  const targets = new Set<string>();
-  for (const candidate of value.rules) {
-    if (
-      !isRecord(candidate)
-      || !hasOnlyKeys(candidate, ['model', 'stage', 'providers'])
-      || !supportedModels.has(candidate.model as ProviderExecutionModel)
-      || !supportedStages.has(candidate.stage as ProviderExecutionStage)
-      || !Array.isArray(candidate.providers)
-    ) {
-      throw new TypeError('Provider execution policy rule is invalid');
-    }
-    const rule = candidate as ProviderExecutionPolicy['rules'][number];
-    const target = `${rule.stage}:${rule.model}`;
-    if (
-      targets.has(target)
-      || !supportedTargets.has(target)
-      || rule.providers.length === 0
-      || rule.providers.some((provider) => !supportedProviders.has(provider))
-      || new Set(rule.providers).size !== rule.providers.length
-    ) {
-      throw new TypeError(`Provider execution policy rule is invalid: ${target}`);
-    }
-    targets.add(target);
   }
 }
 
@@ -137,8 +56,7 @@ function clonePolicy(
     schemaVersion: 1,
     contract: { ...policy.contract },
     rules: policy.rules.map((rule) => ({
-      model: rule.model,
-      stage: rule.stage,
+      ...rule,
       providers: [...rule.providers],
     })),
   };
@@ -213,21 +131,15 @@ function throwProviderFailure(
   throw new ProviderExecutionError(failureFor(code, report), report, cause);
 }
 
-function productionModelLoader(
-  model: ProviderExecutionModel,
-): Promise<ProviderModelMetadata> {
-  return getModel(model as ModelName);
-}
-
-const productionSessionLoader: ProviderSessionLoader = (model, providers) =>
-  getModelSession(model as ModelName, providers);
-
 export function createProviderSessionResolver(
-  options: ProviderSessionResolverOptions = {},
+  options: ProviderSessionResolverOptions,
 ): ProviderSessionResolver {
+  if (!options.loadModel || !options.loadSession) {
+    throw new TypeError('Provider model/session capability is required');
+  }
   const policySource = options.policy ?? PRODUCTION_PROVIDER_EXECUTION_POLICY;
-  const loadModel = options.loadModel ?? productionModelLoader;
-  const loadSession = options.loadSession ?? productionSessionLoader;
+  const loadModel = options.loadModel;
+  const loadSession = options.loadSession;
   assertPolicy(policySource);
   const policy = clonePolicy(policySource);
 
@@ -251,12 +163,14 @@ export function createProviderSessionResolver(
           );
         }
       }
-      const providers = [...(rule?.providers ?? manifestProviders ?? [])]
-        .filter((provider, index, values) =>
-          supportedProviders.has(provider) && values.indexOf(provider) === index);
+      const providers = [...(rule?.providers ?? manifestProviders ?? [])];
       const attempts: ProviderExecutionAttempt[] = [];
 
-      if (providers.length === 0) {
+      if (
+        providers.length === 0
+        || !providers.every(isProviderRuntime)
+        || new Set(providers).size !== providers.length
+      ) {
         const report = createReport(policy, model, stage, attempts);
         throwProviderFailure(
           'PIPELINE_PROVIDER_CONTRACT_VIOLATED',
@@ -268,7 +182,7 @@ export function createProviderSessionResolver(
       let executionFailed = false;
       for (const provider of providers) {
         const attempt = attempts.length + 1;
-        let session: WorkerSessionHandle;
+        let session: ProviderExecutionSession;
         try {
           session = await loadSession(model, [provider]);
         } catch (error) {

@@ -6,7 +6,6 @@ import { runInference, runDetectWithGpuPreprocess } from "../../runtime/onnxBrid
 import type { WorkerSessionHandle, TensorTransport } from "../../runtime/onnxWorkerTypes";
 import { clamp, polygonArea, nmsBoxes, type ScoredBox } from "../utils";
 import {
-  createProviderSessionResolver,
   type ProviderSessionResolver,
 } from "../../runtime/providerExecution";
 import type {
@@ -828,7 +827,7 @@ async function runDetectorInference(
 export async function detectByOnnx(
   image: PipelineImage,
   platform: PlatformProvider,
-  resolver: ProviderSessionResolver = createProviderSessionResolver(),
+  resolver: ProviderSessionResolver,
 ): Promise<DetectOutput> {
   const execution = await resolver.execute({
     model: "detector",

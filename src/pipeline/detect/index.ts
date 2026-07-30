@@ -42,7 +42,7 @@ function providerReportsFromError(
 export async function detectTextRegionsWithMask(
   image: PipelineImage,
   platform: PlatformProvider,
-  resolver?: ProviderSessionResolver,
+  resolver: ProviderSessionResolver,
 ): Promise<DetectOutput> {
   const fallbackReasons: string[] = [];
   const providerReports: DetectOutput["providerReports"] = [];
@@ -104,7 +104,11 @@ export async function detectTextRegionsWithMask(
   };
 }
 
-export async function detectTextRegions(image: PipelineImage, platform: PlatformProvider): Promise<TextRegion[]> {
-  const result = await detectTextRegionsWithMask(image, platform);
+export async function detectTextRegions(
+  image: PipelineImage,
+  platform: PlatformProvider,
+  resolver: ProviderSessionResolver,
+): Promise<TextRegion[]> {
+  const result = await detectTextRegionsWithMask(image, platform, resolver);
   return result.regions;
 }

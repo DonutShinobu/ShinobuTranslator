@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type {
   ProviderExecutionModel,
   ProviderExecutionPolicy,
+  ProviderRuntime,
 } from '@shinobu/image-pipeline';
 import {
   createProviderSessionResolver,
@@ -19,13 +20,27 @@ function handle(provider: WorkerSessionHandle['provider']): WorkerSessionHandle 
 }
 
 describe('provider session resolver contract', () => {
+  it('requires an explicit model/session port instead of using runtime globals', () => {
+    expect(() => createProviderSessionResolver({
+      policy: {
+        schemaVersion: 1,
+        contract: {
+          id: 'test.explicit-port',
+          version: 1,
+        },
+        rules: [],
+      },
+    } as unknown as Parameters<typeof createProviderSessionResolver>[0]))
+      .toThrow('Provider model/session capability is required');
+  });
+
   it('uses manifest production order and reports a successful fallback', async () => {
     const loadModel = vi.fn(async () => ({
       runtime: ['webgpu', 'webnn', 'wasm'] as const,
     }));
     const loadSession = vi.fn(async (
       _model: ProviderExecutionModel,
-      providers: WorkerSessionHandle['provider'][],
+      providers: readonly ProviderRuntime[],
     ) => {
       if (providers[0] === 'webgpu') throw new Error('adapter unavailable');
       return handle(providers[0]);

@@ -109,7 +109,10 @@ export class OffscreenPipelineHost {
   private activeApiKey = '';
   private readonly imageRuntime: ImagePipelineRuntime<PipelineArtifacts>;
 
-  constructor(capabilities: ImagePipelineRuntimeCapabilities = {}) {
+  constructor(capabilities: ImagePipelineRuntimeCapabilities) {
+    if (!capabilities.providerExecution) {
+      throw new TypeError('Provider execution capability is required');
+    }
     this.imageRuntime = new ImagePipelineRuntime<PipelineArtifacts>({
       capabilities,
       execute: async (request, context) => {

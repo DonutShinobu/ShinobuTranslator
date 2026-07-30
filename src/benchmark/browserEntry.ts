@@ -14,6 +14,10 @@ import type { OcrRecognizeOutput } from '../pipeline/ocr/provider';
 import type { PipelineImage } from '../runtime/platform';
 import type { TextRegion } from '../types';
 import { browserPlatform } from '../runtime/browserPlatform';
+import {
+  createProductionProviderExecutionCapability,
+  createProductionProviderSessionResolver,
+} from '../runtime/productionProviderExecution';
 
 export type ShinobuBenchmarkApi = {
   bake(dataUrl: string, options?: ShinobuBakeOptions): Promise<BakeResult>;
@@ -36,15 +40,36 @@ export type ShinobuBenchmarkWindow = typeof window & {
 };
 
 const benchmarkApi: ShinobuBenchmarkApi = {
-  bake: (dataUrl, options) => shinobuBake(dataUrl, browserPlatform, options),
-  render: (dataUrl) => shinobuRender(dataUrl, browserPlatform),
-  renderDebug: (dataUrl) => shinobuRenderDebug(dataUrl, browserPlatform),
+  bake: (dataUrl, options) => shinobuBake(
+    dataUrl,
+    browserPlatform,
+    createProductionProviderSessionResolver(),
+    options,
+  ),
+  render: (dataUrl) => shinobuRender(
+    dataUrl,
+    browserPlatform,
+    createProductionProviderSessionResolver(),
+  ),
+  renderDebug: (dataUrl) => shinobuRenderDebug(
+    dataUrl,
+    browserPlatform,
+    createProductionProviderSessionResolver(),
+  ),
   renderFixtureDebug: (dataUrl, regions) => (
     shinobuRenderFixtureDebug(dataUrl, regions, browserPlatform)
   ),
   runPipeline: async (file, config, onProgress, options) => {
     const { runPipeline } = await import('../pipeline/orchestrator');
-    return runPipeline(file, config, onProgress, options);
+    return runPipeline(file, config, onProgress, {
+      ...options,
+      runtimeCapabilities: {
+        ...options?.runtimeCapabilities,
+        providerExecution:
+          options?.runtimeCapabilities?.providerExecution
+          ?? createProductionProviderExecutionCapability(),
+      },
+    });
   },
   recognizeOcrRegions: async (image, regions, providerName = 'paddleocr_v6_medium') => {
     await import('../pipeline/ocr');

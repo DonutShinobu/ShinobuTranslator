@@ -6,8 +6,14 @@ import type {
 } from '../../src/runtime/platform';
 import type { PipelineConfig, PipelineProgress, TextRegion } from '../../src/types';
 import type {
+  ImagePipelineRuntimeCapabilities,
+  ProviderExecutionModel,
   ProviderExecutionPolicy,
   ProviderExecutionReport,
+  ProviderRuntime,
+} from '@shinobu/image-pipeline';
+import {
+  PRODUCTION_PROVIDER_EXECUTION_POLICY,
 } from '@shinobu/image-pipeline';
 import type { ProviderSessionResolver } from '../../src/runtime/providerExecution';
 
@@ -161,6 +167,20 @@ const baseConfig: PipelineConfig = {
   ocrPostFilter: 'off',
   processMode: 'translate',
 };
+const testRuntimeCapabilities: ImagePipelineRuntimeCapabilities = {
+  providerExecution: {
+    policy: PRODUCTION_PROVIDER_EXECUTION_POLICY,
+    modelSession: {
+      loadModel: async () => ({ runtime: ['wasm'] }),
+      loadSession: async (model, providers) => ({
+        sessionId: `${model}:${providers[0]}`,
+        provider: providers[0] ?? 'wasm',
+        inputNames: ['images'],
+        outputNames: ['output'],
+      }),
+    },
+  },
+};
 
 function createFile(): File {
   return new File(['fixture'], 'fixture.png', { type: 'image/png' });
@@ -236,10 +256,27 @@ beforeEach(() => {
 });
 
 describe('runPipeline', () => {
+  it('fails closed before loading the image when provider model/session capability is missing', async () => {
+    await expect(runPipeline(
+      createFile(),
+      baseConfig,
+      () => {},
+      { runtimeCapabilities: {} },
+    )).rejects.toThrow('Provider execution capability is required');
+
+    expect(pipelineMocks.fileToImage).not.toHaveBeenCalled();
+    expect(pipelineMocks.getModelSession).not.toHaveBeenCalled();
+  });
+
   it('preserves the full translate-stage order and returns typeset output', async () => {
     const progress: PipelineProgress[] = [];
 
-    const artifacts = await runPipeline(createFile(), baseConfig, (item) => progress.push(item));
+    const artifacts = await runPipeline(
+      createFile(),
+      baseConfig,
+      (item) => progress.push(item),
+      { runtimeCapabilities: testRuntimeCapabilities },
+    );
 
     expect(uniqueConsecutiveStages(progress)).toEqual([
       'load',
@@ -290,6 +327,18 @@ describe('runPipeline', () => {
         },
       ],
     };
+    const loadModel = vi.fn(async () => ({
+      runtime: ['webgpu', 'webnn', 'wasm'] as const,
+    }));
+    const loadSession = vi.fn(async (
+      _model: ProviderExecutionModel,
+      providers: readonly ProviderRuntime[],
+    ) => ({
+      sessionId: `detector:${providers[0]}`,
+      provider: providers[0],
+      inputNames: ['images'],
+      outputNames: ['output'],
+    }));
     pipelineMocks.detectTextRegionsWithMask.mockImplementationOnce(async (
       _image: PipelineImage,
       _platform: PlatformProvider,
@@ -314,14 +363,19 @@ describe('runPipeline', () => {
       () => {},
       {
         runtimeCapabilities: {
-          providerExecution: { policy },
+          providerExecution: {
+            policy,
+            modelSession: {
+              loadModel,
+              loadSession,
+            },
+          },
         },
       },
     );
 
-    expect(pipelineMocks.getModelSession.mock.calls.filter(
-      ([model]) => model === 'detector',
-    )).toEqual([
+    expect(loadModel).not.toHaveBeenCalled();
+    expect(loadSession.mock.calls).toEqual([
       ['detector', ['wasm']],
     ]);
     expect(artifacts.providerReports[0]).toMatchObject({
@@ -336,6 +390,7 @@ describe('runPipeline', () => {
       createFile(),
       { ...baseConfig, processMode: 'erase' },
       () => {},
+      { runtimeCapabilities: testRuntimeCapabilities },
     );
 
     expect(pipelineMocks.runTranslate).not.toHaveBeenCalled();
@@ -350,6 +405,7 @@ describe('runPipeline', () => {
       createFile(),
       { ...baseConfig, processMode: 'original' },
       () => {},
+      { runtimeCapabilities: testRuntimeCapabilities },
     );
 
     expect(pipelineMocks.runTranslate).not.toHaveBeenCalled();
@@ -408,7 +464,10 @@ describe('runPipeline', () => {
       createFile(),
       { ...baseConfig, processMode: 'original' },
       (item) => progress.push(item),
-      { stopAfter: 'order' },
+      {
+        stopAfter: 'order',
+        runtimeCapabilities: testRuntimeCapabilities,
+      },
     );
 
     expect(uniqueConsecutiveStages(progress)).toEqual([
@@ -464,7 +523,12 @@ describe('runPipeline', () => {
       { providerReports: [detectorProviderReport] },
     ));
 
-    const error = await runPipeline(createFile(), baseConfig, () => {}).catch(
+    const error = await runPipeline(
+      createFile(),
+      baseConfig,
+      () => {},
+      { runtimeCapabilities: testRuntimeCapabilities },
+    ).catch(
       (caught: unknown) => caught,
     );
 

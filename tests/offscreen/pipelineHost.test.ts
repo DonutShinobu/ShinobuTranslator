@@ -3,6 +3,7 @@ import type {
   ImagePipelineRuntimeCapabilities,
   ProviderExecutionReport,
 } from '@shinobu/image-pipeline';
+import { PRODUCTION_PROVIDER_EXECUTION_POLICY } from '@shinobu/image-pipeline';
 import type { ChromePort } from '../../src/shared/chrome';
 import type { PipelineArtifacts } from '../../src/types';
 
@@ -107,6 +108,21 @@ const unsatisfiedProviderReport: ProviderExecutionReport = {
   finalProvider: undefined,
   satisfied: false,
 };
+const modelSession = {
+  loadModel: vi.fn(async () => ({ runtime: ['wasm'] as const })),
+  loadSession: vi.fn(async () => ({
+    sessionId: 'test-detector',
+    provider: 'wasm' as const,
+    inputNames: ['images'],
+    outputNames: ['output'],
+  })),
+};
+const defaultCapabilities: ImagePipelineRuntimeCapabilities = {
+  providerExecution: {
+    policy: PRODUCTION_PROVIDER_EXECUTION_POLICY,
+    modelSession,
+  },
+};
 
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve!: (value: T) => void;
@@ -198,7 +214,7 @@ describe('OffscreenPipelineHost single-task admission', () => {
   function createHost(
     capabilities?: ImagePipelineRuntimeCapabilities,
   ): OffscreenPipelineHost {
-    const host = new OffscreenPipelineHost(capabilities);
+    const host = new OffscreenPipelineHost(capabilities ?? defaultCapabilities);
     hosts.push(host);
     return host;
   }
@@ -257,6 +273,7 @@ describe('OffscreenPipelineHost single-task admission', () => {
             },
           ],
         },
+        modelSession,
       },
     };
     mocks.runPipeline.mockResolvedValueOnce(artifacts());
@@ -267,8 +284,20 @@ describe('OffscreenPipelineHost single-task admission', () => {
 
     await vi.waitFor(() => expect(mocks.runPipeline).toHaveBeenCalledOnce());
     expect(mocks.runPipeline.mock.calls[0][3]).toMatchObject({
-      runtimeCapabilities: capabilities,
+      runtimeCapabilities: {
+        providerExecution: {
+          policy: capabilities.providerExecution?.policy,
+          modelSession: {
+            loadModel: expect.any(Function),
+            loadSession: expect.any(Function),
+          },
+        },
+      },
     });
+    const injectedCapabilities = mocks.runPipeline.mock.calls[0][3]
+      .runtimeCapabilities as ImagePipelineRuntimeCapabilities;
+    await injectedCapabilities.providerExecution?.modelSession.loadModel('detector');
+    expect(modelSession.loadModel).toHaveBeenCalledWith('detector');
   });
 
   it('transports an unsatisfied provider report in structured failure diagnostics', async () => {

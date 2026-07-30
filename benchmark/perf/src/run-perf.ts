@@ -23,6 +23,9 @@ import { refineTextMask } from "../../../src/pipeline/maskRefinement";
 import { sortRegionsForRender } from "../../../src/pipeline/readingOrder";
 import { detectBubbles, matchRegionsToBubbles } from "../../../src/pipeline/bubbleDetect";
 import { nodePlatform } from "../../../src/runtime/nodePlatform";
+import {
+  createProductionProviderSessionResolver,
+} from "../../../src/runtime/productionProviderExecution";
 import type { OcrRunDebugInfo } from "../../../src/types";
 
 // ---------------------------------------------------------------------------
@@ -176,7 +179,15 @@ async function runPipelineOnce(imageDataUrl: string): Promise<{ stages: StageTim
   const originalCanvas = imageToCanvas(image, nodePlatform);
 
   // detect
-  const detected = await time("detect", "文本检测", () => detectTextRegionsWithMask(image, nodePlatform));
+  const detected = await time(
+    "detect",
+    "文本检测",
+    () => detectTextRegionsWithMask(
+      image,
+      nodePlatform,
+      createProductionProviderSessionResolver(),
+    ),
+  );
   let regions = detected.regions;
   const detectionMaskCanvas = detected.rawMaskCanvas;
 

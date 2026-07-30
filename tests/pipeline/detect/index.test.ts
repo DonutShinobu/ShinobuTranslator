@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProviderExecutionReport } from '@shinobu/image-pipeline';
 import type { PlatformProvider, PipelineImage } from '../../../src/runtime/platform';
-import { ProviderExecutionError } from '../../../src/runtime/providerExecution';
+import {
+  ProviderExecutionError,
+  type ProviderSessionResolver,
+} from '../../../src/runtime/providerExecution';
 
 const mocks = vi.hoisted(() => ({
   detectByOnnx: vi.fn(),
@@ -22,6 +25,7 @@ import { detectTextRegionsWithMask } from '../../../src/pipeline/detect';
 
 const image = {} as PipelineImage;
 const platform = {} as PlatformProvider;
+const resolver = {} as ProviderSessionResolver;
 const region = {
   id: 'region-1',
   box: { x: 0, y: 0, width: 10, height: 20 },
@@ -68,7 +72,7 @@ describe('detectTextRegionsWithMask engine reporting', () => {
       providerReports: [report],
     });
 
-    await expect(detectTextRegionsWithMask(image, platform)).resolves.toMatchObject({
+    await expect(detectTextRegionsWithMask(image, platform, resolver)).resolves.toMatchObject({
       engine: 'onnx',
       actualProvider: 'wasm',
       providerReports: [report],
@@ -90,7 +94,7 @@ describe('detectTextRegionsWithMask engine reporting', () => {
     ));
     mocks.detectByTesseract.mockResolvedValue([region]);
 
-    await expect(detectTextRegionsWithMask(image, platform)).resolves.toMatchObject({
+    await expect(detectTextRegionsWithMask(image, platform, resolver)).resolves.toMatchObject({
       engine: 'tesseract',
       fallbackReason: 'onnx: pipeline.failure.providerExecution',
       providerReports: [report],
@@ -105,7 +109,7 @@ describe('detectTextRegionsWithMask engine reporting', () => {
     ));
     mocks.detectByTesseract.mockResolvedValue([region]);
 
-    await expect(detectTextRegionsWithMask(image, platform)).resolves.toMatchObject({
+    await expect(detectTextRegionsWithMask(image, platform, resolver)).resolves.toMatchObject({
       engine: 'tesseract',
       fallbackReason: 'onnx: invalid detector output',
       providerReports: [report],
@@ -117,7 +121,7 @@ describe('detectTextRegionsWithMask engine reporting', () => {
     mocks.detectByTesseract.mockRejectedValue(new Error('tesseract unavailable'));
     mocks.detectByHeuristic.mockResolvedValue([region]);
 
-    const result = await detectTextRegionsWithMask(image, platform);
+    const result = await detectTextRegionsWithMask(image, platform, resolver);
     expect(result.engine).toBe('heuristic');
     expect(result.fallbackReason).toContain('onnx: worker unavailable');
     expect(result.fallbackReason).toContain('tesseract: tesseract unavailable');
@@ -132,7 +136,7 @@ describe('detectTextRegionsWithMask engine reporting', () => {
       providerReports: [report],
     });
 
-    const error = await detectTextRegionsWithMask(image, platform).catch(
+    const error = await detectTextRegionsWithMask(image, platform, resolver).catch(
       (caught: unknown) => caught,
     );
 

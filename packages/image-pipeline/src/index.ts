@@ -8,33 +8,46 @@ import {
 
 export const PIPELINE_RECORD_SCHEMA_VERSION = 2 as const;
 
-export type ProviderRuntime =
-  | 'webgpu'
-  | 'webnn'
-  | 'wasm'
-  | 'cuda'
-  | 'cpu';
+export const PROVIDER_RUNTIMES = Object.freeze([
+  'webgpu',
+  'webnn',
+  'wasm',
+  'cuda',
+  'cpu',
+] as const);
 
-export type ProviderExecutionModel =
-  | 'detector'
-  | 'bubble'
-  | 'paddleocr_v6_medium_rec'
-  | 'inpaint';
+export type ProviderRuntime = (typeof PROVIDER_RUNTIMES)[number];
 
-export type ProviderExecutionStage =
-  | 'detect'
-  | 'bubble'
-  | 'ocr'
-  | 'inpaint';
+export const PROVIDER_EXECUTION_TARGETS = Object.freeze([
+  { model: 'detector', stage: 'detect' },
+  { model: 'bubble', stage: 'bubble' },
+  { model: 'paddleocr_v6_medium_rec', stage: 'ocr' },
+  { model: 'inpaint', stage: 'inpaint' },
+] as const);
+
+export type ProviderExecutionTarget =
+  (typeof PROVIDER_EXECUTION_TARGETS)[number];
+export type ProviderExecutionModel = ProviderExecutionTarget['model'];
+export type ProviderExecutionStage = ProviderExecutionTarget['stage'];
+
+export function isProviderRuntime(value: unknown): value is ProviderRuntime {
+  return PROVIDER_RUNTIMES.some((provider) => provider === value);
+}
+
+export function isProviderExecutionTarget(
+  model: unknown,
+  stage: unknown,
+): boolean {
+  return PROVIDER_EXECUTION_TARGETS.some((target) =>
+    target.model === model && target.stage === stage);
+}
 
 export type ProviderExecutionContract = {
   id: string;
   version: number;
 };
 
-export type ProviderExecutionPolicyRule = {
-  model: ProviderExecutionModel;
-  stage: ProviderExecutionStage;
+export type ProviderExecutionPolicyRule = ProviderExecutionTarget & {
   providers: readonly ProviderRuntime[];
 };
 
@@ -47,6 +60,47 @@ export type ProviderExecutionPolicy = {
    */
   rules: readonly ProviderExecutionPolicyRule[];
 };
+
+export function isProviderExecutionPolicy(
+  value: unknown,
+): value is ProviderExecutionPolicy {
+  if (
+    !isRecord(value)
+    || !hasOnlyKeys(
+      value,
+      new Set(['schemaVersion', 'contract', 'rules']),
+    )
+    || value.schemaVersion !== 1
+    || !isRecord(value.contract)
+    || !hasOnlyKeys(value.contract, new Set(['id', 'version']))
+    || typeof value.contract.id !== 'string'
+    || value.contract.id.trim().length === 0
+    || !Number.isSafeInteger(value.contract.version)
+    || (value.contract.version as number) < 1
+    || !Array.isArray(value.rules)
+  ) {
+    return false;
+  }
+
+  const targets = new Set<string>();
+  return value.rules.every((rule) => {
+    if (
+      !isRecord(rule)
+      || !hasOnlyKeys(rule, new Set(['model', 'stage', 'providers']))
+      || !isProviderExecutionTarget(rule.model, rule.stage)
+      || !Array.isArray(rule.providers)
+      || rule.providers.length === 0
+      || !rule.providers.every(isProviderRuntime)
+      || new Set(rule.providers).size !== rule.providers.length
+    ) {
+      return false;
+    }
+    const target = `${rule.stage}:${rule.model}`;
+    if (targets.has(target)) return false;
+    targets.add(target);
+    return true;
+  });
+}
 
 export const PRODUCTION_PROVIDER_EXECUTION_POLICY: ProviderExecutionPolicy = Object.freeze({
   schemaVersion: 1,
@@ -103,10 +157,7 @@ export function isProviderExecutionReport(
     || value.contract.id.length === 0
     || !Number.isSafeInteger(value.contract.version)
     || (value.contract.version as number) < 1
-    || !['detector', 'bubble', 'paddleocr_v6_medium_rec', 'inpaint'].includes(
-      String(value.model),
-    )
-    || !['detect', 'bubble', 'ocr', 'inpaint'].includes(String(value.stage))
+    || !isProviderExecutionTarget(value.model, value.stage)
     || !Array.isArray(value.attempts)
     || !Array.isArray(value.fallbackTrace)
     || typeof value.satisfied !== 'boolean'
@@ -114,7 +165,6 @@ export function isProviderExecutionReport(
     return false;
   }
 
-  const providers = new Set(['webgpu', 'webnn', 'wasm', 'cuda', 'cpu']);
   const outcomes = new Set(['succeeded', 'unavailable', 'failed']);
   const reasons = new Set([
     'completed',
@@ -128,7 +178,7 @@ export function isProviderExecutionReport(
     if (
       !isRecord(attempt)
       || attempt.attempt !== index + 1
-      || !providers.has(String(attempt.provider))
+      || !isProviderRuntime(attempt.provider)
       || !outcomes.has(String(attempt.outcome))
       || !reasons.has(String(attempt.reason))
     ) {
@@ -162,7 +212,7 @@ export function isProviderExecutionReport(
   const finalAttempt = attempts.at(-1);
   return value.satisfied
     ? typeof value.finalProvider === 'string'
-      && providers.has(value.finalProvider)
+      && isProviderRuntime(value.finalProvider)
       && finalAttempt?.provider === value.finalProvider
       && finalAttempt.outcome === 'succeeded'
       && finalAttempt.reason === 'completed'
@@ -175,6 +225,29 @@ export function isProviderExecutionReport(
 
 export type ProviderExecutionCapability = {
   policy: ProviderExecutionPolicy;
+  modelSession: ProviderModelSessionPort;
+};
+
+export type ProviderExecutionModelMetadata = {
+  runtime?: readonly ProviderRuntime[];
+};
+
+export type ProviderExecutionSession = {
+  sessionId: string;
+  provider: ProviderRuntime;
+  inputNames: string[];
+  outputNames: string[];
+  webnnDeviceType?: 'gpu' | 'cpu' | 'default';
+};
+
+export type ProviderModelSessionPort = {
+  loadModel(
+    model: ProviderExecutionModel,
+  ): Promise<ProviderExecutionModelMetadata>;
+  loadSession(
+    model: ProviderExecutionModel,
+    providers: readonly ProviderRuntime[],
+  ): Promise<ProviderExecutionSession>;
 };
 
 export type OcrExecutionCapability = {
@@ -508,6 +581,33 @@ function cloneAndFreeze<T>(value: T): T {
   return clone;
 }
 
+function snapshotRuntimeCapabilities(
+  capabilities: ImagePipelineRuntimeCapabilities,
+): Readonly<ImagePipelineRuntimeCapabilities> {
+  const providerExecution = capabilities.providerExecution;
+  const ocrExecution = capabilities.ocrExecution;
+  return Object.freeze({
+    ...(providerExecution
+      ? {
+          providerExecution: Object.freeze({
+            policy: cloneAndFreeze(providerExecution.policy),
+            modelSession: Object.freeze({
+              loadModel: (model: ProviderExecutionModel) =>
+                providerExecution.modelSession.loadModel(model),
+              loadSession: (
+                model: ProviderExecutionModel,
+                providers: readonly ProviderRuntime[],
+              ) => providerExecution.modelSession.loadSession(model, providers),
+            }),
+          }),
+        }
+      : {}),
+    ...(ocrExecution
+      ? { ocrExecution: cloneAndFreeze(ocrExecution) }
+      : {}),
+  });
+}
+
 function hasOnlyKeys(value: Record<string, unknown>, allowed: ReadonlySet<string>): boolean {
   return Object.keys(value).every((key) => allowed.has(key));
 }
@@ -767,7 +867,9 @@ export class ImagePipelineRuntime<Artifacts> {
   private readonly capabilities: Readonly<ImagePipelineRuntimeCapabilities>;
 
   constructor(private readonly options: RuntimeOptions<Artifacts>) {
-    this.capabilities = cloneAndFreeze(options.capabilities ?? {});
+    this.capabilities = snapshotRuntimeCapabilities(
+      options.capabilities ?? {},
+    );
   }
 
   run(

@@ -4,6 +4,7 @@ import {
   ImagePipelineCancelledError,
   ImagePipelineExecutionError,
   ImagePipelineRuntime,
+  isProviderExecutionPolicy,
   isProviderExecutionReport,
   type ImagePipelineRequest,
   type ImagePipelineResult,
@@ -137,16 +138,27 @@ describe('image pipeline runtime contract', () => {
         },
       ],
     };
+    const loadModel = vi.fn(async () => ({ runtime: ['wasm'] as const }));
+    const loadSession = vi.fn(async () => ({
+      sessionId: 'test-detector',
+      provider: 'wasm' as const,
+      inputNames: ['images'],
+      outputNames: ['output'],
+    }));
     const observedCapabilities: unknown[] = [];
     const runtime = new ImagePipelineRuntime({
       capabilities: {
-        providerExecution: { policy },
+        providerExecution: {
+          policy,
+          modelSession: { loadModel, loadSession },
+        },
       },
       async prepare(context) {
         observedCapabilities.push(context.capabilities);
       },
       async execute(_request, context) {
         observedCapabilities.push(context.capabilities);
+        await context.capabilities.providerExecution?.modelSession.loadModel('detector');
         return { status: 'completed' as const, artifacts: { id: 'live' } };
       },
       finalize: async () => result(),
@@ -165,10 +177,15 @@ describe('image pipeline runtime contract', () => {
             version: 3,
           },
         }),
+        modelSession: {
+          loadModel: expect.any(Function),
+          loadSession: expect.any(Function),
+        },
       },
     });
     expect(observedCapabilities[1]).toBe(observedCapabilities[0]);
     expect(Object.isFrozen(observedCapabilities[0])).toBe(true);
+    expect(loadModel).toHaveBeenCalledWith('detector');
   });
 
   it('rejects internally contradictory provider execution reports', () => {
@@ -207,6 +224,45 @@ describe('image pipeline runtime contract', () => {
     expect(isProviderExecutionReport({
       ...baseReport,
       finalProvider: undefined,
+      satisfied: false,
+    })).toBe(false);
+  });
+
+  it('uses the canonical provider target definition for policies and reports', () => {
+    expect(isProviderExecutionPolicy({
+      schemaVersion: 1,
+      contract: {
+        id: 'test.detector-policy',
+        version: 1,
+      },
+      rules: [{
+        model: 'detector',
+        stage: 'detect',
+        providers: ['wasm'],
+      }],
+    })).toBe(true);
+    expect(isProviderExecutionPolicy({
+      schemaVersion: 1,
+      contract: {
+        id: 'test.invalid-target',
+        version: 1,
+      },
+      rules: [{
+        model: 'detector',
+        stage: 'ocr',
+        providers: ['wasm'],
+      }],
+    })).toBe(false);
+    expect(isProviderExecutionReport({
+      schemaVersion: 1,
+      contract: {
+        id: 'test.invalid-target',
+        version: 1,
+      },
+      model: 'detector',
+      stage: 'ocr',
+      attempts: [],
+      fallbackTrace: [],
       satisfied: false,
     })).toBe(false);
   });

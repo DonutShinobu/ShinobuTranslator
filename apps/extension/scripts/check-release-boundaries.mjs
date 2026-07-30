@@ -328,7 +328,7 @@ function findVisibleConstInitializer(identifier, typeChecker) {
   return declaration.initializer;
 }
 
-function isChromeRuntimeGetUrlCall(expression) {
+function isChromeRuntimeGetUrlCall(expression, typeChecker) {
   if (
     !ts.isCallExpression(expression)
     || expression.arguments.length !== 1
@@ -338,11 +338,15 @@ function isChromeRuntimeGetUrlCall(expression) {
     return false;
   }
   const runtimeAccess = expression.expression.expression;
+  const chromeIdentifier = ts.isPropertyAccessExpression(runtimeAccess)
+    ? runtimeAccess.expression
+    : undefined;
   return (
     ts.isPropertyAccessExpression(runtimeAccess)
     && runtimeAccess.name.text === 'runtime'
-    && ts.isIdentifier(runtimeAccess.expression)
-    && runtimeAccess.expression.text === 'chrome'
+    && ts.isIdentifier(chromeIdentifier)
+    && chromeIdentifier.text === 'chrome'
+    && typeChecker.getSymbolAtLocation(chromeIdentifier) === undefined
   );
 }
 
@@ -382,7 +386,7 @@ function evaluateStaticImportReference(
       ? undefined
       : left + right;
   }
-  if (isChromeRuntimeGetUrlCall(expression)) {
+  if (isChromeRuntimeGetUrlCall(expression, typeChecker)) {
     const packagedPath = evaluateStaticImportReference(
       expression.arguments[0],
       typeChecker,

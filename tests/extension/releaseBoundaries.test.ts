@@ -375,6 +375,40 @@ describe('extension release boundaries', () => {
   );
 
   it(
+    'rejects dynamic imports through a shadowed chrome runtime',
+    () => {
+      const cases = [
+        [
+          'const chrome = {',
+          '  runtime: { getURL: getRuntimeModulePath },',
+          '};',
+          'import(chrome.runtime.getURL("chunks/config.js"));',
+        ].join('\n'),
+        [
+          'function loadRuntimeModule(chrome) {',
+          '  return import(',
+          '    chrome.runtime.getURL("chunks/config.js"),',
+          '  );',
+          '}',
+        ].join('\n'),
+      ];
+
+      for (const source of cases) {
+        const directory = createReleaseFixture('chrome');
+        writeArtifact(directory, 'popup.js', source);
+
+        const result = runReleaseBoundary('chrome', directory);
+
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain(
+          'Artifact popup.js contains dynamic import that cannot be statically resolved at',
+        );
+      }
+    },
+    20_000,
+  );
+
+  it(
     'accepts statically resolvable dynamic imports',
     () => {
       const directory = createReleaseFixture('chrome');

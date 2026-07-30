@@ -52,6 +52,14 @@ describe('workspace module references', () => {
       );
       function resolve(...parts: string[]) { return parts.join('/'); }
       const decoy = resolve(import.meta.dirname, '../../src/decoy.ts');
+      function shadowed(
+        pathResolve: (...parts: string[]) => string,
+      ) {
+        return pathResolve(
+          import.meta.dirname,
+          '../../src/shadowed-decoy.ts',
+        );
+      }
       const worker = new Worker(
         new URL('../../src/worker.ts', import.meta.url),
         { type: 'module' },
@@ -59,10 +67,61 @@ describe('workspace module references', () => {
       const requestUrl = new URL('../../src/not-a-module.ts', baseUrl);
     `;
 
-    expect(findModuleReferences(source, 'fixture.ts')).toEqual([
+    expect(findModuleReferences(
+      source,
+      'apps/web/vite.config.ts',
+    )).toEqual([
       'node:path',
       '../../packages/model-manifest/manifest.json',
       '../../src/worker.ts',
+    ]);
+  });
+
+  it('combines repo-root anchors with resolve and join build inputs', () => {
+    const source = `
+      import {
+        join as pathJoin,
+        resolve as pathResolve,
+      } from 'node:path';
+      const repoRoot = pathResolve(import.meta.dirname, '../..');
+      const thirdInput = pathResolve(repoRoot, 'src/third.ts');
+      const fourthInput = pathJoin(repoRoot, 'src/fourth.ts');
+      function resolve(...parts: string[]) { return parts.join('/'); }
+      const decoy = resolve(repoRoot, 'src/not-a-build-input.ts');
+    `;
+
+    expect(findModuleReferences(
+      source,
+      'apps/extension/vite.config.ts',
+    )).toEqual([
+      'node:path',
+      '../..',
+      '../../src/third.ts',
+      '../../src/fourth.ts',
+    ]);
+  });
+
+  it('combines __dirname and import.meta.url file anchors', () => {
+    const source = `
+      import { resolve as pathResolve } from 'node:path';
+      import { fileURLToPath } from 'node:url';
+      const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
+      const urlInput = pathResolve(repoRoot, 'src/from-url.ts');
+      const dirnameInput = pathResolve(
+        __dirname,
+        '../../src/from-dirname.ts',
+      );
+    `;
+
+    expect(findModuleReferences(
+      source,
+      'apps/extension/vite.config.ts',
+    )).toEqual([
+      'node:path',
+      'node:url',
+      '../..',
+      '../../src/from-url.ts',
+      '../../src/from-dirname.ts',
     ]);
   });
 });

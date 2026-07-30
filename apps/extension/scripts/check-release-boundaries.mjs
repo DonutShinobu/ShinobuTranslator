@@ -1,6 +1,16 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+} from 'node:fs';
+import { join, posix, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { isDeepStrictEqual } from 'node:util';
+import {
+  init as initializeModuleLexer,
+  parse as parseModuleImports,
+} from 'es-module-lexer';
 import {
   generateExtensionManifest,
   serializeExtensionManifest,
@@ -27,6 +37,79 @@ const forbiddenBridgeTokens = [
   '__shinobu_render',
   '__shinobu_bridge',
 ];
+const forbiddenTestControlTokens = [
+  '__shinobu_test_control',
+  '__shinobu_conformance_control',
+  '__shinobu_fault_injection',
+];
+const forbiddenTestControlPathSegments = new Set([
+  '__tests__',
+  'conformance',
+  'fault-injection',
+  'fault_injection',
+  'fixture',
+  'fixtures',
+  'golden',
+  'goldens',
+  'test',
+  'test-control',
+  'test-controls',
+  'tests',
+]);
+const forbiddenBenchmarkPathSegments = new Set([
+  'benchmark',
+  'benchmarks',
+]);
+const scannedTextArtifactExtensions = new Set([
+  '.css',
+  '.html',
+  '.js',
+  '.json',
+  '.mjs',
+  '.txt',
+]);
+const commonStoreArtifactPaths = new Set([
+  'assets/popup.css',
+  'background.js',
+  'brand/shinobu-wordmark.svg',
+  'chunks/chromeAdapter.js',
+  'chunks/config.js',
+  'chunks/diagnosticLog.js',
+  'chunks/diagnosticLogClient.js',
+  'chunks/localPipelineProtocol.js',
+  'chunks/messages.js',
+  'chunks/perfTrace.js',
+  'content.js',
+  'fonts/SourceHanSansCN-VF.ttf.woff2',
+  'fonts/SourceHanSansTW-VF.ttf.woff2',
+  'icons/icon.svg',
+  'icons/icon16.png',
+  'icons/icon32.png',
+  'icons/icon48.png',
+  'icons/icon128.png',
+  'manifest.json',
+  'models/models.json',
+  'models/paddleocr_v6_dict.txt',
+  'onnxWorker.js',
+  'ort/ort-wasm-simd-threaded.asyncify.mjs',
+  'ort/ort-wasm-simd-threaded.asyncify.wasm',
+  'ort/ort-wasm-simd-threaded.jsep.mjs',
+  'ort/ort-wasm-simd-threaded.jsep.wasm',
+  'ort/ort-wasm-simd-threaded.mjs',
+  'ort/ort-wasm-simd-threaded.wasm',
+  'popup.html',
+  'popup.js',
+]);
+const chromeStoreArtifactPaths = new Set([
+  'assets/ort-wasm-simd-threaded.jsep.wasm',
+  'chunks/chromeLifecycle.js',
+  'chunks/modulepreload-polyfill.js',
+  'chunks/onnxWorkerBridge.js',
+  'offscreen.html',
+  'offscreen.js',
+]);
+const hashedWorkerAssetPattern =
+  /^assets\/ort-wasm-simd-threaded\.jsep-[A-Za-z0-9_-]{8}\.wasm$/u;
 const forbiddenLegacyWorkerTokens = [
   'runOcrBatchDecode',
   'runOcrSplitBatchDecode',
@@ -74,17 +157,56 @@ if (manifestTarget === 'chrome') {
   );
 }
 
-function collectJavaScriptFiles(directory) {
-  const files = [];
+function collectArtifactPaths(directory, baseDirectory = directory) {
+  const paths = [];
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     const path = join(directory, entry.name);
     if (entry.isDirectory()) {
-      files.push(...collectJavaScriptFiles(path));
-    } else if (entry.isFile() && entry.name.endsWith('.js')) {
-      files.push(path);
+      paths.push(...collectArtifactPaths(path, baseDirectory));
+    } else if (entry.isFile()) {
+      paths.push(
+        path
+          .slice(baseDirectory.length + 1)
+          .replaceAll('\\', '/'),
+      );
     }
   }
-  return files;
+  return paths.sort();
+}
+
+function pathSegmentMatches(segment, controlledNames) {
+  const normalized = segment.toLowerCase();
+  return [...controlledNames].some((name) =>
+    normalized === name
+    || normalized.startsWith(`${name}.`)
+    || normalized.startsWith(`${name}-`)
+    || normalized.startsWith(`${name}_`));
+}
+
+function classifyNonReleaseArtifact(path) {
+  const segments = path.split('/');
+  if (
+    segments.some((segment) =>
+      pathSegmentMatches(segment, forbiddenBenchmarkPathSegments))
+  ) {
+    return 'benchmark-only';
+  }
+  if (
+    segments.some((segment) =>
+      pathSegmentMatches(segment, forbiddenTestControlPathSegments))
+  ) {
+    return 'test-control';
+  }
+  return undefined;
+}
+
+function isApprovedStoreArtifact(path) {
+  return commonStoreArtifactPaths.has(path)
+    || (
+      manifestTarget === 'chrome'
+      && chromeStoreArtifactPaths.has(path)
+    )
+    || hashedWorkerAssetPattern.test(path);
 }
 
 function matchesResourcePattern(pattern, resource) {
@@ -92,6 +214,172 @@ function matchesResourcePattern(pattern, resource) {
     .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
     .replaceAll('*', '.*');
   return new RegExp(`^${escaped}$`).test(resource);
+}
+
+function resolvePackagedReference(ownerPath, reference) {
+  const withoutFragment = reference.split(/[?#]/u, 1)[0];
+  if (
+    !withoutFragment
+    || withoutFragment.startsWith('#')
+    || withoutFragment.startsWith('data:')
+  ) {
+    return undefined;
+  }
+  if (/^[a-z][a-z\d+.-]*:/iu.test(withoutFragment)) {
+    throw new Error(
+      `Artifact ${ownerPath} contains non-packaged reference: ${reference}`,
+    );
+  }
+  const resolvedPath = withoutFragment.startsWith('/')
+    ? posix.normalize(withoutFragment.slice(1))
+    : posix.normalize(
+      posix.join(posix.dirname(ownerPath), withoutFragment),
+    );
+  if (
+    !resolvedPath
+    || resolvedPath === '..'
+    || resolvedPath.startsWith('../')
+    || posix.isAbsolute(resolvedPath)
+  ) {
+    throw new Error(
+      `Artifact ${ownerPath} contains unsafe reference: ${reference}`,
+    );
+  }
+  return resolvedPath;
+}
+
+await initializeModuleLexer;
+
+function collectStaticArtifactReferences(path, source) {
+  const references = [];
+  const addMatches = (expression) => {
+    for (const match of source.matchAll(expression)) {
+      references.push(match[1]);
+    }
+  };
+  if (path.endsWith('.html')) {
+    addMatches(/\b(?:href|src)=["']([^"']+)["']/giu);
+  } else if (path.endsWith('.js') || path.endsWith('.mjs')) {
+    const [imports] = parseModuleImports(source);
+    references.push(
+      ...imports
+        .filter((moduleImport) => moduleImport.d === -1)
+        .map((moduleImport) =>
+          source.slice(moduleImport.s, moduleImport.e)),
+    );
+  } else if (path.endsWith('.css')) {
+    addMatches(/\burl\(\s*["']?([^"')]+)["']?\s*\)/giu);
+  }
+  return references;
+}
+
+function assertStaticArtifactReferences(artifactPaths) {
+  const artifactPathSet = new Set(artifactPaths);
+  for (const ownerPath of artifactPaths) {
+    if (
+      !ownerPath.endsWith('.html')
+      && !ownerPath.endsWith('.js')
+      && !ownerPath.endsWith('.mjs')
+      && !ownerPath.endsWith('.css')
+    ) {
+      continue;
+    }
+    const source = readFileSync(join(distDir, ownerPath), 'utf8');
+    for (const reference of collectStaticArtifactReferences(
+      ownerPath,
+      source,
+    )) {
+      const referencedPath = resolvePackagedReference(
+        ownerPath,
+        reference,
+      );
+      if (
+        referencedPath !== undefined
+        && !artifactPathSet.has(referencedPath)
+      ) {
+        throw new Error(
+          `Artifact ${ownerPath} references missing artifact: ${referencedPath}`,
+        );
+      }
+    }
+  }
+}
+
+function assertSafeManifestArtifactPath(path, label) {
+  if (
+    typeof path !== 'string'
+    || path.length === 0
+    || path.includes('\\')
+    || path.startsWith('/')
+    || path.split('/').some((segment) =>
+      segment.length === 0 || segment === '.' || segment === '..')
+  ) {
+    throw new Error(
+      `Manifest reference ${label} is not a safe packaged artifact path: ${String(path)}`,
+    );
+  }
+}
+
+function assertManifestReference(path, label) {
+  assertSafeManifestArtifactPath(path, label);
+  const artifactPath = join(distDir, path);
+  if (!existsSync(artifactPath) || !statSync(artifactPath).isFile()) {
+    throw new Error(
+      `Manifest reference ${label} is missing artifact: ${path}`,
+    );
+  }
+}
+
+function isPrivateRuntimeArtifact(path) {
+  return new Set([
+    'background.js',
+    'offscreen.html',
+    'offscreen.js',
+    'onnxWorker.js',
+    'chunks/onnxWorkerBridge.js',
+  ]).has(path)
+    || path.startsWith('models/')
+    || path.startsWith('ort/');
+}
+
+function collectManifestReferences(manifest) {
+  const references = [];
+  const add = (label, path) => {
+    if (path !== undefined) references.push({ label, path });
+  };
+  add('action.default_popup', manifest.action?.default_popup);
+  for (const [size, path] of Object.entries(
+    manifest.action?.default_icon ?? {},
+  )) {
+    add(`action.default_icon.${size}`, path);
+  }
+  for (const [size, path] of Object.entries(manifest.icons ?? {})) {
+    add(`icons.${size}`, path);
+  }
+  add(
+    'background.service_worker',
+    manifest.background?.service_worker,
+  );
+  for (const [index, path] of (
+    manifest.background?.scripts ?? []
+  ).entries()) {
+    add(`background.scripts[${index}]`, path);
+  }
+  for (const [scriptIndex, contentScript] of (
+    manifest.content_scripts ?? []
+  ).entries()) {
+    for (const field of ['js', 'css']) {
+      for (const [fileIndex, path] of (
+        contentScript[field] ?? []
+      ).entries()) {
+        add(
+          `content_scripts[${scriptIndex}].${field}[${fileIndex}]`,
+          path,
+        );
+      }
+    }
+  }
+  return references;
 }
 
 if (!existsSync(distDir)) {
@@ -106,19 +394,37 @@ for (const artifact of requiredReleaseArtifacts) {
   }
 }
 
-const javaScriptFiles = collectJavaScriptFiles(distDir);
-for (const file of javaScriptFiles) {
-  const source = readFileSync(file, 'utf8');
+const artifactPaths = collectArtifactPaths(distDir);
+for (const artifactPath of artifactPaths) {
+  const extension = posix.extname(artifactPath).toLowerCase();
+  if (!scannedTextArtifactExtensions.has(extension)) continue;
+  const source = readFileSync(join(distDir, artifactPath), 'utf8');
   for (const token of forbiddenBridgeTokens) {
     if (source.includes(token)) {
-      throw new Error(`Release artifact contains forbidden benchmark bridge token ${token}: ${file}`);
+      throw new Error(
+        `Release artifact contains forbidden benchmark bridge token ${token}: ${artifactPath}`,
+      );
     }
   }
+  for (const token of forbiddenTestControlTokens) {
+    if (source.includes(token)) {
+      throw new Error(
+        `Release artifact contains forbidden test-control token ${token}: ${artifactPath}`,
+      );
+    }
+  }
+  if (extension !== '.js' && extension !== '.mjs') continue;
   try {
-    execFileSync(process.execPath, ['--check', file], { stdio: 'pipe' });
+    execFileSync(
+      process.execPath,
+      ['--check', join(distDir, artifactPath)],
+      { stdio: 'pipe' },
+    );
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`JavaScript syntax check failed for ${file}: ${detail}`);
+    throw new Error(
+      `JavaScript syntax check failed for ${artifactPath}: ${detail}`,
+    );
   }
 }
 
@@ -130,16 +436,139 @@ for (const token of forbiddenLegacyWorkerTokens) {
 }
 
 const manifestPath = join(distDir, 'manifest.json');
-const manifestBytes = readFileSync(manifestPath, 'utf8');
-const expectedManifestBytes = serializeExtensionManifest(
-  generateExtensionManifest({ target: manifestTarget }),
+const manifestBytes = readFileSync(manifestPath);
+const expectedManifest = generateExtensionManifest({
+  target: manifestTarget,
+});
+const expectedManifestBytes = Buffer.from(
+  serializeExtensionManifest(expectedManifest),
+  'utf8',
 );
-if (manifestBytes !== expectedManifestBytes) {
+const manifest = JSON.parse(manifestBytes.toString('utf8'));
+if (manifest.manifest_version !== expectedManifest.manifest_version) {
+  throw new Error('Release manifest must use Manifest V3.');
+}
+if (
+  !isDeepStrictEqual(
+    manifest.content_security_policy,
+    expectedManifest.content_security_policy,
+  )
+) {
   throw new Error(
-    `${target} manifest does not byte-match the declarative source and extension workspace version.`,
+    'Release manifest CSP must exactly match the declarative specification.',
   );
 }
-const manifest = JSON.parse(manifestBytes);
+if (manifestTarget === 'chrome') {
+  if (Object.hasOwn(manifest, 'browser_specific_settings')) {
+    throw new Error(
+      'Chrome manifest must not contain Gecko-specific browser_specific_settings.',
+    );
+  }
+  if (Object.hasOwn(manifest.background ?? {}, 'scripts')) {
+    throw new Error(
+      'Chrome manifest must not contain background.scripts.',
+    );
+  }
+} else {
+  if (Object.hasOwn(manifest.background ?? {}, 'service_worker')) {
+    throw new Error(
+      'Firefox manifest must not contain background.service_worker.',
+    );
+  }
+  if (Object.hasOwn(manifest, 'minimum_chrome_version')) {
+    throw new Error(
+      'Firefox manifest must not contain minimum_chrome_version.',
+    );
+  }
+  if ((manifest.permissions ?? []).includes('offscreen')) {
+    throw new Error(
+      'Firefox manifest must not request the offscreen permission.',
+    );
+  }
+  if ((manifest.permissions ?? []).includes('cookies')) {
+    throw new Error(
+      'Firefox manifest must keep cookies optional.',
+    );
+  }
+}
+if (
+  !isDeepStrictEqual(
+    manifest.permissions,
+    expectedManifest.permissions,
+  )
+) {
+  throw new Error(
+    `${manifestTarget === 'chrome' ? 'Chrome' : 'Firefox'} manifest permissions must exactly match the declarative specification.`,
+  );
+}
+if (
+  !isDeepStrictEqual(
+    manifest.optional_permissions,
+    expectedManifest.optional_permissions,
+  )
+) {
+  throw new Error(
+    `${manifestTarget === 'chrome' ? 'Chrome' : 'Firefox'} manifest optional permissions must exactly match the declarative specification.`,
+  );
+}
+if (
+  !isDeepStrictEqual(
+    manifest.background,
+    expectedManifest.background,
+  )
+) {
+  throw new Error(
+    `${manifestTarget === 'chrome' ? 'Chrome' : 'Firefox'} manifest background must exactly match the declarative specification.`,
+  );
+}
+for (const { label, path } of collectManifestReferences(manifest)) {
+  assertManifestReference(path, label);
+}
+if (!benchmarkBuild) {
+  for (const artifactPath of artifactPaths) {
+    const classification = classifyNonReleaseArtifact(artifactPath);
+    if (classification) {
+      throw new Error(
+        `Release build contains ${classification} artifact: ${artifactPath}`,
+      );
+    }
+    if (!isApprovedStoreArtifact(artifactPath)) {
+      throw new Error(
+        `Release build contains artifact outside the ${manifestTarget} store boundary: ${artifactPath}`,
+      );
+    }
+  }
+}
+assertStaticArtifactReferences(artifactPaths);
+for (const [entryIndex, entry] of (
+  manifest.web_accessible_resources ?? []
+).entries()) {
+  for (const [resourceIndex, pattern] of (
+    entry.resources ?? []
+  ).entries()) {
+    const label =
+      `web_accessible_resources[${entryIndex}].resources[${resourceIndex}]`;
+    assertSafeManifestArtifactPath(pattern, label);
+    if (
+      !artifactPaths.some((artifactPath) =>
+        matchesResourcePattern(pattern, artifactPath))
+    ) {
+      throw new Error(
+        `Manifest resource ${label} matches no packaged artifact: ${pattern}`,
+      );
+    }
+    const exposedPrivateArtifact = artifactPaths.find(
+      (artifactPath) =>
+        isPrivateRuntimeArtifact(artifactPath)
+        && matchesResourcePattern(pattern, artifactPath),
+    );
+    if (exposedPrivateArtifact) {
+      throw new Error(
+        `Manifest resource ${label} exposes private artifact ${exposedPrivateArtifact}: ${pattern}`,
+      );
+    }
+  }
+}
 const extensionPackage = JSON.parse(
   readFileSync(join(root, 'apps', 'extension', 'package.json'), 'utf8'),
 );
@@ -214,6 +643,12 @@ if (benchmarkBuild) {
       throw new Error(`Release build contains benchmark-only artifact: ${artifact}`);
     }
   }
+}
+
+if (!manifestBytes.equals(expectedManifestBytes)) {
+  throw new Error(
+    `${target} manifest does not byte-match the declarative source and extension workspace version.`,
+  );
 }
 
 console.log(

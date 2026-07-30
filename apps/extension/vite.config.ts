@@ -102,6 +102,11 @@ export default defineConfig(({ command, mode }): UserConfig => {
   };
   if (target.browser === 'chrome') {
     input.offscreen = resolve(extensionRoot, 'offscreen.html');
+  } else {
+    input['chunks/diagnosticLogClient'] = resolve(
+      repoRoot,
+      'src/shared/diagnosticLogClient.ts',
+    );
   }
 
   return {

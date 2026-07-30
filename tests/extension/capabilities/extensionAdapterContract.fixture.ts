@@ -337,6 +337,28 @@ export function runBackgroundCapabilityContract(
     expect(driver.headerOverrideUpdateCount()).toBe(3);
   });
 
+  it('reports header override acquisition failures as structured operation errors', async () => {
+    const driver = createDriver();
+    driver.rejectNextHeaderOverrideUpdate();
+
+    await expect(driver.capabilities.requestHeaderOverride.acquire({
+      url: 'https://cdn.example.test/image.png',
+      headers: [{
+        name: 'Referer',
+        value: 'https://example.test/',
+      }],
+    })).rejects.toMatchObject({
+      name: 'ExtensionOperationError',
+      capability: 'request-header-override',
+      operation: 'acquire',
+      code: 'browser-rejected',
+      retryable: false,
+      diagnostic: {
+        errorName: 'Error',
+      },
+    });
+  });
+
   it('keeps persistent and session storage as distinct available capabilities', async () => {
     const driver = createDriver();
 

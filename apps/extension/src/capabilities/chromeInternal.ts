@@ -270,6 +270,10 @@ export type ChromeDeclarativeNetRequest = {
     removeRuleIds: number[];
     addRules: Array<Record<string, unknown>>;
   }): Promise<void>;
+  updateSessionRules(update: {
+    removeRuleIds: number[];
+    addRules: Array<Record<string, unknown>>;
+  }): Promise<void>;
 };
 
 export function isObject(value: unknown): value is Record<string, unknown> {

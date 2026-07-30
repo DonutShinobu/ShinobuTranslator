@@ -42,6 +42,15 @@ describe('migrated extension capability seams', () => {
     expect(source).not.toMatch(/chromeStorage/u);
   });
 
+  it('image downloading uses network capabilities instead of native Chrome network rules', () => {
+    const source = read('src/background/images/imageDownloader.ts');
+    expect(source).not.toMatch(/\bgetChromeApi\b/u);
+    expect(source).not.toMatch(/\bChromeLike\b/u);
+    expect(source).not.toMatch(/\bdeclarativeNetRequest\b/u);
+    expect(source).not.toMatch(/\bwebRequest\b/u);
+    expect(source).not.toMatch(/\bupdate(?:Dynamic|Session)Rules\b/u);
+  });
+
   it.each([
     'src/runtime/onnx.ts',
     'src/runtime/onnxWorkerBridge.ts',

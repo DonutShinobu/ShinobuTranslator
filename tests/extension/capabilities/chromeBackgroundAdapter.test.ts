@@ -1,7 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   createChromeExtensionAdapter,
 } from '../../../apps/extension/src/capabilities/chromeAdapter';
+import {
+  requestHeaderOverride,
+} from '../../../apps/extension/src/capabilities/chromeNetwork';
 import {
   createAuthenticationAccess,
 } from '../../../apps/extension/src/capabilities/authentication';
@@ -87,7 +90,8 @@ function createBackgroundHarness() {
   let captureResponse: string | undefined;
   let tabMessageFailure: 'unavailable' | 'rejected' | undefined;
   let rejectedDnrUpdates = 0;
-  const dnrUpdates: Array<Record<string, unknown>> = [];
+  const dynamicDnrUpdates: Array<Record<string, unknown>> = [];
+  const sessionDnrUpdates: Array<Record<string, unknown>> = [];
   const sentTabMessages: Array<Record<string, unknown>> = [];
   const createdMenus: Array<Record<string, unknown>> = [];
 
@@ -285,7 +289,14 @@ function createBackgroundHarness() {
     },
     declarativeNetRequest: {
       async updateDynamicRules(update: Record<string, unknown>): Promise<void> {
-        dnrUpdates.push(update);
+        dynamicDnrUpdates.push(update);
+        if (rejectedDnrUpdates > 0) {
+          rejectedDnrUpdates -= 1;
+          throw new Error('api-key=top-secret');
+        }
+      },
+      async updateSessionRules(update: Record<string, unknown>): Promise<void> {
+        sessionDnrUpdates.push(update);
         if (rejectedDnrUpdates > 0) {
           rejectedDnrUpdates -= 1;
           throw new Error('api-key=top-secret');
@@ -306,7 +317,9 @@ function createBackgroundHarness() {
     onConnect,
     port,
     headersListeners,
-    dnrUpdates,
+    dnrUpdates: sessionDnrUpdates,
+    dynamicDnrUpdates,
+    sessionDnrUpdates,
     sentTabMessages,
     createdMenus,
     onClicked,
@@ -385,7 +398,22 @@ function createBackgroundHarness() {
       return headerListenerRemovals;
     },
     headerOverrideUpdateCount() {
-      return dnrUpdates.length;
+      return sessionDnrUpdates.filter((update) => {
+        const addRules = update.addRules;
+        const removeRuleIds = update.removeRuleIds;
+        return (
+          Array.isArray(addRules)
+          && addRules.some((rule) => (
+            typeof rule === 'object'
+            && rule !== null
+            && typeof (rule as { id?: unknown }).id === 'number'
+            && (rule as { id: number }).id >= 1_000_000
+          ))
+        ) || (
+          Array.isArray(removeRuleIds)
+          && removeRuleIds.some((id) => typeof id === 'number' && id >= 1_000_000)
+        );
+      }).length;
     },
     rejectNextHeaderOverrideUpdate() {
       rejectedDnrUpdates += 1;
@@ -667,10 +695,16 @@ describe('Chrome background capability adapter', () => {
         tabId: 4,
         frameId: 0,
         url: 'https://example.test/chapter',
-        responseHeaders: [{
-          name: 'Referrer-Policy',
-          value: 'strict-origin',
-        }],
+        responseHeaders: [
+          {
+            name: 'Referrer-Policy',
+            value: 'origin',
+          },
+          {
+            name: 'referrer-policy',
+            value: 'strict-origin',
+          },
+        ],
       });
     }
     expect(observations).toEqual([{
@@ -680,8 +714,29 @@ describe('Chrome background capability adapter', () => {
         frameId: 0,
         url: 'https://example.test/chapter',
       },
-      policy: 'strict-origin',
+      policy: 'origin, strict-origin',
     }]);
+
+    for (const listener of harness.headersListeners) {
+      listener({
+        tabId: 5,
+        frameId: 0,
+        url: 'https://example.test/next-chapter',
+        responseHeaders: [{
+          name: 'Referrer-Policy',
+          value: 'unsafe-url',
+        }],
+      });
+    }
+    expect(observations.at(-1)).toEqual({
+      document: {
+        documentId: 'synthetic-frame:5:0',
+        tabId: 5,
+        frameId: 0,
+        url: 'https://example.test/next-chapter',
+      },
+      policy: 'unsafe-url',
+    });
 
     cancel();
     cancel();
@@ -710,11 +765,78 @@ describe('Chrome background capability adapter', () => {
     await lease.release();
     await lease.release();
 
-    expect(harness.dnrUpdates).toHaveLength(2);
-    expect(harness.dnrUpdates[0]).toMatchObject({
-      removeRuleIds: [],
+    const overrideUpdates = harness.dnrUpdates.filter((update) => (
+      (update.removeRuleIds as number[]).some((id) => id >= 1_000_000)
+    ));
+    expect(overrideUpdates).toHaveLength(2);
+    expect(overrideUpdates[0]).toMatchObject({
+      removeRuleIds: [1_000_000],
     });
-    expect(harness.dnrUpdates[1]).toMatchObject({
+    expect(overrideUpdates[1]).toMatchObject({
+      addRules: [],
+    });
+  });
+
+  it('cleans legacy dynamic and session header rules during adapter startup', async () => {
+    const harness = createBackgroundHarness();
+
+    await vi.waitFor(() => {
+      expect(harness.dynamicDnrUpdates).toContainEqual({
+        removeRuleIds: [1],
+        addRules: [],
+      });
+      expect(harness.sessionDnrUpdates).toContainEqual({
+        removeRuleIds: [2],
+        addRules: [],
+      });
+    });
+  });
+
+  it('keeps session rule selection and native matching details inside the adapter', async () => {
+    const harness = createBackgroundHarness();
+    const lease = await harness.background.requestHeaderOverride.acquire({
+      url: 'https://cdn.example.test/image.png?size=original',
+      headers: [{
+        name: 'Referer',
+        value: 'https://reader.example.test/chapter',
+      }],
+    });
+
+    expect(harness.dynamicDnrUpdates).toContainEqual({
+      removeRuleIds: [1],
+      addRules: [],
+    });
+    expect(harness.sessionDnrUpdates).toContainEqual({
+      removeRuleIds: [2],
+      addRules: [],
+    });
+    expect(harness.sessionDnrUpdates).toContainEqual({
+      removeRuleIds: [1_000_000],
+      addRules: [{
+        id: 1_000_000,
+        priority: 1,
+        action: {
+          type: 'modifyHeaders',
+          requestHeaders: [{
+            header: 'Referer',
+            operation: 'set',
+            value: 'https://reader.example.test/chapter',
+          }],
+        },
+        condition: {
+          initiatorDomains: ['extension-id'],
+          requestDomains: ['cdn.example.test'],
+          requestMethods: ['get'],
+          resourceTypes: ['xmlhttprequest'],
+          tabIds: [-1],
+          urlFilter: 'https://cdn.example.test/image.png?size=original',
+        },
+      }],
+    });
+
+    await lease.release();
+    expect(harness.sessionDnrUpdates.at(-1)).toEqual({
+      removeRuleIds: [1_000_000],
       addRules: [],
     });
   });
@@ -740,6 +862,95 @@ describe('Chrome background capability adapter', () => {
     });
     await expect(lease.release()).resolves.toBeUndefined();
 
-    expect(harness.dnrUpdates).toHaveLength(3);
+    const overrideUpdates = harness.dnrUpdates.filter((update) => (
+      (update.removeRuleIds as number[]).some((id) => id >= 1_000_000)
+    ));
+    expect(overrideUpdates).toHaveLength(3);
+  });
+
+  it('serializes overlapping header-override lease lifetimes', async () => {
+    let updateCount = 0;
+    let activeUpdates = 0;
+    let maximumActiveUpdates = 0;
+    const override = requestHeaderOverride({
+      async updateDynamicRules(): Promise<void> {},
+      async updateSessionRules(): Promise<void> {
+        updateCount += 1;
+        activeUpdates += 1;
+        maximumActiveUpdates = Math.max(maximumActiveUpdates, activeUpdates);
+        try {
+          await Promise.resolve();
+        } finally {
+          activeUpdates -= 1;
+        }
+      },
+    }, 'extension-id');
+
+    const firstLease = override.acquire({
+      url: 'https://cdn.example.test/same-image.png',
+      headers: [{ name: 'Referer', value: 'https://first.example.test/' }],
+    });
+    const secondLease = override.acquire({
+      url: 'https://cdn.example.test/same-image.png',
+      headers: [{ name: 'Referer', value: 'https://second.example.test/' }],
+    });
+
+    const acquired: string[] = [];
+    void firstLease.then(() => acquired.push('first'));
+    void secondLease.then(() => acquired.push('second'));
+    const acquiredFirstLease = await firstLease;
+    await vi.waitFor(() => expect(acquired).toEqual(['first']));
+    expect(updateCount).toBe(2);
+
+    await acquiredFirstLease.release();
+    const acquiredSecondLease = await secondLease;
+    expect(acquired).toEqual(['first', 'second']);
+    await acquiredSecondLease.release();
+
+    expect(updateCount).toBe(5);
+    expect(maximumActiveUpdates).toBe(1);
+  });
+
+  it('reports a legacy cleanup failure before installing a new override', async () => {
+    const override = requestHeaderOverride({
+      async updateDynamicRules(): Promise<void> {
+        throw new Error('api-key=top-secret');
+      },
+      async updateSessionRules(): Promise<void> {},
+    }, 'extension-id');
+
+    await expect(override.acquire({
+      url: 'https://cdn.example.test/image.png',
+      headers: [{ name: 'Referer', value: 'https://reader.example.test/' }],
+    })).rejects.toMatchObject({
+      name: 'ExtensionOperationError',
+      capability: 'request-header-override',
+      operation: 'acquire',
+      code: 'cleanup-failed',
+      retryable: true,
+      diagnostic: {
+        errorName: 'Error',
+      },
+    });
+  });
+
+  it('retries a transient legacy cleanup failure on the first acquisition', async () => {
+    let dynamicCleanupAttempts = 0;
+    const override = requestHeaderOverride({
+      async updateDynamicRules(): Promise<void> {
+        dynamicCleanupAttempts += 1;
+        if (dynamicCleanupAttempts === 1) {
+          throw new Error('transient browser failure');
+        }
+      },
+      async updateSessionRules(): Promise<void> {},
+    }, 'extension-id');
+
+    const lease = await override.acquire({
+      url: 'https://cdn.example.test/image.png',
+      headers: [{ name: 'Referer', value: 'https://reader.example.test/' }],
+    });
+    expect(dynamicCleanupAttempts).toBe(2);
+    await lease.release();
   });
 });

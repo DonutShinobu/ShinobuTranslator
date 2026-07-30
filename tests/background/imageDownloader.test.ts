@@ -4,17 +4,21 @@ import {
   type ImageDownloaderDependencies,
 } from '../../src/background/images/imageDownloader';
 import type {
+  DocumentReferrerPolicy,
+  DocumentReferrerPolicyObserver,
   ExtensionStorage,
   JsonValue,
+  RequestHeaderOverride,
+  RequestHeaderOverrideRequest,
 } from '../../apps/extension/src/capabilities/contracts';
 import type {
-  ChromeDnrRuleUpdate,
-  ChromeWebRequestHeadersDetails,
-} from '../../src/shared/chrome';
+  TabDocumentSource,
+} from '../../apps/extension/src/capabilities/guards';
+import {
+  ExtensionOperationError,
+} from '../../apps/extension/src/capabilities/errors';
 
 const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
-
-type RuleUpdate = ChromeDnrRuleUpdate;
 
 function createTestSessionStorage(
   initial: Readonly<Record<string, JsonValue>> = {},
@@ -33,14 +37,128 @@ function createTestSessionStorage(
   };
 }
 
+type ReferrerPolicyObserverHarness = {
+  capability: DocumentReferrerPolicyObserver;
+  emit(observation: DocumentReferrerPolicy): void;
+};
+
+function createReferrerPolicyObserverHarness(): ReferrerPolicyObserverHarness {
+  const listeners = new Set<(observation: DocumentReferrerPolicy) => void>();
+  return {
+    capability: {
+      onObserved(listener) {
+        listeners.add(listener);
+        let cancelled = false;
+        return () => {
+          if (cancelled) return;
+          cancelled = true;
+          listeners.delete(listener);
+        };
+      },
+    },
+    emit(observation) {
+      for (const listener of listeners) listener(observation);
+    },
+  };
+}
+
+type HeaderOverrideHarness = {
+  capability: RequestHeaderOverride;
+  requests: RequestHeaderOverrideRequest[];
+  releases: Array<ReturnType<typeof vi.fn>>;
+  rejectNextAcquire(error?: Error): void;
+  rejectNextRelease(error?: Error): void;
+  rejectReleaseAttempts(attempts: number, error?: Error): void;
+};
+
+function operationError(
+  operation: 'acquire' | 'release',
+  code: 'browser-rejected' | 'cleanup-failed',
+  cause: Error,
+): ExtensionOperationError {
+  return new ExtensionOperationError({
+    capability: 'request-header-override',
+    operation,
+    code,
+    retryable: operation === 'release',
+    diagnostic: {
+      errorName: cause.name,
+    },
+    cause,
+  });
+}
+
+function createHeaderOverrideHarness(): HeaderOverrideHarness {
+  const requests: RequestHeaderOverrideRequest[] = [];
+  const releases: Array<ReturnType<typeof vi.fn>> = [];
+  let acquireFailure: Error | undefined;
+  let releaseFailure: Error | undefined;
+  let releaseFailuresRemaining = 0;
+  return {
+    capability: {
+      async acquire(request) {
+        if (acquireFailure) {
+          const failure = acquireFailure;
+          acquireFailure = undefined;
+          throw operationError('acquire', 'browser-rejected', failure);
+        }
+        requests.push(request);
+        const release = vi.fn(async () => {
+          if (!releaseFailure || releaseFailuresRemaining <= 0) return;
+          const failure = releaseFailure;
+          releaseFailuresRemaining -= 1;
+          if (releaseFailuresRemaining === 0) releaseFailure = undefined;
+          throw operationError('release', 'cleanup-failed', failure);
+        });
+        releases.push(release);
+        return { release };
+      },
+    },
+    requests,
+    releases,
+    rejectNextAcquire(error = new Error('header override acquire failed')) {
+      acquireFailure = error;
+    },
+    rejectNextRelease(error = new Error('header override release failed')) {
+      releaseFailure = error;
+      releaseFailuresRemaining = 1;
+    },
+    rejectReleaseAttempts(
+      attempts,
+      error = new Error('header override release failed'),
+    ) {
+      releaseFailure = error;
+      releaseFailuresRemaining = attempts;
+    },
+  };
+}
+
+function documentSource(
+  url?: string,
+  overrides: Partial<TabDocumentSource> = {},
+): TabDocumentSource {
+  return {
+    kind: 'tab-document',
+    documentId: 'document-7',
+    tabId: 7,
+    frameId: 0,
+    ...(url ? { url } : {}),
+    ...overrides,
+  };
+}
+
 function createImageDownloader(
-  dependencies: Omit<ImageDownloaderDependencies, 'sessionStorage'> & {
+  dependencies: Partial<Omit<ImageDownloaderDependencies, 'sessionStorage'>> & {
     sessionStorage?: ExtensionStorage;
-  },
+  } = {},
 ) {
+  const observer = createReferrerPolicyObserverHarness();
+  const headerOverride = createHeaderOverrideHarness();
   return createImageDownloaderWithCapabilities({
     ...dependencies,
     sessionStorage: dependencies.sessionStorage ?? createTestSessionStorage(),
+    referrerPolicies: dependencies.referrerPolicies ?? observer.capability,
+    requestHeaderOverride: dependencies.requestHeaderOverride ?? headerOverride.capability,
   });
 }
 
@@ -63,44 +181,30 @@ function createJpegResponse(
   return response;
 }
 
-function getInstalledReferer(updateSessionRules: ReturnType<typeof vi.fn>): string | undefined {
-  const install = updateSessionRules.mock.calls
-    .map(([update]) => update as RuleUpdate)
-    .find((update) => update.addRules.length > 0);
-  const rule = install?.addRules[0] as {
-    action?: {
-      requestHeaders?: Array<{ value?: string }>;
-    };
-  } | undefined;
-  return rule?.action?.requestHeaders?.[0]?.value;
+function getRequestedReferer(harness: HeaderOverrideHarness): string | undefined {
+  return harness.requests
+    .at(-1)
+    ?.headers.find((header) => header.name.toLowerCase() === 'referer')
+    ?.value;
 }
 
 async function observeInstalledReferer(options: {
   targetUrl: string;
   referrerPolicy?: ReferrerPolicy;
-  sender?: {
-    documentUrl?: string;
-    tab?: { id?: number; url?: string };
-  };
+  source?: TabDocumentSource;
 }): Promise<string | undefined> {
-  const updateSessionRules = vi.fn(async (_update: RuleUpdate) => {});
+  const headerOverride = createHeaderOverrideHarness();
   const downloader = createImageDownloader({
-    chromeApi: {
-      runtime: { id: 'shinobu-extension-id' },
-      declarativeNetRequest: {
-        updateDynamicRules: vi.fn(async (_update: RuleUpdate) => {}),
-        updateSessionRules,
-      },
-    },
+    requestHeaderOverride: headerOverride.capability,
     fetchImage: vi.fn(async () => createJpegResponse()),
   });
   await downloader.download({
     imageUrl: options.targetUrl,
     referrerPolicy: options.referrerPolicy,
-  }, options.sender ?? {
-    documentUrl: 'https://user:password@reader.example/chapter/1?mode=web#page-2',
-  });
-  return getInstalledReferer(updateSessionRules);
+  }, options.source ?? documentSource(
+    'https://user:password@reader.example/chapter/1?mode=web#page-2',
+  ));
+  return getRequestedReferer(headerOverride);
 }
 
 const fullSourceReferrer = 'https://reader.example/chapter/1?mode=web';
@@ -205,8 +309,7 @@ const referrerPolicyCases = referrerPolicyMatrix.flatMap((row) => [
 
 describe('ImageDownloader', () => {
   it('downloads original bytes with the source page origin for an arbitrary cross-origin image', async () => {
-    const updateDynamicRules = vi.fn(async () => {});
-    const updateSessionRules = vi.fn(async () => {});
+    const headerOverride = createHeaderOverrideHarness();
     const response = new Response(jpegBytes, {
       status: 200,
       headers: { 'content-type': 'image/jpeg' },
@@ -216,58 +319,28 @@ describe('ImageDownloader', () => {
     });
     const fetchImage = vi.fn(async () => response);
     const downloader = createImageDownloader({
-      chromeApi: {
-        runtime: { id: 'shinobu-extension-id' },
-        declarativeNetRequest: {
-          updateDynamicRules,
-          updateSessionRules,
-        },
-      },
+      requestHeaderOverride: headerOverride.capability,
       fetchImage,
     });
 
     await expect(downloader.download({
       imageUrl: 'https://cdn.example/source.jpg',
       referrerPolicy: 'strict-origin-when-cross-origin',
-    }, {
-      documentUrl: 'https://reader.example/chapter/1?mode=web#page-2',
-      tab: { id: 7, url: 'https://reader.example/chapter/1?mode=web#page-2' },
-    })).resolves.toEqual({
+    }, documentSource(
+      'https://reader.example/chapter/1?mode=web#page-2',
+    ))).resolves.toEqual({
       base64: '/9j/4AAQ',
       contentType: 'image/jpeg',
       sourceUrl: 'https://cdn.example/final.jpg',
     });
 
-    expect(updateDynamicRules).toHaveBeenCalledWith({
-      removeRuleIds: [1],
-      addRules: [],
-    });
-    expect(updateSessionRules).toHaveBeenCalledWith({
-      removeRuleIds: [2],
-      addRules: [],
-    });
-    expect(updateSessionRules).toHaveBeenCalledWith({
-      removeRuleIds: [2],
-      addRules: [{
-        id: 2,
-        priority: 1,
-        action: {
-          type: 'modifyHeaders',
-          requestHeaders: [{
-            header: 'Referer',
-            operation: 'set',
-            value: 'https://reader.example/',
-          }],
-        },
-        condition: {
-          initiatorDomains: ['shinobu-extension-id'],
-          requestDomains: ['cdn.example'],
-          tabIds: [-1],
-          requestMethods: ['get'],
-          resourceTypes: ['xmlhttprequest'],
-        },
+    expect(headerOverride.requests).toEqual([{
+      url: 'https://cdn.example/source.jpg',
+      headers: [{
+        name: 'Referer',
+        value: 'https://reader.example/',
       }],
-    });
+    }]);
     expect(fetchImage).toHaveBeenCalledWith('https://cdn.example/source.jpg', {
       method: 'GET',
       credentials: 'include',
@@ -275,10 +348,7 @@ describe('ImageDownloader', () => {
       redirect: 'follow',
       signal: expect.any(AbortSignal),
     });
-    expect(updateSessionRules).toHaveBeenLastCalledWith({
-      removeRuleIds: [2],
-      addRules: [],
-    });
+    expect(headerOverride.releases[0]).toHaveBeenCalledTimes(1);
   });
 
   it.each(referrerPolicyCases)('honors $name', async ({ targetUrl, policy, expected }) => {
@@ -292,106 +362,69 @@ describe('ImageDownloader', () => {
     await expect(observeInstalledReferer({
       targetUrl: 'https://cdn.example/image.jpg',
       referrerPolicy: 'unsafe-url',
-      sender: {
-        documentUrl: `https://reader.example/chapter?payload=${'x'.repeat(4_100)}`,
-      },
+      source: documentSource(
+        `https://reader.example/chapter?payload=${'x'.repeat(4_100)}`,
+      ),
     })).resolves.toBe('https://reader.example/');
   });
 
-  it('uses the trusted tab URL when documentUrl is unavailable', async () => {
+  it('uses the normalized trusted document URL', async () => {
     await expect(observeInstalledReferer({
       targetUrl: 'https://cdn.example/image.jpg',
-      sender: {
-        documentUrl: 'about:blank',
-        tab: { id: 7, url: 'https://fallback.example/reader#page' },
-      },
+      source: documentSource('https://fallback.example/reader#page'),
     })).resolves.toBe('https://fallback.example/');
   });
 
   it('honors a tracked navigation Referrer-Policy header when the page has no DOM override', async () => {
-    let headersListener: ((details: ChromeWebRequestHeadersDetails) => void) | undefined;
-    const addListener = vi.fn((
-      listener: (details: ChromeWebRequestHeadersDetails) => void,
-    ) => {
-      headersListener = listener;
-    });
-    const updateSessionRules = vi.fn(async (_update: RuleUpdate) => {});
+    const observer = createReferrerPolicyObserverHarness();
+    const headerOverride = createHeaderOverrideHarness();
     const downloader = createImageDownloader({
-      chromeApi: {
-        runtime: { id: 'shinobu-extension-id' },
-        declarativeNetRequest: {
-          updateDynamicRules: vi.fn(async (_update: RuleUpdate) => {}),
-          updateSessionRules,
-        },
-        webRequest: {
-          onHeadersReceived: { addListener },
-        },
-      },
+      referrerPolicies: observer.capability,
+      requestHeaderOverride: headerOverride.capability,
       fetchImage: vi.fn(async () => createJpegResponse()),
     });
 
-    expect(addListener).toHaveBeenCalledWith(
-      expect.any(Function),
-      {
-        urls: ['<all_urls>'],
-        types: ['main_frame', 'sub_frame'],
+    observer.emit({
+      document: {
+        documentId: 'document-1',
+        tabId: 7,
+        frameId: 0,
+        url: 'https://reader.example/chapter/1?mode=web',
       },
-      ['responseHeaders', 'extraHeaders'],
-    );
-    headersListener?.({
-      documentId: 'document-1',
-      tabId: 7,
-      frameId: 0,
-      url: 'https://reader.example/chapter/1?mode=web',
-      responseHeaders: [{
-        name: 'Referrer-Policy',
-        value: 'origin, unsafe-url',
-      }],
+      policy: 'origin, unsafe-url',
     });
 
     await downloader.download({
       imageUrl: 'https://cdn.example/image.jpg',
-    }, {
+    }, documentSource(
+      'https://reader.example/chapter/1?mode=web#page-2',
+      {
       documentId: 'document-1',
-      documentUrl: 'https://reader.example/chapter/1?mode=web#page-2',
-      frameId: 0,
-      tab: { id: 7 },
-    });
-    expect(getInstalledReferer(updateSessionRules)).toBe(
+      },
+    ));
+    expect(getRequestedReferer(headerOverride)).toBe(
       'https://reader.example/chapter/1?mode=web',
     );
 
-    updateSessionRules.mockClear();
+    const requestCount = headerOverride.requests.length;
     await downloader.download({
       imageUrl: 'https://cdn.example/image.jpg',
       referrerPolicy: 'no-referrer',
-    }, {
-      documentId: 'document-1',
-      documentUrl: 'https://reader.example/chapter/1?mode=web#page-2',
-      frameId: 0,
-      tab: { id: 7 },
-    });
-    expect(updateSessionRules.mock.calls
-      .map(([update]) => update as RuleUpdate)
-      .filter((update) => update.addRules.length > 0)).toHaveLength(0);
+    }, documentSource(
+      'https://reader.example/chapter/1?mode=web#page-2',
+      { documentId: 'document-1' },
+    ));
+    expect(headerOverride.requests).toHaveLength(requestCount);
   });
 
   it('persists tracked document policies through the injected session storage capability', async () => {
-    let headersListener: ((details: ChromeWebRequestHeadersDetails) => void) | undefined;
+    const observer = createReferrerPolicyObserverHarness();
     const read = vi.fn(async (keys: readonly string[]) => (
       Object.fromEntries(keys.map((key) => [key, undefined]))
     ));
     const write = vi.fn(async (_values: Readonly<Record<string, JsonValue>>) => {});
     createImageDownloader({
-      chromeApi: {
-        webRequest: {
-          onHeadersReceived: {
-            addListener(listener) {
-              headersListener = listener;
-            },
-          },
-        },
-      },
+      referrerPolicies: observer.capability,
       sessionStorage: {
         read,
         write,
@@ -405,15 +438,14 @@ describe('ImageDownloader', () => {
         'mangaTranslate.documentReferrerPolicies',
       ]);
     });
-    headersListener?.({
-      documentId: 'document-1',
-      tabId: 7,
-      frameId: 0,
-      url: 'https://reader.example/chapter/1',
-      responseHeaders: [{
-        name: 'Referrer-Policy',
-        value: 'origin',
-      }],
+    observer.emit({
+      document: {
+        documentId: 'document-1',
+        tabId: 7,
+        frameId: 0,
+        url: 'https://reader.example/chapter/1',
+      },
+      policy: 'origin',
     });
 
     await vi.waitFor(() => {
@@ -424,194 +456,192 @@ describe('ImageDownloader', () => {
   });
 
   it('does not reuse a tracked policy after the same frame navigates to a different document URL', async () => {
-    let headersListener: ((details: ChromeWebRequestHeadersDetails) => void) | undefined;
-    const updateSessionRules = vi.fn(async (_update: RuleUpdate) => {});
+    const observer = createReferrerPolicyObserverHarness();
+    const headerOverride = createHeaderOverrideHarness();
     const downloader = createImageDownloader({
-      chromeApi: {
-        runtime: { id: 'shinobu-extension-id' },
-        declarativeNetRequest: {
-          updateDynamicRules: vi.fn(async (_update: RuleUpdate) => {}),
-          updateSessionRules,
-        },
-        webRequest: {
-          onHeadersReceived: {
-            addListener(listener) {
-              headersListener = listener;
-            },
-          },
-        },
-      },
+      referrerPolicies: observer.capability,
+      requestHeaderOverride: headerOverride.capability,
       fetchImage: vi.fn(async () => createJpegResponse()),
     });
 
-    headersListener?.({
-      tabId: 7,
-      frameId: 0,
-      url: 'https://reader.example/chapter/old',
-      responseHeaders: [{
-        name: 'Referrer-Policy',
-        value: 'unsafe-url',
-      }],
+    observer.emit({
+      document: {
+        documentId: 'old-document',
+        tabId: 7,
+        frameId: 0,
+        url: 'https://reader.example/chapter/old',
+      },
+      policy: 'unsafe-url',
     });
 
     await downloader.download({
       imageUrl: 'https://cdn.example/image.jpg',
-    }, {
-      documentId: 'new-document',
-      documentUrl: 'https://reader.example/chapter/new?secret=value#page',
-      frameId: 0,
-      tab: { id: 7 },
-    });
+    }, documentSource(
+      'https://reader.example/chapter/new?secret=value#page',
+      { documentId: 'new-document' },
+    ));
 
-    expect(getInstalledReferer(updateSessionRules)).toBe('https://reader.example/');
+    expect(getRequestedReferer(headerOverride)).toBe('https://reader.example/');
   });
 
   it('downloads without a Referer rule when no trusted page URL exists', async () => {
-    const updateSessionRules = vi.fn(async (_update: RuleUpdate) => {});
+    const headerOverride = createHeaderOverrideHarness();
     const fetchImage = vi.fn(async () => createJpegResponse());
     const downloader = createImageDownloader({
-      chromeApi: {
-        runtime: { id: 'shinobu-extension-id' },
-        declarativeNetRequest: {
-          updateDynamicRules: vi.fn(async (_update: RuleUpdate) => {}),
-          updateSessionRules,
-        },
-      },
+      requestHeaderOverride: headerOverride.capability,
       fetchImage,
     });
 
     await expect(downloader.download({
       imageUrl: 'https://cdn.example/image.jpg',
-    }, {})).resolves.toMatchObject({
+    }, documentSource())).resolves.toMatchObject({
       contentType: 'image/jpeg',
     });
 
-    expect(updateSessionRules.mock.calls
-      .map(([update]) => update as RuleUpdate)
-      .filter((update) => update.addRules.length > 0)).toHaveLength(0);
+    expect(headerOverride.requests).toHaveLength(0);
     expect(fetchImage).toHaveBeenCalledTimes(1);
   });
 
-  it('falls back to a plain request when the temporary rule cannot be installed', async () => {
-    const updateSessionRules = vi.fn(async (update: RuleUpdate) => {
-      if (update.addRules.length > 0) throw new Error('DNR permission unavailable');
-    });
+  it('does not issue a plain request when the temporary rule cannot be installed', async () => {
+    const headerOverride = createHeaderOverrideHarness();
+    headerOverride.rejectNextAcquire();
+    const fetchImage = vi.fn(async () => createJpegResponse());
     const downloader = createImageDownloader({
-      chromeApi: {
-        runtime: { id: 'shinobu-extension-id' },
-        declarativeNetRequest: {
-          updateDynamicRules: vi.fn(async (_update: RuleUpdate) => {}),
-          updateSessionRules,
-        },
-      },
+      requestHeaderOverride: headerOverride.capability,
+      fetchImage,
+    });
+
+    await expect(downloader.download({
+      imageUrl: 'https://cdn.example/image.jpg',
+    }, documentSource(
+      'https://reader.example/chapter',
+    ))).rejects.toMatchObject({
+      name: 'ExtensionOperationError',
+      capability: 'request-header-override',
+      operation: 'acquire',
+      code: 'browser-rejected',
+    });
+    expect(fetchImage).not.toHaveBeenCalled();
+    expect(headerOverride.requests).toHaveLength(0);
+    expect(headerOverride.releases).toHaveLength(0);
+  });
+
+  it('does not report success while a temporary header override remains active', async () => {
+    const headerOverride = createHeaderOverrideHarness();
+    headerOverride.rejectReleaseAttempts(2);
+    const downloader = createImageDownloader({
+      requestHeaderOverride: headerOverride.capability,
       fetchImage: vi.fn(async () => createJpegResponse()),
     });
 
     await expect(downloader.download({
       imageUrl: 'https://cdn.example/image.jpg',
-    }, {
-      documentUrl: 'https://reader.example/chapter',
-    })).resolves.toMatchObject({
+    }, documentSource(
+      'https://reader.example/chapter',
+    ))).rejects.toMatchObject({
+      name: 'ExtensionOperationError',
+      capability: 'request-header-override',
+      operation: 'release',
+      code: 'cleanup-failed',
+      retryable: true,
+      diagnostic: {
+        errorName: 'Error',
+      },
+    });
+    expect(headerOverride.releases[0]).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries a retryable cleanup failure before reporting success', async () => {
+    const headerOverride = createHeaderOverrideHarness();
+    headerOverride.rejectNextRelease();
+    const downloader = createImageDownloader({
+      requestHeaderOverride: headerOverride.capability,
+      fetchImage: vi.fn(async () => createJpegResponse()),
+    });
+
+    await expect(downloader.download({
+      imageUrl: 'https://cdn.example/image.jpg',
+    }, documentSource(
+      'https://reader.example/chapter',
+    ))).resolves.toMatchObject({
       contentType: 'image/jpeg',
     });
-    expect(updateSessionRules).toHaveBeenLastCalledWith({
-      removeRuleIds: [2],
-      addRules: [],
-    });
+    expect(headerOverride.releases[0]).toHaveBeenCalledTimes(2);
   });
 
-  it('does not report success while a temporary Referer rule remains active', async () => {
-    let sessionUpdateCount = 0;
-    const updateSessionRules = vi.fn(async (update: RuleUpdate) => {
-      sessionUpdateCount += 1;
-      if (sessionUpdateCount >= 3 && update.addRules.length === 0) {
-        throw new Error('session cleanup failed');
-      }
-    });
+  it('does not try another candidate after header override cleanup fails', async () => {
+    const headerOverride = createHeaderOverrideHarness();
+    headerOverride.rejectReleaseAttempts(2);
+    const fetchImage = vi.fn()
+      .mockResolvedValueOnce(new Response('missing', { status: 404 }))
+      .mockResolvedValueOnce(createJpegResponse());
     const downloader = createImageDownloader({
-      chromeApi: {
-        runtime: { id: 'shinobu-extension-id' },
-        declarativeNetRequest: {
-          updateDynamicRules: vi.fn(async (_update: RuleUpdate) => {}),
-          updateSessionRules,
-        },
-      },
-      fetchImage: vi.fn(async () => createJpegResponse()),
+      requestHeaderOverride: headerOverride.capability,
+      fetchImage,
     });
 
     await expect(downloader.download({
-      imageUrl: 'https://cdn.example/image.jpg',
-    }, {
-      documentUrl: 'https://reader.example/chapter',
-    })).rejects.toThrow('临时 Referer 规则清理失败');
+      imageUrl: 'https://pbs.twimg.com/media/example?format=jpg&name=large',
+    }, documentSource(
+      'https://reader.example/chapter',
+    ))).rejects.toMatchObject({
+      name: 'ExtensionOperationError',
+      operation: 'release',
+      code: 'cleanup-failed',
+    });
+    expect(fetchImage).toHaveBeenCalledTimes(1);
+    expect(headerOverride.releases[0]).toHaveBeenCalledTimes(2);
   });
 
-  it('reports sanitized acquisition diagnostics when both DNR and the request fail', async () => {
-    const updateSessionRules = vi.fn(async (update: RuleUpdate) => {
-      if (update.addRules.length > 0) throw new Error('DNR permission unavailable');
-    });
+  it('propagates structured acquisition failures without issuing an unprotected request', async () => {
+    const headerOverride = createHeaderOverrideHarness();
+    headerOverride.rejectNextAcquire(new Error(
+      'Failed https://cdn.example/private/image.jpg?token=secret',
+    ));
+    const fetchImage = vi.fn(async () => new Response('forbidden', { status: 403 }));
     const downloader = createImageDownloader({
-      chromeApi: {
-        runtime: { id: 'shinobu-extension-id' },
-        declarativeNetRequest: {
-          updateDynamicRules: vi.fn(async (_update: RuleUpdate) => {}),
-          updateSessionRules,
-        },
-      },
-      fetchImage: vi.fn(async () => new Response('forbidden', { status: 403 })),
+      requestHeaderOverride: headerOverride.capability,
+      fetchImage,
     });
 
     const result = downloader.download({
       imageUrl: 'https://cdn.example/private/image.jpg?token=secret',
-    }, {
-      documentUrl: 'https://reader.example/chapter/private?session=secret',
+    }, documentSource(
+      'https://reader.example/chapter/private?session=secret',
+    ));
+    await expect(result).rejects.toMatchObject({
+      name: 'ExtensionOperationError',
+      capability: 'request-header-override',
+      operation: 'acquire',
+      code: 'browser-rejected',
+      retryable: false,
+      diagnostic: {
+        errorName: 'Error',
+      },
     });
-    await expect(result).rejects.toThrow(
-      '无法取得原始图片字节: 候选 1/1, host=cdn.example, referer=none, HTTP 403',
-    );
-    await expect(result).rejects.not.toThrow('token=secret');
-    await expect(result).rejects.not.toThrow('session=secret');
-    await expect(result).rejects.toThrow('DNR=DNR permission unavailable');
-    expect(updateSessionRules).toHaveBeenLastCalledWith({
-      removeRuleIds: [2],
-      addRules: [],
-    });
+    expect(fetchImage).not.toHaveBeenCalled();
+    expect(headerOverride.releases).toHaveLength(0);
   });
 
-  it('removes the temporary rule after an HTTP error', async () => {
-    const updateSessionRules = vi.fn(async (_update: RuleUpdate) => {});
+  it('releases the temporary header override after an HTTP error', async () => {
+    const headerOverride = createHeaderOverrideHarness();
     const downloader = createImageDownloader({
-      chromeApi: {
-        runtime: { id: 'shinobu-extension-id' },
-        declarativeNetRequest: {
-          updateDynamicRules: vi.fn(async (_update: RuleUpdate) => {}),
-          updateSessionRules,
-        },
-      },
+      requestHeaderOverride: headerOverride.capability,
       fetchImage: vi.fn(async () => new Response('forbidden', { status: 403 })),
     });
 
     await expect(downloader.download({
       imageUrl: 'https://cdn.example/private.jpg',
-    }, {
-      documentUrl: 'https://reader.example/chapter',
-    })).rejects.toThrow('HTTP 403');
-    expect(updateSessionRules).toHaveBeenLastCalledWith({
-      removeRuleIds: [2],
-      addRules: [],
-    });
+    }, documentSource(
+      'https://reader.example/chapter',
+    ))).rejects.toThrow('HTTP 403');
+    expect(headerOverride.releases[0]).toHaveBeenCalledTimes(1);
   });
 
   it('redacts URLs embedded in external exception text', async () => {
-    const updateSessionRules = vi.fn(async (_update: RuleUpdate) => {});
+    const headerOverride = createHeaderOverrideHarness();
     const downloader = createImageDownloader({
-      chromeApi: {
-        runtime: { id: 'shinobu-extension-id' },
-        declarativeNetRequest: {
-          updateDynamicRules: vi.fn(async (_update: RuleUpdate) => {}),
-          updateSessionRules,
-        },
-      },
+      requestHeaderOverride: headerOverride.capability,
       fetchImage: vi.fn(async () => {
         throw new Error(
           'Failed https://cdn.example/private/image.jpg?token=secret from https://reader.example/private/path',
@@ -621,17 +651,14 @@ describe('ImageDownloader', () => {
 
     const result = downloader.download({
       imageUrl: 'https://cdn.example/private/image.jpg?token=secret',
-    }, {
-      documentUrl: 'https://reader.example/private/path?session=secret',
-    });
+    }, documentSource(
+      'https://reader.example/private/path?session=secret',
+    ));
     await expect(result).rejects.toThrow('host=cdn.example');
     await expect(result).rejects.not.toThrow('token=secret');
     await expect(result).rejects.not.toThrow('/private/path');
     await expect(result).rejects.toThrow('[URL_REDACTED]');
-    expect(updateSessionRules).toHaveBeenLastCalledWith({
-      removeRuleIds: [2],
-      addRules: [],
-    });
+    expect(headerOverride.releases[0]).toHaveBeenCalledTimes(1);
   });
 
   it('rejects successful anti-hotlink HTML and unknown payloads', async () => {
@@ -646,21 +673,19 @@ describe('ImageDownloader', () => {
       }),
     ];
     const downloader = createImageDownloader({
-      chromeApi: null,
       fetchImage: vi.fn(async () => responses.shift() as Response),
     });
 
     await expect(downloader.download({
       imageUrl: 'https://cdn.example/blocked.jpg',
-    }, {})).rejects.toThrow('服务器返回了 HTML，未返回原始图片');
+    }, documentSource())).rejects.toThrow('服务器返回了 HTML，未返回原始图片');
     await expect(downloader.download({
       imageUrl: 'https://cdn.example/unknown.jpg',
-    }, {})).rejects.toThrow('响应不是支持的图片格式（application/octet-stream）');
+    }, documentSource())).rejects.toThrow('响应不是支持的图片格式（application/octet-stream）');
   });
 
   it('rejects an empty successful response', async () => {
     const downloader = createImageDownloader({
-      chromeApi: null,
       fetchImage: vi.fn(async () => new Response(null, {
         status: 200,
         headers: { 'content-type': 'image/png' },
@@ -669,7 +694,7 @@ describe('ImageDownloader', () => {
 
     await expect(downloader.download({
       imageUrl: 'https://cdn.example/empty.png',
-    }, {})).rejects.toThrow('返回空文件');
+    }, documentSource())).rejects.toThrow('返回空文件');
   });
 
   it('tries the X original-size candidate before falling back to the requested URL', async () => {
@@ -677,14 +702,13 @@ describe('ImageDownloader', () => {
       .mockResolvedValueOnce(new Response('missing', { status: 404 }))
       .mockResolvedValueOnce(createJpegResponse());
     const downloader = createImageDownloader({
-      chromeApi: null,
       fetchImage,
     });
     const requestedUrl = 'https://pbs.twimg.com/media/example?format=jpg&name=large';
 
     await expect(downloader.download({
       imageUrl: requestedUrl,
-    }, {})).resolves.toMatchObject({
+    }, documentSource())).resolves.toMatchObject({
       contentType: 'image/jpeg',
     });
     expect(fetchImage.mock.calls.map(([url]) => url)).toEqual([
@@ -693,94 +717,88 @@ describe('ImageDownloader', () => {
     ]);
   });
 
-  it('serializes concurrent downloads so temporary request contexts cannot overlap', async () => {
+  it('allows concurrent downloads with independently released header leases', async () => {
     let resolveFirstResponse: ((response: Response) => void) | undefined;
     const firstResponse = new Promise<Response>((resolve) => {
       resolveFirstResponse = resolve;
     });
-    const sessionEvents: string[] = [];
-    const updateSessionRules = vi.fn(async (update: RuleUpdate) => {
-      const referer = (update.addRules[0] as {
-        action?: { requestHeaders?: Array<{ value?: string }> };
-      } | undefined)?.action?.requestHeaders?.[0]?.value;
-      sessionEvents.push(referer ? `install:${referer}` : 'remove');
-    });
-    const fetchImage = vi.fn()
-      .mockImplementationOnce(async () => firstResponse)
-      .mockImplementationOnce(async () => createJpegResponse());
+    const headerOverride = createHeaderOverrideHarness();
+    const firstUrl = 'https://first-cdn.example/image.jpg';
+    const secondUrl = 'https://second-cdn.example/image.jpg';
+    const fetchImage = vi.fn(async (url: string | URL | Request) => (
+      url.toString() === firstUrl ? firstResponse : createJpegResponse()
+    ));
     const downloader = createImageDownloader({
-      chromeApi: {
-        runtime: { id: 'shinobu-extension-id' },
-        declarativeNetRequest: {
-          updateDynamicRules: vi.fn(async (_update: RuleUpdate) => {}),
-          updateSessionRules,
-        },
-      },
+      requestHeaderOverride: headerOverride.capability,
       fetchImage,
     });
 
     const first = downloader.download({
-      imageUrl: 'https://first-cdn.example/image.jpg',
-    }, {
-      documentUrl: 'https://first-reader.example/chapter',
-    });
+      imageUrl: firstUrl,
+    }, documentSource('https://first-reader.example/chapter'));
     const second = downloader.download({
-      imageUrl: 'https://second-cdn.example/image.jpg',
-    }, {
-      documentUrl: 'https://second-reader.example/chapter',
-    });
+      imageUrl: secondUrl,
+    }, documentSource(
+      'https://second-reader.example/chapter',
+      { documentId: 'document-8', tabId: 8 },
+    ));
     await vi.waitFor(() => {
-      expect(fetchImage).toHaveBeenCalledTimes(1);
+      expect(fetchImage).toHaveBeenCalledTimes(2);
     });
-    expect(sessionEvents).toEqual([
-      'remove',
-      'install:https://first-reader.example/',
-    ]);
+    expect(headerOverride.requests).toEqual(expect.arrayContaining([
+      {
+        url: firstUrl,
+        headers: [{
+          name: 'Referer',
+          value: 'https://first-reader.example/',
+        }],
+      },
+      {
+        url: secondUrl,
+        headers: [{
+          name: 'Referer',
+          value: 'https://second-reader.example/',
+        }],
+      },
+    ]));
+    const firstLeaseIndex = headerOverride.requests.findIndex(
+      (request) => request.url === firstUrl,
+    );
+    const secondLeaseIndex = headerOverride.requests.findIndex(
+      (request) => request.url === secondUrl,
+    );
+    await expect(second).resolves.toMatchObject({ contentType: 'image/jpeg' });
+    expect(headerOverride.releases[firstLeaseIndex]).not.toHaveBeenCalled();
+    expect(headerOverride.releases[secondLeaseIndex]).toHaveBeenCalledTimes(1);
 
     resolveFirstResponse?.(createJpegResponse());
     await expect(first).resolves.toMatchObject({ contentType: 'image/jpeg' });
-    await expect(second).resolves.toMatchObject({ contentType: 'image/jpeg' });
-    expect(fetchImage.mock.calls.map(([url]) => url)).toEqual([
-      'https://first-cdn.example/image.jpg',
-      'https://second-cdn.example/image.jpg',
-    ]);
-    expect(sessionEvents).toEqual([
-      'remove',
-      'install:https://first-reader.example/',
-      'remove',
-      'install:https://second-reader.example/',
-      'remove',
-    ]);
+    expect(fetchImage.mock.calls.map(([url]) => url)).toEqual(
+      expect.arrayContaining([firstUrl, secondUrl]),
+    );
+    expect(headerOverride.releases[firstLeaseIndex]).toHaveBeenCalledTimes(1);
+    expect(headerOverride.releases[secondLeaseIndex]).toHaveBeenCalledTimes(1);
   });
 
-  it('aborts timed-out downloads and removes their temporary rule', async () => {
-    const updateSessionRules = vi.fn(async (_update: RuleUpdate) => {});
+  it('aborts timed-out downloads and releases their temporary header override', async () => {
+    const headerOverride = createHeaderOverrideHarness();
     const fetchImage = vi.fn((_url: string, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
       init?.signal?.addEventListener('abort', () => {
         reject(new DOMException('aborted', 'AbortError'));
       });
     }));
     const downloader = createImageDownloader({
-      chromeApi: {
-        runtime: { id: 'shinobu-extension-id' },
-        declarativeNetRequest: {
-          updateDynamicRules: vi.fn(async (_update: RuleUpdate) => {}),
-          updateSessionRules,
-        },
-      },
+      requestHeaderOverride: headerOverride.capability,
       fetchImage: fetchImage as unknown as typeof fetch,
       timeoutMs: 5,
     });
 
     await expect(downloader.download({
       imageUrl: 'https://cdn.example/slow.jpg',
-    }, {
-      documentUrl: 'https://reader.example/chapter',
-    })).rejects.toThrow('请求超时（5ms）');
-    expect(updateSessionRules).toHaveBeenLastCalledWith({
-      removeRuleIds: [2],
-      addRules: [],
-    });
+    }, documentSource(
+      'https://reader.example/chapter',
+    ))).rejects.toThrow('请求超时（5ms）');
+    expect(headerOverride.releases[0]).toHaveBeenCalledTimes(1);
   });
 
   it.each([
@@ -790,11 +808,13 @@ describe('ImageDownloader', () => {
   ])('rejects unsupported image URL %s before fetching', async (imageUrl) => {
     const fetchImage = vi.fn(async () => createJpegResponse());
     const downloader = createImageDownloader({
-      chromeApi: null,
       fetchImage,
     });
 
-    await expect(downloader.download({ imageUrl }, {})).rejects.toThrow(/图片地址/u);
+    await expect(downloader.download(
+      { imageUrl },
+      documentSource(),
+    )).rejects.toThrow(/图片地址/u);
     expect(fetchImage).not.toHaveBeenCalled();
   });
 });

@@ -11,6 +11,20 @@ import {
 } from "../../src/background/geminiAppClient";
 import { defaultExtensionSettings } from "../../src/shared/config";
 import type { GeminiAppModel } from "../../src/types";
+import type {
+  AuthenticationAccess,
+} from "../../apps/extension/src/capabilities/authentication";
+
+const grantedAuthentication: AuthenticationAccess = {
+  check: async () => ({ status: 'granted' }),
+  request: async () => ({ status: 'granted' }),
+  require: async () => ({ status: 'granted' }),
+  onChanged: () => () => undefined,
+  readGeminiCookies: async () => ({
+    status: 'available',
+    cookies: [],
+  }),
+};
 
 function createCandidateWithGeneratedImage(url: string): unknown[] {
   const candidate: unknown[] = [];
@@ -107,7 +121,7 @@ async function captureGenerateRequest(model: GeminiAppModel): Promise<CapturedGe
       geminiAppAuthMode: "browser_session",
       geminiAppModel: model,
     },
-  });
+  }, grantedAuthentication);
   if (!captured) {
     throw new Error("Gemini App test did not issue StreamGenerate");
   }
@@ -185,7 +199,7 @@ describe("Gemini App response parsing", () => {
           geminiAppAuthMode: "browser_session",
           geminiAppModel: "nano_banana_2",
         },
-      });
+      }, grantedAuthentication);
     } catch (error) {
       caught = error;
     }

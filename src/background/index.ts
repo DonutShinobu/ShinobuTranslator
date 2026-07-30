@@ -1,6 +1,13 @@
 import { defaultExtensionSettings } from '../shared/config';
 import type { ChromeLike, ChromeMessageSender } from '../shared/chrome';
 import {
+  createAuthenticationAccess,
+} from '../../apps/extension/src/capabilities/authentication';
+import {
+  ExtensionContractError,
+  ExtensionOperationError,
+} from '../../apps/extension/src/capabilities/errors';
+import {
   getRuntimeErrorCode,
   getRuntimeTransportMetadata,
   isRuntimeMessage,
@@ -55,6 +62,10 @@ function initializeBackground(): void {
   if (!nativeChrome) return;
 
   const capabilities = createChromeExtensionAdapter(nativeChrome).background();
+  const authentication = createAuthenticationAccess({
+    permissions: capabilities.permissions,
+    cookies: capabilities.cookies,
+  });
   const chromeApi = nativeChrome as ChromeLike;
   const settingsStore = createSettingsStore(capabilities.persistentStorage);
   const diagnostics = createDiagnosticLogStore({
@@ -65,11 +76,13 @@ function initializeBackground(): void {
   const openAiOAuth = createOpenAiOAuthService({
     storage: capabilities.persistentStorage,
     authenticationTabs: capabilities.authenticationTabs,
+    authentication,
   });
   const providers = createProviderService({
     getSettings: settingsStore.get,
     diagnostics,
     openAiOAuth,
+    authentication,
   });
   const imageDownloader = createImageDownloader({
     chromeApi,
@@ -104,9 +117,13 @@ function initializeBackground(): void {
       logout: openAiOAuth.logout,
     },
     geminiAuth: {
-      status: readGeminiAppAuthStatus,
+      status: (settings) => readGeminiAppAuthStatus(
+        settings,
+        authentication,
+      ),
       login: (settings) => loginGeminiApp(
         settings,
+        authentication,
         capabilities.authenticationTabs,
       ),
     },
@@ -124,15 +141,29 @@ function initializeBackground(): void {
     try {
       return toJsonValue(await routeBackgroundMessage(request, source, services));
     } catch (error: unknown) {
+      if (error instanceof ExtensionContractError) {
+        throw error;
+      }
       const geminiRawResponse = getGeminiAppRawResponse(error);
       const errorCode = getRuntimeErrorCode(error);
       const transportMetadata = getRuntimeTransportMetadata(error);
+      const extensionError = error instanceof ExtensionOperationError
+        ? {
+            kind: 'operation' as const,
+            capability: error.capability,
+            operation: error.operation,
+            code: error.code,
+            retryable: error.retryable,
+            diagnostic: error.diagnostic,
+          }
+        : undefined;
       return toJsonValue({
         ok: false,
         type: request.type,
         error: toErrorMessage(error),
         ...(errorCode ? { errorCode } : {}),
         ...transportMetadata,
+        ...(extensionError ? { extensionError } : {}),
         ...(geminiRawResponse !== null
           ? {
               errorDetail: {

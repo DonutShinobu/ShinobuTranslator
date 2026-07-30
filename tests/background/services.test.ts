@@ -8,6 +8,9 @@ import type {
   ExtensionStorage,
   JsonValue,
 } from '../../apps/extension/src/capabilities/contracts';
+import type {
+  AuthenticationAccess,
+} from '../../apps/extension/src/capabilities/authentication';
 import {
   captureVisibleTab,
   parseImageDataUrl,
@@ -30,6 +33,17 @@ import {
   translateImageMenuId,
   translateScreenshotMenuId,
 } from '../../src/background/menus/registerMenus';
+
+const grantedAuthentication: AuthenticationAccess = {
+  check: async () => ({ status: 'granted' }),
+  request: async () => ({ status: 'granted' }),
+  require: async () => ({ status: 'granted' }),
+  onChanged: () => () => undefined,
+  readGeminiCookies: async () => ({
+    status: 'available',
+    cookies: [],
+  }),
+};
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -203,7 +217,11 @@ describe('authentication tabs', () => {
     };
 
     await expect(openGeminiAppAuthTab(authenticationTabs)).resolves.toBeUndefined();
-    await expect(loginGeminiApp(defaultExtensionSettings, authenticationTabs))
+    await expect(loginGeminiApp(
+      defaultExtensionSettings,
+      grantedAuthentication,
+      authenticationTabs,
+    ))
       .resolves.toEqual({ authenticated: false, pending: true });
     expect(authenticationTabs.open).toHaveBeenCalledTimes(2);
   });
@@ -230,6 +248,7 @@ describe('authentication tabs', () => {
     const openAiOAuth = createOpenAiOAuthService({
       storage,
       authenticationTabs,
+      authentication: grantedAuthentication,
     });
 
     await expect(openAiOAuth.login()).resolves.toEqual({

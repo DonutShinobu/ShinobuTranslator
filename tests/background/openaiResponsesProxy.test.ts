@@ -15,6 +15,20 @@ const oauthMocks = vi.hoisted(() => ({
 vi.mock('../../src/background/openai/oauthService', () => oauthMocks);
 
 import { proxyOpenAiChatCompletions } from '../../src/background/openai/responsesProxy';
+import type {
+  AuthenticationAccess,
+} from '../../apps/extension/src/capabilities/authentication';
+
+const grantedAuthentication: AuthenticationAccess = {
+  check: async () => ({ status: 'granted' }),
+  request: async () => ({ status: 'granted' }),
+  require: async () => ({ status: 'granted' }),
+  onChanged: () => () => undefined,
+  readGeminiCookies: async () => ({
+    status: 'available',
+    cookies: [],
+  }),
+};
 
 const oauthService = {
   getInstallationId: vi.fn(async () => 'installation-1'),
@@ -41,6 +55,37 @@ afterEach(() => {
 });
 
 describe('proxyOpenAiChatCompletions', () => {
+  it('returns permission-required if OAuth access is revoked before a retry', async () => {
+    const authentication: AuthenticationAccess = {
+      ...grantedAuthentication,
+      require: vi.fn(async () => ({
+        status: 'permission-required' as const,
+        missing: [{ kind: 'authentication-data-use' as const }],
+      })),
+    };
+    const fetchMock = vi.fn(async () => new Response(null, { status: 401 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(proxyOpenAiChatCompletions(
+      {
+        model: 'gpt-5.6-sol',
+        messages: [{ role: 'user', content: 'translate' }],
+      },
+      {
+        provider: 'openai',
+        authMode: 'openai_oauth',
+        baseUrl: 'https://api.openai.com/v1',
+      },
+      oauthService,
+      authentication,
+    )).resolves.toEqual({
+      status: 'permission-required',
+      missing: [{ kind: 'authentication-data-use' }],
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(oauthService.refreshTokens).not.toHaveBeenCalled();
+  });
+
   it('marks OAuth rejection of the selected effort as a fatal thinking-configuration error', async () => {
     const fetchMock = vi.fn(async () =>
       new Response(JSON.stringify({ error: { message: 'unsupported effort max' } }), {
@@ -63,6 +108,7 @@ describe('proxyOpenAiChatCompletions', () => {
         thinkingLevel: 'max',
       },
       oauthService,
+      grantedAuthentication,
     )).rejects.toMatchObject({
       errorCode: 'llm_thinking_config',
       message: '当前模型不支持所选思考设置: unsupported effort max',
@@ -90,6 +136,7 @@ describe('proxyOpenAiChatCompletions', () => {
         baseUrl: 'https://api.openai.com/v1',
       },
       oauthService,
+      grantedAuthentication,
     )).rejects.toThrow('OpenAI ChatGPT 请求失败: HTTP 413: upstream rejected request');
   });
 });

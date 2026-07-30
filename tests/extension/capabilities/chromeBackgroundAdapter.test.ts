@@ -2,8 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   createChromeExtensionAdapter,
 } from '../../../apps/extension/src/capabilities/chromeAdapter';
+import {
+  createAuthenticationAccess,
+} from '../../../apps/extension/src/capabilities/authentication';
 import type {
   DocumentReferrerPolicy,
+  PermissionChange,
   RuntimeChannel,
 } from '../../../apps/extension/src/capabilities/contracts';
 import {
@@ -77,6 +81,8 @@ function createBackgroundHarness() {
   let headerListenerRemovals = 0;
   let cookieAccessGranted = false;
   let cookieReads = 0;
+  const grantedOrigins = new Set<string>();
+  let permissionRequestCount = 0;
   let captureResponse: string | undefined;
   let tabMessageFailure: 'unavailable' | 'rejected' | undefined;
   let rejectedDnrUpdates = 0;
@@ -223,18 +229,31 @@ function createBackgroundHarness() {
     },
     permissions: {
       contains(
-        details: { permissions?: string[] },
+        details: { permissions?: string[]; origins?: string[] },
         callback: (granted: boolean) => void,
       ): void {
         callback(
-          !details.permissions?.includes('cookies') || cookieAccessGranted,
+          (!details.permissions?.includes('cookies') || cookieAccessGranted)
+          && (details.origins?.every((origin) => grantedOrigins.has(origin)) ?? true),
         );
       },
       request(
-        _details: Record<string, unknown>,
+        details: Record<string, unknown>,
         callback: (granted: boolean) => void,
       ): void {
-        callback(cookieAccessGranted);
+        permissionRequestCount += 1;
+        const requestedPermissions = Array.isArray(details.permissions)
+          ? details.permissions
+          : [];
+        const requestedOrigins = Array.isArray(details.origins)
+          ? details.origins
+          : [];
+        callback(
+          (!requestedPermissions.includes('cookies') || cookieAccessGranted)
+          && requestedOrigins.every(
+            (origin) => typeof origin === 'string' && grantedOrigins.has(origin),
+          ),
+        );
       },
       onAdded: permissionAdded.raw,
       onRemoved: permissionRemoved.raw,
@@ -274,8 +293,13 @@ function createBackgroundHarness() {
   };
 
   const background = createChromeExtensionAdapter(api).background();
+  const authentication = createAuthenticationAccess({
+    permissions: background.permissions,
+    cookies: background.cookies,
+  });
   return {
     background,
+    authentication,
     capabilities: background,
     onConnect,
     port,
@@ -289,6 +313,31 @@ function createBackgroundHarness() {
     },
     grantCookieAccess() {
       cookieAccessGranted = true;
+    },
+    grantTargetOrigin(origin: string) {
+      grantedOrigins.add(origin);
+    },
+    permissionRequestCount() {
+      return permissionRequestCount;
+    },
+    emitPermissionChange(change: PermissionChange) {
+      const details = {
+        permissions: change.requirements.flatMap(
+          (requirement) => requirement.kind === 'cookie-access'
+            ? ['cookies']
+            : [],
+        ),
+        origins: change.requirements.flatMap(
+          (requirement) => requirement.kind === 'target-origin'
+            ? [`${requirement.origin}/*`]
+            : [],
+        ),
+      };
+      if (change.status === 'granted') {
+        permissionAdded.emit(details);
+      } else {
+        permissionRemoved.emit(details);
+      }
     },
     cookieReads() {
       return cookieReads;
@@ -523,6 +572,80 @@ describe('Chrome background capability adapter', () => {
       cookies: [],
     });
     expect(harness.cookieReads()).toBe(1);
+  });
+
+  it('keeps Chrome credential modes distinct without requesting during initialization', async () => {
+    const harness = createBackgroundHarness();
+
+    expect(harness.permissionRequestCount()).toBe(0);
+    await expect(harness.authentication.check({
+      kind: 'api-key',
+    })).resolves.toEqual({ status: 'granted' });
+    await expect(harness.authentication.check({
+      kind: 'openai-oauth',
+    })).resolves.toEqual({ status: 'granted' });
+    await expect(harness.authentication.check({
+      kind: 'gemini-cookie',
+    })).resolves.toEqual({
+      status: 'not-granted',
+      missing: [{ kind: 'cookie-access' }],
+    });
+
+    await expect(harness.authentication.request({
+      kind: 'gemini-cookie',
+    })).resolves.toEqual({
+      status: 'denied',
+      missing: [{ kind: 'cookie-access' }],
+    });
+    expect(harness.permissionRequestCount()).toBe(1);
+
+    harness.grantCookieAccess();
+    await expect(harness.authentication.request({
+      kind: 'gemini-cookie',
+    })).resolves.toEqual({ status: 'granted' });
+    expect(harness.permissionRequestCount()).toBe(1);
+  });
+
+  it('normalizes custom endpoint origins and reports scoped revocation', async () => {
+    const harness = createBackgroundHarness();
+    const changes: PermissionChange[] = [];
+    const target = {
+      kind: 'api-key' as const,
+      targetEndpoint: 'https://CUSTOM.example:443/v1/chat/completions',
+    };
+    const cancel = harness.authentication.onChanged(
+      target,
+      (change) => changes.push(change),
+    );
+
+    await expect(harness.authentication.request(target)).resolves.toEqual({
+      status: 'denied',
+      missing: [{
+        kind: 'target-origin',
+        origin: 'https://custom.example',
+      }],
+    });
+    expect(harness.permissionRequestCount()).toBe(1);
+
+    harness.grantTargetOrigin('https://custom.example/*');
+    await expect(harness.authentication.check(target)).resolves.toEqual({
+      status: 'granted',
+    });
+    harness.emitPermissionChange({
+      status: 'revoked',
+      requirements: [{
+        kind: 'target-origin',
+        origin: 'https://custom.example',
+      }],
+    });
+    expect(changes).toEqual([{
+      status: 'revoked',
+      requirements: [{
+        kind: 'target-origin',
+        origin: 'https://custom.example',
+      }],
+    }]);
+    cancel();
   });
 
   it('normalizes document referrer policy observations and cancellation', () => {

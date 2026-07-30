@@ -10,11 +10,23 @@ import type {
   RuntimeMessage,
   RuntimeResponse,
 } from '../../shared/messages';
+import {
+  isAuthenticationPermissionRequired,
+  type AuthenticationPermissionRequired,
+} from '../../../apps/extension/src/capabilities/authentication';
 import type { ImageDownloadRequest } from '../images/imageDownloader';
+import {
+  authenticationPermissionRequiredResponse,
+  type RuntimePermissionRequiredResponse,
+} from './authenticationResponse';
 
 type MessageOf<T extends RuntimeMessage['type']> = Extract<RuntimeMessage, { type: T }>;
 type SuccessOf<T extends RuntimeResponse['type']> = Extract<RuntimeResponse, { ok: true; type: T }>;
 type PayloadOf<T extends RuntimeResponse['type']> = Omit<SuccessOf<T>, 'ok' | 'type'>;
+type AuthenticationServiceResult<T> = T | AuthenticationPermissionRequired;
+type ResponseOf<T extends RuntimeMessage['type']> =
+  | SuccessOf<T>
+  | RuntimePermissionRequiredResponse<T>;
 
 export type BackgroundServices = {
   settings: {
@@ -34,22 +46,22 @@ export type BackgroundServices = {
     capture(sender: TabDocumentSource): Promise<PayloadOf<'mt:capture-visible-tab'>>;
   };
   openAi: {
-    status(): Promise<PayloadOf<'mt:openai-oauth-status'>['status']>;
-    login(): Promise<PayloadOf<'mt:openai-oauth-login'>['status']>;
+    status(): Promise<AuthenticationServiceResult<PayloadOf<'mt:openai-oauth-status'>['status']>>;
+    login(): Promise<AuthenticationServiceResult<PayloadOf<'mt:openai-oauth-login'>['status']>>;
     logout(): Promise<PayloadOf<'mt:openai-oauth-logout'>['status']>;
   };
   geminiAuth: {
-    status(settings: ExtensionSettings): Promise<PayloadOf<'mt:gemini-app-auth-status'>['status']>;
-    login(settings: ExtensionSettings): Promise<PayloadOf<'mt:gemini-app-auth-login'>['status']>;
+    status(settings: ExtensionSettings): Promise<AuthenticationServiceResult<PayloadOf<'mt:gemini-app-auth-status'>['status']>>;
+    login(settings: ExtensionSettings): Promise<AuthenticationServiceResult<PayloadOf<'mt:gemini-app-auth-login'>['status']>>;
   };
   providers: {
-    llm(message: MessageOf<'mt:llm-chat-completions'>): Promise<SuccessOf<'mt:llm-chat-completions'>>;
-    geminiAppImage(message: MessageOf<'mt:gemini-app-image-translate'>): Promise<SuccessOf<'mt:gemini-app-image-translate'>>;
-    geminiApiImage(message: MessageOf<'mt:gemini-api-image-translate'>): Promise<SuccessOf<'mt:gemini-api-image-translate'>>;
+    llm(message: MessageOf<'mt:llm-chat-completions'>): Promise<ResponseOf<'mt:llm-chat-completions'>>;
+    geminiAppImage(message: MessageOf<'mt:gemini-app-image-translate'>): Promise<ResponseOf<'mt:gemini-app-image-translate'>>;
+    geminiApiImage(message: MessageOf<'mt:gemini-api-image-translate'>): Promise<ResponseOf<'mt:gemini-api-image-translate'>>;
   };
 };
 
-export async function routeBackgroundMessage(
+async function routeBackgroundMessageUnchecked(
   message: RuntimeMessage,
   sender: ExtensionMessageSource,
   services: BackgroundServices,
@@ -113,29 +125,41 @@ export async function routeBackgroundMessage(
     };
   }
   if (message.type === 'mt:openai-oauth-status') {
-    return { ok: true, type: 'mt:openai-oauth-status', status: await services.openAi.status() };
+    const status = await services.openAi.status();
+    return isAuthenticationPermissionRequired(status)
+      ? authenticationPermissionRequiredResponse(message.type, status)
+      : { ok: true, type: 'mt:openai-oauth-status', status };
   }
   if (message.type === 'mt:openai-oauth-login') {
-    return { ok: true, type: 'mt:openai-oauth-login', status: await services.openAi.login() };
+    const status = await services.openAi.login();
+    return isAuthenticationPermissionRequired(status)
+      ? authenticationPermissionRequiredResponse(message.type, status)
+      : { ok: true, type: 'mt:openai-oauth-login', status };
   }
   if (message.type === 'mt:openai-oauth-logout') {
     return { ok: true, type: 'mt:openai-oauth-logout', status: await services.openAi.logout() };
   }
   if (message.type === 'mt:gemini-app-auth-status') {
     const settings = await services.settings.get();
-    return {
-      ok: true,
-      type: 'mt:gemini-app-auth-status',
-      status: await services.geminiAuth.status(settings),
-    };
+    const status = await services.geminiAuth.status(settings);
+    return isAuthenticationPermissionRequired(status)
+      ? authenticationPermissionRequiredResponse(message.type, status)
+      : {
+          ok: true,
+          type: 'mt:gemini-app-auth-status',
+          status,
+        };
   }
   if (message.type === 'mt:gemini-app-auth-login') {
     const settings = await services.settings.get();
-    return {
-      ok: true,
-      type: 'mt:gemini-app-auth-login',
-      status: await services.geminiAuth.login(settings),
-    };
+    const status = await services.geminiAuth.login(settings);
+    return isAuthenticationPermissionRequired(status)
+      ? authenticationPermissionRequiredResponse(message.type, status)
+      : {
+          ok: true,
+          type: 'mt:gemini-app-auth-login',
+          status,
+        };
   }
   if (message.type === 'mt:llm-chat-completions') {
     return services.providers.llm(message);
@@ -147,4 +171,12 @@ export async function routeBackgroundMessage(
     return services.providers.geminiApiImage(message);
   }
   return { ok: false, type: message.type, error: '不支持的消息类型' };
+}
+
+export async function routeBackgroundMessage(
+  message: RuntimeMessage,
+  sender: ExtensionMessageSource,
+  services: BackgroundServices,
+): Promise<RuntimeResponse> {
+  return routeBackgroundMessageUnchecked(message, sender, services);
 }

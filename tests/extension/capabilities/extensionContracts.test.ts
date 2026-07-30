@@ -15,6 +15,7 @@ import {
 describe('extension capability contracts', () => {
   it('keeps native browser mechanics out of the public contract surface', () => {
     const source = [
+      'authentication.ts',
       'contracts.ts',
       'errors.ts',
       'guards.ts',

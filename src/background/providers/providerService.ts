@@ -40,16 +40,33 @@ import {
 import type {
   OpenAiOAuthService,
 } from "../openai/oauthService";
+import {
+  isAuthenticationPermissionRequired,
+  type AuthenticationAccess,
+  type CredentialAccessTarget,
+} from "../../../apps/extension/src/capabilities/authentication";
+import {
+  authenticationPermissionRequiredResponse,
+  type RuntimePermissionRequiredResponse,
+} from "../messages/authenticationResponse";
 
 export type ProviderService = {
-  llm(message: LlmChatMessage): Promise<LlmChatResponse>;
-  geminiAppImage(message: GeminiAppImageMessage): Promise<GeminiAppImageResponse>;
-  geminiApiImage(message: GeminiApiImageMessage): Promise<GeminiApiImageResponse>;
+  llm(message: LlmChatMessage): Promise<LlmChatServiceResponse>;
+  geminiAppImage(
+    message: GeminiAppImageMessage,
+  ): Promise<GeminiAppImageServiceResponse>;
+  geminiApiImage(
+    message: GeminiApiImageMessage,
+  ): Promise<GeminiApiImageServiceResponse>;
 };
 
 type ProviderServiceDependencies = {
   getSettings(): Promise<ExtensionSettings>;
   diagnostics: Pick<DiagnosticLogStoreService, 'recordBackground'>;
+  authentication: Pick<
+    AuthenticationAccess,
+    'require' | 'readGeminiCookies'
+  >;
   openAiOAuth: Pick<
     OpenAiOAuthService,
     'getInstallationId' | 'getValidTokens' | 'refreshTokens'
@@ -62,6 +79,15 @@ type GeminiApiImageMessage = Extract<RuntimeMessage, { type: "mt:gemini-api-imag
 type LlmChatResponse = Extract<RuntimeResponse, { ok: true; type: "mt:llm-chat-completions" }>;
 type GeminiAppImageResponse = Extract<RuntimeResponse, { ok: true; type: "mt:gemini-app-image-translate" }>;
 type GeminiApiImageResponse = Extract<RuntimeResponse, { ok: true; type: "mt:gemini-api-image-translate" }>;
+type LlmChatServiceResponse =
+  | LlmChatResponse
+  | RuntimePermissionRequiredResponse<'mt:llm-chat-completions'>;
+type GeminiAppImageServiceResponse =
+  | GeminiAppImageResponse
+  | RuntimePermissionRequiredResponse<'mt:gemini-app-image-translate'>;
+type GeminiApiImageServiceResponse =
+  | GeminiApiImageResponse
+  | RuntimePermissionRequiredResponse<'mt:gemini-api-image-translate'>;
 
 function resolveLlmProxyConfig(
   settings: ExtensionSettings,
@@ -83,6 +109,26 @@ function getLlmProxyEndpoint(proxyConfig: LlmChatCompletionsProxyConfig): string
     return openAiCodexResponsesEndpoint;
   }
   return resolveLlmChatCompletionsEndpoint(proxyConfig.baseUrl);
+}
+
+function resolveCredentialAccessTarget(
+  proxyConfig: LlmChatCompletionsProxyConfig,
+): CredentialAccessTarget {
+  if (proxyConfig.authMode === 'api_key') {
+    return {
+      kind: 'api-key',
+      ...(proxyConfig.provider === 'custom'
+        ? { targetEndpoint: proxyConfig.baseUrl }
+        : {}),
+    };
+  }
+  if (
+    proxyConfig.provider === 'openai'
+    && proxyConfig.authMode === 'openai_oauth'
+  ) {
+    return { kind: 'openai-oauth' };
+  }
+  throw new Error('当前 LLM 认证方式不受支持');
 }
 
 function getLlmProxyErrorData(error: unknown): Record<string, unknown> {
@@ -107,9 +153,16 @@ function getLlmProxyErrorData(error: unknown): Record<string, unknown> {
 async function handleLlmChatCompletions(
   message: LlmChatMessage,
   dependencies: ProviderServiceDependencies,
-): Promise<LlmChatResponse> {
+): Promise<LlmChatServiceResponse> {
   const settings = await dependencies.getSettings();
   const proxyConfig = resolveLlmProxyConfig(settings, message.proxyConfig);
+  const credentialTarget = resolveCredentialAccessTarget(proxyConfig);
+  const permission = await dependencies.authentication.require(
+    credentialTarget,
+  );
+  if (isAuthenticationPermissionRequired(permission)) {
+    return authenticationPermissionRequiredResponse(message.type, permission);
+  }
   const startedAt = Date.now();
   const baseLogData = {
     provider: proxyConfig.provider,
@@ -131,13 +184,25 @@ async function handleLlmChatCompletions(
     data: baseLogData,
   });
   try {
-    const data = proxyConfig.provider === 'openai' && proxyConfig.authMode === 'openai_oauth'
-      ? await proxyOpenAiChatCompletions(
+    let data: unknown;
+    if (credentialTarget.kind === 'openai-oauth') {
+      const result = await proxyOpenAiChatCompletions(
         message.body,
         proxyConfig,
         dependencies.openAiOAuth,
-      )
-      : await proxyApiKeyChatCompletions(settings, proxyConfig, message.body);
+        dependencies.authentication,
+      );
+      if (isAuthenticationPermissionRequired(result)) {
+        return authenticationPermissionRequiredResponse(message.type, result);
+      }
+      data = result.data;
+    } else {
+      data = await proxyApiKeyChatCompletions(
+        settings,
+        proxyConfig,
+        message.body,
+      );
+    }
     await dependencies.diagnostics.recordBackground(settings, {
       runId: message.diagnosticRunId,
       level: 'info',
@@ -181,7 +246,7 @@ async function handleLlmChatCompletions(
 async function handleGeminiAppImageTranslate(
   message: GeminiAppImageMessage,
   dependencies: ProviderServiceDependencies,
-): Promise<GeminiAppImageResponse> {
+): Promise<GeminiAppImageServiceResponse> {
   const settings = await dependencies.getSettings();
   const validationError = usesGeminiAppImagePipeline(settings)
     ? validateSettings(settings)
@@ -213,7 +278,10 @@ async function handleGeminiAppImageTranslate(
       contentType: message.image.contentType,
       filename: message.image.filename,
       settings,
-    });
+    }, dependencies.authentication);
+    if (isAuthenticationPermissionRequired(translated)) {
+      return authenticationPermissionRequiredResponse(message.type, translated);
+    }
     await dependencies.diagnostics.recordBackground(settings, {
       runId: message.diagnosticRunId,
       level: 'info',
@@ -262,13 +330,19 @@ async function handleGeminiAppImageTranslate(
 async function handleGeminiApiImageTranslate(
   message: GeminiApiImageMessage,
   dependencies: ProviderServiceDependencies,
-): Promise<GeminiApiImageResponse> {
+): Promise<GeminiApiImageServiceResponse> {
   const settings = await dependencies.getSettings();
   const validationError = usesGeminiApiImagePipeline(settings)
     ? validateSettings(settings)
     : '请先在扩展弹窗中选择“大模型”，将 LLM 提供商设为 Nano Banana，并选择 API Key 认证';
   if (validationError) {
     throw new Error(validationError);
+  }
+  const permission = await dependencies.authentication.require({
+    kind: 'api-key',
+  });
+  if (isAuthenticationPermissionRequired(permission)) {
+    return authenticationPermissionRequiredResponse(message.type, permission);
   }
   const startedAt = Date.now();
   const model = resolveGeminiApiImageModel(settings.geminiAppModel);

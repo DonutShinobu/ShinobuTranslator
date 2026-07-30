@@ -556,6 +556,15 @@ function assertArtifactReferences(artifactPaths) {
         true,
       );
       if (
+        ownerPath !== 'content.js'
+        && referencedPath !== undefined
+        && !artifactPathSet.has(referencedPath)
+      ) {
+        throw new Error(
+          `Artifact ${ownerPath} references missing artifact: ${referencedPath}`,
+        );
+      }
+      if (
         ownerPath === 'content.js'
         && referencedPath !== undefined
       ) {

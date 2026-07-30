@@ -543,6 +543,39 @@ describe('extension release boundaries', () => {
   );
 
   it(
+    'rejects missing getURL resources from non-content artifacts',
+    () => {
+      const cases = [
+        {
+          ownerPath: 'popup.js',
+          missingPath: 'chunks/missing-popup-runtime.js',
+        },
+        {
+          ownerPath: 'background.js',
+          missingPath: 'chunks/missing-background-runtime.js',
+        },
+      ];
+
+      for (const invalidCase of cases) {
+        const directory = createReleaseFixture('chrome');
+        writeArtifact(
+          directory,
+          invalidCase.ownerPath,
+          `chrome.runtime.getURL("${invalidCase.missingPath}");\n`,
+        );
+
+        const result = runReleaseBoundary('chrome', directory);
+
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain(
+          `Artifact ${invalidCase.ownerPath} references missing artifact: ${invalidCase.missingPath}`,
+        );
+      }
+    },
+    20_000,
+  );
+
+  it(
     'rejects a literal dynamic import outside the packaged graph',
     () => {
       const directory = createReleaseFixture('chrome');

@@ -76,6 +76,7 @@ const commonStoreArtifactPaths = new Set([
   'chunks/config.js',
   'chunks/diagnosticLog.js',
   'chunks/diagnosticLogClient.js',
+  'chunks/diagnosticPrimitives.js',
   'chunks/localPipelineProtocol.js',
   'chunks/messages.js',
   'chunks/perfTrace.js',
@@ -122,6 +123,11 @@ const forbiddenLegacyWorkerTokens = [
   'ocr_decoder',
   'fg_ind',
 ];
+const externalizedNodeOnlyModuleSpecifiers = new Set([
+  './src/pipeline/ocr/ocrSharedNode',
+  './src/runtime/modelRegistryNode',
+  './src/runtime/onnxNodeBridge',
+]);
 const benchmarkArtifacts = [
   'benchmark.html',
   'benchmark.js',
@@ -250,7 +256,7 @@ function resolvePackagedReference(ownerPath, reference) {
 
 await initializeModuleLexer;
 
-function collectStaticArtifactReferences(path, source) {
+function collectArtifactReferences(path, source) {
   const references = [];
   const addMatches = (expression) => {
     for (const match of source.matchAll(expression)) {
@@ -261,19 +267,34 @@ function collectStaticArtifactReferences(path, source) {
     addMatches(/\b(?:href|src)=["']([^"']+)["']/giu);
   } else if (path.endsWith('.js') || path.endsWith('.mjs')) {
     const [imports] = parseModuleImports(source);
-    references.push(
-      ...imports
-        .filter((moduleImport) => moduleImport.d === -1)
-        .map((moduleImport) =>
-          source.slice(moduleImport.s, moduleImport.e)),
-    );
+    for (const moduleImport of imports) {
+      if (
+        moduleImport.d === -1
+        || (
+          moduleImport.d >= 0
+          && typeof moduleImport.n === 'string'
+          && (
+            moduleImport.n.startsWith('.')
+            || moduleImport.n.startsWith('/')
+          )
+          && !externalizedNodeOnlyModuleSpecifiers.has(
+            moduleImport.n,
+          )
+        )
+      ) {
+        references.push(
+          moduleImport.n
+            ?? source.slice(moduleImport.s, moduleImport.e),
+        );
+      }
+    }
   } else if (path.endsWith('.css')) {
     addMatches(/\burl\(\s*["']?([^"')]+)["']?\s*\)/giu);
   }
   return references;
 }
 
-function assertStaticArtifactReferences(artifactPaths) {
+function assertArtifactReferences(artifactPaths) {
   const artifactPathSet = new Set(artifactPaths);
   for (const ownerPath of artifactPaths) {
     if (
@@ -285,7 +306,7 @@ function assertStaticArtifactReferences(artifactPaths) {
       continue;
     }
     const source = readFileSync(join(distDir, ownerPath), 'utf8');
-    for (const reference of collectStaticArtifactReferences(
+    for (const reference of collectArtifactReferences(
       ownerPath,
       source,
     )) {
@@ -539,7 +560,7 @@ if (!benchmarkBuild) {
     }
   }
 }
-assertStaticArtifactReferences(artifactPaths);
+assertArtifactReferences(artifactPaths);
 for (const [entryIndex, entry] of (
   manifest.web_accessible_resources ?? []
 ).entries()) {

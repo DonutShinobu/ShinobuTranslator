@@ -65,6 +65,7 @@
         "chunks/config.js",
         "chunks/diagnosticLog.js",
         "chunks/diagnosticLogClient.js",
+        "chunks/diagnosticPrimitives.js",
         "chunks/perfTrace.js",
         "fonts/*"
       ],

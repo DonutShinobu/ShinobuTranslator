@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import type { Plugin, UserConfig } from 'vite';
@@ -103,9 +104,10 @@ export default defineConfig(({ command, mode }): UserConfig => {
   if (target.browser === 'chrome') {
     input.offscreen = resolve(extensionRoot, 'offscreen.html');
   } else {
-    input['chunks/diagnosticLogClient'] = resolve(
-      repoRoot,
-      'src/shared/diagnosticLogClient.ts',
+    input['chunks/diagnosticLogClient'] = fileURLToPath(
+      import.meta.resolve(
+        '@shinobu/browser-runtime/diagnostic-log-client',
+      ),
     );
   }
 
@@ -142,6 +144,13 @@ export default defineConfig(({ command, mode }): UserConfig => {
           assetFileNames: 'assets/[name][extname]',
           manualChunks(id) {
             const normalized = id.replace(/\\/g, '/');
+            if (
+              normalized.endsWith(
+                '/packages/browser-runtime/src/diagnosticLog.ts',
+              )
+            ) {
+              return 'diagnosticPrimitives';
+            }
             if (normalized.endsWith('/src/shared/messages.ts')) {
               return 'messages';
             }

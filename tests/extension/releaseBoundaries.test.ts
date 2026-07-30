@@ -64,6 +64,7 @@ function createReleaseFixture(target: 'chrome' | 'firefox'): string {
     'chunks/config.js',
     'chunks/diagnosticLog.js',
     'chunks/diagnosticLogClient.js',
+    'chunks/diagnosticPrimitives.js',
     'chunks/perfTrace.js',
     'icons/icon16.png',
     'icons/icon32.png',
@@ -206,6 +207,26 @@ describe('extension release boundaries', () => {
         expect(result.status).not.toBe(0);
         expect(result.stderr).toContain(invalidCase.error);
       }
+    },
+    30_000,
+  );
+
+  it(
+    'rejects a literal dynamic import whose artifact is missing',
+    () => {
+      const directory = createReleaseFixture('chrome');
+      writeArtifact(
+        directory,
+        'popup.js',
+        'import("./chunks/missing-dynamic.js");\n',
+      );
+
+      const result = runReleaseBoundary('chrome', directory);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(
+        'Artifact popup.js references missing artifact: chunks/missing-dynamic.js',
+      );
     },
     15_000,
   );

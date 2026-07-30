@@ -82,6 +82,16 @@ const sharedImplementationPrefixes = [
 
 const nativeNamespaceNames = new Set(['browser', 'chrome']);
 const globalObjectNames = new Set(['globalThis', 'self', 'window']);
+const hiddenCodeGenerationNames = new Set(['eval', 'Function']);
+const reflectGetNames = new Set(['get']);
+const reflectCodeGenerationInvocationNames = new Set([
+  'apply',
+  'construct',
+]);
+const reflectCodeGenerationMemberNames = new Set([
+  ...reflectGetNames,
+  ...reflectCodeGenerationInvocationNames,
+]);
 const allowedExtensionGlobalPropertyNames = new Set([
   'browser',
   'chrome',
@@ -241,14 +251,41 @@ function collectBindingIdentifierNames(node, names) {
   }
 }
 
+function collectBindingIdentifiers(node, identifiers) {
+  if (ts.isIdentifier(node)) {
+    identifiers.push(node);
+    return;
+  }
+  if (ts.isObjectBindingPattern(node) || ts.isArrayBindingPattern(node)) {
+    for (const element of node.elements) {
+      if (ts.isBindingElement(element)) {
+        collectBindingIdentifiers(element.name, identifiers);
+      }
+    }
+  }
+}
+
 function collectLexicalMetadata(sourceFile, relativePath) {
   const bindingsByScope = new Map();
-  const bindingInitializersByScope = new Map();
+  const codeGenerationAliasesByScope = new Map();
+  const commonJsModuleNamespacesByScope = new Map();
   const constantStringsByScope = new Map();
+  const createRequireFunctionsByScope = new Map();
+  const fileUrlToPathFunctionsByScope = new Map();
   const globalAliasesByScope = new Map();
+  const moduleLoaderAliasesByScope = new Map();
+  const nativeNamespaceAliasesByScope = new Map();
+  const nodeModuleNamespacesByScope = new Map();
   const pathAnchorsByScope = new Map();
   const pathFunctionsByScope = new Map();
   const pathNamespacesByScope = new Map();
+  const reflectFunctionsByScope = new Map();
+  const reflectNamespacesByScope = new Map();
+  const safeConstructorReceiversByScope = new Map();
+  const stableInitializersByScope = new Map();
+  const functionDeclarationsByScope = new Map();
+  const classDeclarationsByScope = new Map();
+  const urlBaseDirectoriesByScope = new Map();
   const pendingBindings = [];
   const pendingDestructuredBindings = [];
 
@@ -270,21 +307,63 @@ function collectLexicalMetadata(sourceFile, relativePath) {
     return constants;
   }
 
-  function initializersFor(scope) {
-    let initializers = bindingInitializersByScope.get(scope);
-    if (!initializers) {
-      initializers = new Map();
-      bindingInitializersByScope.set(scope, initializers);
+  function createRequireFunctionsFor(scope) {
+    let functions = createRequireFunctionsByScope.get(scope);
+    if (!functions) {
+      functions = new Set();
+      createRequireFunctionsByScope.set(scope, functions);
     }
-    return initializers;
+    return functions;
   }
 
-  function addBinding(scope, name, initializer) {
+  function fileUrlToPathFunctionsFor(scope) {
+    let functions = fileUrlToPathFunctionsByScope.get(scope);
+    if (!functions) {
+      functions = new Set();
+      fileUrlToPathFunctionsByScope.set(scope, functions);
+    }
+    return functions;
+  }
+
+  function commonJsModuleNamespacesFor(scope) {
+    let namespaces = commonJsModuleNamespacesByScope.get(scope);
+    if (!namespaces) {
+      namespaces = new Set();
+      commonJsModuleNamespacesByScope.set(scope, namespaces);
+    }
+    return namespaces;
+  }
+
+  function moduleLoaderAliasesFor(scope) {
+    let aliases = moduleLoaderAliasesByScope.get(scope);
+    if (!aliases) {
+      aliases = new Set();
+      moduleLoaderAliasesByScope.set(scope, aliases);
+    }
+    return aliases;
+  }
+
+  function nativeNamespaceAliasesFor(scope) {
+    let aliases = nativeNamespaceAliasesByScope.get(scope);
+    if (!aliases) {
+      aliases = new Set();
+      nativeNamespaceAliasesByScope.set(scope, aliases);
+    }
+    return aliases;
+  }
+
+  function nodeModuleNamespacesFor(scope) {
+    let namespaces = nodeModuleNamespacesByScope.get(scope);
+    if (!namespaces) {
+      namespaces = new Set();
+      nodeModuleNamespacesByScope.set(scope, namespaces);
+    }
+    return namespaces;
+  }
+
+  function addBinding(scope, name) {
     if (!scope) return;
     bindingsFor(scope).add(name);
-    if (initializer) {
-      initializersFor(scope).set(name, initializer);
-    }
   }
 
   function globalAliasesFor(scope) {
@@ -292,6 +371,15 @@ function collectLexicalMetadata(sourceFile, relativePath) {
     if (!aliases) {
       aliases = new Set();
       globalAliasesByScope.set(scope, aliases);
+    }
+    return aliases;
+  }
+
+  function codeGenerationAliasesFor(scope) {
+    let aliases = codeGenerationAliasesByScope.get(scope);
+    if (!aliases) {
+      aliases = new Set();
+      codeGenerationAliasesByScope.set(scope, aliases);
     }
     return aliases;
   }
@@ -323,7 +411,77 @@ function collectLexicalMetadata(sourceFile, relativePath) {
     return namespaces;
   }
 
-  function queueBinding(scope, name, initializer, trackString = false) {
+  function reflectFunctionsFor(scope) {
+    let functions = reflectFunctionsByScope.get(scope);
+    if (!functions) {
+      functions = new Map();
+      reflectFunctionsByScope.set(scope, functions);
+    }
+    return functions;
+  }
+
+  function reflectNamespacesFor(scope) {
+    let namespaces = reflectNamespacesByScope.get(scope);
+    if (!namespaces) {
+      namespaces = new Set();
+      reflectNamespacesByScope.set(scope, namespaces);
+    }
+    return namespaces;
+  }
+
+  function safeConstructorReceiversFor(scope) {
+    let receivers = safeConstructorReceiversByScope.get(scope);
+    if (!receivers) {
+      receivers = new Set();
+      safeConstructorReceiversByScope.set(scope, receivers);
+    }
+    return receivers;
+  }
+
+  function urlBaseDirectoriesFor(scope) {
+    let directories = urlBaseDirectoriesByScope.get(scope);
+    if (!directories) {
+      directories = new Map();
+      urlBaseDirectoriesByScope.set(scope, directories);
+    }
+    return directories;
+  }
+
+  function stableInitializersFor(scope) {
+    let initializers = stableInitializersByScope.get(scope);
+    if (!initializers) {
+      initializers = new Map();
+      stableInitializersByScope.set(scope, initializers);
+    }
+    return initializers;
+  }
+
+  function functionDeclarationsFor(scope) {
+    let declarations = functionDeclarationsByScope.get(scope);
+    if (!declarations) {
+      declarations = new Map();
+      functionDeclarationsByScope.set(scope, declarations);
+    }
+    return declarations;
+  }
+
+  function classDeclarationsFor(scope) {
+    let declarations = classDeclarationsByScope.get(scope);
+    if (!declarations) {
+      declarations = new Map();
+      classDeclarationsByScope.set(scope, declarations);
+    }
+    return declarations;
+  }
+
+  function queueBinding(
+    scope,
+    name,
+    initializer,
+    trackString = false,
+    stable = false,
+    declaration = true,
+  ) {
     if (!scope || !initializer) return;
     pendingBindings.push({
       initializer,
@@ -331,22 +489,28 @@ function collectLexicalMetadata(sourceFile, relativePath) {
       scope,
       targetNode: undefined,
       trackString,
+      stable,
+      declaration,
     });
   }
 
   function queueDestructuredBinding(
     scope,
     targetNode,
-    propertyName,
+    propertyNameNode,
     initializer,
+    stable = false,
+    rest = false,
   ) {
     if (!ts.isIdentifier(targetNode)) return;
     pendingDestructuredBindings.push({
       initializer,
       name: targetNode.text,
-      propertyName,
+      propertyNameNode,
       scope,
       targetNode: scope ? undefined : targetNode,
+      stable,
+      rest,
     });
   }
 
@@ -360,20 +524,23 @@ function collectLexicalMetadata(sourceFile, relativePath) {
         && (node.parent.flags & ts.NodeFlags.Const) !== 0
       );
       for (const name of names) {
-        addBinding(
-          scope,
-          name,
-          ts.isIdentifier(node.name) ? node.initializer : undefined,
-        );
+        addBinding(scope, name);
       }
       if (
         ts.isIdentifier(node.name)
         && node.initializer
       ) {
+        if (trackString) {
+          stableInitializersFor(scope).set(
+            node.name.text,
+            node.initializer,
+          );
+        }
         queueBinding(
           scope,
           node.name.text,
           node.initializer,
+          trackString,
           trackString,
         );
       }
@@ -382,21 +549,32 @@ function collectLexicalMetadata(sourceFile, relativePath) {
           queueDestructuredBinding(
             scope,
             element.name,
-            staticPropertyName(element.propertyName ?? element.name),
+            element.propertyName ?? element.name,
             node.initializer,
+            trackString,
+            Boolean(element.dotDotDotToken),
           );
         }
+      }
+      if (ts.isArrayBindingPattern(node.name) && node.initializer) {
+        node.name.elements.forEach((element, index) => {
+          if (!ts.isBindingElement(element)) return;
+          queueDestructuredBinding(
+            scope,
+            element.name,
+            ts.factory.createNumericLiteral(index),
+            node.initializer,
+            trackString,
+            Boolean(element.dotDotDotToken),
+          );
+        });
       }
     } else if (ts.isParameter(node)) {
       const scope = nearestLexicalScope(node.parent);
       const names = [];
       collectBindingIdentifierNames(node.name, names);
       for (const name of names) {
-        addBinding(
-          scope,
-          name,
-          ts.isIdentifier(node.name) ? node.initializer : undefined,
-        );
+        addBinding(scope, name);
       }
       if (ts.isIdentifier(node.name) && node.initializer) {
         queueBinding(scope, node.name.text, node.initializer);
@@ -406,10 +584,25 @@ function collectLexicalMetadata(sourceFile, relativePath) {
           queueDestructuredBinding(
             scope,
             element.name,
-            staticPropertyName(element.propertyName ?? element.name),
+            element.propertyName ?? element.name,
             node.initializer,
+            false,
+            Boolean(element.dotDotDotToken),
           );
         }
+      }
+      if (ts.isArrayBindingPattern(node.name) && node.initializer) {
+        node.name.elements.forEach((element, index) => {
+          if (!ts.isBindingElement(element)) return;
+          queueDestructuredBinding(
+            scope,
+            element.name,
+            ts.factory.createNumericLiteral(index),
+            node.initializer,
+            false,
+            Boolean(element.dotDotDotToken),
+          );
+        });
       }
     } else if (
       ts.isBinaryExpression(node)
@@ -423,6 +616,8 @@ function collectLexicalMetadata(sourceFile, relativePath) {
         scope: undefined,
         targetNode,
         trackString: false,
+        stable: false,
+        declaration: false,
       });
     } else if (
       ts.isBinaryExpression(node)
@@ -434,14 +629,16 @@ function collectLexicalMetadata(sourceFile, relativePath) {
           queueDestructuredBinding(
             undefined,
             property.name,
-            property.name.text,
+            property.name,
             node.right,
+            false,
+            Boolean(property.dotDotDotToken),
           );
         } else if (ts.isPropertyAssignment(property)) {
           queueDestructuredBinding(
             undefined,
             unwrapExpression(property.initializer),
-            staticPropertyName(property.name),
+            property.name,
             node.right,
           );
         }
@@ -456,7 +653,13 @@ function collectLexicalMetadata(sourceFile, relativePath) {
       )
       && node.name
     ) {
-      addBinding(nearestLexicalScope(node.parent), node.name.text);
+      const scope = nearestLexicalScope(node.parent);
+      addBinding(scope, node.name.text);
+      if (ts.isFunctionDeclaration(node)) {
+        functionDeclarationsFor(scope).set(node.name.text, node);
+      } else if (ts.isClassDeclaration(node)) {
+        classDeclarationsFor(scope).set(node.name.text, node);
+      }
     } else if (
       ts.isImportClause(node)
       && node.name
@@ -488,6 +691,53 @@ function collectLexicalMetadata(sourceFile, relativePath) {
               element.name.text,
               importedName,
             );
+          } else if (importedName === 'sep') {
+            constantsFor(sourceFile).set(element.name.text, '/');
+          }
+        }
+      }
+    }
+    if (
+      ts.isImportDeclaration(node)
+      && ts.isStringLiteralLike(node.moduleSpecifier)
+      && node.moduleSpecifier.text === 'node:url'
+      && node.importClause?.namedBindings
+      && ts.isNamedImports(node.importClause.namedBindings)
+    ) {
+      for (const element of node.importClause.namedBindings.elements) {
+        if (
+          (element.propertyName ?? element.name).text
+          === 'fileURLToPath'
+        ) {
+          fileUrlToPathFunctionsFor(sourceFile).add(element.name.text);
+        }
+      }
+    }
+    if (
+      ts.isImportDeclaration(node)
+      && ts.isStringLiteralLike(node.moduleSpecifier)
+      && node.moduleSpecifier.text === 'node:module'
+      && node.importClause
+    ) {
+      if (node.importClause.name) {
+        nodeModuleNamespacesFor(sourceFile).add(
+          node.importClause.name.text,
+        );
+      }
+      const namedBindings = node.importClause.namedBindings;
+      if (namedBindings && ts.isNamespaceImport(namedBindings)) {
+        nodeModuleNamespacesFor(sourceFile).add(
+          namedBindings.name.text,
+        );
+      } else if (namedBindings && ts.isNamedImports(namedBindings)) {
+        for (const element of namedBindings.elements) {
+          if (
+            (element.propertyName ?? element.name).text
+            === 'createRequire'
+          ) {
+            createRequireFunctionsFor(sourceFile).add(
+              element.name.text,
+            );
           }
         }
       }
@@ -497,15 +747,28 @@ function collectLexicalMetadata(sourceFile, relativePath) {
 
   visit(sourceFile);
   const metadata = {
-    bindingInitializersByScope,
     bindingsByScope,
+    codeGenerationAliasesByScope,
+    classDeclarationsByScope,
+    commonJsModuleNamespacesByScope,
     constantStringsByScope,
+    createRequireFunctionsByScope,
     globalAliasesByScope,
+    moduleLoaderAliasesByScope,
+    nativeNamespaceAliasesByScope,
+    nodeModuleNamespacesByScope,
     pathAnchorsByScope,
     pathFunctionsByScope,
     pathNamespacesByScope,
+    reflectFunctionsByScope,
+    reflectNamespacesByScope,
     relativePath,
+    safeConstructorReceiversByScope,
     sourceFile,
+    stableInitializersByScope,
+    functionDeclarationsByScope,
+    fileUrlToPathFunctionsByScope,
+    urlBaseDirectoriesByScope,
   };
   let changed;
   do {
@@ -520,10 +783,16 @@ function collectLexicalMetadata(sourceFile, relativePath) {
         ).scope;
         if (!scope) {
           scope = sourceFile;
-          addBinding(scope, pending.name, pending.initializer);
+          addBinding(scope, pending.name);
         }
       }
       if (!scope) continue;
+      const stableCapabilityBinding = pending.declaration
+        && !bindingHasReassignment(
+          metadata,
+          scope,
+          pending.name,
+        );
 
       const aliases = globalAliasesFor(scope);
       if (
@@ -531,6 +800,26 @@ function collectLexicalMetadata(sourceFile, relativePath) {
         && expressionIsGlobalAlias(metadata, pending.initializer)
       ) {
         aliases.add(pending.name);
+        changed = true;
+      }
+      if (
+        !codeGenerationAliasesFor(scope).has(pending.name)
+        && expressionIsCodeGenerationCallable(
+          pending.initializer,
+          metadata,
+        )
+      ) {
+        codeGenerationAliasesFor(scope).add(pending.name);
+        changed = true;
+      }
+      if (
+        !nativeNamespaceAliasesFor(scope).has(pending.name)
+        && expressionIsNativeNamespaceValue(
+          pending.initializer,
+          metadata,
+        )
+      ) {
+        nativeNamespaceAliasesFor(scope).add(pending.name);
         changed = true;
       }
       if (
@@ -546,14 +835,54 @@ function collectLexicalMetadata(sourceFile, relativePath) {
           changed = true;
         }
       }
-      if (!pathAnchorsFor(scope).has(pending.name)) {
+      {
         const anchor = buildPathExpressionValue(
           pending.initializer,
           metadata,
         );
         if (anchor !== undefined) {
-          pathAnchorsFor(scope).set(pending.name, anchor);
-          changed = true;
+          const anchors = pathAnchorsFor(scope);
+          const merged = mergeBuildPathAnchorValues(
+            anchors.get(pending.name),
+            anchor,
+          );
+          if (anchors.get(pending.name) !== merged) {
+            anchors.set(pending.name, merged);
+            changed = true;
+          }
+        }
+      }
+      if (
+        pending.stable
+        && !safeConstructorReceiversFor(scope).has(pending.name)
+        && expressionHasProvenSafeOwnConstructor(
+          pending.initializer,
+          metadata,
+        )
+        && safeConstructorReceiverHasNoOpaqueMutation(
+          metadata,
+          scope,
+          pending.name,
+        )
+      ) {
+        safeConstructorReceiversFor(scope).add(pending.name);
+        changed = true;
+      }
+      {
+        const directory = buildUrlBaseDirectoryValue(
+          pending.initializer,
+          metadata,
+        );
+        if (directory !== undefined) {
+          const directories = urlBaseDirectoriesFor(scope);
+          const merged = mergeBuildPathAnchorValues(
+            directories.get(pending.name),
+            directory,
+          );
+          if (directories.get(pending.name) !== merged) {
+            directories.set(pending.name, merged);
+            changed = true;
+          }
         }
       }
       if (!pathFunctionsFor(scope).has(pending.name)) {
@@ -576,6 +905,74 @@ function collectLexicalMetadata(sourceFile, relativePath) {
         pathNamespacesFor(scope).add(pending.name);
         changed = true;
       }
+      if (
+        stableCapabilityBinding
+        && !reflectFunctionsFor(scope).has(pending.name)
+      ) {
+        const reflectKind = reflectFunctionKind(
+          pending.initializer,
+          metadata,
+        );
+        if (reflectKind !== undefined) {
+          reflectFunctionsFor(scope).set(pending.name, reflectKind);
+          changed = true;
+        }
+      }
+      if (
+        stableCapabilityBinding
+        && !reflectNamespacesFor(scope).has(pending.name)
+        && expressionIsUnshadowedReflectNamespace(
+          pending.initializer,
+          metadata,
+        )
+      ) {
+        reflectNamespacesFor(scope).add(pending.name);
+        changed = true;
+      }
+      if (
+        stableCapabilityBinding
+        && !createRequireFunctionsFor(scope).has(pending.name)
+        && expressionIsCreateRequireFunction(
+          pending.initializer,
+          metadata,
+        )
+      ) {
+        createRequireFunctionsFor(scope).add(pending.name);
+        changed = true;
+      }
+      if (
+        stableCapabilityBinding
+        && !moduleLoaderAliasesFor(scope).has(pending.name)
+        && expressionIsModuleLoader(
+          pending.initializer,
+          metadata,
+        )
+      ) {
+        moduleLoaderAliasesFor(scope).add(pending.name);
+        changed = true;
+      }
+      if (
+        stableCapabilityBinding
+        && !commonJsModuleNamespacesFor(scope).has(pending.name)
+        && expressionIsCommonJsModuleNamespace(
+          pending.initializer,
+          metadata,
+        )
+      ) {
+        commonJsModuleNamespacesFor(scope).add(pending.name);
+        changed = true;
+      }
+      if (
+        stableCapabilityBinding
+        && !nodeModuleNamespacesFor(scope).has(pending.name)
+        && expressionIsNodeModuleNamespace(
+          pending.initializer,
+          metadata,
+        )
+      ) {
+        nodeModuleNamespacesFor(scope).add(pending.name);
+        changed = true;
+      }
     }
     for (const pending of pendingDestructuredBindings) {
       let scope = pending.scope;
@@ -590,10 +987,102 @@ function collectLexicalMetadata(sourceFile, relativePath) {
           addBinding(scope, pending.name);
         }
       }
-      if (!scope || pending.propertyName === undefined) continue;
+      if (!scope) continue;
+      if (pending.rest) {
+        if (
+          expressionIsNodeModuleNamespace(
+            pending.initializer,
+            metadata,
+          )
+          && !nodeModuleNamespacesFor(scope).has(pending.name)
+        ) {
+          nodeModuleNamespacesFor(scope).add(pending.name);
+          changed = true;
+        }
+        if (
+          expressionIsCommonJsModuleNamespace(
+            pending.initializer,
+            metadata,
+          )
+          && !commonJsModuleNamespacesFor(scope).has(pending.name)
+        ) {
+          commonJsModuleNamespacesFor(scope).add(pending.name);
+          changed = true;
+        }
+        if (
+          expressionIsGlobalAlias(metadata, pending.initializer)
+          && !globalAliasesFor(scope).has(pending.name)
+        ) {
+          globalAliasesFor(scope).add(pending.name);
+          changed = true;
+        }
+        if (
+          expressionIsUnshadowedReflectNamespace(
+            pending.initializer,
+            metadata,
+          )
+          && !reflectNamespacesFor(scope).has(pending.name)
+        ) {
+          reflectNamespacesFor(scope).add(pending.name);
+          changed = true;
+        }
+        continue;
+      }
+      const propertyName = staticPropertyNameValue(
+        pending.propertyNameNode,
+        metadata,
+      );
+      if (propertyName === undefined) continue;
+      const containerValue = buildContainerPropertyExpression(
+        pending.initializer,
+        propertyName,
+        metadata,
+      );
+      const destructuredPathAnchor = propertyName === 'pathname'
+        ? buildUrlObjectPathValue(pending.initializer, metadata)
+        : containerValue
+          ? buildPathExpressionValue(containerValue, metadata)
+          : undefined;
+      if (
+        destructuredPathAnchor !== undefined
+        && !pathAnchorsFor(scope).has(pending.name)
+      ) {
+        pathAnchorsFor(scope).set(
+          pending.name,
+          destructuredPathAnchor,
+        );
+        changed = true;
+      }
+      if (containerValue) {
+        const urlDirectory = buildUrlBaseDirectoryValue(
+          containerValue,
+          metadata,
+        );
+        if (
+          urlDirectory !== undefined
+          && !urlBaseDirectoriesFor(scope).has(pending.name)
+        ) {
+          urlBaseDirectoriesFor(scope).set(
+            pending.name,
+            urlDirectory,
+          );
+          changed = true;
+        }
+      }
+      if (
+        propertyName === 'value'
+        && expressionIsFunctionConstructorDescriptor(
+          pending.initializer,
+          metadata,
+        )
+        && !codeGenerationAliasesFor(scope).has(pending.name)
+      ) {
+        codeGenerationAliasesFor(scope).add(pending.name);
+        changed = true;
+      }
 
       if (
-        globalObjectNames.has(pending.propertyName)
+        globalObjectNames.has(propertyName)
         && expressionIsGlobalAlias(metadata, pending.initializer)
         && !globalAliasesFor(scope).has(pending.name)
       ) {
@@ -601,8 +1090,28 @@ function collectLexicalMetadata(sourceFile, relativePath) {
         changed = true;
       }
       if (
-        (pending.propertyName === 'join'
-          || pending.propertyName === 'resolve')
+        (
+          propertyName === 'constructor'
+          && !expressionHasProvenSafeOwnConstructor(
+            pending.initializer,
+            metadata,
+          )
+          || (
+            hiddenCodeGenerationNames.has(propertyName)
+            && expressionIsGlobalAlias(
+              metadata,
+              pending.initializer,
+            )
+          )
+        )
+        && !codeGenerationAliasesFor(scope).has(pending.name)
+      ) {
+        codeGenerationAliasesFor(scope).add(pending.name);
+        changed = true;
+      }
+      if (
+        (propertyName === 'join'
+          || propertyName === 'resolve')
         && expressionIsNodePathNamespace(
           pending.initializer,
           metadata,
@@ -611,13 +1120,13 @@ function collectLexicalMetadata(sourceFile, relativePath) {
       ) {
         pathFunctionsFor(scope).set(
           pending.name,
-          pending.propertyName,
+          propertyName,
         );
         changed = true;
       }
       if (
-        (pending.propertyName === 'posix'
-          || pending.propertyName === 'win32')
+        (propertyName === 'posix'
+          || propertyName === 'win32')
         && expressionIsNodePathNamespace(
           pending.initializer,
           metadata,
@@ -625,6 +1134,51 @@ function collectLexicalMetadata(sourceFile, relativePath) {
         && !pathNamespacesFor(scope).has(pending.name)
       ) {
         pathNamespacesFor(scope).add(pending.name);
+        changed = true;
+      }
+      if (
+        propertyName === 'sep'
+        && expressionIsNodePathNamespace(
+          pending.initializer,
+          metadata,
+        )
+        && !constantsFor(scope).has(pending.name)
+      ) {
+        constantsFor(scope).set(pending.name, '/');
+        changed = true;
+      }
+      if (
+        pending.stable
+        && reflectCodeGenerationMemberNames.has(propertyName)
+        && expressionIsUnshadowedReflectNamespace(
+          pending.initializer,
+          metadata,
+        )
+        && !reflectFunctionsFor(scope).has(pending.name)
+      ) {
+        reflectFunctionsFor(scope).set(pending.name, propertyName);
+        changed = true;
+      }
+      if (
+        propertyName === 'require'
+        && expressionIsCommonJsModuleNamespace(
+          pending.initializer,
+          metadata,
+        )
+        && !moduleLoaderAliasesFor(scope).has(pending.name)
+      ) {
+        moduleLoaderAliasesFor(scope).add(pending.name);
+        changed = true;
+      }
+      if (
+        propertyName === 'createRequire'
+        && expressionIsNodeModuleNamespace(
+          pending.initializer,
+          metadata,
+        )
+        && !createRequireFunctionsFor(scope).has(pending.name)
+      ) {
+        createRequireFunctionsFor(scope).add(pending.name);
         changed = true;
       }
     }
@@ -643,10 +1197,14 @@ function resolveLexicalBinding(metadata, node, name) {
           bound: true,
           constantValue:
             metadata.constantStringsByScope.get(current)?.get(name),
-          initializer:
-            metadata.bindingInitializersByScope.get(current)?.get(name),
           pathAnchor:
             metadata.pathAnchorsByScope.get(current)?.get(name),
+          initializer:
+            metadata.stableInitializersByScope.get(current)?.get(name),
+          functionDeclaration:
+            metadata.functionDeclarationsByScope.get(current)?.get(name),
+          classDeclaration:
+            metadata.classDeclarationsByScope.get(current)?.get(name),
           scope: current,
         };
       }
@@ -656,6 +1214,8 @@ function resolveLexicalBinding(metadata, node, name) {
   return {
     bound: false,
     constantValue: undefined,
+    classDeclaration: undefined,
+    functionDeclaration: undefined,
     initializer: undefined,
     pathAnchor: undefined,
     scope: undefined,
@@ -670,23 +1230,755 @@ function resolveGlobalAlias(metadata, node, name) {
   );
 }
 
-function expressionIsGlobalAlias(metadata, node) {
-  const expression = unwrapExpression(node);
-  if (!ts.isIdentifier(expression)) return false;
-  if (globalObjectNames.has(expression.text)) {
-    return !resolveLexicalBinding(
-      metadata,
-      expression,
-      expression.text,
-    ).bound;
+function bindingHasReassignment(
+  lexicalMetadata,
+  bindingScope,
+  bindingName,
+) {
+  let reassigned = false;
+  function visit(node) {
+    if (reassigned) return;
+    if (
+      ts.isBinaryExpression(node)
+      && isAssignmentOperator(node.operatorToken.kind)
+      && ts.isIdentifier(unwrapExpression(node.left))
+    ) {
+      const target = unwrapExpression(node.left);
+      if (target.text === bindingName) {
+        const binding = resolveLexicalBinding(
+          lexicalMetadata,
+          target,
+          bindingName,
+        );
+        if (binding.scope === bindingScope) reassigned = true;
+      }
+    }
+    ts.forEachChild(node, visit);
   }
-  return resolveGlobalAlias(metadata, expression, expression.text);
+  visit(lexicalMetadata.sourceFile);
+  return reassigned;
 }
 
-function memberPropertyName(node) {
+function safeConstructorReceiverHasNoOpaqueMutation(
+  lexicalMetadata,
+  bindingScope,
+  bindingName,
+) {
+  let safe = true;
+  function visit(node) {
+    if (!safe) return;
+    if (ts.isIdentifier(node) && node.text === bindingName) {
+      const binding = resolveLexicalBinding(
+        lexicalMetadata,
+        node,
+        bindingName,
+      );
+      if (binding.scope === bindingScope) {
+        const parent = node.parent;
+        const escapeKind = valueEscapeKind(
+          node,
+          (candidate) => {
+            const expression = unwrapExpression(candidate);
+            if (
+              !ts.isIdentifier(expression)
+              || expression.text !== bindingName
+            ) {
+              return false;
+            }
+            return resolveLexicalBinding(
+              lexicalMetadata,
+              expression,
+              bindingName,
+            ).scope === bindingScope;
+          },
+        );
+        if (
+          escapeKind !== undefined
+          && escapeKind !== 'opaque-call'
+        ) {
+          safe = false;
+          return;
+        }
+        if (
+          ts.isVariableDeclaration(parent)
+          && parent.initializer === node
+        ) {
+          safe = false;
+          return;
+        }
+        if (
+          ts.isBinaryExpression(parent)
+          && isAssignmentOperator(parent.operatorToken.kind)
+          && parent.right === node
+        ) {
+          safe = false;
+          return;
+        }
+        if (
+          (ts.isCallExpression(parent) || ts.isNewExpression(parent))
+          && parent.arguments?.includes(node)
+        ) {
+          const reflectRead = ts.isCallExpression(parent)
+            && parent.arguments[0] === node
+            && reflectFunctionKind(
+              parent.expression,
+              lexicalMetadata,
+            ) === 'get';
+          const objectFreeze = ts.isCallExpression(parent)
+            && ts.isPropertyAccessExpression(parent.expression)
+            && ts.isIdentifier(parent.expression.expression)
+            && parent.expression.expression.text === 'Object'
+            && parent.expression.name.text === 'freeze'
+            && !resolveLexicalBinding(
+              lexicalMetadata,
+              parent.expression.expression,
+              'Object',
+            ).bound;
+          if (!reflectRead && !objectFreeze) safe = false;
+        }
+        if (
+          (
+            ts.isPropertyAccessExpression(parent)
+            || ts.isElementAccessExpression(parent)
+          )
+          && parent.expression === node
+        ) {
+          const grandparent = parent.parent;
+          const propertyName = memberPropertyName(
+            parent,
+            lexicalMetadata,
+          );
+          if (
+            (
+              ts.isBinaryExpression(grandparent)
+              && grandparent.left === parent
+              && isAssignmentOperator(
+                grandparent.operatorToken.kind,
+              )
+            )
+            || (
+              ts.isDeleteExpression(grandparent)
+              && grandparent.expression === parent
+            )
+            || (
+              (
+                ts.isPrefixUnaryExpression(grandparent)
+                || ts.isPostfixUnaryExpression(grandparent)
+              )
+              && grandparent.operand === parent
+            )
+            || (
+              ts.isCallExpression(grandparent)
+              && grandparent.expression === parent
+              && propertyName !== 'constructor'
+            )
+          ) {
+            safe = false;
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(lexicalMetadata.sourceFile);
+  return safe;
+}
+
+function expressionIsGlobalAlias(metadata, node) {
+  const expression = unwrapExpression(node);
+  if (ts.isIdentifier(expression)) {
+    if (globalObjectNames.has(expression.text)) {
+      return !resolveLexicalBinding(
+        metadata,
+        expression,
+        expression.text,
+      ).bound;
+    }
+    return resolveGlobalAlias(metadata, expression, expression.text);
+  }
+  if (
+    (
+      ts.isPropertyAccessExpression(expression)
+      || ts.isElementAccessExpression(expression)
+    )
+    && globalObjectNames.has(
+      memberPropertyName(expression, metadata),
+    )
+  ) {
+    return expressionIsGlobalAlias(
+      metadata,
+      expression.expression,
+    );
+  }
+  return false;
+}
+
+function resolveCodeGenerationAlias(metadata, node, name) {
+  const binding = resolveLexicalBinding(metadata, node, name);
+  return Boolean(
+    binding.scope
+    && metadata.codeGenerationAliasesByScope
+      .get(binding.scope)
+      ?.has(name),
+  );
+}
+
+function expressionHasProvenSafeOwnConstructor(node, lexicalMetadata) {
+  const expression = unwrapExpression(node);
+  if (ts.isIdentifier(expression)) {
+    const binding = resolveLexicalBinding(
+      lexicalMetadata,
+      expression,
+      expression.text,
+    );
+    return Boolean(
+      binding.scope
+      && lexicalMetadata.safeConstructorReceiversByScope
+        .get(binding.scope)
+      ?.has(expression.text),
+    );
+  }
+  if (ts.isConditionalExpression(expression)) {
+    return expressionHasProvenSafeOwnConstructor(
+      expression.whenTrue,
+      lexicalMetadata,
+    ) && expressionHasProvenSafeOwnConstructor(
+      expression.whenFalse,
+      lexicalMetadata,
+    );
+  }
+  if (
+    ts.isCallExpression(expression)
+    && expression.arguments.length === 1
+    && ts.isPropertyAccessExpression(expression.expression)
+    && ts.isIdentifier(expression.expression.expression)
+    && expression.expression.expression.text === 'Object'
+    && expression.expression.name.text === 'freeze'
+    && !resolveLexicalBinding(
+      lexicalMetadata,
+      expression.expression.expression,
+      'Object',
+    ).bound
+  ) {
+    return expressionHasProvenSafeOwnConstructor(
+      expression.arguments[0],
+      lexicalMetadata,
+    );
+  }
+  if (!ts.isObjectLiteralExpression(expression)) return false;
+  return expression.properties.some((property) => {
+    if (
+      !(
+        ts.isPropertyAssignment(property)
+        || ts.isMethodDeclaration(property)
+      )
+      || staticPropertyNameValue(property.name, lexicalMetadata)
+        !== 'constructor'
+    ) {
+      return false;
+    }
+    return ts.isMethodDeclaration(property)
+      || ts.isArrowFunction(property.initializer)
+      || ts.isFunctionExpression(property.initializer);
+  });
+}
+
+function expressionIsUnshadowedReflectNamespace(node, lexicalMetadata) {
+  const expression = unwrapExpression(node);
+  if (!ts.isIdentifier(expression)) return false;
+  if (expression.text === 'Reflect') {
+    return !resolveLexicalBinding(
+      lexicalMetadata,
+      expression,
+      'Reflect',
+    ).bound;
+  }
+  const binding = resolveLexicalBinding(
+    lexicalMetadata,
+    expression,
+    expression.text,
+  );
+  return Boolean(
+    binding.scope
+    && lexicalMetadata.reflectNamespacesByScope
+      .get(binding.scope)
+      ?.has(expression.text),
+  );
+}
+
+function resolveReflectFunctionAlias(metadata, node, name) {
+  const binding = resolveLexicalBinding(metadata, node, name);
+  return binding.scope
+    ? metadata.reflectFunctionsByScope.get(binding.scope)?.get(name)
+    : undefined;
+}
+
+function reflectFunctionKind(node, lexicalMetadata) {
+  const expression = unwrapExpression(node);
+  if (ts.isIdentifier(expression)) {
+    return resolveReflectFunctionAlias(
+      lexicalMetadata,
+      expression,
+      expression.text,
+    );
+  }
+  if (
+    !(
+      ts.isPropertyAccessExpression(expression)
+      || ts.isElementAccessExpression(expression)
+    )
+    || !expressionIsUnshadowedReflectNamespace(
+      expression.expression,
+      lexicalMetadata,
+    )
+  ) {
+    return undefined;
+  }
+  const propertyName = memberPropertyName(
+    expression,
+    lexicalMetadata,
+  );
+  return reflectCodeGenerationMemberNames.has(propertyName)
+    ? propertyName
+    : undefined;
+}
+
+function isUnshadowedReflectMember(
+  expression,
+  memberNames,
+  lexicalMetadata,
+) {
+  return memberNames.has(
+    reflectFunctionKind(expression, lexicalMetadata),
+  );
+}
+
+function isUnshadowedObjectStaticCall(
+  node,
+  methodName,
+  lexicalMetadata,
+) {
+  const expression = unwrapExpression(node);
+  if (
+    !ts.isCallExpression(expression)
+    || !(
+      ts.isPropertyAccessExpression(expression.expression)
+      || ts.isElementAccessExpression(expression.expression)
+    )
+    || memberPropertyName(
+      expression.expression,
+      lexicalMetadata,
+    ) !== methodName
+  ) {
+    return false;
+  }
+  const namespace = unwrapExpression(expression.expression.expression);
+  return ts.isIdentifier(namespace)
+    && namespace.text === 'Object'
+    && !resolveLexicalBinding(
+      lexicalMetadata,
+      namespace,
+      'Object',
+    ).bound;
+}
+
+function expressionIsKnownFunctionValue(node, lexicalMetadata) {
+  const expression = unwrapExpression(node);
+  if (
+    isFunctionLikeScope(expression)
+    || ts.isClassExpression(expression)
+    || ts.isClassDeclaration(expression)
+  ) {
+    return true;
+  }
+  if (!ts.isIdentifier(expression)) return false;
+  const binding = resolveLexicalBinding(
+    lexicalMetadata,
+    expression,
+    expression.text,
+  );
+  const initializer = binding.initializer
+    ? unwrapExpression(binding.initializer)
+    : undefined;
+  return Boolean(
+    binding.functionDeclaration
+    || binding.classDeclaration
+    || initializer
+      && (
+        isFunctionLikeScope(initializer)
+        || ts.isClassExpression(initializer)
+      ),
+  );
+}
+
+function expressionIsKnownFunctionPrototype(node, lexicalMetadata) {
+  const expression = unwrapExpression(node);
+  if (
+    isUnshadowedObjectStaticCall(
+      expression,
+      'getPrototypeOf',
+      lexicalMetadata,
+    )
+  ) {
+    return Boolean(
+      expression.arguments[0]
+      && expressionIsKnownFunctionValue(
+        expression.arguments[0],
+        lexicalMetadata,
+      ),
+    );
+  }
+  return Boolean(
+    (
+      ts.isPropertyAccessExpression(expression)
+      || ts.isElementAccessExpression(expression)
+    )
+    && memberPropertyName(expression, lexicalMetadata) === 'prototype'
+    && expressionIsCodeGenerationCallable(
+      expression.expression,
+      lexicalMetadata,
+    ),
+  );
+}
+
+function expressionIsFunctionConstructorDescriptor(
+  node,
+  lexicalMetadata,
+  visited = new Set(),
+) {
+  const expression = unwrapExpression(node);
+  if (visited.has(expression)) return false;
+  visited.add(expression);
+  if (ts.isIdentifier(expression)) {
+    const binding = resolveLexicalBinding(
+      lexicalMetadata,
+      expression,
+      expression.text,
+    );
+    return Boolean(
+      binding.initializer
+      && expressionIsFunctionConstructorDescriptor(
+        binding.initializer,
+        lexicalMetadata,
+        visited,
+      ),
+    );
+  }
+  if (
+    isUnshadowedObjectStaticCall(
+      expression,
+      'getOwnPropertyDescriptor',
+      lexicalMetadata,
+    )
+    && expression.arguments.length >= 2
+    && expressionIsKnownFunctionPrototype(
+      expression.arguments[0],
+      lexicalMetadata,
+    )
+  ) {
+    const propertyName = staticStringExpressionValue(
+      expression.arguments[1],
+      lexicalMetadata,
+    );
+    return propertyName === undefined || propertyName === 'constructor';
+  }
+  if (
+    (
+      ts.isPropertyAccessExpression(expression)
+      || ts.isElementAccessExpression(expression)
+    )
+    && isUnshadowedObjectStaticCall(
+      expression.expression,
+      'getOwnPropertyDescriptors',
+      lexicalMetadata,
+    )
+    && expressionIsKnownFunctionPrototype(
+      unwrapExpression(expression.expression).arguments[0],
+      lexicalMetadata,
+    )
+  ) {
+    const propertyName = memberPropertyName(expression, lexicalMetadata);
+    return propertyName === undefined || propertyName === 'constructor';
+  }
+  return false;
+}
+
+function expressionIsCodeGenerationCallable(node, lexicalMetadata) {
+  const expression = unwrapExpression(node);
+  if (ts.isIdentifier(expression)) {
+    if (hiddenCodeGenerationNames.has(expression.text)) {
+      return !resolveLexicalBinding(
+        lexicalMetadata,
+        expression,
+        expression.text,
+      ).bound;
+    }
+    return resolveCodeGenerationAlias(
+      lexicalMetadata,
+      expression,
+      expression.text,
+    );
+  }
+  if (
+    ts.isPropertyAccessExpression(expression)
+    || ts.isElementAccessExpression(expression)
+  ) {
+    const propertyName = memberPropertyName(
+      expression,
+      lexicalMetadata,
+    );
+    if (propertyName === 'constructor') {
+      return !expressionHasProvenSafeOwnConstructor(
+        expression.expression,
+        lexicalMetadata,
+      );
+    }
+    if (
+      hiddenCodeGenerationNames.has(propertyName)
+      && expressionIsGlobalAlias(
+        lexicalMetadata,
+        expression.expression,
+      )
+    ) {
+      return true;
+    }
+    if (
+      propertyName === 'value'
+      && expressionIsFunctionConstructorDescriptor(
+        expression.expression,
+        lexicalMetadata,
+      )
+    ) {
+      return true;
+    }
+    return (
+      /^(?:apply|bind|call)$/u.test(propertyName ?? '')
+      && expressionIsCodeGenerationCallable(
+        expression.expression,
+        lexicalMetadata,
+      )
+    );
+  }
+  if (
+    ts.isCallExpression(expression)
+    && expression.arguments.length >= 2
+    && isUnshadowedReflectMember(
+      expression.expression,
+      reflectGetNames,
+      lexicalMetadata,
+    )
+  ) {
+    const propertyName = staticStringExpressionValue(
+      expression.arguments[1],
+      lexicalMetadata,
+    );
+    return (
+      propertyName === undefined
+      || propertyName === 'constructor'
+    )
+      && !expressionHasProvenSafeOwnConstructor(
+        expression.arguments[0],
+        lexicalMetadata,
+      );
+  }
+  if (
+    ts.isCallExpression(expression)
+    && (
+      isUnshadowedReflectMember(
+        expression.expression,
+        reflectCodeGenerationInvocationNames,
+        lexicalMetadata,
+      )
+      ? expression.arguments.slice(0, 1)
+      : expression.arguments
+    ).some((argument) => expressionIsCodeGenerationCallable(
+      argument,
+      lexicalMetadata,
+    ))
+  ) {
+    return true;
+  }
+  if (ts.isConditionalExpression(expression)) {
+    return expressionIsCodeGenerationCallable(
+      expression.whenTrue,
+      lexicalMetadata,
+    ) || expressionIsCodeGenerationCallable(
+      expression.whenFalse,
+      lexicalMetadata,
+    );
+  }
+  if (
+    ts.isBinaryExpression(expression)
+    && (
+      expression.operatorToken.kind === ts.SyntaxKind.CommaToken
+      || expression.operatorToken.kind
+        === ts.SyntaxKind.BarBarToken
+      || expression.operatorToken.kind
+        === ts.SyntaxKind.AmpersandAmpersandToken
+      || expression.operatorToken.kind
+        === ts.SyntaxKind.QuestionQuestionToken
+    )
+  ) {
+    return expressionIsCodeGenerationCallable(
+      expression.left,
+      lexicalMetadata,
+    ) || expressionIsCodeGenerationCallable(
+      expression.right,
+      lexicalMetadata,
+    );
+  }
+  return false;
+}
+
+function callUsesReflectCodeGenerationComposition(
+  node,
+  lexicalMetadata,
+) {
+  if (!ts.isCallExpression(node)) return false;
+  const callee = unwrapExpression(node.expression);
+  if (
+    (
+      ts.isPropertyAccessExpression(callee)
+      || ts.isElementAccessExpression(callee)
+    )
+    && /^(?:apply|bind|call)$/u.test(
+      memberPropertyName(callee, lexicalMetadata) ?? '',
+    )
+    && reflectFunctionKind(
+      callee.expression,
+      lexicalMetadata,
+    ) === 'get'
+  ) {
+    return true;
+  }
+  return reflectFunctionKind(callee, lexicalMetadata) === 'apply'
+    && node.arguments.length >= 1
+    && reflectFunctionKind(
+      node.arguments[0],
+      lexicalMetadata,
+    ) === 'get';
+}
+
+function transparentExpressionParent(node) {
+  let current = node;
+  let parent = current.parent;
+  while (
+    parent
+    && (
+      ts.isParenthesizedExpression(parent)
+      || ts.isAsExpression(parent)
+      || ts.isTypeAssertionExpression(parent)
+      || ts.isNonNullExpression(parent)
+      || ts.isSatisfiesExpression(parent)
+    )
+    && parent.expression === current
+  ) {
+    current = parent;
+    parent = current.parent;
+  }
+  return { current, parent };
+}
+
+function hasExportModifier(node) {
+  return Boolean(node.modifiers?.some(
+    (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
+  ));
+}
+
+function isExportedVariableInitializer(current, parent) {
+  return Boolean(
+    parent
+    && ts.isVariableDeclaration(parent)
+    && parent.initializer === current
+    && ts.isVariableDeclarationList(parent.parent)
+    && ts.isVariableStatement(parent.parent.parent)
+    && hasExportModifier(parent.parent.parent),
+  );
+}
+
+function valueIsExportedVariableInitializer(node) {
+  const { current, parent } = transparentExpressionParent(node);
+  return isExportedVariableInitializer(current, parent);
+}
+
+function valueEscapeKind(node, isSensitiveValue) {
+  if (!isSensitiveValue(node)) return undefined;
+  const { current, parent } = transparentExpressionParent(node);
+  if (!parent) return undefined;
+  if (isExportedVariableInitializer(current, parent)) return 'export';
+  if (
+    (ts.isPropertyAssignment(parent) && parent.initializer === current)
+    || ts.isShorthandPropertyAssignment(parent)
+    || ts.isArrayLiteralExpression(parent)
+    || (ts.isReturnStatement(parent) && parent.expression === current)
+    || (ts.isYieldExpression(parent) && parent.expression === current)
+    || (
+      ts.isArrowFunction(parent)
+      && parent.body === current
+      && !ts.isBlock(parent.body)
+    )
+    || (
+      ts.isPropertyDeclaration(parent)
+      && parent.initializer === current
+    )
+    || ts.isSpreadAssignment(parent)
+    || ts.isSpreadElement(parent)
+    || ts.isTemplateSpan(parent)
+    || ts.isConditionalExpression(parent)
+    || ts.isAwaitExpression(parent)
+    || (
+      ts.isThrowStatement(parent)
+      && parent.expression === current
+    )
+    || (
+      ts.isExportAssignment(parent)
+      && parent.expression === current
+    )
+    || ts.isExportSpecifier(parent)
+  ) {
+    return 'opaque';
+  }
+  if (
+    (ts.isCallExpression(parent) || ts.isNewExpression(parent))
+    && parent.arguments?.includes(current)
+  ) {
+    return 'opaque-call';
+  }
+  if (ts.isBinaryExpression(parent)) {
+    if (
+      isAssignmentOperator(parent.operatorToken.kind)
+      && parent.right === current
+    ) {
+      return !ts.isIdentifier(unwrapExpression(parent.left))
+        ? 'opaque'
+        : undefined;
+    }
+    return !isEqualityOperator(parent.operatorToken.kind)
+      ? 'opaque'
+      : undefined;
+  }
+  return undefined;
+}
+
+function codeGenerationValueEscapes(node, lexicalMetadata) {
+  return valueEscapeKind(
+    node,
+    (candidate) => expressionIsCodeGenerationCallable(
+      candidate,
+      lexicalMetadata,
+    ),
+  ) !== undefined;
+}
+
+function memberPropertyName(node, lexicalMetadata) {
   if (ts.isPropertyAccessExpression(node)) return node.name.text;
   if (ts.isElementAccessExpression(node)) {
-    return staticPropertyName(node.argumentExpression);
+    return lexicalMetadata
+      ? staticStringExpressionValue(
+        node.argumentExpression,
+        lexicalMetadata,
+      )
+      : staticPropertyName(node.argumentExpression);
   }
   return undefined;
 }
@@ -699,7 +1991,7 @@ function globalMemberChainInfo(node, lexicalMetadata) {
     || ts.isElementAccessExpression(current)
   ) {
     depth += 1;
-    const propertyName = memberPropertyName(current);
+    const propertyName = memberPropertyName(current, lexicalMetadata);
     const expression = unwrapExpression(current.expression);
     if (expressionIsGlobalAlias(lexicalMetadata, expression)) {
       return { depth, firstPropertyName: propertyName };
@@ -707,6 +1999,58 @@ function globalMemberChainInfo(node, lexicalMetadata) {
     current = expression;
   }
   return undefined;
+}
+
+function expressionIsNativeNamespaceValue(node, lexicalMetadata) {
+  const expression = unwrapExpression(node);
+  if (ts.isIdentifier(expression)) {
+    const binding = resolveLexicalBinding(
+      lexicalMetadata,
+      expression,
+      expression.text,
+    );
+    if (nativeNamespaceNames.has(expression.text) && !binding.bound) {
+      return true;
+    }
+    return Boolean(
+      binding.scope
+      && lexicalMetadata.nativeNamespaceAliasesByScope
+        .get(binding.scope)
+        ?.has(expression.text),
+    );
+  }
+  if (
+    ts.isPropertyAccessExpression(expression)
+    || ts.isElementAccessExpression(expression)
+  ) {
+    return expressionIsNativeNamespaceValue(
+      expression.expression,
+      lexicalMetadata,
+    ) || nativeNamespaceNames.has(
+      globalMemberChainInfo(
+        expression,
+        lexicalMetadata,
+      )?.firstPropertyName,
+    );
+  }
+  return Boolean(
+    ts.isCallExpression(expression)
+    && reflectFunctionKind(
+      expression.expression,
+      lexicalMetadata,
+    ) === 'get'
+    && expression.arguments.length >= 2
+    && expressionIsGlobalAlias(
+      lexicalMetadata,
+      expression.arguments[0],
+    )
+    && nativeNamespaceNames.has(
+      staticStringExpressionValue(
+        expression.arguments[1],
+        lexicalMetadata,
+      ),
+    ),
+  );
 }
 
 function isVariableInitializerCapture(node) {
@@ -733,6 +2077,26 @@ function isVariableInitializerCapture(node) {
   );
 }
 
+function globalObjectValueEscapes(node, lexicalMetadata) {
+  return valueEscapeKind(
+    node,
+    (candidate) => expressionIsGlobalAlias(
+      lexicalMetadata,
+      candidate,
+    ),
+  ) !== undefined;
+}
+
+function globalObjectEscapeKind(node, lexicalMetadata) {
+  return valueEscapeKind(
+    node,
+    (candidate) => expressionIsGlobalAlias(
+      lexicalMetadata,
+      candidate,
+    ),
+  );
+}
+
 function isGlobalObjectExpression(node, lexicalMetadata) {
   return expressionIsGlobalAlias(lexicalMetadata, node);
 }
@@ -741,10 +2105,7 @@ function isReflectGlobalAccess(node, lexicalMetadata) {
   if (
     !ts.isCallExpression(node)
     || node.arguments.length < 2
-    || !ts.isPropertyAccessExpression(node.expression)
-    || !ts.isIdentifier(node.expression.expression)
-    || node.expression.expression.text !== 'Reflect'
-    || node.expression.name.text !== 'get'
+    || reflectFunctionKind(node.expression, lexicalMetadata) !== 'get'
     || !isGlobalObjectExpression(node.arguments[0], lexicalMetadata)
   ) {
     return false;
@@ -859,15 +2220,535 @@ function isAssignmentOperator(kind) {
     && kind <= ts.SyntaxKind.LastAssignment;
 }
 
-function isDynamicModuleLoadCall(node) {
-  return ts.isCallExpression(node)
-    && (
-      node.expression.kind === ts.SyntaxKind.ImportKeyword
-      || (
-        ts.isIdentifier(node.expression)
-        && node.expression.text === 'require'
-      )
+function expressionIsCreateRequireFunction(node, lexicalMetadata) {
+  const expression = unwrapExpression(node);
+  if (ts.isIdentifier(expression)) {
+    const binding = resolveLexicalBinding(
+      lexicalMetadata,
+      expression,
+      expression.text,
     );
+    return Boolean(
+      binding.scope
+      && lexicalMetadata.createRequireFunctionsByScope
+        .get(binding.scope)
+        ?.has(expression.text),
+    );
+  }
+  return Boolean(
+    (
+      ts.isPropertyAccessExpression(expression)
+      || ts.isElementAccessExpression(expression)
+    )
+    && memberPropertyName(expression, lexicalMetadata)
+      === 'createRequire'
+    && expressionIsNodeModuleNamespace(
+      expression.expression,
+      lexicalMetadata,
+    ),
+  );
+}
+
+function expressionIsNodeModuleNamespace(node, lexicalMetadata) {
+  const expression = unwrapExpression(node);
+  if (!ts.isIdentifier(expression)) return false;
+  const binding = resolveLexicalBinding(
+    lexicalMetadata,
+    expression,
+    expression.text,
+  );
+  return Boolean(
+    binding.scope
+    && lexicalMetadata.nodeModuleNamespacesByScope
+      .get(binding.scope)
+      ?.has(expression.text),
+  );
+}
+
+function expressionIsCommonJsModuleNamespace(node, lexicalMetadata) {
+  const expression = unwrapExpression(node);
+  if (!ts.isIdentifier(expression)) return false;
+  if (expression.text === 'module') {
+    return !resolveLexicalBinding(
+      lexicalMetadata,
+      expression,
+      'module',
+    ).bound;
+  }
+  const binding = resolveLexicalBinding(
+    lexicalMetadata,
+    expression,
+    expression.text,
+  );
+  return Boolean(
+    binding.scope
+    && lexicalMetadata.commonJsModuleNamespacesByScope
+      .get(binding.scope)
+      ?.has(expression.text),
+  );
+}
+
+function expressionIsModuleLoader(node, lexicalMetadata) {
+  const expression = unwrapExpression(node);
+  if (ts.isIdentifier(expression)) {
+    if (expression.text === 'require') {
+      return !resolveLexicalBinding(
+        lexicalMetadata,
+        expression,
+        'require',
+      ).bound;
+    }
+    const binding = resolveLexicalBinding(
+      lexicalMetadata,
+      expression,
+      expression.text,
+    );
+    return Boolean(
+      binding.scope
+      && lexicalMetadata.moduleLoaderAliasesByScope
+        .get(binding.scope)
+        ?.has(expression.text),
+    );
+  }
+  if (
+    (
+      ts.isPropertyAccessExpression(expression)
+      || ts.isElementAccessExpression(expression)
+    )
+  ) {
+    const propertyName = memberPropertyName(
+      expression,
+      lexicalMetadata,
+    );
+    if (
+      propertyName === 'require'
+      && expressionIsCommonJsModuleNamespace(
+        expression.expression,
+        lexicalMetadata,
+      )
+    ) {
+      return true;
+    }
+    if (
+      /^(?:apply|bind|call)$/u.test(propertyName ?? '')
+      && expressionIsModuleLoader(
+        expression.expression,
+        lexicalMetadata,
+      )
+    ) {
+      return true;
+    }
+  }
+  if (ts.isConditionalExpression(expression)) {
+    return expressionIsModuleLoader(
+      expression.whenTrue,
+      lexicalMetadata,
+    ) || expressionIsModuleLoader(
+      expression.whenFalse,
+      lexicalMetadata,
+    );
+  }
+  if (
+    ts.isBinaryExpression(expression)
+    && (
+      expression.operatorToken.kind === ts.SyntaxKind.CommaToken
+      || expression.operatorToken.kind === ts.SyntaxKind.BarBarToken
+      || expression.operatorToken.kind
+        === ts.SyntaxKind.AmpersandAmpersandToken
+      || expression.operatorToken.kind
+        === ts.SyntaxKind.QuestionQuestionToken
+    )
+  ) {
+    return expressionIsModuleLoader(
+      expression.left,
+      lexicalMetadata,
+    ) || expressionIsModuleLoader(
+      expression.right,
+      lexicalMetadata,
+    );
+  }
+  if (!ts.isCallExpression(expression)) return false;
+  if (
+    expressionIsCreateRequireFunction(
+      expression.expression,
+      lexicalMetadata,
+    )
+  ) {
+    return true;
+  }
+  if (
+    ts.isPropertyAccessExpression(expression.expression)
+    && expression.expression.name.text === 'bind'
+    && expressionIsModuleLoader(
+      expression.expression.expression,
+      lexicalMetadata,
+    )
+  ) {
+    return true;
+  }
+  return reflectFunctionKind(
+    expression.expression,
+    lexicalMetadata,
+  ) === 'apply'
+    && expression.arguments.length >= 1
+    && expressionIsModuleLoader(
+      expression.arguments[0],
+      lexicalMetadata,
+    );
+}
+
+function isDynamicModuleLoadCall(node, lexicalMetadata) {
+  if (!ts.isCallExpression(node)) return false;
+  if (node.expression.kind === ts.SyntaxKind.ImportKeyword) return true;
+  if (
+    expressionIsModuleLoader(node.expression, lexicalMetadata)
+    || expressionIsModuleLoader(node, lexicalMetadata)
+  ) {
+    return true;
+  }
+  const callee = unwrapExpression(node.expression);
+  return (
+    (
+      ts.isPropertyAccessExpression(callee)
+      || ts.isElementAccessExpression(callee)
+    )
+    && memberPropertyName(callee, lexicalMetadata) === 'resolve'
+    && expressionIsModuleLoader(callee.expression, lexicalMetadata)
+  );
+}
+
+function expressionIsTransferSensitiveCapability(
+  node,
+  lexicalMetadata,
+) {
+  return reflectFunctionKind(node, lexicalMetadata) !== undefined
+    || expressionIsUnshadowedReflectNamespace(
+      node,
+      lexicalMetadata,
+    )
+    || expressionIsModuleLoader(node, lexicalMetadata)
+    || expressionIsCreateRequireFunction(node, lexicalMetadata)
+    || expressionIsNodeModuleNamespace(node, lexicalMetadata)
+    || expressionIsCommonJsModuleNamespace(
+      node,
+      lexicalMetadata,
+    );
+}
+
+function expressionIsBuildPathAnchor(node, lexicalMetadata) {
+  return buildPathExpressionValue(node, lexicalMetadata) !== undefined
+    || buildUrlBaseDirectoryValue(node, lexicalMetadata) !== undefined;
+}
+
+function expressionContainsBuildPathAnchor(
+  node,
+  lexicalMetadata,
+  visited = new Set(),
+) {
+  const expression = unwrapExpression(node);
+  if (visited.has(expression)) return false;
+  visited.add(expression);
+  if (expressionIsBuildPathAnchor(expression, lexicalMetadata)) {
+    return true;
+  }
+  if (ts.isAwaitExpression(expression)) {
+    return expressionContainsBuildPathAnchor(
+      expression.expression,
+      lexicalMetadata,
+      visited,
+    );
+  }
+  if (isFunctionLikeScope(expression)) {
+    return functionReturnsBuildPathAnchor(
+      expression,
+      lexicalMetadata,
+      visited,
+    );
+  }
+  if (
+    ts.isClassDeclaration(expression)
+    || ts.isClassExpression(expression)
+  ) {
+    return expression.members.some((member) => {
+      if (
+        ts.isPropertyDeclaration(member)
+        && member.initializer
+      ) {
+        return expressionContainsBuildPathAnchor(
+          member.initializer,
+          lexicalMetadata,
+          visited,
+        );
+      }
+      return isFunctionLikeScope(member)
+        && (
+          functionReturnsBuildPathAnchor(
+            member,
+            lexicalMetadata,
+            visited,
+          )
+          || functionStoresBuildPathAnchor(
+            member,
+            lexicalMetadata,
+            visited,
+          )
+        );
+    });
+  }
+  if (ts.isIdentifier(expression)) {
+    const binding = resolveLexicalBinding(
+      lexicalMetadata,
+      expression,
+      expression.text,
+    );
+    if (
+      binding.functionDeclaration
+      && !visited.has(binding.functionDeclaration)
+    ) {
+      visited.add(binding.functionDeclaration);
+      if (
+        functionReturnsBuildPathAnchor(
+          binding.functionDeclaration,
+          lexicalMetadata,
+          visited,
+        )
+      ) {
+        return true;
+      }
+    }
+    if (
+      binding.classDeclaration
+      && !visited.has(binding.classDeclaration)
+    ) {
+      return expressionContainsBuildPathAnchor(
+        binding.classDeclaration,
+        lexicalMetadata,
+        visited,
+      );
+    }
+    return Boolean(
+      binding.initializer
+      && expressionContainsBuildPathAnchor(
+        binding.initializer,
+        lexicalMetadata,
+        visited,
+      ),
+    );
+  }
+  if (ts.isObjectLiteralExpression(expression)) {
+    return expression.properties.some((property) => {
+      if (ts.isPropertyAssignment(property)) {
+        return expressionContainsBuildPathAnchor(
+          property.initializer,
+          lexicalMetadata,
+          visited,
+        );
+      }
+      if (ts.isShorthandPropertyAssignment(property)) {
+        return expressionContainsBuildPathAnchor(
+          property.name,
+          lexicalMetadata,
+          visited,
+        );
+      }
+      if (ts.isSpreadAssignment(property)) {
+        return expressionContainsBuildPathAnchor(
+          property.expression,
+          lexicalMetadata,
+          visited,
+        );
+      }
+      if (isFunctionLikeScope(property)) {
+        return functionReturnsBuildPathAnchor(
+          property,
+          lexicalMetadata,
+          visited,
+        );
+      }
+      return false;
+    });
+  }
+  if (ts.isArrayLiteralExpression(expression)) {
+    return expression.elements.some(
+      (element) => !ts.isOmittedExpression(element)
+        && expressionContainsBuildPathAnchor(
+          element,
+          lexicalMetadata,
+          visited,
+        ),
+    );
+  }
+  if (
+    ts.isCallExpression(expression)
+    && ts.isPropertyAccessExpression(expression.expression)
+    && ts.isIdentifier(expression.expression.expression)
+    && expression.expression.expression.text === 'Object'
+    && expression.expression.name.text === 'freeze'
+    && !resolveLexicalBinding(
+      lexicalMetadata,
+      expression.expression.expression,
+      'Object',
+    ).bound
+  ) {
+    return Boolean(
+      expression.arguments[0]
+      && expressionContainsBuildPathAnchor(
+        expression.arguments[0],
+        lexicalMetadata,
+        visited,
+      ),
+    );
+  }
+  if (ts.isConditionalExpression(expression)) {
+    return expressionContainsBuildPathAnchor(
+      expression.whenTrue,
+      lexicalMetadata,
+      visited,
+    ) || expressionContainsBuildPathAnchor(
+      expression.whenFalse,
+      lexicalMetadata,
+      visited,
+    );
+  }
+  return false;
+}
+
+function functionReturnsBuildPathAnchor(
+  functionNode,
+  lexicalMetadata,
+  visited = new Set(),
+) {
+  if (!functionNode.body) return false;
+  if (
+    ts.isArrowFunction(functionNode)
+    && !ts.isBlock(functionNode.body)
+  ) {
+    return expressionContainsBuildPathAnchor(
+      functionNode.body,
+      lexicalMetadata,
+      visited,
+    );
+  }
+  let returnsAnchor = false;
+  function visit(node) {
+    if (returnsAnchor) return;
+    if (node !== functionNode.body && isFunctionLikeScope(node)) return;
+    if (
+      ts.isReturnStatement(node)
+      && node.expression
+      && expressionContainsBuildPathAnchor(
+        node.expression,
+        lexicalMetadata,
+        visited,
+      )
+    ) {
+      returnsAnchor = true;
+      return;
+    }
+    if (
+      ts.isYieldExpression(node)
+      && node.expression
+      && expressionContainsBuildPathAnchor(
+        node.expression,
+        lexicalMetadata,
+        visited,
+      )
+    ) {
+      returnsAnchor = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(functionNode.body);
+  return returnsAnchor;
+}
+
+function functionStoresBuildPathAnchor(
+  functionNode,
+  lexicalMetadata,
+  visited = new Set(),
+) {
+  if (!functionNode.body || !ts.isBlock(functionNode.body)) return false;
+  let storesAnchor = false;
+  function visit(node) {
+    if (storesAnchor) return;
+    if (node !== functionNode.body && isFunctionLikeScope(node)) return;
+    if (
+      ts.isBinaryExpression(node)
+      && isAssignmentOperator(node.operatorToken.kind)
+      && (
+        ts.isPropertyAccessExpression(unwrapExpression(node.left))
+        || ts.isElementAccessExpression(unwrapExpression(node.left))
+      )
+      && unwrapExpression(
+        unwrapExpression(node.left).expression,
+      ).kind === ts.SyntaxKind.ThisKeyword
+      && expressionContainsBuildPathAnchor(
+        node.right,
+        lexicalMetadata,
+        visited,
+      )
+    ) {
+      storesAnchor = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(functionNode.body);
+  return storesAnchor;
+}
+
+function isBrowserSpecificIdentifierName(name) {
+  const words = name
+    .replace(/([a-z\d])([A-Z])/gu, '$1 $2')
+    .split(/[_$\s]+/u)
+    .filter(Boolean)
+    .map((word) => word.toLowerCase());
+  return words.some((word) => {
+    if (word.startsWith('firefox') || word.startsWith('isfirefox')) {
+      return true;
+    }
+    if (word.startsWith('ischrome')) return true;
+    return word.startsWith('chrome')
+      && !word.startsWith('chromebook')
+      && !word.startsWith('chromium');
+  });
+}
+
+function isCommonJsExportTarget(node, lexicalMetadata) {
+  const expression = unwrapExpression(node);
+  if (
+    ts.isIdentifier(expression)
+    && expression.text === 'exports'
+    && !resolveLexicalBinding(
+      lexicalMetadata,
+      expression,
+      'exports',
+    ).bound
+  ) {
+    return true;
+  }
+  if (
+    !(
+      ts.isPropertyAccessExpression(expression)
+      || ts.isElementAccessExpression(expression)
+    )
+  ) {
+    return false;
+  }
+  if (
+    memberPropertyName(expression, lexicalMetadata) === 'exports'
+    && expressionIsCommonJsModuleNamespace(
+      expression.expression,
+      lexicalMetadata,
+    )
+  ) {
+    return true;
+  }
+  return isCommonJsExportTarget(
+    expression.expression,
+    lexicalMetadata,
+  );
 }
 
 function isControlFlowTextLiteral(node) {
@@ -930,6 +2811,16 @@ function staticStringExpressionValue(node, lexicalMetadata) {
     ).constantValue;
   }
   if (
+    ts.isPropertyAccessExpression(expression)
+    && expression.name.text === 'sep'
+    && expressionIsNodePathNamespace(
+      expression.expression,
+      lexicalMetadata,
+    )
+  ) {
+    return '/';
+  }
+  if (
     ts.isBinaryExpression(expression)
     && expression.operatorToken.kind === ts.SyntaxKind.PlusToken
   ) {
@@ -958,6 +2849,16 @@ function staticStringExpressionValue(node, lexicalMetadata) {
     return value;
   }
   return undefined;
+}
+
+function staticPropertyNameValue(node, lexicalMetadata) {
+  if (ts.isComputedPropertyName(node)) {
+    return staticStringExpressionValue(
+      node.expression,
+      lexicalMetadata,
+    );
+  }
+  return staticPropertyName(node);
 }
 
 function importMetaDirectoryAnchor(node, relativePath) {
@@ -1031,8 +2932,282 @@ function nodePathFunctionKind(node, lexicalMetadata) {
   return undefined;
 }
 
+function expressionIsFileUrlToPathFunction(node, lexicalMetadata) {
+  const expression = unwrapExpression(node);
+  if (!ts.isIdentifier(expression)) return false;
+  const binding = resolveLexicalBinding(
+    lexicalMetadata,
+    expression,
+    expression.text,
+  );
+  return Boolean(
+    binding.scope
+    && lexicalMetadata.fileUrlToPathFunctionsByScope
+      .get(binding.scope)
+      ?.has(expression.text),
+  );
+}
+
 function normalizeBuildPathSegment(value) {
   return value.replace(/\\/gu, '/');
+}
+
+function mergeBuildPathAnchorValues(existing, candidate) {
+  if (existing === undefined) return candidate;
+  if (existing === candidate) return existing;
+  const existingParts = path.posix.normalize(existing)
+    .split('/')
+    .filter((part) => part && part !== '.');
+  const candidateParts = path.posix.normalize(candidate)
+    .split('/')
+    .filter((part) => part && part !== '.');
+  const common = [];
+  const length = Math.min(existingParts.length, candidateParts.length);
+  for (let index = 0; index < length; index += 1) {
+    if (existingParts[index] !== candidateParts[index]) break;
+    common.push(existingParts[index]);
+  }
+  return common.length > 0 ? common.join('/') : '.';
+}
+
+function simpleFunctionReturnExpression(functionNode) {
+  if (!functionNode.body) return undefined;
+  if (
+    ts.isArrowFunction(functionNode)
+    && !ts.isBlock(functionNode.body)
+  ) {
+    return functionNode.body;
+  }
+  if (
+    ts.isBlock(functionNode.body)
+  ) {
+    const returnStatements = functionNode.body.statements.filter(
+      ts.isReturnStatement,
+    );
+    if (
+      returnStatements.length === 1
+      && returnStatements[0].expression
+    ) {
+      return returnStatements[0].expression;
+    }
+  }
+  return undefined;
+}
+
+function localZeroArgumentFunctionReturn(node, lexicalMetadata) {
+  const expression = unwrapExpression(node);
+  if (
+    !ts.isCallExpression(expression)
+    || expression.arguments.length !== 0
+    || !ts.isIdentifier(unwrapExpression(expression.expression))
+  ) {
+    return undefined;
+  }
+  const callee = unwrapExpression(expression.expression);
+  const binding = resolveLexicalBinding(
+    lexicalMetadata,
+    callee,
+    callee.text,
+  );
+  const functionNode = binding.functionDeclaration
+    ?? (
+      binding.initializer
+      && (
+        ts.isArrowFunction(unwrapExpression(binding.initializer))
+        || ts.isFunctionExpression(unwrapExpression(binding.initializer))
+      )
+        ? unwrapExpression(binding.initializer)
+        : undefined
+    );
+  if (!functionNode || functionNode.parameters.length !== 0) {
+    return undefined;
+  }
+  const returnExpression = simpleFunctionReturnExpression(functionNode);
+  return returnExpression
+    ? {
+      expression: returnExpression,
+      functionNode,
+    }
+    : undefined;
+}
+
+function stableContainerExpression(
+  node,
+  lexicalMetadata,
+  visitedBindings = new Set(),
+) {
+  let expression = unwrapExpression(node);
+  if (ts.isIdentifier(expression)) {
+    const binding = resolveLexicalBinding(
+      lexicalMetadata,
+      expression,
+      expression.text,
+    );
+    if (
+      binding.initializer
+      && !visitedBindings.has(binding.initializer)
+    ) {
+      visitedBindings.add(binding.initializer);
+      return stableContainerExpression(
+        binding.initializer,
+        lexicalMetadata,
+        visitedBindings,
+      );
+    }
+  }
+  const localReturn = localZeroArgumentFunctionReturn(
+    expression,
+    lexicalMetadata,
+  );
+  if (localReturn) expression = unwrapExpression(localReturn.expression);
+  if (
+    ts.isCallExpression(expression)
+    && expression.arguments.length >= 1
+    && ts.isPropertyAccessExpression(expression.expression)
+    && ts.isIdentifier(expression.expression.expression)
+    && expression.expression.expression.text === 'Object'
+    && expression.expression.name.text === 'freeze'
+    && !resolveLexicalBinding(
+      lexicalMetadata,
+      expression.expression.expression,
+      'Object',
+    ).bound
+  ) {
+    return stableContainerExpression(
+      expression.arguments[0],
+      lexicalMetadata,
+      visitedBindings,
+    );
+  }
+  return expression;
+}
+
+function assignedContainerPropertyExpression(
+  containerIdentifier,
+  propertyName,
+  lexicalMetadata,
+) {
+  const binding = resolveLexicalBinding(
+    lexicalMetadata,
+    containerIdentifier,
+    containerIdentifier.text,
+  );
+  if (!binding.scope) return undefined;
+  let assignedExpression;
+  function visit(node) {
+    if (assignedExpression) return;
+    if (
+      ts.isBinaryExpression(node)
+      && isAssignmentOperator(node.operatorToken.kind)
+      && (
+        ts.isPropertyAccessExpression(unwrapExpression(node.left))
+        || ts.isElementAccessExpression(unwrapExpression(node.left))
+      )
+    ) {
+      const target = unwrapExpression(node.left);
+      const base = unwrapExpression(target.expression);
+      if (
+        ts.isIdentifier(base)
+        && base.text === containerIdentifier.text
+        && memberPropertyName(target, lexicalMetadata) === propertyName
+        && resolveLexicalBinding(
+          lexicalMetadata,
+          base,
+          base.text,
+        ).scope === binding.scope
+      ) {
+        assignedExpression = node.right;
+        return;
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(lexicalMetadata.sourceFile);
+  return assignedExpression;
+}
+
+function buildContainerPropertyExpression(
+  containerNode,
+  propertyName,
+  lexicalMetadata,
+  visitedContainers = new Set(),
+) {
+  const originalContainer = unwrapExpression(containerNode);
+  if (visitedContainers.has(originalContainer)) return undefined;
+  visitedContainers.add(originalContainer);
+  const container = stableContainerExpression(
+    originalContainer,
+    lexicalMetadata,
+  );
+  if (ts.isObjectLiteralExpression(container)) {
+    for (const property of [...container.properties].reverse()) {
+      if (
+        ts.isPropertyAssignment(property)
+        && staticPropertyNameValue(property.name, lexicalMetadata)
+          === propertyName
+      ) {
+        return property.initializer;
+      }
+      if (
+        ts.isShorthandPropertyAssignment(property)
+        && property.name.text === propertyName
+      ) {
+        return property.name;
+      }
+      if (ts.isSpreadAssignment(property)) {
+        const spreadValue = buildContainerPropertyExpression(
+          property.expression,
+          propertyName,
+          lexicalMetadata,
+          visitedContainers,
+        );
+        if (spreadValue) return spreadValue;
+      }
+    }
+  }
+  if (ts.isArrayLiteralExpression(container) && /^\d+$/u.test(propertyName)) {
+    const element = container.elements[Number(propertyName)];
+    return element && !ts.isOmittedExpression(element)
+      ? element
+      : undefined;
+  }
+  if (ts.isIdentifier(originalContainer)) {
+    return assignedContainerPropertyExpression(
+      originalContainer,
+      propertyName,
+      lexicalMetadata,
+    );
+  }
+  return undefined;
+}
+
+function buildContainerElementExpression(node, lexicalMetadata) {
+  const expression = unwrapExpression(node);
+  if (
+    !(
+      ts.isPropertyAccessExpression(expression)
+      || ts.isElementAccessExpression(expression)
+    )
+  ) {
+    return undefined;
+  }
+  const propertyName = ts.isPropertyAccessExpression(expression)
+    ? expression.name.text
+    : (
+      ts.isNumericLiteral(expression.argumentExpression)
+        ? expression.argumentExpression.text
+        : staticStringExpressionValue(
+          expression.argumentExpression,
+          lexicalMetadata,
+        )
+    );
+  return propertyName === undefined
+    ? undefined
+    : buildContainerPropertyExpression(
+      expression.expression,
+      propertyName,
+      lexicalMetadata,
+    );
 }
 
 function buildPathExpressionValue(node, lexicalMetadata) {
@@ -1048,6 +3223,60 @@ function buildPathExpressionValue(node, lexicalMetadata) {
       expression,
       expression.text,
     ).pathAnchor;
+  }
+  if (
+    (
+      ts.isPropertyAccessExpression(expression)
+      || ts.isElementAccessExpression(expression)
+    )
+    && memberPropertyName(expression, lexicalMetadata) === 'pathname'
+  ) {
+    const urlPath = buildUrlObjectPathValue(
+      expression.expression,
+      lexicalMetadata,
+    );
+    if (urlPath !== undefined) return urlPath;
+  }
+  const containerElement = buildContainerElementExpression(
+    expression,
+    lexicalMetadata,
+  );
+  if (containerElement) {
+    return buildPathExpressionValue(
+      containerElement,
+      lexicalMetadata,
+    );
+  }
+  const localReturn = localZeroArgumentFunctionReturn(
+    expression,
+    lexicalMetadata,
+  );
+  if (localReturn) {
+    const activeFunctions =
+      lexicalMetadata.activeBuildPathFunctions ??= new Set();
+    if (activeFunctions.has(localReturn.functionNode)) return undefined;
+    activeFunctions.add(localReturn.functionNode);
+    try {
+      return buildPathExpressionValue(
+        localReturn.expression,
+        lexicalMetadata,
+      );
+    } finally {
+      activeFunctions.delete(localReturn.functionNode);
+    }
+  }
+  if (
+    ts.isCallExpression(expression)
+    && expression.arguments.length >= 1
+    && expressionIsFileUrlToPathFunction(
+      expression.expression,
+      lexicalMetadata,
+    )
+  ) {
+    return buildUrlObjectPathValue(
+      expression.arguments[0],
+      lexicalMetadata,
+    );
   }
   if (!ts.isCallExpression(expression) || expression.arguments.length < 1) {
     return undefined;
@@ -1073,11 +3302,317 @@ function buildPathExpressionValue(node, lexicalMetadata) {
   return path.posix.normalize(path.posix.join(anchor, ...segments));
 }
 
+function buildPathExpressionHasUnknownSegment(node, lexicalMetadata) {
+  const expression = unwrapExpression(node);
+  if (
+    !ts.isCallExpression(expression)
+    || expression.arguments.length < 2
+    || nodePathFunctionKind(
+      expression.expression,
+      lexicalMetadata,
+    ) === undefined
+    || buildPathExpressionValue(
+      expression.arguments[0],
+      lexicalMetadata,
+    ) === undefined
+  ) {
+    return false;
+  }
+  return expression.arguments.slice(1).some(
+    (argument) => staticStringExpressionValue(
+      argument,
+      lexicalMetadata,
+    ) === undefined,
+  );
+}
+
+function buildPathExpressionHasUnknownComposition(
+  node,
+  lexicalMetadata,
+) {
+  const expression = unwrapExpression(node);
+  if (
+    ts.isBinaryExpression(expression)
+    && expression.operatorToken.kind === ts.SyntaxKind.PlusToken
+  ) {
+    const operands = [];
+    function collectOperands(candidate) {
+      const value = unwrapExpression(candidate);
+      if (
+        ts.isBinaryExpression(value)
+        && value.operatorToken.kind === ts.SyntaxKind.PlusToken
+      ) {
+        collectOperands(value.left);
+        collectOperands(value.right);
+        return;
+      }
+      operands.push(value);
+    }
+    collectOperands(expression);
+    const hasAnchor = operands.some(
+      (operand) => expressionIsBuildPathAnchor(
+        operand,
+        lexicalMetadata,
+      ),
+    );
+    return hasAnchor && operands.some(
+      (operand) => !expressionIsBuildPathAnchor(
+        operand,
+        lexicalMetadata,
+      ) && staticStringExpressionValue(
+        operand,
+        lexicalMetadata,
+      ) === undefined,
+    );
+  }
+  if (
+    ts.isCallExpression(expression)
+    && (
+      ts.isPropertyAccessExpression(expression.expression)
+      || ts.isElementAccessExpression(expression.expression)
+    )
+    && memberPropertyName(
+      expression.expression,
+      lexicalMetadata,
+    ) === 'concat'
+    && expressionIsBuildPathAnchor(
+      expression.expression.expression,
+      lexicalMetadata,
+    )
+  ) {
+    return expression.arguments.some(
+      (argument) => staticStringExpressionValue(
+        argument,
+        lexicalMetadata,
+      ) === undefined,
+    );
+  }
+  return false;
+}
+
+function buildTemplatePathExpressionValue(node, lexicalMetadata) {
+  const expression = unwrapExpression(node);
+  if (!ts.isTemplateExpression(expression)) return undefined;
+  let value = normalizeBuildPathSegment(expression.head.text);
+  let anchored = false;
+  for (const span of expression.templateSpans) {
+    const anchor = buildPathExpressionValue(
+      span.expression,
+      lexicalMetadata,
+    );
+    const substitution = anchor ?? staticStringExpressionValue(
+      span.expression,
+      lexicalMetadata,
+    );
+    if (substitution === undefined) return undefined;
+    if (anchor !== undefined) anchored = true;
+    value += normalizeBuildPathSegment(substitution);
+    value += normalizeBuildPathSegment(span.literal.text);
+  }
+  if (anchored) value = value.replace(/^\/+/u, '');
+  return path.posix.normalize(value);
+}
+
 function buildPathTargetsRootSource(value) {
   const normalized = path.posix.normalize(
     normalizeBuildPathSegment(value),
   );
   return normalized === 'src' || normalized.startsWith('src/');
+}
+
+function importMetaUrlBaseDirectory(node, relativePath) {
+  const expression = unwrapExpression(node);
+  if (
+    !ts.isPropertyAccessExpression(expression)
+    || expression.name.text !== 'url'
+    || !ts.isMetaProperty(expression.expression)
+    || expression.expression.keywordToken !== ts.SyntaxKind.ImportKeyword
+  ) {
+    return undefined;
+  }
+  return path.posix.dirname(relativePath);
+}
+
+function buildUrlBaseDirectoryValue(node, lexicalMetadata) {
+  const expression = unwrapExpression(node);
+  const directBase = importMetaUrlBaseDirectory(
+    expression,
+    lexicalMetadata.relativePath,
+  );
+  if (directBase !== undefined) return directBase;
+  if (ts.isIdentifier(expression)) {
+    const binding = resolveLexicalBinding(
+      lexicalMetadata,
+      expression,
+      expression.text,
+    );
+    return binding.scope
+      ? lexicalMetadata.urlBaseDirectoriesByScope
+        .get(binding.scope)
+        ?.get(expression.text)
+      : undefined;
+  }
+  const containerElement = buildContainerElementExpression(
+    expression,
+    lexicalMetadata,
+  );
+  if (containerElement) {
+    return buildUrlBaseDirectoryValue(
+      containerElement,
+      lexicalMetadata,
+    );
+  }
+  const localReturn = localZeroArgumentFunctionReturn(
+    expression,
+    lexicalMetadata,
+  );
+  if (localReturn) {
+    const activeFunctions =
+      lexicalMetadata.activeBuildUrlFunctions ??= new Set();
+    if (activeFunctions.has(localReturn.functionNode)) return undefined;
+    activeFunctions.add(localReturn.functionNode);
+    try {
+      return buildUrlBaseDirectoryValue(
+        localReturn.expression,
+        lexicalMetadata,
+      );
+    } finally {
+      activeFunctions.delete(localReturn.functionNode);
+    }
+  }
+  if (!ts.isNewExpression(expression)) return undefined;
+  const target = buildUrlExpressionValue(expression, lexicalMetadata);
+  if (target === undefined) return undefined;
+  const rawValue = staticStringExpressionValue(
+    expression.arguments[0],
+    lexicalMetadata,
+  );
+  if (
+    rawValue !== undefined
+    && (
+      /\/$/u.test(normalizeBuildPathSegment(rawValue))
+      || /(?:^|\/)\.{1,2}$/u.test(
+        normalizeBuildPathSegment(rawValue),
+      )
+    )
+  ) {
+    return target;
+  }
+  return path.posix.dirname(target);
+}
+
+function buildUrlExpressionValue(node, lexicalMetadata) {
+  const expression = unwrapExpression(node);
+  if (
+    !ts.isNewExpression(expression)
+    || expression.arguments?.length !== 2
+    || !ts.isIdentifier(expression.expression)
+    || expression.expression.text !== 'URL'
+    || resolveLexicalBinding(
+      lexicalMetadata,
+      expression.expression,
+      'URL',
+    ).bound
+  ) {
+    return undefined;
+  }
+  const baseDirectory = buildUrlBaseDirectoryValue(
+    expression.arguments[1],
+    lexicalMetadata,
+  );
+  if (baseDirectory === undefined) return undefined;
+  const value = staticStringExpressionValue(
+    expression.arguments[0],
+    lexicalMetadata,
+  );
+  if (value === undefined || /^[a-z][a-z\d+.-]*:/iu.test(value)) {
+    return undefined;
+  }
+  return path.posix.normalize(path.posix.join(
+    baseDirectory,
+    normalizeBuildPathSegment(value),
+  ));
+}
+
+function buildUrlObjectPathValue(node, lexicalMetadata) {
+  const expression = unwrapExpression(node);
+  const activeNodes =
+    lexicalMetadata.activeBuildUrlObjectNodes ??= new Set();
+  if (activeNodes.has(expression)) return undefined;
+  activeNodes.add(expression);
+  try {
+    if (ts.isNewExpression(expression)) {
+      return buildUrlExpressionValue(expression, lexicalMetadata);
+    }
+    if (ts.isIdentifier(expression)) {
+      const binding = resolveLexicalBinding(
+        lexicalMetadata,
+        expression,
+        expression.text,
+      );
+      if (binding.initializer) {
+        return buildUrlObjectPathValue(
+          binding.initializer,
+          lexicalMetadata,
+        );
+      }
+    }
+    if (ts.isConditionalExpression(expression)) {
+      return buildUrlObjectPathValue(
+        expression.whenTrue,
+        lexicalMetadata,
+      ) ?? buildUrlObjectPathValue(
+        expression.whenFalse,
+        lexicalMetadata,
+      );
+    }
+    const containerElement = buildContainerElementExpression(
+      expression,
+      lexicalMetadata,
+    );
+    if (containerElement) {
+      return buildUrlObjectPathValue(
+        containerElement,
+        lexicalMetadata,
+      );
+    }
+    const localReturn = localZeroArgumentFunctionReturn(
+      expression,
+      lexicalMetadata,
+    );
+    if (localReturn) {
+      return buildUrlObjectPathValue(
+        localReturn.expression,
+        lexicalMetadata,
+      );
+    }
+    return undefined;
+  } finally {
+    activeNodes.delete(expression);
+  }
+}
+
+function buildUrlExpressionHasUnknownPath(node, lexicalMetadata) {
+  const expression = unwrapExpression(node);
+  return Boolean(
+    ts.isNewExpression(expression)
+    && expression.arguments?.length === 2
+    && ts.isIdentifier(expression.expression)
+    && expression.expression.text === 'URL'
+    && !resolveLexicalBinding(
+      lexicalMetadata,
+      expression.expression,
+      'URL',
+    ).bound
+    && buildUrlBaseDirectoryValue(
+      expression.arguments[1],
+      lexicalMetadata,
+    ) !== undefined
+    && staticStringExpressionValue(
+      expression.arguments[0],
+      lexicalMetadata,
+    ) === undefined,
+  );
 }
 
 function staticBuildInputTargetsRootSource(
@@ -1093,155 +3628,114 @@ function staticBuildInputTargetsRootSource(
   ));
 }
 
-function buildInputExpressionTargetsRootSource(
+function unresolvedTemplateTargetsRootSource(node, lexicalMetadata) {
+  const expression = unwrapExpression(node);
+  if (!ts.isTemplateExpression(expression)) return false;
+  let skeleton = expression.head.text;
+  let hasPathAnchor = false;
+  let hasUnknownSubstitution = false;
+  for (const span of expression.templateSpans) {
+    if (
+      buildPathExpressionValue(
+        span.expression,
+        lexicalMetadata,
+      ) !== undefined
+    ) {
+      hasPathAnchor = true;
+    }
+    const substitution = staticStringExpressionValue(
+      span.expression,
+      lexicalMetadata,
+    );
+    if (substitution === undefined) {
+      hasUnknownSubstitution = true;
+      skeleton += '\0';
+    } else {
+      skeleton += substitution;
+    }
+    skeleton += span.literal.text;
+  }
+  if (hasPathAnchor && hasUnknownSubstitution) return true;
+  const normalized = normalizeBuildPathSegment(skeleton);
+  if (/^[a-z][a-z\d+.-]*:\/\//iu.test(normalized)) return false;
+  return /(?:^|\/)src\//u.test(normalized);
+}
+
+function isWithinProvenNonRootPathCall(node, lexicalMetadata) {
+  let current = node;
+  let parent = current.parent;
+  while (parent && !ts.isStatement(parent)) {
+    if (
+      ts.isCallExpression(parent)
+      && parent.arguments.includes(current)
+      && nodePathFunctionKind(
+        parent.expression,
+        lexicalMetadata,
+      ) !== undefined
+    ) {
+      const resolvedPath = buildPathExpressionValue(
+        parent,
+        lexicalMetadata,
+      );
+      return resolvedPath !== undefined
+        && !buildPathTargetsRootSource(resolvedPath);
+    }
+    if (
+      ts.isNewExpression(parent)
+      && parent.arguments?.includes(current)
+    ) {
+      const resolvedPath = buildUrlExpressionValue(
+        parent,
+        lexicalMetadata,
+      );
+      return resolvedPath !== undefined
+        && !buildPathTargetsRootSource(resolvedPath);
+    }
+    current = parent;
+    parent = current.parent;
+  }
+  return false;
+}
+
+function buildSourceNodeTargetsRootSource(
   node,
   relativePath,
   lexicalMetadata,
-  visited = new Set(),
 ) {
-  const expression = unwrapExpression(node);
-  if (visited.has(expression)) return false;
-  visited.add(expression);
-
-  const resolvedPath = buildPathExpressionValue(
-    expression,
-    lexicalMetadata,
-  );
   if (
-    resolvedPath !== undefined
-    && buildPathTargetsRootSource(resolvedPath)
+    buildPathExpressionHasUnknownSegment(node, lexicalMetadata)
+    || buildPathExpressionHasUnknownComposition(
+      node,
+      lexicalMetadata,
+    )
+    || buildUrlExpressionHasUnknownPath(node, lexicalMetadata)
   ) {
     return true;
   }
+  const resolvedPath = buildPathExpressionValue(
+    node,
+    lexicalMetadata,
+  ) ?? buildUrlExpressionValue(node, lexicalMetadata)
+    ?? buildTemplatePathExpressionValue(node, lexicalMetadata);
+  if (resolvedPath !== undefined) {
+    return buildPathTargetsRootSource(resolvedPath);
+  }
   const staticValue = staticStringExpressionValue(
-    expression,
+    node,
     lexicalMetadata,
   );
   if (
     staticValue !== undefined
     && staticBuildInputTargetsRootSource(staticValue, relativePath)
+    && !isWithinProvenNonRootPathCall(node, lexicalMetadata)
   ) {
     return true;
   }
-  if (ts.isIdentifier(expression)) {
-    const initializer = resolveLexicalBinding(
+  return staticValue === undefined
+    && unresolvedTemplateTargetsRootSource(
+      node,
       lexicalMetadata,
-      expression,
-      expression.text,
-    ).initializer;
-    return Boolean(
-      initializer
-      && buildInputExpressionTargetsRootSource(
-        initializer,
-        relativePath,
-        lexicalMetadata,
-        visited,
-      )
     );
-  }
-  if (ts.isArrayLiteralExpression(expression)) {
-    return expression.elements.some((element) => (
-      !ts.isOmittedExpression(element)
-      && buildInputExpressionTargetsRootSource(
-        element,
-        relativePath,
-        lexicalMetadata,
-        visited,
-      )
-    ));
-  }
-  if (ts.isObjectLiteralExpression(expression)) {
-    return expression.properties.some((property) => {
-      if (ts.isPropertyAssignment(property)) {
-        return buildInputExpressionTargetsRootSource(
-          property.initializer,
-          relativePath,
-          lexicalMetadata,
-          visited,
-        );
-      }
-      if (ts.isShorthandPropertyAssignment(property)) {
-        return buildInputExpressionTargetsRootSource(
-          property.name,
-          relativePath,
-          lexicalMetadata,
-          visited,
-        );
-      }
-      if (ts.isSpreadAssignment(property)) {
-        return buildInputExpressionTargetsRootSource(
-          property.expression,
-          relativePath,
-          lexicalMetadata,
-          visited,
-        );
-      }
-      return false;
-    });
-  }
-  if (ts.isConditionalExpression(expression)) {
-    return buildInputExpressionTargetsRootSource(
-      expression.whenTrue,
-      relativePath,
-      lexicalMetadata,
-      visited,
-    ) || buildInputExpressionTargetsRootSource(
-      expression.whenFalse,
-      relativePath,
-      lexicalMetadata,
-      visited,
-    );
-  }
-  return false;
-}
-
-function isBuildInputName(name) {
-  return name === 'input' || name === 'entry' || name === 'entries';
-}
-
-function expressionSelectsBuildInput(node) {
-  const expression = unwrapExpression(node);
-  if (ts.isIdentifier(expression)) {
-    return isBuildInputName(expression.text);
-  }
-  if (
-    ts.isPropertyAccessExpression(expression)
-    || ts.isElementAccessExpression(expression)
-  ) {
-    return isBuildInputName(memberPropertyName(expression))
-      || expressionSelectsBuildInput(expression.expression);
-  }
-  return false;
-}
-
-function buildInputSinkExpression(node) {
-  if (
-    ts.isVariableDeclaration(node)
-    && ts.isIdentifier(node.name)
-    && isBuildInputName(node.name.text)
-  ) {
-    return node.initializer;
-  }
-  if (
-    ts.isPropertyAssignment(node)
-    && isBuildInputName(staticPropertyName(node.name))
-  ) {
-    return node.initializer;
-  }
-  if (
-    ts.isShorthandPropertyAssignment(node)
-    && isBuildInputName(node.name.text)
-  ) {
-    return node.name;
-  }
-  if (
-    ts.isBinaryExpression(node)
-    && isAssignmentOperator(node.operatorToken.kind)
-    && expressionSelectsBuildInput(node.left)
-  ) {
-    return node.right;
-  }
-  return undefined;
 }
 
 function collectAstPolicyDescriptions(relativePath, source) {
@@ -1250,11 +3744,12 @@ function collectAstPolicyDescriptions(relativePath, source) {
   const descriptions = new Set();
   const adapterOrRoot = isAdapterOrCompositionRoot(relativePath);
   const sharedImplementation = isSharedImplementation(relativePath);
-  const extensionAppSource = relativePath.startsWith('apps/extension/src/');
+  const extensionAppSource = relativePath.startsWith('apps/extension/');
   const extensionBuildSource =
-    relativePath === 'apps/extension/vite.config.ts'
-    || relativePath.startsWith('apps/extension/build/')
-    || relativePath.startsWith('apps/extension/scripts/')
+    (
+      relativePath.startsWith('apps/extension/')
+      && !relativePath.startsWith('apps/extension/src/')
+    )
     || relativePath.startsWith('scripts/');
   const trustedRootPlugin =
     relativePath === trustedRootBuildPlugin.relativePath;
@@ -1291,33 +3786,270 @@ function collectAstPolicyDescriptions(relativePath, source) {
   function visit(node) {
     if (
       extensionBuildSource
-      && isDynamicModuleLoadCall(node)
+      && isDynamicModuleLoadCall(node, lexicalMetadata)
     ) {
       descriptions.add(
         'dynamic extension build loading can hide a frozen migration edge',
       );
     }
     if (extensionBuildSource) {
-      const buildInput = buildInputSinkExpression(node);
       if (
-        buildInput
-        && buildInputExpressionTargetsRootSource(
-          buildInput,
+        buildSourceNodeTargetsRootSource(
+          node,
           relativePath,
           lexicalMetadata,
         )
       ) {
         descriptions.add(
-          'extension build entry cannot directly target root src/**',
+          'extension build source cannot reference root src/**',
         );
       }
     }
+    if (globalObjectValueEscapes(node, lexicalMetadata)) {
+      addNativeDescription(
+        'global object value cannot escape adapter boundary',
+      );
+      descriptions.add(
+        'global object value cannot escape adapter boundary',
+      );
+      if (
+        extensionBuildSource
+        || globalObjectEscapeKind(node, lexicalMetadata)
+          === 'opaque-call'
+      ) {
+        descriptions.add(
+          'global object cannot be passed to opaque calls',
+        );
+      }
+    }
+    if (codeGenerationValueEscapes(node, lexicalMetadata)) {
+      descriptions.add('dynamic code generation is forbidden');
+    }
+    const transferCapabilityEscape = valueEscapeKind(
+      node,
+      (candidate) => expressionIsTransferSensitiveCapability(
+        candidate,
+        lexicalMetadata,
+      ),
+    );
+    if (transferCapabilityEscape !== undefined) {
+      descriptions.add(
+        'sensitive architecture capability cannot escape its module',
+      );
+    }
+    if (
+      ts.isBinaryExpression(node)
+      && isAssignmentOperator(node.operatorToken.kind)
+      && expressionIsTransferSensitiveCapability(
+        node.right,
+        lexicalMetadata,
+      )
+    ) {
+      descriptions.add(
+        'sensitive architecture capability cannot escape its module',
+      );
+    }
+    const nativeNamespaceEscape = valueEscapeKind(
+      node,
+      (candidate) => expressionIsNativeNamespaceValue(
+        candidate,
+        lexicalMetadata,
+      ),
+    );
+    if (
+      nativeNamespaceEscape !== undefined
+      && (
+        nativeNamespaceEscape !== 'opaque-call'
+        || !compositionRoots.has(relativePath)
+      )
+    ) {
+      descriptions.add(
+        'raw native extension namespace cannot be exported',
+      );
+    }
+    if (
+      callUsesReflectCodeGenerationComposition(
+        node,
+        lexicalMetadata,
+      )
+    ) {
+      descriptions.add('dynamic code generation is forbidden');
+    }
+    if (valueIsExportedVariableInitializer(node)) {
+      if (expressionIsNativeNamespaceValue(node, lexicalMetadata)) {
+        descriptions.add(
+          'raw native extension namespace cannot be exported',
+        );
+      }
+    }
+    if (
+      ts.isExportSpecifier(node)
+      && expressionIsNativeNamespaceValue(
+        node.propertyName ?? node.name,
+        lexicalMetadata,
+      )
+    ) {
+      descriptions.add(
+        'raw native extension namespace cannot be exported',
+      );
+    }
+    if (
+      extensionBuildSource
+      && (
+        (
+          ts.isExportAssignment(node)
+          && expressionContainsBuildPathAnchor(
+            node.expression,
+            lexicalMetadata,
+          )
+        )
+        || (
+          ts.isExportSpecifier(node)
+          && expressionContainsBuildPathAnchor(
+            node.propertyName ?? node.name,
+            lexicalMetadata,
+          )
+        )
+      )
+    ) {
+      descriptions.add(
+        'sensitive architecture capability cannot be exported',
+      );
+    }
+    if (
+      extensionBuildSource
+      && ts.isFunctionDeclaration(node)
+      && hasExportModifier(node)
+      && functionReturnsBuildPathAnchor(
+        node,
+        lexicalMetadata,
+      )
+    ) {
+      descriptions.add(
+        'sensitive architecture capability cannot be exported',
+      );
+    }
+    if (
+      extensionBuildSource
+      && ts.isClassDeclaration(node)
+      && hasExportModifier(node)
+      && expressionContainsBuildPathAnchor(
+        node,
+        lexicalMetadata,
+      )
+    ) {
+      descriptions.add(
+        'sensitive architecture capability cannot be exported',
+      );
+    }
+    if (
+      ts.isVariableStatement(node)
+      && hasExportModifier(node)
+    ) {
+      for (const declaration of node.declarationList.declarations) {
+        const initializer = declaration.initializer
+          ? unwrapExpression(declaration.initializer)
+          : undefined;
+        if (
+          extensionBuildSource
+          && initializer
+          && (
+            ts.isArrowFunction(initializer)
+            || ts.isFunctionExpression(initializer)
+          )
+          && functionReturnsBuildPathAnchor(
+            initializer,
+            lexicalMetadata,
+          )
+        ) {
+          descriptions.add(
+            'sensitive architecture capability cannot be exported',
+          );
+        }
+        const identifiers = [];
+        collectBindingIdentifiers(declaration.name, identifiers);
+        for (const identifier of identifiers) {
+          if (
+            expressionIsGlobalAlias(lexicalMetadata, identifier)
+            || expressionIsCodeGenerationCallable(
+              identifier,
+              lexicalMetadata,
+            )
+            || expressionIsNativeNamespaceValue(
+              identifier,
+              lexicalMetadata,
+            )
+            || expressionIsTransferSensitiveCapability(
+              identifier,
+              lexicalMetadata,
+            )
+            || (
+              extensionBuildSource
+              && expressionContainsBuildPathAnchor(
+                identifier,
+                lexicalMetadata,
+              )
+            )
+          ) {
+            descriptions.add(
+              'sensitive architecture capability cannot be exported',
+            );
+          }
+        }
+      }
+    }
+    if (
+      ts.isBinaryExpression(node)
+      && isAssignmentOperator(node.operatorToken.kind)
+      && isCommonJsExportTarget(node.left, lexicalMetadata)
+      && expressionContainsBuildPathAnchor(
+        node.right,
+        lexicalMetadata,
+      )
+    ) {
+      descriptions.add(
+        'sensitive architecture capability cannot be exported',
+      );
+    }
+    if (
+      (
+        ts.isCallExpression(node)
+        || ts.isNewExpression(node)
+      )
+      && expressionIsCodeGenerationCallable(
+        node.expression,
+        lexicalMetadata,
+      )
+    ) {
+      descriptions.add('dynamic code generation is forbidden');
+    }
+    if (
+      ts.isTaggedTemplateExpression(node)
+      && expressionIsCodeGenerationCallable(
+        node.tag,
+        lexicalMetadata,
+      )
+    ) {
+      descriptions.add('dynamic code generation is forbidden');
+    }
 
     if (ts.isIdentifier(node)) {
+      if (
+        hiddenCodeGenerationNames.has(node.text)
+        && !isPropertyNameIdentifier(node)
+        && !isDeclarationNameIdentifier(node)
+        && !resolveLexicalBinding(
+          lexicalMetadata,
+          node,
+          node.text,
+        ).bound
+      ) {
+        descriptions.add('dynamic code generation is forbidden');
+      }
       if (legacyExtensionSymbolNames.has(node.text)) {
         descriptions.add('legacy ChromeLike compatibility symbol is forbidden');
       }
-      if (/^Chrome[A-Z]\w*$/u.test(node.text)) {
+      if (/^(?:Chrome|Firefox)[A-Z]\w*$/u.test(node.text)) {
         addNativeDescription('native extension API type is adapter-only');
       } else if (
         nativeNamespaceNames.has(node.text)
@@ -1360,7 +4092,7 @@ function collectAstPolicyDescriptions(relativePath, source) {
       }
       if (
         sharedImplementation
-        && /^(?:Chrome|Firefox|isChrome|isFirefox)$/u.test(node.text)
+        && isBrowserSpecificIdentifierName(node.text)
       ) {
         descriptions.add(
           'shared implementation contains a browser-specific branch or brand',
@@ -1384,13 +4116,33 @@ function collectAstPolicyDescriptions(relativePath, source) {
       )
       && ts.isObjectBindingPattern(node.name)
       && node.initializer
-      && isGlobalObjectExpression(node.initializer, lexicalMetadata)
     ) {
+      const globalInitializer = isGlobalObjectExpression(
+        node.initializer,
+        lexicalMetadata,
+      );
       for (const element of node.name.elements) {
-        const propertyName = staticPropertyName(
+        const propertyName = staticPropertyNameValue(
           element.propertyName ?? element.name,
+          lexicalMetadata,
         );
-        if (nativeNamespaceNames.has(propertyName)) {
+        if (
+          globalInitializer
+          && hiddenCodeGenerationNames.has(propertyName)
+        ) {
+          descriptions.add('dynamic code generation is forbidden');
+        }
+        if (globalInitializer && propertyName === undefined) {
+          descriptions.add(
+            'dynamic browser-global member access is forbidden',
+          );
+          addNativeDescription(
+            'native extension namespace access is adapter-only',
+          );
+        } else if (
+          globalInitializer
+          && nativeNamespaceNames.has(propertyName)
+        ) {
           addNativeDescription(
             'native extension namespace access is adapter-only',
           );
@@ -1401,19 +4153,43 @@ function collectAstPolicyDescriptions(relativePath, source) {
       ts.isBinaryExpression(node)
       && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
       && ts.isObjectLiteralExpression(unwrapExpression(node.left))
-      && isGlobalObjectExpression(node.right, lexicalMetadata)
     ) {
+      const globalInitializer = isGlobalObjectExpression(
+        node.right,
+        lexicalMetadata,
+      );
       for (const property of unwrapExpression(node.left).properties) {
         if (
           (
             ts.isPropertyAssignment(property)
             || ts.isShorthandPropertyAssignment(property)
           )
-          && nativeNamespaceNames.has(staticPropertyName(property.name))
         ) {
-          addNativeDescription(
-            'native extension namespace access is adapter-only',
+          const propertyName = staticPropertyNameValue(
+            property.name,
+            lexicalMetadata,
           );
+          if (
+            globalInitializer
+            && hiddenCodeGenerationNames.has(propertyName)
+          ) {
+            descriptions.add('dynamic code generation is forbidden');
+          }
+          if (globalInitializer && propertyName === undefined) {
+            descriptions.add(
+              'dynamic browser-global member access is forbidden',
+            );
+            addNativeDescription(
+              'native extension namespace access is adapter-only',
+            );
+          } else if (
+            globalInitializer
+            && nativeNamespaceNames.has(propertyName)
+          ) {
+            addNativeDescription(
+              'native extension namespace access is adapter-only',
+            );
+          }
         }
       }
     }
@@ -1422,7 +4198,7 @@ function collectAstPolicyDescriptions(relativePath, source) {
       ts.isPropertyAccessExpression(node)
       || ts.isElementAccessExpression(node)
     ) {
-      const propertyName = memberPropertyName(node);
+      const propertyName = memberPropertyName(node, lexicalMetadata);
       const globalChain = globalMemberChainInfo(node, lexicalMetadata);
       if (
         extensionAppSource
@@ -1435,7 +4211,21 @@ function collectAstPolicyDescriptions(relativePath, source) {
         descriptions.add('global bridge cannot hide a frozen migration edge');
       }
       if (isGlobalObjectExpression(node.expression, lexicalMetadata)) {
-        if (nativeNamespaceNames.has(propertyName)) {
+        if (hiddenCodeGenerationNames.has(propertyName)) {
+          descriptions.add('dynamic code generation is forbidden');
+        } else if (propertyName === undefined) {
+          descriptions.add(
+            'dynamic browser-global member access is forbidden',
+          );
+          addNativeDescription(
+            'native extension namespace access is adapter-only',
+          );
+          if (extensionAppSource) {
+            descriptions.add(
+              'global bridge cannot hide a frozen migration edge',
+            );
+          }
+        } else if (nativeNamespaceNames.has(propertyName)) {
           addNativeDescription(
             'native extension namespace access is adapter-only',
           );
@@ -1463,7 +4253,10 @@ function collectAstPolicyDescriptions(relativePath, source) {
           )
           || (
             ts.isElementAccessExpression(node.expression)
-            && memberPropertyName(node.expression) === 'runtime'
+            && memberPropertyName(
+              node.expression,
+              lexicalMetadata,
+            ) === 'runtime'
           )
         )
         && !adapterOrRoot
@@ -1473,7 +4266,13 @@ function collectAstPolicyDescriptions(relativePath, source) {
     }
 
     if (isReflectGlobalAccess(node, lexicalMetadata)) {
-      const propertyName = staticPropertyName(node.arguments[1]);
+      const propertyName = staticStringExpressionValue(
+        node.arguments[1],
+        lexicalMetadata,
+      );
+      if (hiddenCodeGenerationNames.has(propertyName)) {
+        descriptions.add('dynamic code generation is forbidden');
+      }
       if (
         propertyName === undefined
         || nativeNamespaceNames.has(propertyName)
@@ -1494,28 +4293,62 @@ function collectAstPolicyDescriptions(relativePath, source) {
       }
     }
 
-    const literalValue = stringLiteralValue(node);
-    if (literalValue !== undefined) {
+    const policyStringValue = staticStringExpressionValue(
+      node,
+      lexicalMetadata,
+    );
+    if (policyStringValue !== undefined) {
       if (
         !adapterOrRoot
-        && /\b(?:chrome|moz)-extension:/iu.test(literalValue)
+        && /\b(?:chrome|moz)-extension:/iu.test(policyStringValue)
       ) {
         descriptions.add('platform extension URL scheme is adapter-only');
       }
       if (
         !adapterOrRoot
-        && browserErrorTextPatterns.some((pattern) => pattern.test(literalValue))
+        && browserErrorTextPatterns.some(
+          (pattern) => pattern.test(policyStringValue),
+        )
         && isControlFlowTextLiteral(node)
       ) {
         descriptions.add('browser error text control flow is adapter-only');
       }
       if (
         sharedImplementation
-        && /^(?:chrome|firefox)$/iu.test(literalValue)
+        && /^(?:chrome|firefox)$/iu.test(policyStringValue)
         && isControlFlowTextLiteral(node)
       ) {
         descriptions.add(
           'shared implementation contains a browser-specific branch or brand',
+        );
+      }
+    }
+    if (
+      ts.isBinaryExpression(node)
+      && isAssignmentOperator(node.operatorToken.kind)
+    ) {
+      const assignedStringValue = staticStringExpressionValue(
+        node.right,
+        lexicalMetadata,
+      );
+      if (
+        sharedImplementation
+        && /^(?:chrome|firefox)$/iu.test(
+          assignedStringValue ?? '',
+        )
+      ) {
+        descriptions.add(
+          'shared implementation contains a browser-specific branch or brand',
+        );
+      }
+      if (
+        !adapterOrRoot
+        && browserErrorTextPatterns.some(
+          (pattern) => pattern.test(assignedStringValue ?? ''),
+        )
+      ) {
+        descriptions.add(
+          'browser error text control flow is adapter-only',
         );
       }
     }
@@ -1551,7 +4384,10 @@ function collectAstPolicyDescriptions(relativePath, source) {
           || ts.isElementAccessExpression(node.left)
         )
       ) {
-        const propertyName = memberPropertyName(node.left);
+        const propertyName = memberPropertyName(
+          node.left,
+          lexicalMetadata,
+        );
         if (
           propertyName === undefined
           && ts.isElementAccessExpression(node.left)
@@ -1593,6 +4429,10 @@ function collectAstPolicyDescriptions(relativePath, source) {
 
 function collectModuleReferences(relativePath, source) {
   const sourceFile = parseArchitectureSource(relativePath, source);
+  const lexicalMetadata = collectLexicalMetadata(
+    sourceFile,
+    relativePath,
+  );
   const references = [];
 
   function visit(node) {
@@ -1605,8 +4445,27 @@ function collectModuleReferences(relativePath, source) {
         kind: 'static',
         specifier: node.moduleSpecifier.text,
       });
+    } else if (
+      ts.isImportEqualsDeclaration(node)
+      && ts.isExternalModuleReference(node.moduleReference)
+      && node.moduleReference.expression
+      && ts.isStringLiteralLike(node.moduleReference.expression)
+    ) {
+      references.push({
+        kind: 'static',
+        specifier: node.moduleReference.expression.text,
+      });
+    } else if (
+      ts.isImportTypeNode(node)
+      && ts.isLiteralTypeNode(node.argument)
+      && ts.isStringLiteralLike(node.argument.literal)
+    ) {
+      references.push({
+        kind: 'static',
+        specifier: node.argument.literal.text,
+      });
     } else if (ts.isCallExpression(node)) {
-      if (isDynamicModuleLoadCall(node)) {
+      if (isDynamicModuleLoadCall(node, lexicalMetadata)) {
         const argument = node.arguments[0];
         references.push({
           kind: 'dynamic',
@@ -1909,9 +4768,7 @@ async function collectLocalSourceImportGraph(repositoryRoot, entryPath) {
 
 export async function scanExtensionArchitecture(repositoryRoot) {
   const collectedFiles = [
-    ...await collectSourceFiles(repositoryRoot, 'apps/extension/build'),
-    ...await collectSourceFiles(repositoryRoot, 'apps/extension/scripts'),
-    ...await collectSourceFiles(repositoryRoot, 'apps/extension/src'),
+    ...await collectSourceFiles(repositoryRoot, 'apps/extension'),
     ...await collectSourceFiles(repositoryRoot, 'packages'),
     ...await collectSourceFiles(repositoryRoot, 'src'),
     ...await collectLocalSourceImportGraph(

@@ -1,7 +1,11 @@
 import { resolve } from 'node:path';
 
 const extensionRoot = resolve(import.meta.dirname, '..');
-const repositoryRoot = resolve(extensionRoot, '../..');
+const absoluteOutDirs = Object.freeze({
+  chrome: resolve(extensionRoot, 'dist/chrome'),
+  firefox: resolve(extensionRoot, 'dist/firefox'),
+  benchmark: resolve(extensionRoot, 'dist/benchmark'),
+});
 
 export const extensionBuildTargets = Object.freeze({
   chrome: Object.freeze({
@@ -32,6 +36,6 @@ export function resolveExtensionBuildTarget(target) {
   return {
     ...descriptor,
     target,
-    absoluteOutDir: resolve(repositoryRoot, descriptor.outDir),
+    absoluteOutDir: absoluteOutDirs[target],
   };
 }

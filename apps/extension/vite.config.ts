@@ -137,19 +137,19 @@ export default defineConfig(({ command, mode }): UserConfig => {
           assetFileNames: 'assets/[name][extname]',
           manualChunks(id) {
             const normalized = id.replace(/\\/g, '/');
-            if (normalized.endsWith('/src/shared/messages.ts')) {
+            if (normalized.endsWith('/shared/messages.ts')) {
               return 'messages';
             }
-            if (normalized.endsWith('/src/shared/localPipelineProtocol.ts')) {
+            if (normalized.endsWith('/shared/localPipelineProtocol.ts')) {
               return 'localPipelineProtocol';
             }
             if (normalized.endsWith('/apps/extension/src/capabilities/chromeAdapter.ts')) {
               return 'chromeAdapter';
             }
-            if (normalized.endsWith('/src/shared/perfTrace.ts')) {
+            if (normalized.endsWith('/shared/perfTrace.ts')) {
               return 'perfTrace';
             }
-            if (normalized.endsWith('/src/runtime/onnxWorkerBridge.ts')) {
+            if (normalized.endsWith('/runtime/onnxWorkerBridge.ts')) {
               return 'onnxWorkerBridge';
             }
             return undefined;

@@ -269,7 +269,7 @@ type SelectPlacement = 'down' | 'up';
 const selectCurrentValueIndex = -1;
 const selectRowHeight = 31;
 const selectMenuMaxHeight = 191;
-const selectMenuChromeHeight = 1;
+const selectMenuFrameHeight = 1;
 
 function SelectControl<T extends string>({
   options,
@@ -338,7 +338,7 @@ function SelectControl<T extends string>({
       const spaceBelow = Math.max(0, boundaryBottom - triggerRect.bottom);
       const desiredHeight = Math.min(
         selectMenuMaxHeight,
-        availableOptions.length * selectRowHeight + selectMenuChromeHeight,
+        availableOptions.length * selectRowHeight + selectMenuFrameHeight,
       );
       nextPlacement =
         spaceBelow >= desiredHeight || spaceBelow >= spaceAbove ? 'down' : 'up';
@@ -346,7 +346,7 @@ function SelectControl<T extends string>({
 
       setPlacement(nextPlacement);
       setMenuMaxHeight(Math.max(
-        selectRowHeight + selectMenuChromeHeight,
+        selectRowHeight + selectMenuFrameHeight,
         Math.min(selectMenuMaxHeight, Math.floor(availableHeight)),
       ));
     }
@@ -504,7 +504,7 @@ function SelectControl<T extends string>({
           role="listbox"
           aria-label={ariaLabel}
           style={{
-            maxHeight: Math.max(selectRowHeight, menuMaxHeight - selectMenuChromeHeight),
+            maxHeight: Math.max(selectRowHeight, menuMaxHeight - selectMenuFrameHeight),
           }}
         >
           {availableOptions.map((option, index) => {

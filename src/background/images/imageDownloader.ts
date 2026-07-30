@@ -431,7 +431,8 @@ export function createImageDownloader(
     dependencies.referrerPolicies,
     dependencies.sessionStorage,
   );
-  const fetchImage = dependencies.fetchImage ?? globalThis.fetch.bind(globalThis);
+  const fetchImage = dependencies.fetchImage
+    ?? ((...args: Parameters<typeof fetch>) => globalThis.fetch(...args));
   const timeoutMs = dependencies.timeoutMs ?? defaultDownloadTimeoutMs;
 
   async function download(

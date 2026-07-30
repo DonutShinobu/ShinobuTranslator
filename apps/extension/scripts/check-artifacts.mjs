@@ -4,11 +4,19 @@ import { resolve } from 'node:path';
 import { resolveExtensionBuildTarget } from './build-targets.mjs';
 
 const extensionRoot = resolve(import.meta.dirname, '..');
+const releaseBoundaryCheck = resolve(
+  import.meta.dirname,
+  'check-release-boundaries.mjs',
+);
+const manifestPairCheck = resolve(
+  import.meta.dirname,
+  'check-manifest-pair.mjs',
+);
 
-function runCheck(scriptName, argumentsList) {
+function runCheck(scriptPath, argumentsList) {
   execFileSync(
     process.execPath,
-    [resolve(import.meta.dirname, scriptName), ...argumentsList],
+    [scriptPath, ...argumentsList],
     {
       cwd: extensionRoot,
       stdio: 'inherit',
@@ -19,19 +27,19 @@ function runCheck(scriptName, argumentsList) {
 const chrome = resolveExtensionBuildTarget('chrome');
 const firefox = resolveExtensionBuildTarget('firefox');
 
-runCheck('check-release-boundaries.mjs', [
+runCheck(releaseBoundaryCheck, [
   '--dist',
   chrome.absoluteOutDir,
   '--target',
   chrome.target,
 ]);
-runCheck('check-release-boundaries.mjs', [
+runCheck(releaseBoundaryCheck, [
   '--dist',
   firefox.absoluteOutDir,
   '--target',
   firefox.target,
 ]);
-runCheck('check-manifest-pair.mjs', [
+runCheck(manifestPairCheck, [
   '--chrome',
   resolve(chrome.absoluteOutDir, 'manifest.json'),
   '--firefox',

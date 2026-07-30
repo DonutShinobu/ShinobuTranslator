@@ -9,6 +9,11 @@ import {
 import { openAiOAuthOriginator } from "../../shared/openaiOAuth";
 import type { StoredOpenAiOAuthTokens } from "../../shared/openaiOAuth";
 import {
+  isAuthenticationPermissionRequired,
+  type AuthenticationAccess,
+  type AuthenticationPermissionRequired,
+} from "../../../apps/extension/src/capabilities/authentication";
+import {
   buildOpenAiResponsesRequest,
   extractOpenAiResponsesJsonText,
   extractOpenAiResponsesSseText,
@@ -21,6 +26,13 @@ import {
 } from "./oauthService";
 
 export const openAiCodexResponsesEndpoint = "https://chatgpt.com/backend-api/codex/responses";
+
+export type OpenAiChatCompletionsResult =
+  | {
+      status: 'completed';
+      data: unknown;
+    }
+  | AuthenticationPermissionRequired;
 
 class OpenAiThinkingConfigError extends Error {
   readonly errorCode = 'llm_thinking_config' as const;
@@ -107,7 +119,8 @@ export async function proxyOpenAiChatCompletions(
     OpenAiOAuthService,
     'getInstallationId' | 'getValidTokens' | 'refreshTokens'
   >,
-): Promise<unknown> {
+  authentication: Pick<AuthenticationAccess, 'require'>,
+): Promise<OpenAiChatCompletionsResult> {
   const requestBody = adaptLlmThinkingChatCompletionRequest(body, {
     provider: 'openai',
     model: body.model,
@@ -115,8 +128,15 @@ export async function proxyOpenAiChatCompletions(
     useCustomModel: proxyConfig.useCustomModel,
   });
   let tokens = await oauth.getValidTokens();
+  if (isAuthenticationPermissionRequired(tokens)) {
+    return tokens;
+  }
   let response = await fetchOpenAiCodexResponses(requestBody, tokens, oauth);
   if (response.status === 401) {
+    const permission = await authentication.require({ kind: 'openai-oauth' });
+    if (isAuthenticationPermissionRequired(permission)) {
+      return permission;
+    }
     tokens = await oauth.refreshTokens(tokens);
     response = await fetchOpenAiCodexResponses(requestBody, tokens, oauth);
   }
@@ -143,5 +163,8 @@ export async function proxyOpenAiChatCompletions(
   if (!content) {
     throw new Error('OpenAI ChatGPT 响应为空');
   }
-  return toChatCompletionsResponse(content, requestBody.model);
+  return {
+    status: 'completed',
+    data: toChatCompletionsResponse(content, requestBody.model),
+  };
 }

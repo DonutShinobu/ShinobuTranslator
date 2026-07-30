@@ -3,8 +3,21 @@ import type { ExtensionSettings } from '../shared/config';
 import type { GeminiAppAuthStatusInfo, GeminiAppImageTranslateMetadata } from '../shared/messages';
 import type { StageTiming } from '../types';
 import type { GeminiAppModel } from '../types';
-import { getChromeApi } from '../shared/chrome';
 import { arrayBufferToBase64, toErrorMessage } from '../shared/utils';
+import {
+  isAuthenticationPermissionRequired,
+  type AuthenticationAccess,
+  type AuthenticationPermissionRequired,
+} from '../../apps/extension/src/capabilities/authentication';
+import {
+  ExtensionContractError,
+  ExtensionOperationError,
+} from '../../apps/extension/src/capabilities/errors';
+
+type GeminiCookieAccess = Pick<
+  AuthenticationAccess,
+  'readGeminiAppCookies' | 'readGoogleAccountsCookies'
+>;
 
 type GeminiAppImageTranslateOptions = {
   imageBase64: string;
@@ -434,36 +447,37 @@ async function readTextResponse(response: Response, failureMessage: string): Pro
   return text;
 }
 
-function readCookieHeaderForUrl(url: string): Promise<string> {
-  const chromeApi = getChromeApi();
-  if (!chromeApi?.cookies?.getAll) {
-    return Promise.resolve('');
+async function readCookieHeader(
+  readCookies: () => ReturnType<
+    AuthenticationAccess['readGeminiAppCookies']
+  >,
+): Promise<string | AuthenticationPermissionRequired> {
+  const result = await readCookies();
+  if (result.status === 'permission-required') {
+    return result;
   }
-  return new Promise((resolve, reject) => {
-    chromeApi.cookies?.getAll?.({ url }, (cookies) => {
-      const lastError = chromeApi.runtime?.lastError;
-      if (lastError?.message) {
-        reject(new Error(lastError.message));
-        return;
-      }
-      const pairs = cookies
-        .filter((cookie) => cookieNames.has(cookie.name) && cookie.value)
-        .map((cookie) => `${cookie.name}=${cookie.value}`);
-      resolve(pairs.join('; '));
-    });
-  });
+  return result.cookies
+    .filter((cookie) => cookieNames.has(cookie.name) && cookie.value)
+    .map((cookie) => `${cookie.name}=${cookie.value}`)
+    .join('; ');
 }
 
-async function readGeminiCookieHeader(authMode: ExtensionSettings['geminiAppAuthMode']): Promise<string | null> {
+async function readGeminiCookieHeader(
+  authMode: ExtensionSettings['geminiAppAuthMode'],
+  authentication: GeminiCookieAccess,
+): Promise<string | null | AuthenticationPermissionRequired> {
   if (authMode !== 'cookies_permission') {
     return null;
   }
   const headers = await Promise.all([
-    readCookieHeaderForUrl('https://gemini.google.com/'),
-    readCookieHeaderForUrl('https://accounts.google.com/'),
+    readCookieHeader(() => authentication.readGeminiAppCookies()),
+    readCookieHeader(() => authentication.readGoogleAccountsCookies()),
   ]);
   const cookiePairs = new Map<string, string>();
   for (const header of headers) {
+    if (isAuthenticationPermissionRequired(header)) {
+      return header;
+    }
     for (const pair of header.split(/;\s*/u)) {
       const eq = pair.indexOf('=');
       if (eq <= 0) {
@@ -478,8 +492,17 @@ async function readGeminiCookieHeader(authMode: ExtensionSettings['geminiAppAuth
   return cookiePairs.size > 0 ? Array.from(cookiePairs.values()).join('; ') : null;
 }
 
-async function initializeGemini(settings: ExtensionSettings): Promise<GeminiInitContext> {
-  const cookieHeader = await readGeminiCookieHeader(settings.geminiAppAuthMode);
+async function initializeGemini(
+  settings: ExtensionSettings,
+  authentication: GeminiCookieAccess,
+): Promise<GeminiInitContext | AuthenticationPermissionRequired> {
+  const cookieHeader = await readGeminiCookieHeader(
+    settings.geminiAppAuthMode,
+    authentication,
+  );
+  if (isAuthenticationPermissionRequired(cookieHeader)) {
+    return cookieHeader;
+  }
   const response = await fetchWithTimeout(geminiAppUrl, {
     method: 'GET',
     headers: geminiHeaders(cookieHeader),
@@ -692,7 +715,8 @@ async function downloadGeneratedImage(url: string, cookieHeader: string | null):
 
 async function executeGeminiAppImageTranslate(
   options: GeminiAppImageTranslateOptions,
-): Promise<GeminiAppImageTranslateResult> {
+  authentication: GeminiCookieAccess,
+): Promise<GeminiAppImageTranslateResult | AuthenticationPermissionRequired> {
   const stageTimings: StageTiming[] = [];
   const timeStage = async <T>(stage: string, label: string, fn: () => Promise<T>): Promise<T> => {
     const start = performance.now();
@@ -703,7 +727,14 @@ async function executeGeminiAppImageTranslate(
     }
   };
 
-  const context = await timeStage('gemini_init', 'Gemini App 初始化', () => initializeGemini(options.settings));
+  const context = await timeStage(
+    'gemini_init',
+    'Gemini App 初始化',
+    () => initializeGemini(options.settings, authentication),
+  );
+  if (isAuthenticationPermissionRequired(context)) {
+    return context;
+  }
   await timeStage('gemini_status', 'Gemini App 状态检查', () => assertAccountAvailable(context));
   await sendBardActivity(context);
   const imageBlob = base64ToBlob(options.imageBase64, options.contentType);
@@ -745,8 +776,11 @@ async function executeGeminiAppImageTranslate(
 
 export function runGeminiAppImageTranslate(
   options: GeminiAppImageTranslateOptions,
-): Promise<GeminiAppImageTranslateResult> {
-  const queued = geminiAppQueue.then(() => executeGeminiAppImageTranslate(options));
+  authentication: GeminiCookieAccess,
+): Promise<GeminiAppImageTranslateResult | AuthenticationPermissionRequired> {
+  const queued = geminiAppQueue.then(
+    () => executeGeminiAppImageTranslate(options, authentication),
+  );
   geminiAppQueue = queued.then(
     () => undefined,
     () => undefined,
@@ -754,12 +788,24 @@ export function runGeminiAppImageTranslate(
   return queued;
 }
 
-export async function getGeminiAppAuthStatus(settings: ExtensionSettings): Promise<GeminiAppAuthStatusInfo> {
+export async function getGeminiAppAuthStatus(
+  settings: ExtensionSettings,
+  authentication: GeminiCookieAccess,
+): Promise<GeminiAppAuthStatusInfo | AuthenticationPermissionRequired> {
   try {
-    const context = await initializeGemini(settings);
+    const context = await initializeGemini(settings, authentication);
+    if (isAuthenticationPermissionRequired(context)) {
+      return context;
+    }
     await assertAccountAvailable(context);
     return { authenticated: true };
   } catch (error) {
+    if (
+      error instanceof ExtensionContractError
+      || error instanceof ExtensionOperationError
+    ) {
+      throw error;
+    }
     return {
       authenticated: false,
       error: toErrorMessage(error),

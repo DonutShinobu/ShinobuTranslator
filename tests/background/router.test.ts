@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import type {
   ExtensionMessageSource,
 } from '../../apps/extension/src/capabilities/contracts';
-import { ExtensionOperationError } from '../../apps/extension/src/capabilities/errors';
+import {
+  ExtensionContractError,
+  ExtensionOperationError,
+} from '../../apps/extension/src/capabilities/errors';
 import { defaultExtensionSettings } from '../../src/shared/config';
 import type { ExtensionSettings } from '../../src/shared/config';
 import { createDiagnosticEvent } from '../../src/shared/diagnosticLog';
@@ -210,6 +213,30 @@ describe('routeBackgroundMessage', () => {
     expect(services.geminiAuth.login).toHaveBeenCalledWith(defaultExtensionSettings);
   });
 
+  it('returns permission-required with semantic missing requirements at the runtime boundary', async () => {
+    const services = createServices();
+    vi.mocked(services.openAi.login).mockResolvedValueOnce({
+      status: 'permission-required',
+      missing: [
+        { kind: 'authentication-data-use' },
+      ],
+    });
+
+    await expect(routeBackgroundMessage(
+      { type: 'mt:openai-oauth-login' },
+      sender,
+      services,
+    )).resolves.toEqual({
+      ok: false,
+      type: 'mt:openai-oauth-login',
+      error: 'Credential authorization is required',
+      permission: {
+        status: 'permission-required',
+        missing: [{ kind: 'authentication-data-use' }],
+      },
+    });
+  });
+
   it('delegates provider messages and preserves external error identity', async () => {
     const services = createServices();
     const llmMessage: MessageOf<'mt:llm-chat-completions'> = {
@@ -230,6 +257,43 @@ describe('routeBackgroundMessage', () => {
     const providerError = new Error('provider failed');
     vi.mocked(services.providers.llm).mockRejectedValueOnce(providerError);
     await expect(routeBackgroundMessage(llmMessage, sender, services)).rejects.toBe(providerError);
+  });
+
+  it('preserves extension operation failure identity for the runtime boundary', async () => {
+    const services = createServices();
+    const operationFailure = new ExtensionOperationError({
+      capability: 'extension-cookies',
+      operation: 'read',
+      code: 'browser-rejected',
+      retryable: true,
+      diagnostic: { errorName: 'TypeError' },
+    });
+    vi.mocked(services.geminiAuth.status).mockRejectedValueOnce(
+      operationFailure,
+    );
+
+    await expect(routeBackgroundMessage(
+      { type: 'mt:gemini-app-auth-status' },
+      sender,
+      services,
+    )).rejects.toBe(operationFailure);
+  });
+
+  it('does not downgrade an extension contract failure into a request error', async () => {
+    const services = createServices();
+    const contractFailure = new ExtensionContractError({
+      capability: 'extension-cookies',
+      operation: 'initialize',
+      code: 'context-unavailable',
+      retryable: false,
+    });
+    vi.mocked(services.geminiAuth.status).mockRejectedValueOnce(contractFailure);
+
+    await expect(routeBackgroundMessage(
+      { type: 'mt:gemini-app-auth-status' },
+      sender,
+      services,
+    )).rejects.toBe(contractFailure);
   });
 
   it('returns the established unsupported response for content-only messages', async () => {

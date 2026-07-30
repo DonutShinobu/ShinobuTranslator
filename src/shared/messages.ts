@@ -281,6 +281,32 @@ export type RuntimeErrorDetail = {
 
 export type RuntimeErrorCode = 'llm_thinking_config';
 
+export type RuntimePermissionRequirement =
+  | {
+      kind: 'cookie-access';
+    }
+  | {
+      kind: 'authentication-data-use';
+    }
+  | {
+      kind: 'target-origin';
+      origin: string;
+    };
+
+export type RuntimePermissionRequired = {
+  status: 'permission-required';
+  missing: readonly RuntimePermissionRequirement[];
+};
+
+export type RuntimeExtensionError = {
+  kind: 'operation';
+  capability: string;
+  operation: string;
+  code: string;
+  retryable: boolean;
+  diagnostic: Readonly<Record<string, unknown>>;
+};
+
 export type RuntimeErrorResponse = {
   ok: false;
   type: RuntimeMessage['type'];
@@ -290,6 +316,8 @@ export type RuntimeErrorResponse = {
   retryAfterMs?: number;
   retryable?: boolean;
   errorDetail?: RuntimeErrorDetail;
+  permission?: RuntimePermissionRequired;
+  extensionError?: RuntimeExtensionError;
 };
 
 export type RuntimeResponse = RuntimeSuccessResponse | RuntimeErrorResponse;

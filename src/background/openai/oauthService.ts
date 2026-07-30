@@ -3,6 +3,11 @@ import type {
   ExtensionStorage,
 } from "../../../apps/extension/src/capabilities/contracts";
 import {
+  isAuthenticationPermissionRequired,
+  type AuthenticationAccess,
+  type AuthenticationPermissionRequired,
+} from "../../../apps/extension/src/capabilities/authentication";
+import {
   buildOpenAiAuthorizeUrl,
   createOpenAiOAuthCodeChallenge,
   createOpenAiOAuthRandomString,
@@ -62,16 +67,22 @@ type PendingOpenAiOAuthLogin = {
 export type OpenAiOAuthDependencies = {
   storage: ExtensionStorage;
   authenticationTabs: AuthenticationTabLifecycle;
+  authentication: Pick<AuthenticationAccess, 'request' | 'require'>;
 };
 
 export type OpenAiOAuthService = {
-  status(): Promise<OpenAiOAuthStatusInfo>;
-  login(): Promise<OpenAiOAuthStatusInfo>;
+  status(): Promise<OpenAiOAuthStatusInfo | AuthenticationPermissionRequired>;
+  login(): Promise<OpenAiOAuthStatusInfo | AuthenticationPermissionRequired>;
   logout(): Promise<OpenAiOAuthStatusInfo>;
-  handleCallbackUrl(tabId: number, rawUrl: string): Promise<void>;
+  handleCallbackUrl(
+    tabId: number,
+    rawUrl: string,
+  ): Promise<void | AuthenticationPermissionRequired>;
   handleTabRemoved(tabId: number): Promise<void>;
   getInstallationId(): Promise<string>;
-  getValidTokens(): Promise<StoredOpenAiOAuthTokens>;
+  getValidTokens(): Promise<
+    StoredOpenAiOAuthTokens | AuthenticationPermissionRequired
+  >;
   refreshTokens(tokens: StoredOpenAiOAuthTokens): Promise<StoredOpenAiOAuthTokens>;
 };
 
@@ -307,7 +318,13 @@ async function refreshOpenAiOAuthTokens(
 async function getOpenAiOAuthStatus(
   dependencies: OpenAiOAuthDependencies,
   refreshState: OpenAiRefreshState,
-): Promise<OpenAiOAuthStatusInfo> {
+): Promise<OpenAiOAuthStatusInfo | AuthenticationPermissionRequired> {
+  const permission = await dependencies.authentication.require({
+    kind: 'openai-oauth',
+  });
+  if (isAuthenticationPermissionRequired(permission)) {
+    return permission;
+  }
   const tokens = await getStoredOpenAiOAuthTokens(dependencies);
   if (!tokens) {
     const pending = await getPendingOpenAiOAuthLogin(dependencies);
@@ -355,7 +372,16 @@ async function getOpenAiOAuthStatus(
 
 async function loginOpenAiOAuth(
   dependencies: OpenAiOAuthDependencies,
-): Promise<OpenAiOAuthStatusInfo> {
+): Promise<OpenAiOAuthStatusInfo | AuthenticationPermissionRequired> {
+  const permission = await dependencies.authentication.request({
+    kind: 'openai-oauth',
+  });
+  if (permission.status === 'denied') {
+    return {
+      status: 'permission-required',
+      missing: permission.missing,
+    };
+  }
   const redirectUri = openAiOAuthLoopbackRedirectUri;
   const state = createOpenAiOAuthRandomString(32);
   const codeVerifier = createOpenAiOAuthRandomString(64);
@@ -391,7 +417,7 @@ async function handleOpenAiOAuthCallbackUrl(
   dependencies: OpenAiOAuthDependencies,
   tabId: number,
   rawUrl: string,
-): Promise<void> {
+): Promise<void | AuthenticationPermissionRequired> {
   const callback = parseOpenAiOAuthCallbackUrl(rawUrl);
   if (!callback) {
     return;
@@ -400,6 +426,19 @@ async function handleOpenAiOAuthCallbackUrl(
   const pending = await getPendingOpenAiOAuthLogin(dependencies);
   if (!pending) {
     return;
+  }
+
+  const permission = await dependencies.authentication.require({
+    kind: 'openai-oauth',
+  });
+  if (isAuthenticationPermissionRequired(permission)) {
+    await clearPendingOpenAiOAuthLogin(dependencies);
+    await dependencies.storage.write({
+      [openAiOAuthLastErrorStorageKey]:
+        'Credential authorization is required',
+    });
+    await closeOpenAiAuthTab(dependencies, tabId);
+    return permission;
   }
 
   try {
@@ -499,7 +538,13 @@ async function getOpenAiOAuthInstallationId(
 async function getValidOpenAiOAuthTokens(
   dependencies: OpenAiOAuthDependencies,
   refreshState: OpenAiRefreshState,
-): Promise<StoredOpenAiOAuthTokens> {
+): Promise<StoredOpenAiOAuthTokens | AuthenticationPermissionRequired> {
+  const permission = await dependencies.authentication.require({
+    kind: 'openai-oauth',
+  });
+  if (isAuthenticationPermissionRequired(permission)) {
+    return permission;
+  }
   const tokens = await getStoredOpenAiOAuthTokens(dependencies);
   if (!tokens) {
     throw new Error('请先在扩展弹窗中登录 OpenAI');

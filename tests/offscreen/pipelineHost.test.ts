@@ -1,4 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type {
+  ImagePipelineRuntimeCapabilities,
+  ProviderExecutionReport,
+} from '@shinobu/image-pipeline';
+import { PRODUCTION_PROVIDER_EXECUTION_POLICY } from '@shinobu/image-pipeline';
 import type { ChromePort } from '../../src/shared/chrome';
 import type { PipelineArtifacts } from '../../src/types';
 
@@ -70,6 +75,55 @@ class FakePort implements ChromePort {
   }
 }
 
+const providerReport: ProviderExecutionReport = {
+  schemaVersion: 1,
+  contract: {
+    id: 'shinobu.production-provider-policy',
+    version: 1,
+  },
+  model: 'detector',
+  stage: 'detect',
+  attempts: [
+    {
+      attempt: 1,
+      provider: 'wasm',
+      outcome: 'succeeded',
+      reason: 'completed',
+    },
+  ],
+  finalProvider: 'wasm',
+  fallbackTrace: [],
+  satisfied: true,
+};
+const unsatisfiedProviderReport: ProviderExecutionReport = {
+  ...providerReport,
+  attempts: [
+    {
+      attempt: 1,
+      provider: 'wasm',
+      outcome: 'failed',
+      reason: 'execution-failed',
+    },
+  ],
+  finalProvider: undefined,
+  satisfied: false,
+};
+const modelSession = {
+  loadModel: vi.fn(async () => ({ runtime: ['wasm'] as const })),
+  loadSession: vi.fn(async () => ({
+    sessionId: 'test-detector',
+    provider: 'wasm' as const,
+    inputNames: ['images'],
+    outputNames: ['output'],
+  })),
+};
+const defaultCapabilities: ImagePipelineRuntimeCapabilities = {
+  providerExecution: {
+    policy: PRODUCTION_PROVIDER_EXECUTION_POLICY,
+    modelSession,
+  },
+};
+
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => {
@@ -99,6 +153,7 @@ function artifacts(): PipelineArtifacts {
     ocrDebug: null,
     ocrPostFilterDebug: null,
     runtimeStages: [],
+    providerReports: [providerReport],
     stageTimings: [],
   };
 }
@@ -156,8 +211,10 @@ describe('OffscreenPipelineHost single-task admission', () => {
     port.disconnect();
   });
 
-  function createHost(): OffscreenPipelineHost {
-    const host = new OffscreenPipelineHost();
+  function createHost(
+    capabilities?: ImagePipelineRuntimeCapabilities,
+  ): OffscreenPipelineHost {
+    const host = new OffscreenPipelineHost(capabilities ?? defaultCapabilities);
     hosts.push(host);
     return host;
   }
@@ -188,6 +245,7 @@ describe('OffscreenPipelineHost single-task admission', () => {
       type: 'result-meta',
       jobId: 'job-1',
       status: 'no-translatable-text',
+      providerReports: [providerReport],
       record: expect.objectContaining({
         schemaVersion: 2,
         workingCopy: expect.objectContaining({
@@ -196,6 +254,84 @@ describe('OffscreenPipelineHost single-task admission', () => {
         }),
       }),
     }));
+  });
+
+  it('passes an injected provider policy to the pipeline as a runtime capability', async () => {
+    const capabilities: ImagePipelineRuntimeCapabilities = {
+      providerExecution: {
+        policy: {
+          schemaVersion: 1,
+          contract: {
+            id: 'test.detector-wasm-only',
+            version: 2,
+          },
+          rules: [
+            {
+              model: 'detector',
+              stage: 'detect',
+              providers: ['wasm'],
+            },
+          ],
+        },
+        modelSession,
+      },
+    };
+    mocks.runPipeline.mockResolvedValueOnce(artifacts());
+    const host = createHost(capabilities);
+    host.connect();
+
+    sendImageJob(port, 'runtime-capability');
+
+    await vi.waitFor(() => expect(mocks.runPipeline).toHaveBeenCalledOnce());
+    expect(mocks.runPipeline.mock.calls[0][3]).toMatchObject({
+      runtimeCapabilities: {
+        providerExecution: {
+          policy: capabilities.providerExecution?.policy,
+          modelSession: {
+            loadModel: expect.any(Function),
+            loadSession: expect.any(Function),
+          },
+        },
+      },
+    });
+    const injectedCapabilities = mocks.runPipeline.mock.calls[0][3]
+      .runtimeCapabilities as ImagePipelineRuntimeCapabilities;
+    await injectedCapabilities.providerExecution?.modelSession.loadModel('detector');
+    expect(modelSession.loadModel).toHaveBeenCalledWith('detector');
+  });
+
+  it('transports an unsatisfied provider report in structured failure diagnostics', async () => {
+    mocks.runPipeline.mockRejectedValueOnce(Object.assign(
+      new Error('detector failed'),
+      {
+        failure: {
+          code: 'PIPELINE_STAGE_FAILED',
+          stage: 'detect',
+          scope: 'runtime',
+          retryable: false,
+          messageKey: 'pipeline.failure.stage',
+          diagnostics: {
+            providerReports: [unsatisfiedProviderReport],
+          },
+        },
+      },
+    ));
+    const host = createHost();
+    host.connect();
+
+    sendImageJob(port, 'provider-failure');
+
+    await vi.waitFor(() => {
+      expect(port.sent).toContainEqual(expect.objectContaining({
+        type: 'error',
+        jobId: 'provider-failure',
+        error: expect.objectContaining({
+          diagnostics: {
+            providerReports: [unsatisfiedProviderReport],
+          },
+        }),
+      }));
+    });
   });
 
   it('does not retain an unexpectedly overlapping task after rejecting it', async () => {

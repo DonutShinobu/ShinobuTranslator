@@ -3,6 +3,7 @@ import {
   ImagePipelineRuntime,
   createPipelineRecord,
   hasTranslatableText,
+  type ImagePipelineRuntimeCapabilities,
   type PipelineConfig as ImagePipelineConfig,
   type PipelineCancellationReason,
 } from '@shinobu/image-pipeline';
@@ -108,8 +109,12 @@ export class OffscreenPipelineHost {
   private activeApiKey = '';
   private readonly imageRuntime: ImagePipelineRuntime<PipelineArtifacts>;
 
-  constructor() {
+  constructor(capabilities: ImagePipelineRuntimeCapabilities) {
+    if (!capabilities.providerExecution) {
+      throw new TypeError('Provider execution capability is required');
+    }
     this.imageRuntime = new ImagePipelineRuntime<PipelineArtifacts>({
+      capabilities,
       execute: async (request, context) => {
         const source = request.source instanceof File
           ? request.source
@@ -154,6 +159,7 @@ export class OffscreenPipelineHost {
           {
             signal: context.signal,
             translationTransport: retryingTranslationTransport,
+            runtimeCapabilities: context.capabilities,
           },
         );
         return {
@@ -179,6 +185,7 @@ export class OffscreenPipelineHost {
           status: output.status,
           image,
           debug,
+          providerReports: output.artifacts.providerReports,
           record: createPipelineRecord({
             image: {
               width: output.artifacts.original.naturalWidth,
@@ -500,6 +507,7 @@ export class OffscreenPipelineHost {
           : undefined,
         summary,
         record: pipelineResult.record,
+        providerReports: pipelineResult.providerReports,
       });
       throwIfJobCancelled();
       delivered = delivered && this.postArtifactChunks(job.id, 'result', resultChunks);

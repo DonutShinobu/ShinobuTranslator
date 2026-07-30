@@ -8,10 +8,13 @@ import {
   ImagePipelineCancelledError,
   ImagePipelineExecutionError,
   ImagePipelineRuntime,
+  PRODUCTION_PROVIDER_EXECUTION_POLICY,
   hasTranslatableText,
   type NormalizedWorkingCopySpec,
   type PipelineConfig,
   type PipelineProgress,
+  type ProviderExecutionCapability,
+  type ProviderExecutionPolicy,
 } from '@shinobu/image-pipeline';
 import { runPipeline, PipelineStageError } from '../../../../src/pipeline/orchestrator';
 import { disposePipelineArtifacts } from '../../../../src/pipeline/resources';
@@ -28,6 +31,8 @@ import type { TextTranslationTransport } from '../../../../src/translators/trans
 import {
   configureModelAssetSource,
   disposeAllModelSessions,
+  getModel,
+  getModelSession,
 } from '../../../../src/runtime/modelRegistry';
 import { configureOnnxWorkerBootstrap } from '../../../../src/runtime/onnxWorkerBridge';
 import { registerTypesetFonts } from '../../../../src/pipeline/typeset/fontRuntime';
@@ -81,6 +86,19 @@ const translationTransport: TextTranslationTransport = {
     ));
   },
 };
+
+function createWebProviderExecutionCapability(
+  policy: ProviderExecutionPolicy = PRODUCTION_PROVIDER_EXECUTION_POLICY,
+): ProviderExecutionCapability {
+  return {
+    policy,
+    modelSession: {
+      loadModel: (model) => getModel(model),
+      loadSession: (model, providers) => getModelSession(model, [...providers]),
+    },
+  };
+}
+
 const modelSourceResource = createInstalledModelAssetSource();
 let fontReady: Promise<void> | null = null;
 let runtime: ImagePipelineRuntime<PipelineArtifacts> | null = null;
@@ -138,7 +156,13 @@ function toLegacyConfig(
 function createRuntime(
   capabilities: WebPipelineRuntimeCapabilities,
 ): ImagePipelineRuntime<PipelineArtifacts> {
+  const providerExecution = createWebProviderExecutionCapability(
+    capabilities.providerExecution?.policy,
+  );
   return new ImagePipelineRuntime({
+    capabilities: {
+      providerExecution,
+    },
     async prepare() {
       const installed = await modelSourceResource;
       configureModelAssetSource(installed.source);
@@ -191,6 +215,7 @@ function createRuntime(
           signal: context.signal,
           platform,
           translationTransport: retryingTranslationTransport,
+          runtimeCapabilities: context.capabilities,
         },
       );
       return {
@@ -216,6 +241,7 @@ function createRuntime(
         status: output.status,
         image,
         debug,
+        providerReports: output.artifacts.providerReports,
         record: createWebPipelineRecord(
           output.artifacts,
           request.workingCopy,

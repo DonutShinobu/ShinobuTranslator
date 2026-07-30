@@ -4,10 +4,13 @@ import {
   ImagePipelineCancelledError,
   ImagePipelineExecutionError,
   ImagePipelineRuntime,
+  isProviderExecutionPolicy,
+  isProviderExecutionReport,
   type ImagePipelineRequest,
   type ImagePipelineResult,
   type PipelineConfig,
   type PipelineProgress,
+  type ProviderExecutionPolicy,
 } from '@shinobu/image-pipeline';
 
 function deferred<T>() {
@@ -55,6 +58,7 @@ function result(): ImagePipelineResult {
   return {
     status: 'completed',
     image: new Blob(['result'], { type: 'image/png' }),
+    providerReports: [],
     record: {
       schemaVersion: 2,
       workingCopy: {
@@ -119,6 +123,150 @@ describe('image pipeline runtime contract', () => {
     expect(prepare).toHaveBeenCalledOnce();
   });
 
+  it('injects a versioned provider policy as an immutable runtime capability', async () => {
+    const policy: ProviderExecutionPolicy = {
+      schemaVersion: 1,
+      contract: {
+        id: 'test.detector-wasm-only',
+        version: 3,
+      },
+      rules: [
+        {
+          model: 'detector',
+          stage: 'detect',
+          providers: ['wasm'],
+        },
+      ],
+    };
+    const loadModel = vi.fn(async () => ({ runtime: ['wasm'] as const }));
+    const loadSession = vi.fn(async () => ({
+      sessionId: 'test-detector',
+      provider: 'wasm' as const,
+      inputNames: ['images'],
+      outputNames: ['output'],
+    }));
+    const observedCapabilities: unknown[] = [];
+    const runtime = new ImagePipelineRuntime({
+      capabilities: {
+        providerExecution: {
+          policy,
+          modelSession: { loadModel, loadSession },
+        },
+      },
+      async prepare(context) {
+        observedCapabilities.push(context.capabilities);
+      },
+      async execute(_request, context) {
+        observedCapabilities.push(context.capabilities);
+        await context.capabilities.providerExecution?.modelSession.loadModel('detector');
+        return { status: 'completed' as const, artifacts: { id: 'live' } };
+      },
+      finalize: async () => result(),
+      release: vi.fn(),
+    });
+    policy.contract.version = 99;
+
+    await runtime.run(request()).result;
+
+    expect(observedCapabilities).toHaveLength(2);
+    expect(observedCapabilities[0]).toEqual({
+      providerExecution: {
+        policy: expect.objectContaining({
+          contract: {
+            id: 'test.detector-wasm-only',
+            version: 3,
+          },
+        }),
+        modelSession: {
+          loadModel: expect.any(Function),
+          loadSession: expect.any(Function),
+        },
+      },
+    });
+    expect(observedCapabilities[1]).toBe(observedCapabilities[0]);
+    expect(Object.isFrozen(observedCapabilities[0])).toBe(true);
+    expect(loadModel).toHaveBeenCalledWith('detector');
+  });
+
+  it('rejects internally contradictory provider execution reports', () => {
+    const baseReport = {
+      schemaVersion: 1,
+      contract: {
+        id: 'test.detector-policy',
+        version: 1,
+      },
+      model: 'detector',
+      stage: 'detect',
+      attempts: [
+        {
+          attempt: 1,
+          provider: 'wasm',
+          outcome: 'succeeded',
+          reason: 'completed',
+        },
+      ],
+      finalProvider: 'wasm',
+      fallbackTrace: [],
+      satisfied: true,
+    } as const;
+
+    expect(isProviderExecutionReport(baseReport)).toBe(true);
+    expect(isProviderExecutionReport({
+      ...baseReport,
+      attempts: [{
+        ...baseReport.attempts[0],
+        outcome: 'unavailable',
+        reason: 'completed',
+      }],
+      finalProvider: undefined,
+      satisfied: false,
+    })).toBe(false);
+    expect(isProviderExecutionReport({
+      ...baseReport,
+      finalProvider: undefined,
+      satisfied: false,
+    })).toBe(false);
+  });
+
+  it('uses the canonical provider target definition for policies and reports', () => {
+    expect(isProviderExecutionPolicy({
+      schemaVersion: 1,
+      contract: {
+        id: 'test.detector-policy',
+        version: 1,
+      },
+      rules: [{
+        model: 'detector',
+        stage: 'detect',
+        providers: ['wasm'],
+      }],
+    })).toBe(true);
+    expect(isProviderExecutionPolicy({
+      schemaVersion: 1,
+      contract: {
+        id: 'test.invalid-target',
+        version: 1,
+      },
+      rules: [{
+        model: 'detector',
+        stage: 'ocr',
+        providers: ['wasm'],
+      }],
+    })).toBe(false);
+    expect(isProviderExecutionReport({
+      schemaVersion: 1,
+      contract: {
+        id: 'test.invalid-target',
+        version: 1,
+      },
+      model: 'detector',
+      stage: 'ocr',
+      attempts: [],
+      fallbackTrace: [],
+      satisfied: false,
+    })).toBe(false);
+  });
+
   it('throws admission errors synchronously without creating a task', async () => {
     const execution = deferred<{
       status: 'completed';
@@ -166,6 +314,15 @@ describe('image pipeline runtime contract', () => {
       config: {
         ...config(),
         runtimeCapability: { apiKey: 'must-not-cross-runtime-boundary' },
+      },
+    } as ImagePipelineRequest)).toThrowError(
+      expect.objectContaining({ code: 'INVALID_REQUEST' }),
+    );
+    expect(() => runtime.run({
+      ...request(),
+      config: {
+        ...config(),
+        ocrCompactActiveBatch: false,
       },
     } as ImagePipelineRequest)).toThrowError(
       expect.objectContaining({ code: 'INVALID_REQUEST' }),

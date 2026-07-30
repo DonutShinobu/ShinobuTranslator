@@ -76,24 +76,26 @@ export async function loadManifest(): Promise<ManifestData> {
 // ---------------------------------------------------------------------------
 
 function normalizeRuntime(value: unknown): RuntimeProvider[] {
-  if (isNodeRuntime) {
-    return ['cuda', 'cpu'];
-  }
-  if (!Array.isArray(value)) {
-    return ['webnn', 'wasm'];
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error('模型清单 runtime 必须声明非空 provider 顺序');
   }
   const out: RuntimeProvider[] = [];
   for (const item of value) {
-    if (item === 'webnn' || item === 'webgpu' || item === 'wasm') {
-      if (!out.includes(item)) {
-        out.push(item);
-      }
+    if (
+      item !== 'webnn'
+      && item !== 'webgpu'
+      && item !== 'wasm'
+    ) {
+      throw new Error('模型清单 runtime 包含不支持的 provider');
     }
+    if (out.includes(item)) {
+      throw new Error('模型清单 runtime 不得包含重复 provider');
+    }
+    out.push(item);
   }
-  if (out.length === 0) {
-    out.push('webnn', 'wasm');
-  }
-  return out;
+  // Browser production follows the manifest exactly. Node is a benchmark/test
+  // adapter and maps a valid production declaration to its local EPs.
+  return isNodeRuntime ? ['cuda', 'cpu'] : out;
 }
 
 function resolveModelAssetUrl(url: string): string {

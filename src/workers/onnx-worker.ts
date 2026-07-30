@@ -210,7 +210,11 @@ async function createSession(
     }
 
     if (providerOrder.length === 0) {
-      providerOrder.push("wasm");
+      const detail = normalized
+        .filter((provider) => providerErrors[provider])
+        .map((provider) => `${provider}: ${providerErrors[provider]}`)
+        .join(" | ");
+      throw new Error(`ONNX provider 不可用: ${detail || "未提供可用 provider"}`);
     }
 
     for (const provider of providerOrder) {

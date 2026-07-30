@@ -1,13 +1,17 @@
 import type { Rect, TextRegion, QuadPoint } from "../../types";
 import type { PlatformProvider, PipelineCanvas, PipelineImage } from "../../runtime/platform";
 import { minAreaRect, type Quad } from "../typeset/geometry";
-import { getModelSession } from "../../runtime/modelRegistry";
-import { isContextLostRuntimeError } from "../../runtime/onnxTypes";
-import type { RuntimeProvider, WebNnDeviceType } from "../../runtime/onnxTypes";
+import type { WebNnDeviceType } from "../../runtime/onnxTypes";
 import { runInference, runDetectWithGpuPreprocess } from "../../runtime/onnxBridge";
 import type { WorkerSessionHandle, TensorTransport } from "../../runtime/onnxWorkerTypes";
-import { toErrorMessage } from "../../shared/utils";
 import { clamp, polygonArea, nmsBoxes, type ScoredBox } from "../utils";
+import {
+  type ProviderSessionResolver,
+} from "../../runtime/providerExecution";
+import type {
+  ProviderExecutionReport,
+  ProviderRuntime,
+} from "@shinobu/image-pipeline";
 
 type LetterboxResult = {
   input: Float32Array;
@@ -27,8 +31,9 @@ export type DetectOutput = {
   rawMaskCanvas: PipelineCanvas | null;
   engine?: "onnx" | "tesseract" | "heuristic";
   fallbackReason?: string;
-  actualProvider?: RuntimeProvider;
+  actualProvider?: ProviderRuntime;
   actualWebnnDeviceType?: WebNnDeviceType;
+  providerReports: ProviderExecutionReport[];
 };
 
 // --- Shared helpers (used by both ONNX and heuristic paths) ---
@@ -756,203 +761,220 @@ function mapBoxesToOriginal(
   return mapped;
 }
 
-// --- Main ONNX detection function (exported) ---
+type DetectorInference = {
+  outputTensors: Record<string, TensorTransport>;
+  prep: LetterboxResult;
+  actualWebnnDeviceType?: WebNnDeviceType;
+};
 
-export async function detectByOnnx(image: PipelineImage, platform: PlatformProvider): Promise<DetectOutput> {
-  const primaryHandle = await getModelSession("detector");
+class DetectorPostProcessingError extends Error {
+  constructor(
+    cause: unknown,
+    readonly providerReports: ProviderExecutionReport[],
+  ) {
+    super(
+      cause instanceof Error ? cause.message : String(cause),
+      { cause },
+    );
+    this.name = "DetectorPostProcessingError";
+  }
+}
+
+async function runDetectorInference(
+  handle: WorkerSessionHandle,
+  image: PipelineImage,
+  platform: PlatformProvider,
+): Promise<DetectorInference> {
   const inputSize = 1024;
-
-  let actualProvider: RuntimeProvider = primaryHandle.provider;
-  let actualWebnnDeviceType = primaryHandle.webnnDeviceType;
-
-  let outputTensors!: Record<string, TensorTransport>;
-  let prep: LetterboxResult;
-
-  // WebGPU path: GPU preprocess + IO binding
-  if (primaryHandle.provider === "webgpu") {
-    try {
-      const imageBitmap = platform.createImageBitmap
-        ? await platform.createImageBitmap(image)
-        : await createImageBitmap(image as HTMLImageElement);
-      const gpuResult = await runDetectWithGpuPreprocess(primaryHandle.sessionId, imageBitmap);
-      prep = {
-        input: new Float32Array(0), // not needed for GPU path
+  if (handle.provider === "webgpu") {
+    const imageBitmap = platform.createImageBitmap
+      ? await platform.createImageBitmap(image)
+      : await createImageBitmap(image as HTMLImageElement);
+    const gpuResult = await runDetectWithGpuPreprocess(handle.sessionId, imageBitmap);
+    return {
+      prep: {
+        input: new Float32Array(0),
         size: inputSize,
         ratio: gpuResult.ratio,
         unpaddedWidth: gpuResult.unpaddedWidth,
         unpaddedHeight: gpuResult.unpaddedHeight,
-      };
-      outputTensors = gpuResult.outputs;
-    } catch (error) {
-      const message = toErrorMessage(error);
-      console.warn(`[detector] WebGPU GPU预处理失败，回退到 CPU: ${message}`);
-      // Fallback: try WebNN first, then WASM (matching original fallback order)
-      prep = preprocessLetterbox(image, inputSize, platform);
-
-      const fallbackPlans: RuntimeProvider[][] = [["webnn", "wasm"], ["wasm"]];
-      let recovered = false;
-      let lastFallbackError: unknown = null;
-
-      for (const preferred of fallbackPlans) {
-        try {
-          const handle = await getModelSession("detector", preferred);
-          const inputName = handle.inputNames[0] ?? "images";
-          const feeds: Record<string, TensorTransport> = {
-            [inputName]: { data: prep.input, dims: [1, 3, inputSize, inputSize], type: "float32" }
-          };
-          const result = await runInference(handle.sessionId, feeds);
-          if (result.error) throw new Error(result.error);
-          outputTensors = result.outputs;
-          actualProvider = handle.provider;
-          actualWebnnDeviceType = handle.webnnDeviceType;
-          console.warn(`[detector] 已回退到 ${handle.provider}`);
-          recovered = true;
-          break;
-        } catch (fallbackError) {
-          lastFallbackError = fallbackError;
-        }
-      }
-
-      if (!recovered) {
-        const fallbackMessage = lastFallbackError ? toErrorMessage(lastFallbackError) : "未知错误";
-        throw new Error(`WebGPU GPU预处理失败且回退失败: ${message} | fallback: ${fallbackMessage}`);
-      }
-    }
-  } else {
-    // CPU path (webnn/wasm): existing letterbox preprocessing
-    prep = preprocessLetterbox(image, inputSize, platform);
-
-    const runWithHandle = async (handle: WorkerSessionHandle): Promise<Record<string, TensorTransport>> => {
-      const inputName = handle.inputNames[0] ?? "images";
-      const feeds: Record<string, TensorTransport> = {
-        [inputName]: { data: prep.input, dims: [1, 3, inputSize, inputSize], type: "float32" }
-      };
-      const result = await runInference(handle.sessionId, feeds);
-      if (result.error) throw new Error(result.error);
-      return result.outputs;
-    };
-
-    try {
-      outputTensors = await runWithHandle(primaryHandle);
-    } catch (error) {
-      const message = toErrorMessage(error);
-      const reason = isContextLostRuntimeError(error) ? "context lost" : "run failed";
-      if (primaryHandle.provider === "wasm") {
-        throw error;
-      }
-
-      const fallbackPlans: RuntimeProvider[][] = [];
-      fallbackPlans.push(["wasm"]);
-
-      let recovered: Record<string, TensorTransport> | null = null;
-      let lastFallbackError: unknown = null;
-      console.warn(`[detector] ${primaryHandle.provider} ${reason}, 尝试回退: ${message}`);
-
-      for (const preferred of fallbackPlans) {
-        try {
-          const handle = await getModelSession("detector", preferred);
-          recovered = await runWithHandle(handle);
-          if (handle.provider !== primaryHandle.provider) {
-            console.warn(`[detector] 已回退到 ${handle.provider}`);
-            actualProvider = handle.provider;
-            actualWebnnDeviceType = handle.webnnDeviceType;
-          }
-          break;
-        } catch (fallbackError) {
-          lastFallbackError = fallbackError;
-        }
-      }
-
-      if (!recovered) {
-        const fallbackMessage = lastFallbackError ? toErrorMessage(lastFallbackError) : "未知错误";
-        throw new Error(`检测推理失败且回退失败: ${message} | fallback: ${fallbackMessage}`);
-      }
-
-      outputTensors = recovered;
-    }
-  }
-
-  const detTensor = pickDetTensor(outputTensors);
-  if (detTensor) {
-    const regions = detectCtdRegionsFromDetTensor(detTensor, image, prep);
-
-    let maskTensor: TensorTransport = detTensor;
-    try {
-      const segTensor = pickSegTensor(outputTensors);
-      if (segTensor.dims.length === 4 && (segTensor.dims[1] ?? 0) >= 1) {
-        maskTensor = segTensor;
-      }
-    } catch {
-      // 当前模型无独立 seg 输出时，回退使用 det 通道 0 作为粗遮罩。
-    }
-
-    const binaryMask = buildBinaryMaskFromTensor(maskTensor, prep.unpaddedWidth, prep.unpaddedHeight, 0.3, 0);
-    if (!binaryMask) {
-      return { regions, rawMaskCanvas: null, actualProvider, actualWebnnDeviceType };
-    }
-
-    return {
-      regions,
-      rawMaskCanvas: buildMaskCanvasFromBinary(binaryMask.mask, binaryMask.width, binaryMask.height, image, platform),
-      actualProvider,
-      actualWebnnDeviceType
+      },
+      outputTensors: gpuResult.outputs,
+      actualWebnnDeviceType: handle.webnnDeviceType,
     };
   }
 
-  const blkTensor = pickBlkTensor(outputTensors);
-  if (blkTensor) {
-    const blkBoxes = boxesFromBlk(blkTensor, inputSize, prep.unpaddedWidth, prep.unpaddedHeight);
-    if (blkBoxes.length > 0) {
-      const mapped = mapBoxesToOriginal(
-        blkBoxes.map((item) => item.box),
-        image,
-        prep,
-        0.08,
-        0.1
-      )
-        .filter((box) => box.width / Math.max(1, box.height) <= 1.8)
-        .filter((box) => box.width <= image.naturalWidth * 0.35 && box.height <= image.naturalHeight * 0.45)
-        .sort((a, b) => b.width * b.height - a.width * a.height)
-        .slice(0, 72)
-        .sort((a, b) => a.y - b.y || a.x - b.x);
+  const prep = preprocessLetterbox(image, inputSize, platform);
+  const inputName = handle.inputNames[0] ?? "images";
+  const feeds: Record<string, TensorTransport> = {
+    [inputName]: {
+      data: prep.input,
+      dims: [1, 3, inputSize, inputSize],
+      type: "float32",
+    },
+  };
+  const result = await runInference(handle.sessionId, feeds);
+  if (result.error) throw new Error(result.error);
+  return {
+    prep,
+    outputTensors: result.outputs,
+    actualWebnnDeviceType: handle.webnnDeviceType,
+  };
+}
 
-      if (mapped.length > 0) {
-        const regions = mapped.map(makeRegion);
+// --- Main ONNX detection function (exported) ---
+
+export async function detectByOnnx(
+  image: PipelineImage,
+  platform: PlatformProvider,
+  resolver: ProviderSessionResolver,
+): Promise<DetectOutput> {
+  const execution = await resolver.execute({
+    model: "detector",
+    stage: "detect",
+    run: (handle) => runDetectorInference(handle, image, platform),
+  });
+  const {
+    outputTensors,
+    prep,
+    actualWebnnDeviceType,
+  } = execution.value;
+  const actualProvider = execution.report.finalProvider;
+  const providerReports = [execution.report];
+
+  try {
+    const detTensor = pickDetTensor(outputTensors);
+    if (detTensor) {
+      const regions = detectCtdRegionsFromDetTensor(detTensor, image, prep);
+
+      let maskTensor: TensorTransport = detTensor;
+      try {
+        const segTensor = pickSegTensor(outputTensors);
+        if (segTensor.dims.length === 4 && (segTensor.dims[1] ?? 0) >= 1) {
+          maskTensor = segTensor;
+        }
+      } catch {
+        // 当前模型无独立 seg 输出时，回退使用 det 通道 0 作为粗遮罩。
+      }
+
+      const binaryMask = buildBinaryMaskFromTensor(
+        maskTensor,
+        prep.unpaddedWidth,
+        prep.unpaddedHeight,
+        0.3,
+        0,
+      );
+      if (!binaryMask) {
         return {
           regions,
           rawMaskCanvas: null,
           actualProvider,
-          actualWebnnDeviceType
+          actualWebnnDeviceType,
+          providerReports,
         };
       }
+
+      return {
+        regions,
+        rawMaskCanvas: buildMaskCanvasFromBinary(
+          binaryMask.mask,
+          binaryMask.width,
+          binaryMask.height,
+          image,
+          platform,
+        ),
+        actualProvider,
+        actualWebnnDeviceType,
+        providerReports,
+      };
     }
+
+    const blkTensor = pickBlkTensor(outputTensors);
+    if (blkTensor) {
+      const blkBoxes = boxesFromBlk(
+        blkTensor,
+        prep.size,
+        prep.unpaddedWidth,
+        prep.unpaddedHeight,
+      );
+      if (blkBoxes.length > 0) {
+        const mapped = mapBoxesToOriginal(
+          blkBoxes.map((item) => item.box),
+          image,
+          prep,
+          0.08,
+          0.1,
+        )
+          .filter((box) => box.width / Math.max(1, box.height) <= 1.8)
+          .filter((box) =>
+            box.width <= image.naturalWidth * 0.35
+            && box.height <= image.naturalHeight * 0.45)
+          .sort((a, b) => b.width * b.height - a.width * a.height)
+          .slice(0, 72)
+          .sort((a, b) => a.y - b.y || a.x - b.x);
+
+        if (mapped.length > 0) {
+          const regions = mapped.map(makeRegion);
+          return {
+            regions,
+            rawMaskCanvas: null,
+            actualProvider,
+            actualWebnnDeviceType,
+            providerReports,
+          };
+        }
+      }
+    }
+
+    const segTensor = pickSegTensor(outputTensors);
+    const binaryMask = buildBinaryMaskFromTensor(
+      segTensor,
+      prep.unpaddedWidth,
+      prep.unpaddedHeight,
+      0.46,
+      0,
+    );
+    if (!binaryMask) {
+      return {
+        regions: [],
+        rawMaskCanvas: null,
+        actualProvider,
+        actualWebnnDeviceType,
+        providerReports,
+      };
+    }
+    const { mask, width, height } = binaryMask;
+
+    const boxes1024 = connectedComponents(mask, width, height);
+    const mapped = mapBoxesToOriginal(boxes1024, image, prep, 0.05, 0.08);
+    const merged = mergeRects(mapped, 5)
+      .filter((box) => box.width / Math.max(1, box.height) <= 1.8)
+      .filter((box) =>
+        box.width <= image.naturalWidth * 0.35
+        && box.height <= image.naturalHeight * 0.45)
+      .sort((a, b) => b.width * b.height - a.width * a.height)
+      .slice(0, 64)
+      .sort((a, b) => a.y - b.y || a.x - b.x);
+
+    if (merged.length === 0) {
+      return {
+        regions: [],
+        rawMaskCanvas: null,
+        actualProvider,
+        actualWebnnDeviceType,
+        providerReports,
+      };
+    }
+
+    const regions = merged.map(makeRegion);
+    return {
+      regions,
+      rawMaskCanvas: buildMaskCanvasFromBinary(mask, width, height, image, platform),
+      actualProvider,
+      actualWebnnDeviceType,
+      providerReports,
+    };
+  } catch (error) {
+    throw new DetectorPostProcessingError(error, providerReports);
   }
-
-  const segTensor = pickSegTensor(outputTensors);
-  const binaryMask = buildBinaryMaskFromTensor(segTensor, prep.unpaddedWidth, prep.unpaddedHeight, 0.46, 0);
-  if (!binaryMask) {
-    return { regions: [], rawMaskCanvas: null, actualProvider, actualWebnnDeviceType };
-  }
-  const { mask, width, height } = binaryMask;
-
-  const boxes1024 = connectedComponents(mask, width, height);
-  const mapped = mapBoxesToOriginal(boxes1024, image, prep, 0.05, 0.08);
-  const merged = mergeRects(mapped, 5)
-    .filter((box) => box.width / Math.max(1, box.height) <= 1.8)
-    .filter((box) => box.width <= image.naturalWidth * 0.35 && box.height <= image.naturalHeight * 0.45)
-    .sort((a, b) => b.width * b.height - a.width * a.height)
-    .slice(0, 64)
-    .sort((a, b) => a.y - b.y || a.x - b.x);
-
-  if (merged.length === 0) {
-    return { regions: [], rawMaskCanvas: null, actualProvider, actualWebnnDeviceType };
-  }
-
-  const regions = merged.map(makeRegion);
-  return {
-    regions,
-    rawMaskCanvas: buildMaskCanvasFromBinary(mask, width, height, image, platform),
-    actualProvider,
-    actualWebnnDeviceType
-  };
 }

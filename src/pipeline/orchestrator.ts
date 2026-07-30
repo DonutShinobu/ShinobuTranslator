@@ -35,9 +35,13 @@ import { toDiagnosticError, type DiagnosticLogCategory } from "../shared/diagnos
 import { createCancelledError } from "../shared/localPipelineProtocol";
 import type { TextTranslationTransport } from "../translators/transport";
 import {
+  isProviderExecutionReport,
   isPipelineFailureEnvelope,
+  type ImagePipelineRuntimeCapabilities,
   type PipelineFailureEnvelope,
+  type ProviderExecutionReport,
 } from "@shinobu/image-pipeline";
+import { createProviderSessionResolver } from "../runtime/providerExecution";
 
 type ProgressCallback = (progress: PipelineProgress) => void;
 
@@ -46,6 +50,7 @@ export type PipelineRunOptions = {
   stopAfter?: "order";
   platform?: PlatformProvider;
   translationTransport?: TextTranslationTransport;
+  runtimeCapabilities?: ImagePipelineRuntimeCapabilities;
 };
 
 type PaddleOcrRuntimeProbeMode = "legacy" | "prepare" | "warmup";
@@ -308,6 +313,20 @@ function cloneTextRegions(regions: TextRegion[]): TextRegion[] {
   });
 }
 
+function providerReportsFromError(
+  error: unknown,
+): ProviderExecutionReport[] {
+  if (
+    typeof error !== "object"
+    || error === null
+    || !("providerReports" in error)
+    || !Array.isArray(error.providerReports)
+  ) {
+    return [];
+  }
+  return error.providerReports.filter(isProviderExecutionReport);
+}
+
 export class PipelineStageError extends Error {
   readonly stage: string;
   readonly stageLabel: string;
@@ -335,6 +354,9 @@ export class PipelineStageError extends Error {
       messageKey: "pipeline.failure.stage",
       diagnostics: {
         name: this.name,
+        ...(artifacts.providerReports.length > 0
+          ? { providerReports: artifacts.providerReports }
+          : {}),
       },
     };
   }
@@ -391,6 +413,15 @@ export async function runPipeline(
   const stageTimings: StageTiming[] = [];
   const signal = options.signal;
   const stopAfterOrder = options.stopAfter === "order";
+  if (!options.runtimeCapabilities?.providerExecution) {
+    throw new Error("Provider execution capability is required");
+  }
+  const providerExecution = options.runtimeCapabilities.providerExecution;
+  const providerSessionResolver = createProviderSessionResolver({
+    policy: providerExecution.policy,
+    loadModel: providerExecution.modelSession.loadModel,
+    loadSession: providerExecution.modelSession.loadSession,
+  });
 
   throwIfCancelled(signal);
   report(onProgress, "load", "加载图片");
@@ -401,6 +432,7 @@ export async function runPipeline(
   stageTimings.push({ stage: "load", label: "加载图片", durationMs: performance.now() - loadT0 });
 
   const runtimeStages: RuntimeStageStatus[] = [];
+  const providerReports: ProviderExecutionReport[] = [];
   const stageRegions: PipelineStageRegions = {
     detected: [],
     ocr: [],
@@ -439,6 +471,7 @@ export async function runPipeline(
     ocrDebug,
     ocrPostFilterDebug,
     runtimeStages,
+    providerReports,
     stageTimings
   });
 
@@ -454,9 +487,34 @@ export async function runPipeline(
   throwIfCancelled(signal);
   report(onProgress, "preload", "加载检测模型");
   const preloadT0 = performance.now();
-  setRuntimeStage(await probeRuntime("detector"));
+  try {
+    const preparedDetector = await providerSessionResolver.preload({
+      model: "detector",
+      stage: "detect",
+    });
+    const providerLabel = preparedDetector.provider === "webnn"
+      ? `${preparedDetector.provider}/${preparedDetector.webnnDeviceType ?? "default"}`
+      : preparedDetector.provider;
+    setRuntimeStage({
+      model: "detector",
+      enabled: true,
+      provider: preparedDetector.provider,
+      webnnDeviceType: preparedDetector.webnnDeviceType,
+      detail: `detector 模型已加载 (${providerLabel})`,
+    });
+  } catch (error) {
+    setRuntimeStage({
+      model: "detector",
+      enabled: false,
+      detail: `detector 模型未启用，使用检测回退流程: ${toErrorDetail(error)}`,
+    });
+  }
   throwIfCancelled(signal);
-  stageTimings.push({ stage: "preload", label: "加载检测模型", durationMs: performance.now() - preloadT0 });
+  stageTimings.push({
+    stage: "preload",
+    label: "加载检测模型",
+    durationMs: performance.now() - preloadT0,
+  });
 
   let ocrRuntimeProbePromise: Promise<RuntimeStageStatus> | null = null;
   let inpaintRuntimeProbePromise: Promise<RuntimeStageStatus> | null = null;
@@ -499,8 +557,13 @@ export async function runPipeline(
       startBubbleRuntimeProbe();
     }
     const t0 = performance.now();
-    const detected = await detectTextRegionsWithMask(image, platform);
+    const detected = await detectTextRegionsWithMask(
+      image,
+      platform,
+      providerSessionResolver,
+    );
     throwIfCancelled(signal);
+    providerReports.push(...detected.providerReports);
     latestRegions = detected.regions;
     stageRegions.detected = cloneTextRegions(latestRegions);
     detectionMaskCanvas = detected.rawMaskCanvas;
@@ -509,7 +572,6 @@ export async function runPipeline(
     ocrCanvas = detectionCanvas;
     cleanedCanvas = ocrCanvas;
     resultCanvas = cleanedCanvas;
-    const detectorRuntime = getRuntimeStage("detector");
     if (detected.engine !== "onnx") {
       setRuntimeStage({
         model: "detector",
@@ -517,20 +579,25 @@ export async function runPipeline(
         engine: detected.engine,
         detail: `detector 已回退到 ${detected.engine ?? "unknown"}: ${detected.fallbackReason ?? "未提供原因"}`,
       });
-    } else if (detected.actualProvider && detected.actualProvider !== detectorRuntime?.provider) {
+    } else if (detected.actualProvider) {
       const providerLabel = detected.actualProvider === "webnn"
         ? `${detected.actualProvider}/${detected.actualWebnnDeviceType ?? "default"}`
         : detected.actualProvider;
+      const detectorReport = detected.providerReports.find(
+        (candidate) =>
+          candidate.model === "detector" && candidate.stage === "detect",
+      );
+      const fallbackUsed = (detectorReport?.fallbackTrace.length ?? 0) > 0;
       setRuntimeStage({
         model: "detector",
         enabled: true,
         engine: "onnx",
         provider: detected.actualProvider,
         webnnDeviceType: detected.actualWebnnDeviceType,
-        detail: `detector 推理已回退到 (${providerLabel})`
+        detail: fallbackUsed
+          ? `detector 推理已回退到 (${providerLabel})`
+          : `detector 模型已加载 (${providerLabel})`
       });
-    } else if (detectorRuntime) {
-      setRuntimeStage({ ...detectorRuntime, engine: "onnx" });
     }
     const durationMs = performance.now() - t0;
     stageTimings.push({ stage: "detect", label: "文本检测", durationMs });
@@ -552,6 +619,7 @@ export async function runPipeline(
       startBubbleRuntimeProbe();
     }
   } catch (error) {
+    providerReports.push(...providerReportsFromError(error));
     logPipelineStage(config, "pipeline.detect", "文本检测失败", undefined, error);
     throw new PipelineStageError("detect", "文本检测", toErrorDetail(error), buildArtifacts(), "runtime", error);
   }
@@ -622,7 +690,8 @@ export async function runPipeline(
       startInpaintRuntimeProbe();
     }
     const ocrResult = await runOcr(image, latestRegions, config.ocrEngine, platform, {
-      compactActiveBatch: config.ocrCompactActiveBatch,
+      compactActiveBatch:
+        options.runtimeCapabilities?.ocrExecution?.compactActiveBatch,
     });
     throwIfCancelled(signal);
     latestRegions = ocrResult.regions;

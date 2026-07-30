@@ -70,9 +70,10 @@ describe('pipeline artifact resource ownership', () => {
       typesetDebugLog: null,
       translationDebug: null,
       ocrDebug: null,
-      ocrPostFilterDebug: null,
-      runtimeStages: [],
-      stageTimings: [],
+    ocrPostFilterDebug: null,
+    runtimeStages: [],
+    providerReports: [],
+    stageTimings: [],
     };
 
     disposePipelineArtifacts(artifacts);

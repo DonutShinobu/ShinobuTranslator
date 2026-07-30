@@ -8,6 +8,257 @@ import {
 
 export const PIPELINE_RECORD_SCHEMA_VERSION = 2 as const;
 
+export const PROVIDER_RUNTIMES = Object.freeze([
+  'webgpu',
+  'webnn',
+  'wasm',
+  'cuda',
+  'cpu',
+] as const);
+
+export type ProviderRuntime = (typeof PROVIDER_RUNTIMES)[number];
+
+export const PROVIDER_EXECUTION_TARGETS = Object.freeze([
+  { model: 'detector', stage: 'detect' },
+  { model: 'bubble', stage: 'bubble' },
+  { model: 'paddleocr_v6_medium_rec', stage: 'ocr' },
+  { model: 'inpaint', stage: 'inpaint' },
+] as const);
+
+export type ProviderExecutionTarget =
+  (typeof PROVIDER_EXECUTION_TARGETS)[number];
+export type ProviderExecutionModel = ProviderExecutionTarget['model'];
+export type ProviderExecutionStage = ProviderExecutionTarget['stage'];
+
+export function isProviderRuntime(value: unknown): value is ProviderRuntime {
+  return PROVIDER_RUNTIMES.some((provider) => provider === value);
+}
+
+export function isProviderExecutionTarget(
+  model: unknown,
+  stage: unknown,
+): boolean {
+  return PROVIDER_EXECUTION_TARGETS.some((target) =>
+    target.model === model && target.stage === stage);
+}
+
+export type ProviderExecutionContract = {
+  id: string;
+  version: number;
+};
+
+export type ProviderExecutionPolicyRule = ProviderExecutionTarget & {
+  providers: readonly ProviderRuntime[];
+};
+
+export type ProviderExecutionPolicy = {
+  schemaVersion: 1;
+  contract: ProviderExecutionContract;
+  /**
+   * Runtime-only overrides. Targets without a rule use the production provider
+   * order from the model manifest.
+   */
+  rules: readonly ProviderExecutionPolicyRule[];
+};
+
+export function isProviderExecutionPolicy(
+  value: unknown,
+): value is ProviderExecutionPolicy {
+  if (
+    !isRecord(value)
+    || !hasOnlyKeys(
+      value,
+      new Set(['schemaVersion', 'contract', 'rules']),
+    )
+    || value.schemaVersion !== 1
+    || !isRecord(value.contract)
+    || !hasOnlyKeys(value.contract, new Set(['id', 'version']))
+    || typeof value.contract.id !== 'string'
+    || value.contract.id.trim().length === 0
+    || !Number.isSafeInteger(value.contract.version)
+    || (value.contract.version as number) < 1
+    || !Array.isArray(value.rules)
+  ) {
+    return false;
+  }
+
+  const targets = new Set<string>();
+  return value.rules.every((rule) => {
+    if (
+      !isRecord(rule)
+      || !hasOnlyKeys(rule, new Set(['model', 'stage', 'providers']))
+      || !isProviderExecutionTarget(rule.model, rule.stage)
+      || !Array.isArray(rule.providers)
+      || rule.providers.length === 0
+      || !rule.providers.every(isProviderRuntime)
+      || new Set(rule.providers).size !== rule.providers.length
+    ) {
+      return false;
+    }
+    const target = `${rule.stage}:${rule.model}`;
+    if (targets.has(target)) return false;
+    targets.add(target);
+    return true;
+  });
+}
+
+export const PRODUCTION_PROVIDER_EXECUTION_POLICY: ProviderExecutionPolicy = Object.freeze({
+  schemaVersion: 1,
+  contract: Object.freeze({
+    id: 'shinobu.production-provider-policy',
+    version: 1,
+  }),
+  rules: Object.freeze([]),
+});
+
+export type ProviderExecutionAttemptOutcome =
+  | 'succeeded'
+  | 'unavailable'
+  | 'failed';
+
+export type ProviderExecutionAttemptReason =
+  | 'completed'
+  | 'session-unavailable'
+  | 'execution-failed'
+  | 'contract-violated';
+
+export type ProviderExecutionAttempt = {
+  attempt: number;
+  provider: ProviderRuntime;
+  outcome: ProviderExecutionAttemptOutcome;
+  reason: ProviderExecutionAttemptReason;
+};
+
+export type ProviderFallbackTrace = {
+  from: ProviderRuntime;
+  to: ProviderRuntime;
+  reason: ProviderExecutionAttemptReason;
+};
+
+export type ProviderExecutionReport = {
+  schemaVersion: 1;
+  contract: ProviderExecutionContract;
+  model: ProviderExecutionModel;
+  stage: ProviderExecutionStage;
+  attempts: ProviderExecutionAttempt[];
+  finalProvider?: ProviderRuntime;
+  fallbackTrace: ProviderFallbackTrace[];
+  satisfied: boolean;
+};
+
+export function isProviderExecutionReport(
+  value: unknown,
+): value is ProviderExecutionReport {
+  if (
+    !isRecord(value)
+    || value.schemaVersion !== 1
+    || !isRecord(value.contract)
+    || typeof value.contract.id !== 'string'
+    || value.contract.id.length === 0
+    || !Number.isSafeInteger(value.contract.version)
+    || (value.contract.version as number) < 1
+    || !isProviderExecutionTarget(value.model, value.stage)
+    || !Array.isArray(value.attempts)
+    || !Array.isArray(value.fallbackTrace)
+    || typeof value.satisfied !== 'boolean'
+  ) {
+    return false;
+  }
+
+  const outcomes = new Set(['succeeded', 'unavailable', 'failed']);
+  const reasons = new Set([
+    'completed',
+    'session-unavailable',
+    'execution-failed',
+    'contract-violated',
+  ]);
+  const attempts = value.attempts;
+  const fallbackTrace = value.fallbackTrace;
+  const attemptsValid = attempts.every((attempt, index) => {
+    if (
+      !isRecord(attempt)
+      || attempt.attempt !== index + 1
+      || !isProviderRuntime(attempt.provider)
+      || !outcomes.has(String(attempt.outcome))
+      || !reasons.has(String(attempt.reason))
+    ) {
+      return false;
+    }
+    return attempt.outcome === 'succeeded'
+      ? attempt.reason === 'completed'
+      : attempt.outcome === 'unavailable'
+        ? attempt.reason === 'session-unavailable'
+        : attempt.reason === 'execution-failed'
+          || attempt.reason === 'contract-violated';
+  });
+  const fallbackValid = fallbackTrace.every((fallback, index) => {
+    if (!isRecord(fallback)) return false;
+    const previous = attempts[index];
+    const next = attempts[index + 1];
+    return Boolean(previous)
+      && Boolean(next)
+      && fallback.from === previous.provider
+      && fallback.to === next.provider
+      && fallback.reason === previous.reason;
+  });
+  if (
+    !attemptsValid
+    || !fallbackValid
+    || fallbackTrace.length !== Math.max(0, attempts.length - 1)
+  ) {
+    return false;
+  }
+
+  const finalAttempt = attempts.at(-1);
+  return value.satisfied
+    ? typeof value.finalProvider === 'string'
+      && isProviderRuntime(value.finalProvider)
+      && finalAttempt?.provider === value.finalProvider
+      && finalAttempt.outcome === 'succeeded'
+      && finalAttempt.reason === 'completed'
+      && attempts.slice(0, -1).every((attempt) =>
+        isRecord(attempt) && attempt.outcome !== 'succeeded')
+    : value.finalProvider === undefined
+      && attempts.every((attempt) =>
+        isRecord(attempt) && attempt.outcome !== 'succeeded');
+}
+
+export type ProviderExecutionCapability = {
+  policy: ProviderExecutionPolicy;
+  modelSession: ProviderModelSessionPort;
+};
+
+export type ProviderExecutionModelMetadata = {
+  runtime?: readonly ProviderRuntime[];
+};
+
+export type ProviderExecutionSession = {
+  sessionId: string;
+  provider: ProviderRuntime;
+  inputNames: string[];
+  outputNames: string[];
+  webnnDeviceType?: 'gpu' | 'cpu' | 'default';
+};
+
+export type ProviderModelSessionPort = {
+  loadModel(
+    model: ProviderExecutionModel,
+  ): Promise<ProviderExecutionModelMetadata>;
+  loadSession(
+    model: ProviderExecutionModel,
+    providers: readonly ProviderRuntime[],
+  ): Promise<ProviderExecutionSession>;
+};
+
+export type OcrExecutionCapability = {
+  compactActiveBatch?: boolean;
+};
+
+export type ImagePipelineRuntimeCapabilities = {
+  providerExecution?: ProviderExecutionCapability;
+  ocrExecution?: OcrExecutionCapability;
+};
+
 export type LlmProvider =
   | 'deepseek'
   | 'gemini'
@@ -52,7 +303,6 @@ export type PipelineConfig = {
   eraseDebug: boolean;
   collectDebugLog: boolean;
   ocrEngine: 'paddleocr_v6_medium';
-  ocrCompactActiveBatch?: boolean;
   ocrPostFilter?: 'off' | 'balanced';
   processMode: 'translate' | 'erase' | 'original';
   diagnosticRunId?: string;
@@ -210,6 +460,7 @@ export type ImagePipelineResult = {
   image: Blob;
   debug?: Blob;
   record: PipelineRecord;
+  providerReports: readonly ProviderExecutionReport[];
   diagnostics?: Readonly<Record<string, unknown>>;
 };
 
@@ -225,6 +476,7 @@ type RetryableOperation = {
 
 type RuntimeExecutionContext = {
   signal: AbortSignal;
+  capabilities: Readonly<ImagePipelineRuntimeCapabilities>;
   reportProgress(progress: PipelineProgress): void;
   runOperation<T>(
     operation: RetryableOperation,
@@ -233,6 +485,7 @@ type RuntimeExecutionContext = {
 };
 
 type RuntimeOptions<Artifacts> = {
+  capabilities?: ImagePipelineRuntimeCapabilities;
   prepare?(context: RuntimeExecutionContext): Promise<void>;
   execute(
     request: ImagePipelineRequest,
@@ -328,6 +581,33 @@ function cloneAndFreeze<T>(value: T): T {
   return clone;
 }
 
+function snapshotRuntimeCapabilities(
+  capabilities: ImagePipelineRuntimeCapabilities,
+): Readonly<ImagePipelineRuntimeCapabilities> {
+  const providerExecution = capabilities.providerExecution;
+  const ocrExecution = capabilities.ocrExecution;
+  return Object.freeze({
+    ...(providerExecution
+      ? {
+          providerExecution: Object.freeze({
+            policy: cloneAndFreeze(providerExecution.policy),
+            modelSession: Object.freeze({
+              loadModel: (model: ProviderExecutionModel) =>
+                providerExecution.modelSession.loadModel(model),
+              loadSession: (
+                model: ProviderExecutionModel,
+                providers: readonly ProviderRuntime[],
+              ) => providerExecution.modelSession.loadSession(model, providers),
+            }),
+          }),
+        }
+      : {}),
+    ...(ocrExecution
+      ? { ocrExecution: cloneAndFreeze(ocrExecution) }
+      : {}),
+  });
+}
+
 function hasOnlyKeys(value: Record<string, unknown>, allowed: ReadonlySet<string>): boolean {
   return Object.keys(value).every((key) => allowed.has(key));
 }
@@ -349,7 +629,6 @@ function validateConfig(config: unknown): config is PipelineConfig {
     'eraseDebug',
     'collectDebugLog',
     'ocrEngine',
-    'ocrCompactActiveBatch',
     'ocrPostFilter',
     'processMode',
     'diagnosticRunId',
@@ -408,10 +687,6 @@ function validateConfig(config: unknown): config is PipelineConfig {
     && typeof config.eraseDebug === 'boolean'
     && typeof config.collectDebugLog === 'boolean'
     && config.ocrEngine === 'paddleocr_v6_medium'
-    && (
-      config.ocrCompactActiveBatch === undefined
-      || typeof config.ocrCompactActiveBatch === 'boolean'
-    )
     && (
       config.ocrPostFilter === undefined
       || config.ocrPostFilter === 'off'
@@ -589,8 +864,13 @@ export class ImagePipelineRuntime<Artifacts> {
   private prepared = false;
   private closed = false;
   private disposal: Promise<void> | null = null;
+  private readonly capabilities: Readonly<ImagePipelineRuntimeCapabilities>;
 
-  constructor(private readonly options: RuntimeOptions<Artifacts>) {}
+  constructor(private readonly options: RuntimeOptions<Artifacts>) {
+    this.capabilities = snapshotRuntimeCapabilities(
+      options.capabilities ?? {},
+    );
+  }
 
   run(
     request: ImagePipelineRequest,
@@ -635,6 +915,7 @@ export class ImagePipelineRuntime<Artifacts> {
     };
     const context: RuntimeExecutionContext = {
       signal: controller.signal,
+      capabilities: this.capabilities,
       reportProgress,
       runOperation: async <T>(
         retryOperation: RetryableOperation,

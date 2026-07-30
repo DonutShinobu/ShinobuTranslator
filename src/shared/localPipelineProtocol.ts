@@ -11,9 +11,11 @@ import type {
 } from '../types';
 import {
   isCurrentPipelineRecord,
+  isProviderExecutionReport,
   type PipelineCancellationReason,
   type PipelineFailureEnvelope,
   type PipelineRecord,
+  type ProviderExecutionReport,
 } from '@shinobu/image-pipeline';
 
 export const LOCAL_PIPELINE_CLIENT_PORT = 'mt:local-pipeline-client';
@@ -40,6 +42,7 @@ export type LocalPipelineArtifactSummary = {
   detectedRegionCount: number;
   stageTimings: StageTiming[];
   runtimeStages: RuntimeStageStatus[];
+  providerReports: readonly ProviderExecutionReport[];
   translationDebug: TranslationDebugInfo | null;
   ocrDebug: OcrRunDebugInfo | null;
   ocrPostFilterDebug: OcrPostFilterDebugInfo | null;
@@ -139,6 +142,7 @@ export type LocalPipelineHostMessage =
       debug?: LocalPipelineArtifactMeta;
       summary: LocalPipelineArtifactSummary;
       record: PipelineRecord;
+      providerReports: readonly ProviderExecutionReport[];
     }
   | {
       type: 'result-chunk';
@@ -163,6 +167,7 @@ export type LocalPipelineResult = {
   debug?: Blob;
   summary: LocalPipelineArtifactSummary;
   record: PipelineRecord;
+  providerReports: readonly ProviderExecutionReport[];
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -243,7 +248,9 @@ export function isLocalPipelineHostMessage(value: unknown): value is LocalPipeli
         && isValidArtifactMeta(value.result)
         && (value.debug === undefined || isValidArtifactMeta(value.debug))
         && isValidArtifactSummary(value.summary)
-        && isCurrentPipelineRecord(value.record);
+        && isCurrentPipelineRecord(value.record)
+        && Array.isArray(value.providerReports)
+        && value.providerReports.every(isProviderExecutionReport);
     case 'result-chunk':
       return (value.artifact === 'result' || value.artifact === 'debug')
         && Number.isInteger(value.index)
@@ -288,6 +295,27 @@ function isValidTranslationContext(value: unknown): boolean {
 
 function isValidPipelineConfig(value: unknown): value is PipelineConfig {
   if (!isRecord(value)) return false;
+  const allowedKeys = new Set([
+    'sourceLang',
+    'targetLang',
+    'translator',
+    'llmProvider',
+    'llmAuthMode',
+    'llmBaseUrl',
+    'llmApiKey',
+    'llmModel',
+    'llmUseCustomModel',
+    'llmThinkingLevel',
+    'translationContext',
+    'typesetDebug',
+    'eraseDebug',
+    'collectDebugLog',
+    'ocrEngine',
+    'ocrPostFilter',
+    'processMode',
+    'diagnosticRunId',
+  ]);
+  if (!Object.keys(value).every((key) => allowedKeys.has(key))) return false;
   const stringKeys = [
     'sourceLang',
     'targetLang',
@@ -302,7 +330,6 @@ function isValidPipelineConfig(value: unknown): value is PipelineConfig {
   if (value.ocrEngine !== 'paddleocr_v6_medium') return false;
   if (value.processMode !== 'translate' && value.processMode !== 'erase' && value.processMode !== 'original') return false;
   if (typeof value.typesetDebug !== 'boolean' || typeof value.eraseDebug !== 'boolean' || typeof value.collectDebugLog !== 'boolean') return false;
-  if (value.ocrCompactActiveBatch !== undefined && typeof value.ocrCompactActiveBatch !== 'boolean') return false;
   if (
     value.ocrPostFilter !== undefined
     && value.ocrPostFilter !== 'off'
@@ -319,7 +346,9 @@ function isValidArtifactSummary(value: unknown): value is LocalPipelineArtifactS
     && Number.isInteger(value.detectedRegionCount)
     && (value.detectedRegionCount as number) >= 0
     && Array.isArray(value.stageTimings)
-    && Array.isArray(value.runtimeStages);
+    && Array.isArray(value.runtimeStages)
+    && Array.isArray(value.providerReports)
+    && value.providerReports.every(isProviderExecutionReport);
 }
 
 export function isValidChunkMeta(value: unknown): value is LocalPipelineChunkMeta {
@@ -392,6 +421,7 @@ export function summarizePipelineArtifacts(artifacts: PipelineArtifacts): LocalP
     detectedRegionCount: artifacts.detectedRegions.length,
     stageTimings: artifacts.stageTimings,
     runtimeStages: artifacts.runtimeStages,
+    providerReports: artifacts.providerReports,
     translationDebug: artifacts.translationDebug,
     ocrDebug: artifacts.ocrDebug,
     ocrPostFilterDebug: artifacts.ocrPostFilterDebug,

@@ -8,14 +8,21 @@ import type {
   NormalizedWorkingCopySpec,
   PipelineConfig,
   PipelineProgress,
+  ProviderExecutionPolicy,
 } from '@shinobu/image-pipeline';
-import { isCurrentPipelineRecord } from '@shinobu/image-pipeline';
+import {
+  isCurrentPipelineRecord,
+  isProviderExecutionReport,
+} from '@shinobu/image-pipeline';
 import type { LocalPipelineArtifactSummary } from '../../../../src/shared/localPipelineProtocol';
 import { LocalPipelineRemoteError } from '../../../../src/shared/localPipelineProtocol';
 
 export type WebPipelineRuntimeCapabilities = {
   textTranslation: {
     apiKey: string;
+  };
+  providerExecution?: {
+    policy: ProviderExecutionPolicy;
   };
 };
 
@@ -71,6 +78,8 @@ export function isWebPipelineResult(value: unknown): value is WebPipelineResult 
     || !(value.image instanceof Blob)
     || (value.debug !== undefined && !(value.debug instanceof Blob))
     || !isCurrentPipelineRecord(value.record)
+    || !Array.isArray(value.providerReports)
+    || !value.providerReports.every(isProviderExecutionReport)
     || !isRecord(value.summary)
     || !isRecord(value.summary.image)
   ) {
@@ -83,7 +92,9 @@ export function isWebPipelineResult(value: unknown): value is WebPipelineResult 
     && Number.isInteger(value.summary.detectedRegionCount)
     && (value.summary.detectedRegionCount as number) >= 0
     && Array.isArray(value.summary.stageTimings)
-    && Array.isArray(value.summary.runtimeStages);
+    && Array.isArray(value.summary.runtimeStages)
+    && Array.isArray(value.summary.providerReports)
+    && value.summary.providerReports.every(isProviderExecutionReport);
 }
 
 export function createWebTranslatorCore(

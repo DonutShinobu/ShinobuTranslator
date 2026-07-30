@@ -1,6 +1,9 @@
 import type { PipelineCanvas, PipelineImage } from "./runtime/platform";
 import type { LlmThinkingLevel } from "./shared/llmThinking";
-import type { PipelineProgress as ImagePipelineProgress } from "@shinobu/image-pipeline";
+import type {
+  PipelineProgress as ImagePipelineProgress,
+  ProviderExecutionReport,
+} from "@shinobu/image-pipeline";
 
 export type Rect = {
   x: number;
@@ -97,8 +100,6 @@ export type PipelineConfig = {
   eraseDebug: boolean;
   collectDebugLog: boolean;
   ocrEngine: 'paddleocr_v6_medium';
-  /** Internal benchmark override; production OCR picks its batch compaction policy automatically. */
-  ocrCompactActiveBatch?: boolean;
   /** OCR false-positive post-filter mode; defaults to balanced when omitted. */
   ocrPostFilter?: 'off' | 'balanced';
   processMode: 'translate' | 'erase' | 'original';
@@ -440,6 +441,7 @@ export type PipelineArtifacts = {
   ocrDebug: OcrRunDebugInfo | null;
   ocrPostFilterDebug: OcrPostFilterDebugInfo | null;
   runtimeStages: RuntimeStageStatus[];
+  providerReports: ProviderExecutionReport[];
   stageTimings: StageTiming[];
 };
 

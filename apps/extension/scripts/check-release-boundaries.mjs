@@ -123,11 +123,6 @@ const forbiddenLegacyWorkerTokens = [
   'ocr_decoder',
   'fg_ind',
 ];
-const externalizedNodeOnlyModuleSpecifiers = new Set([
-  './src/pipeline/ocr/ocrSharedNode',
-  './src/runtime/modelRegistryNode',
-  './src/runtime/onnxNodeBridge',
-]);
 const benchmarkArtifacts = [
   'benchmark.html',
   'benchmark.js',
@@ -222,16 +217,34 @@ function matchesResourcePattern(pattern, resource) {
   return new RegExp(`^${escaped}$`).test(resource);
 }
 
-function resolvePackagedReference(ownerPath, reference) {
+function resolvePackagedReference(
+  ownerPath,
+  reference,
+  moduleSpecifier = false,
+) {
   const withoutFragment = reference.split(/[?#]/u, 1)[0];
+  if (!withoutFragment || withoutFragment.startsWith('#')) {
+    if (moduleSpecifier) {
+      throw new Error(
+        `Artifact ${ownerPath} contains non-packaged reference: ${reference}`,
+      );
+    }
+    return undefined;
+  }
   if (
-    !withoutFragment
-    || withoutFragment.startsWith('#')
-    || withoutFragment.startsWith('data:')
+    !moduleSpecifier
+    && withoutFragment.startsWith('data:')
   ) {
     return undefined;
   }
-  if (/^[a-z][a-z\d+.-]*:/iu.test(withoutFragment)) {
+  if (
+    /^[a-z][a-z\d+.-]*:/iu.test(withoutFragment)
+    || (
+      moduleSpecifier
+      && !withoutFragment.startsWith('.')
+      && !withoutFragment.startsWith('/')
+    )
+  ) {
     throw new Error(
       `Artifact ${ownerPath} contains non-packaged reference: ${reference}`,
     );
@@ -270,17 +283,7 @@ function collectArtifactReferences(path, source) {
     for (const moduleImport of imports) {
       if (
         moduleImport.d === -1
-        || (
-          moduleImport.d >= 0
-          && typeof moduleImport.n === 'string'
-          && (
-            moduleImport.n.startsWith('.')
-            || moduleImport.n.startsWith('/')
-          )
-          && !externalizedNodeOnlyModuleSpecifiers.has(
-            moduleImport.n,
-          )
-        )
+        || typeof moduleImport.n === 'string'
       ) {
         references.push(
           moduleImport.n
@@ -313,6 +316,7 @@ function assertArtifactReferences(artifactPaths) {
       const referencedPath = resolvePackagedReference(
         ownerPath,
         reference,
+        ownerPath.endsWith('.js') || ownerPath.endsWith('.mjs'),
       );
       if (
         referencedPath !== undefined

@@ -232,6 +232,26 @@ describe('extension release boundaries', () => {
   );
 
   it(
+    'rejects a literal dynamic import outside the packaged graph',
+    () => {
+      const directory = createReleaseFixture('chrome');
+      writeArtifact(
+        directory,
+        'popup.js',
+        'import("node:fs");\n',
+      );
+
+      const result = runReleaseBoundary('chrome', directory);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(
+        'Artifact popup.js contains non-packaged reference: node:fs',
+      );
+    },
+    15_000,
+  );
+
+  it(
     'rejects a web-accessible wildcard that exposes a private runtime artifact',
     () => {
       const directory = createReleaseFixture('chrome');

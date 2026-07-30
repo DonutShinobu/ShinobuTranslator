@@ -15,6 +15,7 @@ const extensionRoot = import.meta.dirname;
 const repoRoot = resolve(extensionRoot, '../..');
 
 function externalizeNodeOnlyModule(id: string): boolean {
+  if (id === 'module' || id === 'worker_threads') return true;
   if (id.includes('onnxruntime-node')) return true;
   if (id.includes('onnxNodeBridge')) return true;
   if (id.includes('modelRegistryNode')) return true;
@@ -79,6 +80,9 @@ export default defineConfig(({ command, mode }): UserConfig => {
       root: extensionRoot,
       envDir: repoRoot,
       publicDir: false,
+      define: {
+        process: 'undefined',
+      },
       build: {
         outDir: target.absoluteOutDir,
         emptyOutDir: false,
@@ -100,6 +104,18 @@ export default defineConfig(({ command, mode }): UserConfig => {
     popup: resolve(extensionRoot, 'popup.html'),
     background: resolve(extensionRoot, 'src/background.ts'),
     content: resolve(extensionRoot, 'src/content.ts'),
+    'ort/ort-wasm-simd-threaded': resolve(
+      repoRoot,
+      'public/ort/ort-wasm-simd-threaded.mjs',
+    ),
+    'ort/ort-wasm-simd-threaded.asyncify': resolve(
+      repoRoot,
+      'public/ort/ort-wasm-simd-threaded.asyncify.mjs',
+    ),
+    'ort/ort-wasm-simd-threaded.jsep': resolve(
+      repoRoot,
+      'public/ort/ort-wasm-simd-threaded.jsep.mjs',
+    ),
   };
   if (target.browser === 'chrome') {
     input.offscreen = resolve(extensionRoot, 'offscreen.html');
@@ -115,6 +131,10 @@ export default defineConfig(({ command, mode }): UserConfig => {
     root: extensionRoot,
     envDir: repoRoot,
     publicDir: resolve(repoRoot, 'public'),
+    define: {
+      process: 'undefined',
+      'globalThis.process': 'undefined',
+    },
     server: {
       fs: {
         allow: [repoRoot],
@@ -139,7 +159,10 @@ export default defineConfig(({ command, mode }): UserConfig => {
       rollupOptions: {
         input,
         output: {
-          entryFileNames: (chunkInfo) => `${chunkInfo.name}.js`,
+          entryFileNames: (chunkInfo) =>
+            chunkInfo.name.startsWith('ort/')
+              ? `${chunkInfo.name}.mjs`
+              : `${chunkInfo.name}.js`,
           chunkFileNames: 'chunks/[name].js',
           assetFileNames: 'assets/[name][extname]',
           manualChunks(id) {

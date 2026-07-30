@@ -19,8 +19,6 @@ import {
 } from '@shinobu/image-pipeline';
 
 export const LOCAL_PIPELINE_CLIENT_PORT = 'mt:local-pipeline-client';
-export const LOCAL_PIPELINE_OFFSCREEN_PORT = 'mt:offscreen-pipeline-host';
-export const LOCAL_PIPELINE_OFFSCREEN_DOCUMENT = 'offscreen.html';
 export const LOCAL_PIPELINE_CHUNK_SIZE = 4 * 1024 * 1024;
 export const LOCAL_PIPELINE_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 

@@ -9,8 +9,10 @@ import {
 } from '@shinobu/image-pipeline';
 import type {
   RuntimeChannel,
-  RuntimeChannelClient,
 } from '../../apps/extension/src/capabilities/contracts';
+import type {
+  PipelineHostConnection,
+} from '../../apps/extension/src/pipelineHost/contracts';
 import { base64ToBlob, blobToBase64, canvasToPngBlob } from '../shared/blobCodec';
 import { emitDiagnosticLog, emitDiagnosticLogAsync } from '../shared/diagnosticLogClient';
 import type { RuntimeMessageSender } from '../shared/messages';
@@ -18,7 +20,6 @@ import { normalizeJsonValue } from '../shared/jsonValue';
 import {
   Base64ChunkAssembler,
   LOCAL_PIPELINE_IDLE_TIMEOUT_MS,
-  LOCAL_PIPELINE_OFFSCREEN_PORT,
   createCancelledError,
   createProtocolError,
   isLocalPipelineClientMessage,
@@ -126,7 +127,7 @@ export class OffscreenPipelineHost {
   constructor(
     capabilities: ImagePipelineRuntimeCapabilities,
     private readonly dependencies: {
-      runtimeChannels: RuntimeChannelClient;
+      lifecycle: PipelineHostConnection;
       translationTransport: TextTranslationTransport;
       diagnosticMessageSender: RuntimeMessageSender;
     },
@@ -248,9 +249,7 @@ export class OffscreenPipelineHost {
 
   private async connectChannel(): Promise<void> {
     try {
-      const port = await this.dependencies.runtimeChannels.open(
-        LOCAL_PIPELINE_OFFSCREEN_PORT,
-      );
+      const port = await this.dependencies.lifecycle.connect();
       if (this.disposed) {
         await port.disconnect();
         return;

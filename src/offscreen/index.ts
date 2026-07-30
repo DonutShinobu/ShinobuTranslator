@@ -1,6 +1,9 @@
 import type {
   PipelineHostExtensionCapabilities,
 } from '../../apps/extension/src/capabilities/contracts';
+import type {
+  PipelineHostConnection,
+} from '../../apps/extension/src/pipelineHost/contracts';
 import { createRuntimeMessageSender } from '../shared/messages';
 import { configureModelAssetSource } from '../runtime/modelRegistry';
 import { createExtensionModelAssetSource } from '../runtime/modelSource';
@@ -18,6 +21,7 @@ import { OffscreenPipelineHost } from './pipelineHost';
 
 export function startOffscreenPipelineHost(
   capabilities: PipelineHostExtensionCapabilities,
+  lifecycle: PipelineHostConnection,
 ): OffscreenPipelineHost {
   const resourceUrl = capabilities.environment.resourceUrl;
   configureModelAssetSource(createExtensionModelAssetSource(resourceUrl));
@@ -35,7 +39,7 @@ export function startOffscreenPipelineHost(
       providerExecution: createProductionProviderExecutionCapability(),
     },
     {
-      runtimeChannels: capabilities.runtimeChannels,
+      lifecycle,
       translationTransport: createExtensionTextTranslationTransport(
         sendMessage,
       ),

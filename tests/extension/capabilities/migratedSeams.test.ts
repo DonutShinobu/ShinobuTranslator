@@ -9,6 +9,15 @@ function read(relativePath: string): string {
 }
 
 describe('migrated extension capability seams', () => {
+  it('keeps PipelineHostLifecycle outside the general extension capability contract', () => {
+    expect(read('apps/extension/src/capabilities/contracts.ts')).not.toMatch(
+      /\bPipelineHostLifecycle\b/u,
+    );
+    expect(read('apps/extension/src/pipelineHost/contracts.ts')).toMatch(
+      /export type PipelineHostLifecycle/u,
+    );
+  });
+
   it.each([
     'src/shared/messages.ts',
     'src/shared/diagnosticLogClient.ts',
@@ -20,6 +29,26 @@ describe('migrated extension capability seams', () => {
     expect(source).not.toMatch(/\bgetChromeApi\b/u);
     expect(source).not.toMatch(/\bruntime\.(?:sendMessage|onMessage|connect|onConnect)\b/u);
     expect(source).not.toMatch(/\bChromePort\b/u);
+  });
+
+  it.each([
+    ['src/offscreen/pipelineHost.ts', 'PipelineHostConnection'],
+    [
+      'src/background/localPipeline/offscreenBroker.ts',
+      'PipelineHostDocumentLifecycle',
+    ],
+  ])('%s depends on the narrow %s role', (relativePath, role) => {
+    const source = read(relativePath);
+    expect(source).toContain(role);
+    expect(source).not.toMatch(/\bChromeLike\b/u);
+    expect(source).not.toMatch(/\boffscreen\.(?:createDocument|closeDocument)\b/u);
+    expect(source).not.toMatch(/\.getContexts\b/u);
+  });
+
+  it('keeps shared pipeline protocol independent from the extension app', () => {
+    expect(read('src/shared/localPipelineProtocol.ts')).not.toMatch(
+      /apps\/extension/u,
+    );
   });
 
   it.each([
@@ -49,6 +78,23 @@ describe('migrated extension capability seams', () => {
     expect(source).not.toMatch(/\bdeclarativeNetRequest\b/u);
     expect(source).not.toMatch(/\bwebRequest\b/u);
     expect(source).not.toMatch(/\bupdate(?:Dynamic|Session)Rules\b/u);
+  });
+
+  it('composes image network capabilities with the pipeline host lifecycle', () => {
+    const source = read('src/background/index.ts');
+    expect(source).toContain(
+      'sessionStorage: capabilities.sessionStorage',
+    );
+    expect(source).toContain(
+      'referrerPolicies: capabilities.referrerPolicies',
+    );
+    expect(source).toContain(
+      'requestHeaderOverride: capabilities.requestHeaderOverride',
+    );
+    expect(source).toContain(
+      'createChromePipelineHostLifecycle(nativeChrome)',
+    );
+    expect(source).not.toMatch(/\bChromeLike\b/u);
   });
 
   it.each([

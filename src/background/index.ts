@@ -1,5 +1,4 @@
 import { defaultExtensionSettings } from '../shared/config';
-import type { ChromeLike } from '../shared/chrome';
 import {
   createAuthenticationAccess,
 } from '../../apps/extension/src/capabilities/authentication';
@@ -18,6 +17,9 @@ import { normalizeJsonValue } from '../shared/jsonValue';
 import {
   createChromeExtensionAdapter,
 } from '../../apps/extension/src/capabilities/chromeAdapter';
+import {
+  createChromePipelineHostLifecycle,
+} from '../../apps/extension/src/pipelineHost/chromeLifecycle';
 import type {
   JsonValue,
 } from '../../apps/extension/src/capabilities/contracts';
@@ -50,7 +52,6 @@ function initializeBackground(): void {
     permissions: capabilities.permissions,
     cookies: capabilities.cookies,
   });
-  const chromeApi = nativeChrome as ChromeLike;
   const settingsStore = createSettingsStore(capabilities.persistentStorage);
   const diagnostics = createDiagnosticLogStore({
     storage: capabilities.persistentStorage,
@@ -113,9 +114,8 @@ function initializeBackground(): void {
   };
 
   registerOffscreenPipelineBroker(
-    chromeApi,
+    createChromePipelineHostLifecycle(nativeChrome),
     capabilities.runtimeChannels,
-    capabilities.environment,
   );
 
   capabilities.runtimeRequests.onRequest(async (request, source) => {

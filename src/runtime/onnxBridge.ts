@@ -20,7 +20,7 @@ import type {
   GpuDetectResult,
 } from "./onnxWorkerTypes";
 import type { RuntimeSelfCheckReport } from "./selfCheck";
-import { isNodeRuntime } from "./runtimeTarget";
+import { isNodeRuntime } from '@shinobu/browser-runtime/runtime-target';
 
 // ---------------------------------------------------------------------------
 // Bridge module cache — loaded once, reused across pipeline calls

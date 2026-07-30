@@ -15,6 +15,11 @@
     "./diagnostic-log": {
       "types": "./src/diagnosticLog.ts",
       "default": "./src/diagnosticLog.ts"
+    },
+    "./runtime-target": {
+      "types": "./src/runtimeTarget.ts",
+      "browser": "./src/browserRuntimeTarget.ts",
+      "default": "./src/runtimeTarget.ts"
     }
   },
   "scripts": {

@@ -20,6 +20,11 @@ const releaseBoundaryPath = resolve(
   root,
   'apps/extension/scripts/check-release-boundaries.mjs',
 );
+const ortRuntimeModulePaths = [
+  'ort/ort-wasm-simd-threaded.asyncify.mjs',
+  'ort/ort-wasm-simd-threaded.jsep.mjs',
+  'ort/ort-wasm-simd-threaded.mjs',
+];
 const temporaryDirectories: string[] = [];
 
 function writeArtifact(
@@ -78,6 +83,13 @@ function createReleaseFixture(target: 'chrome' | 'firefox'): string {
       directory,
       path,
       path.endsWith('.js') ? 'void 0;\n' : '',
+    );
+  }
+  for (const path of ortRuntimeModulePaths) {
+    writeArtifact(
+      directory,
+      path,
+      'export default function ortWasmThreaded() {}\n',
     );
   }
   writeArtifact(
@@ -246,6 +258,26 @@ describe('extension release boundaries', () => {
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain(
         'Artifact popup.js contains non-packaged reference: node:fs',
+      );
+    },
+    15_000,
+  );
+
+  it(
+    'rejects an ORT runtime module without its default factory export',
+    () => {
+      const directory = createReleaseFixture('chrome');
+      writeArtifact(
+        directory,
+        ortRuntimeModulePaths[0],
+        'void 0;\n',
+      );
+
+      const result = runReleaseBoundary('chrome', directory);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(
+        `ORT runtime module must export a default factory: ${ortRuntimeModulePaths[0]}`,
       );
     },
     15_000,

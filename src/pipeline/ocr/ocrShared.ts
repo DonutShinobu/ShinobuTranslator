@@ -1,4 +1,4 @@
-import { isNodeRuntime } from '../../runtime/runtimeTarget';
+import { isNodeRuntime } from '@shinobu/browser-runtime/runtime-target';
 
 /** Load and cache the dictionary used by the current Paddle CTC recognizer. */
 const charsetCache: Map<string, Promise<string[] | null>> = new Map();

@@ -5,6 +5,7 @@ import {
   statSync,
 } from 'node:fs';
 import { join, posix, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { isDeepStrictEqual } from 'node:util';
 import {
@@ -123,6 +124,11 @@ const forbiddenLegacyWorkerTokens = [
   'ocr_decoder',
   'fg_ind',
 ];
+const ortRuntimeModulePaths = [
+  'ort/ort-wasm-simd-threaded.asyncify.mjs',
+  'ort/ort-wasm-simd-threaded.jsep.mjs',
+  'ort/ort-wasm-simd-threaded.mjs',
+];
 const benchmarkArtifacts = [
   'benchmark.html',
   'benchmark.js',
@@ -149,6 +155,7 @@ const requiredReleaseArtifacts = [
   'chunks/localPipelineProtocol.js',
   'chunks/perfTrace.js',
   'onnxWorker.js',
+  ...ortRuntimeModulePaths,
 ];
 if (manifestTarget === 'chrome') {
   requiredReleaseArtifacts.push(
@@ -449,6 +456,17 @@ for (const artifactPath of artifactPaths) {
     const detail = error instanceof Error ? error.message : String(error);
     throw new Error(
       `JavaScript syntax check failed for ${artifactPath}: ${detail}`,
+    );
+  }
+}
+
+for (const path of ortRuntimeModulePaths) {
+  const runtimeModule = await import(
+    pathToFileURL(join(distDir, path)).href
+  );
+  if (typeof runtimeModule.default !== 'function') {
+    throw new Error(
+      `ORT runtime module must export a default factory: ${path}`,
     );
   }
 }

@@ -83,7 +83,6 @@
     "@vitejs/plugin-react": "^4.4.1",
     "@webgpu/types": "^0.1.70",
     "canvas": "^3.2.3",
-    "rollup": "4.62.3",
     "tsx": "^4.21.0",
     "typescript": "^5.7.3",
     "vite": "^6.1.0",

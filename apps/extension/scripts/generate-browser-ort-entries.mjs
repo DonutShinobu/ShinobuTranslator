@@ -4,7 +4,8 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { resolve } from 'node:path';
+import { createRequire } from 'node:module';
+import { dirname, resolve } from 'node:path';
 import { rollup } from 'rollup';
 
 const root = resolve(import.meta.dirname, '../../..');
@@ -18,6 +19,8 @@ const outputDirectory = resolve(
 );
 const expectedOnnxRuntimeVersion = '1.24.1';
 const expectedRollupVersion = '4.62.3';
+const rollupPackagePath = createRequire(import.meta.url)
+  .resolve('rollup/package.json');
 const moduleSpecifications = [
   {
     name: 'ort-wasm-simd-threaded.asyncify.mjs',
@@ -145,7 +148,7 @@ async function run(mode) {
     );
   }
   const actualRollupVersion = readPackageVersion(
-    resolve(root, 'node_modules/rollup'),
+    dirname(rollupPackagePath),
   );
   if (actualRollupVersion !== expectedRollupVersion) {
     throw new Error(

@@ -58,6 +58,111 @@ describe('extension architecture gate', () => {
       'native extension namespace access',
     ],
     [
+      'src/background/bypass.ts',
+      [
+        'const root = globalThis;',
+        'root.chrome.runtime.sendMessage({});',
+      ].join('\n'),
+      'native extension namespace access',
+    ],
+    [
+      'src/background/windowBypass.ts',
+      [
+        'const root = window;',
+        'root.browser.runtime.sendMessage({});',
+      ].join('\n'),
+      'native extension namespace access',
+    ],
+    [
+      'src/background/selfAliasChain.ts',
+      [
+        'const first = self;',
+        'const second = first;',
+        'second.chrome.runtime.sendMessage({});',
+      ].join('\n'),
+      'native extension namespace access',
+    ],
+    [
+      'src/background/assignedGlobalAlias.ts',
+      [
+        'let root;',
+        'root = globalThis;',
+        'root.chrome.runtime.sendMessage({});',
+      ].join('\n'),
+      'native extension namespace access',
+    ],
+    [
+      'src/background/defaultGlobalAlias.ts',
+      [
+        'function send(root = window) {',
+        '  root.browser.runtime.sendMessage({});',
+        '}',
+      ].join('\n'),
+      'native extension namespace access',
+    ],
+    [
+      'src/background/assignedGlobalAliasChain.ts',
+      [
+        'let first;',
+        'let second;',
+        'first = self;',
+        'second = first;',
+        'second.chrome.runtime.sendMessage({});',
+      ].join('\n'),
+      'native extension namespace access',
+    ],
+    [
+      'src/background/destructuredGlobalAssignment.ts',
+      [
+        'let chrome;',
+        '({ chrome } = globalThis);',
+      ].join('\n'),
+      'native extension namespace access',
+    ],
+    [
+      'src/background/destructuredSelfAlias.ts',
+      [
+        'const { self: root } = globalThis;',
+        'root.chrome.runtime.sendMessage({});',
+      ].join('\n'),
+      'native extension namespace access',
+    ],
+    [
+      'src/background/destructuredWindowAssignment.ts',
+      [
+        'let root;',
+        '({ window: root } = globalThis);',
+        'root.browser.runtime.sendMessage({});',
+      ].join('\n'),
+      'native extension namespace access',
+    ],
+    [
+      'src/background/destructuredNativeParameter.ts',
+      [
+        'function send({ chrome } = globalThis) {',
+        '  chrome.runtime.sendMessage({});',
+        '}',
+      ].join('\n'),
+      'native extension namespace access',
+    ],
+    [
+      'src/background/destructuredSelfParameter.ts',
+      [
+        'function send({ self: root } = globalThis) {',
+        '  root.chrome.runtime.sendMessage({});',
+        '}',
+      ].join('\n'),
+      'native extension namespace access',
+    ],
+    [
+      'src/background/destructuredWindowArrowParameter.ts',
+      [
+        'const send = ({ window: root } = globalThis) =>',
+        '  root.browser.runtime.sendMessage({});',
+      ].join('\n'),
+      'native extension namespace access',
+    ],
+    [
       'packages/browser-runtime/src/index.ts',
       'type Port = ChromePort;',
       'native extension API type',
@@ -126,6 +231,121 @@ describe('extension architecture gate', () => {
       'native extension namespace access',
     ],
     [
+      'apps/extension/vite.config.ts',
+      [
+        'import { resolve } from "node:path";',
+        'const extensionRoot = import.meta.dirname;',
+        'const repoRoot = resolve(extensionRoot, "../..");',
+        'const input = {};',
+        'input["chunks/diagnosticLogClient"] = resolve(',
+        '    repoRoot,',
+        '    "src/shared/diagnosticLogClient.ts",',
+        ');',
+      ].join('\n'),
+      'extension build entry cannot directly target root src/**',
+    ],
+    [
+      'apps/extension/vite.config.ts',
+      [
+        'import * as path from "node:path";',
+        'const { resolve } = path;',
+        'const extensionRoot = import.meta.dirname;',
+        'const repoRoot = resolve(extensionRoot, "../..");',
+        'const input = resolve(repoRoot, "src/shared/x.ts");',
+      ].join('\n'),
+      'extension build entry cannot directly target root src/**',
+    ],
+    [
+      'apps/extension/vite.config.ts',
+      [
+        'import path from "node:path";',
+        'const { resolve: r } = path;',
+        'const extensionRoot = import.meta.dirname;',
+        'const repoRoot = r(extensionRoot, "../..");',
+        'const input = r(repoRoot, "src/shared/x.ts");',
+      ].join('\n'),
+      'extension build entry cannot directly target root src/**',
+    ],
+    [
+      'apps/extension/vite.config.ts',
+      [
+        'import path from "node:path";',
+        'const extensionRoot = import.meta.dirname;',
+        'const repoRoot = path.resolve(extensionRoot, "../..");',
+        'function build({ resolve } = path) {',
+        '  const input = resolve(repoRoot, "src/shared/x.ts");',
+        '  return input;',
+        '}',
+      ].join('\n'),
+      'extension build entry cannot directly target root src/**',
+    ],
+    [
+      'apps/extension/vite.config.ts',
+      [
+        'import path from "node:path";',
+        'const extensionRoot = import.meta.dirname;',
+        'const repoRoot = path.posix.resolve(extensionRoot, "../..");',
+        'const input = path.posix.resolve(repoRoot, "src/shared/x.ts");',
+      ].join('\n'),
+      'extension build entry cannot directly target root src/**',
+    ],
+    [
+      'apps/extension/build/arbitraryEntryAdapter.ts',
+      [
+        'import { join } from "node:path";',
+        'const extensionRoot = join(import.meta.dirname, "..");',
+        'const repoRoot = join(extensionRoot, "../..");',
+        'export const entry = join(repoRoot, "src/workers/arbitrary.ts");',
+      ].join('\n'),
+      'extension build entry cannot directly target root src/**',
+    ],
+    [
+      'apps/extension/vite.config.ts',
+      'const input = "../../src/shared/diagnosticLogClient.ts";',
+      'extension build entry cannot directly target root src/**',
+    ],
+    [
+      'apps/extension/vite.config.ts',
+      'const input = "src/shared/diagnosticLogClient.ts";',
+      'extension build entry cannot directly target root src/**',
+    ],
+    [
+      'apps/extension/vite.config.ts',
+      [
+        'import { resolve } from "node:path";',
+        'const extensionRoot = import.meta.dirname;',
+        'const repoRoot = resolve(extensionRoot, "../..");',
+        'const buildRoot = repoRoot;',
+        'const input = resolve(',
+        '  buildRoot,',
+        '  "src/shared/diagnosticLogClient.ts",',
+        ');',
+      ].join('\n'),
+      'extension build entry cannot directly target root src/**',
+    ],
+    [
+      'apps/extension/vite.config.ts',
+      [
+        'import { resolve } from "node:path";',
+        'const extensionRoot = import.meta.dirname;',
+        'const repoRoot = resolve(extensionRoot, "../..");',
+        'const prefix = "src";',
+        'const target = prefix + "/shared/diagnosticLogClient.ts";',
+        'const input = resolve(repoRoot, target);',
+      ].join('\n'),
+      'extension build entry cannot directly target root src/**',
+    ],
+    [
+      'apps/extension/vite.config.ts',
+      [
+        'import { resolve } from "node:path";',
+        'const extensionRoot = import.meta.dirname;',
+        'const repoRoot = resolve(extensionRoot, "../..");',
+        String.raw`const input = resolve(repoRoot, "src\\shared\\diagnosticLogClient.ts");`,
+      ].join('\n'),
+      'extension build entry cannot directly target root src/**',
+    ],
+    [
       'src/shared/chrome.ts',
       'export type ChromeLike = {};',
       'legacy Chrome-shaped WebExtension seam',
@@ -152,6 +372,38 @@ describe('extension architecture gate', () => {
           'function label(browser: { name: string }) {',
           '  return browser.name;',
           '}',
+        ].join('\n'),
+      },
+    ])).toEqual([]);
+  });
+
+  it('allows extension-owned build inputs under apps/extension', () => {
+    expect(findSourcePolicyViolations([
+      {
+        relativePath: 'apps/extension/vite.config.ts',
+        source: [
+          'import { resolve } from "node:path";',
+          'const extensionRoot = import.meta.dirname;',
+          'const input = {',
+          '  background: resolve(extensionRoot, "src/background.ts"),',
+          '};',
+        ].join('\n'),
+      },
+    ])).toEqual([]);
+  });
+
+  it('does not confuse a local resolve helper with node:path', () => {
+    expect(findSourcePolicyViolations([
+      {
+        relativePath: 'apps/extension/vite.config.ts',
+        source: [
+          'function resolve(base, value) {',
+          '  return { base, value };',
+          '}',
+          'const repoRoot = "labels-only";',
+          'const input = {',
+          '  diagnostics: resolve(repoRoot, "src/label.ts"),',
+          '};',
         ].join('\n'),
       },
     ])).toEqual([]);

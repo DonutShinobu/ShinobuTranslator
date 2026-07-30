@@ -246,12 +246,15 @@ export type ProviderModelSessionPort = {
   ): Promise<ProviderExecutionModelMetadata>;
   loadSession(
     model: ProviderExecutionModel,
-    providers: readonly ProviderRuntime[],
+    provider: ProviderRuntime,
   ): Promise<ProviderExecutionSession>;
 };
 
 export type OcrExecutionCapability = {
   compactActiveBatch?: boolean;
+  widthBucketBatch?: boolean;
+  coldFirstSerial?: boolean;
+  fixedInputWidth?: number;
 };
 
 export type ImagePipelineRuntimeCapabilities = {
@@ -596,8 +599,8 @@ function snapshotRuntimeCapabilities(
                 providerExecution.modelSession.loadModel(model),
               loadSession: (
                 model: ProviderExecutionModel,
-                providers: readonly ProviderRuntime[],
-              ) => providerExecution.modelSession.loadSession(model, providers),
+                provider: ProviderRuntime,
+              ) => providerExecution.modelSession.loadSession(model, provider),
             }),
           }),
         }

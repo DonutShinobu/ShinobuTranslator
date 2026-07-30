@@ -55,10 +55,10 @@ async function loadBridge(): Promise<BridgeModule> {
 export async function createSession(
   modelKey: string,
   modelUrl: string,
-  preferred: RuntimeProvider[],
+  provider: RuntimeProvider,
   sessionOptions?: OnnxSessionOptions
 ): Promise<WorkerSessionHandle> {
-  return (await loadBridge()).createSession(modelKey, modelUrl, preferred, sessionOptions);
+  return (await loadBridge()).createSession(modelKey, modelUrl, provider, sessionOptions);
 }
 
 export async function runInference(

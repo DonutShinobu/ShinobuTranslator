@@ -93,7 +93,7 @@ describe('onnxWorkerBridge bootstrap policy', () => {
       allowBlobFallback: false,
     });
 
-    await bridge.createSession('detector', '/models/detector.onnx', ['wasm']);
+    await bridge.createSession('detector', '/models/detector.onnx', 'wasm');
 
     expect(FakeWorker.instances.map((worker) => worker.url)).toEqual([
       'extension-resource://test/onnxWorker.js',
@@ -113,7 +113,7 @@ describe('onnxWorkerBridge bootstrap policy', () => {
       allowBlobFallback: true,
     });
 
-    await bridge.createSession('detector', '/models/detector.onnx', ['wasm']);
+    await bridge.createSession('detector', '/models/detector.onnx', 'wasm');
 
     expect(FakeWorker.instances.map((worker) => worker.url)).toEqual([
       'https://app.example/onnxWorker.js',
@@ -132,7 +132,7 @@ describe('onnxWorkerBridge bootstrap policy', () => {
       ortPath: '/ort/',
       allowBlobFallback: true,
     });
-    await bridge.createSession('detector', '/models/detector.onnx', ['wasm']);
+    await bridge.createSession('detector', '/models/detector.onnx', 'wasm');
 
     expect(FakeWorker.instances.map((worker) => worker.url)).toEqual([
       'https://app.example/src/workers/onnx-worker.ts?worker_file&type=module',
@@ -150,7 +150,7 @@ describe('onnxWorkerBridge bootstrap policy', () => {
       allowBlobFallback: false,
     });
 
-    const error = await bridge.createSession('detector', '/models/detector.onnx', ['wasm'])
+    const error = await bridge.createSession('detector', '/models/detector.onnx', 'wasm')
       .then(() => null, (reason: unknown) => reason);
 
     expect(error).toBeInstanceOf(bridge.WorkerBootstrapError);
@@ -187,7 +187,7 @@ describe('onnxWorkerBridge bootstrap policy', () => {
       allowBlobFallback: true,
     });
 
-    const creation = bridge.createSession('detector', '/models/detector.onnx', ['wasm']);
+    const creation = bridge.createSession('detector', '/models/detector.onnx', 'wasm');
     await vi.waitFor(() => expect(createObjectUrl).toHaveBeenCalledTimes(1));
     expect(revokeObjectUrl).not.toHaveBeenCalled();
 
@@ -216,7 +216,7 @@ describe('onnxWorkerBridge bootstrap policy', () => {
       allowBlobFallback: true,
     });
 
-    const error = await bridge.createSession('detector', '/models/detector.onnx', ['wasm'])
+    const error = await bridge.createSession('detector', '/models/detector.onnx', 'wasm')
       .then(() => null, (reason: unknown) => reason);
 
     expect(error).toBeInstanceOf(bridge.WorkerBootstrapError);

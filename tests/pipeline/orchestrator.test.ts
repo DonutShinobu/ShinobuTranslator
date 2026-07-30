@@ -15,7 +15,10 @@ import type {
 import {
   PRODUCTION_PROVIDER_EXECUTION_POLICY,
 } from '@shinobu/image-pipeline';
-import type { ProviderSessionResolver } from '../../src/runtime/providerExecution';
+import {
+  ProviderExecutionError,
+  type ProviderSessionResolver,
+} from '../../src/runtime/providerExecution';
 
 const pipelineMocks = vi.hoisted(() => ({
   fileToImage: vi.fn(),
@@ -140,6 +143,19 @@ const detectorProviderReport: ProviderExecutionReport = {
   fallbackTrace: [],
   satisfied: true,
 };
+const failedDetectorProviderReport: ProviderExecutionReport = {
+  ...detectorProviderReport,
+  attempts: [
+    {
+      attempt: 1,
+      provider: 'wasm',
+      outcome: 'failed',
+      reason: 'execution-failed',
+    },
+  ],
+  finalProvider: undefined,
+  satisfied: false,
+};
 const bubbleProviderReport: ProviderExecutionReport = {
   ...detectorProviderReport,
   model: 'bubble',
@@ -177,9 +193,9 @@ const testRuntimeCapabilities: ImagePipelineRuntimeCapabilities = {
     policy: PRODUCTION_PROVIDER_EXECUTION_POLICY,
     modelSession: {
       loadModel: async () => ({ runtime: ['wasm'] }),
-      loadSession: async (model, providers) => ({
-        sessionId: `${model}:${providers[0]}`,
-        provider: providers[0] ?? 'wasm',
+      loadSession: async (model, provider) => ({
+        sessionId: `${model}:${provider}`,
+        provider,
         inputNames: ['images'],
         outputNames: ['output'],
       }),
@@ -323,10 +339,10 @@ describe('runPipeline', () => {
     }));
     const loadSession = vi.fn(async (
       _model: ProviderExecutionModel,
-      providers: readonly ProviderRuntime[],
+      provider: ProviderRuntime,
     ) => ({
-      sessionId: `detector:${providers[0]}`,
-      provider: providers[0],
+      sessionId: `detector:${provider}`,
+      provider,
       inputNames: ['images'],
       outputNames: ['output'],
     }));
@@ -336,7 +352,7 @@ describe('runPipeline', () => {
       resolver: ProviderSessionResolver,
     ) => {
       expect(loadSession.mock.calls).toEqual([
-        ['detector', ['wasm']],
+        ['detector', 'wasm'],
       ]);
       const execution = await resolver.execute({
         model: 'detector',
@@ -370,7 +386,7 @@ describe('runPipeline', () => {
 
     expect(loadModel).not.toHaveBeenCalled();
     expect(loadSession.mock.calls).toEqual([
-      ['detector', ['wasm']],
+      ['detector', 'wasm'],
     ]);
     expect(artifacts.providerReports[0]).toMatchObject({
       contract: policy.contract,
@@ -399,10 +415,10 @@ describe('runPipeline', () => {
     };
     const loadSession = vi.fn(async (
       model: ProviderExecutionModel,
-      providers: readonly ProviderRuntime[],
+      provider: ProviderRuntime,
     ) => ({
-      sessionId: `${model}:${providers[0]}`,
-      provider: providers[0],
+      sessionId: `${model}:${provider}`,
+      provider,
       inputNames: ['images', 'mask'],
       outputNames: ['output'],
     }));
@@ -534,10 +550,10 @@ describe('runPipeline', () => {
   it('does not attempt later providers when the bubble stage fails', async () => {
     const loadSession = vi.fn(async (
       model: ProviderExecutionModel,
-      providers: readonly ProviderRuntime[],
+      provider: ProviderRuntime,
     ) => ({
-      sessionId: `${model}:${providers[0]}`,
-      provider: providers[0],
+      sessionId: `${model}:${provider}`,
+      provider,
       inputNames: ['images'],
       outputNames: ['output'],
     }));
@@ -728,11 +744,25 @@ describe('runPipeline', () => {
     expect(artifacts.stageRegions.ordered[0].box.x).not.toBe(999);
   });
 
-  it('attaches completed intermediate artifacts to stage errors', async () => {
-    pipelineMocks.detectTextRegionsWithMask.mockRejectedValueOnce(Object.assign(
-      new Error('detector unavailable'),
-      { providerReports: [detectorProviderReport] },
-    ));
+  it('preserves structured detector provider failures and redacted diagnostics', async () => {
+    pipelineMocks.detectTextRegionsWithMask.mockRejectedValueOnce(
+      new ProviderExecutionError(
+        {
+          code: 'PIPELINE_PROVIDER_EXECUTION_FAILED',
+          stage: 'detect',
+          scope: 'runtime',
+          retryable: false,
+          messageKey: 'pipeline.failure.providerExecution',
+          diagnostics: {
+            contract: failedDetectorProviderReport.contract,
+            model: 'detector',
+            report: failedDetectorProviderReport,
+          },
+        },
+        failedDetectorProviderReport,
+        new Error('raw GPU device detail'),
+      ),
+    );
 
     const error = await runPipeline(
       createFile(),
@@ -747,34 +777,36 @@ describe('runPipeline', () => {
     const stageError = error as PipelineStageError;
     expect(stageError).toMatchObject({
       name: 'PipelineStageError',
-      code: 'PIPELINE_STAGE_FAILED',
+      code: 'PIPELINE_PROVIDER_EXECUTION_FAILED',
       stage: 'detect',
       stageLabel: '文本检测',
-      message: '文本检测失败: detector unavailable',
       failure: {
-        code: 'PIPELINE_STAGE_FAILED',
+        code: 'PIPELINE_PROVIDER_EXECUTION_FAILED',
         stage: 'detect',
         scope: 'runtime',
         retryable: false,
-        messageKey: 'pipeline.failure.stage',
+        messageKey: 'pipeline.failure.providerExecution',
         diagnostics: {
-          name: 'PipelineStageError',
-          providerReports: [detectorProviderReport],
+          contract: failedDetectorProviderReport.contract,
+          model: 'detector',
+          report: failedDetectorProviderReport,
         },
       },
     });
-    expect(stageError.cause).toMatchObject({ message: 'detector unavailable' });
+    expect(stageError.failure.diagnostics).not.toHaveProperty('message');
     expect(stageError.artifacts).toMatchObject({
       original: image,
       detectedRegions: [],
       detectionCanvas: originalCanvas,
       cleanedCanvas: originalCanvas,
       resultCanvas: originalCanvas,
-      providerReports: [detectorProviderReport],
+      providerReports: [failedDetectorProviderReport],
     });
     expect(stageError.artifacts.stageTimings.map((timing) => timing.stage)).toEqual([
       'load',
       'preload',
     ]);
+    expect(pipelineMocks.detectBubbles).not.toHaveBeenCalled();
+    expect(pipelineMocks.runOcr).not.toHaveBeenCalled();
   });
 });

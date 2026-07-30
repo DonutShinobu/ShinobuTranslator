@@ -45,10 +45,6 @@ type EngineResult = {
 type OcrDebug = Awaited<ReturnType<typeof runOcr>>["debug"];
 type PaddleDebug = NonNullable<OcrDebug["paddle"]>;
 
-type PaddleOcrRuntimeFlags = typeof globalThis & {
-  __shinobuPaddleOcrWidthBucketBatch?: boolean;
-};
-
 type PaddleBatchCliMode = "default" | "serial" | "width-bucket";
 
 function imageToDataUrl(path: string): string {
@@ -75,16 +71,13 @@ function parseRunCount(): number {
   return count;
 }
 
-function configurePaddleBatchMode(): PaddleBatchCliMode {
+function pickPaddleBatchMode(): PaddleBatchCliMode {
   if (process.argv.includes("--paddle-serial")) {
-    (globalThis as PaddleOcrRuntimeFlags).__shinobuPaddleOcrWidthBucketBatch = false;
     return "serial";
   }
   if (process.argv.includes("--paddle-batch")) {
-    (globalThis as PaddleOcrRuntimeFlags).__shinobuPaddleOcrWidthBucketBatch = true;
     return "width-bucket";
   }
-  delete (globalThis as PaddleOcrRuntimeFlags).__shinobuPaddleOcrWidthBucketBatch;
   return "default";
 }
 
@@ -211,6 +204,7 @@ async function runEngine(
   regions: Awaited<ReturnType<typeof detectTextRegionsWithMask>>["regions"],
   engine: OcrEngine,
   runCount: number,
+  paddleBatchMode: PaddleBatchCliMode,
 ): Promise<EngineResult> {
   const runs: EngineRunResult[] = [];
   const providerSessionResolver = createProductionProviderSessionResolver();
@@ -223,6 +217,11 @@ async function runEngine(
         engine,
         nodePlatform,
         providerSessionResolver,
+        {
+          widthBucketBatch: paddleBatchMode === "default"
+            ? undefined
+            : paddleBatchMode === "width-bucket",
+        },
       );
       const ocrMs = performance.now() - ocrT0;
       runs.push({
@@ -250,7 +249,7 @@ async function main(): Promise<void> {
   const imagePath = pickImagePath();
   const engines = pickOcrEngines();
   const runCount = parseRunCount();
-  const paddleBatchMode = configurePaddleBatchMode();
+  const paddleBatchMode = pickPaddleBatchMode();
   const image = await nodePlatform.loadImage(imageToDataUrl(imagePath));
 
   const detectT0 = performance.now();
@@ -263,7 +262,13 @@ async function main(): Promise<void> {
 
   const engineResults: EngineResult[] = [];
   for (const engine of engines) {
-    engineResults.push(await runEngine(image, detected.regions, engine, runCount));
+    engineResults.push(await runEngine(
+      image,
+      detected.regions,
+      engine,
+      runCount,
+      paddleBatchMode,
+    ));
   }
 
   console.log(JSON.stringify({

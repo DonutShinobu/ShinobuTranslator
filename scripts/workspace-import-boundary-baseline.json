@@ -6,7 +6,6 @@
     "apps/extension/src/popup.tsx -> ../../../src/popup/main",
     "apps/web/src/features/diagnostics/redactedDiagnostics.ts -> ../../../../../src/shared/localPipelineProtocol",
     "apps/web/src/runtime/installedModelSource.ts -> ../../../../src/runtime/modelSource",
-    "apps/web/src/runtime/modelCapability.ts -> ../../../../src/runtime/onnxTypes",
     "apps/web/src/runtime/modelCapability.ts -> ../../../../src/runtime/onnxWorkerBridge",
     "apps/web/src/runtime/modelCapability.ts -> ../../../../src/runtime/onnxWorkerTypes",
     "apps/web/src/runtime/modelCapability.ts -> ../../../../src/workers/onnx-worker.ts?worker&url",

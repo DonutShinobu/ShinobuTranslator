@@ -17,7 +17,7 @@ import {
 
 type ProviderSessionLoader = (
   model: ProviderExecutionModel,
-  providers: readonly ProviderRuntime[],
+  provider: ProviderRuntime,
 ) => Promise<ProviderExecutionSession>;
 
 export type ProviderSessionResolverOptions = {
@@ -224,7 +224,7 @@ export function createProviderSessionResolver(
   ): Promise<ProviderExecutionSession | null> => {
     let session: ProviderExecutionSession;
     try {
-      session = await loadSession(model, [provider]);
+      session = await loadSession(model, provider);
     } catch (error) {
       onUnavailable?.(error);
       attempts.push({

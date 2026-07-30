@@ -121,7 +121,7 @@ async function main(): Promise<void> {
         outputNames: string[];
       };
       type Bridge = {
-        createSession(modelKey: string, modelUrl: string, preferred: RuntimeProvider[]): Promise<SessionHandle>;
+        createSession(modelKey: string, modelUrl: string, provider: RuntimeProvider): Promise<SessionHandle>;
         runInference(
           sessionId: string,
           feeds: Record<string, { data: Float32Array | BigInt64Array | Uint8Array; dims: number[]; type: "float32" | "int64" | "bool" }>
@@ -147,10 +147,13 @@ async function main(): Promise<void> {
       };
 
       const bridge = await import(toExtensionUrl("chunks/onnxWorkerBridge.js")) as Bridge;
-      const preferred: RuntimeProvider[] = ["webgpu", "wasm"];
       try {
         const modelKey = "paddleocr_v6_medium_rec";
-        const session = await bridge.createSession(modelKey, toExtensionUrl("models/PP-OCRv6_medium_rec.onnx"), preferred);
+        const session = await bridge.createSession(
+          modelKey,
+          toExtensionUrl("models/PP-OCRv6_medium_rec.onnx"),
+          "wasm",
+        );
         const inputName = session.inputNames[0];
         const outputName = session.outputNames[0];
         if (!inputName || !outputName) {

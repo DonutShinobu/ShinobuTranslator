@@ -18,20 +18,16 @@ import type { PaddleCtcResult } from './paddleocrDecode';
 import { loadCharset } from './ocrShared';
 import { runInference } from '../../runtime/onnxBridge';
 import type { Direction } from './preprocess';
-import type { ProviderExecutionSession } from '@shinobu/image-pipeline';
+import type {
+  OcrExecutionCapability,
+  ProviderExecutionSession,
+} from '@shinobu/image-pipeline';
 
 const PADDLEOCR_CONFIDENCE_THRESHOLD = 0.2;
 const PADDLEOCR_BATCH_BUCKET_WIDTH = 32;
 const warmedPaddleSessionIds = new Set<string>();
 
 type PaddleOcrModelName = Extract<ModelName, 'paddleocr_v6_medium_rec'>;
-
-type PaddleOcrRuntimeFlags = typeof globalThis & {
-  __shinobuPaddleOcrWidthBucketBatch?: boolean;
-  __shinobuPaddleOcrColdFirstSerial?: boolean;
-  __shinobuPaddleOcrModelName?: PaddleOcrModelName;
-  __shinobuPaddleOcrFixedInputWidth?: number;
-};
 
 type PreparedPaddleRegion = {
   index: number;
@@ -75,8 +71,8 @@ function tensorByteLength(tensor: TensorTransport | undefined): number {
 function shouldUsePaddleWidthBucketBatch(
   provider: PaddleOcrRunDebug['provider'],
   webnnDeviceType: PaddleOcrRunDebug['webnnDeviceType'],
+  configured?: boolean,
 ): boolean {
-  const configured = (globalThis as PaddleOcrRuntimeFlags).__shinobuPaddleOcrWidthBucketBatch;
   if (configured !== undefined) {
     return configured;
   }
@@ -86,21 +82,18 @@ function shouldUsePaddleWidthBucketBatch(
 function shouldUsePaddleColdFirstSerial(
   provider: PaddleOcrRunDebug['provider'],
   sessionId: string,
+  configured?: boolean,
 ): boolean {
-  const configured = (globalThis as PaddleOcrRuntimeFlags).__shinobuPaddleOcrColdFirstSerial;
   if (configured !== undefined) {
     return configured;
   }
   return provider === 'webgpu' && !warmedPaddleSessionIds.has(sessionId);
 }
 
-function resolvePaddleOcrModelName(defaultModelName: PaddleOcrModelName): PaddleOcrModelName {
-  const configured = (globalThis as PaddleOcrRuntimeFlags).__shinobuPaddleOcrModelName;
-  return configured === 'paddleocr_v6_medium_rec' ? configured : defaultModelName;
-}
-
-function resolvePaddleFixedInputWidth(maxInputWidth: number): number | undefined {
-  const configured = (globalThis as PaddleOcrRuntimeFlags).__shinobuPaddleOcrFixedInputWidth;
+function resolvePaddleFixedInputWidth(
+  maxInputWidth: number,
+  configured?: number,
+): number | undefined {
   if (typeof configured !== 'number' || !Number.isFinite(configured) || configured <= 0) {
     return undefined;
   }
@@ -109,9 +102,8 @@ function resolvePaddleFixedInputWidth(maxInputWidth: number): number | undefined
 
 async function preparePaddleOcrRuntime(
   sessionHandle: ProviderExecutionSession,
-  defaultModelName: PaddleOcrModelName = 'paddleocr_v6_medium_rec',
+  modelName: PaddleOcrModelName = 'paddleocr_v6_medium_rec',
 ): Promise<PreparedPaddleRuntime> {
-  const modelName = resolvePaddleOcrModelName(defaultModelName);
   const modelT0 = performance.now();
   const model = await getModel(modelName);
   const modelLoadMs = performance.now() - modelT0;
@@ -311,6 +303,7 @@ function createPaddleOcrProvider(name: string, modelName: PaddleOcrModelName): O
       regions: TextRegion[],
       session: ProviderExecutionSession,
       platform?: PlatformProvider,
+      options: OcrExecutionCapability = {},
     ): Promise<OcrRecognizeOutput> {
       if (!platform) {
         throw new Error('PaddleOCR 需要可用的运行平台');
@@ -326,7 +319,10 @@ function createPaddleOcrProvider(name: string, modelName: PaddleOcrModelName): O
         channelOrder,
         timings,
       } = runtime;
-      const requestedFixedInputWidth = resolvePaddleFixedInputWidth(maxInputWidth);
+      const requestedFixedInputWidth = resolvePaddleFixedInputWidth(
+        maxInputWidth,
+        options.fixedInputWidth,
+      );
       const { debugInfo, paddleDebug } = createPaddleDebugInfo(
         resolvedModelName,
         inputHeight,
@@ -542,12 +538,20 @@ function createPaddleOcrProvider(name: string, modelName: PaddleOcrModelName): O
         addPaddleChunk(debugInfo, currentRunIndex, regionIds, inferenceMs, acceptedCount);
       };
 
-      const useWidthBucketBatch = shouldUsePaddleWidthBucketBatch(sessionHandle.provider, sessionHandle.webnnDeviceType);
+      const useWidthBucketBatch = shouldUsePaddleWidthBucketBatch(
+        sessionHandle.provider,
+        sessionHandle.webnnDeviceType,
+        options.widthBucketBatch,
+      );
       paddleDebug.batchMode = useWidthBucketBatch ? 'width-bucket' : 'serial';
       if (useWidthBucketBatch) {
         paddleDebug.batchBucketWidth = PADDLEOCR_BATCH_BUCKET_WIDTH;
         const useColdFirstSerial = preparedRegions.length > 1
-          && shouldUsePaddleColdFirstSerial(sessionHandle.provider, sessionHandle.sessionId);
+          && shouldUsePaddleColdFirstSerial(
+            sessionHandle.provider,
+            sessionHandle.sessionId,
+            options.coldFirstSerial,
+          );
         paddleDebug.coldFirstSerial = useColdFirstSerial;
         let bucketCandidates = preparedRegions;
         if (useColdFirstSerial) {

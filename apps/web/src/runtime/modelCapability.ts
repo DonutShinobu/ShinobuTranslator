@@ -11,7 +11,6 @@ import type {
   TensorTransport,
   WorkerSessionHandle,
 } from '../../../../src/runtime/onnxWorkerTypes';
-import type { RuntimeProvider } from '../../../../src/runtime/onnxTypes';
 import { createInstalledModelAssetSource } from './installedModelSource';
 import {
   WEB_MODEL_PACKAGE,
@@ -178,7 +177,6 @@ export async function probeInstalledProductionModels(options: {
   }
   const dependencies = { ...defaultDependencies, ...overrides };
   const installed = await dependencies.createSource();
-  let effectiveProvider: 'webgpu' | 'wasm' = backend;
   const total = MODEL_PROBE_SPECS.length + (runFullCanary ? 1 : 0);
   try {
     for (let index = 0; index < MODEL_PROBE_SPECS.length; index += 1) {
@@ -194,15 +192,16 @@ export async function probeInstalledProductionModels(options: {
         asset.url,
         installed.source.manifestUrl(),
       );
-      const preferred: RuntimeProvider[] = backend === 'webgpu'
-        ? ['webgpu', 'wasm']
-        : ['wasm'];
       const session = await dependencies.createSession(
         `web-capability-${spec.assetId}`,
         modelUrl,
-        preferred,
+        backend,
       );
-      if (session.provider !== 'webgpu') effectiveProvider = 'wasm';
+      if (session.provider !== backend) {
+        throw new Error(
+          `${spec.assetId} provider 契约不匹配: 请求 ${backend}，实际 ${session.provider}`,
+        );
+      }
       try {
         const result = await dependencies.runInference(
           session.sessionId,
@@ -226,8 +225,8 @@ export async function probeInstalledProductionModels(options: {
       total,
       modelId: 'complete',
     });
-    cacheSuccess(backend, effectiveProvider);
-    return { ok: true, provider: effectiveProvider };
+    cacheSuccess(backend, backend);
+    return { ok: true, provider: backend };
   } catch (error) {
     return {
       ok: false,

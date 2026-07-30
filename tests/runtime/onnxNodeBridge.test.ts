@@ -31,8 +31,8 @@ describe('onnxNodeBridge session ownership', () => {
       });
     const bridge = await import('../../src/runtime/onnxNodeBridge');
 
-    await bridge.createSession('detector', 'detector.onnx', ['cuda']);
-    await bridge.createSession('detector', 'detector.onnx', ['cpu']);
+    await bridge.createSession('detector', 'detector.onnx', 'cuda');
+    await bridge.createSession('detector', 'detector.onnx', 'cpu');
     await bridge.disposeSession('detector');
 
     expect(releases[0]).toHaveBeenCalledOnce();

@@ -143,15 +143,12 @@ const sessionPromiseCache = new Map<string, Promise<WorkerSessionHandle>>();
 
 export async function getModelSession(
   name: ModelName,
-  preferred?: RuntimeProvider[],
+  provider: RuntimeProvider,
   sessionOptions?: OnnxSessionOptions
 ): Promise<WorkerSessionHandle> {
   const model = await getModel(name);
-  const runtime = preferred && preferred.length > 0
-    ? preferred
-    : model.runtime ?? (isNodeRuntime ? ['cuda'] : ['wasm']);
   const sessionOptionsKey = serializeOnnxSessionOptions(sessionOptions);
-  const cacheKey = `${name}:${runtime.join(',')}:${sessionOptionsKey}`;
+  const cacheKey = `${name}:${provider}:${sessionOptionsKey}`;
   const cached = sessionCache.get(cacheKey);
   if (cached) {
     recordPerfRuntimeEvent({
@@ -177,11 +174,17 @@ export async function getModelSession(
   recordPerfRuntimeEvent({
     kind: 'session-create-start',
     model: name,
+    provider,
     message: `开始创建模型 Session: ${name}`,
-    data: { preferredProviders: runtime, sessionOptionsKey },
+    data: { sessionOptionsKey },
   });
-  const creation = createSession(name, model.url, runtime, sessionOptions)
+  const creation = createSession(name, model.url, provider, sessionOptions)
     .then((handle) => {
+      if (handle.provider !== provider) {
+        throw new Error(
+          `模型 Session provider 契约不匹配: 请求 ${provider}，实际 ${handle.provider}`,
+        );
+      }
       sessionCache.set(cacheKey, handle);
       recordPerfRuntimeEvent({
         kind: 'session-create-complete',
@@ -190,27 +193,18 @@ export async function getModelSession(
         message: `模型 Session 创建完成: ${name}`,
         data: {
           sessionId: handle.sessionId,
-          preferredProviders: runtime,
           webnnDeviceType: handle.webnnDeviceType,
         },
       });
-      if (runtime.length > 0 && handle.provider !== runtime[0]) {
-        recordPerfRuntimeEvent({
-          kind: 'provider-fallback',
-          model: name,
-          provider: handle.provider,
-          message: `模型 provider 已回退: ${name} ${runtime[0]} -> ${handle.provider}`,
-          data: { preferredProviders: runtime, actualProvider: handle.provider },
-        });
-      }
       return handle;
     })
     .catch((error) => {
       recordPerfRuntimeEvent({
         kind: 'session-create-complete',
         model: name,
+        provider,
         message: `模型 Session 创建失败: ${name}`,
-        data: { preferredProviders: runtime, sessionOptionsKey },
+        data: { sessionOptionsKey },
         error,
       });
       throw error;

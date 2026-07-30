@@ -59,10 +59,10 @@ describe('provider session resolver contract', () => {
     }));
     const loadSession = vi.fn(async (
       _model: ProviderExecutionModel,
-      providers: readonly ProviderRuntime[],
+      provider: ProviderRuntime,
     ) => {
-      if (providers[0] === 'webgpu') throw new Error('adapter unavailable');
-      return handle(providers[0]);
+      if (provider === 'webgpu') throw new Error('adapter unavailable');
+      return handle(provider);
     });
     const resolver = createProviderSessionResolver({
       loadModel,
@@ -77,9 +77,9 @@ describe('provider session resolver contract', () => {
 
     expect(execution.value).toBe('webnn');
     expect(loadModel).toHaveBeenCalledWith('detector');
-    expect(loadSession.mock.calls.map(([, providers]) => providers)).toEqual([
-      ['webgpu'],
-      ['webnn'],
+    expect(loadSession.mock.calls.map(([, provider]) => provider)).toEqual([
+      'webgpu',
+      'webnn',
     ]);
     expect(execution.report).toEqual({
       schemaVersion: 1,
@@ -121,10 +121,10 @@ describe('provider session resolver contract', () => {
     }));
     const loadSession = vi.fn(async (
       _model: ProviderExecutionModel,
-      providers: readonly ProviderRuntime[],
+      provider: ProviderRuntime,
     ) => {
-      if (providers[0] === 'webgpu') throw new Error('adapter unavailable');
-      return handle(providers[0]);
+      if (provider === 'webgpu') throw new Error('adapter unavailable');
+      return handle(provider);
     });
     const resolver = createProviderSessionResolver({
       loadModel,
@@ -144,9 +144,9 @@ describe('provider session resolver contract', () => {
     });
 
     expect(loadModel).toHaveBeenCalledOnce();
-    expect(loadSession.mock.calls.map(([, providers]) => providers)).toEqual([
-      ['webgpu'],
-      ['webnn'],
+    expect(loadSession.mock.calls.map(([, provider]) => provider)).toEqual([
+      'webgpu',
+      'webnn',
     ]);
     expect(execution.value).toBe('webnn');
     expect(execution.report).toMatchObject({
@@ -200,7 +200,7 @@ describe('provider session resolver contract', () => {
 
     expect(execution.value).toBe('wasm');
     expect(loadModel).not.toHaveBeenCalled();
-    expect(loadSession).toHaveBeenCalledWith('detector', ['wasm']);
+    expect(loadSession).toHaveBeenCalledWith('detector', 'wasm');
     expect(execution.report).toMatchObject({
       contract: policy.contract,
       finalProvider: 'wasm',
@@ -213,7 +213,7 @@ describe('provider session resolver contract', () => {
       loadModel: async () => ({
         runtime: ['webgpu', 'webnn', 'wasm'] as const,
       }),
-      loadSession: async (_model, providers) => handle(providers[0]),
+      loadSession: async (_model, provider) => handle(provider),
     });
 
     const execution = await resolver.execute({

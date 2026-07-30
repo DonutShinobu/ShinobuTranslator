@@ -271,14 +271,14 @@ function getProxy(): Promise<Comlink.Remote<OnnxWorkerApi>> {
 export async function createSession(
   modelKey: string,
   modelUrl: string,
-  preferred: RuntimeProvider[],
+  provider: RuntimeProvider,
   sessionOptions?: OnnxSessionOptions
 ): Promise<WorkerSessionHandle> {
   const startedAt = performance.now();
   let handle: WorkerSessionHandle | null = null;
   let failure: unknown = null;
   try {
-    handle = await (await getProxy()).createSession(modelKey, modelUrl, preferred, sessionOptions);
+    handle = await (await getProxy()).createSession(modelKey, modelUrl, provider, sessionOptions);
     sessionProviders.set(handle.sessionId, handle.provider);
     sessionModels.set(handle.sessionId, modelKey);
     return handle;

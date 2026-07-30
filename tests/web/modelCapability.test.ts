@@ -111,7 +111,7 @@ describe('production model capability probe', () => {
     expect(disposeSession).toHaveBeenCalledWith('broken-session');
   });
 
-  it('reports WASM when any production model falls back from WebGPU', async () => {
+  it('fails closed when a model session substitutes another provider', async () => {
     let sessionIndex = 0;
     const result = await probeInstalledProductionModels({
       backend: 'webgpu',
@@ -148,6 +148,7 @@ describe('production model capability probe', () => {
       },
     });
 
-    expect(result).toEqual({ ok: true, provider: 'wasm' });
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/provider 契约不匹配/u);
   });
 });

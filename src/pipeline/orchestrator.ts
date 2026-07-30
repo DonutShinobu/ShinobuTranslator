@@ -225,7 +225,9 @@ function toErrorDetail(error: unknown): string {
   return String(error);
 }
 
-function hasPipelineFailure(error: unknown): boolean {
+function hasPipelineFailure(
+  error: unknown,
+): error is { failure: PipelineFailureEnvelope } {
   return error !== null
     && typeof error === "object"
     && "failure" in error
@@ -290,25 +292,26 @@ export class PipelineStageError extends Error {
     artifacts: PipelineArtifacts,
     scope: PipelineFailureEnvelope["scope"],
     cause?: unknown,
+    failure?: PipelineFailureEnvelope,
   ) {
     super(`${stageLabel}失败: ${detail}`, cause === undefined ? undefined : { cause });
     this.name = "PipelineStageError";
     this.stage = stage;
     this.stageLabel = stageLabel;
     this.artifacts = artifacts;
-    this.failure = {
-      code: "PIPELINE_STAGE_FAILED",
-      stage,
-      scope,
-      retryable: false,
-      messageKey: "pipeline.failure.stage",
-      diagnostics: {
-        name: this.name,
-        ...(artifacts.providerReports.length > 0
-          ? { providerReports: artifacts.providerReports }
-          : {}),
-      },
-    };
+    this.failure = failure ?? {
+        code: "PIPELINE_STAGE_FAILED",
+        stage,
+        scope,
+        retryable: false,
+        messageKey: "pipeline.failure.stage",
+        diagnostics: {
+          name: this.name,
+          ...(artifacts.providerReports.length > 0
+            ? { providerReports: artifacts.providerReports }
+            : {}),
+        },
+      };
   }
 
   get code(): string {
@@ -427,11 +430,21 @@ export async function runPipeline(
       detail: `detector 模型已加载 (${providerLabel})`,
     });
   } catch (error) {
+    providerReports.push(...providerReportsFromError(error));
     setRuntimeStage({
       model: "detector",
       enabled: false,
-      detail: `detector 模型未启用，使用检测回退流程: ${toErrorDetail(error)}`,
+      detail: "detector 模型加载失败",
     });
+    throw new PipelineStageError(
+      "detect",
+      "文本检测",
+      toErrorDetail(error),
+      buildArtifacts(),
+      "runtime",
+      error,
+      hasPipelineFailure(error) ? error.failure : undefined,
+    );
   }
   throwIfCancelled(signal);
   stageTimings.push({
@@ -459,14 +472,7 @@ export async function runPipeline(
     ocrCanvas = detectionCanvas;
     cleanedCanvas = ocrCanvas;
     resultCanvas = cleanedCanvas;
-    if (detected.engine !== "onnx") {
-      setRuntimeStage({
-        model: "detector",
-        enabled: true,
-        engine: detected.engine,
-        detail: `detector 已回退到 ${detected.engine ?? "unknown"}: ${detected.fallbackReason ?? "未提供原因"}`,
-      });
-    } else if (detected.actualProvider) {
+    if (detected.actualProvider) {
       const providerLabel = detected.actualProvider === "webnn"
         ? `${detected.actualProvider}/${detected.actualWebnnDeviceType ?? "default"}`
         : detected.actualProvider;
@@ -490,7 +496,6 @@ export async function runPipeline(
     stageTimings.push({ stage: "detect", label: "文本检测", durationMs });
     logPipelineStage(config, "pipeline.detect", "文本检测完成", {
       engine: detected.engine,
-      fallbackReason: detected.fallbackReason,
       provider: detected.actualProvider,
       webnnDeviceType: detected.actualWebnnDeviceType,
       regionCount: detected.regions.length,
@@ -499,7 +504,15 @@ export async function runPipeline(
   } catch (error) {
     providerReports.push(...providerReportsFromError(error));
     logPipelineStage(config, "pipeline.detect", "文本检测失败", undefined, error);
-    throw new PipelineStageError("detect", "文本检测", toErrorDetail(error), buildArtifacts(), "runtime", error);
+    throw new PipelineStageError(
+      "detect",
+      "文本检测",
+      toErrorDetail(error),
+      buildArtifacts(),
+      "runtime",
+      error,
+      hasPipelineFailure(error) ? error.failure : undefined,
+    );
   }
 
   let detectedBubbles: BubbleDetection[] = [];
@@ -549,10 +562,7 @@ export async function runPipeline(
       config.ocrEngine,
       platform,
       providerSessionResolver,
-      {
-        compactActiveBatch:
-          options.runtimeCapabilities?.ocrExecution?.compactActiveBatch,
-      },
+      options.runtimeCapabilities?.ocrExecution,
     );
     providerReports.push(...ocrResult.providerReports);
     throwIfCancelled(signal);

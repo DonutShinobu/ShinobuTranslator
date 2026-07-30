@@ -166,14 +166,13 @@ async function createSessionWithTimeout(
 async function createSession(
   modelKey: string,
   modelUrl: string,
-  preferred: RuntimeProvider[],
+  provider: RuntimeProvider,
   experimentalSessionOptions?: OnnxSessionOptions
 ): Promise<WorkerSessionHandle> {
   return withPerModelLock(modelUrl, async () => {
     ensureOrtEnv();
-    const normalized = preferred.filter((item, idx) => preferred.indexOf(item) === idx);
     const sessionOptionsKey = serializeOnnxSessionOptions(experimentalSessionOptions);
-    const sessionId = `${modelKey}:${normalized.join(",")}:${sessionOptionsKey}`;
+    const sessionId = `${modelKey}:${provider}:${sessionOptionsKey}`;
 
     // Check if session already cached
     const existing = sessions.get(sessionId);
@@ -187,115 +186,76 @@ async function createSession(
       };
     }
 
-    const providerOrder: RuntimeProvider[] = [];
-    const providerErrors: Partial<Record<RuntimeProvider, string>> = {};
-
-    for (const provider of normalized) {
-      if (provider === "webnn") {
-        const probe = probeWebNnAvailability();
-        if (probe.available) {
-          providerOrder.push(provider);
-        } else if (probe.reason) {
-          providerErrors.webnn = probe.reason;
-        }
-        continue;
+    if (provider === "webnn") {
+      const probe = probeWebNnAvailability();
+      if (!probe.available) {
+        throw new Error(`ONNX provider 不可用: webnn: ${probe.reason ?? "运行环境不支持"}`);
       }
-      if (provider === "webgpu") {
-        const probe = await probeWebGpuAvailability();
-        if (probe.available) {
-          providerOrder.push(provider);
-        } else if (probe.reason) {
-          providerErrors.webgpu = probe.reason;
-        }
-        continue;
+    } else if (provider === "webgpu") {
+      const probe = await probeWebGpuAvailability();
+      if (!probe.available) {
+        throw new Error(`ONNX provider 不可用: webgpu: ${probe.reason ?? "运行环境不支持"}`);
       }
-      providerOrder.push(provider);
     }
 
-    if (providerOrder.length === 0) {
-      const detail = normalized
-        .filter((provider) => providerErrors[provider])
-        .map((provider) => `${provider}: ${providerErrors[provider]}`)
-        .join(" | ");
-      throw new Error(`ONNX provider 不可用: ${detail || "未提供可用 provider"}`);
-    }
-
-    for (const provider of providerOrder) {
-      const attemptErrors: string[] = [];
-      let abortProvider = false;
-      for (const ep of getExecutionProviderAttempts(provider)) {
-        if (abortProvider) break;
-        const maxAttempts = provider === "webnn" ? 2 : 1;
-        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-          try {
-            const sessionOptions: Parameters<typeof ortAll.InferenceSession.create>[1] = {
-              executionProviders: [ep],
-              graphOptimizationLevel: "all",
-            };
-            if (provider === "webgpu" && experimentalSessionOptions) {
-              if (typeof experimentalSessionOptions.enableGraphCapture === "boolean") {
-                sessionOptions.enableGraphCapture = experimentalSessionOptions.enableGraphCapture;
-              }
-              if (experimentalSessionOptions.preferredOutputLocation !== undefined) {
-                sessionOptions.preferredOutputLocation = experimentalSessionOptions.preferredOutputLocation;
-              }
-              if (experimentalSessionOptions.freeDimensionOverrides) {
-                sessionOptions.freeDimensionOverrides = experimentalSessionOptions.freeDimensionOverrides;
-              }
+    const attemptErrors: string[] = [];
+    let abortProvider = false;
+    for (const ep of getExecutionProviderAttempts(provider)) {
+      if (abortProvider) break;
+      const maxAttempts = provider === "webnn" ? 2 : 1;
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        try {
+          const sessionOptions: Parameters<typeof ortAll.InferenceSession.create>[1] = {
+            executionProviders: [ep],
+            graphOptimizationLevel: "all",
+          };
+          if (provider === "webgpu" && experimentalSessionOptions) {
+            if (typeof experimentalSessionOptions.enableGraphCapture === "boolean") {
+              sessionOptions.enableGraphCapture = experimentalSessionOptions.enableGraphCapture;
             }
-            if (provider === "webgpu" && modelKey === "detector") {
-              sessionOptions.preferredOutputLocation = "gpu-buffer";
+            if (experimentalSessionOptions.preferredOutputLocation !== undefined) {
+              sessionOptions.preferredOutputLocation = experimentalSessionOptions.preferredOutputLocation;
             }
-            const session = await createSessionWithTimeout(
-              modelUrl,
-              sessionOptions,
-              SESSION_CREATE_TIMEOUT_MS
-            );
-
-            const webnnDeviceType = provider === "webnn" ? inferWebNnDeviceType(ep) : undefined;
-
-            if (provider === "wasm") {
-              if (providerErrors.webnn) {
-                console.warn(`[onnx-worker] WebNN 不可用，回退到 WASM: ${providerErrors.webnn}`);
-              }
-              if (providerErrors.webgpu) {
-                console.warn(`[onnx-worker] WebGPU 不可用，回退到 WASM: ${providerErrors.webgpu}`);
-              }
+            if (experimentalSessionOptions.freeDimensionOverrides) {
+              sessionOptions.freeDimensionOverrides = experimentalSessionOptions.freeDimensionOverrides;
             }
-
-            sessions.set(sessionId, { session, provider, webnnDeviceType, modelUrl });
-
-            return {
-              sessionId,
-              provider,
-              webnnDeviceType,
-              inputNames: [...session.inputNames],
-              outputNames: [...session.outputNames],
-            };
-          } catch (error) {
-            const message = toErrorMessage(error);
-            attemptErrors.push(message);
-            if (isCreateTimeoutError(message)) {
-              abortProvider = true;
-              break;
-            }
-            if (provider === "webnn" && attempt + 1 < maxAttempts && isContextLostRuntimeError(error)) {
-              await new Promise((resolve) => setTimeout(resolve, 120));
-              continue;
-            }
+          }
+          if (provider === "webgpu" && modelKey === "detector") {
+            sessionOptions.preferredOutputLocation = "gpu-buffer";
+          }
+          const session = await createSessionWithTimeout(
+            modelUrl,
+            sessionOptions,
+            SESSION_CREATE_TIMEOUT_MS
+          );
+          const webnnDeviceType = provider === "webnn" ? inferWebNnDeviceType(ep) : undefined;
+          sessions.set(sessionId, { session, provider, webnnDeviceType, modelUrl });
+          return {
+            sessionId,
+            provider,
+            webnnDeviceType,
+            inputNames: [...session.inputNames],
+            outputNames: [...session.outputNames],
+          };
+        } catch (error) {
+          const message = toErrorMessage(error);
+          attemptErrors.push(message);
+          if (isCreateTimeoutError(message)) {
+            abortProvider = true;
             break;
           }
+          if (provider === "webnn" && attempt + 1 < maxAttempts && isContextLostRuntimeError(error)) {
+            await new Promise((resolve) => setTimeout(resolve, 120));
+            continue;
+          }
+          break;
         }
       }
-      providerErrors[provider] = attemptErrors.join(" || ");
     }
 
-    const detail = ["webnn", "webgpu", "wasm"]
-      .filter((p) => providerErrors[p as RuntimeProvider])
-      .map((p) => `${p}: ${providerErrors[p as RuntimeProvider]}`)
-      .join(" | ");
-
-    throw new Error(`ONNX Session 创建失败: ${detail || "未知错误"}`);
+    throw new Error(
+      `ONNX Session 创建失败: ${provider}: ${attemptErrors.join(" || ") || "未知错误"}`,
+    );
   });
 }
 

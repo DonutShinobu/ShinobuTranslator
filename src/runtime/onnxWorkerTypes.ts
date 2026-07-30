@@ -75,7 +75,7 @@ export interface OnnxWorkerApi {
   createSession(
     modelKey: string,
     modelUrl: string,
-    preferred: RuntimeProvider[],
+    provider: RuntimeProvider,
     sessionOptions?: OnnxSessionOptions
   ): Promise<WorkerSessionHandle>;
   runInference(

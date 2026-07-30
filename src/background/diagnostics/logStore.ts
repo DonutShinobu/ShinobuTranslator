@@ -1,5 +1,7 @@
 import type { ExtensionSettings } from "../../shared/config";
-import { getChromeApi } from "../../shared/chrome";
+import type {
+  ExtensionStorage,
+} from "../../../apps/extension/src/capabilities/contracts";
 import {
   createDiagnosticEvent,
   createDiagnosticId,
@@ -13,17 +15,10 @@ import type {
   DiagnosticLogRun,
   DiagnosticLogTextExport,
 } from "../../shared/diagnosticLog";
-import { getSettings } from "../settings/settingsStore";
-import {
-  storageGet,
-  storageRemove,
-  storageSet,
-} from "../storage/chromeStorage";
 import { isRecord } from "../utils";
+import { normalizeJsonValue } from "../../shared/jsonValue";
 
 const diagnosticLogStorageKey = "mangaTranslate.diagnosticLog";
-const backgroundDiagnosticSessionId = createDiagnosticId("background-session");
-let diagnosticLogWriteQueue: Promise<void> = Promise.resolve();
 
 type DiagnosticLogStore = {
   events: DiagnosticLogEvent[];
@@ -111,35 +106,36 @@ function normalizeDiagnosticLogStore(value: unknown): DiagnosticLogStore {
   };
 }
 
-async function readDiagnosticLogStore(): Promise<DiagnosticLogStore> {
-  const saved = await storageGet(diagnosticLogStorageKey);
-  return normalizeDiagnosticLogStore(saved);
+async function readDiagnosticLogStore(
+  storage: ExtensionStorage,
+): Promise<DiagnosticLogStore> {
+  const saved = await storage.read([diagnosticLogStorageKey]);
+  return normalizeDiagnosticLogStore(saved[diagnosticLogStorageKey]);
 }
 
-async function writeDiagnosticLogStore(store: DiagnosticLogStore): Promise<void> {
-  await storageSet(diagnosticLogStorageKey, store);
+async function writeDiagnosticLogStore(
+  storage: ExtensionStorage,
+  store: DiagnosticLogStore,
+): Promise<void> {
+  await storage.write({
+    [diagnosticLogStorageKey]: normalizeJsonValue(store),
+  });
 }
 
-async function appendDiagnosticLogEvent(event: DiagnosticLogEvent): Promise<void> {
-  const store = await readDiagnosticLogStore();
+async function appendDiagnosticLogEvent(
+  storage: ExtensionStorage,
+  event: DiagnosticLogEvent,
+): Promise<void> {
+  const store = await readDiagnosticLogStore(storage);
   const normalized = createDiagnosticEvent(event, event.sessionId);
   const events = [...store.events, normalized];
   const overflow = Math.max(0, events.length - diagnosticLogMaxEvents);
   const nextEvents = overflow > 0 ? events.slice(overflow) : events;
-  await writeDiagnosticLogStore({
+  await writeDiagnosticLogStore(storage, {
     events: nextEvents,
     truncated: store.truncated || overflow > 0,
     truncationReason: overflow > 0 ? `事件数量超过 ${diagnosticLogMaxEvents}，已丢弃最早的 ${overflow} 条` : store.truncationReason,
   });
-}
-
-export function recordDiagnosticLogEvent(event: DiagnosticLogEvent): Promise<void> {
-  const write = diagnosticLogWriteQueue.then(
-    () => appendDiagnosticLogEvent(event),
-    () => appendDiagnosticLogEvent(event),
-  );
-  diagnosticLogWriteQueue = write.catch(() => undefined);
-  return write;
 }
 
 export function toImageTranslateDiagnosticData(image: { base64: string; contentType: string; filename: string }): Record<string, unknown> {
@@ -148,20 +144,6 @@ export function toImageTranslateDiagnosticData(image: { base64: string; contentT
     filename: image.filename,
     base64Length: image.base64.length,
   };
-}
-
-export async function recordBackgroundDiagnosticLog(
-  settings: ExtensionSettings,
-  event: DiagnosticLogEventInput,
-): Promise<void> {
-  if (!settings.enableDebugLog || !event.runId) {
-    return;
-  }
-  try {
-    await recordDiagnosticLogEvent(createDiagnosticEvent(event, event.sessionId ?? backgroundDiagnosticSessionId));
-  } catch {
-    // Diagnostic writes are best-effort and must not affect API requests.
-  }
 }
 
 export function deriveDiagnosticRuns(events: DiagnosticLogEvent[]): DiagnosticLogRun[] {
@@ -192,44 +174,83 @@ export function deriveDiagnosticRuns(events: DiagnosticLogEvent[]): DiagnosticLo
   return [...runs.values()].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
 }
 
-export async function exportDiagnosticLog(): Promise<DiagnosticLogTextExport> {
-  await diagnosticLogWriteQueue.catch(() => undefined);
-  const store = await readDiagnosticLogStore();
-  const settings = await getSettings();
-  const chromeApi = getChromeApi();
-  const manifest = chromeApi?.runtime?.getManifest?.();
-  const events = store.events;
-  const exportedAt = new Date().toISOString();
-  const extension = {
-    version: manifest?.version,
-    manifestVersion: 3,
-  };
-  const environment = {
-    userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
-    language: typeof navigator !== 'undefined' ? navigator.language : undefined,
-    platform: typeof navigator !== 'undefined' ? navigator.platform : undefined,
-    crossOriginIsolated: typeof crossOriginIsolated === 'boolean' ? crossOriginIsolated : undefined,
-  };
-  const activeSettings = sanitizeExtensionSettings(settings);
-  const runs = deriveDiagnosticRuns(events);
-  return {
-    schemaVersion: 1,
-    exportedAt,
-    filenamePrefix: 'shinobu-diagnostic-log',
-    contentType: 'text/plain;charset=utf-8',
-    eventCount: events.length,
-    text: formatDiagnosticTextLog(events, {
-      exportedAt,
-      extension,
-      environment,
-      activeSettings,
-      runs,
-      truncated: store.truncated,
-      truncationReason: store.truncationReason,
-    }),
-  };
-}
+export type DiagnosticLogStoreService = {
+  record(event: DiagnosticLogEvent): Promise<void>;
+  recordBackground(
+    settings: ExtensionSettings,
+    event: DiagnosticLogEventInput,
+  ): Promise<void>;
+  export(): Promise<DiagnosticLogTextExport>;
+  clear(): Promise<void>;
+};
 
-export async function clearDiagnosticLog(): Promise<void> {
-  await storageRemove(diagnosticLogStorageKey);
+export function createDiagnosticLogStore(options: {
+  storage: ExtensionStorage;
+  getSettings(): Promise<ExtensionSettings>;
+  extensionVersion: string;
+}): DiagnosticLogStoreService {
+  const backgroundSessionId = createDiagnosticId("background-session");
+  let writeQueue: Promise<void> = Promise.resolve();
+
+  const record = (event: DiagnosticLogEvent): Promise<void> => {
+    const write = writeQueue.then(
+      () => appendDiagnosticLogEvent(options.storage, event),
+      () => appendDiagnosticLogEvent(options.storage, event),
+    );
+    writeQueue = write.catch(() => undefined);
+    return write;
+  };
+
+  return {
+    record,
+    async recordBackground(settings, event) {
+      if (!settings.enableDebugLog || !event.runId) return;
+      try {
+        await record(createDiagnosticEvent(
+          event,
+          event.sessionId ?? backgroundSessionId,
+        ));
+      } catch {
+        // Diagnostic writes are best-effort and must not affect API requests.
+      }
+    },
+    async export() {
+      await writeQueue.catch(() => undefined);
+      const store = await readDiagnosticLogStore(options.storage);
+      const settings = await options.getSettings();
+      const events = store.events;
+      const exportedAt = new Date().toISOString();
+      const extension = {
+        version: options.extensionVersion,
+        manifestVersion: 3,
+      };
+      const environment = {
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+        language: typeof navigator !== 'undefined' ? navigator.language : undefined,
+        platform: typeof navigator !== 'undefined' ? navigator.platform : undefined,
+        crossOriginIsolated: typeof crossOriginIsolated === 'boolean' ? crossOriginIsolated : undefined,
+      };
+      const activeSettings = sanitizeExtensionSettings(settings);
+      const runs = deriveDiagnosticRuns(events);
+      return {
+        schemaVersion: 1,
+        exportedAt,
+        filenamePrefix: 'shinobu-diagnostic-log',
+        contentType: 'text/plain;charset=utf-8',
+        eventCount: events.length,
+        text: formatDiagnosticTextLog(events, {
+          exportedAt,
+          extension,
+          environment,
+          activeSettings,
+          runs,
+          truncated: store.truncated,
+          truncationReason: store.truncationReason,
+        }),
+      };
+    },
+    async clear() {
+      await options.storage.remove([diagnosticLogStorageKey]);
+    },
+  };
 }

@@ -19,6 +19,7 @@ type RawSender = {
   origin?: string;
   tab?: {
     id?: number;
+    windowId?: number;
     url?: string;
   };
 };
@@ -37,6 +38,7 @@ function rawSender(source: ExtensionMessageSource): RawSender {
       frameId: source.frameId,
       tab: {
         id: source.tabId,
+        windowId: source.windowId,
         url: source.url,
       },
     };

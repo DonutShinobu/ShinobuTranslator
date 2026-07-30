@@ -3,7 +3,11 @@ import {
   defaultExtensionSettings,
   extensionSettingsStorageKey,
 } from '../../src/shared/config';
-import { getSettings, setSettings } from '../../src/background/settings/settingsStore';
+import { createSettingsStore } from '../../src/background/settings/settingsStore';
+import type {
+  ExtensionStorage,
+  JsonValue,
+} from '../../apps/extension/src/capabilities/contracts';
 import {
   parseImageDataUrl,
 } from '../../src/background/images/imageService';
@@ -100,26 +104,26 @@ describe('background stable identifiers', () => {
 
 describe('settings store', () => {
   it('normalizes reads and persists writes under the stable settings key', async () => {
-    const storage: Record<string, unknown> = {};
-    vi.stubGlobal('chrome', {
-      runtime: {},
-      storage: {
-        local: {
-          get(keys: string, callback: (items: Record<string, unknown>) => void) {
-            callback({ [keys]: storage[keys] });
-          },
-          set(items: Record<string, unknown>, callback: () => void) {
-            Object.assign(storage, items);
-            callback();
-          },
-        },
+    const values: Record<string, JsonValue> = {};
+    const storage: ExtensionStorage = {
+      async read(keys) {
+        return Object.fromEntries(
+          keys.map((key) => [key, values[key]]),
+        );
       },
-    });
+      async write(next) {
+        Object.assign(values, next);
+      },
+      async remove(keys) {
+        for (const key of keys) delete values[key];
+      },
+    };
+    const settings = createSettingsStore(storage);
 
-    await expect(getSettings()).resolves.toEqual(defaultExtensionSettings);
+    await expect(settings.get()).resolves.toEqual(defaultExtensionSettings);
     const nextSettings = { ...defaultExtensionSettings, targetLang: 'zh-CHT' as const };
-    await expect(setSettings(nextSettings)).resolves.toEqual(nextSettings);
-    expect(storage[extensionSettingsStorageKey]).toEqual(nextSettings);
+    await expect(settings.set(nextSettings)).resolves.toEqual(nextSettings);
+    expect(values[extensionSettingsStorageKey]).toEqual(nextSettings);
   });
 });
 

@@ -1,8 +1,13 @@
-import { sendRuntimeMessage } from '../../../shared/messages';
+import {
+  unavailableRuntimeMessageSender,
+  type RuntimeMessageSender,
+} from '../../../shared/messages';
 import type { PhotoState } from '../types';
 
 export class CardStateController {
-  constructor(private readonly sendMessage: typeof sendRuntimeMessage = sendRuntimeMessage) {}
+  constructor(
+    private readonly sendMessage: RuntimeMessageSender = unavailableRuntimeMessageSender,
+  ) {}
 
   toggleStageTimingCard(state: PhotoState, render: () => void): void {
     if (!state.stageTimingCard) return;

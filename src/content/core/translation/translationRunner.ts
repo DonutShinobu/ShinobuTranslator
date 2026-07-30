@@ -17,8 +17,11 @@ import type {
   LocalPipelineArtifactSummary,
   LocalPipelineResult,
 } from '../../../shared/localPipelineProtocol';
-import { sendRuntimeMessage } from '../../../shared/messages';
-import type { RuntimeErrorDetail } from '../../../shared/messages';
+import {
+  unavailableRuntimeMessageSender,
+  type RuntimeErrorDetail,
+  type RuntimeMessageSender,
+} from '../../../shared/messages';
 import type {
   ErrorDetailCardData,
   PhotoState,
@@ -45,6 +48,9 @@ import {
 import type { RunLocalPipeline } from './localPipelineClient';
 
 const loggedProgressJankReports = new Set<string>();
+const unavailableLocalPipeline: RunLocalPipeline = async () => {
+  throw new Error('扩展 runtime channel capability 未注入');
+};
 
 function validateActiveSettings(settings: ExtensionSettings): string | null {
   const baseError = validateSettings(settings);
@@ -72,7 +78,11 @@ export function createProgressJankMonitor(entry: ProgressJankEntry): ProgressJan
   return monitor;
 }
 
-export function finishProgressJankMonitor(monitor: ProgressJankMonitor | null, diagnosticRunId?: string): ProgressJankReport | null {
+export function finishProgressJankMonitor(
+  monitor: ProgressJankMonitor | null,
+  diagnosticRunId?: string,
+  sendMessage?: RuntimeMessageSender,
+): ProgressJankReport | null {
   if (!monitor) {
     return null;
   }
@@ -87,7 +97,7 @@ export function finishProgressJankMonitor(monitor: ProgressJankMonitor | null, d
       source: { context: 'content', module: 'progressJank.ts' },
       message: `进度 UI 卡顿报告：${report.entry}`,
       data: { progressJank: report },
-    });
+    }, sendMessage);
   }
   return report;
 }
@@ -166,21 +176,23 @@ export type DownloadImageFileOptions = {
 };
 
 export type TranslationRunnerDependencies = {
-  sendMessage?: typeof sendRuntimeMessage;
+  sendMessage?: RuntimeMessageSender;
   translatorCore?: ExtensionTranslatorCore;
   runLocalPipeline?: RunLocalPipeline;
   urlApi?: Pick<typeof URL, 'createObjectURL' | 'revokeObjectURL'>;
 };
 
 export class TranslationRunner {
-  private readonly sendMessage: typeof sendRuntimeMessage;
+  private readonly sendMessage: RuntimeMessageSender;
   private readonly translatorCore: ExtensionTranslatorCore;
   private readonly urlApi: Pick<typeof URL, 'createObjectURL' | 'revokeObjectURL'>;
 
   constructor(dependencies: TranslationRunnerDependencies = {}) {
-    this.sendMessage = dependencies.sendMessage ?? sendRuntimeMessage;
+    this.sendMessage = dependencies.sendMessage ?? unavailableRuntimeMessageSender;
     this.translatorCore = dependencies.translatorCore
-      ?? createExtensionTranslatorCore(dependencies.runLocalPipeline);
+      ?? createExtensionTranslatorCore(
+        dependencies.runLocalPipeline ?? unavailableLocalPipeline,
+      );
     this.urlApi = dependencies.urlApi ?? URL;
   }
 
@@ -245,7 +257,7 @@ export class TranslationRunner {
             originalUrl: sanitizeDiagnosticUrl(originalUrl),
             referrerPolicy,
           },
-        });
+        }, this.sendMessage);
       }
       try {
         const downloadResponse = await this.sendMessage({
@@ -276,7 +288,7 @@ export class TranslationRunner {
               base64Length: downloadResponse.base64.length,
               durationMs: performance.now() - startedAt,
             },
-          });
+          }, this.sendMessage);
         }
         return {
           file,
@@ -296,7 +308,7 @@ export class TranslationRunner {
               durationMs: performance.now() - startedAt,
             },
             error: toDiagnosticError(error),
-          });
+          }, this.sendMessage);
         }
         throw error;
       }
@@ -440,12 +452,16 @@ export class TranslationRunner {
             originalUrl: sanitizeDiagnosticUrl(state.originalUrl),
             file: toFileDiagnosticData(file),
           },
-        });
+        }, this.sendMessage);
       }
       try {
         if (usesNanoBananaImagePipeline(runSettings.settings)) {
           await this.runNanoBananaImageTranslateFromFile({ ...options, diagnosticRunId });
-          progressJank = finishProgressJankMonitor(jankMonitor ?? null, diagnosticRunId);
+          progressJank = finishProgressJankMonitor(
+            jankMonitor ?? null,
+            diagnosticRunId,
+            this.sendMessage,
+          );
           if (diagnosticRunId) {
             await emitDiagnosticLogAsync({
               runId: diagnosticRunId,
@@ -458,7 +474,7 @@ export class TranslationRunner {
                 durationMs: performance.now() - runStartAt,
                 progressJank,
               },
-            });
+            }, this.sendMessage);
           }
           return { translationDebug: null };
         }
@@ -479,7 +495,7 @@ export class TranslationRunner {
                 stage: progress.stage,
                 detail: progress.detail,
               },
-            });
+            }, this.sendMessage);
           }
           this.updatePipelineProgress(state, progress, onProgress, jankMonitor);
         });
@@ -500,7 +516,11 @@ export class TranslationRunner {
         if (runSettings.showTypesetDebug && localResult.debug) {
           state.debugOriginalUrl = this.urlApi.createObjectURL(localResult.debug);
         }
-        progressJank = finishProgressJankMonitor(jankMonitor ?? null, diagnosticRunId);
+        progressJank = finishProgressJankMonitor(
+          jankMonitor ?? null,
+          diagnosticRunId,
+          this.sendMessage,
+        );
         state.debugLogData = undefined;
         if (diagnosticRunId) {
           emitDiagnosticLog({
@@ -510,7 +530,7 @@ export class TranslationRunner {
             source: { context: 'content', module: 'TranslatorCore.ts' },
             message: '本地 pipeline artifacts 已汇总',
             data: toPipelineArtifactsDiagnosticData(artifacts, progressJank),
-          });
+          }, this.sendMessage);
           await emitDiagnosticLogAsync({
             runId: diagnosticRunId,
             level: 'info',
@@ -521,7 +541,7 @@ export class TranslationRunner {
               runStatus: 'success',
               durationMs: performance.now() - runStartAt,
             },
-          });
+          }, this.sendMessage);
         }
 
         state.translatedUrl = translatedUrl;
@@ -556,7 +576,11 @@ export class TranslationRunner {
         return { translationDebug: artifacts.translationDebug };
       } catch (error) {
         if (!progressJank) {
-          progressJank = finishProgressJankMonitor(jankMonitor ?? null, diagnosticRunId);
+          progressJank = finishProgressJankMonitor(
+            jankMonitor ?? null,
+            diagnosticRunId,
+            this.sendMessage,
+          );
         }
         if (diagnosticRunId) {
           const artifacts = getPipelineArtifactsFromError(error);
@@ -574,7 +598,7 @@ export class TranslationRunner {
               artifacts: artifacts ? toPipelineArtifactsDiagnosticData(artifacts, progressJank) : undefined,
             },
             error: diagnosticError,
-          });
+          }, this.sendMessage);
         }
         throw error;
       }

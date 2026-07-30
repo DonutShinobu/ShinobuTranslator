@@ -1,9 +1,5 @@
-import {
-  defaultExtensionSettings,
-  extensionSettingsStorageKey,
-} from '../shared/config';
-import { getChromeApi } from '../shared/chrome';
-import type { ChromeMessageSender } from '../shared/chrome';
+import { defaultExtensionSettings } from '../shared/config';
+import type { ChromeLike, ChromeMessageSender } from '../shared/chrome';
 import {
   getRuntimeErrorCode,
   getRuntimeTransportMetadata,
@@ -11,125 +7,147 @@ import {
   type RuntimeResponse,
 } from '../shared/messages';
 import { toErrorMessage } from '../shared/utils';
+import { normalizeJsonValue } from '../shared/jsonValue';
+import {
+  createChromeExtensionAdapter,
+} from '../../apps/extension/src/capabilities/chromeAdapter';
+import type {
+  JsonValue,
+} from '../../apps/extension/src/capabilities/contracts';
+import type {
+  TabDocumentSource,
+} from '../../apps/extension/src/capabilities/guards';
 import { getGeminiAppRawResponse } from './geminiAppClient';
-import { storageSet } from './storage/chromeStorage';
-import { getSettings, setSettings } from './settings/settingsStore';
-import {
-  clearDiagnosticLog,
-  exportDiagnosticLog,
-  recordDiagnosticLogEvent,
-} from './diagnostics/logStore';
-import {
-  captureVisibleTab,
-} from './images/imageService';
+import { createSettingsStore } from './settings/settingsStore';
+import { createDiagnosticLogStore } from './diagnostics/logStore';
+import { captureVisibleTab } from './images/imageService';
 import { createImageDownloader } from './images/imageDownloader';
 import { registerMenusAndCommands } from './menus/registerMenus';
 import {
-  getOpenAiOAuthStatus,
-  handleOpenAiOAuthCallbackUrl,
-  handleOpenAiOAuthTabRemoved,
-  loginOpenAiOAuth,
-  logoutOpenAiOAuth,
+  createOpenAiOAuthService,
 } from './openai/oauthService';
 import { loginGeminiApp, readGeminiAppAuthStatus } from './gemini/authService';
-import {
-  handleGeminiApiImageTranslate,
-  handleGeminiAppImageTranslate,
-  handleLlmChatCompletions,
-} from './providers/providerService';
-import { routeBackgroundMessage } from './messages/router';
-import type { BackgroundServices } from './messages/router';
+import { createProviderService } from './providers/providerService';
+import { routeBackgroundMessage, type BackgroundServices } from './messages/router';
 import { registerOffscreenPipelineBroker } from './localPipeline/offscreenBroker';
 
-const imageDownloader = createImageDownloader();
+function toLegacyMessageSender(source: TabDocumentSource): ChromeMessageSender {
+  return {
+    documentId: source.documentId,
+    documentUrl: source.url,
+    frameId: source.frameId,
+    tab: {
+      id: source.tabId,
+      windowId: source.windowId,
+      url: source.url,
+    },
+  };
+}
 
-const services: BackgroundServices = {
-  settings: {
-    get: getSettings,
-    set: setSettings,
-  },
-  diagnostics: {
-    record: recordDiagnosticLogEvent,
-    export: exportDiagnosticLog,
-    clear: clearDiagnosticLog,
-  },
-  images: {
-    download: imageDownloader.download,
-    capture: captureVisibleTab,
-  },
-  openAi: {
-    status: getOpenAiOAuthStatus,
-    login: loginOpenAiOAuth,
-    logout: logoutOpenAiOAuth,
-  },
-  geminiAuth: {
-    status: readGeminiAppAuthStatus,
-    login: loginGeminiApp,
-  },
-  providers: {
-    llm: handleLlmChatCompletions,
-    geminiAppImage: handleGeminiAppImageTranslate,
-    geminiApiImage: handleGeminiApiImageTranslate,
-  },
-};
-
+function toJsonValue(response: RuntimeResponse): JsonValue {
+  return normalizeJsonValue(response);
+}
 
 function initializeBackground(): void {
-  const chromeApi = getChromeApi();
-  if (!chromeApi?.runtime?.onMessage?.addListener) {
-    return;
-  }
+  const nativeChrome = (globalThis as typeof globalThis & {
+    chrome?: unknown;
+  }).chrome;
+  if (!nativeChrome) return;
 
-  registerOffscreenPipelineBroker(chromeApi);
+  const capabilities = createChromeExtensionAdapter(nativeChrome).background();
+  const chromeApi = nativeChrome as ChromeLike;
+  const settingsStore = createSettingsStore(capabilities.persistentStorage);
+  const diagnostics = createDiagnosticLogStore({
+    storage: capabilities.persistentStorage,
+    getSettings: settingsStore.get,
+    extensionVersion: capabilities.environment.metadata.version,
+  });
+  const openAiOAuth = createOpenAiOAuthService({
+    storage: capabilities.persistentStorage,
+  });
+  const providers = createProviderService({
+    getSettings: settingsStore.get,
+    diagnostics,
+    openAiOAuth,
+  });
+  const imageDownloader = createImageDownloader({
+    chromeApi,
+    sessionStorage: capabilities.sessionStorage,
+  });
 
-  chromeApi.runtime.onMessage.addListener((message: unknown, sender: ChromeMessageSender, sendResponse: (response: unknown) => void) => {
-    if (!isRuntimeMessage(message)) {
-      return false;
-    }
+  const services: BackgroundServices = {
+    settings: settingsStore,
+    diagnostics: {
+      record: diagnostics.record,
+      export: diagnostics.export,
+      clear: diagnostics.clear,
+    },
+    images: {
+      download: (request, source) => imageDownloader.download(
+        request,
+        toLegacyMessageSender(source),
+      ),
+      capture: (source) => captureVisibleTab(toLegacyMessageSender(source)),
+    },
+    openAi: {
+      status: openAiOAuth.status,
+      login: openAiOAuth.login,
+      logout: openAiOAuth.logout,
+    },
+    geminiAuth: {
+      status: readGeminiAppAuthStatus,
+      login: loginGeminiApp,
+    },
+    providers,
+  };
 
-    void routeBackgroundMessage(message, sender, services)
-      .then((response) => {
-        sendResponse(response);
-      })
-      .catch((error: unknown) => {
-        const geminiRawResponse = getGeminiAppRawResponse(error);
-        const errorCode = getRuntimeErrorCode(error);
-        const transportMetadata = getRuntimeTransportMetadata(error);
-        sendResponse({
-          ok: false,
-          type: message.type,
-          error: toErrorMessage(error),
-          ...(errorCode ? { errorCode } : {}),
-          ...transportMetadata,
-          ...(geminiRawResponse !== null
-            ? {
-                errorDetail: {
-                  title: 'Gemini 实际回复',
-                  content: geminiRawResponse,
-                },
-              }
-            : {}),
-        } satisfies RuntimeResponse);
+  registerOffscreenPipelineBroker(
+    chromeApi,
+    capabilities.runtimeChannels,
+    capabilities.environment,
+  );
+
+  capabilities.runtimeRequests.onRequest(async (request, source) => {
+    if (!isRuntimeMessage(request)) return undefined;
+    try {
+      return toJsonValue(await routeBackgroundMessage(request, source, services));
+    } catch (error: unknown) {
+      const geminiRawResponse = getGeminiAppRawResponse(error);
+      const errorCode = getRuntimeErrorCode(error);
+      const transportMetadata = getRuntimeTransportMetadata(error);
+      return toJsonValue({
+        ok: false,
+        type: request.type,
+        error: toErrorMessage(error),
+        ...(errorCode ? { errorCode } : {}),
+        ...transportMetadata,
+        ...(geminiRawResponse !== null
+          ? {
+              errorDetail: {
+                title: 'Gemini 实际回复',
+                content: geminiRawResponse,
+              },
+            }
+          : {}),
       });
-    return true;
+    }
   });
 
   chromeApi.tabs?.onUpdated?.addListener((tabId, changeInfo) => {
     if (typeof changeInfo.url === 'string') {
-      void handleOpenAiOAuthCallbackUrl(tabId, changeInfo.url);
+      void openAiOAuth.handleCallbackUrl(tabId, changeInfo.url);
     }
   });
-
   chromeApi.tabs?.onRemoved?.addListener((tabId) => {
-    void handleOpenAiOAuthTabRemoved(tabId);
+    void openAiOAuth.handleTabRemoved(tabId);
   });
 
-  void getSettings()
+  void settingsStore.get()
     .catch(() => defaultExtensionSettings)
-    .then((settings) => storageSet(extensionSettingsStorageKey, settings))
+    .then(settingsStore.set)
     .catch(() => undefined);
 
   registerMenusAndCommands();
 }
 
-void initializeBackground();
+initializeBackground();

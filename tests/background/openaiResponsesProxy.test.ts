@@ -1,13 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const oauthMocks = vi.hoisted(() => ({
-  getOpenAiOAuthInstallationId: vi.fn(async () => 'installation-1'),
   createOpenAiRequestId: vi.fn(() => 'request-1'),
-  getValidOpenAiOAuthTokens: vi.fn(async () => ({
-    accessToken: 'access-token',
-    accountId: 'account-1',
-  })),
-  refreshOpenAiOAuthTokens: vi.fn(),
   readJsonResponse: vi.fn(async (response: Response) => response.json()),
   extractResponseError: vi.fn((data: unknown) => (
     typeof data === 'object'
@@ -21,6 +15,21 @@ const oauthMocks = vi.hoisted(() => ({
 vi.mock('../../src/background/openai/oauthService', () => oauthMocks);
 
 import { proxyOpenAiChatCompletions } from '../../src/background/openai/responsesProxy';
+
+const oauthService = {
+  getInstallationId: vi.fn(async () => 'installation-1'),
+  getValidTokens: vi.fn(async () => ({
+    idToken: 'id-token',
+    accessToken: 'access-token',
+    refreshToken: 'refresh-token',
+    accountId: 'account-1',
+    email: null,
+    planType: null,
+    expiresAt: Date.now() + 60_000,
+    lastRefresh: Date.now(),
+  })),
+  refreshTokens: vi.fn(),
+};
 
 beforeEach(() => {
   oauthMocks.createOpenAiRequestId.mockReturnValue('request-1');
@@ -53,6 +62,7 @@ describe('proxyOpenAiChatCompletions', () => {
         baseUrl: 'https://api.openai.com/v1',
         thinkingLevel: 'max',
       },
+      oauthService,
     )).rejects.toMatchObject({
       errorCode: 'llm_thinking_config',
       message: '当前模型不支持所选思考设置: unsupported effort max',
@@ -79,6 +89,7 @@ describe('proxyOpenAiChatCompletions', () => {
         authMode: 'openai_oauth',
         baseUrl: 'https://api.openai.com/v1',
       },
+      oauthService,
     )).rejects.toThrow('OpenAI ChatGPT 请求失败: HTTP 413: upstream rejected request');
   });
 });

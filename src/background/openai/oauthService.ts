@@ -1,3 +1,6 @@
+import type {
+  ExtensionStorage,
+} from "../../../apps/extension/src/capabilities/contracts";
 import { getChromeApi } from "../../shared/chrome";
 import {
   buildOpenAiAuthorizeUrl,
@@ -20,11 +23,7 @@ import type {
   StoredOpenAiOAuthTokens,
 } from "../../shared/openaiOAuth";
 import { toErrorMessage } from "../../shared/utils";
-import {
-  storageGet,
-  storageRemove,
-  storageSet,
-} from "../storage/chromeStorage";
+import { normalizeJsonValue } from "../../shared/jsonValue";
 import { isRecord } from "../utils";
 
 export const openAiOAuthStorageKey = 'mangaTranslate.openaiOAuth';
@@ -33,10 +32,12 @@ export const openAiOAuthLastErrorStorageKey = 'mangaTranslate.openaiOAuthLastErr
 export const openAiOAuthInstallationIdStorageKey = 'mangaTranslate.openaiOAuthInstallationId';
 const openAiOAuthPendingTtlMs = 10 * 60 * 1000;
 
-let openAiRefreshPromise: {
-  refreshToken: string;
-  promise: Promise<StoredOpenAiOAuthTokens>;
-} | null = null;
+type OpenAiRefreshState = {
+  current: {
+    refreshToken: string;
+    promise: Promise<StoredOpenAiOAuthTokens>;
+  } | null;
+};
 
 class OpenAiOAuthRefreshError extends Error {
   constructor(message: string, readonly permanent: boolean) {
@@ -56,6 +57,21 @@ type PendingOpenAiOAuthLogin = {
   redirectUri: string;
   tabId?: number;
   createdAt: number;
+};
+
+export type OpenAiOAuthDependencies = {
+  storage: ExtensionStorage;
+};
+
+export type OpenAiOAuthService = {
+  status(): Promise<OpenAiOAuthStatusInfo>;
+  login(): Promise<OpenAiOAuthStatusInfo>;
+  logout(): Promise<OpenAiOAuthStatusInfo>;
+  handleCallbackUrl(tabId: number, rawUrl: string): Promise<void>;
+  handleTabRemoved(tabId: number): Promise<void>;
+  getInstallationId(): Promise<string>;
+  getValidTokens(): Promise<StoredOpenAiOAuthTokens>;
+  refreshTokens(tokens: StoredOpenAiOAuthTokens): Promise<StoredOpenAiOAuthTokens>;
 };
 
 
@@ -118,52 +134,82 @@ function toOpenAiOAuthStatus(tokens: StoredOpenAiOAuthTokens): OpenAiOAuthStatus
   };
 }
 
-async function getStoredOpenAiOAuthTokens(): Promise<StoredOpenAiOAuthTokens | null> {
-  const saved = await storageGet(openAiOAuthStorageKey);
+async function getStoredOpenAiOAuthTokens(
+  dependencies: OpenAiOAuthDependencies,
+): Promise<StoredOpenAiOAuthTokens | null> {
+  const values = await dependencies.storage.read([openAiOAuthStorageKey]);
+  const saved = values[openAiOAuthStorageKey];
   return isStoredOpenAiOAuthTokens(saved) ? saved : null;
 }
 
-async function saveOpenAiOAuthTokens(tokens: StoredOpenAiOAuthTokens): Promise<StoredOpenAiOAuthTokens> {
-  await storageSet(openAiOAuthStorageKey, tokens);
+async function saveOpenAiOAuthTokens(
+  dependencies: OpenAiOAuthDependencies,
+  tokens: StoredOpenAiOAuthTokens,
+): Promise<StoredOpenAiOAuthTokens> {
+  await dependencies.storage.write({
+    [openAiOAuthStorageKey]: normalizeJsonValue(tokens),
+  });
   return tokens;
 }
 
-async function getStoredOpenAiOAuthLastError(): Promise<string | undefined> {
-  const saved = await storageGet(openAiOAuthLastErrorStorageKey);
+async function getStoredOpenAiOAuthLastError(
+  dependencies: OpenAiOAuthDependencies,
+): Promise<string | undefined> {
+  const values = await dependencies.storage.read([
+    openAiOAuthLastErrorStorageKey,
+  ]);
+  const saved = values[openAiOAuthLastErrorStorageKey];
   return typeof saved === 'string' && saved.length > 0 ? saved : undefined;
 }
 
-async function clearOpenAiOAuthLastError(): Promise<void> {
-  await storageRemove(openAiOAuthLastErrorStorageKey);
+async function clearOpenAiOAuthLastError(
+  dependencies: OpenAiOAuthDependencies,
+): Promise<void> {
+  await dependencies.storage.remove([openAiOAuthLastErrorStorageKey]);
 }
 
-async function getPendingOpenAiOAuthLogin(now = Date.now()): Promise<PendingOpenAiOAuthLogin | null> {
-  const saved = await storageGet(openAiOAuthPendingStorageKey);
+async function getPendingOpenAiOAuthLogin(
+  dependencies: OpenAiOAuthDependencies,
+  now = Date.now(),
+): Promise<PendingOpenAiOAuthLogin | null> {
+  const values = await dependencies.storage.read([openAiOAuthPendingStorageKey]);
+  const saved = values[openAiOAuthPendingStorageKey];
   if (!isPendingOpenAiOAuthLogin(saved)) {
     return null;
   }
   if (now - saved.createdAt > openAiOAuthPendingTtlMs) {
-    await storageRemove(openAiOAuthPendingStorageKey);
-    await storageSet(openAiOAuthLastErrorStorageKey, 'OpenAI 登录已超时，请重新登录');
+    await dependencies.storage.remove([openAiOAuthPendingStorageKey]);
+    await dependencies.storage.write({
+      [openAiOAuthLastErrorStorageKey]: 'OpenAI 登录已超时，请重新登录',
+    });
     return null;
   }
   return saved;
 }
 
-async function savePendingOpenAiOAuthLogin(pending: PendingOpenAiOAuthLogin): Promise<void> {
-  await storageSet(openAiOAuthPendingStorageKey, pending);
+async function savePendingOpenAiOAuthLogin(
+  dependencies: OpenAiOAuthDependencies,
+  pending: PendingOpenAiOAuthLogin,
+): Promise<void> {
+  await dependencies.storage.write({
+    [openAiOAuthPendingStorageKey]: normalizeJsonValue(pending),
+  });
 }
 
-async function clearPendingOpenAiOAuthLogin(): Promise<void> {
-  await storageRemove(openAiOAuthPendingStorageKey);
+async function clearPendingOpenAiOAuthLogin(
+  dependencies: OpenAiOAuthDependencies,
+): Promise<void> {
+  await dependencies.storage.remove([openAiOAuthPendingStorageKey]);
 }
 
-function openOpenAiAuthTab(url: string): Promise<number | undefined> {
+async function openOpenAiAuthTab(
+  _dependencies: OpenAiOAuthDependencies,
+  url: string,
+): Promise<number | undefined> {
   const chromeApi = getChromeApi();
   if (!chromeApi?.tabs?.create) {
-    return Promise.reject(new Error('当前浏览器不支持打开 OpenAI 登录页，请确认扩展已授予 tabs 权限'));
+    throw new Error('当前浏览器不支持打开 OpenAI 登录页，请确认扩展已授予 tabs 权限');
   }
-
   return new Promise((resolve, reject) => {
     chromeApi.tabs?.create?.({ url, active: true }, (tab = {}) => {
       const lastError = chromeApi.runtime?.lastError;
@@ -176,15 +222,14 @@ function openOpenAiAuthTab(url: string): Promise<number | undefined> {
   });
 }
 
-function closeOpenAiAuthTab(tabId?: number): Promise<void> {
+async function closeOpenAiAuthTab(
+  _dependencies: OpenAiOAuthDependencies,
+  tabId?: number,
+): Promise<void> {
   const chromeApi = getChromeApi();
-  if (typeof tabId !== 'number' || !chromeApi?.tabs?.remove) {
-    return Promise.resolve();
-  }
-  return new Promise((resolve) => {
-    chromeApi.tabs?.remove?.(tabId, () => {
-      resolve();
-    });
+  if (typeof tabId !== 'number' || !chromeApi?.tabs?.remove) return;
+  await new Promise<void>((resolve) => {
+    chromeApi.tabs?.remove?.(tabId, () => resolve());
   });
 }
 
@@ -214,9 +259,13 @@ async function exchangeOpenAiAuthorizationCode(
   return normalizeOpenAiOAuthTokenResponse(data as OpenAiOAuthTokenResponse);
 }
 
-export async function refreshOpenAiOAuthTokens(tokens: StoredOpenAiOAuthTokens): Promise<StoredOpenAiOAuthTokens> {
-  if (openAiRefreshPromise?.refreshToken === tokens.refreshToken) {
-    return openAiRefreshPromise.promise;
+async function refreshOpenAiOAuthTokens(
+  dependencies: OpenAiOAuthDependencies,
+  tokens: StoredOpenAiOAuthTokens,
+  refreshState: OpenAiRefreshState,
+): Promise<StoredOpenAiOAuthTokens> {
+  if (refreshState.current?.refreshToken === tokens.refreshToken) {
+    return refreshState.current.promise;
   }
 
   const promise = (async () => {
@@ -238,13 +287,19 @@ export async function refreshOpenAiOAuthTokens(tokens: StoredOpenAiOAuthTokens):
         isPermanentOpenAiOAuthRefreshFailure(data),
       );
     }
-    const current = await getStoredOpenAiOAuthTokens();
+    const current = await getStoredOpenAiOAuthTokens(dependencies);
     if (isOpenAiOAuthRefreshSuperseded(current, tokens)) {
       throw new OpenAiOAuthRefreshSupersededError();
     }
-    return saveOpenAiOAuthTokens(normalizeOpenAiOAuthTokenResponse(data as OpenAiOAuthTokenResponse, tokens.refreshToken));
+    return saveOpenAiOAuthTokens(
+      dependencies,
+      normalizeOpenAiOAuthTokenResponse(
+        data as OpenAiOAuthTokenResponse,
+        tokens.refreshToken,
+      ),
+    );
   })();
-  openAiRefreshPromise = {
+  refreshState.current = {
     refreshToken: tokens.refreshToken,
     promise,
   };
@@ -252,17 +307,20 @@ export async function refreshOpenAiOAuthTokens(tokens: StoredOpenAiOAuthTokens):
   try {
     return await promise;
   } finally {
-    if (openAiRefreshPromise?.promise === promise) {
-      openAiRefreshPromise = null;
+    if (refreshState.current?.promise === promise) {
+      refreshState.current = null;
     }
   }
 }
 
-export async function getOpenAiOAuthStatus(): Promise<OpenAiOAuthStatusInfo> {
-  const tokens = await getStoredOpenAiOAuthTokens();
+async function getOpenAiOAuthStatus(
+  dependencies: OpenAiOAuthDependencies,
+  refreshState: OpenAiRefreshState,
+): Promise<OpenAiOAuthStatusInfo> {
+  const tokens = await getStoredOpenAiOAuthTokens(dependencies);
   if (!tokens) {
-    const pending = await getPendingOpenAiOAuthLogin();
-    const error = await getStoredOpenAiOAuthLastError();
+    const pending = await getPendingOpenAiOAuthLogin(dependencies);
+    const error = await getStoredOpenAiOAuthLastError(dependencies);
     return {
       authenticated: false,
       pending: Boolean(pending),
@@ -274,21 +332,29 @@ export async function getOpenAiOAuthStatus(): Promise<OpenAiOAuthStatusInfo> {
   }
 
   try {
-    const refreshed = await refreshOpenAiOAuthTokens(tokens);
+    const refreshed = await refreshOpenAiOAuthTokens(
+      dependencies,
+      tokens,
+      refreshState,
+    );
     return toOpenAiOAuthStatus(refreshed);
   } catch (error) {
     if (error instanceof OpenAiOAuthRefreshSupersededError) {
-      return getOpenAiOAuthStatus();
+      return getOpenAiOAuthStatus(dependencies, refreshState);
     }
     if (error instanceof OpenAiOAuthRefreshError && error.permanent) {
-      await storageRemove(openAiOAuthStorageKey);
-      await storageSet(openAiOAuthLastErrorStorageKey, toErrorMessage(error));
+      await dependencies.storage.remove([openAiOAuthStorageKey]);
+      await dependencies.storage.write({
+        [openAiOAuthLastErrorStorageKey]: toErrorMessage(error),
+      });
       return {
         authenticated: false,
         error: toErrorMessage(error),
       };
     }
-    await storageSet(openAiOAuthLastErrorStorageKey, toErrorMessage(error));
+    await dependencies.storage.write({
+      [openAiOAuthLastErrorStorageKey]: toErrorMessage(error),
+    });
     return {
       ...toOpenAiOAuthStatus(tokens),
       error: toErrorMessage(error),
@@ -296,45 +362,51 @@ export async function getOpenAiOAuthStatus(): Promise<OpenAiOAuthStatusInfo> {
   }
 }
 
-export async function loginOpenAiOAuth(): Promise<OpenAiOAuthStatusInfo> {
+async function loginOpenAiOAuth(
+  dependencies: OpenAiOAuthDependencies,
+): Promise<OpenAiOAuthStatusInfo> {
   const redirectUri = openAiOAuthLoopbackRedirectUri;
   const state = createOpenAiOAuthRandomString(32);
   const codeVerifier = createOpenAiOAuthRandomString(64);
   const codeChallenge = await createOpenAiOAuthCodeChallenge(codeVerifier);
-  const previousPending = await getPendingOpenAiOAuthLogin();
-  await clearOpenAiOAuthLastError();
-  await closeOpenAiAuthTab(previousPending?.tabId);
+  const previousPending = await getPendingOpenAiOAuthLogin(dependencies);
+  await clearOpenAiOAuthLastError(dependencies);
+  await closeOpenAiAuthTab(dependencies, previousPending?.tabId);
   const pending: PendingOpenAiOAuthLogin = {
     state,
     codeVerifier,
     redirectUri,
     createdAt: Date.now(),
   };
-  await savePendingOpenAiOAuthLogin(pending);
+  await savePendingOpenAiOAuthLogin(dependencies, pending);
   const authorizeUrl = buildOpenAiAuthorizeUrl({
     redirectUri,
     codeChallenge,
     state,
   });
   try {
-    const tabId = await openOpenAiAuthTab(authorizeUrl);
+    const tabId = await openOpenAiAuthTab(dependencies, authorizeUrl);
     if (typeof tabId === 'number') {
-      await savePendingOpenAiOAuthLogin({ ...pending, tabId });
+      await savePendingOpenAiOAuthLogin(dependencies, { ...pending, tabId });
     }
     return { authenticated: false, pending: true };
   } catch (error) {
-    await clearPendingOpenAiOAuthLogin();
+    await clearPendingOpenAiOAuthLogin(dependencies);
     throw error;
   }
 }
 
-export async function handleOpenAiOAuthCallbackUrl(tabId: number, rawUrl: string): Promise<void> {
+async function handleOpenAiOAuthCallbackUrl(
+  dependencies: OpenAiOAuthDependencies,
+  tabId: number,
+  rawUrl: string,
+): Promise<void> {
   const callback = parseOpenAiOAuthCallbackUrl(rawUrl);
   if (!callback) {
     return;
   }
 
-  const pending = await getPendingOpenAiOAuthLogin();
+  const pending = await getPendingOpenAiOAuthLogin(dependencies);
   if (!pending) {
     return;
   }
@@ -347,24 +419,31 @@ export async function handleOpenAiOAuthCallbackUrl(tabId: number, rawUrl: string
       throw new Error('OpenAI 登录状态校验失败，请重试');
     }
     const tokens = await exchangeOpenAiAuthorizationCode(callback.code, pending.redirectUri, pending.codeVerifier);
-    await saveOpenAiOAuthTokens(tokens);
-    await clearPendingOpenAiOAuthLogin();
-    await clearOpenAiOAuthLastError();
-    await closeOpenAiAuthTab(tabId);
+    await saveOpenAiOAuthTokens(dependencies, tokens);
+    await clearPendingOpenAiOAuthLogin(dependencies);
+    await clearOpenAiOAuthLastError(dependencies);
+    await closeOpenAiAuthTab(dependencies, tabId);
   } catch (error) {
-    await clearPendingOpenAiOAuthLogin();
-    await storageSet(openAiOAuthLastErrorStorageKey, toErrorMessage(error));
-    await closeOpenAiAuthTab(tabId);
+    await clearPendingOpenAiOAuthLogin(dependencies);
+    await dependencies.storage.write({
+      [openAiOAuthLastErrorStorageKey]: toErrorMessage(error),
+    });
+    await closeOpenAiAuthTab(dependencies, tabId);
   }
 }
 
-export async function handleOpenAiOAuthTabRemoved(tabId: number): Promise<void> {
-  const pending = await getPendingOpenAiOAuthLogin();
+async function handleOpenAiOAuthTabRemoved(
+  dependencies: OpenAiOAuthDependencies,
+  tabId: number,
+): Promise<void> {
+  const pending = await getPendingOpenAiOAuthLogin(dependencies);
   if (pending?.tabId !== tabId) {
     return;
   }
-  await clearPendingOpenAiOAuthLogin();
-  await storageSet(openAiOAuthLastErrorStorageKey, 'OpenAI 登录窗口已关闭，请重新登录');
+  await clearPendingOpenAiOAuthLogin(dependencies);
+  await dependencies.storage.write({
+    [openAiOAuthLastErrorStorageKey]: 'OpenAI 登录窗口已关闭，请重新登录',
+  });
 }
 
 async function revokeOpenAiOAuthRefreshToken(refreshToken: string): Promise<void> {
@@ -385,9 +464,11 @@ async function revokeOpenAiOAuthRefreshToken(refreshToken: string): Promise<void
   }
 }
 
-export async function logoutOpenAiOAuth(): Promise<OpenAiOAuthStatusInfo> {
-  const pending = await getPendingOpenAiOAuthLogin();
-  const tokens = await getStoredOpenAiOAuthTokens();
+async function logoutOpenAiOAuth(
+  dependencies: OpenAiOAuthDependencies,
+): Promise<OpenAiOAuthStatusInfo> {
+  const pending = await getPendingOpenAiOAuthLogin(dependencies);
+  const tokens = await getStoredOpenAiOAuthTokens(dependencies);
   if (tokens) {
     try {
       await revokeOpenAiOAuthRefreshToken(tokens.refreshToken);
@@ -395,10 +476,10 @@ export async function logoutOpenAiOAuth(): Promise<OpenAiOAuthStatusInfo> {
       // Best-effort revoke. Local removal still signs the extension out.
     }
   }
-  await closeOpenAiAuthTab(pending?.tabId);
-  await clearPendingOpenAiOAuthLogin();
-  await clearOpenAiOAuthLastError();
-  await storageRemove(openAiOAuthStorageKey);
+  await closeOpenAiAuthTab(dependencies, pending?.tabId);
+  await clearPendingOpenAiOAuthLogin(dependencies);
+  await clearOpenAiOAuthLastError(dependencies);
+  await dependencies.storage.remove([openAiOAuthStorageKey]);
   return { authenticated: false };
 }
 
@@ -406,24 +487,64 @@ export function createOpenAiRequestId(): string {
   return globalThis.crypto?.randomUUID?.() ?? createOpenAiOAuthRandomString(24);
 }
 
-export async function getOpenAiOAuthInstallationId(): Promise<string> {
-  const saved = await storageGet(openAiOAuthInstallationIdStorageKey);
+async function getOpenAiOAuthInstallationId(
+  dependencies: OpenAiOAuthDependencies,
+): Promise<string> {
+  const values = await dependencies.storage.read([
+    openAiOAuthInstallationIdStorageKey,
+  ]);
+  const saved = values[openAiOAuthInstallationIdStorageKey];
   if (typeof saved === 'string' && saved.length > 0) {
     return saved;
   }
 
   const installationId = createOpenAiRequestId();
-  await storageSet(openAiOAuthInstallationIdStorageKey, installationId);
+  await dependencies.storage.write({
+    [openAiOAuthInstallationIdStorageKey]: installationId,
+  });
   return installationId;
 }
 
-export async function getValidOpenAiOAuthTokens(): Promise<StoredOpenAiOAuthTokens> {
-  const tokens = await getStoredOpenAiOAuthTokens();
+async function getValidOpenAiOAuthTokens(
+  dependencies: OpenAiOAuthDependencies,
+  refreshState: OpenAiRefreshState,
+): Promise<StoredOpenAiOAuthTokens> {
+  const tokens = await getStoredOpenAiOAuthTokens(dependencies);
   if (!tokens) {
     throw new Error('请先在扩展弹窗中登录 OpenAI');
   }
   if (!isOpenAiOAuthExpired(tokens)) {
     return tokens;
   }
-  return refreshOpenAiOAuthTokens(tokens);
+  return refreshOpenAiOAuthTokens(dependencies, tokens, refreshState);
+}
+
+export function createOpenAiOAuthService(
+  dependencies: OpenAiOAuthDependencies,
+): OpenAiOAuthService {
+  const refreshState: OpenAiRefreshState = { current: null };
+  return {
+    status: () => getOpenAiOAuthStatus(dependencies, refreshState),
+    login: () => loginOpenAiOAuth(dependencies),
+    logout: () => logoutOpenAiOAuth(dependencies),
+    handleCallbackUrl: (tabId, rawUrl) => handleOpenAiOAuthCallbackUrl(
+      dependencies,
+      tabId,
+      rawUrl,
+    ),
+    handleTabRemoved: (tabId) => handleOpenAiOAuthTabRemoved(
+      dependencies,
+      tabId,
+    ),
+    getInstallationId: () => getOpenAiOAuthInstallationId(dependencies),
+    getValidTokens: () => getValidOpenAiOAuthTokens(
+      dependencies,
+      refreshState,
+    ),
+    refreshTokens: (tokens) => refreshOpenAiOAuthTokens(
+      dependencies,
+      tokens,
+      refreshState,
+    ),
+  };
 }

@@ -8,7 +8,7 @@ import { ProgressJankMonitor } from '../../../src/content/core/progressJank';
 import { PhotoStateStore } from '../../../src/content/core/state/photoStateStore';
 import type { RunLocalPipeline } from '../../../src/content/core/translation/localPipelineClient';
 import { TranslationRunner } from '../../../src/content/core/translation/translationRunner';
-import { sendRuntimeMessage } from '../../../src/shared/messages';
+import type { RuntimeMessageSender } from '../../../src/shared/messages';
 import {
   ImageTranslationController,
   type ImageTranslationRuntime,
@@ -180,7 +180,7 @@ describe('ImageTranslationController', () => {
         };
       }
       throw new Error(`unexpected message: ${message.type}`);
-    }) as unknown as typeof sendRuntimeMessage;
+    }) as unknown as RuntimeMessageSender;
     const runLocalPipelineMock = vi.fn(async (
       _file: File,
       _config: Parameters<RunLocalPipeline>[1],
@@ -313,7 +313,7 @@ describe('ImageTranslationController', () => {
         };
       }
       throw new Error(`unexpected message: ${message.type}`);
-    }) as unknown as typeof sendRuntimeMessage;
+    }) as unknown as RuntimeMessageSender;
     const runLocalPipeline = vi.fn(async () => ({
       result: new Blob(['translated'], { type: 'image/png' }),
       summary: {

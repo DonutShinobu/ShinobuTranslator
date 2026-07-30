@@ -21,6 +21,8 @@ import { runSyntheticProductionCanary } from './productionCanary';
 
 configureOnnxWorkerBootstrap({
   scriptUrl: onnxWorkerScriptUrl,
+  ortPath: '/ort/',
+  allowBlobFallback: true,
 });
 
 export type ModelCapabilityProgress = {

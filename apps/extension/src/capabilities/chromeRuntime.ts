@@ -52,6 +52,9 @@ function messageSource(
       kind: 'tab-document',
       documentId: sender.documentId,
       tabId,
+      ...(typeof sender.tab?.windowId === 'number'
+        ? { windowId: sender.tab.windowId }
+        : {}),
       frameId: sender.frameId ?? 0,
       ...(url ? { url } : {}),
     };

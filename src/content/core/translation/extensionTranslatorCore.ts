@@ -4,10 +4,7 @@ import {
 } from '@shinobu/translator-core';
 import type { LocalPipelineResult } from '../../../shared/localPipelineProtocol';
 import type { PipelineConfig, PipelineProgress } from '../../../types';
-import {
-  runLocalPipeline,
-  type RunLocalPipeline,
-} from './localPipelineClient';
+import type { RunLocalPipeline } from './localPipelineClient';
 
 export type ExtensionTranslatorCore = TranslatorCore<
   File,
@@ -17,7 +14,7 @@ export type ExtensionTranslatorCore = TranslatorCore<
 >;
 
 export function createExtensionTranslatorCore(
-  executePipeline: RunLocalPipeline = runLocalPipeline,
+  executePipeline: RunLocalPipeline,
 ): ExtensionTranslatorCore {
   return createTranslatorCore(
     ({ input, config }, { signal, reportProgress }) => (

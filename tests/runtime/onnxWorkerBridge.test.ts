@@ -62,7 +62,6 @@ function proxy(init: () => Promise<void>) {
 
 describe('onnxWorkerBridge bootstrap policy', () => {
   const originalWorker = globalThis.Worker;
-  const originalChrome = (globalThis as { chrome?: unknown }).chrome;
   const originalFetch = globalThis.fetch;
 
   beforeEach(() => {
@@ -81,33 +80,38 @@ describe('onnxWorkerBridge bootstrap policy', () => {
     }
     globalThis.Worker = originalWorker;
     globalThis.fetch = originalFetch;
-    (globalThis as { chrome?: unknown }).chrome = originalChrome;
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
   it('uses only the direct extension Worker in production extension context', async () => {
-    (globalThis as { chrome?: unknown }).chrome = {
-      runtime: { getURL: (path: string) => `chrome-extension://test/${path}` },
-    };
     comlinkState.factory = () => proxy(async () => undefined);
     const bridge = await import('../../src/runtime/onnxWorkerBridge');
+    bridge.configureOnnxWorkerBootstrap({
+      scriptUrl: 'extension-resource://test/onnxWorker.js',
+      ortPath: 'extension-resource://test/ort/',
+      allowBlobFallback: false,
+    });
 
     await bridge.createSession('detector', '/models/detector.onnx', ['wasm']);
 
     expect(FakeWorker.instances.map((worker) => worker.url)).toEqual([
-      'chrome-extension://test/onnxWorker.js',
+      'extension-resource://test/onnxWorker.js',
     ]);
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   it('normalizes root-relative Worker and ORT paths in a Web page', async () => {
-    (globalThis as { chrome?: unknown }).chrome = undefined;
     vi.stubGlobal('location', new URL('https://app.example/workbench'));
     const init = vi.fn(async () => undefined);
     const workerProxy = proxy(init);
     comlinkState.factory = () => workerProxy;
     const bridge = await import('../../src/runtime/onnxWorkerBridge');
+    bridge.configureOnnxWorkerBootstrap({
+      scriptUrl: '/onnxWorker.js',
+      ortPath: '/ort/',
+      allowBlobFallback: true,
+    });
 
     await bridge.createSession('detector', '/models/detector.onnx', ['wasm']);
 
@@ -118,7 +122,6 @@ describe('onnxWorkerBridge bootstrap policy', () => {
   });
 
   it('uses a Vite-provided Worker URL in the Web application', async () => {
-    (globalThis as { chrome?: unknown }).chrome = undefined;
     vi.stubGlobal('location', new URL('https://app.example/workbench'));
     const init = vi.fn(async () => undefined);
     comlinkState.factory = () => proxy(init);
@@ -127,6 +130,7 @@ describe('onnxWorkerBridge bootstrap policy', () => {
     bridge.configureOnnxWorkerBootstrap({
       scriptUrl: '/src/workers/onnx-worker.ts?worker_file&type=module',
       ortPath: '/ort/',
+      allowBlobFallback: true,
     });
     await bridge.createSession('detector', '/models/detector.onnx', ['wasm']);
 
@@ -137,12 +141,14 @@ describe('onnxWorkerBridge bootstrap policy', () => {
   });
 
   it('does not fall back to Blob when the direct extension Worker fails', async () => {
-    (globalThis as { chrome?: unknown }).chrome = {
-      runtime: { getURL: (path: string) => `chrome-extension://test/${path}` },
-    };
     comlinkState.factory = () => proxy(async () => { throw new Error('extension CSP failure'); });
     const createObjectUrl = vi.spyOn(URL, 'createObjectURL');
     const bridge = await import('../../src/runtime/onnxWorkerBridge');
+    bridge.configureOnnxWorkerBootstrap({
+      scriptUrl: 'extension-resource://test/onnxWorker.js',
+      ortPath: 'extension-resource://test/ort/',
+      allowBlobFallback: false,
+    });
 
     const error = await bridge.createSession('detector', '/models/detector.onnx', ['wasm'])
       .then(() => null, (reason: unknown) => reason);
@@ -156,9 +162,6 @@ describe('onnxWorkerBridge bootstrap policy', () => {
   });
 
   it('keeps the Blob URL alive until HTTP fallback initialization completes', async () => {
-    (globalThis as { chrome?: unknown }).chrome = {
-      runtime: { getURL: (path: string) => `http://127.0.0.1:4173/${path}` },
-    };
     const initGate: { resolve?: () => void } = {};
     const blobInit = new Promise<void>((resolve) => {
       initGate.resolve = resolve;
@@ -178,6 +181,11 @@ describe('onnxWorkerBridge bootstrap policy', () => {
     const createObjectUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test-worker');
     const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
     const bridge = await import('../../src/runtime/onnxWorkerBridge');
+    bridge.configureOnnxWorkerBootstrap({
+      scriptUrl: 'http://127.0.0.1:4173/onnxWorker.js',
+      ortPath: 'http://127.0.0.1:4173/ort/',
+      allowBlobFallback: true,
+    });
 
     const creation = bridge.createSession('detector', '/models/detector.onnx', ['wasm']);
     await vi.waitFor(() => expect(createObjectUrl).toHaveBeenCalledTimes(1));
@@ -194,9 +202,6 @@ describe('onnxWorkerBridge bootstrap policy', () => {
   });
 
   it('aggregates both HTTP bootstrap failures and checks the script response status', async () => {
-    (globalThis as { chrome?: unknown }).chrome = {
-      runtime: { getURL: (path: string) => `http://127.0.0.1:4173/${path}` },
-    };
     comlinkState.factory = () => proxy(async () => { throw new Error('direct init failed'); });
     globalThis.fetch = vi.fn(async () => ({
       ok: false,
@@ -205,6 +210,11 @@ describe('onnxWorkerBridge bootstrap policy', () => {
       text: async () => '',
     })) as unknown as typeof fetch;
     const bridge = await import('../../src/runtime/onnxWorkerBridge');
+    bridge.configureOnnxWorkerBootstrap({
+      scriptUrl: 'http://127.0.0.1:4173/onnxWorker.js',
+      ortPath: 'http://127.0.0.1:4173/ort/',
+      allowBlobFallback: true,
+    });
 
     const error = await bridge.createSession('detector', '/models/detector.onnx', ['wasm'])
       .then(() => null, (reason: unknown) => reason);

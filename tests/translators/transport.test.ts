@@ -1,18 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { sendRuntimeMessage } from '../../src/shared/messages';
 import {
   createDirectTextTranslationTransport,
-  extensionTextTranslationTransport,
+  createExtensionTextTranslationTransport,
   TextTranslationTransportError,
 } from '../../src/translators/transport';
-
-vi.mock('../../src/shared/messages', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/shared/messages')>();
-  return {
-    ...actual,
-    sendRuntimeMessage: vi.fn(),
-  };
-});
 
 const request = {
   body: {
@@ -33,11 +24,13 @@ afterEach(() => {
 
 describe('text translation transport Adapters', () => {
   it('keeps extension requests behind runtime messaging', async () => {
-    vi.mocked(sendRuntimeMessage).mockResolvedValue({
+    const sendRuntimeMessage = vi.fn(async () => ({
       ok: true,
-      type: 'mt:llm-chat-completions',
+      type: 'mt:llm-chat-completions' as const,
       data: { choices: [{ message: { content: '你好' } }] },
-    });
+    } as const));
+    const extensionTextTranslationTransport =
+      createExtensionTextTranslationTransport(sendRuntimeMessage);
 
     await expect(
       extensionTextTranslationTransport.requestChatCompletion(request),

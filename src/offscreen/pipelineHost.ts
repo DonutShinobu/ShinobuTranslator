@@ -7,10 +7,14 @@ import {
   type PipelineConfig as ImagePipelineConfig,
   type PipelineCancellationReason,
 } from '@shinobu/image-pipeline';
-import type { ChromePort } from '../shared/chrome';
-import { getChromeApi } from '../shared/chrome';
+import type {
+  RuntimeChannel,
+  RuntimeChannelClient,
+} from '../../apps/extension/src/capabilities/contracts';
 import { base64ToBlob, blobToBase64, canvasToPngBlob } from '../shared/blobCodec';
 import { emitDiagnosticLog, emitDiagnosticLogAsync } from '../shared/diagnosticLogClient';
+import type { RuntimeMessageSender } from '../shared/messages';
+import { normalizeJsonValue } from '../shared/jsonValue';
 import {
   Base64ChunkAssembler,
   LOCAL_PIPELINE_IDLE_TIMEOUT_MS,
@@ -35,7 +39,6 @@ import { PipelineStageError, runPipeline } from '../pipeline/orchestrator';
 import { disposePipelineArtifacts } from '../pipeline/resources';
 import { disposeAllModelSessions } from '../runtime/modelRegistry';
 import {
-  extensionTextTranslationTransport,
   type TextTranslationTransport,
 } from '../translators/transport';
 
@@ -62,14 +65,25 @@ type PipelineJob = {
   state: 'prepared' | 'receiving' | 'queued' | 'active' | 'finished';
 };
 
-function safelyPost(port: ChromePort | null, message: LocalPipelineHostMessage): boolean {
+async function safelyPost(
+  port: RuntimeChannel | null,
+  message: LocalPipelineHostMessage,
+): Promise<boolean> {
   if (!port) return false;
   try {
-    port.postMessage(message);
+    await port.send(normalizeJsonValue(message));
     return true;
   } catch {
+    await port.disconnect().catch(() => undefined);
     return false;
   }
+}
+
+function postBestEffort(
+  port: RuntimeChannel | null,
+  message: LocalPipelineHostMessage,
+): void {
+  void safelyPost(port, message);
 }
 
 function toArtifactMeta(contentType: string, chunks: string[], totalChars: number): LocalPipelineArtifactMeta {
@@ -97,7 +111,7 @@ function getMessageJobId(value: unknown): string | null {
 }
 
 export class OffscreenPipelineHost {
-  private port: ChromePort | null = null;
+  private port: RuntimeChannel | null = null;
   private readonly jobs = new Map<string, PipelineJob>();
   private readonly queue: PipelineJob[] = [];
   private activeJob: PipelineJob | null = null;
@@ -109,10 +123,18 @@ export class OffscreenPipelineHost {
   private activeApiKey = '';
   private readonly imageRuntime: ImagePipelineRuntime<PipelineArtifacts>;
 
-  constructor(capabilities: ImagePipelineRuntimeCapabilities) {
+  constructor(
+    capabilities: ImagePipelineRuntimeCapabilities,
+    private readonly dependencies: {
+      runtimeChannels: RuntimeChannelClient;
+      translationTransport: TextTranslationTransport;
+      diagnosticMessageSender: RuntimeMessageSender;
+    },
+  ) {
     if (!capabilities.providerExecution) {
       throw new TypeError('Provider execution capability is required');
     }
+    const translationTransport = dependencies.translationTransport;
     this.imageRuntime = new ImagePipelineRuntime<PipelineArtifacts>({
       capabilities,
       execute: async (request, context) => {
@@ -128,7 +150,7 @@ export class OffscreenPipelineHost {
                 stage: 'translate',
                 operation: 'request-chat-completion',
               },
-              () => extensionTextTranslationTransport.requestChatCompletion(
+              () => translationTransport.requestChatCompletion(
                 translationRequest,
               ),
             );
@@ -139,7 +161,7 @@ export class OffscreenPipelineHost {
                 stage: 'translate',
                 operation: 'translate-plain',
               },
-              () => extensionTextTranslationTransport.translatePlain(
+              () => translationTransport.translatePlain(
                 translationRequest,
               ),
             );
@@ -160,6 +182,8 @@ export class OffscreenPipelineHost {
             signal: context.signal,
             translationTransport: retryingTranslationTransport,
             runtimeCapabilities: context.capabilities,
+            diagnosticContext: 'offscreen',
+            diagnosticMessageSender: this.dependencies.diagnosticMessageSender,
           },
         );
         return {
@@ -215,22 +239,34 @@ export class OffscreenPipelineHost {
 
   connect(): void {
     if (this.disposed) return;
-    const chromeApi = getChromeApi();
-    if (!chromeApi?.runtime?.connect) return;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    const port = chromeApi.runtime.connect({ name: LOCAL_PIPELINE_OFFSCREEN_PORT });
-    this.port = port;
-    port.onMessage.addListener((message) => {
-      void this.handleMessage(message);
-    });
-    port.onDisconnect.addListener(() => {
-      this.handleDisconnect(port);
-    });
-    safelyPost(port, { type: 'host-ready' });
-    this.scheduleIdleClose();
+    void this.connectChannel();
+  }
+
+  private async connectChannel(): Promise<void> {
+    try {
+      const port = await this.dependencies.runtimeChannels.open(
+        LOCAL_PIPELINE_OFFSCREEN_PORT,
+      );
+      if (this.disposed) {
+        await port.disconnect();
+        return;
+      }
+      this.port = port;
+      port.onMessage((message) => {
+        void this.handleMessage(message);
+      });
+      port.onDisconnect(() => {
+        this.handleDisconnect(port);
+      });
+      if (!await safelyPost(port, { type: 'host-ready' })) return;
+      this.scheduleIdleClose();
+    } catch {
+      this.scheduleReconnect();
+    }
   }
 
   dispose(): void {
@@ -262,7 +298,7 @@ export class OffscreenPipelineHost {
     });
     const port = this.port;
     this.port = null;
-    port?.disconnect();
+    if (port) void port.disconnect();
   }
 
   private async handleMessage(value: unknown): Promise<void> {
@@ -275,7 +311,7 @@ export class OffscreenPipelineHost {
     try {
       switch (value.type) {
         case 'prepare':
-          this.prepare(value);
+          await this.prepare(value);
           break;
         case 'start':
           this.startTransfer(value);
@@ -295,7 +331,9 @@ export class OffscreenPipelineHost {
     }
   }
 
-  private prepare(message: Extract<LocalPipelineClientMessage, { type: 'prepare' }>): void {
+  private async prepare(
+    message: Extract<LocalPipelineClientMessage, { type: 'prepare' }>,
+  ): Promise<void> {
     if (this.jobs.has(message.jobId)) {
       throw createProtocolError(`任务 ID 已存在: ${message.jobId}`);
     }
@@ -313,7 +351,9 @@ export class OffscreenPipelineHost {
       abortController: new AbortController(),
       state: 'prepared',
     });
-    safelyPost(this.port, { type: 'ready', jobId: message.jobId });
+    if (!await safelyPost(this.port, { type: 'ready', jobId: message.jobId })) {
+      throw createProtocolError('offscreen ready 消息传输失败');
+    }
   }
 
   private startTransfer(message: Extract<LocalPipelineClientMessage, { type: 'start' }>): void {
@@ -434,7 +474,7 @@ export class OffscreenPipelineHost {
           size: job.file.size,
         },
       },
-    });
+    }, this.dependencies.diagnosticMessageSender);
 
     let stopProgress = (): void => undefined;
     let stopCancellation = (): void => undefined;
@@ -446,7 +486,7 @@ export class OffscreenPipelineHost {
         workingCopy: { strategy: 'source-native' },
       });
       stopProgress = task.progress((progress) => {
-        safelyPost(this.port, {
+        postBestEffort(this.port, {
           type: 'progress',
           jobId: job.id,
           progress: {
@@ -497,7 +537,7 @@ export class OffscreenPipelineHost {
       const debugChunks = debugBase64 === undefined ? undefined : splitBase64Chunks(debugBase64);
 
       const deliveryPort = this.port;
-      let delivered = safelyPost(deliveryPort, {
+      let delivered = await safelyPost(deliveryPort, {
         type: 'result-meta',
         jobId: job.id,
         status: pipelineResult.status,
@@ -510,13 +550,23 @@ export class OffscreenPipelineHost {
         providerReports: pipelineResult.providerReports,
       });
       throwIfJobCancelled();
-      delivered = delivered && this.postArtifactChunks(job.id, 'result', resultChunks);
+      delivered = delivered && await this.postArtifactChunks(
+        deliveryPort,
+        job.id,
+        'result',
+        resultChunks,
+      );
       throwIfJobCancelled();
       delivered = delivered
-        && (!debugChunks || this.postArtifactChunks(job.id, 'debug', debugChunks));
+        && (!debugChunks || await this.postArtifactChunks(
+          deliveryPort,
+          job.id,
+          'debug',
+          debugChunks,
+        ));
       throwIfJobCancelled();
       delivered = delivered
-        && safelyPost(deliveryPort, { type: 'complete', jobId: job.id });
+        && await safelyPost(deliveryPort, { type: 'complete', jobId: job.id });
       if (!delivered) {
         if (deliveryPort) this.handleDisconnect(deliveryPort);
         throw createProtocolError('offscreen 结果传输失败');
@@ -537,7 +587,7 @@ export class OffscreenPipelineHost {
           debugBytes: debugBlob?.size,
           runtimeInference: [...aggregates.values()],
         },
-      });
+      }, this.dependencies.diagnosticMessageSender);
     } catch (error) {
       const finalError = job.abortController.signal.aborted && !isAbortError(error)
         ? job.abortController.signal.reason ?? createCancelledError()
@@ -555,7 +605,7 @@ export class OffscreenPipelineHost {
           runtimeInference: [...aggregates.values()],
         },
         error: serializePipelineError(finalError, isAbortError(finalError) ? 'TASK_CANCELLED' : 'PIPELINE_STAGE_FAILED'),
-      });
+      }, this.dependencies.diagnosticMessageSender);
     } finally {
       stopCancellation();
       stopProgress();
@@ -602,26 +652,35 @@ export class OffscreenPipelineHost {
         ...event.data,
       },
       error: event.error === undefined ? undefined : serializePipelineError(event.error, 'WORKER_BOOTSTRAP_FAILED'),
-    });
+    }, this.dependencies.diagnosticMessageSender);
   }
 
-  private postArtifactChunks(jobId: string, artifact: 'result' | 'debug', chunks: string[]): boolean {
-    return chunks.every((data, index) =>
-      safelyPost(this.port, {
+  private async postArtifactChunks(
+    port: RuntimeChannel | null,
+    jobId: string,
+    artifact: 'result' | 'debug',
+    chunks: string[],
+  ): Promise<boolean> {
+    for (let index = 0; index < chunks.length; index += 1) {
+      if (!await safelyPost(port, {
         type: 'result-chunk',
         jobId,
         artifact,
         index,
-        data,
-      }));
+        data: chunks[index]!,
+      })) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private postQueuePositions(): void {
     if (this.activeJob) {
-      safelyPost(this.port, { type: 'queued', jobId: this.activeJob.id, position: 0 });
+      postBestEffort(this.port, { type: 'queued', jobId: this.activeJob.id, position: 0 });
     }
     this.queue.forEach((job, index) => {
-      safelyPost(this.port, {
+      postBestEffort(this.port, {
         type: 'queued',
         jobId: job.id,
         position: index + (this.activeJob ? 1 : 0),
@@ -635,7 +694,7 @@ export class OffscreenPipelineHost {
       this.failJob(job, error);
       return;
     }
-    safelyPost(this.port, {
+    postBestEffort(this.port, {
       type: 'error',
       jobId,
       error: serializePipelineError(error, 'TRANSFER_PROTOCOL_ERROR'),
@@ -648,16 +707,16 @@ export class OffscreenPipelineHost {
     const queueIndex = this.queue.indexOf(job);
     if (queueIndex >= 0) this.queue.splice(queueIndex, 1);
     const port = this.port;
-    if (!safelyPost(port, {
+    void safelyPost(port, {
       type: 'error',
       jobId: job.id,
       error: serializePipelineError(error, isAbortError(error) ? 'TASK_CANCELLED' : 'PIPELINE_STAGE_FAILED'),
-    }) && port) {
-      this.handleDisconnect(port);
-    }
+    }).then((delivered) => {
+      if (!delivered && port) this.handleDisconnect(port);
+    });
   }
 
-  private handleDisconnect(port: ChromePort): void {
+  private handleDisconnect(port: RuntimeChannel): void {
     if (this.port !== port) return;
     this.port = null;
     if (this.activeJob) {
@@ -683,9 +742,12 @@ export class OffscreenPipelineHost {
     for (const [jobId, job] of this.jobs) {
       if (job !== this.activeJob) this.jobs.delete(jobId);
     }
-    if (!this.disposed) {
-      this.reconnectTimer = setTimeout(() => this.connect(), 250);
-    }
+    this.scheduleReconnect();
+  }
+
+  private scheduleReconnect(): void {
+    if (this.disposed || this.reconnectTimer) return;
+    this.reconnectTimer = setTimeout(() => this.connect(), 250);
   }
 
   private clearIdleClose(): void {
@@ -714,7 +776,7 @@ export class OffscreenPipelineHost {
         category: 'model.runtime',
         source: { context: 'offscreen', module: 'pipelineHost.ts' },
         message: 'offscreen 空闲 5 分钟，已释放模型 Session 与 Worker',
-      });
+      }, this.dependencies.diagnosticMessageSender);
     } catch (error) {
       emitDiagnosticLog({
         level: 'warn',
@@ -722,14 +784,14 @@ export class OffscreenPipelineHost {
         source: { context: 'offscreen', module: 'pipelineHost.ts' },
         message: 'offscreen 空闲资源释放失败',
         error: serializePipelineError(error),
-      });
+      }, this.dependencies.diagnosticMessageSender);
     } finally {
       if (this.idleReleasePromise === releasePromise) {
         this.idleReleasePromise = null;
       }
     }
     if (generation === this.idleGeneration && !this.activeJob && this.jobs.size === 0) {
-      safelyPost(this.port, { type: 'idle-close' });
+      postBestEffort(this.port, { type: 'idle-close' });
     }
   }
 }

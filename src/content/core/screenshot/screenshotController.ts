@@ -1,5 +1,8 @@
 import { createDiagnosticRunId } from '../../../shared/diagnosticLogClient';
-import { sendRuntimeMessage } from '../../../shared/messages';
+import {
+  unavailableRuntimeMessageSender,
+  type RuntimeMessageSender,
+} from '../../../shared/messages';
 import {
   createScreenshotResultUi,
   repositionScreenshotResultOverlay,
@@ -46,6 +49,7 @@ export class ScreenshotController {
     private readonly translationRunner: TranslationRunner,
     private readonly cardStateController: CardStateController,
     private readonly requestSelection: () => Promise<ScreenshotSelection | null> = requestScreenshotSelection,
+    private readonly sendMessage: RuntimeMessageSender = unavailableRuntimeMessageSender,
   ) {}
 
   async startScreenshotTranslate(): Promise<void> {
@@ -356,7 +360,7 @@ export class ScreenshotController {
 
         ui.host.style.visibility = 'hidden';
         await waitForNextPaint();
-        const captureResponse = await sendRuntimeMessage({ type: 'mt:capture-visible-tab' });
+        const captureResponse = await this.sendMessage({ type: 'mt:capture-visible-tab' });
         if (!captureResponse.ok || captureResponse.type !== 'mt:capture-visible-tab') {
           throw new Error(captureResponse.ok ? '截图失败' : captureResponse.error);
         }

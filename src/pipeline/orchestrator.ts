@@ -31,7 +31,12 @@ import { detectBubbles, matchRegionsToBubbles, type BubbleDetection } from "./bu
 import { getModelSession } from "../runtime/modelRegistry";
 import type { WorkerSessionHandle } from "../runtime/onnxWorkerTypes";
 import { emitDiagnosticLog } from "../shared/diagnosticLogClient";
-import { toDiagnosticError, type DiagnosticLogCategory } from "../shared/diagnosticLog";
+import {
+  toDiagnosticError,
+  type DiagnosticLogCategory,
+  type DiagnosticLogContext,
+} from "../shared/diagnosticLog";
+import type { RuntimeMessageSender } from "../shared/messages";
 import { createCancelledError } from "../shared/localPipelineProtocol";
 import type { TextTranslationTransport } from "../translators/transport";
 import {
@@ -51,6 +56,8 @@ export type PipelineRunOptions = {
   platform?: PlatformProvider;
   translationTransport?: TextTranslationTransport;
   runtimeCapabilities?: ImagePipelineRuntimeCapabilities;
+  diagnosticContext?: DiagnosticLogContext;
+  diagnosticMessageSender?: RuntimeMessageSender;
 };
 
 type PaddleOcrRuntimeProbeMode = "legacy" | "prepare" | "warmup";
@@ -252,7 +259,8 @@ function throwIfCancelled(signal?: AbortSignal): void {
   throw createCancelledError(typeof signal.reason === "string" ? signal.reason : undefined);
 }
 
-function logPipelineStage(
+function emitPipelineStage(
+  options: PipelineRunOptions,
   config: PipelineConfig,
   category: DiagnosticLogCategory,
   message: string,
@@ -264,11 +272,14 @@ function logPipelineStage(
     runId: config.diagnosticRunId,
     level: error === undefined ? "info" : "error",
     category,
-    source: { context: "offscreen", module: "orchestrator.ts" },
+    source: {
+      context: options.diagnosticContext ?? "content",
+      module: "orchestrator.ts",
+    },
     message,
     data,
     error: error === undefined ? undefined : toDiagnosticError(error),
-  });
+  }, options.diagnosticMessageSender);
 }
 
 function toErrorDetail(error: unknown): string {
@@ -409,6 +420,20 @@ export async function runPipeline(
   onProgress: ProgressCallback,
   options: PipelineRunOptions = {},
 ): Promise<PipelineArtifacts> {
+  const logPipelineStage = (
+    pipelineConfig: PipelineConfig,
+    category: DiagnosticLogCategory,
+    message: string,
+    data?: Record<string, unknown>,
+    error?: unknown,
+  ): void => emitPipelineStage(
+    options,
+    pipelineConfig,
+    category,
+    message,
+    data,
+    error,
+  );
   const platform = options.platform ?? browserPlatform;
   const stageTimings: StageTiming[] = [];
   const signal = options.signal;
@@ -934,6 +959,8 @@ export async function runPipeline(
           const translated = await runTranslate(orderedRegions, config, {
             signal,
             transport: options.translationTransport,
+            diagnosticContext: options.diagnosticContext,
+            diagnosticMessageSender: options.diagnosticMessageSender,
           });
           throwIfCancelled(signal);
           const translatedRegions = translated.regions;

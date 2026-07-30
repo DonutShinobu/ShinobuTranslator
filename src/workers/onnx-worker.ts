@@ -38,7 +38,10 @@ function ensureOrtEnv(): void {
 
   // Blob URL Workers run in the page's origin and cannot access chrome.runtime.
   // The ORT WASM path must be provided by the main thread via init().
-  const ortPath = ortPathOverride ?? "/ort/";
+  if (!ortPathOverride) {
+    throw new Error('ONNX Worker 必须先通过 init() 注入 ORT 资源路径');
+  }
+  const ortPath = ortPathOverride;
 
   const hwThreads =
     typeof navigator !== "undefined" && typeof navigator.hardwareConcurrency === "number"

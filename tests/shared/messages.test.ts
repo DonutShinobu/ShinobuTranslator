@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  createRuntimeMessageSender,
   getRuntimeErrorCode,
   getRuntimeTransportMetadata,
   isRuntimeMessage,
@@ -165,6 +166,81 @@ describe("isRuntimeMessage", () => {
       },
     })).toBe(false);
   });
+});
+
+describe("createRuntimeMessageSender", () => {
+  it("uses the normalized request contract and preserves response discriminants", async () => {
+    const request = vi.fn(async () => ({
+      status: "response" as const,
+      value: {
+        ok: true,
+        type: "mt:get-settings",
+        settings: {},
+      },
+    }));
+    const send = createRuntimeMessageSender({ request });
+
+    await expect(send({ type: "mt:get-settings" })).resolves.toMatchObject({
+      ok: true,
+      type: "mt:get-settings",
+    });
+    expect(request).toHaveBeenCalledWith({ type: "mt:get-settings" });
+  });
+
+  it("omits optional undefined object fields before crossing the JsonValue seam", async () => {
+    const request = vi.fn(async () => ({
+      status: "response" as const,
+      value: {
+        ok: true,
+        type: "mt:diagnostic-log-event",
+      },
+    }));
+    const send = createRuntimeMessageSender({ request });
+
+    await send({
+      type: "mt:diagnostic-log-event",
+      event: {
+        id: "event-1",
+        sessionId: "session-1",
+        runId: undefined,
+        timestamp: "2026-07-30T00:00:00.000Z",
+        level: "info",
+        category: "pipeline.stage",
+        source: {
+          context: "content",
+          module: undefined,
+        },
+        message: "started",
+      },
+    });
+
+    expect(request).toHaveBeenCalledWith({
+      type: "mt:diagnostic-log-event",
+      event: {
+        id: "event-1",
+        sessionId: "session-1",
+        timestamp: "2026-07-30T00:00:00.000Z",
+        level: "info",
+        category: "pipeline.stage",
+        source: {
+          context: "content",
+        },
+        message: "started",
+      },
+    });
+  });
+
+  it.each(["no-response", "unavailable"] as const)(
+    "rejects a %s result instead of guessing a response",
+    async (status) => {
+      const send = createRuntimeMessageSender({
+        request: vi.fn(async () => ({ status })),
+      });
+
+      await expect(send({ type: "mt:get-settings" }))
+        .rejects.toThrow("扩展通信失败");
+    },
+  );
 });
 
 describe("getRuntimeErrorCode", () => {

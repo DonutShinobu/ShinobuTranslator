@@ -1,58 +1,99 @@
 import { describe, expect, it, vi } from 'vitest';
 import { OffscreenPipelineBroker } from '../../src/background/localPipeline/offscreenBroker';
-import type { ChromeLike, ChromePort } from '../../src/shared/chrome';
+import type { ChromeLike } from '../../src/shared/chrome';
+import type {
+  ExtensionEnvironment,
+  JsonValue,
+  RuntimeChannel,
+  RuntimeChannelDisconnectReason,
+  RuntimeChannelServer,
+} from '../../apps/extension/src/capabilities/contracts';
 import {
   LOCAL_PIPELINE_CLIENT_PORT,
   LOCAL_PIPELINE_OFFSCREEN_PORT,
 } from '../../src/shared/localPipelineProtocol';
 
-class FakePort implements ChromePort {
+class FakePort implements RuntimeChannel {
   readonly sent: unknown[] = [];
-  readonly messageListeners: Array<(message: unknown, port: ChromePort) => void> = [];
-  readonly disconnectListeners: Array<(port: ChromePort) => void> = [];
+  readonly messageListeners: Array<(message: JsonValue) => void> = [];
+  readonly disconnectListeners: Array<(
+    reason: RuntimeChannelDisconnectReason,
+  ) => void> = [];
   disconnected = false;
   failPosts = false;
-  sender?: ChromePort['sender'];
+  beforeSend?: (message: JsonValue) => Promise<void>;
+  readonly source: RuntimeChannel['source'];
 
   constructor(readonly name: string, documentUrl?: string) {
-    this.sender = documentUrl ? { documentUrl } : undefined;
+    this.source = documentUrl
+      ? { kind: 'extension-document', url: documentUrl }
+      : { kind: 'unknown' };
   }
 
-  postMessage(message: unknown): void {
+  async send(message: JsonValue): Promise<void> {
     if (this.disconnected) throw new Error('port disconnected');
     if (this.failPosts) throw new Error('post failed');
+    await this.beforeSend?.(message);
     this.sent.push(message);
   }
 
-  disconnect(): void {
+  async disconnect(): Promise<void> {
     if (this.disconnected) return;
     this.disconnected = true;
-    for (const listener of [...this.disconnectListeners]) listener(this);
+    for (const listener of [...this.disconnectListeners]) {
+      listener('closed-locally');
+    }
   }
 
-  onMessage = {
-    addListener: (listener: (message: unknown, port: ChromePort) => void): void => {
-      this.messageListeners.push(listener);
-    },
-    removeListener: (listener: (message: unknown, port: ChromePort) => void): void => {
+  onMessage(listener: (message: JsonValue) => void): () => void {
+    this.messageListeners.push(listener);
+    return () => {
       const index = this.messageListeners.indexOf(listener);
       if (index >= 0) this.messageListeners.splice(index, 1);
-    },
-  };
+    };
+  }
 
-  onDisconnect = {
-    addListener: (listener: (port: ChromePort) => void): void => {
-      this.disconnectListeners.push(listener);
-    },
-    removeListener: (listener: (port: ChromePort) => void): void => {
+  onDisconnect(
+    listener: (reason: RuntimeChannelDisconnectReason) => void,
+  ): () => void {
+    this.disconnectListeners.push(listener);
+    return () => {
       const index = this.disconnectListeners.indexOf(listener);
       if (index >= 0) this.disconnectListeners.splice(index, 1);
-    },
-  };
+    };
+  }
 
   emitMessage(message: unknown): void {
-    for (const listener of [...this.messageListeners]) listener(message, this);
+    for (const listener of [...this.messageListeners]) {
+      listener(message as JsonValue);
+    }
   }
+}
+
+const runtimeChannels: RuntimeChannelServer = {
+  onChannel: () => () => undefined,
+};
+const environment: ExtensionEnvironment = {
+  metadata: { version: 'test' },
+  resourceUrl: (path) => `chrome-extension://test/${path}`,
+};
+
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (error: unknown) => void;
+} {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((complete, fail) => {
+    resolve = complete;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
+function createBroker(chromeApi: ChromeLike): OffscreenPipelineBroker {
+  return new OffscreenPipelineBroker(chromeApi, runtimeChannels, environment);
 }
 
 const pipelineConfig = {
@@ -113,7 +154,7 @@ function createHarness(): {
       closeDocument,
     },
   };
-  broker = new OffscreenPipelineBroker(chromeApi);
+  broker = createBroker(chromeApi);
   return { broker, host, createDocument, closeDocument };
 }
 
@@ -182,22 +223,26 @@ describe('OffscreenPipelineBroker', () => {
     expect(host.sent.filter((message) => (
       (message as { jobId?: string }).jobId === 'job-2'
     ))).toEqual([]);
-    expect(host.sent).toContainEqual({ type: 'prepare', jobId: 'job-1' });
-    expect(host.sent).toContainEqual({ type: 'input-complete', jobId: 'job-1' });
-    expect(second.sent).toContainEqual({
-      type: 'queued',
-      jobId: 'job-2',
-      position: 1,
+    await vi.waitFor(() => {
+      expect(host.sent).toContainEqual({ type: 'prepare', jobId: 'job-1' });
+      expect(host.sent).toContainEqual({ type: 'input-complete', jobId: 'job-1' });
+      expect(second.sent).toContainEqual({
+        type: 'queued',
+        jobId: 'job-2',
+        position: 1,
+      });
     });
 
     host.emitMessage({ type: 'complete', jobId: 'job-1' });
 
-    expect(host.sent.filter((message) => (
-      (message as { type?: string }).type === 'input-complete'
-    ))).toEqual([
-      { type: 'input-complete', jobId: 'job-1' },
-      { type: 'input-complete', jobId: 'job-2' },
-    ]);
+    await vi.waitFor(() => {
+      expect(host.sent.filter((message) => (
+        (message as { type?: string }).type === 'input-complete'
+      ))).toEqual([
+        { type: 'input-complete', jobId: 'job-1' },
+        { type: 'input-complete', jobId: 'job-2' },
+      ]);
+    });
   });
 
   it('does not let a later small transfer overtake an earlier prepared job', async () => {
@@ -217,16 +262,20 @@ describe('OffscreenPipelineBroker', () => {
     expect(host.sent).not.toContainEqual(expect.objectContaining({
       jobId: 'small-second',
     }));
-    expect(second.sent).toContainEqual({
-      type: 'queued',
-      jobId: 'small-second',
-      position: 1,
+    await vi.waitFor(() => {
+      expect(second.sent).toContainEqual({
+        type: 'queued',
+        jobId: 'small-second',
+        position: 1,
+      });
     });
 
     transferJob(first, 'large-first');
-    expect(host.sent).toContainEqual({
-      type: 'input-complete',
-      jobId: 'large-first',
+    await vi.waitFor(() => {
+      expect(host.sent).toContainEqual({
+        type: 'input-complete',
+        jobId: 'large-first',
+      });
     });
     expect(host.sent).not.toContainEqual({
       type: 'input-complete',
@@ -234,12 +283,14 @@ describe('OffscreenPipelineBroker', () => {
     });
 
     host.emitMessage({ type: 'complete', jobId: 'large-first' });
-    expect(host.sent.filter((message) => (
-      (message as { type?: string }).type === 'input-complete'
-    ))).toEqual([
-      { type: 'input-complete', jobId: 'large-first' },
-      { type: 'input-complete', jobId: 'small-second' },
-    ]);
+    await vi.waitFor(() => {
+      expect(host.sent.filter((message) => (
+        (message as { type?: string }).type === 'input-complete'
+      ))).toEqual([
+        { type: 'input-complete', jobId: 'large-first' },
+        { type: 'input-complete', jobId: 'small-second' },
+      ]);
+    });
   });
 
   it('does not expire a fully received job while it waits behind long active work', async () => {
@@ -264,7 +315,9 @@ describe('OffscreenPipelineBroker', () => {
         jobId: 'job-2',
       }));
       host.emitMessage({ type: 'complete', jobId: 'job-1' });
-      expect(host.sent).toContainEqual({ type: 'prepare', jobId: 'job-2' });
+      await vi.waitFor(() => {
+        expect(host.sent).toContainEqual({ type: 'prepare', jobId: 'job-2' });
+      });
     } finally {
       vi.useRealTimers();
     }
@@ -298,6 +351,48 @@ describe('OffscreenPipelineBroker', () => {
     });
   });
 
+  it('does not activate a job until every host message has been delivered', async () => {
+    const { broker, host } = createHarness();
+    const client = new FakePort(LOCAL_PIPELINE_CLIENT_PORT);
+    const delivery = deferred<void>();
+    let firstDelivery = true;
+    host.beforeSend = async () => {
+      if (!firstDelivery) return;
+      firstDelivery = false;
+      await delivery.promise;
+    };
+    broker.handlePort(client);
+    client.emitMessage({ type: 'prepare', jobId: 'delayed-job' });
+    await vi.waitFor(() => {
+      expect(client.sent).toContainEqual({ type: 'ready', jobId: 'delayed-job' });
+    });
+
+    transferJob(client, 'delayed-job');
+    await vi.waitFor(() => expect(firstDelivery).toBe(false));
+    expect(client.sent).not.toContainEqual({
+      type: 'queued',
+      jobId: 'delayed-job',
+      position: 0,
+    });
+    expect(host.sent).not.toContainEqual({
+      type: 'input-complete',
+      jobId: 'delayed-job',
+    });
+
+    delivery.resolve(undefined);
+    await vi.waitFor(() => {
+      expect(host.sent).toContainEqual({
+        type: 'input-complete',
+        jobId: 'delayed-job',
+      });
+      expect(client.sent).toContainEqual({
+        type: 'queued',
+        jobId: 'delayed-job',
+        position: 0,
+      });
+    });
+  });
+
   it('resets admission when active cancellation cannot reach the host', async () => {
     const { broker, host } = createHarness();
     const first = new FakePort(LOCAL_PIPELINE_CLIENT_PORT);
@@ -309,7 +404,9 @@ describe('OffscreenPipelineBroker', () => {
     await vi.waitFor(() => expect(second.sent).toContainEqual({ type: 'ready', jobId: 'job-2' }));
     transferJob(first, 'job-1');
     transferJob(second, 'job-2');
-    expect(first.sent).toContainEqual({ type: 'queued', jobId: 'job-1', position: 0 });
+    await vi.waitFor(() => {
+      expect(first.sent).toContainEqual({ type: 'queued', jobId: 'job-1', position: 0 });
+    });
 
     host.failPosts = true;
     first.disconnect();
@@ -329,17 +426,22 @@ describe('OffscreenPipelineBroker', () => {
     client.emitMessage({ type: 'prepare', jobId: 'job-1' });
     await vi.waitFor(() => expect(client.sent).toContainEqual({ type: 'ready', jobId: 'job-1' }));
     transferJob(client, 'job-1');
+    await vi.waitFor(() => {
+      expect(host.sent).toContainEqual({ type: 'input-complete', jobId: 'job-1' });
+    });
 
     client.disconnect();
 
-    expect(host.sent).toContainEqual({
-      type: 'cancel',
-      jobId: 'job-1',
-      reason: {
-        code: 'transport-disconnected',
-        messageKey: 'pipeline.cancelled.transportDisconnected',
-        diagnosticSummary: '来源 Port 已断开',
-      },
+    await vi.waitFor(() => {
+      expect(host.sent).toContainEqual({
+        type: 'cancel',
+        jobId: 'job-1',
+        reason: {
+          code: 'transport-disconnected',
+          messageKey: 'pipeline.cancelled.transportDisconnected',
+          diagnosticSummary: '来源 Port 已断开',
+        },
+      });
     });
   });
 
@@ -353,11 +455,13 @@ describe('OffscreenPipelineBroker', () => {
 
     host.emitMessage({ type: 'unknown-host-message', jobId: 'job-1' });
 
-    expect(client.sent).toContainEqual(expect.objectContaining({
-      type: 'error',
-      jobId: 'job-1',
-      error: expect.objectContaining({ code: 'TRANSFER_PROTOCOL_ERROR' }),
-    }));
+    await vi.waitFor(() => {
+      expect(client.sent).toContainEqual(expect.objectContaining({
+        type: 'error',
+        jobId: 'job-1',
+        error: expect.objectContaining({ code: 'TRANSFER_PROTOCOL_ERROR' }),
+      }));
+    });
     expect(host.disconnected).toBe(true);
   });
 
@@ -380,11 +484,13 @@ describe('OffscreenPipelineBroker', () => {
     client.emitMessage({ type: 'input-chunk', jobId: 'duplicate-job', index: 0, data: 'YQ==' });
     client.emitMessage({ type: 'input-chunk', jobId: 'duplicate-job', index: 0, data: 'YQ==' });
 
-    expect(client.sent).toContainEqual(expect.objectContaining({
-      type: 'error',
-      jobId: 'duplicate-job',
-      error: expect.objectContaining({ code: 'TRANSFER_PROTOCOL_ERROR' }),
-    }));
+    await vi.waitFor(() => {
+      expect(client.sent).toContainEqual(expect.objectContaining({
+        type: 'error',
+        jobId: 'duplicate-job',
+        error: expect.objectContaining({ code: 'TRANSFER_PROTOCOL_ERROR' }),
+      }));
+    });
     expect(host.sent).not.toContainEqual(expect.objectContaining({ jobId: 'duplicate-job' }));
   });
 
@@ -399,17 +505,22 @@ describe('OffscreenPipelineBroker', () => {
     await vi.waitFor(() => expect(second.sent).toContainEqual({ type: 'ready', jobId: 'job-2' }));
     transferJob(first, 'job-1');
     transferJob(second, 'job-2');
+    await vi.waitFor(() => {
+      expect(host.sent).toContainEqual({ type: 'input-complete', jobId: 'job-1' });
+    });
 
     first.emitMessage({ type: 'input-complete', jobId: 'job-1' });
 
-    expect(host.sent).toContainEqual({
-      type: 'cancel',
-      jobId: 'job-1',
-      reason: {
-        code: 'transport-disconnected',
-        messageKey: 'pipeline.cancelled.transportDisconnected',
-        diagnosticSummary: 'active 任务收到无效传输消息',
-      },
+    await vi.waitFor(() => {
+      expect(host.sent).toContainEqual({
+        type: 'cancel',
+        jobId: 'job-1',
+        reason: {
+          code: 'transport-disconnected',
+          messageKey: 'pipeline.cancelled.transportDisconnected',
+          diagnosticSummary: 'active 任务收到无效传输消息',
+        },
+      });
     });
     expect(first.sent).not.toContainEqual(expect.objectContaining({
       type: 'error',
@@ -422,12 +533,14 @@ describe('OffscreenPipelineBroker', () => {
       error: { name: 'AbortError', code: 'TASK_CANCELLED', message: 'cancelled' },
     });
 
-    expect(first.sent).toContainEqual(expect.objectContaining({
-      type: 'error',
-      jobId: 'job-1',
-      error: expect.objectContaining({ code: 'TRANSFER_PROTOCOL_ERROR' }),
-    }));
-    expect(host.sent).toContainEqual({ type: 'prepare', jobId: 'job-2' });
+    await vi.waitFor(() => {
+      expect(first.sent).toContainEqual(expect.objectContaining({
+        type: 'error',
+        jobId: 'job-1',
+        error: expect.objectContaining({ code: 'TRANSFER_PROTOCOL_ERROR' }),
+      }));
+      expect(host.sent).toContainEqual({ type: 'prepare', jobId: 'job-2' });
+    });
   });
 
   it('expires an abandoned input transfer', async () => {
@@ -468,11 +581,13 @@ describe('OffscreenPipelineBroker', () => {
 
     host.disconnect();
 
-    expect(client.sent).toContainEqual(expect.objectContaining({
-      type: 'error',
-      jobId: 'active-job',
-      error: expect.objectContaining({ code: 'OFFSCREEN_DISCONNECTED' }),
-    }));
+    await vi.waitFor(() => {
+      expect(client.sent).toContainEqual(expect.objectContaining({
+        type: 'error',
+        jobId: 'active-job',
+        error: expect.objectContaining({ code: 'OFFSCREEN_DISCONNECTED' }),
+      }));
+    });
   });
 
   it('closes the document only after the host reports idle with no jobs', async () => {
@@ -529,7 +644,7 @@ describe('OffscreenPipelineBroker', () => {
       documentExists = false;
       firstHost.disconnect();
     });
-    broker = new OffscreenPipelineBroker({
+    broker = createBroker({
       runtime: {
         getURL: (path) => `chrome-extension://test/${path}`,
         getContexts: async () => documentExists
@@ -592,7 +707,7 @@ describe('OffscreenPipelineBroker', () => {
         host.emitMessage({ type: 'host-ready' });
       });
       const closeDocument = vi.fn(async () => undefined);
-      broker = new OffscreenPipelineBroker({
+      broker = createBroker({
         runtime: {
           getURL: (path) => `chrome-extension://test/${path}`,
           getContexts: async () => [{ contextType: 'OFFSCREEN_DOCUMENT', documentUrl: offscreenUrl }],

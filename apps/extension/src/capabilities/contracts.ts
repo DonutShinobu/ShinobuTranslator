@@ -12,6 +12,7 @@ export type ExtensionMessageSource =
       kind: 'tab-document';
       documentId: string;
       tabId: number;
+      windowId?: number;
       frameId: number;
       url?: string;
     }
@@ -347,6 +348,7 @@ export interface PopupExtensionCapabilities {
 }
 
 export interface PipelineHostExtensionCapabilities {
+  readonly runtimeRequests: RuntimeRequestClient;
   readonly runtimeChannels: RuntimeChannelClient;
   readonly environment: ExtensionEnvironment;
 }

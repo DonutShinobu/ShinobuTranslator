@@ -1,4 +1,9 @@
-import type { ChromeLike, ChromePort } from '../../shared/chrome';
+import type { ChromeLike } from '../../shared/chrome';
+import type {
+  ExtensionEnvironment,
+  RuntimeChannel,
+  RuntimeChannelServer,
+} from '../../../apps/extension/src/capabilities/contracts';
 import {
   ImagePipelineCancelledError,
   type PipelineCancellationReason,
@@ -16,24 +21,25 @@ import {
   type LocalPipelineErrorCode,
   type LocalPipelineHostMessage,
 } from '../../shared/localPipelineProtocol';
+import { normalizeJsonValue } from '../../shared/jsonValue';
 
 const OFFSCREEN_CONNECT_TIMEOUT_MS = 10_000;
 
 type ClientConnection = {
-  port: ChromePort;
+  port: RuntimeChannel;
   jobs: Set<string>;
   closed: boolean;
 };
 
 type HostWaiter = {
-  resolve: (port: ChromePort) => void;
+  resolve: (port: RuntimeChannel) => void;
   reject: (error: unknown) => void;
   timer: ReturnType<typeof setTimeout>;
 };
 
 type BufferedJob = {
   diagnosticRunId?: string;
-  state: 'prepared' | 'receiving' | 'queued' | 'active';
+  state: 'prepared' | 'receiving' | 'queued' | 'admitting' | 'active';
   start?: Extract<LocalPipelineClientMessage, { type: 'start' }>;
   chunks: Map<number, Extract<LocalPipelineClientMessage, { type: 'input-chunk' }>>;
   receivedChars: number;
@@ -56,36 +62,46 @@ function getJobId(value: unknown): string | null {
   return typeof jobId === 'string' && jobId.length > 0 ? jobId : null;
 }
 
-function safelyPost(port: ChromePort, message: unknown): boolean {
+async function safelyPost(port: RuntimeChannel, message: unknown): Promise<boolean> {
   try {
-    port.postMessage(message);
+    await port.send(normalizeJsonValue(message));
     return true;
   } catch {
+    await port.disconnect().catch(() => undefined);
     return false;
   }
+}
+
+function postBestEffort(port: RuntimeChannel, message: unknown): void {
+  void safelyPost(port, message);
 }
 
 export class OffscreenPipelineBroker {
   private readonly clients = new Set<ClientConnection>();
   private readonly owners = new Map<string, ClientConnection>();
   private readonly jobs = new Map<string, BufferedJob>();
-  private hostPort: ChromePort | null = null;
+  private hostPort: RuntimeChannel | null = null;
   private hostReady = false;
   private hostWaiters = new Set<HostWaiter>();
-  private creationPromise: Promise<ChromePort> | null = null;
+  private creationPromise: Promise<RuntimeChannel> | null = null;
   private expectedHostClose = false;
   private closingPromise: Promise<void> | null = null;
   private readonly admissionQueue: string[] = [];
   private activeJobId: string | null = null;
   private pendingIdleClose = false;
+  private admissionPumpPromise: Promise<void> | null = null;
 
-  constructor(private readonly chromeApi: ChromeLike) {}
+  constructor(
+    private readonly chromeApi: ChromeLike,
+    private readonly runtimeChannels: RuntimeChannelServer,
+    private readonly environment: ExtensionEnvironment,
+  ) {}
 
   register(): void {
-    this.chromeApi.runtime?.onConnect?.addListener((port) => this.handlePort(port));
+    this.runtimeChannels.onChannel((port) => this.handlePort(port));
   }
 
-  handlePort(port: ChromePort): void {
+  handlePort(port: RuntimeChannel): void {
     if (port.name === LOCAL_PIPELINE_OFFSCREEN_PORT) {
       this.attachHost(port);
       return;
@@ -94,16 +110,16 @@ export class OffscreenPipelineBroker {
       this.attachClient(port);
       return;
     }
-    port.disconnect();
+    void port.disconnect();
   }
 
-  private attachClient(port: ChromePort): void {
+  private attachClient(port: RuntimeChannel): void {
     const connection: ClientConnection = { port, jobs: new Set(), closed: false };
     this.clients.add(connection);
-    port.onMessage.addListener((message) => {
+    port.onMessage((message) => {
       void this.handleClientMessage(connection, message);
     });
-    port.onDisconnect.addListener(() => {
+    port.onDisconnect(() => {
       this.disconnectClient(connection);
     });
   }
@@ -208,7 +224,9 @@ export class OffscreenPipelineBroker {
         return;
       case 'cancel':
         if (job.state === 'active' && this.hostPort && this.hostReady) {
-          if (!safelyPost(this.hostPort, value)) this.handleHostPostFailure();
+          if (!await safelyPost(this.hostPort, value)) {
+            this.handleHostPostFailure();
+          }
           return;
         }
         this.failJob(
@@ -261,7 +279,7 @@ export class OffscreenPipelineBroker {
       if (connection.closed || this.owners.get(message.jobId) !== connection) {
         return;
       }
-      if (!safelyPost(connection.port, {
+      if (!await safelyPost(connection.port, {
         type: 'ready',
         jobId: message.jobId,
       } satisfies LocalPipelineHostMessage)) {
@@ -272,30 +290,35 @@ export class OffscreenPipelineBroker {
     }
   }
 
-  private attachHost(port: ChromePort): void {
-    const expectedUrl = this.chromeApi.runtime?.getURL?.(LOCAL_PIPELINE_OFFSCREEN_DOCUMENT);
-    const actualUrl = port.sender?.documentUrl;
-    if (expectedUrl && actualUrl && actualUrl !== expectedUrl) {
-      port.disconnect();
+  private attachHost(port: RuntimeChannel): void {
+    const expectedUrl = this.environment.resourceUrl(
+      LOCAL_PIPELINE_OFFSCREEN_DOCUMENT,
+    );
+    const source = port.source;
+    if (
+      source.kind !== 'extension-document'
+      || (source.url !== undefined && source.url !== expectedUrl)
+    ) {
+      void port.disconnect();
       return;
     }
 
     if (this.hostPort && this.hostPort !== port) {
-      this.hostPort.disconnect();
+      void this.hostPort.disconnect();
     }
     this.hostPort = port;
     this.hostReady = false;
     this.expectedHostClose = false;
     this.pendingIdleClose = false;
-    port.onMessage.addListener((message) => {
+    port.onMessage((message) => {
       void this.handleHostMessage(port, message);
     });
-    port.onDisconnect.addListener(() => {
+    port.onDisconnect(() => {
       this.disconnectHost(port);
     });
   }
 
-  private async handleHostMessage(port: ChromePort, value: unknown): Promise<void> {
+  private async handleHostMessage(port: RuntimeChannel, value: unknown): Promise<void> {
     if (port !== this.hostPort || !isLocalPipelineHostMessage(value)) {
       if (port === this.hostPort) {
         this.handleHostPostFailure(codedError(
@@ -327,13 +350,13 @@ export class OffscreenPipelineBroker {
         job?.terminalError
         && (value.type === 'complete' || value.type === 'error')
       ) {
-        safelyPost(owner.port, {
+        await safelyPost(owner.port, {
           type: 'error',
           jobId: value.jobId,
           error: serializePipelineError(job.terminalError, 'TRANSFER_PROTOCOL_ERROR'),
         } satisfies LocalPipelineHostMessage);
       } else if (!job?.terminalError) {
-        safelyPost(owner.port, value);
+        await safelyPost(owner.port, value);
       }
     }
     if (value.type === 'complete' || value.type === 'error') {
@@ -352,7 +375,7 @@ export class OffscreenPipelineBroker {
     this.clients.delete(connection);
     for (const jobId of [...connection.jobs]) {
       if (this.activeJobId === jobId && this.hostPort && this.hostReady) {
-        if (!safelyPost(this.hostPort, {
+        void safelyPost(this.hostPort, {
           type: 'cancel',
           jobId,
           reason: {
@@ -360,17 +383,16 @@ export class OffscreenPipelineBroker {
             messageKey: 'pipeline.cancelled.transportDisconnected',
             diagnosticSummary: '来源 Port 已断开',
           },
-        } satisfies LocalPipelineClientMessage)) {
-          this.handleHostPostFailure();
-          return;
-        }
+        } satisfies LocalPipelineClientMessage).then((delivered) => {
+          if (!delivered) this.handleHostPostFailure();
+        });
       }
       this.releaseJob(jobId);
     }
     this.postAdmissionQueuePositions();
   }
 
-  private disconnectHost(port: ChromePort): void {
+  private disconnectHost(port: RuntimeChannel): void {
     if (port !== this.hostPort) return;
     this.hostPort = null;
     this.hostReady = false;
@@ -400,6 +422,27 @@ export class OffscreenPipelineBroker {
   }
 
   private pumpAdmissionQueue(): void {
+    if (this.admissionPumpPromise) return;
+    const operation = this.pumpAdmissionQueueOnce().catch((error: unknown) => {
+      this.handleHostPostFailure(error);
+    });
+    this.admissionPumpPromise = operation;
+    void operation.finally(() => {
+      if (this.admissionPumpPromise === operation) {
+        this.admissionPumpPromise = null;
+      }
+      if (
+        !this.activeJobId
+        && this.hostPort
+        && this.hostReady
+        && this.jobs.get(this.admissionQueue[0] ?? '')?.state === 'queued'
+      ) {
+        this.pumpAdmissionQueue();
+      }
+    });
+  }
+
+  private async pumpAdmissionQueueOnce(): Promise<void> {
     if (this.activeJobId || !this.hostPort || !this.hostReady) return;
     while (this.admissionQueue.length > 0) {
       const jobId = this.admissionQueue[0]!;
@@ -420,8 +463,28 @@ export class OffscreenPipelineBroker {
         ...[...job.chunks.values()].sort((left, right) => left.index - right.index),
         { type: 'input-complete', jobId },
       ];
-      if (!messages.every((message) => safelyPost(this.hostPort!, message))) {
-        this.handleHostPostFailure();
+      const hostPort = this.hostPort;
+      job.state = 'admitting';
+      for (const message of messages) {
+        if (!hostPort || !await safelyPost(hostPort, message)) {
+          this.handleHostPostFailure();
+          return;
+        }
+      }
+      if (
+        this.hostPort !== hostPort
+        || !this.owners.has(jobId)
+        || this.jobs.get(jobId) !== job
+      ) {
+        postBestEffort(hostPort, {
+          type: 'cancel',
+          jobId,
+          reason: {
+            code: 'transport-disconnected',
+            messageKey: 'pipeline.cancelled.transportDisconnected',
+            diagnosticSummary: '任务投递期间来源 Port 已断开',
+          },
+        } satisfies LocalPipelineClientMessage);
         return;
       }
       job.chunks.clear();
@@ -432,38 +495,53 @@ export class OffscreenPipelineBroker {
       this.activeJobId = jobId;
       const owner = this.owners.get(jobId);
       if (owner && !owner.closed) {
-        safelyPost(owner.port, {
+        postBestEffort(owner.port, {
           type: 'queued',
           jobId,
           position: 0,
         } satisfies LocalPipelineHostMessage);
+      }
+      if (job.terminalError) {
+        void safelyPost(hostPort, {
+          type: 'cancel',
+          jobId,
+          reason: {
+            code: 'transport-disconnected',
+            messageKey: 'pipeline.cancelled.transportDisconnected',
+            diagnosticSummary: 'active 任务收到无效传输消息',
+          },
+        } satisfies LocalPipelineClientMessage).then((delivered) => {
+          if (!delivered) this.handleHostPostFailure();
+        });
       }
       break;
     }
   }
 
   private rejectJobMessage(jobId: string, job: BufferedJob, error: unknown): void {
-    if (job.state !== 'active') {
+    if (job.state !== 'active' && job.state !== 'admitting') {
       this.failJob(jobId, error);
       return;
     }
     if (job.terminalError) return;
     job.terminalError = error;
-    if (
-      !this.hostPort
-      || !this.hostReady
-      || !safelyPost(this.hostPort, {
-        type: 'cancel',
-        jobId,
-        reason: {
-          code: 'transport-disconnected',
-          messageKey: 'pipeline.cancelled.transportDisconnected',
-          diagnosticSummary: 'active 任务收到无效传输消息',
-        },
-      } satisfies LocalPipelineClientMessage)
-    ) {
+    if (job.state === 'admitting') return;
+    const hostPort = this.hostPort;
+    if (!hostPort || !this.hostReady) {
       this.handleHostPostFailure();
+      return;
     }
+    void safelyPost(hostPort, {
+      type: 'cancel',
+      jobId,
+      reason: {
+        code: 'transport-disconnected',
+        messageKey: 'pipeline.cancelled.transportDisconnected',
+        diagnosticSummary: 'active 任务收到无效传输消息',
+      },
+    } satisfies LocalPipelineClientMessage).then((delivered) => {
+      if (!delivered) this.handleHostPostFailure();
+    });
   }
 
   private handleHostPostFailure(error: unknown = codedError(
@@ -476,24 +554,28 @@ export class OffscreenPipelineBroker {
     this.activeJobId = null;
     this.failAllJobs(error);
     this.admissionQueue.length = 0;
-    port?.disconnect();
+    if (port) void port.disconnect();
   }
 
   private postAdmissionQueuePositions(): void {
+    const admissionOffset = (
+      this.activeJobId
+      || [...this.jobs.values()].some((job) => job.state === 'admitting')
+    ) ? 1 : 0;
     this.admissionQueue.forEach((jobId, index) => {
       const owner = this.owners.get(jobId);
       const job = this.jobs.get(jobId);
       if (!owner || owner.closed || job?.state !== 'queued') return;
-      safelyPost(owner.port, {
+      postBestEffort(owner.port, {
         type: 'queued',
         jobId,
-        position: index + (this.activeJobId ? 1 : 0),
+        position: index + admissionOffset,
       } satisfies LocalPipelineHostMessage);
     });
   }
 
   private postError(connection: ClientConnection, jobId: string, error: unknown): void {
-    safelyPost(connection.port, {
+    postBestEffort(connection.port, {
       type: 'error',
       jobId,
       error: serializePipelineError(error, 'TRANSFER_PROTOCOL_ERROR'),
@@ -509,7 +591,7 @@ export class OffscreenPipelineBroker {
     const fallbackCode: LocalPipelineErrorCode = isLocalPipelineErrorCode(errorCode)
       ? errorCode
       : 'OFFSCREEN_CREATE_FAILED';
-    safelyPost(owner.port, {
+    postBestEffort(owner.port, {
       type: 'error',
       jobId,
       error: serializePipelineError(error, fallbackCode),
@@ -524,7 +606,7 @@ export class OffscreenPipelineBroker {
     }
   }
 
-  private async ensureOffscreenHost(): Promise<ChromePort> {
+  private async ensureOffscreenHost(): Promise<RuntimeChannel> {
     if (this.closingPromise) await this.closingPromise;
     if (this.hostPort && this.hostReady) return this.hostPort;
     if (this.creationPromise) return this.creationPromise;
@@ -592,8 +674,9 @@ export class OffscreenPipelineBroker {
   }
 
   private async hasOffscreenDocument(): Promise<boolean> {
-    const targetUrl = this.chromeApi.runtime?.getURL?.(LOCAL_PIPELINE_OFFSCREEN_DOCUMENT);
-    if (!targetUrl) return false;
+    const targetUrl = this.environment.resourceUrl(
+      LOCAL_PIPELINE_OFFSCREEN_DOCUMENT,
+    );
     const runtimeApi = this.chromeApi.runtime;
     if (runtimeApi?.getContexts) {
       const contexts = await runtimeApi.getContexts({
@@ -613,9 +696,9 @@ export class OffscreenPipelineBroker {
     return false;
   }
 
-  private waitForHost(): Promise<ChromePort> {
+  private waitForHost(): Promise<RuntimeChannel> {
     if (this.hostPort && this.hostReady) return Promise.resolve(this.hostPort);
-    return new Promise<ChromePort>((resolve, reject) => {
+    return new Promise<RuntimeChannel>((resolve, reject) => {
       const waiter: HostWaiter = {
         resolve,
         reject,
@@ -628,7 +711,7 @@ export class OffscreenPipelineBroker {
     });
   }
 
-  private resolveHostWaiters(port: ChromePort): void {
+  private resolveHostWaiters(port: RuntimeChannel): void {
     for (const waiter of this.hostWaiters) {
       clearTimeout(waiter.timer);
       waiter.resolve(port);
@@ -670,8 +753,16 @@ export class OffscreenPipelineBroker {
   }
 }
 
-export function registerOffscreenPipelineBroker(chromeApi: ChromeLike): OffscreenPipelineBroker {
-  const broker = new OffscreenPipelineBroker(chromeApi);
+export function registerOffscreenPipelineBroker(
+  chromeApi: ChromeLike,
+  runtimeChannels: RuntimeChannelServer,
+  environment: ExtensionEnvironment,
+): OffscreenPipelineBroker {
+  const broker = new OffscreenPipelineBroker(
+    chromeApi,
+    runtimeChannels,
+    environment,
+  );
   broker.register();
   return broker;
 }

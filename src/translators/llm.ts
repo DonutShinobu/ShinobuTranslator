@@ -13,10 +13,12 @@ import {
   classifyLlmFetchError,
   sanitizeDiagnosticUrl,
   toDiagnosticError,
+  type DiagnosticLogContext,
 } from '../shared/diagnosticLog';
 import { emitDiagnosticLog, getDiagnosticExecutionContext } from '../shared/diagnosticLogClient';
+import type { RuntimeMessageSender } from '../shared/messages';
 import {
-  extensionTextTranslationTransport,
+  unavailableTextTranslationTransport,
   TextTranslationTransportError,
   type ChatCompletionResponse,
   type TextTranslationTransport,
@@ -34,6 +36,8 @@ type LlmTranslateOptions = {
   text: string;
   translationContext?: TranslationReferenceContext;
   diagnosticRunId?: string;
+  diagnosticContext?: DiagnosticLogContext;
+  diagnosticMessageSender?: RuntimeMessageSender;
   apiKey?: string;
   signal?: AbortSignal;
   transport?: TextTranslationTransport;
@@ -73,6 +77,8 @@ type LlmTranslateRegionsOptions = {
   regions: LlmRegionInput[];
   translationContext?: TranslationReferenceContext;
   diagnosticRunId?: string;
+  diagnosticContext?: DiagnosticLogContext;
+  diagnosticMessageSender?: RuntimeMessageSender;
   apiKey?: string;
   signal?: AbortSignal;
   transport?: TextTranslationTransport;
@@ -90,6 +96,8 @@ type ChatCompletionRequestOptions = {
   useCustomModel?: boolean;
   thinkingLevel?: LlmThinkingLevel;
   diagnosticRunId?: string;
+  diagnosticContext?: DiagnosticLogContext;
+  diagnosticMessageSender?: RuntimeMessageSender;
   apiKey?: string;
   signal?: AbortSignal;
   transport?: TextTranslationTransport;
@@ -436,17 +444,22 @@ async function requestChatCompletion(
     runId: options.diagnosticRunId,
     level: 'info',
     category: 'llm.api',
-    source: { context: getDiagnosticExecutionContext(), module: 'translators/llm.ts' },
+    source: {
+      context: getDiagnosticExecutionContext(
+        options.diagnosticContext ?? 'content',
+      ),
+      module: 'translators/llm.ts',
+    },
     message: `${options.provider} LLM 请求开始`,
     data: {
       ...baseLogData,
       contentDirectFetch: false,
     },
-  });
+  }, options.diagnosticMessageSender);
 
   try {
     const response = await (
-      options.transport ?? extensionTextTranslationTransport
+      options.transport ?? unavailableTextTranslationTransport
     ).requestChatCompletion({
       body: requestBody,
       providerBody,
@@ -467,7 +480,12 @@ async function requestChatCompletion(
       runId: options.diagnosticRunId,
       level: 'info',
       category: 'llm.api',
-      source: { context: getDiagnosticExecutionContext(), module: 'translators/llm.ts' },
+      source: {
+        context: getDiagnosticExecutionContext(
+          options.diagnosticContext ?? 'content',
+        ),
+        module: 'translators/llm.ts',
+      },
       message: `${options.provider} LLM 请求完成`,
       data: {
         ...baseLogData,
@@ -475,7 +493,7 @@ async function requestChatCompletion(
         durationMs: Date.now() - startedAt,
         responseData: response,
       },
-    });
+    }, options.diagnosticMessageSender);
     return response;
   } catch (error) {
     const classification = classifyLlmFetchError(error);
@@ -483,7 +501,12 @@ async function requestChatCompletion(
       runId: options.diagnosticRunId,
       level: 'error',
       category: 'llm.api',
-      source: { context: getDiagnosticExecutionContext(), module: 'translators/llm.ts' },
+      source: {
+        context: getDiagnosticExecutionContext(
+          options.diagnosticContext ?? 'content',
+        ),
+        module: 'translators/llm.ts',
+      },
       message: `${options.provider} LLM 代理请求失败：${classification.reason}`,
       data: {
         ...baseLogData,
@@ -492,7 +515,7 @@ async function requestChatCompletion(
         classification,
       },
       error: toDiagnosticError(error),
-    });
+    }, options.diagnosticMessageSender);
     const transportFailure = error && typeof error === 'object'
       ? error as {
           status?: unknown;

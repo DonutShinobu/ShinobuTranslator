@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { defaultExtensionSettings } from '../../../src/shared/config';
-import { sendRuntimeMessage } from '../../../src/shared/messages';
+import type { RuntimeMessageSender } from '../../../src/shared/messages';
 import { createInitialPhotoState } from '../../../src/content/core/state/photoStateStore';
 import { TranslationRunner } from '../../../src/content/core/translation/translationRunner';
 
-type RuntimeSender = typeof sendRuntimeMessage;
+type RuntimeSender = RuntimeMessageSender;
 
 describe('TranslationRunner', () => {
   it('resets a failed state without replacing its identity', () => {

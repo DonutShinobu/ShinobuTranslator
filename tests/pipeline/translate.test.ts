@@ -1,9 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runTranslate } from '../../src/pipeline/translate';
 import type { PipelineConfig, TextRegion } from '../../src/types';
-
-const testGlobal = globalThis as typeof globalThis & { chrome?: unknown };
-const originalChrome = testGlobal.chrome;
+import {
+  createExtensionTextTranslationTransport,
+  type TextTranslationTransport,
+} from '../../src/translators/transport';
+import type {
+  RuntimeMessageSender,
+  RuntimeResponse,
+} from '../../src/shared/messages';
 
 const baseConfig: PipelineConfig = {
   sourceLang: 'ja',
@@ -34,70 +39,62 @@ function makeRegion(overrides: Partial<TextRegion> = {}): TextRegion {
   };
 }
 
-function installRuntimeChatSequence(contents: string[]): unknown[] {
-  const sentChatMessages: unknown[] = [];
-  const queue = [...contents];
-  testGlobal.chrome = {
-    runtime: {
-      sendMessage(message: unknown, callback?: (response: unknown) => void): void {
-        if (typeof message === 'object' && message !== null && (message as { type?: unknown }).type === 'mt:llm-chat-completions') {
-          sentChatMessages.push(message);
-          callback?.({
-            ok: true,
-            type: 'mt:llm-chat-completions',
-            data: {
-              choices: [{ message: { content: queue.shift() ?? '' } }],
-            },
-          });
-          return;
-        }
-        callback?.({ ok: true, type: 'mt:diagnostic-log-event' });
-      },
-    },
+type RuntimeChatHarness = unknown[] & {
+  transport: TextTranslationTransport;
+};
+
+function createRuntimeChatHarness(
+  respond: (message: unknown) => Promise<RuntimeResponse>,
+): RuntimeChatHarness {
+  const sentChatMessages = [] as unknown as RuntimeChatHarness;
+  const sendMessage: RuntimeMessageSender = async (message) => {
+    sentChatMessages.push(message);
+    return respond(message);
   };
+  sentChatMessages.transport = createExtensionTextTranslationTransport(
+    sendMessage,
+  );
   return sentChatMessages;
+}
+
+function installRuntimeChatSequence(contents: string[]): RuntimeChatHarness {
+  const queue = [...contents];
+  return createRuntimeChatHarness(async () => ({
+    ok: true,
+    type: 'mt:llm-chat-completions',
+    data: {
+      choices: [{ message: { content: queue.shift() ?? '' } }],
+    },
+  }));
 }
 
 type RuntimeChatResponseStep =
   | { ok: true; content: string }
   | { ok: false; error: string };
 
-function installRuntimeChatResponseSequence(steps: RuntimeChatResponseStep[]): unknown[] {
-  const sentChatMessages: unknown[] = [];
+function installRuntimeChatResponseSequence(
+  steps: RuntimeChatResponseStep[],
+): RuntimeChatHarness {
   const queue = [...steps];
-  testGlobal.chrome = {
-    runtime: {
-      sendMessage(message: unknown, callback?: (response: unknown) => void): void {
-        if (
-          typeof message === 'object'
-          && message !== null
-          && (message as { type?: unknown }).type === 'mt:llm-chat-completions'
-        ) {
-          sentChatMessages.push(message);
-          const step = queue.shift();
-          if (!step) {
-            throw new Error('missing mocked LLM response');
-          }
-          callback?.(step.ok
-            ? {
-                ok: true,
-                type: 'mt:llm-chat-completions',
-                data: {
-                  choices: [{ message: { content: step.content } }],
-                },
-              }
-            : {
-                ok: false,
-                type: 'mt:llm-chat-completions',
-                error: step.error,
-              });
-          return;
+  return createRuntimeChatHarness(async () => {
+    const step = queue.shift();
+    if (!step) {
+      throw new Error('missing mocked LLM response');
+    }
+    return step.ok
+      ? {
+          ok: true,
+          type: 'mt:llm-chat-completions',
+          data: {
+            choices: [{ message: { content: step.content } }],
+          },
         }
-        callback?.({ ok: true, type: 'mt:diagnostic-log-event' });
-      },
-    },
-  };
-  return sentChatMessages;
+      : {
+          ok: false,
+          type: 'mt:llm-chat-completions',
+          error: step.error,
+        };
+  });
 }
 
 function getUserPrompt(message: unknown): string {
@@ -109,11 +106,6 @@ function getUserPrompt(message: unknown): string {
 }
 
 afterEach(() => {
-  if (originalChrome === undefined) {
-    delete testGlobal.chrome;
-  } else {
-    testGlobal.chrome = originalChrome;
-  }
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -135,6 +127,7 @@ describe('runTranslate', () => {
         llmModel: 'MiniMax-Custom',
         llmUseCustomModel: true,
       },
+      { transport: sentChatMessages.transport },
     );
 
     expect(sentChatMessages[0]).toMatchObject({
@@ -164,7 +157,11 @@ describe('runTranslate', () => {
       }),
     ]);
 
-    const result = await runTranslate([makeRegion()], baseConfig);
+    const result = await runTranslate(
+      [makeRegion()],
+      baseConfig,
+      { transport: sentChatMessages.transport },
+    );
 
     expect(sentChatMessages).toHaveLength(2);
     expect(result.regions[0]).toMatchObject({
@@ -187,7 +184,11 @@ describe('runTranslate', () => {
       '普通译文',
     ]);
 
-    const result = await runTranslate([makeRegion()], baseConfig);
+    const result = await runTranslate(
+      [makeRegion()],
+      baseConfig,
+      { transport: sentChatMessages.transport },
+    );
 
     expect(sentChatMessages).toHaveLength(3);
     expect(result.regions[0]).toMatchObject({
@@ -221,6 +222,7 @@ describe('runTranslate', () => {
         ...baseConfig,
         translationContext,
       },
+      { transport: sentChatMessages.transport },
     );
 
     expect(sentChatMessages).toHaveLength(3);
@@ -265,6 +267,7 @@ describe('runTranslate', () => {
           quotedTweetText: '引用推文正文',
         },
       },
+      { transport: sentChatMessages.transport },
     );
 
     expect(sentChatMessages).toHaveLength(3);
@@ -302,6 +305,7 @@ describe('runTranslate', () => {
           quotedTweetText: '引用推文正文',
         },
       },
+      { transport: sentChatMessages.transport },
     );
 
     expect(sentChatMessages).toHaveLength(2);
@@ -313,28 +317,12 @@ describe('runTranslate', () => {
   });
 
   it('aborts the whole page after one thinking-configuration rejection', async () => {
-    const sentChatMessages: unknown[] = [];
-    testGlobal.chrome = {
-      runtime: {
-        sendMessage(message: unknown, callback?: (response: unknown) => void): void {
-          if (
-            typeof message === 'object'
-            && message !== null
-            && (message as { type?: unknown }).type === 'mt:llm-chat-completions'
-          ) {
-            sentChatMessages.push(message);
-            callback?.({
-              ok: false,
-              type: 'mt:llm-chat-completions',
-              error: '当前模型不支持所选思考设置: invalid reasoning_effort',
-              errorCode: 'llm_thinking_config',
-            });
-            return;
-          }
-          callback?.({ ok: true, type: 'mt:diagnostic-log-event' });
-        },
-      },
-    };
+    const sentChatMessages = createRuntimeChatHarness(async () => ({
+      ok: false,
+      type: 'mt:llm-chat-completions',
+      error: '当前模型不支持所选思考设置: invalid reasoning_effort',
+      errorCode: 'llm_thinking_config',
+    }));
 
     await expect(runTranslate(
       [
@@ -342,6 +330,7 @@ describe('runTranslate', () => {
         makeRegion({ id: 'region-2' }),
       ],
       baseConfig,
+      { transport: sentChatMessages.transport },
     )).rejects.toThrow('当前模型不支持所选思考设置');
     expect(sentChatMessages).toHaveLength(1);
   });

@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { llmTranslate, llmTranslateRegions } from '../../src/translators/llm';
-
-const testGlobal = globalThis as typeof globalThis & { chrome?: unknown };
-const originalChrome = testGlobal.chrome;
+import type { TextTranslationTransport } from '../../src/translators/transport';
+import type { RuntimeMessageSender } from '../../src/shared/messages';
 
 type CapturedChatBody = {
   model: string;
@@ -39,20 +38,37 @@ type CapturedRegionPayload = Array<{
   };
 }>;
 
-function installRuntimeChatCompletionMock(responseContent: string, sentMessages: unknown[]): void {
-  testGlobal.chrome = {
-    runtime: {
-      sendMessage(message: unknown, callback?: (response: unknown) => void): void {
-        sentMessages.push(message);
-        callback?.({
-          ok: true,
-          type: 'mt:llm-chat-completions',
-          data: {
-            choices: [{ message: { content: responseContent } }],
-          },
-        });
-      },
+function installRuntimeChatCompletionMock(
+  responseContent: string,
+  sentMessages: unknown[],
+): TextTranslationTransport {
+  return {
+    async requestChatCompletion(request) {
+      sentMessages.push({
+        type: 'mt:llm-chat-completions',
+        body: request.body,
+        proxyConfig: request.proxyConfig,
+        diagnosticRunId: request.diagnosticRunId,
+      });
+      return {
+        choices: [{ message: { content: responseContent } }],
+      };
     },
+    async translatePlain() {
+      return responseContent;
+    },
+  };
+}
+
+function createDiagnosticMessageSender(
+  sentMessages: unknown[],
+): RuntimeMessageSender {
+  return async (message) => {
+    sentMessages.push(message);
+    return {
+      ok: true,
+      type: 'mt:diagnostic-log-event',
+    };
   };
 }
 
@@ -78,11 +94,6 @@ function parsePromptPayload(userContent: string): CapturedRegionPayload {
 }
 
 afterEach(() => {
-  if (originalChrome === undefined) {
-    delete testGlobal.chrome;
-  } else {
-    testGlobal.chrome = originalChrome;
-  }
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -90,9 +101,10 @@ afterEach(() => {
 describe('llmTranslate', () => {
   it('proxies OpenAI OAuth chat completion requests through runtime messaging', async () => {
     const sentMessages: unknown[] = [];
-    installRuntimeChatCompletionMock('译文', sentMessages);
+    const transport = installRuntimeChatCompletionMock('译文', sentMessages);
 
     const translated = await llmTranslate({
+      transport,
       provider: 'openai',
       authMode: 'openai_oauth',
       baseUrl: 'https://api.openai.com/v1',
@@ -123,9 +135,10 @@ describe('llmTranslate', () => {
 
   it('proxies API-key chat completion requests through runtime messaging', async () => {
     const sentMessages: unknown[] = [];
-    installRuntimeChatCompletionMock('译文', sentMessages);
+    const transport = installRuntimeChatCompletionMock('译文', sentMessages);
 
     const translated = await llmTranslate({
+      transport,
       provider: 'openai',
       authMode: 'api_key',
       baseUrl: 'https://api.openai.com/v1',
@@ -161,9 +174,10 @@ describe('llmTranslate', () => {
 
   it('uses localized language names and a faithful Traditional Chinese prompt copy', async () => {
     const sentMessages: unknown[] = [];
-    installRuntimeChatCompletionMock('譯文', sentMessages);
+    const transport = installRuntimeChatCompletionMock('譯文', sentMessages);
 
     await llmTranslate({
+      transport,
       provider: 'openai',
       authMode: 'api_key',
       baseUrl: 'https://api.openai.com/v1',
@@ -173,6 +187,7 @@ describe('llmTranslate', () => {
       text: 'こんにちは',
     });
     await llmTranslate({
+      transport,
       provider: 'openai',
       authMode: 'api_key',
       baseUrl: 'https://api.openai.com/v1',
@@ -182,6 +197,7 @@ describe('llmTranslate', () => {
       text: '你好',
     });
     await llmTranslate({
+      transport,
       provider: 'openai',
       authMode: 'api_key',
       baseUrl: 'https://api.openai.com/v1',
@@ -220,9 +236,10 @@ describe('llmTranslate', () => {
 
   it('keeps tweet context separate from OCR text and describes its reference uses', async () => {
     const sentMessages: unknown[] = [];
-    installRuntimeChatCompletionMock('译文', sentMessages);
+    const transport = installRuntimeChatCompletionMock('译文', sentMessages);
 
     await llmTranslate({
+      transport,
       provider: 'openai',
       authMode: 'api_key',
       baseUrl: 'https://api.openai.com/v1',
@@ -258,13 +275,16 @@ describe('llmTranslate', () => {
 
   it('includes full tweet context in diagnostic events only for debug runs', async () => {
     const sentMessages: unknown[] = [];
-    installRuntimeChatCompletionMock('译文', sentMessages);
+    const transport = installRuntimeChatCompletionMock('译文', sentMessages);
+    const diagnosticMessageSender = createDiagnosticMessageSender(sentMessages);
     const translationContext = {
       source: 'x_tweet' as const,
       currentTweetText: '仅调试日志可见的推文正文',
     };
 
     await llmTranslate({
+      transport,
+      diagnosticMessageSender,
       provider: 'openai',
       authMode: 'api_key',
       baseUrl: 'https://api.openai.com/v1',
@@ -287,6 +307,8 @@ describe('llmTranslate', () => {
 
     sentMessages.length = 0;
     await llmTranslate({
+      transport,
+      diagnosticMessageSender,
       provider: 'openai',
       authMode: 'api_key',
       baseUrl: 'https://api.openai.com/v1',
@@ -317,9 +339,10 @@ describe('llmTranslateRegions', () => {
       regions: [{ id: 'region-1', translation: '你好。' }],
     });
     const sentMessages: unknown[] = [];
-    installRuntimeChatCompletionMock(rawContent, sentMessages);
+    const transport = installRuntimeChatCompletionMock(rawContent, sentMessages);
 
     await llmTranslateRegions({
+      transport,
       provider: 'minimax',
       authMode: 'api_key',
       baseUrl: 'https://api.minimax.io/v1',
@@ -348,9 +371,10 @@ describe('llmTranslateRegions', () => {
       regions: [{ id: 'region-1', translation: '你好。' }],
     });
     const sentMessages: unknown[] = [];
-    installRuntimeChatCompletionMock(rawContent, sentMessages);
+    const transport = installRuntimeChatCompletionMock(rawContent, sentMessages);
 
     await llmTranslateRegions({
+      transport,
       provider: 'minimax',
       authMode: 'api_key',
       baseUrl: 'https://api.minimax.io/v1',
@@ -378,9 +402,10 @@ describe('llmTranslateRegions', () => {
       regions: [{ id: 'region-1', translation: '你好。' }],
     });
     const sentMessages: unknown[] = [];
-    installRuntimeChatCompletionMock(rawContent, sentMessages);
+    const transport = installRuntimeChatCompletionMock(rawContent, sentMessages);
 
     await llmTranslateRegions({
+      transport,
       provider: 'minimax',
       authMode: 'api_key',
       baseUrl: 'https://api.minimax.io/v1',
@@ -421,9 +446,10 @@ describe('llmTranslateRegions', () => {
       '```',
     ].join('\n');
     const sentMessages: unknown[] = [];
-    installRuntimeChatCompletionMock(rawContent, sentMessages);
+    const transport = installRuntimeChatCompletionMock(rawContent, sentMessages);
 
     const result = await llmTranslateRegions({
+      transport,
       provider: 'openai',
       authMode: 'api_key',
       baseUrl: 'https://api.openai.com/v1',
@@ -513,9 +539,10 @@ describe('llmTranslateRegions', () => {
       regions: [{ id: 'region-1', translation: '你好。' }],
     });
     const sentMessages: unknown[] = [];
-    installRuntimeChatCompletionMock(rawContent, sentMessages);
+    const transport = installRuntimeChatCompletionMock(rawContent, sentMessages);
 
     await llmTranslateRegions({
+      transport,
       provider: 'openai',
       authMode: 'api_key',
       baseUrl: 'https://api.openai.com/v1',
@@ -570,9 +597,10 @@ describe('llmTranslateRegions', () => {
       regions: [{ id: 'region-1', translation: '你好。' }],
     });
     const sentMessages: unknown[] = [];
-    installRuntimeChatCompletionMock(rawContent, sentMessages);
+    const transport = installRuntimeChatCompletionMock(rawContent, sentMessages);
 
     await llmTranslateRegions({
+      transport,
       provider: 'openai',
       authMode: 'api_key',
       baseUrl: 'https://api.openai.com/v1',

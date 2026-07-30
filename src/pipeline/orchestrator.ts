@@ -485,6 +485,36 @@ export async function runPipeline(
     runtimeStages.find((stage) => stage.model === model);
 
   throwIfCancelled(signal);
+  report(onProgress, "preload", "加载检测模型");
+  const preloadT0 = performance.now();
+  try {
+    const preparedDetector = await providerSessionResolver.preload({
+      model: "detector",
+      stage: "detect",
+    });
+    const providerLabel = preparedDetector.provider === "webnn"
+      ? `${preparedDetector.provider}/${preparedDetector.webnnDeviceType ?? "default"}`
+      : preparedDetector.provider;
+    setRuntimeStage({
+      model: "detector",
+      enabled: true,
+      provider: preparedDetector.provider,
+      webnnDeviceType: preparedDetector.webnnDeviceType,
+      detail: `detector 模型已加载 (${providerLabel})`,
+    });
+  } catch (error) {
+    setRuntimeStage({
+      model: "detector",
+      enabled: false,
+      detail: `detector 模型未启用，使用检测回退流程: ${toErrorDetail(error)}`,
+    });
+  }
+  throwIfCancelled(signal);
+  stageTimings.push({
+    stage: "preload",
+    label: "加载检测模型",
+    durationMs: performance.now() - preloadT0,
+  });
 
   let ocrRuntimeProbePromise: Promise<RuntimeStageStatus> | null = null;
   let inpaintRuntimeProbePromise: Promise<RuntimeStageStatus> | null = null;

@@ -37,10 +37,25 @@ export type ProviderExecutionResult<T> = {
   report: ProviderExecutionReport;
 };
 
+export type ProviderExecutionPreloadResult = ProviderExecutionTarget & {
+  provider: ProviderRuntime;
+  webnnDeviceType?: ProviderExecutionSession['webnnDeviceType'];
+};
+
 export type ProviderSessionResolver = {
+  preload(
+    target: ProviderExecutionTarget,
+  ): Promise<ProviderExecutionPreloadResult>;
   execute<T>(
     request: ProviderExecutionRequest<T>,
   ): Promise<ProviderExecutionResult<T>>;
+};
+
+type PreparedProviderExecution = {
+  providers: ProviderRuntime[];
+  attempts: ProviderExecutionAttempt[];
+  providerIndex: number;
+  session: ProviderExecutionSession;
 };
 
 function assertPolicy(policy: ProviderExecutionPolicy): void {
@@ -142,75 +157,177 @@ export function createProviderSessionResolver(
   const loadSession = options.loadSession;
   assertPolicy(policySource);
   const policy = clonePolicy(policySource);
+  const preparedExecutions = new Map<string, PreparedProviderExecution>();
+
+  function assertTarget(
+    model: unknown,
+    stage: unknown,
+  ): asserts model is ProviderExecutionModel {
+    if (!isProviderExecutionTarget(model, stage)) {
+      throw new TypeError('Provider execution target is invalid');
+    }
+  }
+  const targetKey = (
+    model: ProviderExecutionModel,
+    stage: ProviderExecutionStage,
+  ): string => `${stage}:${model}`;
+  const resolveProviders = async (
+    model: ProviderExecutionModel,
+    stage: ProviderExecutionStage,
+  ): Promise<ProviderRuntime[]> => {
+    const rule = policy.rules.find((candidate) =>
+      candidate.model === model && candidate.stage === stage);
+    let manifestProviders: readonly ProviderRuntime[] | undefined;
+    if (!rule) {
+      try {
+        manifestProviders = (await loadModel(model)).runtime;
+      } catch (error) {
+        throwProviderFailure(
+          'PIPELINE_PROVIDER_CONTRACT_VIOLATED',
+          createReport(policy, model, stage, []),
+          error,
+        );
+      }
+    }
+    const providers = [...(rule?.providers ?? manifestProviders ?? [])];
+    if (
+      providers.length === 0
+      || !providers.every(isProviderRuntime)
+      || new Set(providers).size !== providers.length
+    ) {
+      throwProviderFailure(
+        'PIPELINE_PROVIDER_CONTRACT_VIOLATED',
+        createReport(policy, model, stage, []),
+      );
+    }
+    return providers;
+  };
+  const acquireSession = async (
+    model: ProviderExecutionModel,
+    stage: ProviderExecutionStage,
+    provider: ProviderRuntime,
+    attempts: ProviderExecutionAttempt[],
+    onUnavailable?: (error: unknown) => void,
+  ): Promise<ProviderExecutionSession | null> => {
+    let session: ProviderExecutionSession;
+    try {
+      session = await loadSession(model, [provider]);
+    } catch (error) {
+      onUnavailable?.(error);
+      attempts.push({
+        attempt: attempts.length + 1,
+        provider,
+        outcome: 'unavailable',
+        reason: 'session-unavailable',
+      });
+      return null;
+    }
+    if (session.provider !== provider) {
+      attempts.push({
+        attempt: attempts.length + 1,
+        provider,
+        outcome: 'failed',
+        reason: 'contract-violated',
+      });
+      throwProviderFailure(
+        'PIPELINE_PROVIDER_CONTRACT_VIOLATED',
+        createReport(policy, model, stage, attempts),
+      );
+    }
+    return session;
+  };
+  const preloadResult = (
+    target: ProviderExecutionTarget,
+    session: ProviderExecutionSession,
+  ): ProviderExecutionPreloadResult => ({
+    ...target,
+    provider: session.provider,
+    ...(session.webnnDeviceType
+      ? { webnnDeviceType: session.webnnDeviceType }
+      : {}),
+  } as ProviderExecutionPreloadResult);
 
   return {
+    async preload(
+      target: ProviderExecutionTarget,
+    ): Promise<ProviderExecutionPreloadResult> {
+      const { model, stage } = target;
+      assertTarget(model, stage);
+      const key = targetKey(model, stage);
+      const existing = preparedExecutions.get(key);
+      if (existing) {
+        return preloadResult(target, existing.session);
+      }
+
+      const providers = await resolveProviders(model, stage);
+      const attempts: ProviderExecutionAttempt[] = [];
+      let lastError: unknown;
+      for (let providerIndex = 0; providerIndex < providers.length; providerIndex += 1) {
+        const provider = providers[providerIndex];
+        const session = await acquireSession(
+          model,
+          stage,
+          provider,
+          attempts,
+          (error) => {
+            lastError = error;
+          },
+        );
+        if (!session) continue;
+        preparedExecutions.set(key, {
+          providers,
+          attempts,
+          providerIndex,
+          session,
+        });
+        return preloadResult(target, session);
+      }
+      throwProviderFailure(
+        'PIPELINE_PROVIDER_UNAVAILABLE',
+        createReport(policy, model, stage, attempts),
+        lastError,
+      );
+    },
+
     async execute<T>({
       model,
       stage,
       run,
     }: ProviderExecutionRequest<T>): Promise<ProviderExecutionResult<T>> {
-      if (!isProviderExecutionTarget(model, stage)) {
-        throw new TypeError('Provider execution target is invalid');
-      }
-      const rule = policy.rules.find((candidate) =>
-        candidate.model === model && candidate.stage === stage);
-      let manifestProviders: readonly ProviderRuntime[] | undefined;
-      if (!rule) {
-        try {
-          manifestProviders = (await loadModel(model)).runtime;
-        } catch (error) {
-          throwProviderFailure(
-            'PIPELINE_PROVIDER_CONTRACT_VIOLATED',
-            createReport(policy, model, stage, []),
-            error,
-          );
-        }
-      }
-      const providers = [...(rule?.providers ?? manifestProviders ?? [])];
-      const attempts: ProviderExecutionAttempt[] = [];
-
-      if (
-        providers.length === 0
-        || !providers.every(isProviderRuntime)
-        || new Set(providers).size !== providers.length
-      ) {
-        const report = createReport(policy, model, stage, attempts);
-        throwProviderFailure(
-          'PIPELINE_PROVIDER_CONTRACT_VIOLATED',
-          report,
-        );
-      }
+      assertTarget(model, stage);
+      const key = targetKey(model, stage);
+      const prepared = preparedExecutions.get(key);
+      preparedExecutions.delete(key);
+      const providers = prepared?.providers
+        ?? await resolveProviders(model, stage);
+      const attempts = prepared?.attempts.map((attempt) => ({ ...attempt }))
+        ?? [];
 
       let lastError: unknown;
       let executionFailed = false;
-      for (const provider of providers) {
+      const firstProviderIndex = prepared?.providerIndex ?? 0;
+      for (
+        let providerIndex = firstProviderIndex;
+        providerIndex < providers.length;
+        providerIndex += 1
+      ) {
+        const provider = providers[providerIndex];
         const attempt = attempts.length + 1;
         let session: ProviderExecutionSession;
-        try {
-          session = await loadSession(model, [provider]);
-        } catch (error) {
-          lastError = error;
-          attempts.push({
-            attempt,
+        if (prepared && providerIndex === prepared.providerIndex) {
+          session = prepared.session;
+        } else {
+          const acquired = await acquireSession(
+            model,
+            stage,
             provider,
-            outcome: 'unavailable',
-            reason: 'session-unavailable',
-          });
-          continue;
-        }
-
-        if (session.provider !== provider) {
-          attempts.push({
-            attempt,
-            provider,
-            outcome: 'failed',
-            reason: 'contract-violated',
-          });
-          const report = createReport(policy, model, stage, attempts);
-          throwProviderFailure(
-            'PIPELINE_PROVIDER_CONTRACT_VIOLATED',
-            report,
+            attempts,
+            (error) => {
+              lastError = error;
+            },
           );
+          if (!acquired) continue;
+          session = acquired;
         }
 
         try {

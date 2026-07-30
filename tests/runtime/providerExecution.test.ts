@@ -115,6 +115,60 @@ describe('provider session resolver contract', () => {
     });
   });
 
+  it('preloads through the explicit port and carries session fallback into execution', async () => {
+    const loadModel = vi.fn(async () => ({
+      runtime: ['webgpu', 'webnn', 'wasm'] as const,
+    }));
+    const loadSession = vi.fn(async (
+      _model: ProviderExecutionModel,
+      providers: readonly ProviderRuntime[],
+    ) => {
+      if (providers[0] === 'webgpu') throw new Error('adapter unavailable');
+      return handle(providers[0]);
+    });
+    const resolver = createProviderSessionResolver({
+      loadModel,
+      loadSession,
+    });
+
+    await expect(resolver.preload({
+      model: 'detector',
+      stage: 'detect',
+    })).resolves.toMatchObject({
+      provider: 'webnn',
+    });
+    const execution = await resolver.execute({
+      model: 'detector',
+      stage: 'detect',
+      run: async (session) => session.provider,
+    });
+
+    expect(loadModel).toHaveBeenCalledOnce();
+    expect(loadSession.mock.calls.map(([, providers]) => providers)).toEqual([
+      ['webgpu'],
+      ['webnn'],
+    ]);
+    expect(execution.value).toBe('webnn');
+    expect(execution.report).toMatchObject({
+      attempts: [
+        {
+          attempt: 1,
+          provider: 'webgpu',
+          outcome: 'unavailable',
+          reason: 'session-unavailable',
+        },
+        {
+          attempt: 2,
+          provider: 'webnn',
+          outcome: 'succeeded',
+          reason: 'completed',
+        },
+      ],
+      finalProvider: 'webnn',
+      satisfied: true,
+    });
+  });
+
   it('uses an explicitly injected versioned policy without consulting manifest defaults', async () => {
     const policy: ProviderExecutionPolicy = {
       schemaVersion: 1,

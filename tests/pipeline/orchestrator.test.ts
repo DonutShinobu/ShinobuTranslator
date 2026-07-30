@@ -280,6 +280,7 @@ describe('runPipeline', () => {
 
     expect(uniqueConsecutiveStages(progress)).toEqual([
       'load',
+      'preload',
       'detect',
       'bubble',
       'ocr',
@@ -291,6 +292,7 @@ describe('runPipeline', () => {
     ]);
     expect(artifacts.stageTimings.map((timing) => timing.stage)).toEqual([
       'load',
+      'preload',
       'detect',
       'bubble',
       'ocr',
@@ -310,7 +312,7 @@ describe('runPipeline', () => {
     expect(pipelineMocks.drawTypeset).toHaveBeenCalledOnce();
   });
 
-  it('injects the runtime capability policy into detector provider resolution', async () => {
+  it('preloads the detector through the injected runtime capability policy', async () => {
     const policy: ProviderExecutionPolicy = {
       schemaVersion: 1,
       contract: {
@@ -342,6 +344,9 @@ describe('runPipeline', () => {
       _platform: PlatformProvider,
       resolver: ProviderSessionResolver,
     ) => {
+      expect(loadSession.mock.calls).toEqual([
+        ['detector', ['wasm']],
+      ]);
       const execution = await resolver.execute({
         model: 'detector',
         stage: 'detect',
@@ -470,6 +475,7 @@ describe('runPipeline', () => {
 
     expect(uniqueConsecutiveStages(progress)).toEqual([
       'load',
+      'preload',
       'detect',
       'bubble',
       'ocr',
@@ -479,6 +485,7 @@ describe('runPipeline', () => {
     ]);
     expect(artifacts.stageTimings.map((timing) => timing.stage)).toEqual([
       'load',
+      'preload',
       'detect',
       'bubble',
       'ocr',
@@ -559,6 +566,7 @@ describe('runPipeline', () => {
     });
     expect(stageError.artifacts.stageTimings.map((timing) => timing.stage)).toEqual([
       'load',
+      'preload',
     ]);
   });
 });

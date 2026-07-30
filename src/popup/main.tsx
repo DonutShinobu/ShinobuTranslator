@@ -4,6 +4,7 @@ import { App } from './App';
 import type { RuntimeMessageSender } from '../shared/messages';
 import { createRuntimeMessageSender } from '../shared/messages';
 import type {
+  NativeCommands,
   RuntimeRequestClient,
 } from '../../apps/extension/src/capabilities/contracts';
 import './styles.css';
@@ -11,6 +12,7 @@ import './styles.css';
 export function mountPopup(options: {
   runtimeRequests: RuntimeRequestClient;
   extensionVersion: string;
+  commands: NativeCommands;
 }): void {
   const sendMessage: RuntimeMessageSender = createRuntimeMessageSender(
     options.runtimeRequests,
@@ -20,6 +22,7 @@ export function mountPopup(options: {
       <App
         sendMessage={sendMessage}
         extensionVersion={options.extensionVersion}
+        commands={options.commands}
       />
     </React.StrictMode>,
   );

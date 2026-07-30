@@ -1,7 +1,7 @@
 import type {
+  AuthenticationTabLifecycle,
   ExtensionStorage,
 } from "../../../apps/extension/src/capabilities/contracts";
-import { getChromeApi } from "../../shared/chrome";
 import {
   buildOpenAiAuthorizeUrl,
   createOpenAiOAuthCodeChallenge,
@@ -61,6 +61,7 @@ type PendingOpenAiOAuthLogin = {
 
 export type OpenAiOAuthDependencies = {
   storage: ExtensionStorage;
+  authenticationTabs: AuthenticationTabLifecycle;
 };
 
 export type OpenAiOAuthService = {
@@ -203,34 +204,24 @@ async function clearPendingOpenAiOAuthLogin(
 }
 
 async function openOpenAiAuthTab(
-  _dependencies: OpenAiOAuthDependencies,
+  dependencies: OpenAiOAuthDependencies,
   url: string,
 ): Promise<number | undefined> {
-  const chromeApi = getChromeApi();
-  if (!chromeApi?.tabs?.create) {
-    throw new Error('当前浏览器不支持打开 OpenAI 登录页，请确认扩展已授予 tabs 权限');
+  const result = await dependencies.authenticationTabs.open(url);
+  if (result.status === 'unavailable') {
+    throw new Error(
+      '当前浏览器不支持打开 OpenAI 登录页，请确认扩展已授予 tabs 权限',
+    );
   }
-  return new Promise((resolve, reject) => {
-    chromeApi.tabs?.create?.({ url, active: true }, (tab = {}) => {
-      const lastError = chromeApi.runtime?.lastError;
-      if (lastError?.message) {
-        reject(new Error(lastError.message));
-        return;
-      }
-      resolve(typeof tab.id === 'number' ? tab.id : undefined);
-    });
-  });
+  return result.tabId;
 }
 
 async function closeOpenAiAuthTab(
-  _dependencies: OpenAiOAuthDependencies,
+  dependencies: OpenAiOAuthDependencies,
   tabId?: number,
 ): Promise<void> {
-  const chromeApi = getChromeApi();
-  if (typeof tabId !== 'number' || !chromeApi?.tabs?.remove) return;
-  await new Promise<void>((resolve) => {
-    chromeApi.tabs?.remove?.(tabId, () => resolve());
-  });
+  if (typeof tabId !== 'number') return;
+  await dependencies.authenticationTabs.close(tabId);
 }
 
 async function exchangeOpenAiAuthorizationCode(

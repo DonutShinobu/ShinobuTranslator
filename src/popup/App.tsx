@@ -14,7 +14,9 @@ import {
   type LlmProvider,
   type ExtensionSettings,
 } from '../shared/config';
-import { getChromeApi } from '../shared/chrome';
+import type {
+  NativeCommands,
+} from '../../apps/extension/src/capabilities/contracts';
 import {
   getLlmThinkingControl,
   llmThinkingCapabilityKey,
@@ -23,6 +25,12 @@ import {
 } from '../shared/llmThinking';
 import type { RuntimeMessageSender } from '../shared/messages';
 import { downloadText } from '../shared/utils';
+import {
+  defaultShortcutState,
+  loadShortcutState,
+  shortcutCommandDefinitions,
+  type ShortcutState,
+} from './shortcuts';
 
 type SaveStatus = {
   kind: 'idle' | 'saving' | 'success' | 'error';
@@ -151,23 +159,6 @@ const IconEyeOff = () => (
     <path d="m3 3 18 18" />
   </svg>
 );
-
-const shortcutCommandDefinitions = [
-  { name: 'start-screenshot-translate', label: '截图翻译' },
-  { name: 'translate-hover-target', label: '翻译悬停元素' },
-] as const;
-
-type ShortcutCommandName = typeof shortcutCommandDefinitions[number]['name'];
-type ShortcutCommandInfo = {
-  name?: string;
-  shortcut?: string;
-};
-type ShortcutState = Record<ShortcutCommandName, string>;
-
-const defaultShortcutState: ShortcutState = {
-  'start-screenshot-translate': '',
-  'translate-hover-target': '',
-};
 
 const geminiAppAuthCacheKey = 'shinobu.geminiApp.authenticated';
 
@@ -547,9 +538,11 @@ function SelectControl<T extends string>({
 export function App({
   sendMessage,
   extensionVersion,
+  commands,
 }: {
   sendMessage: RuntimeMessageSender;
   extensionVersion: string;
+  commands: NativeCommands;
 }) {
   const [settings, setSettings] = useState<ExtensionSettings>(defaultExtensionSettings);
   const [loading, setLoading] = useState(true);
@@ -601,29 +594,8 @@ export function App({
     async function loadShortcuts(): Promise<void> {
       setShortcutsLoading(true);
       setShortcutError('');
-      const chromeApi = getChromeApi();
-      if (!chromeApi?.commands?.getAll) {
-        setShortcutError('当前浏览器不支持读取扩展命令');
-        setShortcutsLoading(false);
-        return;
-      }
       try {
-        const commands = await new Promise<ShortcutCommandInfo[]>((resolve, reject) => {
-          chromeApi.commands?.getAll?.((items) => {
-            const lastError = chromeApi.runtime?.lastError;
-            if (lastError?.message) {
-              reject(new Error(lastError.message));
-              return;
-            }
-            resolve(items);
-          });
-        });
-        const nextShortcuts: ShortcutState = { ...defaultShortcutState };
-        for (const commandDefinition of shortcutCommandDefinitions) {
-          const command = commands.find((item) => item.name === commandDefinition.name);
-          nextShortcuts[commandDefinition.name] = command?.shortcut ?? '';
-        }
-        setShortcuts(nextShortcuts);
+        setShortcuts(await loadShortcutState(commands));
       } catch (error) {
         setShortcutError(error instanceof Error ? error.message : String(error));
       } finally {
@@ -631,7 +603,7 @@ export function App({
       }
     }
     void loadShortcuts();
-  }, []);
+  }, [commands]);
 
   function queueSaveStatus(options: SettingsUpdateOptions = {}): void {
     nextSaveShowsStatusRef.current = nextSaveShowsStatusRef.current || options.showSaveStatus === true;
@@ -920,18 +892,12 @@ export function App({
         : geminiAppStatus.pending
           ? '未登录'
           : '未登录';
-  function openShortcutManager(): void {
-    const chromeApi = getChromeApi();
-    if (!chromeApi?.tabs?.create) {
+  async function openShortcutManager(): Promise<void> {
+    try {
+      await commands.openSettings();
+    } catch {
       setStatus({ kind: 'error', message: '无法打开扩展命令管理页' });
-      return;
     }
-    chromeApi.tabs.create({ url: 'chrome://extensions/shortcuts', active: true }, () => {
-      const lastError = chromeApi.runtime?.lastError;
-      if (lastError?.message) {
-        setStatus({ kind: 'error', message: lastError.message });
-      }
-    });
   }
 
   async function persistSettings(nextSettings: ExtensionSettings, options: PersistSettingsOptions = {}): Promise<void> {
@@ -1113,7 +1079,9 @@ export function App({
                 <button
                   className={`panel-title-shortcuts${shortcutError ? ' panel-title-shortcuts-error' : ''}`}
                   type="button"
-                  onClick={openShortcutManager}
+                  onClick={() => {
+                    void openShortcutManager();
+                  }}
                   title={shortcutError || '打开 Chrome 扩展命令管理页'}
                   aria-label="管理扩展命令"
                 >

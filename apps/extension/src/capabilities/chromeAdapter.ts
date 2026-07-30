@@ -7,6 +7,7 @@ import type {
 import { chromeApi, type ChromeApi } from './chromeInternal';
 import {
   authenticationTabs,
+  extensionInstallation,
   nativeCommands,
   nativeMenus,
   tabMessageTransport,
@@ -62,6 +63,7 @@ function createChromeBackgroundCapabilities(
   );
   const permissions = extensionPermissions(chrome.runtime, chrome.permissions);
   return {
+    installation: extensionInstallation(chrome.runtime),
     runtimeRequests: runtimeRequestServer(chrome.runtime),
     runtimeChannels: runtimeChannelServer(chrome.runtime),
     persistentStorage,

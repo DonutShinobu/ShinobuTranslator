@@ -12,4 +12,5 @@ const capabilities = createChromeExtensionAdapter(nativeChrome).popup();
 mountPopup({
   runtimeRequests: capabilities.runtimeRequests,
   extensionVersion: capabilities.environment.metadata.version,
+  commands: capabilities.commands,
 });

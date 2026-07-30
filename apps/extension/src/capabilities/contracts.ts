@@ -87,6 +87,22 @@ export interface ExtensionEnvironment {
   resourceUrl(path: string): string;
 }
 
+export type ExtensionInstallationReason =
+  | 'installed'
+  | 'upgraded'
+  | 'other';
+
+export type ExtensionInstallation = Readonly<{
+  reason: ExtensionInstallationReason;
+  previousVersion?: string;
+}>;
+
+export interface ExtensionInstallationLifecycle {
+  onInstalled(
+    listener: (installation: ExtensionInstallation) => void,
+  ): CancelSubscription;
+}
+
 export interface ExtensionStorage {
   read(
     keys: readonly string[],
@@ -97,7 +113,7 @@ export interface ExtensionStorage {
 
 export type TabDocumentTarget = Readonly<{
   tabId: number;
-  documentId: string;
+  documentId?: string;
 }>;
 
 export type TabMessageResult = MessageResponseResult;
@@ -154,6 +170,7 @@ export interface AuthenticationTabLifecycle {
 }
 
 export type NativeMenuContext =
+  | 'all'
   | 'page'
   | 'selection'
   | 'link'
@@ -316,6 +333,7 @@ export interface RequestHeaderOverride {
 }
 
 export interface BackgroundExtensionCapabilities {
+  readonly installation: ExtensionInstallationLifecycle;
   readonly runtimeRequests: RuntimeRequestServer;
   readonly runtimeChannels: RuntimeChannelServer;
   readonly persistentStorage: ExtensionStorage;

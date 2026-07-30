@@ -1,5 +1,6 @@
-import { getChromeApi } from "../../shared/chrome";
-import type { ChromeMessageSender } from "../../shared/chrome";
+import type {
+  VisibleTabCapture,
+} from '../../../apps/extension/src/capabilities/contracts';
 
 export function parseImageDataUrl(dataUrl: string): {
   base64: string;
@@ -15,38 +16,23 @@ export function parseImageDataUrl(dataUrl: string): {
   };
 }
 
-export function captureVisibleTab(sender: ChromeMessageSender): Promise<{
+export async function captureVisibleTab(
+  visibleTabCapture: VisibleTabCapture,
+  context: {
+    windowId?: number;
+    sourceUrl: string;
+  },
+): Promise<{
   base64: string;
   contentType: string;
   sourceUrl: string;
 }> {
-  const chromeApi = getChromeApi();
-  if (!chromeApi?.tabs?.captureVisibleTab) {
-    return Promise.reject(new Error('当前浏览器不支持标签页截图'));
+  const result = await visibleTabCapture.capturePng(context.windowId);
+  if (result.status === 'unavailable') {
+    throw new Error('截图返回为空');
   }
-
-  const windowId = typeof sender.tab?.windowId === 'number'
-    ? sender.tab.windowId
-    : undefined;
-  return new Promise((resolve, reject) => {
-    chromeApi.tabs?.captureVisibleTab?.(
-      windowId,
-      { format: 'png' },
-      (dataUrl?: string) => {
-        const lastError = chromeApi.runtime?.lastError;
-        if (lastError?.message) {
-          reject(new Error(lastError.message));
-          return;
-        }
-        if (!dataUrl) {
-          reject(new Error('截图返回为空'));
-          return;
-        }
-        resolve({
-          ...parseImageDataUrl(dataUrl),
-          sourceUrl: sender.tab?.url ?? '',
-        });
-      },
-    );
-  });
+  return {
+    ...parseImageDataUrl(result.dataUrl),
+    sourceUrl: context.sourceUrl,
+  };
 }

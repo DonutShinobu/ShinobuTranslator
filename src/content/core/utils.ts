@@ -43,7 +43,7 @@ export function resolveImageReferrerPolicy(
   const elementPolicy = toNonEmptyReferrerPolicy(imageElement?.referrerPolicy);
   if (elementPolicy) return elementPolicy;
   if (typeof document === 'undefined') return undefined;
-  // Chrome exposes element and meta policies, but not the effective navigation
+  // Extension hosts expose element and meta policies, but not the effective navigation
   // response policy on Document. For ordinary static markup, the last valid meta
   // value is the policy processed most recently; the background observes the
   // Referrer-Policy response header when there is no DOM override.

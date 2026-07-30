@@ -587,7 +587,8 @@ flowchart TD
 | --- | --- |
 | `src/shared/messages.ts` | 连续模式消息与响应 |
 | `src/shared/config.ts` | 连续模式专用配置校验，不增加持久化开关 |
-| `src/shared/chrome.ts` | 补齐 `storage.session`、tab 查询与 tab 消息类型 |
+| `apps/extension/src/capabilities/contracts.ts` | 补齐 session storage、tab 消息与原生交互的窄能力契约 |
+| `apps/extension/src/background.ts` / `content.ts` | 目标组合根注入扩展能力，不在业务实现中探测浏览器全局 |
 | `src/background/index.ts` | 注册连续模式状态协调与 tab 生命周期 |
 | `src/background/messages/router.ts` | 路由 Popup/内容页连续模式消息 |
 | `src/background/continuousTranslation/*` | 新增按 tab 状态与命令协调 |

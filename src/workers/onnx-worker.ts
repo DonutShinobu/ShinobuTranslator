@@ -36,7 +36,7 @@ function init(ortPath: string): Promise<void> {
 function ensureOrtEnv(): void {
   if (envInitialized) return;
 
-  // Blob URL Workers run in the page's origin and cannot access chrome.runtime.
+  // Blob URL Workers run in the page's origin and cannot access extension APIs.
   // The ORT WASM path must be provided by the main thread via init().
   if (!ortPathOverride) {
     throw new Error('ONNX Worker 必须先通过 init() 注入 ORT 资源路径');

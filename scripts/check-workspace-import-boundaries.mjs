@@ -2,6 +2,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import { findModuleReferences } from './workspace-module-references.mjs';
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -12,8 +13,20 @@ const baselinePath = path.join(
   'scripts',
   'workspace-import-boundary-baseline.json',
 );
-const sourceExtensions = new Set(['.js', '.jsx', '.mjs', '.ts', '.tsx']);
-const modulePathPattern = /['"]([^'"]+)['"]/gu;
+const sourceExtensions = new Set([
+  '.cjs',
+  '.cts',
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.mts',
+  '.ts',
+  '.tsx',
+]);
+const frozenExtensionMigrationEdgeKeys = Object.freeze([
+  'apps/extension/src/background.ts -> ../../../src/background/index',
+  'apps/extension/src/content.ts -> ../../../src/content/index',
+]);
 
 function toPosix(value) {
   return value.split(path.sep).join('/');
@@ -61,8 +74,7 @@ async function findCrossWorkspaceImports() {
     const owner = workspaceFor(relativeFile);
     if (!owner) continue;
     const source = await readFile(file, 'utf8');
-    for (const match of source.matchAll(modulePathPattern)) {
-      const specifier = match[1];
+    for (const specifier of findModuleReferences(source, relativeFile)) {
       if (
         owner === 'packages/image-pipeline'
         && (
@@ -101,6 +113,7 @@ if (
 }
 
 const current = await findCrossWorkspaceImports();
+const frozenMigrationEdgeKeySet = new Set(frozenExtensionMigrationEdgeKeys);
 const counts = (entries) => {
   const result = new Map();
   for (const entry of entries) {
@@ -108,7 +121,16 @@ const counts = (entries) => {
   }
   return result;
 };
-const currentCounts = counts(current);
+const allCurrentCounts = counts(current);
+const frozenMigrationEdgeViolations = frozenExtensionMigrationEdgeKeys
+  .filter((entry) => allCurrentCounts.get(entry) !== 1)
+  .map((entry) => (
+    `${entry} (expected exactly once, found ${allCurrentCounts.get(entry) ?? 0})`
+  ));
+const currentLegacyImports = current.filter(
+  (entry) => !frozenMigrationEdgeKeySet.has(entry),
+);
+const currentCounts = counts(currentLegacyImports);
 const allowedCounts = counts(baseline.allowedCrossWorkspaceRelativeImports);
 const expandDifference = (left, right) => {
   const difference = [];
@@ -130,7 +152,24 @@ if (additions.length > 0 || stale.length > 0) {
     console.error('baseline 中存在已经可以删除的遗留 import：');
     for (const entry of stale) console.error(`  - ${entry}`);
   }
+}
+if (frozenMigrationEdgeViolations.length > 0) {
+  console.error('临时 extension 迁移边必须精确保留两条：');
+  for (const violation of frozenMigrationEdgeViolations) {
+    console.error(`  - ${violation}`);
+  }
+}
+
+if (
+  additions.length > 0
+  || stale.length > 0
+  || frozenMigrationEdgeViolations.length > 0
+) {
   process.exitCode = 1;
 } else {
-  console.log(`workspace import boundary check passed (${current.length} legacy imports)`);
+  console.log(
+    'workspace import boundary check passed '
+    + `(${currentLegacyImports.length} legacy imports; `
+    + `${frozenExtensionMigrationEdgeKeys.length} frozen extension migration edges)`,
+  );
 }

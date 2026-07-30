@@ -1082,7 +1082,7 @@ export function App({
                   onClick={() => {
                     void openShortcutManager();
                   }}
-                  title={shortcutError || '打开 Chrome 扩展命令管理页'}
+                  title={shortcutError || '打开扩展快捷键设置'}
                   aria-label="管理扩展命令"
                 >
                   {shortcutCommandDefinitions.map((definition) => {

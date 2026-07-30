@@ -14,15 +14,13 @@ import {
 } from '../shared/messages';
 import { toErrorMessage } from '../shared/utils';
 import { normalizeJsonValue } from '../shared/jsonValue';
-import {
-  createChromeExtensionAdapter,
-} from '../../apps/extension/src/capabilities/chromeAdapter';
-import {
-  createChromePipelineHostLifecycle,
-} from '../../apps/extension/src/pipelineHost/chromeLifecycle';
 import type {
+  BackgroundExtensionCapabilities,
   JsonValue,
 } from '../../apps/extension/src/capabilities/contracts';
+import type {
+  PipelineHostDocumentLifecycle,
+} from '../../apps/extension/src/pipelineHost/contracts';
 import { getGeminiAppRawResponse } from './geminiAppClient';
 import { createSettingsStore } from './settings/settingsStore';
 import { createDiagnosticLogStore } from './diagnostics/logStore';
@@ -41,13 +39,10 @@ function toJsonValue(response: RuntimeResponse): JsonValue {
   return normalizeJsonValue(response);
 }
 
-function initializeBackground(): void {
-  const nativeChrome = (globalThis as typeof globalThis & {
-    chrome?: unknown;
-  }).chrome;
-  if (!nativeChrome) return;
-
-  const capabilities = createChromeExtensionAdapter(nativeChrome).background();
+export function startBackground(
+  capabilities: BackgroundExtensionCapabilities,
+  pipelineHostLifecycle: PipelineHostDocumentLifecycle,
+): void {
   const authentication = createAuthenticationAccess({
     permissions: capabilities.permissions,
     cookies: capabilities.cookies,
@@ -114,7 +109,7 @@ function initializeBackground(): void {
   };
 
   registerOffscreenPipelineBroker(
-    createChromePipelineHostLifecycle(nativeChrome),
+    pipelineHostLifecycle,
     capabilities.runtimeChannels,
   );
 
@@ -172,5 +167,3 @@ function initializeBackground(): void {
 
   registerMenusAndCommands(capabilities);
 }
-
-initializeBackground();

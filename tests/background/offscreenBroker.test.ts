@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import { OffscreenPipelineBroker } from '../../src/background/localPipeline/offscreenBroker';
-import type { ChromeLike } from '../../src/shared/chrome';
 import type {
   JsonValue,
   RuntimeChannel,
@@ -92,7 +91,7 @@ function deferred<T>(): {
   return { promise, resolve, reject };
 }
 
-function createBroker(chromeApi: ChromeLike): OffscreenPipelineBroker {
+function createBroker(chromeApi: unknown): OffscreenPipelineBroker {
   return new OffscreenPipelineBroker(
     createChromePipelineHostLifecycle(chromeApi),
     runtimeChannels,
@@ -146,9 +145,9 @@ function createHarness(): {
     host.emitMessage({ type: 'host-ready' });
   });
   const closeDocument = vi.fn(async () => undefined);
-  const chromeApi: ChromeLike = {
+  const chromeApi = {
     runtime: {
-      getURL: (path) => `chrome-extension://test/${path}`,
+      getURL: (path: string) => `chrome-extension://test/${path}`,
       getContexts: async () => [],
       onConnect: { addListener: () => undefined },
     },
@@ -649,7 +648,7 @@ describe('OffscreenPipelineBroker', () => {
     });
     broker = createBroker({
       runtime: {
-        getURL: (path) => `chrome-extension://test/${path}`,
+        getURL: (path: string) => `chrome-extension://test/${path}`,
         getContexts: async () => documentExists
           ? [{ contextType: 'OFFSCREEN_DOCUMENT', documentUrl: offscreenUrl }]
           : [],
@@ -712,7 +711,7 @@ describe('OffscreenPipelineBroker', () => {
       const closeDocument = vi.fn(async () => undefined);
       broker = createBroker({
         runtime: {
-          getURL: (path) => `chrome-extension://test/${path}`,
+          getURL: (path: string) => `chrome-extension://test/${path}`,
           getContexts: async () => [{ contextType: 'OFFSCREEN_DOCUMENT', documentUrl: offscreenUrl }],
         },
         offscreen: { createDocument, closeDocument },

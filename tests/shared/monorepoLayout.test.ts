@@ -6,6 +6,8 @@ const root = process.cwd();
 const pathFromRoot = (path: string): string => resolve(root, path);
 const readJson = <T>(path: string): T =>
   JSON.parse(readFileSync(pathFromRoot(path), 'utf8')) as T;
+const readText = (path: string): string =>
+  readFileSync(pathFromRoot(path), 'utf8');
 
 type PackageManifest = {
   name: string;
@@ -29,6 +31,23 @@ describe('monorepo application ownership', () => {
       'node scripts/check-workspace-import-boundaries.mjs',
     );
     expect(rootPackage.scripts?.check).toContain('npm run check:architecture');
+  });
+
+  it('checks every supported JavaScript and TypeScript module extension', () => {
+    const boundaryCheck = readText('scripts/check-workspace-import-boundaries.mjs');
+
+    for (const extension of [
+      '.cjs',
+      '.cts',
+      '.js',
+      '.jsx',
+      '.mjs',
+      '.mts',
+      '.ts',
+      '.tsx',
+    ]) {
+      expect(boundaryCheck).toContain(`'${extension}'`);
+    }
   });
 
   it('keeps the shared image pipeline behind its package boundary', () => {
@@ -64,6 +83,8 @@ describe('monorepo application ownership', () => {
       'apps/extension/scripts/generate-manifest.mjs',
       'apps/extension/scripts/check-artifacts.mjs',
       'apps/extension/scripts/check-release-boundaries.mjs',
+      'apps/extension/src/background.ts',
+      'apps/extension/src/content.ts',
       'apps/extension/src/popup.tsx',
       'apps/extension/src/offscreen.ts',
       'apps/extension/src/benchmark.ts',

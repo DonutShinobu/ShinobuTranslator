@@ -3,10 +3,10 @@ import { pixivAdapter } from './adapters/pixiv';
 import { ehentaiAdapter } from './adapters/ehentai';
 import type { SiteAdapter } from './core/types';
 import { TranslatorCore } from './core/TranslatorCore';
-import {
-  createChromeContentCapabilities,
-} from '../../apps/extension/src/capabilities/chromeAdapter';
-import type { JsonValue } from '../../apps/extension/src/capabilities/contracts';
+import type {
+  ContentExtensionCapabilities,
+  JsonValue,
+} from '../../apps/extension/src/capabilities/contracts';
 import { createRuntimeMessageSender } from '../shared/messages';
 import { createRunLocalPipeline } from './core/translation/localPipelineClient';
 import { toErrorMessage } from '../shared/utils';
@@ -33,19 +33,8 @@ function createNullAdapter(): SiteAdapter {
 }
 
 const adapters = [twitterAdapter, pixivAdapter, ehentaiAdapter];
-const adapter = adapters.find(a => a.match()) || createNullAdapter();
-const nativeChrome = (globalThis as typeof globalThis & { chrome?: unknown }).chrome;
-if (!nativeChrome) {
-  throw new Error('Chrome extension capabilities are unavailable');
-}
-const capabilities = createChromeContentCapabilities(nativeChrome);
-const sendMessage = createRuntimeMessageSender(capabilities.runtimeRequests);
-const core = new TranslatorCore(adapter, {
-  sendMessage,
-  runLocalPipeline: createRunLocalPipeline(capabilities.runtimeChannels),
-  resourceUrl: (path) => capabilities.environment.resourceUrl(path),
-});
-core.start();
+let capabilities: ContentExtensionCapabilities;
+let core: TranslatorCore;
 
 // --- Context menu support ---
 
@@ -291,17 +280,31 @@ async function translateTarget(target: ContextMenuTranslateTarget): Promise<void
   await core.translateScreenshotSelection(target.selection);
 }
 
-document.addEventListener('contextmenu', (event) => {
-  contextMenuTarget = findContextMenuTarget(event);
-}, true);
-document.addEventListener('pointermove', updateLastPointerPosition, true);
-document.addEventListener('mousemove', updateLastPointerPosition, true);
-document.addEventListener('mouseleave', () => {
-  lastPointerPosition = null;
-}, true);
+export function startContent(
+  extensionCapabilities: ContentExtensionCapabilities,
+): void {
+  capabilities = extensionCapabilities;
+  const adapter = adapters.find((candidate) => candidate.match())
+    ?? createNullAdapter();
+  const sendMessage = createRuntimeMessageSender(capabilities.runtimeRequests);
+  core = new TranslatorCore(adapter, {
+    sendMessage,
+    runLocalPipeline: createRunLocalPipeline(capabilities.runtimeChannels),
+    resourceUrl: (path) => capabilities.environment.resourceUrl(path),
+  });
+  core.start();
 
-// Listen for context-menu translate requests from background
-capabilities.runtimeRequests.onRequest(async (message): Promise<JsonValue | undefined> => {
+  document.addEventListener('contextmenu', (event) => {
+    contextMenuTarget = findContextMenuTarget(event);
+  }, true);
+  document.addEventListener('pointermove', updateLastPointerPosition, true);
+  document.addEventListener('mousemove', updateLastPointerPosition, true);
+  document.addEventListener('mouseleave', () => {
+    lastPointerPosition = null;
+  }, true);
+
+  // Listen for context-menu translate requests from background
+  capabilities.runtimeRequests.onRequest(async (message): Promise<JsonValue | undefined> => {
     if (!isRecord(message) || typeof message.type !== 'string') {
       return undefined;
     }
@@ -365,3 +368,4 @@ capabilities.runtimeRequests.onRequest(async (message): Promise<JsonValue | unde
 
     return undefined;
   });
+}

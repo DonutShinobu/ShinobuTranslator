@@ -16,7 +16,7 @@ export type DiagnosticLogCategory =
   | 'pipeline.typeset'
   | 'llm.api'
   | 'image.io'
-  | 'chrome.api'
+  | 'extension.api'
   | 'ui.perf'
   | 'error';
 
@@ -403,6 +403,12 @@ export function classifyLlmFetchError(error: unknown, status?: number): LlmFetch
     };
   }
   const message = error instanceof Error ? error.message : String(error);
+  const stableErrorCode = typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && typeof error.code === 'string'
+    ? error.code
+    : undefined;
   if (/failed to fetch/i.test(message) || (error instanceof TypeError && /fetch/i.test(message))) {
     return {
       kind: 'network',
@@ -420,11 +426,15 @@ export function classifyLlmFetchError(error: unknown, status?: number): LlmFetch
       hints: ['服务端响应不是预期 JSON，检查响应体摘要和 content-type。'],
     };
   }
-  if (/runtime|sendMessage|扩展通信/i.test(message)) {
+  if (
+    stableErrorCode === 'transport-disconnected'
+    || stableErrorCode === 'context-unavailable'
+    || stableErrorCode === 'serialization-failed'
+  ) {
     return {
       kind: 'runtime_message',
       reason: message,
-      hints: ['扩展内部通信失败，检查 content/background 是否仍存活以及 runtime.lastError。'],
+      hints: ['扩展内部通信失败，请检查相关扩展上下文是否仍可用。'],
     };
   }
   return {

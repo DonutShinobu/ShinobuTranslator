@@ -258,4 +258,16 @@ describe('classifyLlmFetchError', () => {
     expect(classified.reason).toBe('Failed to fetch');
     expect(classified.hints.join(' ')).toContain('CORS');
   });
+
+  it('uses stable extension codes instead of browser error text', () => {
+    const codedError = Object.assign(
+      new Error('Extension transport disconnected'),
+      { code: 'transport-disconnected' },
+    );
+
+    expect(classifyLlmFetchError(codedError).kind).toBe('runtime_message');
+    expect(classifyLlmFetchError(
+      new Error('Receiving end does not exist'),
+    ).kind).toBe('unknown');
+  });
 });

@@ -1,7 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
   createAuthenticationAccess,
   credentialPermissionRequirements,
+} from '../../../apps/extension/src/capabilities/authentication';
+import type {
+  AuthenticationAccess,
 } from '../../../apps/extension/src/capabilities/authentication';
 import type {
   ExtensionCookies,
@@ -152,7 +155,53 @@ describe('authentication access contract', () => {
     cancel();
   });
 
-  it('returns permission-required before cookie access and treats an authorized empty list as available', async () => {
+  it('exposes only fixed Gemini cookie scopes and ignores forged query fields', async () => {
+    expectTypeOf<
+      Parameters<AuthenticationAccess['readGeminiAppCookies']>
+    >().toEqualTypeOf<[]>();
+    expectTypeOf<
+      Parameters<AuthenticationAccess['readGoogleAccountsCookies']>
+    >().toEqualTypeOf<[]>();
+    expectTypeOf<
+      Extract<keyof AuthenticationAccess, 'readGeminiCookies'>
+    >().toEqualTypeOf<never>();
+
+    const harness = createPermissionHarness([
+      { kind: 'authentication-data-use' },
+      { kind: 'cookie-access' },
+    ]);
+    const cookieQueries: unknown[] = [];
+    const cookies: ExtensionCookies = {
+      async read(query) {
+        cookieQueries.push(query);
+        return { status: 'available', cookies: [] };
+      },
+    };
+    const access = createAuthenticationAccess({
+      permissions: harness.permissions,
+      cookies,
+    });
+    const forgedQuery = {
+      url: 'https://attacker.example/private',
+      domain: 'attacker.example',
+      name: 'SID',
+      path: '/private',
+    };
+
+    await (
+      access.readGeminiAppCookies as unknown as (
+        query: typeof forgedQuery,
+      ) => Promise<unknown>
+    )(forgedQuery);
+    await access.readGoogleAccountsCookies();
+
+    expect(cookieQueries).toEqual([
+      { url: 'https://gemini.google.com/' },
+      { url: 'https://accounts.google.com/' },
+    ]);
+  });
+
+  it('returns permission-required before fixed-scope cookie access and treats an authorized empty list as available', async () => {
     const harness = createPermissionHarness();
     const cookieReads: Array<{
       requirements: readonly PermissionRequirement[];
@@ -174,9 +223,7 @@ describe('authentication access contract', () => {
       cookies,
     });
 
-    await expect(access.readGeminiCookies({
-      url: 'https://gemini.google.com/',
-    })).resolves.toEqual({
+    await expect(access.readGeminiAppCookies()).resolves.toEqual({
       status: 'permission-required',
       missing: [
         { kind: 'authentication-data-use' },
@@ -192,9 +239,7 @@ describe('authentication access contract', () => {
 
     harness.grant({ kind: 'authentication-data-use' });
     harness.grant({ kind: 'cookie-access' });
-    await expect(access.readGeminiCookies({
-      url: 'https://gemini.google.com/',
-    })).resolves.toEqual({
+    await expect(access.readGoogleAccountsCookies()).resolves.toEqual({
       status: 'available',
       cookies: [],
     });

@@ -1,5 +1,4 @@
 import type {
-  CookieQuery,
   CookieReadResult,
   ExtensionCookies,
   ExtensionPermissions,
@@ -46,7 +45,8 @@ export interface AuthenticationAccess {
     target: CredentialAccessTarget,
     listener: (change: PermissionChange) => void,
   ): () => void;
-  readGeminiCookies(query: CookieQuery): Promise<CookieReadResult>;
+  readGeminiAppCookies(): Promise<CookieReadResult>;
+  readGoogleAccountsCookies(): Promise<CookieReadResult>;
 }
 
 export type AuthenticationCapabilities = Readonly<{
@@ -113,16 +113,14 @@ export function credentialPermissionRequirements(
 export function createAuthenticationAccess(
   capabilities: AuthenticationCapabilities,
 ): AuthenticationAccess {
-  const requirementsFor = (
-    target: CredentialAccessTarget,
-  ): readonly PermissionRequirement[] => credentialPermissionRequirements(target);
-
   return {
     check(target) {
-      return capabilities.permissions.check(requirementsFor(target));
+      return capabilities.permissions.check(
+        credentialPermissionRequirements(target),
+      );
     },
     async request(target) {
-      const requirements = requirementsFor(target);
+      const requirements = credentialPermissionRequirements(target);
       const current = await capabilities.permissions.check(requirements);
       if (current.status === 'granted') {
         return current;
@@ -131,7 +129,7 @@ export function createAuthenticationAccess(
     },
     async require(target) {
       const current = await capabilities.permissions.check(
-        requirementsFor(target),
+        credentialPermissionRequirements(target),
       );
       if (current.status === 'not-granted') {
         return {
@@ -143,14 +141,20 @@ export function createAuthenticationAccess(
     },
     onChanged(target, listener) {
       return capabilities.permissions.onChanged(
-        requirementsFor(target),
+        credentialPermissionRequirements(target),
         listener,
       );
     },
-    readGeminiCookies(query) {
+    readGeminiAppCookies() {
       return capabilities.cookies.read(
-        query,
-        requirementsFor({ kind: 'gemini-cookie' }),
+        { url: 'https://gemini.google.com/' },
+        credentialPermissionRequirements({ kind: 'gemini-cookie' }),
+      );
+    },
+    readGoogleAccountsCookies() {
+      return capabilities.cookies.read(
+        { url: 'https://accounts.google.com/' },
+        credentialPermissionRequirements({ kind: 'gemini-cookie' }),
       );
     },
   };

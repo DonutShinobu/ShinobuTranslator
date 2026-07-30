@@ -14,7 +14,10 @@ import {
   ExtensionOperationError,
 } from '../../apps/extension/src/capabilities/errors';
 
-type GeminiCookieAccess = Pick<AuthenticationAccess, 'readGeminiCookies'>;
+type GeminiCookieAccess = Pick<
+  AuthenticationAccess,
+  'readGeminiAppCookies' | 'readGoogleAccountsCookies'
+>;
 
 type GeminiAppImageTranslateOptions = {
   imageBase64: string;
@@ -444,11 +447,12 @@ async function readTextResponse(response: Response, failureMessage: string): Pro
   return text;
 }
 
-async function readCookieHeaderForUrl(
-  url: string,
-  authentication: GeminiCookieAccess,
+async function readCookieHeader(
+  readCookies: () => ReturnType<
+    AuthenticationAccess['readGeminiAppCookies']
+  >,
 ): Promise<string | AuthenticationPermissionRequired> {
-  const result = await authentication.readGeminiCookies({ url });
+  const result = await readCookies();
   if (result.status === 'permission-required') {
     return result;
   }
@@ -466,8 +470,8 @@ async function readGeminiCookieHeader(
     return null;
   }
   const headers = await Promise.all([
-    readCookieHeaderForUrl('https://gemini.google.com/', authentication),
-    readCookieHeaderForUrl('https://accounts.google.com/', authentication),
+    readCookieHeader(() => authentication.readGeminiAppCookies()),
+    readCookieHeader(() => authentication.readGoogleAccountsCookies()),
   ]);
   const cookiePairs = new Map<string, string>();
   for (const header of headers) {

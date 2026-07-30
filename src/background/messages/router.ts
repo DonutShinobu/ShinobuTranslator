@@ -61,7 +61,7 @@ export type BackgroundServices = {
   };
 };
 
-async function routeBackgroundMessageUnchecked(
+export async function routeBackgroundMessage(
   message: RuntimeMessage,
   sender: ExtensionMessageSource,
   services: BackgroundServices,
@@ -171,12 +171,4 @@ async function routeBackgroundMessageUnchecked(
     return services.providers.geminiApiImage(message);
   }
   return { ok: false, type: message.type, error: '不支持的消息类型' };
-}
-
-export async function routeBackgroundMessage(
-  message: RuntimeMessage,
-  sender: ExtensionMessageSource,
-  services: BackgroundServices,
-): Promise<RuntimeResponse> {
-  return routeBackgroundMessageUnchecked(message, sender, services);
 }

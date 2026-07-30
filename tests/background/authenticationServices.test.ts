@@ -193,7 +193,11 @@ describe('background authentication services', () => {
   });
 
   it('treats an authorized empty Gemini Cookie list as unauthenticated instead of permission-required', async () => {
-    const readGeminiCookies = vi.fn(async () => ({
+    const readGeminiAppCookies = vi.fn(async () => ({
+      status: 'available' as const,
+      cookies: [],
+    }));
+    const readGoogleAccountsCookies = vi.fn(async () => ({
       status: 'available' as const,
       cookies: [],
     }));
@@ -202,7 +206,8 @@ describe('background authentication services', () => {
       request: vi.fn(async () => ({ status: 'granted' as const })),
       require: vi.fn(async () => ({ status: 'granted' as const })),
       onChanged: () => () => undefined,
-      readGeminiCookies,
+      readGeminiAppCookies,
+      readGoogleAccountsCookies,
     };
     const fetchMock = vi.fn(async () => new Response('<html>sign in</html>'));
     vi.stubGlobal('fetch', fetchMock);
@@ -214,7 +219,8 @@ describe('background authentication services', () => {
       authenticated: false,
       error: expect.stringContaining('登录状态不可用'),
     });
-    expect(readGeminiCookies).toHaveBeenCalledTimes(2);
+    expect(readGeminiAppCookies).toHaveBeenCalledTimes(1);
+    expect(readGoogleAccountsCookies).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -230,7 +236,10 @@ describe('background authentication services', () => {
       request: vi.fn(async () => ({ status: 'granted' as const })),
       require: vi.fn(async () => ({ status: 'granted' as const })),
       onChanged: () => () => undefined,
-      readGeminiCookies: vi.fn(async () => {
+      readGeminiAppCookies: vi.fn(async () => {
+        throw cookieFailure;
+      }),
+      readGoogleAccountsCookies: vi.fn(async () => {
         throw cookieFailure;
       }),
     };
@@ -313,7 +322,8 @@ describe('background authentication services', () => {
       request: vi.fn(async () => ({ status: 'granted' as const })),
       require,
       onChanged: () => () => undefined,
-      readGeminiCookies: vi.fn(),
+      readGeminiAppCookies: vi.fn(),
+      readGoogleAccountsCookies: vi.fn(),
     };
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);

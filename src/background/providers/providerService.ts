@@ -65,7 +65,9 @@ type ProviderServiceDependencies = {
   diagnostics: Pick<DiagnosticLogStoreService, 'recordBackground'>;
   authentication: Pick<
     AuthenticationAccess,
-    'require' | 'readGeminiCookies'
+    | 'require'
+    | 'readGeminiAppCookies'
+    | 'readGoogleAccountsCookies'
   >;
   openAiOAuth: Pick<
     OpenAiOAuthService,

@@ -24,7 +24,10 @@ export async function openGeminiAppAuthTab(
 
 export async function readGeminiAppAuthStatus(
   settings: ExtensionSettings,
-  authentication: Pick<AuthenticationAccess, 'readGeminiCookies'>,
+  authentication: Pick<
+    AuthenticationAccess,
+    'readGeminiAppCookies' | 'readGoogleAccountsCookies'
+  >,
 ): Promise<GeminiAppAuthStatus> {
   return getGeminiAppAuthStatus(settings, authentication);
 }
@@ -33,7 +36,9 @@ export async function loginGeminiApp(
   settings: ExtensionSettings,
   authentication: Pick<
     AuthenticationAccess,
-    'request' | 'readGeminiCookies'
+    | 'request'
+    | 'readGeminiAppCookies'
+    | 'readGoogleAccountsCookies'
   >,
   authenticationTabs: AuthenticationTabLifecycle,
 ): Promise<GeminiAppAuthStatus> {

@@ -4,9 +4,6 @@ import type {
   ExtensionCapabilityAdapter,
   PopupExtensionCapabilities,
 } from './contracts';
-import type {
-  AuthenticationCapabilities,
-} from './authentication';
 import { chromeApi, type ChromeApi } from './chromeInternal';
 import {
   authenticationTabs,
@@ -64,7 +61,7 @@ function createChromeBackgroundCapabilities(
     chrome.storage?.session,
     'session',
   );
-  const authentication = chromeAuthenticationCapabilities(chrome);
+  const permissions = extensionPermissions(chrome.runtime, chrome.permissions);
   return {
     installation: extensionInstallation(chrome.runtime),
     runtimeRequests: runtimeRequestServer(chrome.runtime),
@@ -76,23 +73,13 @@ function createChromeBackgroundCapabilities(
     authenticationTabs: authenticationTabs(chrome.runtime, chrome.tabs),
     menus: nativeMenus(chrome.runtime, chrome.contextMenus),
     commands: nativeCommands(chrome.runtime, chrome.commands, chrome.tabs),
-    permissions: authentication.permissions,
-    cookies: authentication.cookies,
+    permissions,
+    cookies: extensionCookies(chrome.runtime, chrome.cookies, permissions),
     referrerPolicies: referrerPolicyObserver(
       chrome.webRequest?.onHeadersReceived,
     ),
     requestHeaderOverride: requestHeaderOverride(chrome.declarativeNetRequest),
     environment: extensionEnvironment(chrome.runtime),
-  };
-}
-
-function chromeAuthenticationCapabilities(
-  chrome: ChromeApi,
-): AuthenticationCapabilities {
-  const permissions = extensionPermissions(chrome.runtime, chrome.permissions);
-  return {
-    permissions,
-    cookies: extensionCookies(chrome.runtime, chrome.cookies, permissions),
   };
 }
 

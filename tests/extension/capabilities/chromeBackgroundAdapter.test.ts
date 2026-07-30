@@ -81,6 +81,7 @@ function createBackgroundHarness() {
   let headerListenerRemovals = 0;
   let cookieAccessGranted = false;
   let cookieReads = 0;
+  const cookieQueries: Array<Record<string, unknown>> = [];
   const grantedOrigins = new Set<string>();
   let permissionRequestCount = 0;
   let captureResponse: string | undefined;
@@ -260,10 +261,11 @@ function createBackgroundHarness() {
     },
     cookies: {
       getAll(
-        _query: Record<string, unknown>,
+        query: Record<string, unknown>,
         callback: (cookies: Array<Record<string, unknown>>) => void,
       ): void {
         cookieReads += 1;
+        cookieQueries.push(query);
         callback([]);
       },
     },
@@ -341,6 +343,9 @@ function createBackgroundHarness() {
     },
     cookieReads() {
       return cookieReads;
+    },
+    cookieQueries() {
+      return cookieQueries;
     },
     captureWith(value: string | undefined) {
       captureResponse = value;
@@ -550,28 +555,29 @@ describe('Chrome background capability adapter', () => {
     cancel();
   });
 
-  it('distinguishes permission-required cookies from an empty cookie result', async () => {
+  it('rechecks permission before fixed-scope Gemini cookie reads', async () => {
     const harness = createBackgroundHarness();
-    const requirements = [{ kind: 'cookie-access' as const }];
 
-    await expect(harness.background.cookies.read(
-      { url: 'https://gemini.google.com/' },
-      requirements,
-    )).resolves.toEqual({
+    await expect(harness.authentication.readGeminiAppCookies()).resolves.toEqual({
       status: 'permission-required',
-      missing: requirements,
+      missing: [{ kind: 'cookie-access' }],
     });
     expect(harness.cookieReads()).toBe(0);
 
     harness.grantCookieAccess();
-    await expect(harness.background.cookies.read(
-      { url: 'https://gemini.google.com/' },
-      requirements,
-    )).resolves.toEqual({
+    await expect(harness.authentication.readGeminiAppCookies()).resolves.toEqual({
       status: 'available',
       cookies: [],
     });
-    expect(harness.cookieReads()).toBe(1);
+    await expect(harness.authentication.readGoogleAccountsCookies()).resolves.toEqual({
+      status: 'available',
+      cookies: [],
+    });
+    expect(harness.cookieReads()).toBe(2);
+    expect(harness.cookieQueries()).toEqual([
+      { url: 'https://gemini.google.com/' },
+      { url: 'https://accounts.google.com/' },
+    ]);
   });
 
   it('keeps Chrome credential modes distinct without requesting during initialization', async () => {

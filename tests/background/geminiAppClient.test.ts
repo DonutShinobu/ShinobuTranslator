@@ -20,7 +20,11 @@ const grantedAuthentication: AuthenticationAccess = {
   request: async () => ({ status: 'granted' }),
   require: async () => ({ status: 'granted' }),
   onChanged: () => () => undefined,
-  readGeminiCookies: async () => ({
+  readGeminiAppCookies: async () => ({
+    status: 'available',
+    cookies: [],
+  }),
+  readGoogleAccountsCookies: async () => ({
     status: 'available',
     cookies: [],
   }),

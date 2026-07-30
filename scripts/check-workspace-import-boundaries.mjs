@@ -2,6 +2,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import { findModuleReferences } from './workspace-module-references.mjs';
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -22,7 +23,6 @@ const sourceExtensions = new Set([
   '.ts',
   '.tsx',
 ]);
-const modulePathPattern = /['"]([^'"]+)['"]/gu;
 const frozenExtensionMigrationEdgeKeys = Object.freeze([
   'apps/extension/src/background.ts -> ../../../src/background/index',
   'apps/extension/src/content.ts -> ../../../src/content/index',
@@ -74,8 +74,7 @@ async function findCrossWorkspaceImports() {
     const owner = workspaceFor(relativeFile);
     if (!owner) continue;
     const source = await readFile(file, 'utf8');
-    for (const match of source.matchAll(modulePathPattern)) {
-      const specifier = match[1];
+    for (const specifier of findModuleReferences(source, relativeFile)) {
       if (
         owner === 'packages/image-pipeline'
         && (

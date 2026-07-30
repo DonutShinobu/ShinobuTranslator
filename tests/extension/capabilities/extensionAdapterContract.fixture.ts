@@ -1,0 +1,350 @@
+import { expect, it } from 'vitest';
+import type {
+  AuthenticationTabNavigation,
+  BackgroundExtensionCapabilities,
+  DocumentReferrerPolicy,
+  JsonValue,
+  PermissionChange,
+  PermissionRequirement,
+  PopupExtensionCapabilities,
+  ShortcutTrigger,
+} from '../../../apps/extension/src/capabilities/contracts';
+
+export type PopupCapabilityContractDriver = {
+  capabilities: PopupExtensionCapabilities;
+  storedValue(key: string): unknown;
+  rejectNextStorage(error: Error): void;
+  openedUrlValues(): readonly string[];
+  expectedAuthenticationTabId(): number;
+  closedTabIds(): readonly number[];
+  makeNextAuthenticationTabCloseUnavailable(): void;
+  emitAuthenticationNavigation(navigation: AuthenticationTabNavigation): void;
+  emitAuthenticationClosed(tabId: number): void;
+  authenticationListenerRemovals(): number;
+  emitCommand(trigger: ShortcutTrigger): void;
+  commandListenerRemovals(): number;
+  shortcutSettingsOpened(): boolean;
+  grantRequirement(requirement: PermissionRequirement): void;
+  emitPermissionChange(change: PermissionChange): void;
+  permissionListenerRemovals(): number;
+  expectedResourceUrl(path: string): string;
+};
+
+export function runPopupCapabilityContract(
+  createDriver: () => PopupCapabilityContractDriver,
+): void {
+  it('provides JSON storage success, serialization, and browser-error semantics', async () => {
+    const driver = createDriver();
+
+    await expect(driver.capabilities.persistentStorage.read([
+      'present',
+      'missing',
+    ])).resolves.toEqual({
+      present: { nested: true },
+      missing: undefined,
+    });
+    await driver.capabilities.persistentStorage.write({
+      language: 'zh-CN',
+      flags: [true, false],
+    });
+    expect(driver.storedValue('language')).toBe('zh-CN');
+    await driver.capabilities.persistentStorage.remove(['language']);
+    expect(driver.storedValue('language')).toBeUndefined();
+
+    await expect(driver.capabilities.persistentStorage.write({
+      invalid: new Date('2026-01-01T00:00:00.000Z') as unknown as JsonValue,
+    })).rejects.toMatchObject({
+      code: 'serialization-failed',
+      retryable: false,
+    });
+
+    driver.rejectNextStorage(new Error('Bearer top-secret-token'));
+    const rejected = driver.capabilities.persistentStorage.read(['present']);
+    await expect(rejected).rejects.toMatchObject({
+      name: 'ExtensionOperationError',
+      capability: 'persistent-storage',
+      operation: 'read',
+      code: 'browser-rejected',
+      diagnostic: {
+        errorName: 'Error',
+      },
+    });
+    await expect(rejected).rejects.not.toThrow('top-secret-token');
+  });
+
+  it('normalizes authentication-tab lifecycle and idempotent cancellation', async () => {
+    const driver = createDriver();
+    const navigations: AuthenticationTabNavigation[] = [];
+    const closed: number[] = [];
+    const tabId = driver.expectedAuthenticationTabId();
+    const cancelNavigation = driver.capabilities.authenticationTabs.onNavigation(
+      (navigation) => navigations.push(navigation),
+    );
+    const cancelClosed = driver.capabilities.authenticationTabs.onClosed(
+      (tabId) => closed.push(tabId),
+    );
+
+    await expect(driver.capabilities.authenticationTabs.open(
+      'https://auth.example.test/login',
+    )).resolves.toEqual({
+      status: 'opened',
+      tabId,
+    });
+    await expect(
+      driver.capabilities.authenticationTabs.close(tabId),
+    ).resolves.toEqual({ status: 'closed' });
+    driver.makeNextAuthenticationTabCloseUnavailable();
+    await expect(
+      driver.capabilities.authenticationTabs.close(tabId),
+    ).resolves.toEqual({ status: 'unavailable' });
+    driver.emitAuthenticationNavigation({
+      tabId,
+      url: 'https://auth.example.test/callback',
+    });
+    driver.emitAuthenticationClosed(tabId);
+
+    expect(driver.openedUrlValues()).toContain('https://auth.example.test/login');
+    expect(driver.closedTabIds()).toEqual([tabId]);
+    expect(navigations).toEqual([{
+      tabId,
+      url: 'https://auth.example.test/callback',
+    }]);
+    expect(closed).toEqual([tabId]);
+
+    cancelNavigation();
+    cancelNavigation();
+    cancelClosed();
+    cancelClosed();
+    expect(driver.authenticationListenerRemovals()).toBe(2);
+  });
+
+  it('normalizes native command behavior and cancellation', async () => {
+    const driver = createDriver();
+    const triggers: ShortcutTrigger[] = [];
+    const cancel = driver.capabilities.commands.onTriggered(
+      (trigger) => triggers.push(trigger),
+    );
+
+    await expect(driver.capabilities.commands.bindings()).resolves.toEqual([{
+      command: 'translate-hover',
+      description: 'Translate hovered image',
+      shortcut: 'Alt+T',
+    }]);
+    driver.emitCommand({ command: 'translate-hover', tabId: 4 });
+    await driver.capabilities.commands.openSettings();
+
+    expect(triggers).toEqual([{ command: 'translate-hover', tabId: 4 }]);
+    expect(driver.shortcutSettingsOpened()).toBe(true);
+    cancel();
+    cancel();
+    expect(driver.commandListenerRemovals()).toBe(1);
+  });
+
+  it('returns permission decisions and scoped revocation events', async () => {
+    const driver = createDriver();
+    const requirements: readonly PermissionRequirement[] = [
+      { kind: 'authentication-data-use' },
+      { kind: 'cookie-access' },
+    ];
+    const changes: PermissionChange[] = [];
+    const cancel = driver.capabilities.permissions.onChanged(
+      requirements,
+      (change) => changes.push(change),
+    );
+
+    await expect(driver.capabilities.permissions.check(requirements)).resolves.toEqual({
+      status: 'not-granted',
+      missing: [{ kind: 'cookie-access' }],
+    });
+    await expect(driver.capabilities.permissions.request(requirements)).resolves.toEqual({
+      status: 'denied',
+      missing: [{ kind: 'cookie-access' }],
+    });
+
+    driver.grantRequirement({ kind: 'cookie-access' });
+    await expect(driver.capabilities.permissions.check(requirements)).resolves.toEqual({
+      status: 'granted',
+    });
+    driver.emitPermissionChange({
+      status: 'revoked',
+      requirements: [{ kind: 'cookie-access' }],
+    });
+    expect(changes).toEqual([{
+      status: 'revoked',
+      requirements: [{ kind: 'cookie-access' }],
+    }]);
+
+    cancel();
+    cancel();
+    expect(driver.permissionListenerRemovals()).toBe(2);
+  });
+
+  it('provides packaged resource URLs and immutable metadata', () => {
+    const driver = createDriver();
+
+    expect(driver.capabilities.environment.metadata).toEqual({
+      version: '0.8.1',
+    });
+    expect(driver.capabilities.environment.resourceUrl('models/detect.onnx')).toBe(
+      driver.expectedResourceUrl('models/detect.onnx'),
+    );
+    expect(Object.isFrozen(driver.capabilities.environment.metadata)).toBe(true);
+  });
+}
+
+export type BackgroundCapabilityContractDriver = {
+  capabilities: BackgroundExtensionCapabilities;
+  makeNextTabMessageUnavailable(): void;
+  rejectNextTabMessage(): void;
+  setCaptureResult(value: string | undefined): void;
+  emitMenuSelection(menuId: string, tabId?: number): void;
+  menuListenerRemovals(): number;
+  grantCookieAccess(): void;
+  cookieReadCount(): number;
+  emitReferrerPolicy(observation: DocumentReferrerPolicy): void;
+  referrerListenerRemovals(): number;
+  headerOverrideUpdateCount(): number;
+  rejectNextHeaderOverrideUpdate(): void;
+};
+
+export function runBackgroundCapabilityContract(
+  createDriver: () => BackgroundCapabilityContractDriver,
+): void {
+  it('normalizes tab messaging, capture, and expected unavailable results', async () => {
+    const driver = createDriver();
+
+    await expect(driver.capabilities.tabMessages.send(
+      { tabId: 9, documentId: 'document-9' },
+      { type: 'translate' },
+    )).resolves.toEqual({
+      status: 'response',
+      value: { ok: true },
+    });
+    driver.makeNextTabMessageUnavailable();
+    await expect(driver.capabilities.tabMessages.send(
+      { tabId: 9, documentId: 'document-9' },
+      { type: 'translate' },
+    )).resolves.toEqual({ status: 'unavailable' });
+    driver.rejectNextTabMessage();
+    await expect(driver.capabilities.tabMessages.send(
+      { tabId: 9, documentId: 'document-9' },
+      { type: 'translate' },
+    )).rejects.toMatchObject({
+      name: 'ExtensionOperationError',
+      capability: 'tab-message',
+      operation: 'send',
+      code: 'browser-rejected',
+    });
+
+    await expect(driver.capabilities.visibleTabCapture.capturePng()).resolves.toEqual({
+      status: 'unavailable',
+    });
+    driver.setCaptureResult('data:image/png;base64,AA==');
+    await expect(driver.capabilities.visibleTabCapture.capturePng(3)).resolves.toEqual({
+      status: 'captured',
+      dataUrl: 'data:image/png;base64,AA==',
+    });
+  });
+
+  it('normalizes native menus and idempotent event cancellation', async () => {
+    const driver = createDriver();
+    const selections: Array<{ menuId: string; tabId?: number }> = [];
+    const cancel = driver.capabilities.menus.onSelected(
+      (selection) => selections.push(selection),
+    );
+
+    await driver.capabilities.menus.replace([{
+      id: 'translate-image',
+      title: 'Translate image',
+      contexts: ['image'],
+    }]);
+    driver.emitMenuSelection('translate-image', 4);
+    expect(selections).toEqual([{
+      menuId: 'translate-image',
+      tabId: 4,
+    }]);
+
+    cancel();
+    cancel();
+    expect(driver.menuListenerRemovals()).toBe(1);
+  });
+
+  it('distinguishes permission-required cookies from an empty cookie result', async () => {
+    const driver = createDriver();
+    const requirements = [{ kind: 'cookie-access' as const }];
+
+    await expect(driver.capabilities.cookies.read(
+      { url: 'https://gemini.google.com/' },
+      requirements,
+    )).resolves.toEqual({
+      status: 'permission-required',
+      missing: requirements,
+    });
+    expect(driver.cookieReadCount()).toBe(0);
+
+    driver.grantCookieAccess();
+    await expect(driver.capabilities.cookies.read(
+      { url: 'https://gemini.google.com/' },
+      requirements,
+    )).resolves.toEqual({
+      status: 'available',
+      cookies: [],
+    });
+    expect(driver.cookieReadCount()).toBe(1);
+  });
+
+  it('normalizes referrer policy observation and idempotent cancellation', () => {
+    const driver = createDriver();
+    const observations: DocumentReferrerPolicy[] = [];
+    const cancel = driver.capabilities.referrerPolicies.onObserved(
+      (observation) => observations.push(observation),
+    );
+    const observation: DocumentReferrerPolicy = {
+      document: {
+        documentId: 'document-4',
+        tabId: 4,
+        frameId: 0,
+        url: 'https://example.test/chapter',
+      },
+      policy: 'strict-origin',
+    };
+
+    driver.emitReferrerPolicy(observation);
+    expect(observations).toEqual([observation]);
+    cancel();
+    cancel();
+    expect(driver.referrerListenerRemovals()).toBe(1);
+  });
+
+  it('uses idempotent header cleanup and permits cleanup retry', async () => {
+    const driver = createDriver();
+    const lease = await driver.capabilities.requestHeaderOverride.acquire({
+      url: 'https://cdn.example.test/image.png',
+      headers: [{
+        name: 'Referer',
+        value: 'https://example.test/',
+      }],
+    });
+
+    driver.rejectNextHeaderOverrideUpdate();
+    await expect(lease.release()).rejects.toMatchObject({
+      name: 'ExtensionOperationError',
+      code: 'cleanup-failed',
+      retryable: true,
+    });
+    await expect(lease.release()).resolves.toBeUndefined();
+    await expect(lease.release()).resolves.toBeUndefined();
+    expect(driver.headerOverrideUpdateCount()).toBe(3);
+  });
+
+  it('keeps persistent and session storage as distinct available capabilities', async () => {
+    const driver = createDriver();
+
+    await expect(driver.capabilities.persistentStorage.write({
+      scope: 'persistent',
+    })).resolves.toBeUndefined();
+    await expect(driver.capabilities.sessionStorage.write({
+      scope: 'session',
+    })).resolves.toBeUndefined();
+  });
+}

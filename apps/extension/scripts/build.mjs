@@ -84,6 +84,13 @@ function checkManifestPair() {
 }
 
 async function buildRequestedTargets(target) {
+  runNodeScript(
+    resolve(
+      import.meta.dirname,
+      'generate-browser-ort-entries.mjs',
+    ),
+    ['--check'],
+  );
   if (target) {
     await buildExtensionTarget(target);
     return;

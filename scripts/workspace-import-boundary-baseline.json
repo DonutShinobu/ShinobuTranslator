@@ -23,7 +23,6 @@
     "apps/web/src/runtime/trustedTypes.ts -> ../../../../src/runtime/trustedTypesPolicy",
     "apps/web/src/runtime/webPipeline.ts -> ../../../../src/shared/localPipelineProtocol",
     "apps/web/src/runtime/webPipeline.ts -> ../../../../src/shared/localPipelineProtocol",
-    "apps/web/vite.config.ts -> ../../packages/model-manifest/manifest.json",
-    "apps/web/vite.config.ts -> ../../src/runtime/browserRuntimeTarget.ts"
+    "apps/web/vite.config.ts -> ../../packages/model-manifest/manifest.json"
   ]
 }

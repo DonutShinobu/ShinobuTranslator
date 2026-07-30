@@ -129,6 +129,11 @@ const ortRuntimeModulePaths = [
   'ort/ort-wasm-simd-threaded.jsep.mjs',
   'ort/ort-wasm-simd-threaded.mjs',
 ];
+const ortRuntimeWasmPaths = [
+  'ort/ort-wasm-simd-threaded.asyncify.wasm',
+  'ort/ort-wasm-simd-threaded.jsep.wasm',
+  'ort/ort-wasm-simd-threaded.wasm',
+];
 const benchmarkArtifacts = [
   'benchmark.html',
   'benchmark.js',
@@ -156,6 +161,7 @@ const requiredReleaseArtifacts = [
   'chunks/perfTrace.js',
   'onnxWorker.js',
   ...ortRuntimeModulePaths,
+  ...ortRuntimeWasmPaths,
 ];
 if (manifestTarget === 'chrome') {
   requiredReleaseArtifacts.push(

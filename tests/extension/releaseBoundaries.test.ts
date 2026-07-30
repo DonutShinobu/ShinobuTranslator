@@ -25,6 +25,11 @@ const ortRuntimeModulePaths = [
   'ort/ort-wasm-simd-threaded.jsep.mjs',
   'ort/ort-wasm-simd-threaded.mjs',
 ];
+const ortRuntimeWasmPaths = [
+  'ort/ort-wasm-simd-threaded.asyncify.wasm',
+  'ort/ort-wasm-simd-threaded.jsep.wasm',
+  'ort/ort-wasm-simd-threaded.wasm',
+];
 const temporaryDirectories: string[] = [];
 
 function writeArtifact(
@@ -91,6 +96,9 @@ function createReleaseFixture(target: 'chrome' | 'firefox'): string {
       path,
       'export default function ortWasmThreaded() {}\n',
     );
+  }
+  for (const path of ortRuntimeWasmPaths) {
+    writeArtifact(directory, path);
   }
   writeArtifact(
     directory,
@@ -278,6 +286,22 @@ describe('extension release boundaries', () => {
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain(
         `ORT runtime module must export a default factory: ${ortRuntimeModulePaths[0]}`,
+      );
+    },
+    15_000,
+  );
+
+  it(
+    'rejects a missing ORT runtime WASM dependency',
+    () => {
+      const directory = createReleaseFixture('firefox');
+      unlinkSync(join(directory, ortRuntimeWasmPaths[0]));
+
+      const result = runReleaseBoundary('firefox', directory);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(
+        `Release build is missing required artifact: ${ortRuntimeWasmPaths[0]}`,
       );
     },
     15_000,

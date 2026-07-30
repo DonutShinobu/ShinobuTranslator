@@ -12,11 +12,6 @@ if (outDirFlagIndex >= 0 && !requestedOutDir) {
 const outputDir = requestedOutDir
   ? resolve(process.cwd(), requestedOutDir)
   : resolveExtensionBuildTarget('chrome').absoluteOutDir;
-const browserRuntimeTarget = resolve(
-  __dirname,
-  '../src/runtime/browserRuntimeTarget.ts',
-);
-
 function externalizeNodeOnlyAdapter(id) {
   return id.includes('onnxruntime-node')
     || id.includes('onnxNodeBridge')
@@ -31,18 +26,6 @@ await build({
   configFile: false,
   root: resolve(__dirname, '..'),
   publicDir: false,
-  resolve: {
-    alias: [
-      {
-        find: './runtimeTarget',
-        replacement: browserRuntimeTarget,
-      },
-      {
-        find: '../../runtime/runtimeTarget',
-        replacement: browserRuntimeTarget,
-      },
-    ],
-  },
   build: {
     // The self-contained ONNX Runtime Worker is intentionally about 873 kB.
     chunkSizeWarningLimit: 900,

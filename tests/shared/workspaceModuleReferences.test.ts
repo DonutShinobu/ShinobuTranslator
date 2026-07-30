@@ -33,6 +33,16 @@ describe('workspace module references', () => {
     ]);
   });
 
+  it('finds TypeScript import-equals references', () => {
+    const source = `
+      import escape = require('../../../src/escape');
+    `;
+
+    expect(findModuleReferences(source, 'fixture.cts')).toEqual([
+      '../../../src/escape',
+    ]);
+  });
+
   it('finds anchored build paths and Worker URLs without trusting local helpers', () => {
     const source = `
       import { resolve as pathResolve } from 'node:path';

@@ -62,6 +62,14 @@ export function findModuleReferences(source, fileName) {
       if (specifier !== null) references.push(specifier);
     }
     if (
+      ts.isImportEqualsDeclaration(node)
+      && ts.isExternalModuleReference(node.moduleReference)
+      && node.moduleReference.expression
+    ) {
+      const specifier = stringLiteralText(node.moduleReference.expression);
+      if (specifier !== null) references.push(specifier);
+    }
+    if (
       ts.isCallExpression(node)
       && (
         node.expression.kind === ts.SyntaxKind.ImportKeyword

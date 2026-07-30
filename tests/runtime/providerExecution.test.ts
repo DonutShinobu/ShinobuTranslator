@@ -59,10 +59,10 @@ describe('provider session resolver contract', () => {
     }));
     const loadSession = vi.fn(async (
       _model: ProviderExecutionModel,
-      providers: readonly ProviderRuntime[],
+      provider: ProviderRuntime,
     ) => {
-      if (providers[0] === 'webgpu') throw new Error('adapter unavailable');
-      return handle(providers[0]);
+      if (provider === 'webgpu') throw new Error('adapter unavailable');
+      return handle(provider);
     });
     const resolver = createProviderSessionResolver({
       loadModel,
@@ -77,9 +77,9 @@ describe('provider session resolver contract', () => {
 
     expect(execution.value).toBe('webnn');
     expect(loadModel).toHaveBeenCalledWith('detector');
-    expect(loadSession.mock.calls.map(([, providers]) => providers)).toEqual([
-      ['webgpu'],
-      ['webnn'],
+    expect(loadSession.mock.calls.map(([, provider]) => provider)).toEqual([
+      'webgpu',
+      'webnn',
     ]);
     expect(execution.report).toEqual({
       schemaVersion: 1,
@@ -121,10 +121,10 @@ describe('provider session resolver contract', () => {
     }));
     const loadSession = vi.fn(async (
       _model: ProviderExecutionModel,
-      providers: readonly ProviderRuntime[],
+      provider: ProviderRuntime,
     ) => {
-      if (providers[0] === 'webgpu') throw new Error('adapter unavailable');
-      return handle(providers[0]);
+      if (provider === 'webgpu') throw new Error('adapter unavailable');
+      return handle(provider);
     });
     const resolver = createProviderSessionResolver({
       loadModel,
@@ -144,9 +144,9 @@ describe('provider session resolver contract', () => {
     });
 
     expect(loadModel).toHaveBeenCalledOnce();
-    expect(loadSession.mock.calls.map(([, providers]) => providers)).toEqual([
-      ['webgpu'],
-      ['webnn'],
+    expect(loadSession.mock.calls.map(([, provider]) => provider)).toEqual([
+      'webgpu',
+      'webnn',
     ]);
     expect(execution.value).toBe('webnn');
     expect(execution.report).toMatchObject({
@@ -200,7 +200,7 @@ describe('provider session resolver contract', () => {
 
     expect(execution.value).toBe('wasm');
     expect(loadModel).not.toHaveBeenCalled();
-    expect(loadSession).toHaveBeenCalledWith('detector', ['wasm']);
+    expect(loadSession).toHaveBeenCalledWith('detector', 'wasm');
     expect(execution.report).toMatchObject({
       contract: policy.contract,
       finalProvider: 'wasm',
@@ -208,37 +208,47 @@ describe('provider session resolver contract', () => {
     });
   });
 
-  it('falls back after inference failure and records the stable reason instead of raw error text', async () => {
+  it('fails detector execution immediately without trying another provider', async () => {
+    const loadSession = vi.fn(async (_model, provider) => handle(provider));
     const resolver = createProviderSessionResolver({
       loadModel: async () => ({
         runtime: ['webgpu', 'webnn', 'wasm'] as const,
       }),
-      loadSession: async (_model, providers) => handle(providers[0]),
+      loadSession,
     });
 
-    const execution = await resolver.execute({
+    const error = await resolver.execute({
       model: 'detector',
       stage: 'detect',
-      run: async (session) => {
-        if (session.provider === 'webgpu') {
-          throw new Error('GPUDevice secret driver detail');
-        }
-        return session.provider;
+      run: async () => {
+        throw new Error('GPUDevice secret driver detail');
+      },
+    }).then(() => null, (reason: unknown) => reason);
+
+    expect(loadSession.mock.calls).toEqual([['detector', 'webgpu']]);
+    expect(error).toBeInstanceOf(ProviderExecutionError);
+    expect(error).toMatchObject({
+      failure: {
+        code: 'PIPELINE_PROVIDER_EXECUTION_FAILED',
+        stage: 'detect',
+        scope: 'runtime',
+        retryable: false,
+        messageKey: 'pipeline.failure.providerExecution',
+      },
+      report: {
+        attempts: [{
+          attempt: 1,
+          provider: 'webgpu',
+          outcome: 'failed',
+          reason: 'execution-failed',
+        }],
+        fallbackTrace: [],
+        finalProvider: undefined,
+        satisfied: false,
       },
     });
-
-    expect(execution.report.attempts[0]).toEqual({
-      attempt: 1,
-      provider: 'webgpu',
-      outcome: 'failed',
-      reason: 'execution-failed',
-    });
-    expect(execution.report.fallbackTrace[0]).toEqual({
-      from: 'webgpu',
-      to: 'webnn',
-      reason: 'execution-failed',
-    });
-    expect(JSON.stringify(execution.report)).not.toContain('secret driver detail');
+    expect(JSON.stringify((error as ProviderExecutionError).failure))
+      .not.toContain('secret driver detail');
   });
 
   it('fails closed with an unsatisfied report when every provider is unavailable', async () => {

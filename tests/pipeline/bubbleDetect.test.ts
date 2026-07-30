@@ -68,9 +68,9 @@ describe('bubble provider execution', () => {
     });
     const resolver = createProviderSessionResolver({
       loadModel: async () => ({ runtime: ['webgpu', 'wasm'] }),
-      loadSession: async (model, providers) => ({
-        sessionId: `${model}:${providers[0]}`,
-        provider: providers[0],
+      loadSession: async (model, provider) => ({
+        sessionId: `${model}:${provider}`,
+        provider,
         inputNames: ['images'],
         outputNames: ['output0', 'output1'],
       }),

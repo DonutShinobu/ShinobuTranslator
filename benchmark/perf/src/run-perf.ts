@@ -422,9 +422,11 @@ async function main(): Promise<void> {
     // Detect runtime on first image's first run
     if (imgIdx === 0 && runtime === "unknown") {
       try {
-        const { getModelSession } = await import("../../../src/runtime/modelRegistry");
-        const handle = await getModelSession("detector");
-        runtime = handle.provider ?? "unknown";
+        const prepared = await createProductionProviderSessionResolver().preload({
+          model: "detector",
+          stage: "detect",
+        });
+        runtime = prepared.provider;
       } catch {
         runtime = "unknown";
       }

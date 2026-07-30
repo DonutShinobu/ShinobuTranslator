@@ -92,13 +92,11 @@ async function tryCreateSession(
 export async function createSession(
   modelKey: string,
   modelUrl: string,
-  preferred: RuntimeProvider[],
+  provider: RuntimeProvider,
   _sessionOptions?: OnnxSessionOptions
 ): Promise<WorkerSessionHandle> {
   // In Node context, modelUrl is a local file path (absolute).
-  const normalized = preferred.filter((provider, index) =>
-    preferred.indexOf(provider) === index);
-  const sessionId = `${modelKey}:${normalized.join(",")}`;
+  const sessionId = `${modelKey}:${provider}`;
   const existing = sessions.get(sessionId);
   if (existing) {
     return {
@@ -110,32 +108,23 @@ export async function createSession(
   }
 
   // Provider fallback is owned by the shared resolver. This bridge creates
-  // exactly one of the explicitly requested Node providers at a time.
-  // Node bridge only knows cuda and cpu; other providers are ignored.
-  const epOrder: string[] = [];
-  for (const provider of normalized) {
-    if (provider === "cuda" || provider === "cpu") {
-      epOrder.push(provider);
-    }
+  // exactly one explicitly requested Node provider at a time.
+  if (provider !== "cuda" && provider !== "cpu") {
+    throw new Error(`ONNX Node provider 不可用: ${provider}`);
   }
 
-  // Try each EP configuration
-  const errors: string[] = [];
-  for (const ep of epOrder) {
-    const result = await tryCreateSession(modelUrl, [ep]);
-    if (result) {
-      sessions.set(sessionId, { session: result.session, provider: result.provider, modelPath: modelUrl });
-      return {
-        sessionId,
-        provider: result.provider,
-        inputNames: [...result.session.inputNames],
-        outputNames: [...result.session.outputNames],
-      };
-    }
-    errors.push(`${ep}: Session 创建失败`);
+  const result = await tryCreateSession(modelUrl, [provider]);
+  if (result) {
+    sessions.set(sessionId, { session: result.session, provider: result.provider, modelPath: modelUrl });
+    return {
+      sessionId,
+      provider: result.provider,
+      inputNames: [...result.session.inputNames],
+      outputNames: [...result.session.outputNames],
+    };
   }
 
-  throw new Error(`ONNX Node Session 创建失败: ${errors.join(" | ")}`);
+  throw new Error(`ONNX Node Session 创建失败: ${provider}`);
 }
 
 // ---------------------------------------------------------------------------

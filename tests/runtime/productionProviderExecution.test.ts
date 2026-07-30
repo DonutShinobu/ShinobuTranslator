@@ -7,10 +7,10 @@ const mocks = vi.hoisted(() => ({
   })),
   getModelSession: vi.fn(async (
     _model: string,
-    providers: readonly string[],
+    provider: string,
   ) => ({
-    sessionId: `detector:${providers[0]}`,
-    provider: providers[0],
+    sessionId: `detector:${provider}`,
+    provider,
     inputNames: ['images'],
     outputNames: ['output'],
   })),
@@ -34,7 +34,7 @@ describe('production provider execution composition', () => {
     });
     await expect(capability.modelSession.loadSession(
       'detector',
-      ['webnn'],
+      'webnn',
     )).resolves.toMatchObject({
       sessionId: 'detector:webnn',
       provider: 'webnn',
@@ -42,6 +42,6 @@ describe('production provider execution composition', () => {
 
     expect(capability.policy).toBe(PRODUCTION_PROVIDER_EXECUTION_POLICY);
     expect(mocks.getModel).toHaveBeenCalledWith('detector');
-    expect(mocks.getModelSession).toHaveBeenCalledWith('detector', ['webnn']);
+    expect(mocks.getModelSession).toHaveBeenCalledWith('detector', 'webnn');
   });
 });

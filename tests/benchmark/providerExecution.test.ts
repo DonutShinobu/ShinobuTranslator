@@ -79,12 +79,12 @@ describe('benchmark provider execution capability', () => {
 
     await resolved.modelSession.loadSession(
       'paddleocr_v6_medium_rec',
-      ['wasm'],
+      'wasm',
     );
 
     expect(loadSession).toHaveBeenCalledWith(
       'paddleocr_v6_medium_rec',
-      ['wasm'],
+      'wasm',
       sessionOptions,
     );
   });

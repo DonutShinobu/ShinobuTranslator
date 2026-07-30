@@ -96,7 +96,7 @@ function createWebProviderExecutionCapability(
     policy,
     modelSession: {
       loadModel: (model) => getModel(model),
-      loadSession: (model, providers) => getModelSession(model, [...providers]),
+      loadSession: (model, provider) => getModelSession(model, provider),
     },
   };
 }

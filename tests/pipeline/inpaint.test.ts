@@ -114,9 +114,9 @@ describe('inpaint provider execution', () => {
       loadModel: async () => ({
         runtime: ['webgpu', 'webnn', 'wasm'],
       }),
-      loadSession: async (model, providers) => ({
-        sessionId: `${model}:${providers[0]}`,
-        provider: providers[0],
+      loadSession: async (model, provider) => ({
+        sessionId: `${model}:${provider}`,
+        provider,
         inputNames: ['image', 'mask'],
         outputNames: ['output'],
       }),
@@ -165,13 +165,13 @@ describe('inpaint provider execution', () => {
 
   it('reports session creation fallback through the same resolver', async () => {
     vi.mocked(runInference).mockResolvedValue(inpaintOutput(0.5));
-    const loadSession = vi.fn(async (model, providers) => {
-      if (providers[0] === 'webgpu') {
+    const loadSession = vi.fn(async (model, provider) => {
+      if (provider === 'webgpu') {
         throw new Error('WebGPU unavailable');
       }
       return {
-        sessionId: `${model}:${providers[0]}`,
-        provider: providers[0],
+        sessionId: `${model}:${provider}`,
+        provider,
         inputNames: ['image', 'mask'],
         outputNames: ['output'],
       };

@@ -15,7 +15,7 @@ import {
 
 const productionModelSessionPort: ProviderModelSessionPort = Object.freeze({
   loadModel: (model) => getModel(model),
-  loadSession: (model, providers) => getModelSession(model, [...providers]),
+  loadSession: (model, provider) => getModelSession(model, provider),
 });
 
 export function createProductionProviderExecutionCapability(

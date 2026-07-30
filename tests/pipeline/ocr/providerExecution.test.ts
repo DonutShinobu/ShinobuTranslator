@@ -101,9 +101,9 @@ describe('OCR provider execution', () => {
       loadModel: async () => ({
         runtime: ['webgpu', 'wasm'],
       }),
-      loadSession: async (model, providers) => ({
-        sessionId: `${model}:${providers[0]}`,
-        provider: providers[0],
+      loadSession: async (model, provider) => ({
+        sessionId: `${model}:${provider}`,
+        provider,
         inputNames: ['images'],
         outputNames: ['output'],
       }),
@@ -150,9 +150,9 @@ describe('OCR provider execution', () => {
 
   it('uses the injected provider policy', async () => {
     vi.mocked(runInference).mockResolvedValue(successfulOcrOutput());
-    const loadSession = vi.fn(async (model, providers) => ({
-      sessionId: `${model}:${providers[0]}`,
-      provider: providers[0],
+    const loadSession = vi.fn(async (model, provider) => ({
+      sessionId: `${model}:${provider}`,
+      provider,
       inputNames: ['images'],
       outputNames: ['output'],
     }));

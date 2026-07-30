@@ -1,24 +1,35 @@
-import type { TextRegion } from "../../types";
 import type { PlatformProvider, PipelineImage } from "../../runtime/platform";
+import type { TextRegion } from "../../types";
 import { detectByOnnx, type DetectOutput } from "./onnxDetect";
-import { detectByTesseract, detectByHeuristic } from "./heuristicDetect";
-import { toErrorMessage } from "../../shared/utils";
 import {
   ProviderExecutionError,
   type ProviderSessionResolver,
 } from "../../runtime/providerExecution";
 import { isProviderExecutionReport } from "@shinobu/image-pipeline";
+import type { PipelineFailureEnvelope } from "@shinobu/image-pipeline";
 
 export type { DetectOutput };
 
 export class DetectionExecutionError extends Error {
+  readonly failure: PipelineFailureEnvelope;
+
   constructor(
-    message: string,
     readonly providerReports: DetectOutput["providerReports"],
-    cause?: unknown,
+    cause: unknown,
   ) {
-    super(message, cause === undefined ? undefined : { cause });
+    super("pipeline.failure.detect", { cause });
     this.name = "DetectionExecutionError";
+    this.failure = {
+      code: "PIPELINE_DETECT_FAILED",
+      stage: "detect",
+      scope: "runtime",
+      retryable: false,
+      messageKey: "pipeline.failure.detect",
+      diagnostics: {
+        name: cause instanceof Error ? cause.name : "UnknownError",
+        ...(providerReports.length > 0 ? { providerReports } : {}),
+      },
+    };
   }
 }
 
@@ -44,64 +55,18 @@ export async function detectTextRegionsWithMask(
   platform: PlatformProvider,
   resolver: ProviderSessionResolver,
 ): Promise<DetectOutput> {
-  const fallbackReasons: string[] = [];
-  const providerReports: DetectOutput["providerReports"] = [];
   try {
     const onnxResult = await detectByOnnx(image, platform, resolver);
-    if (onnxResult.regions.length > 0) {
-      return { ...onnxResult, engine: "onnx" };
-    }
-    throw new DetectionExecutionError(
-      "未找到文本",
-      onnxResult.providerReports,
-    );
+    return { ...onnxResult, engine: "onnx" };
   } catch (error) {
-    if (error instanceof DetectionExecutionError) {
+    if (error instanceof ProviderExecutionError) {
       throw error;
     }
-    providerReports.push(...providerReportsFromError(error));
-    const reason = toErrorMessage(error);
-    fallbackReasons.push(`onnx: ${reason}`);
-    console.warn(`[detect] onnx detector unavailable, fallback to tesseract/heuristic: ${reason}`);
-  }
-
-  try {
-    const tessRegions = await detectByTesseract(image, platform);
-    if (tessRegions.length > 0) {
-      return {
-        regions: tessRegions,
-        rawMaskCanvas: null,
-        engine: "tesseract",
-        fallbackReason: fallbackReasons.join(" | "),
-        providerReports
-      };
-    }
-  } catch (error) {
-    const reason = toErrorMessage(error);
-    fallbackReasons.push(`tesseract: ${reason}`);
-    console.warn(`[detect] tesseract fallback unavailable, switch to heuristic: ${reason}`);
-  }
-
-  let heuristicRegions: TextRegion[];
-  try {
-    heuristicRegions = await detectByHeuristic(image, platform);
-  } catch (error) {
     throw new DetectionExecutionError(
-      toErrorMessage(error),
-      providerReports,
+      providerReportsFromError(error),
       error,
     );
   }
-  if (heuristicRegions.length === 0) {
-    throw new DetectionExecutionError("未找到文本", providerReports);
-  }
-  return {
-    regions: heuristicRegions,
-    rawMaskCanvas: null,
-    engine: "heuristic",
-    fallbackReason: fallbackReasons.join(" | "),
-    providerReports
-  };
 }
 
 export async function detectTextRegions(

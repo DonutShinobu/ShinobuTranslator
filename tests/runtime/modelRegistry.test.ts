@@ -22,10 +22,12 @@ describe('modelRegistry session cache', () => {
     vi.resetModules();
     mocks.createSession.mockReset();
     mocks.disposeAll.mockClear();
+    mocks.disposeSession.mockReset();
+    mocks.disposeSession.mockResolvedValue(undefined);
     mocks.runtimeEvents.length = 0;
   });
 
-  it('deduplicates concurrent creation, records provider fallback, and reuses the cache', async () => {
+  it('deduplicates concurrent creation for one provider and reuses the cache', async () => {
     let resolveCreation!: (value: {
       sessionId: string;
       provider: 'wasm';
@@ -43,8 +45,8 @@ describe('modelRegistry session cache', () => {
     mocks.createSession.mockReturnValue(creation);
     const registry = await import('../../src/runtime/modelRegistry');
 
-    const first = registry.getModelSession('detector', ['webnn', 'wasm']);
-    const second = registry.getModelSession('detector', ['webnn', 'wasm']);
+    const first = registry.getModelSession('detector', 'wasm');
+    const second = registry.getModelSession('detector', 'wasm');
     await vi.waitFor(() => expect(mocks.createSession).toHaveBeenCalledTimes(1));
     resolveCreation({
       sessionId: 'detector-session',
@@ -54,18 +56,53 @@ describe('modelRegistry session cache', () => {
     });
 
     const [firstHandle, secondHandle] = await Promise.all([first, second]);
-    const cached = await registry.getModelSession('detector', ['webnn', 'wasm']);
+    const cached = await registry.getModelSession('detector', 'wasm');
 
     expect(firstHandle).toBe(secondHandle);
     expect(cached).toBe(firstHandle);
     expect(mocks.createSession).toHaveBeenCalledTimes(1);
-    expect(mocks.runtimeEvents).toContainEqual(expect.objectContaining({
+    expect(mocks.createSession).toHaveBeenCalledWith(
+      'detector',
+      expect.any(String),
+      'wasm',
+      undefined,
+    );
+    expect(mocks.runtimeEvents).not.toContainEqual(expect.objectContaining({
       kind: 'provider-fallback',
-      provider: 'wasm',
     }));
     expect(mocks.runtimeEvents.filter((event) => event.kind === 'session-cache-hit')).toHaveLength(2);
 
     await registry.disposeAllModelSessions();
     expect(mocks.disposeAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a bridge response that silently substitutes another provider', async () => {
+    mocks.disposeSession.mockRejectedValueOnce(new Error('cleanup unavailable'));
+    mocks.createSession.mockResolvedValue({
+      sessionId: 'detector-session',
+      provider: 'wasm',
+      inputNames: ['images'],
+      outputNames: ['output'],
+    });
+    const registry = await import('../../src/runtime/modelRegistry');
+
+    const error = await registry.getModelSession('detector', 'webnn')
+      .then(() => null, (reason: unknown) => reason);
+
+    expect(error).toMatchObject({
+      name: 'ProviderSessionContractError',
+      message: 'pipeline.failure.providerContract',
+      code: 'PIPELINE_PROVIDER_CONTRACT_VIOLATED',
+      reason: 'contract-violated',
+      cause: {
+        requestedProvider: 'webnn',
+        actualProvider: 'wasm',
+        cleanup: 'failed',
+        recovery: 'runtime-reset',
+      },
+    });
+    expect(String(error)).not.toContain('cleanup unavailable');
+    expect(mocks.disposeSession).toHaveBeenCalledWith('detector-session');
+    expect(mocks.disposeAll).toHaveBeenCalledOnce();
   });
 });

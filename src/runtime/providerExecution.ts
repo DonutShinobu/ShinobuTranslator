@@ -17,7 +17,7 @@ import {
 
 type ProviderSessionLoader = (
   model: ProviderExecutionModel,
-  providers: readonly ProviderRuntime[],
+  provider: ProviderRuntime,
 ) => Promise<ProviderExecutionSession>;
 
 export type ProviderSessionResolverOptions = {
@@ -50,6 +50,28 @@ export type ProviderSessionResolver = {
     request: ProviderExecutionRequest<T>,
   ): Promise<ProviderExecutionResult<T>>;
 };
+
+export class ProviderSessionContractError extends Error {
+  readonly code = 'PIPELINE_PROVIDER_CONTRACT_VIOLATED';
+  readonly reason = 'contract-violated';
+
+  constructor(
+    requestedProvider: ProviderRuntime,
+    actualProvider: ProviderRuntime,
+    cleanup: 'succeeded' | 'failed',
+    recovery: 'not-required' | 'runtime-reset' | 'runtime-reset-failed',
+  ) {
+    super('pipeline.failure.providerContract', {
+      cause: {
+        requestedProvider,
+        actualProvider,
+        cleanup,
+        recovery,
+      },
+    });
+    this.name = 'ProviderSessionContractError';
+  }
+}
 
 type PreparedProviderExecution = {
   providers: ProviderRuntime[];
@@ -224,8 +246,21 @@ export function createProviderSessionResolver(
   ): Promise<ProviderExecutionSession | null> => {
     let session: ProviderExecutionSession;
     try {
-      session = await loadSession(model, [provider]);
+      session = await loadSession(model, provider);
     } catch (error) {
+      if (error instanceof ProviderSessionContractError) {
+        attempts.push({
+          attempt: attempts.length + 1,
+          provider,
+          outcome: 'failed',
+          reason: 'contract-violated',
+        });
+        throwProviderFailure(
+          'PIPELINE_PROVIDER_CONTRACT_VIOLATED',
+          createReport(policy, model, stage, attempts),
+          error,
+        );
+      }
       onUnavailable?.(error);
       attempts.push({
         attempt: attempts.length + 1,
@@ -364,6 +399,13 @@ export function createProviderSessionResolver(
             outcome: 'failed',
             reason: 'execution-failed',
           });
+          if (stage === 'detect') {
+            throwProviderFailure(
+              'PIPELINE_PROVIDER_EXECUTION_FAILED',
+              createReport(policy, model, stage, attempts),
+              error,
+            );
+          }
         }
       }
 

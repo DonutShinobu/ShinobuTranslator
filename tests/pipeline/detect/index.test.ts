@@ -8,17 +8,10 @@ import {
 
 const mocks = vi.hoisted(() => ({
   detectByOnnx: vi.fn(),
-  detectByTesseract: vi.fn(),
-  detectByHeuristic: vi.fn(),
 }));
 
 vi.mock('../../../src/pipeline/detect/onnxDetect', () => ({
   detectByOnnx: mocks.detectByOnnx,
-}));
-
-vi.mock('../../../src/pipeline/detect/heuristicDetect', () => ({
-  detectByTesseract: mocks.detectByTesseract,
-  detectByHeuristic: mocks.detectByHeuristic,
 }));
 
 import { detectTextRegionsWithMask } from '../../../src/pipeline/detect';
@@ -59,8 +52,6 @@ function providerReport(satisfied: boolean): ProviderExecutionReport {
 describe('detectTextRegionsWithMask engine reporting', () => {
   beforeEach(() => {
     mocks.detectByOnnx.mockReset();
-    mocks.detectByTesseract.mockReset();
-    mocks.detectByHeuristic.mockReset();
   });
 
   it('reports ONNX when the model succeeds', async () => {
@@ -77,73 +68,87 @@ describe('detectTextRegionsWithMask engine reporting', () => {
       actualProvider: 'wasm',
       providerReports: [report],
     });
-    expect(mocks.detectByTesseract).not.toHaveBeenCalled();
   });
 
-  it('reports Tesseract and preserves the unsatisfied ONNX provider report', async () => {
+  it('returns an empty ONNX result without changing detection engines', async () => {
+    const report = providerReport(true);
+    mocks.detectByOnnx.mockResolvedValue({
+      regions: [],
+      rawMaskCanvas: null,
+      actualProvider: 'wasm',
+      providerReports: [report],
+    });
+
+    await expect(detectTextRegionsWithMask(image, platform, resolver)).resolves.toMatchObject({
+      regions: [],
+      engine: 'onnx',
+      actualProvider: 'wasm',
+      providerReports: [report],
+    });
+  });
+
+  it('preserves a structured provider failure without exposing the raw runtime error', async () => {
     const report = providerReport(false);
-    mocks.detectByOnnx.mockRejectedValue(new ProviderExecutionError(
+    const providerError = new ProviderExecutionError(
       {
         code: 'PIPELINE_PROVIDER_EXECUTION_FAILED',
         stage: 'detect',
         scope: 'runtime',
         retryable: false,
         messageKey: 'pipeline.failure.providerExecution',
+        diagnostics: {
+          contract: report.contract,
+          model: report.model,
+          report,
+        },
       },
       report,
-    ));
-    mocks.detectByTesseract.mockResolvedValue([region]);
+      new Error('GPU device secret detail'),
+    );
+    mocks.detectByOnnx.mockRejectedValue(providerError);
 
-    await expect(detectTextRegionsWithMask(image, platform, resolver)).resolves.toMatchObject({
-      engine: 'tesseract',
-      fallbackReason: 'onnx: pipeline.failure.providerExecution',
-      providerReports: [report],
+    await expect(detectTextRegionsWithMask(image, platform, resolver)).rejects.toMatchObject({
+      failure: {
+        code: 'PIPELINE_PROVIDER_EXECUTION_FAILED',
+        stage: 'detect',
+        scope: 'runtime',
+        retryable: false,
+        messageKey: 'pipeline.failure.providerExecution',
+        diagnostics: {
+          contract: report.contract,
+          model: 'detector',
+          report,
+        },
+      },
+      report,
     });
+    expect(providerError.failure.diagnostics).not.toHaveProperty('message');
   });
 
-  it('preserves a satisfied provider report when ONNX post-processing falls back', async () => {
+  it('turns ONNX post-processing errors into a redacted structured detect failure', async () => {
     const report = providerReport(true);
     mocks.detectByOnnx.mockRejectedValue(Object.assign(
-      new Error('invalid detector output'),
+      new Error('raw tensor contents must stay private'),
       { providerReports: [report] },
     ));
-    mocks.detectByTesseract.mockResolvedValue([region]);
 
-    await expect(detectTextRegionsWithMask(image, platform, resolver)).resolves.toMatchObject({
-      engine: 'tesseract',
-      fallbackReason: 'onnx: invalid detector output',
+    await expect(detectTextRegionsWithMask(image, platform, resolver)).rejects.toMatchObject({
+      failure: {
+        code: 'PIPELINE_DETECT_FAILED',
+        stage: 'detect',
+        scope: 'runtime',
+        retryable: false,
+        messageKey: 'pipeline.failure.detect',
+        diagnostics: {
+          name: 'Error',
+          providerReports: [report],
+        },
+      },
       providerReports: [report],
     });
-  });
-
-  it('reports heuristic and both upstream fallback reasons', async () => {
-    mocks.detectByOnnx.mockRejectedValue(new Error('worker unavailable'));
-    mocks.detectByTesseract.mockRejectedValue(new Error('tesseract unavailable'));
-    mocks.detectByHeuristic.mockResolvedValue([region]);
-
-    const result = await detectTextRegionsWithMask(image, platform, resolver);
-    expect(result.engine).toBe('heuristic');
-    expect(result.fallbackReason).toContain('onnx: worker unavailable');
-    expect(result.fallbackReason).toContain('tesseract: tesseract unavailable');
-    expect(result.providerReports).toEqual([]);
-  });
-
-  it('keeps the strict no-text result instead of silently changing engines', async () => {
-    const report = providerReport(true);
-    mocks.detectByOnnx.mockResolvedValue({
-      regions: [],
-      rawMaskCanvas: null,
-      providerReports: [report],
-    });
-
     const error = await detectTextRegionsWithMask(image, platform, resolver).catch(
       (caught: unknown) => caught,
-    );
-
-    expect(error).toMatchObject({
-      message: '未找到文本',
-      providerReports: [report],
-    });
-    expect(mocks.detectByTesseract).not.toHaveBeenCalled();
+    ) as { failure: { diagnostics?: Record<string, unknown> } };
+    expect(error.failure.diagnostics).not.toHaveProperty('message');
   });
 });

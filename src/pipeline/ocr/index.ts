@@ -10,6 +10,7 @@ import {
 import type { OcrRecognizeResult } from "./provider";
 import { paddleocrV6MediumProvider } from "./paddleocrProvider";
 import type {
+  OcrExecutionCapability,
   ProviderExecutionReport,
   ProviderRuntime,
 } from "@shinobu/image-pipeline";
@@ -32,9 +33,7 @@ export type OcrResult = {
   providerReports: ProviderExecutionReport[];
 };
 
-type RunOcrOptions = {
-  compactActiveBatch?: boolean;
-};
+type RunOcrOptions = OcrExecutionCapability;
 
 export function mapResultsToRegions(
   results: OcrRecognizeResult[],
@@ -130,7 +129,7 @@ export async function runOcr(
   providerName: string | undefined,
   platform: PlatformProvider,
   resolver: ProviderSessionResolver,
-  _options: RunOcrOptions = {},
+  options: RunOcrOptions = {},
 ): Promise<OcrResult> {
   const providerNameResolved = normalizeOcrProviderName(providerName);
   const provider = getOcrProvider(providerNameResolved);
@@ -140,7 +139,7 @@ export async function runOcr(
     model: "paddleocr_v6_medium_rec",
     stage: "ocr",
     run: (session) =>
-      provider.recognize(image, detectedRegions, session, platform),
+      provider.recognize(image, detectedRegions, session, platform, options),
   });
   const output = execution.value;
   const providerReports = [execution.report];

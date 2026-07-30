@@ -5,6 +5,9 @@ import {
   generateExtensionManifest,
   serializeExtensionManifest,
 } from './generate-manifest.mjs';
+import {
+  assertNoRemoteDetectionFallbackResources,
+} from './detection-resource-boundary.mjs';
 import { readCliOption } from './cli-options.mjs';
 
 const root = resolve(import.meta.dirname, '../../..');
@@ -94,6 +97,8 @@ function matchesResourcePattern(pattern, resource) {
 if (!existsSync(distDir)) {
   throw new Error(`Release artifact directory does not exist: ${distDir}`);
 }
+
+assertNoRemoteDetectionFallbackResources(distDir);
 
 for (const artifact of requiredReleaseArtifacts) {
   if (!existsSync(join(distDir, artifact))) {

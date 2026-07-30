@@ -29,14 +29,13 @@ export type CtdTextLineContour = {
 export type DetectOutput = {
   regions: TextRegion[];
   rawMaskCanvas: PipelineCanvas | null;
-  engine?: "onnx" | "tesseract" | "heuristic";
-  fallbackReason?: string;
+  engine?: "onnx";
   actualProvider?: ProviderRuntime;
   actualWebnnDeviceType?: WebNnDeviceType;
   providerReports: ProviderExecutionReport[];
 };
 
-// --- Shared helpers (used by both ONNX and heuristic paths) ---
+// --- Detector geometry helpers ---
 
 export function rectToQuad(box: Rect): [
   { x: number; y: number },

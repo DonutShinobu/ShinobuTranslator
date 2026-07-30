@@ -13,9 +13,13 @@ import type {
   ProviderRuntime,
 } from '@shinobu/image-pipeline';
 import {
+  createPipelineRecord,
+  hasTranslatableText,
   PRODUCTION_PROVIDER_EXECUTION_POLICY,
 } from '@shinobu/image-pipeline';
-import type { ProviderSessionResolver } from '../../src/runtime/providerExecution';
+import {
+  type ProviderSessionResolver,
+} from '../../src/runtime/providerExecution';
 
 const pipelineMocks = vi.hoisted(() => ({
   fileToImage: vi.fn(),
@@ -140,6 +144,19 @@ const detectorProviderReport: ProviderExecutionReport = {
   fallbackTrace: [],
   satisfied: true,
 };
+const failedDetectorProviderReport: ProviderExecutionReport = {
+  ...detectorProviderReport,
+  attempts: [
+    {
+      attempt: 1,
+      provider: 'wasm',
+      outcome: 'failed',
+      reason: 'execution-failed',
+    },
+  ],
+  finalProvider: undefined,
+  satisfied: false,
+};
 const bubbleProviderReport: ProviderExecutionReport = {
   ...detectorProviderReport,
   model: 'bubble',
@@ -177,9 +194,9 @@ const testRuntimeCapabilities: ImagePipelineRuntimeCapabilities = {
     policy: PRODUCTION_PROVIDER_EXECUTION_POLICY,
     modelSession: {
       loadModel: async () => ({ runtime: ['wasm'] }),
-      loadSession: async (model, providers) => ({
-        sessionId: `${model}:${providers[0]}`,
-        provider: providers[0] ?? 'wasm',
+      loadSession: async (model, provider) => ({
+        sessionId: `${model}:${provider}`,
+        provider,
         inputNames: ['images'],
         outputNames: ['output'],
       }),
@@ -299,8 +316,153 @@ describe('runPipeline', () => {
       ocrProviderReport,
       inpaintProviderReport,
     ]);
+    expect(pipelineMocks.detectBubbles).toHaveBeenCalledOnce();
+    expect(pipelineMocks.runOcr).toHaveBeenCalledOnce();
     expect(pipelineMocks.runTranslate).toHaveBeenCalledOnce();
     expect(pipelineMocks.drawTypeset).toHaveBeenCalledOnce();
+  });
+
+  it('completes with input-equivalent empty artifacts before downstream model sessions', async () => {
+    const progress: PipelineProgress[] = [];
+    const policy: ProviderExecutionPolicy = {
+      schemaVersion: 1,
+      contract: {
+        id: 'test.empty-detection-wasm-only',
+        version: 1,
+      },
+      rules: [
+        { model: 'detector', stage: 'detect', providers: ['wasm'] },
+        { model: 'bubble', stage: 'bubble', providers: ['wasm'] },
+        {
+          model: 'paddleocr_v6_medium_rec',
+          stage: 'ocr',
+          providers: ['wasm'],
+        },
+      ],
+    };
+    const loadSession = vi.fn(async (
+      model: ProviderExecutionModel,
+      provider: ProviderRuntime,
+    ) => ({
+      sessionId: `${model}:${provider}`,
+      provider,
+      inputNames: ['images'],
+      outputNames: ['output'],
+    }));
+    pipelineMocks.detectTextRegionsWithMask.mockImplementationOnce(async (
+      _image: PipelineImage,
+      _platform: PlatformProvider,
+      resolver: ProviderSessionResolver,
+    ) => {
+      const execution = await resolver.execute({
+        model: 'detector',
+        stage: 'detect',
+        run: async (session) => session.provider,
+      });
+      return {
+        regions: [],
+        rawMaskCanvas: detectionMaskCanvas,
+        engine: 'onnx' as const,
+        actualProvider: execution.value,
+        providerReports: [execution.report],
+      };
+    });
+    pipelineMocks.detectBubbles.mockImplementationOnce(async (
+      _image: PipelineImage,
+      _platform: PlatformProvider,
+      resolver: ProviderSessionResolver,
+    ) => {
+      const execution = await resolver.execute({
+        model: 'bubble',
+        stage: 'bubble',
+        run: async (session) => session.provider,
+      });
+      return {
+        bubbles: [],
+        actualProvider: execution.value,
+        providerReports: [execution.report],
+      };
+    });
+    pipelineMocks.runOcr.mockImplementationOnce(async () => {
+      throw new Error('OCR must not run after an empty successful detection');
+    });
+
+    const artifacts = await runPipeline(
+      createFile(),
+      baseConfig,
+      (item) => progress.push(item),
+      {
+        runtimeCapabilities: {
+          providerExecution: {
+            policy,
+            modelSession: {
+              loadModel: vi.fn(),
+              loadSession,
+            },
+          },
+        },
+      },
+    );
+
+    expect(uniqueConsecutiveStages(progress)).toEqual([
+      'load',
+      'preload',
+      'detect',
+      'done',
+    ]);
+    expect(artifacts.stageTimings.map((timing) => timing.stage)).toEqual([
+      'load',
+      'preload',
+      'detect',
+    ]);
+    expect(artifacts.detectedRegions).toEqual([]);
+    expect(artifacts.stageRegions).toEqual({
+      detected: [],
+      ocr: [],
+      merged: [],
+      ordered: [],
+    });
+    expect(artifacts.cleanedCanvas).toBe(originalCanvas);
+    expect(artifacts.resultCanvas).toBe(originalCanvas);
+    expect(artifacts.segmentationCanvas).toBe(detectionMaskCanvas);
+    expect(artifacts.providerReports).toHaveLength(1);
+    expect(artifacts.providerReports[0]).toMatchObject({
+      model: 'detector',
+      stage: 'detect',
+      finalProvider: 'wasm',
+      satisfied: true,
+    });
+    expect(artifacts.runtimeStages).toEqual([
+      expect.objectContaining({
+        model: 'detector',
+        enabled: true,
+        engine: 'onnx',
+        provider: 'wasm',
+      }),
+    ]);
+    expect(loadSession.mock.calls).toEqual([
+      ['detector', 'wasm'],
+    ]);
+    expect(pipelineMocks.detectBubbles).not.toHaveBeenCalled();
+    expect(pipelineMocks.runOcr).not.toHaveBeenCalled();
+    expect(pipelineMocks.runTranslate).not.toHaveBeenCalled();
+    expect(pipelineMocks.refineTextMask).not.toHaveBeenCalled();
+    expect(pipelineMocks.runInpaint).not.toHaveBeenCalled();
+    expect(pipelineMocks.drawTypeset).not.toHaveBeenCalled();
+
+    const record = createPipelineRecord({
+      image: {
+        width: artifacts.original.naturalWidth,
+        height: artifacts.original.naturalHeight,
+      },
+      ocr: artifacts.stageRegions.ocr,
+      ordered: artifacts.stageRegions.ordered,
+    }, { strategy: 'source-native' });
+    expect(hasTranslatableText({
+      ordered: artifacts.stageRegions.ordered,
+    })).toBe(false);
+    expect(record.ocr).toEqual([]);
+    expect(record.translations).toEqual([]);
   });
 
   it('preloads the detector through the injected runtime capability policy', async () => {
@@ -323,10 +485,10 @@ describe('runPipeline', () => {
     }));
     const loadSession = vi.fn(async (
       _model: ProviderExecutionModel,
-      providers: readonly ProviderRuntime[],
+      provider: ProviderRuntime,
     ) => ({
-      sessionId: `detector:${providers[0]}`,
-      provider: providers[0],
+      sessionId: `detector:${provider}`,
+      provider,
       inputNames: ['images'],
       outputNames: ['output'],
     }));
@@ -336,7 +498,7 @@ describe('runPipeline', () => {
       resolver: ProviderSessionResolver,
     ) => {
       expect(loadSession.mock.calls).toEqual([
-        ['detector', ['wasm']],
+        ['detector', 'wasm'],
       ]);
       const execution = await resolver.execute({
         model: 'detector',
@@ -370,7 +532,7 @@ describe('runPipeline', () => {
 
     expect(loadModel).not.toHaveBeenCalled();
     expect(loadSession.mock.calls).toEqual([
-      ['detector', ['wasm']],
+      ['detector', 'wasm'],
     ]);
     expect(artifacts.providerReports[0]).toMatchObject({
       contract: policy.contract,
@@ -399,10 +561,10 @@ describe('runPipeline', () => {
     };
     const loadSession = vi.fn(async (
       model: ProviderExecutionModel,
-      providers: readonly ProviderRuntime[],
+      provider: ProviderRuntime,
     ) => ({
-      sessionId: `${model}:${providers[0]}`,
-      provider: providers[0],
+      sessionId: `${model}:${provider}`,
+      provider,
       inputNames: ['images', 'mask'],
       outputNames: ['output'],
     }));
@@ -534,10 +696,10 @@ describe('runPipeline', () => {
   it('does not attempt later providers when the bubble stage fails', async () => {
     const loadSession = vi.fn(async (
       model: ProviderExecutionModel,
-      providers: readonly ProviderRuntime[],
+      provider: ProviderRuntime,
     ) => ({
-      sessionId: `${model}:${providers[0]}`,
-      provider: providers[0],
+      sessionId: `${model}:${provider}`,
+      provider,
       inputNames: ['images'],
       outputNames: ['output'],
     }));
@@ -728,53 +890,87 @@ describe('runPipeline', () => {
     expect(artifacts.stageRegions.ordered[0].box.x).not.toBe(999);
   });
 
-  it('attaches completed intermediate artifacts to stage errors', async () => {
-    pipelineMocks.detectTextRegionsWithMask.mockRejectedValueOnce(Object.assign(
-      new Error('detector unavailable'),
-      { providerReports: [detectorProviderReport] },
-    ));
+  it('preserves structured detector provider failures and redacted diagnostics', async () => {
+    const loadSession = vi.fn(async (
+      model: ProviderExecutionModel,
+      provider: ProviderRuntime,
+    ) => ({
+      sessionId: `${model}:${provider}`,
+      provider,
+      inputNames: ['images'],
+      outputNames: ['output'],
+    }));
+    pipelineMocks.detectTextRegionsWithMask.mockImplementationOnce(async (
+      _image: PipelineImage,
+      _platform: PlatformProvider,
+      resolver: ProviderSessionResolver,
+    ) => {
+      await resolver.execute({
+        model: 'detector',
+        stage: 'detect',
+        run: async () => {
+          throw new Error('raw GPU device detail');
+        },
+      });
+      throw new Error('unreachable');
+    });
 
     const error = await runPipeline(
       createFile(),
       baseConfig,
       () => {},
-      { runtimeCapabilities: testRuntimeCapabilities },
+      {
+        runtimeCapabilities: {
+          providerExecution: {
+            policy: PRODUCTION_PROVIDER_EXECUTION_POLICY,
+            modelSession: {
+              loadModel: async () => ({
+                runtime: ['wasm', 'cpu'],
+              }),
+              loadSession,
+            },
+          },
+        },
+      },
     ).catch(
       (caught: unknown) => caught,
     );
 
+    expect(loadSession.mock.calls).toEqual([['detector', 'wasm']]);
     expect(error).toBeInstanceOf(PipelineStageError);
     const stageError = error as PipelineStageError;
     expect(stageError).toMatchObject({
       name: 'PipelineStageError',
-      code: 'PIPELINE_STAGE_FAILED',
+      code: 'PIPELINE_PROVIDER_EXECUTION_FAILED',
       stage: 'detect',
       stageLabel: '文本检测',
-      message: '文本检测失败: detector unavailable',
       failure: {
-        code: 'PIPELINE_STAGE_FAILED',
+        code: 'PIPELINE_PROVIDER_EXECUTION_FAILED',
         stage: 'detect',
         scope: 'runtime',
         retryable: false,
-        messageKey: 'pipeline.failure.stage',
+        messageKey: 'pipeline.failure.providerExecution',
         diagnostics: {
-          name: 'PipelineStageError',
-          providerReports: [detectorProviderReport],
+          contract: failedDetectorProviderReport.contract,
+          model: 'detector',
+          report: failedDetectorProviderReport,
         },
       },
     });
-    expect(stageError.cause).toMatchObject({ message: 'detector unavailable' });
+    expect(stageError.failure.diagnostics).not.toHaveProperty('message');
     expect(stageError.artifacts).toMatchObject({
       original: image,
       detectedRegions: [],
       detectionCanvas: originalCanvas,
       cleanedCanvas: originalCanvas,
       resultCanvas: originalCanvas,
-      providerReports: [detectorProviderReport],
+      providerReports: [failedDetectorProviderReport],
     });
     expect(stageError.artifacts.stageTimings.map((timing) => timing.stage)).toEqual([
       'load',
       'preload',
     ]);
+    expect(pipelineMocks.detectBubbles).not.toHaveBeenCalled();
+    expect(pipelineMocks.runOcr).not.toHaveBeenCalled();
   });
 });

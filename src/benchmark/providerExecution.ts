@@ -30,9 +30,9 @@ export function resolveBenchmarkProviderExecutionCapability(
       policy: input.policy,
       modelSession: {
         loadModel: (model) => getModel(model),
-        loadSession: (model, providers) => getModelSession(
+        loadSession: (model, provider) => getModelSession(
           model,
-          [...providers],
+          provider,
           input.sessionOptionsByModel?.[model],
         ),
       },

@@ -3,10 +3,14 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import { spawnSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveExtensionBuildTarget } from "../apps/extension/scripts/build-targets.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT_DIR = join(ROOT, ".tmp", "model-variants", "runtime-ort-best");
-const DIST_MODELS_DIR = join(ROOT, "apps", "extension", "dist", "models");
+const DIST_MODELS_DIR = join(
+  resolveExtensionBuildTarget("benchmark").absoluteOutDir,
+  "models",
+);
 const MANIFEST_PATH = join(DIST_MODELS_DIR, "models.json");
 
 const MODELS = [
@@ -34,7 +38,9 @@ function hasFlag(name) {
 
 function updateManifest(useRuntimeOrt) {
   if (!existsSync(MANIFEST_PATH)) {
-    throw new Error(`Missing dist manifest: ${MANIFEST_PATH}. Run npm run build first.`);
+    throw new Error(
+      `Missing benchmark manifest: ${MANIFEST_PATH}. Run npm run build:benchmark first.`,
+    );
   }
   const manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8"));
   for (const model of MODELS) {
@@ -80,7 +86,9 @@ function prepareRuntimeOrt() {
   const force = hasFlag("force");
   mkdirSync(OUT_DIR, { recursive: true });
   if (!existsSync(DIST_MODELS_DIR)) {
-    throw new Error(`Missing dist models directory: ${DIST_MODELS_DIR}. Run npm run build first.`);
+    throw new Error(
+      `Missing benchmark models directory: ${DIST_MODELS_DIR}. Run npm run build:benchmark first.`,
+    );
   }
   for (const model of MODELS) {
     const outputPath = convertModel(model, force);

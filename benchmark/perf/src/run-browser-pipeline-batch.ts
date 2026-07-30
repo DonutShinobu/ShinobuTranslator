@@ -3,6 +3,7 @@ import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, type Page } from "@playwright/test";
+import { resolveExtensionBuildTarget } from "../../../apps/extension/scripts/build-targets.mjs";
 import type { ShinobuBenchmarkWindow } from "../../../src/benchmark/browserEntry";
 import {
   defaultExtensionSettings,
@@ -21,7 +22,7 @@ import type {
 } from "../../../src/types";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const DIST_DIR = join(ROOT, "apps", "extension", "dist");
+const DIST_DIR = resolveExtensionBuildTarget("benchmark").absoluteOutDir;
 const TMP_DIR = join(ROOT, ".tmp");
 const USER_DATA_DIR = join(TMP_DIR, `browser-pipeline-batch-${Date.now()}`);
 const DEFAULT_CONCURRENCY = 2;

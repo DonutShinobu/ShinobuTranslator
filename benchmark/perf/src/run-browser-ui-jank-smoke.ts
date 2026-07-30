@@ -6,12 +6,13 @@ import { fileURLToPath } from "url";
 import { chromium } from "@playwright/test";
 import type { ConsoleMessage, Page } from "@playwright/test";
 import type { Worker as PlaywrightWorker } from "@playwright/test";
+import { resolveExtensionBuildTarget } from "../../../apps/extension/scripts/build-targets.mjs";
 import { defaultExtensionSettings, extensionSettingsStorageKey } from "../../../src/shared/config";
 import type { ExtensionSettings, ProcessMode } from "../../../src/shared/config";
 import type { ProgressJankReport } from "../../../src/content/core/types";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const DIST_DIR = join(ROOT, "apps", "extension", "dist");
+const DIST_DIR = resolveExtensionBuildTarget("chrome").absoluteOutDir;
 const TMP_DIR = join(ROOT, ".tmp");
 const REPORTS_DIR = join(ROOT, "benchmark/perf/reports");
 const USER_DATA_DIR = join(TMP_DIR, `browser-ui-jank-smoke-${Date.now()}`);

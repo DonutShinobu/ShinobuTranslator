@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "browser": "firefox",
+  "background": {
+    "kind": "scripts",
+    "scripts": [
+      "background.js"
+    ],
+    "type": "module"
+  },
+  "gecko": {
+    "id": "shinobu-translator@donutshinobu",
+    "strict_min_version": "140.0",
+    "data_collection_permissions": {
+      "required": [
+        "websiteContent"
+      ],
+      "optional": [
+        "authenticationInfo"
+      ]
+    }
+  },
+  "permission_overrides": {
+    "required": {
+      "add": [],
+      "remove": []
+    },
+    "optional": {
+      "add": [
+        "cookies"
+      ],
+      "remove": []
+    }
+  }
+}

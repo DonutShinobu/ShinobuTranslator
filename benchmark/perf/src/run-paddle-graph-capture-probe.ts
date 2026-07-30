@@ -4,9 +4,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, extname, join, resolve, sep } from "path";
 import { fileURLToPath } from "url";
 import { chromium } from "@playwright/test";
+import { resolveExtensionBuildTarget } from "../../../apps/extension/scripts/build-targets.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const DIST_DIR = join(ROOT, "apps", "extension", "dist");
+const DIST_DIR = resolveExtensionBuildTarget("chrome").absoluteOutDir;
 const REPORTS_DIR = join(ROOT, "benchmark/perf/reports");
 const DEFAULT_MODEL_URL = "/models/PP-OCRv6_medium_rec.onnx";
 

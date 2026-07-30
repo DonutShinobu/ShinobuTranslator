@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { dirname, extname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { execSync } from "child_process";
+import { resolveExtensionBuildTarget } from "../../../apps/extension/scripts/build-targets.mjs";
 import type { BakeInfo, Fixture } from "./types";
 import type { BakeDirection, BakeResult } from "../../../src/pipeline/bake";
 import type { ShinobuBenchmarkWindow } from "../../../src/benchmark/browserEntry";
@@ -12,7 +13,7 @@ import { bakeResultRegionToFixtureRegion } from "./fixture-build";
 import { parseTypesetSuiteArgs } from "./suite-paths";
 
 const ROOT = resolve(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "../../..");
-const DIST_DIR = join(ROOT, "apps", "extension", "dist");
+const DIST_DIR = resolveExtensionBuildTarget("benchmark").absoluteOutDir;
 
 type BakeFixturesOptions = {
   imagesDir: string;

@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "browser": "chrome",
+  "minimum_version": "109",
+  "background": {
+    "kind": "service_worker",
+    "script": "background.js",
+    "type": "module"
+  },
+  "permission_overrides": {
+    "required": {
+      "add": [
+        "offscreen",
+        "cookies"
+      ],
+      "remove": []
+    },
+    "optional": {
+      "add": [],
+      "remove": []
+    }
+  }
+}

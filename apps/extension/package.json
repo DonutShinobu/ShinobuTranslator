@@ -6,8 +6,11 @@
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "build": "npm run typecheck && vite build && node ../../scripts/build-worker.mjs --out-dir dist && node ../../scripts/check-release-boundaries.mjs --dist dist",
-    "build:benchmark": "npm run build && vite build --mode benchmark && node ../../scripts/check-release-boundaries.mjs --dist dist --benchmark",
+    "build": "npm run typecheck && node scripts/build.mjs",
+    "build:chrome": "npm run typecheck && node scripts/build.mjs --target chrome",
+    "build:firefox": "npm run typecheck && node scripts/build.mjs --target firefox",
+    "build:benchmark": "npm run typecheck && node scripts/build.mjs --target benchmark",
+    "check:artifacts": "node scripts/check-artifacts.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

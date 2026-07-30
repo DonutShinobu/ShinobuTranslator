@@ -124,4 +124,154 @@ describe('workspace module references', () => {
       '../../src/from-dirname.ts',
     ]);
   });
+
+  it('unwraps transparent TypeScript expressions around static paths', () => {
+    const source = `
+      import { resolve as pathResolve } from 'node:path';
+      const repoRoot = pathResolve(import.meta.dirname, '../..');
+      const parenthesizedInput = pathResolve(
+        (repoRoot),
+        'src/parenthesized.ts',
+      );
+      const asInput = pathResolve(
+        repoRoot as string,
+        'src/as-expression.ts',
+      );
+      const satisfiesInput = pathResolve(
+        repoRoot satisfies string,
+        'src/satisfies-expression.ts',
+      );
+      const nonNullInput = pathResolve(
+        repoRoot!,
+        'src/non-null-expression.ts',
+      );
+      const assertedInput = pathResolve(
+        <string>repoRoot,
+        'src/type-assertion.ts',
+      );
+    `;
+
+    expect(findModuleReferences(
+      source,
+      'apps/extension/vite.config.ts',
+    )).toEqual([
+      'node:path',
+      '../..',
+      '../../src/parenthesized.ts',
+      '../../src/as-expression.ts',
+      '../../src/satisfies-expression.ts',
+      '../../src/non-null-expression.ts',
+      '../../src/type-assertion.ts',
+    ]);
+  });
+
+  it('does not treat locally shadowed path bindings or anchors as imports', () => {
+    const source = `
+      import { resolve as pathResolve } from 'node:path';
+      const repoRoot = pathResolve(import.meta.dirname, '../..');
+      {
+        const pathResolve = (...parts: string[]) => parts.join('/');
+        pathResolve(repoRoot, 'src/block-decoy.ts');
+      }
+      function nestedConst() {
+        const pathResolve = (...parts: string[]) => parts.join('/');
+        return pathResolve(repoRoot, 'src/nested-const-decoy.ts');
+      }
+      function nestedFunction() {
+        function pathResolve(...parts: string[]) {
+          return parts.join('/');
+        }
+        return pathResolve(repoRoot, 'src/nested-function-decoy.ts');
+      }
+      function shadowedDirectory(__dirname: string) {
+        return pathResolve(__dirname, '../../src/dirname-decoy.ts');
+      }
+      function shadowedRequire(
+        require: (specifier: string) => unknown,
+      ) {
+        return require('../../src/require-decoy.ts');
+      }
+      function shadowedUrl(
+        URL: new (path: string, base: string) => unknown,
+      ) {
+        return new URL('../../src/url-decoy.ts', import.meta.url);
+      }
+      function objectBinding({
+        pathResolve,
+      }: {
+        pathResolve: (...parts: string[]) => string;
+      }) {
+        return pathResolve(repoRoot, 'src/object-binding-decoy.ts');
+      }
+      function arrayBinding([
+        pathResolve,
+      ]: [(...parts: string[]) => string]) {
+        return pathResolve(repoRoot, 'src/array-binding-decoy.ts');
+      }
+      try {
+        throw new Error('decoy');
+      } catch (pathResolve) {
+        pathResolve(repoRoot, 'src/catch-binding-decoy.ts');
+      }
+    `;
+
+    expect(findModuleReferences(
+      source,
+      'apps/extension/vite.config.ts',
+    )).toEqual([
+      'node:path',
+      '../..',
+    ]);
+  });
+
+  it('finds paths built through CommonJS node:path bindings', () => {
+    const source = `
+      const path = require('node:path');
+      const repoRoot = path.resolve(import.meta.dirname, '../..');
+      const namespaceInput = path.join(repoRoot, 'src/common-js.ts');
+      const {
+        resolve: pathResolve,
+        join: pathJoin,
+      } = require('node:path');
+      const destructuredInput = pathResolve(
+        repoRoot,
+        'src/destructured-resolve.ts',
+      );
+      const joinedInput = pathJoin(repoRoot, 'src/destructured-join.ts');
+      function shadowedNamespace(
+        path: { resolve: (...parts: string[]) => string },
+      ) {
+        return path.resolve(repoRoot, 'src/namespace-decoy.ts');
+      }
+    `;
+
+    expect(findModuleReferences(
+      source,
+      'apps/extension/vite.config.ts',
+    )).toEqual([
+      'node:path',
+      '../..',
+      '../../src/common-js.ts',
+      'node:path',
+      '../../src/destructured-resolve.ts',
+      '../../src/destructured-join.ts',
+    ]);
+  });
+
+  it('finds paths built through TypeScript node:path import-equals', () => {
+    const source = `
+      import path = require('node:path');
+      const repoRoot = path.resolve(import.meta.dirname, '../..');
+      const input = path.join(repoRoot, 'src/import-equals.ts');
+    `;
+
+    expect(findModuleReferences(
+      source,
+      'apps/extension/vite.config.cts',
+    )).toEqual([
+      'node:path',
+      '../..',
+      '../../src/import-equals.ts',
+    ]);
+  });
 });

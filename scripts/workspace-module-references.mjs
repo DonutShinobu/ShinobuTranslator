@@ -1,75 +1,189 @@
 import { posix as posixPath } from 'node:path';
 import ts from 'typescript';
 
-function stringLiteralText(node) {
-  return ts.isStringLiteralLike(node) ? node.text : null;
+function unwrapTransparentExpression(node) {
+  let current = node;
+  while (
+    ts.isParenthesizedExpression(current)
+    || ts.isAsExpression(current)
+    || ts.isTypeAssertionExpression(current)
+    || ts.isSatisfiesExpression(current)
+    || ts.isNonNullExpression(current)
+  ) {
+    current = current.expression;
+  }
+  return current;
 }
 
-function nodePathBindings(sourceFile) {
+function stringLiteralText(node) {
+  const expression = unwrapTransparentExpression(node);
+  return ts.isStringLiteralLike(expression) ? expression.text : null;
+}
+
+function createSingleFileAnalysis(source, fileName) {
+  const sourceFile = ts.createSourceFile(
+    fileName,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const options = {
+    allowJs: true,
+    module: ts.ModuleKind.Preserve,
+    noLib: true,
+    noResolve: true,
+    target: ts.ScriptTarget.Latest,
+    types: [],
+  };
+  const host = {
+    fileExists: (candidate) => candidate === fileName,
+    getCanonicalFileName: (candidate) => candidate,
+    getCurrentDirectory: () => '',
+    getDefaultLibFileName: () => 'lib.d.ts',
+    getDirectories: () => [],
+    getNewLine: () => '\n',
+    getSourceFile: (candidate) => (
+      candidate === fileName ? sourceFile : undefined
+    ),
+    readFile: (candidate) => (
+      candidate === fileName ? source : undefined
+    ),
+    useCaseSensitiveFileNames: () => true,
+    writeFile: () => {},
+  };
+  const program = ts.createProgram([fileName], options, host);
+  return {
+    checker: program.getTypeChecker(),
+    sourceFile,
+  };
+}
+
+function symbolAt(checker, node) {
+  return checker.getSymbolAtLocation(node) ?? null;
+}
+
+function isUnboundIdentifier(node, expectedName, checker) {
+  return ts.isIdentifier(node)
+    && node.text === expectedName
+    && symbolAt(checker, node) === null;
+}
+
+function requiredModuleSpecifier(node, checker) {
+  const expression = unwrapTransparentExpression(node);
+  if (
+    !ts.isCallExpression(expression)
+    || !isUnboundIdentifier(expression.expression, 'require', checker)
+    || !expression.arguments[0]
+  ) {
+    return null;
+  }
+  return stringLiteralText(expression.arguments[0]);
+}
+
+function runtimeModuleBindings(
+  sourceFile,
+  checker,
+  moduleName,
+  approvedFunctions,
+) {
   const functions = new Map();
   const namespaces = new Set();
 
+  const addNamespace = (name) => {
+    const symbol = symbolAt(checker, name);
+    if (symbol) namespaces.add(symbol);
+  };
+  const addFunction = (name, importedName) => {
+    if (!approvedFunctions.has(importedName)) return;
+    const symbol = symbolAt(checker, name);
+    if (symbol) functions.set(symbol, importedName);
+  };
+
   for (const statement of sourceFile.statements) {
     if (
-      !ts.isImportDeclaration(statement)
-      || stringLiteralText(statement.moduleSpecifier) !== 'node:path'
-      || !statement.importClause
+      ts.isImportDeclaration(statement)
+      && stringLiteralText(statement.moduleSpecifier) === moduleName
+      && statement.importClause
     ) {
-      continue;
-    }
-    if (statement.importClause.name) {
-      namespaces.add(statement.importClause.name.text);
-    }
-    const bindings = statement.importClause.namedBindings;
-    if (bindings && ts.isNamespaceImport(bindings)) {
-      namespaces.add(bindings.name.text);
-    }
-    if (bindings && ts.isNamedImports(bindings)) {
-      for (const binding of bindings.elements) {
-        const importedName = binding.propertyName?.text ?? binding.name.text;
-        if (importedName === 'resolve' || importedName === 'join') {
-          functions.set(binding.name.text, importedName);
+      if (statement.importClause.name) {
+        addNamespace(statement.importClause.name);
+      }
+      const bindings = statement.importClause.namedBindings;
+      if (bindings && ts.isNamespaceImport(bindings)) {
+        addNamespace(bindings.name);
+      }
+      if (bindings && ts.isNamedImports(bindings)) {
+        for (const binding of bindings.elements) {
+          addFunction(
+            binding.name,
+            binding.propertyName?.text ?? binding.name.text,
+          );
         }
       }
     }
+    if (
+      ts.isImportEqualsDeclaration(statement)
+      && ts.isExternalModuleReference(statement.moduleReference)
+      && statement.moduleReference.expression
+      && stringLiteralText(statement.moduleReference.expression) === moduleName
+    ) {
+      addNamespace(statement.name);
+    }
   }
+
+  function visit(node) {
+    if (
+      ts.isVariableDeclaration(node)
+      && node.initializer
+      && requiredModuleSpecifier(node.initializer, checker) === moduleName
+    ) {
+      if (ts.isIdentifier(node.name)) {
+        addNamespace(node.name);
+      } else if (ts.isObjectBindingPattern(node.name)) {
+        for (const binding of node.name.elements) {
+          if (
+            !binding.dotDotDotToken
+            && ts.isIdentifier(binding.name)
+          ) {
+            const importedName = binding.propertyName
+              ? stringLiteralText(binding.propertyName)
+                ?? (
+                  ts.isIdentifier(binding.propertyName)
+                    ? binding.propertyName.text
+                    : null
+                )
+              : binding.name.text;
+            if (importedName) addFunction(binding.name, importedName);
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
 
   return { functions, namespaces };
 }
 
-function nodeUrlBindings(sourceFile) {
-  const functions = new Set();
-  const namespaces = new Set();
-
-  for (const statement of sourceFile.statements) {
-    if (
-      !ts.isImportDeclaration(statement)
-      || stringLiteralText(statement.moduleSpecifier) !== 'node:url'
-      || !statement.importClause
-    ) {
-      continue;
-    }
-    if (statement.importClause.name) {
-      namespaces.add(statement.importClause.name.text);
-    }
-    const bindings = statement.importClause.namedBindings;
-    if (bindings && ts.isNamespaceImport(bindings)) {
-      namespaces.add(bindings.name.text);
-    }
-    if (bindings && ts.isNamedImports(bindings)) {
-      for (const binding of bindings.elements) {
-        const importedName = binding.propertyName?.text ?? binding.name.text;
-        if (importedName === 'fileURLToPath') {
-          functions.add(binding.name.text);
-        }
-      }
-    }
-  }
-
-  return { functions, namespaces };
+function nodePathBindings(sourceFile, checker) {
+  return runtimeModuleBindings(
+    sourceFile,
+    checker,
+    'node:path',
+    new Set(['join', 'resolve']),
+  );
 }
 
-function topLevelConstBindings(sourceFile) {
+function nodeUrlBindings(sourceFile, checker) {
+  return runtimeModuleBindings(
+    sourceFile,
+    checker,
+    'node:url',
+    new Set(['fileURLToPath']),
+  );
+}
+
+function topLevelConstBindings(sourceFile, checker) {
   const bindings = new Map();
 
   for (const statement of sourceFile.statements) {
@@ -81,7 +195,8 @@ function topLevelConstBindings(sourceFile) {
     }
     for (const declaration of statement.declarationList.declarations) {
       if (ts.isIdentifier(declaration.name) && declaration.initializer) {
-        bindings.set(declaration.name.text, declaration.initializer);
+        const symbol = symbolAt(checker, declaration.name);
+        if (symbol) bindings.set(symbol, declaration.initializer);
       }
     }
   }
@@ -89,19 +204,18 @@ function topLevelConstBindings(sourceFile) {
   return bindings;
 }
 
-function pathOperationForCall(node, pathBindings, shadowedBindings = new Set()) {
+function pathOperationForCall(node, pathBindings, checker) {
   if (!ts.isCallExpression(node)) return null;
-  if (
-    ts.isIdentifier(node.expression)
-    && !shadowedBindings.has(node.expression.text)
-  ) {
-    return pathBindings.functions.get(node.expression.text) ?? null;
+  if (ts.isIdentifier(node.expression)) {
+    const symbol = symbolAt(checker, node.expression);
+    return symbol ? pathBindings.functions.get(symbol) ?? null : null;
   }
   if (
     ts.isPropertyAccessExpression(node.expression)
     && ts.isIdentifier(node.expression.expression)
-    && !shadowedBindings.has(node.expression.expression.text)
-    && pathBindings.namespaces.has(node.expression.expression.text)
+    && pathBindings.namespaces.has(
+      symbolAt(checker, node.expression.expression),
+    )
     && (
       node.expression.name.text === 'resolve'
       || node.expression.name.text === 'join'
@@ -115,41 +229,36 @@ function pathOperationForCall(node, pathBindings, shadowedBindings = new Set()) 
 function isFileUrlToPathCall(
   node,
   urlBindings,
-  shadowedBindings = new Set(),
+  checker,
 ) {
   if (!ts.isCallExpression(node)) return false;
-  if (
-    ts.isIdentifier(node.expression)
-    && !shadowedBindings.has(node.expression.text)
-  ) {
-    return urlBindings.functions.has(node.expression.text);
+  if (ts.isIdentifier(node.expression)) {
+    const symbol = symbolAt(checker, node.expression);
+    return symbol ? urlBindings.functions.has(symbol) : false;
   }
   return ts.isPropertyAccessExpression(node.expression)
     && ts.isIdentifier(node.expression.expression)
-    && !shadowedBindings.has(node.expression.expression.text)
-    && urlBindings.namespaces.has(node.expression.expression.text)
+    && urlBindings.namespaces.has(
+      symbolAt(checker, node.expression.expression),
+    )
     && node.expression.name.text === 'fileURLToPath';
 }
 
 function isImportMetaProperty(node, propertyName) {
-  return ts.isPropertyAccessExpression(node)
-    && node.name.text === propertyName
-    && ts.isMetaProperty(node.expression)
-    && node.expression.keywordToken === ts.SyntaxKind.ImportKeyword
-    && node.expression.name.text === 'meta';
+  const expression = unwrapTransparentExpression(node);
+  return ts.isPropertyAccessExpression(expression)
+    && expression.name.text === propertyName
+    && ts.isMetaProperty(expression.expression)
+    && expression.expression.keywordToken === ts.SyntaxKind.ImportKeyword
+    && expression.expression.name.text === 'meta';
 }
 
 export function findModuleReferences(source, fileName) {
-  const sourceFile = ts.createSourceFile(
-    fileName,
-    source,
-    ts.ScriptTarget.Latest,
-    false,
-  );
+  const { checker, sourceFile } = createSingleFileAnalysis(source, fileName);
   const references = [];
-  const pathBindings = nodePathBindings(sourceFile);
-  const urlBindings = nodeUrlBindings(sourceFile);
-  const constBindings = topLevelConstBindings(sourceFile);
+  const pathBindings = nodePathBindings(sourceFile, checker);
+  const urlBindings = nodeUrlBindings(sourceFile, checker);
+  const constBindings = topLevelConstBindings(sourceFile, checker);
   const normalizedFileName = fileName.replace(/\\/gu, '/');
   const sourceDirectory = posixPath.resolve(
     '/',
@@ -159,41 +268,41 @@ export function findModuleReferences(source, fileName) {
   function evaluateStaticPath(
     node,
     resolving = new Set(),
-    shadowedBindings = new Set(),
   ) {
-    const literal = stringLiteralText(node);
+    const expression = unwrapTransparentExpression(node);
+    const literal = stringLiteralText(expression);
     if (literal !== null) {
       return { value: literal, anchored: false };
     }
-    if (isImportMetaProperty(node, 'dirname')) {
+    if (isImportMetaProperty(expression, 'dirname')) {
       return { value: sourceDirectory, anchored: true };
     }
-    if (isImportMetaProperty(node, 'url')) {
+    if (isImportMetaProperty(expression, 'url')) {
       return {
         value: posixPath.resolve('/', normalizedFileName),
         anchored: true,
       };
     }
-    if (ts.isIdentifier(node)) {
-      if (node.text === '__dirname') {
+    if (ts.isIdentifier(expression)) {
+      const symbol = symbolAt(checker, expression);
+      if (expression.text === '__dirname' && !symbol) {
         return { value: sourceDirectory, anchored: true };
       }
-      if (shadowedBindings.has(node.text)) return null;
-      const initializer = constBindings.get(node.text);
-      if (!initializer || resolving.has(node.text)) return null;
+      if (!symbol) return null;
+      const initializer = constBindings.get(symbol);
+      if (!initializer || resolving.has(symbol)) return null;
       const nextResolving = new Set(resolving);
-      nextResolving.add(node.text);
+      nextResolving.add(symbol);
       return evaluateStaticPath(initializer, nextResolving);
     }
     if (
-      ts.isNewExpression(node)
-      && ts.isIdentifier(node.expression)
-      && node.expression.text === 'URL'
-      && node.arguments?.[0]
-      && node.arguments[1]
-      && isImportMetaProperty(node.arguments[1], 'url')
+      ts.isNewExpression(expression)
+      && isUnboundIdentifier(expression.expression, 'URL', checker)
+      && expression.arguments?.[0]
+      && expression.arguments[1]
+      && isImportMetaProperty(expression.arguments[1], 'url')
     ) {
-      const relative = stringLiteralText(node.arguments[0]);
+      const relative = stringLiteralText(expression.arguments[0]);
       if (relative === null) return null;
       return {
         value: posixPath.resolve(sourceDirectory, relative),
@@ -201,30 +310,28 @@ export function findModuleReferences(source, fileName) {
       };
     }
     if (
-      isFileUrlToPathCall(node, urlBindings, shadowedBindings)
-      && node.arguments[0]
+      isFileUrlToPathCall(expression, urlBindings, checker)
+      && expression.arguments[0]
     ) {
       const evaluated = evaluateStaticPath(
-        node.arguments[0],
+        expression.arguments[0],
         resolving,
-        shadowedBindings,
       );
       return evaluated?.anchored ? evaluated : null;
     }
 
     const operation = pathOperationForCall(
-      node,
+      expression,
       pathBindings,
-      shadowedBindings,
+      checker,
     );
     if (!operation) return null;
     const argumentsList = [];
     let anchored = false;
-    for (const argument of node.arguments) {
+    for (const argument of expression.arguments) {
       const evaluated = evaluateStaticPath(
         argument,
         resolving,
-        shadowedBindings,
       );
       if (!evaluated) return null;
       argumentsList.push(evaluated.value);
@@ -239,28 +346,15 @@ export function findModuleReferences(source, fileName) {
     };
   }
 
-  function moduleReferenceForPathCall(node, shadowedBindings) {
-    const evaluated = evaluateStaticPath(
-      node,
-      new Set(),
-      shadowedBindings,
-    );
+  function moduleReferenceForPathCall(node) {
+    const evaluated = evaluateStaticPath(node);
     if (!evaluated?.anchored) return null;
     const relative = posixPath.relative(sourceDirectory, evaluated.value);
     if (!relative) return '.';
     return relative.startsWith('.') ? relative : `./${relative}`;
   }
 
-  function visit(node, shadowedBindings = new Set()) {
-    let childShadows = shadowedBindings;
-    if (ts.isFunctionLike(node)) {
-      childShadows = new Set(shadowedBindings);
-      for (const parameter of node.parameters) {
-        if (ts.isIdentifier(parameter.name)) {
-          childShadows.add(parameter.name.text);
-        }
-      }
-    }
+  function visit(node) {
     if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
       const specifier = node.moduleSpecifier
         ? stringLiteralText(node.moduleSpecifier)
@@ -280,8 +374,7 @@ export function findModuleReferences(source, fileName) {
       && (
         node.expression.kind === ts.SyntaxKind.ImportKeyword
         || (
-          ts.isIdentifier(node.expression)
-          && node.expression.text === 'require'
+          isUnboundIdentifier(node.expression, 'require', checker)
         )
       )
     ) {
@@ -294,16 +387,15 @@ export function findModuleReferences(source, fileName) {
       const specifier = pathOperationForCall(
         node,
         pathBindings,
-        shadowedBindings,
+        checker,
       )
-        ? moduleReferenceForPathCall(node, shadowedBindings)
+        ? moduleReferenceForPathCall(node)
         : null;
       if (specifier !== null) references.push(specifier);
     }
     if (
       ts.isNewExpression(node)
-      && ts.isIdentifier(node.expression)
-      && node.expression.text === 'URL'
+      && isUnboundIdentifier(node.expression, 'URL', checker)
       && node.arguments?.[0]
       && node.arguments[1]
       && isImportMetaProperty(node.arguments[1], 'url')
@@ -311,7 +403,7 @@ export function findModuleReferences(source, fileName) {
       const specifier = stringLiteralText(node.arguments[0]);
       if (specifier !== null) references.push(specifier);
     }
-    ts.forEachChild(node, (child) => visit(child, childShadows));
+    ts.forEachChild(node, visit);
   }
 
   visit(sourceFile);

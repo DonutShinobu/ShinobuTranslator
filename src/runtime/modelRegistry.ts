@@ -9,6 +9,7 @@ import {
   type ModelAssetSource,
 } from './modelSource';
 import { isNodeRuntime } from './runtimeTarget';
+import { ProviderSessionContractError } from './providerExecution';
 
 type ManifestModel = {
   name: string;
@@ -181,9 +182,29 @@ export async function getModelSession(
   const creation = createSession(name, model.url, provider, sessionOptions)
     .then(async (handle) => {
       if (handle.provider !== provider) {
-        await disposeSession(handle.sessionId).catch(() => undefined);
-        throw new Error(
-          `模型 Session provider 契约不匹配: 请求 ${provider}，实际 ${handle.provider}`,
+        let cleanup: 'succeeded' | 'failed' = 'succeeded';
+        let recovery:
+          | 'not-required'
+          | 'runtime-reset'
+          | 'runtime-reset-failed' = 'not-required';
+        try {
+          await disposeSession(handle.sessionId);
+        } catch {
+          cleanup = 'failed';
+          sessionCache.clear();
+          sessionPromiseCache.clear();
+          try {
+            await disposeAll();
+            recovery = 'runtime-reset';
+          } catch {
+            recovery = 'runtime-reset-failed';
+          }
+        }
+        throw new ProviderSessionContractError(
+          provider,
+          handle.provider,
+          cleanup,
+          recovery,
         );
       }
       sessionCache.set(cacheKey, handle);

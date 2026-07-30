@@ -86,9 +86,23 @@ describe('modelRegistry session cache', () => {
     });
     const registry = await import('../../src/runtime/modelRegistry');
 
-    await expect(registry.getModelSession('detector', 'webnn')).rejects.toThrow(
-      '请求 webnn，实际 wasm',
-    );
+    const error = await registry.getModelSession('detector', 'webnn')
+      .then(() => null, (reason: unknown) => reason);
+
+    expect(error).toMatchObject({
+      name: 'ProviderSessionContractError',
+      message: 'pipeline.failure.providerContract',
+      code: 'PIPELINE_PROVIDER_CONTRACT_VIOLATED',
+      reason: 'contract-violated',
+      cause: {
+        requestedProvider: 'webnn',
+        actualProvider: 'wasm',
+        cleanup: 'failed',
+        recovery: 'runtime-reset',
+      },
+    });
+    expect(String(error)).not.toContain('cleanup unavailable');
     expect(mocks.disposeSession).toHaveBeenCalledWith('detector-session');
+    expect(mocks.disposeAll).toHaveBeenCalledOnce();
   });
 });

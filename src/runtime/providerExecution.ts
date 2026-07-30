@@ -51,6 +51,28 @@ export type ProviderSessionResolver = {
   ): Promise<ProviderExecutionResult<T>>;
 };
 
+export class ProviderSessionContractError extends Error {
+  readonly code = 'PIPELINE_PROVIDER_CONTRACT_VIOLATED';
+  readonly reason = 'contract-violated';
+
+  constructor(
+    requestedProvider: ProviderRuntime,
+    actualProvider: ProviderRuntime,
+    cleanup: 'succeeded' | 'failed',
+    recovery: 'not-required' | 'runtime-reset' | 'runtime-reset-failed',
+  ) {
+    super('pipeline.failure.providerContract', {
+      cause: {
+        requestedProvider,
+        actualProvider,
+        cleanup,
+        recovery,
+      },
+    });
+    this.name = 'ProviderSessionContractError';
+  }
+}
+
 type PreparedProviderExecution = {
   providers: ProviderRuntime[];
   attempts: ProviderExecutionAttempt[];
@@ -226,6 +248,19 @@ export function createProviderSessionResolver(
     try {
       session = await loadSession(model, provider);
     } catch (error) {
+      if (error instanceof ProviderSessionContractError) {
+        attempts.push({
+          attempt: attempts.length + 1,
+          provider,
+          outcome: 'failed',
+          reason: 'contract-violated',
+        });
+        throwProviderFailure(
+          'PIPELINE_PROVIDER_CONTRACT_VIOLATED',
+          createReport(policy, model, stage, attempts),
+          error,
+        );
+      }
       onUnavailable?.(error);
       attempts.push({
         attempt: attempts.length + 1,

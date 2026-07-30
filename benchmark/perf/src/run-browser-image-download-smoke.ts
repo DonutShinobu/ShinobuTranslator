@@ -1,5 +1,11 @@
 import { createServer, type Server } from 'node:http';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import {
@@ -50,6 +56,45 @@ function requireDistAsset(relativePath: string): void {
   if (!existsSync(path)) {
     throw new Error(`Missing extension artifact: ${path}. Run npm run build first.`);
   }
+}
+
+function findChromiumExecutable(): { executablePath: string; label: string } {
+  const playwrightRoot = process.env.LOCALAPPDATA
+    ? join(process.env.LOCALAPPDATA, 'ms-playwright')
+    : undefined;
+  const installedChromium = playwrightRoot && existsSync(playwrightRoot)
+    ? readdirSync(playwrightRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && /^chromium-\d+$/.test(entry.name))
+      .sort((left, right) => right.name.localeCompare(
+        left.name,
+        undefined,
+        { numeric: true },
+      ))
+      .map((entry) => join(
+        playwrightRoot,
+        entry.name,
+        'chrome-win64',
+        'chrome.exe',
+      ))
+    : [];
+  const candidates = [
+    process.env.CHROME_PATH,
+    chromium.executablePath(),
+    ...installedChromium,
+  ].filter((candidate): candidate is string => Boolean(candidate));
+  const executablePath = candidates.find((candidate) => existsSync(candidate));
+  if (!executablePath) {
+    throw new Error(
+      'Playwright Chromium not found. Run npx playwright install chromium '
+      + 'or set CHROME_PATH to a Chrome for Testing/Chromium executable.',
+    );
+  }
+  return {
+    executablePath,
+    label: process.env.CHROME_PATH
+      ? 'CHROME_PATH browser'
+      : 'Playwright Chromium',
+  };
 }
 
 function originWithHostname(origin: string, hostname: string): string {
@@ -185,7 +230,8 @@ async function main(): Promise<void> {
   let imageFixture: ListeningServer | undefined;
   let pageFixture: ListeningServer | undefined;
   try {
-    let expectedReferer = '';
+    const browser = findChromiumExecutable();
+    let expectedReferers = new Set<string>();
     const observedReferers: Array<string | undefined> = [];
     imageFixture = await listen(createServer((request, response) => {
       if (request.url !== '/protected.png') {
@@ -193,7 +239,10 @@ async function main(): Promise<void> {
         return;
       }
       observedReferers.push(request.headers.referer);
-      if (request.headers.referer !== expectedReferer) {
+      if (
+        !request.headers.referer
+        || !expectedReferers.has(request.headers.referer)
+      ) {
         response.writeHead(403, {
           'content-type': 'text/html; charset=utf-8',
           'cache-control': 'no-store',
@@ -205,7 +254,8 @@ async function main(): Promise<void> {
         'content-type': 'image/png',
         'cache-control': 'no-store',
       });
-      response.end(fixtureBytes);
+      const responseDelayMs = observedReferers.length === 1 ? 250 : 0;
+      setTimeout(() => response.end(fixtureBytes), responseDelayMs);
     }));
     const imageOrigin = originWithHostname(
       imageFixture.origin,
@@ -217,7 +267,11 @@ async function main(): Promise<void> {
         response.writeHead(204).end();
         return;
       }
-      if (request.url !== '/' && request.url !== '/reader.html') {
+      if (
+        request.url !== '/'
+        && request.url !== '/reader-a.html'
+        && request.url !== '/reader-b.html'
+      ) {
         response.writeHead(404).end('not found');
         return;
       }
@@ -245,11 +299,14 @@ async function main(): Promise<void> {
       pageFixture.origin,
       pageFixtureHostname,
     );
-    const pageUrl = `${pageOrigin}/reader.html`;
-    expectedReferer = pageUrl;
+    const pageUrls = [
+      `${pageOrigin}/reader-a.html`,
+      `${pageOrigin}/reader-b.html`,
+    ];
+    expectedReferers = new Set(pageUrls);
 
     context = await chromium.launchPersistentContext(userDataDir, {
-      executablePath: chromium.executablePath(),
+      executablePath: browser.executablePath,
       headless: false,
       ignoreDefaultArgs: ['--disable-extensions'],
       args: [
@@ -306,44 +363,62 @@ async function main(): Promise<void> {
       );
     }
 
-    const page = await context.newPage();
-    page.setDefaultTimeout(30_000);
-    await page.goto(pageUrl, { waitUntil: 'load' });
-    await page.locator('#protected-image').evaluate((element) => {
-      const image = element as HTMLImageElement;
-      if (!image.complete || image.naturalWidth <= 0) {
-        throw new Error('Fixture image did not load in the page');
-      }
-    });
+    const pages = await Promise.all(pageUrls.map(async (pageUrl) => {
+      const page = await context!.newPage();
+      page.setDefaultTimeout(30_000);
+      await page.goto(pageUrl, { waitUntil: 'load' });
+      await page.locator('#protected-image').evaluate((element) => {
+        const image = element as HTMLImageElement;
+        if (!image.complete || image.naturalWidth <= 0) {
+          throw new Error('Fixture image did not load in the page');
+        }
+      });
+      return page;
+    }));
     observedReferers.length = 0;
 
-    const { cdp, contextId } = await findContentScriptContext(page, extensionId);
-    let response: RuntimeResponse;
+    const contentScriptContexts = await Promise.all(
+      pages.map((page) => findContentScriptContext(page, extensionId)),
+    );
+    let responses: RuntimeResponse[];
     try {
-      response = await sendDownloadFromContentScript(cdp, contextId, imageUrl);
+      responses = await Promise.all(contentScriptContexts.map(
+        ({ cdp, contextId }) => sendDownloadFromContentScript(
+          cdp,
+          contextId,
+          imageUrl,
+        ),
+      ));
     } finally {
-      await cdp.detach();
+      await Promise.all(contentScriptContexts.map(({ cdp }) => cdp.detach()));
     }
 
-    if (
+    const invalidResponse = responses.find((response) => (
       response.ok !== true
       || response.type !== 'mt:download-image'
       || response.base64 !== fixtureBase64
       || response.contentType !== 'image/png'
       || response.sourceUrl !== imageUrl
-    ) {
+    ));
+    if (invalidResponse) {
       throw new Error(
         `Original-byte download failed: ${JSON.stringify({
-          response,
-          expectedReferer,
+          responses,
+          expectedReferers: [...expectedReferers],
           observedReferers,
           trackerEnvironment,
         })}`,
       );
     }
-    if (observedReferers.length !== 1 || observedReferers[0] !== expectedReferer) {
+    if (
+      observedReferers.length !== expectedReferers.size
+      || [...observedReferers].sort().join('\n')
+        !== [...expectedReferers].sort().join('\n')
+    ) {
       throw new Error(
-        `Expected one background request with Referer ${expectedReferer}, received ${
+        `Expected one concurrent background request per document Referer ${
+          JSON.stringify([...expectedReferers])
+        }, received ${
           JSON.stringify(observedReferers)
         }`,
       );
@@ -363,25 +438,39 @@ async function main(): Promise<void> {
         session: await dnr.getSessionRules(),
       };
     });
+    const isImageHeaderOverrideRule = (rule: { id?: number }): boolean => (
+      rule.id === 1
+      || rule.id === 2
+      || (typeof rule.id === 'number' && rule.id >= 1_000_000)
+    );
     if (
-      remainingRules.dynamic.some((rule) => rule.id === 1)
-      || remainingRules.session.some((rule) => rule.id === 2)
+      remainingRules.dynamic.some(isImageHeaderOverrideRule)
+      || remainingRules.session.some(isImageHeaderOverrideRule)
     ) {
       throw new Error(`Image Referer rules leaked after download: ${JSON.stringify(remainingRules)}`);
     }
 
     console.log(JSON.stringify({
-      browser: 'Playwright Chromium',
+      browser: browser.label,
       extensionId,
-      pageUrl,
+      pageUrls,
       imageUrl,
-      expectedReferer,
+      expectedReferers: [...expectedReferers],
       observedReferers,
       trackerEnvironment,
       fixtureHostSpecialCases: false,
       originalByteCount: fixtureBytes.byteLength,
-      contentType: response.contentType,
-      sourceUrl: response.sourceUrl,
+      concurrentDownloadCount: responses.length,
+      contentTypes: responses.map((response) => (
+        response.ok && response.type === 'mt:download-image'
+        ? response.contentType
+        : undefined
+      )),
+      sourceUrls: responses.map((response) => (
+        response.ok && response.type === 'mt:download-image'
+        ? response.sourceUrl
+        : undefined
+      )),
       remainingRules,
     }, null, 2));
   } finally {

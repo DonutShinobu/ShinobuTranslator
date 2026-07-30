@@ -78,7 +78,10 @@ function createChromeBackgroundCapabilities(
     referrerPolicies: referrerPolicyObserver(
       chrome.webRequest?.onHeadersReceived,
     ),
-    requestHeaderOverride: requestHeaderOverride(chrome.declarativeNetRequest),
+    requestHeaderOverride: requestHeaderOverride(
+      chrome.declarativeNetRequest,
+      chrome.runtime.id,
+    ),
     environment: extensionEnvironment(chrome.runtime),
   };
 }

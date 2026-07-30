@@ -1,20 +1,20 @@
-import {
-  getChromeApi,
-  type ChromeDnrRuleUpdate,
-  type ChromeLike,
-  type ChromeMessageSender,
-  type ChromeWebRequestHeadersDetails,
-} from '../../shared/chrome';
 import type {
+  DocumentReferrerPolicy,
+  DocumentReferrerPolicyObserver,
   ExtensionStorage,
+  RequestHeaderOverride,
+  RequestHeaderOverrideLease,
 } from '../../../apps/extension/src/capabilities/contracts';
+import {
+  ExtensionOperationError,
+} from '../../../apps/extension/src/capabilities/errors';
+import type {
+  TabDocumentSource,
+} from '../../../apps/extension/src/capabilities/guards';
 import { normalizeJsonValue } from '../../shared/jsonValue';
 import { isReferrerPolicy } from '../../shared/referrerPolicy';
 import { arrayBufferToBase64, toErrorMessage } from '../../shared/utils';
 
-const legacyPximgRefererRuleId = 1;
-const imageRefererSessionRuleId = 2;
-const backgroundRequestTabId = -1;
 const defaultDownloadTimeoutMs = 30_000;
 const documentPolicyStorageKey = 'mangaTranslate.documentReferrerPolicies';
 const maxTrackedDocumentPolicies = 256;
@@ -33,13 +33,14 @@ export type DownloadedImage = {
 export type ImageDownloader = {
   download(
     request: ImageDownloadRequest,
-    sender: ChromeMessageSender,
+    source: TabDocumentSource,
   ): Promise<DownloadedImage>;
 };
 
 export type ImageDownloaderDependencies = {
   sessionStorage: ExtensionStorage;
-  chromeApi?: ChromeLike | null;
+  referrerPolicies: DocumentReferrerPolicyObserver;
+  requestHeaderOverride: RequestHeaderOverride;
   fetchImage?: typeof fetch;
   timeoutMs?: number;
 };
@@ -51,7 +52,6 @@ type ImageAttemptFailure = {
   reason: string;
   durationMs: number;
   refererApplied: boolean;
-  dnrError?: string;
 };
 
 type TrackedDocumentPolicy = {
@@ -61,7 +61,7 @@ type TrackedDocumentPolicy = {
 };
 
 type DocumentPolicyTracker = {
-  get(sender: ChromeMessageSender): Promise<ReferrerPolicy | undefined>;
+  get(source: TabDocumentSource): Promise<ReferrerPolicy | undefined>;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -81,16 +81,11 @@ function getDocumentPolicyKeys(details: {
   return keys;
 }
 
-function extractReferrerPolicyFromHeaders(
-  headers: ChromeWebRequestHeadersDetails['responseHeaders'],
-): ReferrerPolicy | undefined {
+function extractReferrerPolicy(value: string | undefined): ReferrerPolicy | undefined {
   let policy: ReferrerPolicy | undefined;
-  for (const header of headers ?? []) {
-    if (header.name.toLowerCase() !== 'referrer-policy' || !header.value) continue;
-    for (const token of header.value.split(',')) {
-      const candidate = token.trim().toLowerCase();
-      if (candidate && isReferrerPolicy(candidate)) policy = candidate;
-    }
+  for (const token of value?.split(',') ?? []) {
+    const candidate = token.trim().toLowerCase();
+    if (candidate && isReferrerPolicy(candidate)) policy = candidate;
   }
   return policy;
 }
@@ -124,7 +119,7 @@ async function hashDocumentUrl(value: string): Promise<string | undefined> {
 }
 
 function createDocumentPolicyTracker(
-  chromeApi: ChromeLike | null | undefined,
+  observer: DocumentReferrerPolicyObserver,
   sessionStorage: ExtensionStorage,
 ): DocumentPolicyTracker {
   const policies = new Map<string, TrackedDocumentPolicy>();
@@ -198,10 +193,10 @@ function createDocumentPolicyTracker(
     }
   })();
 
-  const listener = (details: ChromeWebRequestHeadersDetails): void => {
-    const keys = getDocumentPolicyKeys(details);
+  const listener = (observation: DocumentReferrerPolicy): void => {
+    const keys = getDocumentPolicyKeys(observation.document);
     if (keys.length === 0) return;
-    const policy = extractReferrerPolicyFromHeaders(details.responseHeaders);
+    const policy = extractReferrerPolicy(observation.policy);
     const revision = nextRevision + 1;
     nextRevision = revision;
     for (const key of keys) {
@@ -219,7 +214,7 @@ function createDocumentPolicyTracker(
     }
 
     const update = (async () => {
-      const documentUrlHash = await hashDocumentUrl(details.url);
+      const documentUrlHash = await hashDocumentUrl(observation.document.url);
       const updatedAt = Date.now();
       for (const key of keys) {
         if (keyRevisions.get(key) !== revision) continue;
@@ -244,43 +239,18 @@ function createDocumentPolicyTracker(
     });
   };
 
-  const headersReceived = chromeApi?.webRequest?.onHeadersReceived;
-  if (headersReceived) {
-    try {
-      headersReceived.addListener(
-        listener,
-        {
-          urls: ['<all_urls>'],
-          types: ['main_frame', 'sub_frame'],
-        },
-        ['responseHeaders', 'extraHeaders'],
-      );
-    } catch {
-      try {
-        headersReceived.addListener(
-          listener,
-          {
-            urls: ['<all_urls>'],
-            types: ['main_frame', 'sub_frame'],
-          },
-          ['responseHeaders'],
-        );
-      } catch {
-        // Element/meta policy and the browser default remain available.
-      }
-    }
-  }
+  observer.onObserved(listener);
 
   return {
-    async get(sender) {
+    async get(source) {
       await ready;
       const keys = getDocumentPolicyKeys({
-        documentId: sender.documentId,
-        tabId: sender.tab?.id,
-        frameId: sender.frameId,
+        documentId: source.documentId,
+        tabId: source.tabId,
+        frameId: source.frameId,
       });
       await Promise.all(keys.map((key) => pendingUpdates.get(key)));
-      const trustedDocumentUrl = getTrustedDocumentUrl(sender);
+      const trustedDocumentUrl = getTrustedDocumentUrl(source);
       if (!trustedDocumentUrl) return undefined;
       const documentUrlHash = await hashDocumentUrl(trustedDocumentUrl.toString());
       if (!documentUrlHash) return undefined;
@@ -321,16 +291,13 @@ function parseHttpUrl(value: string, label: string): URL {
   return parsed;
 }
 
-function getTrustedDocumentUrl(sender: ChromeMessageSender): URL | undefined {
-  for (const candidate of [sender.documentUrl, sender.tab?.url]) {
-    if (!candidate) continue;
-    try {
-      return parseHttpUrl(candidate, '页面地址');
-    } catch {
-      // Try the next browser-provided sender URL.
-    }
+function getTrustedDocumentUrl(source: TabDocumentSource): URL | undefined {
+  if (!source.url) return undefined;
+  try {
+    return parseHttpUrl(source.url, '页面地址');
+  } catch {
+    return undefined;
   }
-  return undefined;
 }
 
 function toSanitizedFullReferrer(source: URL): string {
@@ -428,27 +395,6 @@ function toSanitizedErrorMessage(error: unknown): string {
   return message || '未知错误';
 }
 
-function toDnrError(error: unknown): string {
-  const message = toSanitizedErrorMessage(error);
-  return message || '未知 DNR 错误';
-}
-
-async function removeRule(
-  updateRules: ((options: ChromeDnrRuleUpdate) => Promise<void>) | undefined,
-  ruleId: number,
-): Promise<string | undefined> {
-  if (!updateRules) return undefined;
-  try {
-    await updateRules({
-      removeRuleIds: [ruleId],
-      addRules: [],
-    });
-    return undefined;
-  } catch (error) {
-    return toDnrError(error);
-  }
-}
-
 function formatAttemptFailure(failure: ImageAttemptFailure): string {
   const details = [
     `候选 ${failure.candidateIndex}/${failure.candidateCount}`,
@@ -457,42 +403,46 @@ function formatAttemptFailure(failure: ImageAttemptFailure): string {
     failure.reason,
     `duration=${failure.durationMs}ms`,
   ];
-  if (failure.dnrError) details.push(`DNR=${failure.dnrError}`);
   return details.join(', ');
+}
+
+async function releaseHeaderOverrideLease(
+  lease: RequestHeaderOverrideLease,
+): Promise<void> {
+  try {
+    await lease.release();
+  } catch (error) {
+    if (
+      !(error instanceof ExtensionOperationError)
+      || error.capability !== 'request-header-override'
+      || error.operation !== 'release'
+      || !error.retryable
+    ) {
+      throw error;
+    }
+    await lease.release();
+  }
 }
 
 export function createImageDownloader(
   dependencies: ImageDownloaderDependencies,
 ): ImageDownloader {
-  const chromeApi = dependencies.chromeApi === undefined
-    ? getChromeApi()
-    : dependencies.chromeApi;
-  const dnr = chromeApi?.declarativeNetRequest;
-  const extensionId = chromeApi?.runtime?.id;
   const documentPolicyTracker = createDocumentPolicyTracker(
-    chromeApi,
+    dependencies.referrerPolicies,
     dependencies.sessionStorage,
   );
   const fetchImage = dependencies.fetchImage ?? globalThis.fetch.bind(globalThis);
   const timeoutMs = dependencies.timeoutMs ?? defaultDownloadTimeoutMs;
-  let queueTail: Promise<void> = Promise.resolve();
 
-  const initialization = Promise.all([
-    removeRule(dnr?.updateDynamicRules, legacyPximgRefererRuleId),
-    removeRule(dnr?.updateSessionRules, imageRefererSessionRuleId),
-  ]);
-
-  async function downloadSerialized(
+  async function download(
     request: ImageDownloadRequest,
-    sender: ChromeMessageSender,
+    source: TabDocumentSource,
   ): Promise<DownloadedImage> {
     parseHttpUrl(request.imageUrl, '图片地址');
-    const trustedDocumentUrl = getTrustedDocumentUrl(sender);
+    const trustedDocumentUrl = getTrustedDocumentUrl(source);
     const candidates = buildOriginalCandidates(request.imageUrl);
-    const initializationResults = await initialization;
-    const startupDnrErrors = initializationResults.filter((error): error is string => Boolean(error));
     const effectiveReferrerPolicy = request.referrerPolicy
-      || await documentPolicyTracker.get(sender);
+      || await documentPolicyTracker.get(source);
     const failures: ImageAttemptFailure[] = [];
 
     for (let index = 0; index < candidates.length; index += 1) {
@@ -500,49 +450,16 @@ export function createImageDownloader(
       const targetUrl = parseHttpUrl(candidate, '图片地址');
       const referer = computeReferrer(trustedDocumentUrl, targetUrl, effectiveReferrerPolicy);
       const startedAt = Date.now();
-      let dnrError = startupDnrErrors.join('; ') || undefined;
-      let ruleInstalled = false;
-      let attemptFailure: ImageAttemptFailure | undefined;
-      const canAttemptReferer = Boolean(
-        referer
-        && extensionId
-        && dnr?.updateSessionRules,
-      );
-      if (referer && !canAttemptReferer) {
-        const unavailableReason = extensionId
-          ? 'DNR session rules unavailable'
-          : 'extension id unavailable';
-        dnrError = [dnrError, unavailableReason].filter(Boolean).join('; ');
-      }
+      let headerOverrideLease: RequestHeaderOverrideLease | undefined;
 
-      if (canAttemptReferer) {
-        try {
-          await dnr?.updateSessionRules?.({
-            removeRuleIds: [imageRefererSessionRuleId],
-            addRules: [{
-              id: imageRefererSessionRuleId,
-              priority: 1,
-              action: {
-                type: 'modifyHeaders',
-                requestHeaders: [{
-                  header: 'Referer',
-                  operation: 'set',
-                  value: referer,
-                }],
-              },
-              condition: {
-                initiatorDomains: [extensionId],
-                requestDomains: [targetUrl.hostname],
-                tabIds: [backgroundRequestTabId],
-                requestMethods: ['get'],
-                resourceTypes: ['xmlhttprequest'],
-              },
-            }],
-          });
-          ruleInstalled = true;
-        } catch (error) {
-          dnrError = [dnrError, toDnrError(error)].filter(Boolean).join('; ');
-        }
+      if (referer) {
+        headerOverrideLease = await dependencies.requestHeaderOverride.acquire({
+          url: candidate,
+          headers: [{
+            name: 'Referer',
+            value: referer,
+          }],
+        });
       }
 
       const abortController = new AbortController();
@@ -586,40 +503,18 @@ export function createImageDownloader(
           sourceUrl: response.url || candidate,
         };
       } catch (error) {
-        attemptFailure = {
+        failures.push({
           candidateIndex: index + 1,
           candidateCount: candidates.length,
           hostname: targetUrl.hostname,
           reason: timedOut ? `请求超时（${timeoutMs}ms）` : toSanitizedErrorMessage(error),
           durationMs: Math.max(0, Date.now() - startedAt),
-          refererApplied: ruleInstalled,
-          dnrError,
-        };
-        failures.push(attemptFailure);
+          refererApplied: Boolean(headerOverrideLease),
+        });
       } finally {
         globalThis.clearTimeout(timeoutHandle);
-        if (canAttemptReferer) {
-          const cleanupError = await removeRule(
-            dnr?.updateSessionRules,
-            imageRefererSessionRuleId,
-          );
-          if (cleanupError && attemptFailure) {
-            attemptFailure.dnrError = [
-              attemptFailure.dnrError,
-              `cleanup: ${cleanupError}`,
-            ].filter(Boolean).join('; ');
-          } else if (cleanupError) {
-            downloadedImage = undefined;
-            failures.push({
-              candidateIndex: index + 1,
-              candidateCount: candidates.length,
-              hostname: targetUrl.hostname,
-              reason: '临时 Referer 规则清理失败',
-              durationMs: Math.max(0, Date.now() - startedAt),
-              refererApplied: ruleInstalled,
-              dnrError: `cleanup: ${cleanupError}`,
-            });
-          }
+        if (headerOverrideLease) {
+          await releaseHeaderOverrideLease(headerOverrideLease);
         }
       }
       if (downloadedImage) {
@@ -633,16 +528,6 @@ export function createImageDownloader(
   }
 
   return {
-    download(request, sender) {
-      const operation = queueTail.then(
-        () => downloadSerialized(request, sender),
-        () => downloadSerialized(request, sender),
-      );
-      queueTail = operation.then(
-        () => undefined,
-        () => undefined,
-      );
-      return operation;
-    },
+    download,
   };
 }

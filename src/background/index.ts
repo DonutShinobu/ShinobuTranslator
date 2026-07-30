@@ -1,5 +1,5 @@
 import { defaultExtensionSettings } from '../shared/config';
-import type { ChromeLike, ChromeMessageSender } from '../shared/chrome';
+import type { ChromeLike } from '../shared/chrome';
 import {
   createAuthenticationAccess,
 } from '../../apps/extension/src/capabilities/authentication';
@@ -21,9 +21,6 @@ import {
 import type {
   JsonValue,
 } from '../../apps/extension/src/capabilities/contracts';
-import type {
-  TabDocumentSource,
-} from '../../apps/extension/src/capabilities/guards';
 import { getGeminiAppRawResponse } from './geminiAppClient';
 import { createSettingsStore } from './settings/settingsStore';
 import { createDiagnosticLogStore } from './diagnostics/logStore';
@@ -37,19 +34,6 @@ import { loginGeminiApp, readGeminiAppAuthStatus } from './gemini/authService';
 import { createProviderService } from './providers/providerService';
 import { routeBackgroundMessage, type BackgroundServices } from './messages/router';
 import { registerOffscreenPipelineBroker } from './localPipeline/offscreenBroker';
-
-function toLegacyMessageSender(source: TabDocumentSource): ChromeMessageSender {
-  return {
-    documentId: source.documentId,
-    documentUrl: source.url,
-    frameId: source.frameId,
-    tab: {
-      id: source.tabId,
-      windowId: source.windowId,
-      url: source.url,
-    },
-  };
-}
 
 function toJsonValue(response: RuntimeResponse): JsonValue {
   return normalizeJsonValue(response);
@@ -85,8 +69,9 @@ function initializeBackground(): void {
     authentication,
   });
   const imageDownloader = createImageDownloader({
-    chromeApi,
     sessionStorage: capabilities.sessionStorage,
+    referrerPolicies: capabilities.referrerPolicies,
+    requestHeaderOverride: capabilities.requestHeaderOverride,
   });
 
   const services: BackgroundServices = {
@@ -97,10 +82,7 @@ function initializeBackground(): void {
       clear: diagnostics.clear,
     },
     images: {
-      download: (request, source) => imageDownloader.download(
-        request,
-        toLegacyMessageSender(source),
-      ),
+      download: imageDownloader.download,
       capture: (source) => captureVisibleTab(
         capabilities.visibleTabCapture,
         {

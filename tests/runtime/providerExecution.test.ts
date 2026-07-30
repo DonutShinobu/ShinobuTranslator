@@ -7,6 +7,7 @@ import type {
 import {
   createProviderSessionResolver,
   ProviderExecutionError,
+  type ProviderExecutionRequest,
 } from '../../src/runtime/providerExecution';
 import type { WorkerSessionHandle } from '../../src/runtime/onnxWorkerTypes';
 
@@ -32,6 +33,24 @@ describe('provider session resolver contract', () => {
       },
     } as unknown as Parameters<typeof createProviderSessionResolver>[0]))
       .toThrow('Provider model/session capability is required');
+  });
+
+  it('rejects a non-canonical model/stage target before using the port', async () => {
+    const loadModel = vi.fn(async () => ({ runtime: ['wasm'] as const }));
+    const loadSession = vi.fn(async () => handle('wasm'));
+    const resolver = createProviderSessionResolver({
+      loadModel,
+      loadSession,
+    });
+
+    await expect(resolver.execute({
+      model: 'detector',
+      stage: 'ocr',
+      run: async () => 'unreachable',
+    } as unknown as ProviderExecutionRequest<string>))
+      .rejects.toThrow('Provider execution target is invalid');
+    expect(loadModel).not.toHaveBeenCalled();
+    expect(loadSession).not.toHaveBeenCalled();
   });
 
   it('uses manifest production order and reports a successful fallback', async () => {

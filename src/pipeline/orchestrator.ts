@@ -485,10 +485,6 @@ export async function runPipeline(
     runtimeStages.find((stage) => stage.model === model);
 
   throwIfCancelled(signal);
-  report(onProgress, "preload", "加载检测模型");
-  const preloadT0 = performance.now();
-  throwIfCancelled(signal);
-  stageTimings.push({ stage: "preload", label: "加载检测模型", durationMs: performance.now() - preloadT0 });
 
   let ocrRuntimeProbePromise: Promise<RuntimeStageStatus> | null = null;
   let inpaintRuntimeProbePromise: Promise<RuntimeStageStatus> | null = null;

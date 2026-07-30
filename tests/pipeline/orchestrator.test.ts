@@ -280,7 +280,6 @@ describe('runPipeline', () => {
 
     expect(uniqueConsecutiveStages(progress)).toEqual([
       'load',
-      'preload',
       'detect',
       'bubble',
       'ocr',
@@ -292,7 +291,6 @@ describe('runPipeline', () => {
     ]);
     expect(artifacts.stageTimings.map((timing) => timing.stage)).toEqual([
       'load',
-      'preload',
       'detect',
       'bubble',
       'ocr',
@@ -472,7 +470,6 @@ describe('runPipeline', () => {
 
     expect(uniqueConsecutiveStages(progress)).toEqual([
       'load',
-      'preload',
       'detect',
       'bubble',
       'ocr',
@@ -482,7 +479,6 @@ describe('runPipeline', () => {
     ]);
     expect(artifacts.stageTimings.map((timing) => timing.stage)).toEqual([
       'load',
-      'preload',
       'detect',
       'bubble',
       'ocr',
@@ -563,7 +559,6 @@ describe('runPipeline', () => {
     });
     expect(stageError.artifacts.stageTimings.map((timing) => timing.stage)).toEqual([
       'load',
-      'preload',
     ]);
   });
 });

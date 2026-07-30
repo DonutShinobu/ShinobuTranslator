@@ -1,5 +1,6 @@
 import {
   isProviderExecutionPolicy,
+  isProviderExecutionTarget,
   isProviderRuntime,
   PRODUCTION_PROVIDER_EXECUTION_POLICY,
   type PipelineFailureEnvelope,
@@ -9,6 +10,7 @@ import {
   type ProviderExecutionReport,
   type ProviderExecutionSession,
   type ProviderExecutionStage,
+  type ProviderExecutionTarget,
   type ProviderExecutionModelMetadata,
   type ProviderRuntime,
 } from '@shinobu/image-pipeline';
@@ -26,9 +28,7 @@ export type ProviderSessionResolverOptions = {
   loadSession: ProviderSessionLoader;
 };
 
-export type ProviderExecutionRequest<T> = {
-  model: ProviderExecutionModel;
-  stage: ProviderExecutionStage;
+export type ProviderExecutionRequest<T> = ProviderExecutionTarget & {
   run(session: ProviderExecutionSession): Promise<T>;
 };
 
@@ -149,6 +149,9 @@ export function createProviderSessionResolver(
       stage,
       run,
     }: ProviderExecutionRequest<T>): Promise<ProviderExecutionResult<T>> {
+      if (!isProviderExecutionTarget(model, stage)) {
+        throw new TypeError('Provider execution target is invalid');
+      }
       const rule = policy.rules.find((candidate) =>
         candidate.model === model && candidate.stage === stage);
       let manifestProviders: readonly ProviderRuntime[] | undefined;

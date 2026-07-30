@@ -22,6 +22,7 @@ function assertTargetOutputDirectory(outputDirectory) {
   if (
     !relativePath
     || relativePath.startsWith('..')
+    || resolve(extensionDistRoot, relativePath) !== outputDirectory
   ) {
     throw new Error(
       `Refusing to clean extension output outside an isolated target directory: ${outputDirectory}`,

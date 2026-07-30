@@ -10,10 +10,6 @@ import { readCliOption } from './cli-options.mjs';
 
 const extensionRoot = resolve(import.meta.dirname, '..');
 const manifestSourceDirectory = resolve(extensionRoot, 'manifest');
-const targetManifestPaths = Object.freeze({
-  chrome: resolve(manifestSourceDirectory, 'targets/chrome.json'),
-  firefox: resolve(manifestSourceDirectory, 'targets/firefox.json'),
-});
 const extensionPackagePath = resolve(extensionRoot, 'package.json');
 const exactCsp =
   "script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; object-src 'self';";
@@ -404,7 +400,7 @@ function readJson(path) {
 export function generateExtensionManifest({
   target,
   commonPath = resolve(manifestSourceDirectory, 'common.json'),
-  targetPath = targetManifestPaths[target],
+  targetPath = resolve(manifestSourceDirectory, 'targets', `${target}.json`),
 }) {
   if (target !== 'chrome' && target !== 'firefox') {
     throw new Error(`Unsupported extension manifest target: ${target}`);

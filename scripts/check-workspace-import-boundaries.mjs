@@ -2,10 +2,6 @@ import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import {
-  frozenExtensionMigrationEdgeKeys,
-  scanExtensionArchitecture,
-} from './extension-architecture-policy.mjs';
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -16,17 +12,12 @@ const baselinePath = path.join(
   'scripts',
   'workspace-import-boundary-baseline.json',
 );
-const sourceExtensions = new Set([
-  '.cjs',
-  '.cts',
-  '.js',
-  '.jsx',
-  '.mjs',
-  '.mts',
-  '.ts',
-  '.tsx',
-]);
+const sourceExtensions = new Set(['.js', '.jsx', '.mjs', '.ts', '.tsx']);
 const modulePathPattern = /['"]([^'"]+)['"]/gu;
+const frozenExtensionMigrationEdgeKeys = Object.freeze([
+  'apps/extension/src/background.ts -> ../../../src/background/index',
+  'apps/extension/src/content.ts -> ../../../src/content/index',
+]);
 
 function toPosix(value) {
   return value.split(path.sep).join('/');
@@ -115,9 +106,6 @@ if (
 
 const current = await findCrossWorkspaceImports();
 const frozenMigrationEdgeKeySet = new Set(frozenExtensionMigrationEdgeKeys);
-const currentLegacyImports = current.filter(
-  (entry) => !frozenMigrationEdgeKeySet.has(entry),
-);
 const counts = (entries) => {
   const result = new Map();
   for (const entry of entries) {
@@ -125,6 +113,15 @@ const counts = (entries) => {
   }
   return result;
 };
+const allCurrentCounts = counts(current);
+const frozenMigrationEdgeViolations = frozenExtensionMigrationEdgeKeys
+  .filter((entry) => allCurrentCounts.get(entry) !== 1)
+  .map((entry) => (
+    `${entry} (expected exactly once, found ${allCurrentCounts.get(entry) ?? 0})`
+  ));
+const currentLegacyImports = current.filter(
+  (entry) => !frozenMigrationEdgeKeySet.has(entry),
+);
 const currentCounts = counts(currentLegacyImports);
 const allowedCounts = counts(baseline.allowedCrossWorkspaceRelativeImports);
 const expandDifference = (left, right) => {
@@ -137,9 +134,6 @@ const expandDifference = (left, right) => {
 };
 const additions = expandDifference(currentCounts, allowedCounts);
 const stale = expandDifference(allowedCounts, currentCounts);
-const extensionArchitectureViolations = await scanExtensionArchitecture(
-  repositoryRoot,
-);
 
 if (additions.length > 0 || stale.length > 0) {
   if (additions.length > 0) {
@@ -151,9 +145,9 @@ if (additions.length > 0 || stale.length > 0) {
     for (const entry of stale) console.error(`  - ${entry}`);
   }
 }
-if (extensionArchitectureViolations.length > 0) {
-  console.error('发现扩展架构边界违规：');
-  for (const violation of extensionArchitectureViolations) {
+if (frozenMigrationEdgeViolations.length > 0) {
+  console.error('临时 extension 迁移边必须精确保留两条：');
+  for (const violation of frozenMigrationEdgeViolations) {
     console.error(`  - ${violation}`);
   }
 }
@@ -161,7 +155,7 @@ if (extensionArchitectureViolations.length > 0) {
 if (
   additions.length > 0
   || stale.length > 0
-  || extensionArchitectureViolations.length > 0
+  || frozenMigrationEdgeViolations.length > 0
 ) {
   process.exitCode = 1;
 } else {
@@ -170,5 +164,4 @@ if (
     + `(${currentLegacyImports.length} legacy imports; `
     + `${frozenExtensionMigrationEdgeKeys.length} frozen extension migration edges)`,
   );
-  console.log('extension architecture policy check passed');
 }

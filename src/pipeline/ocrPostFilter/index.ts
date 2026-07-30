@@ -15,7 +15,10 @@ import {
   type OcrRecognizeOutput,
 } from "../ocr/provider";
 import type { ProviderExecutionReport } from "@shinobu/image-pipeline";
-import type { ProviderSessionResolver } from "../../runtime/providerExecution";
+import {
+  ProviderPostProcessingError,
+  type ProviderSessionResolver,
+} from "../../runtime/providerExecution";
 import {
   evaluateOcrPostFilterCandidate,
   OCR_POST_FILTER_RULE_ID,
@@ -427,32 +430,37 @@ export async function filterOcrRegions(
     rawOcr = execution.value;
     providerReports = [execution.report];
   }
-  const decisions = candidates.map((region) => {
-    const width = Math.max(1, region.box.width);
-    const height = Math.max(1, region.box.height);
-    return makeDebugDecision(
-      region,
-      width * height / Math.max(1, imageWidth * imageHeight),
-      Math.max(width / height, height / width),
-      variantsForRegion(region, metadata, rawOcr),
-      measureMask(rawMask, region, options.platform),
-    );
-  });
-  const filteredRegionIds = decisions
-    .filter((decision) => decision.shouldFilter)
-    .map((decision) => decision.regionId);
-  const filtered = new Set(filteredRegionIds);
-  return {
-    regions: regions.filter((region) => !filtered.has(region.id)),
-    providerReports,
-    debug: {
-      mode: "balanced",
-      ruleId: OCR_POST_FILTER_RULE_ID,
-      candidateCount: candidates.length,
-      filteredCount: filteredRegionIds.length,
-      filteredRegionIds,
-      decisions,
-      durationMs: performance.now() - startedAt,
-    },
-  };
+  try {
+    const decisions = candidates.map((region) => {
+      const width = Math.max(1, region.box.width);
+      const height = Math.max(1, region.box.height);
+      return makeDebugDecision(
+        region,
+        width * height / Math.max(1, imageWidth * imageHeight),
+        Math.max(width / height, height / width),
+        variantsForRegion(region, metadata, rawOcr),
+        measureMask(rawMask, region, options.platform),
+      );
+    });
+    const filteredRegionIds = decisions
+      .filter((decision) => decision.shouldFilter)
+      .map((decision) => decision.regionId);
+    const filtered = new Set(filteredRegionIds);
+    return {
+      regions: regions.filter((region) => !filtered.has(region.id)),
+      providerReports,
+      debug: {
+        mode: "balanced",
+        ruleId: OCR_POST_FILTER_RULE_ID,
+        candidateCount: candidates.length,
+        filteredCount: filteredRegionIds.length,
+        filteredRegionIds,
+        decisions,
+        durationMs: performance.now() - startedAt,
+      },
+    };
+  } catch (error) {
+    if (providerReports.length === 0) throw error;
+    throw new ProviderPostProcessingError(error, providerReports);
+  }
 }

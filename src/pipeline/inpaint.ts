@@ -8,7 +8,10 @@ import type {
   ProviderExecutionReport,
   ProviderRuntime,
 } from "@shinobu/image-pipeline";
-import type { ProviderSessionResolver } from "../runtime/providerExecution";
+import {
+  ProviderPostProcessingError,
+  type ProviderSessionResolver,
+} from "../runtime/providerExecution";
 
 export type InpaintResult = {
   canvas: PipelineCanvas;
@@ -249,16 +252,49 @@ async function runInpaintByOnnx(
   platform: PlatformProvider,
   resolver: ProviderSessionResolver,
 ): Promise<InpaintResult> {
-  const model = await getModel("inpaint");
-  const size = model.input?.[0] ?? 512;
-  const normalize = model.normalize ?? "zero_to_one";
-  const outputNormalize = model.outputNormalize ?? normalize;
-  const maskFill = model.maskFill ?? "zero_before_normalize";
-  if (refinedMaskCanvas.width <= 0 || refinedMaskCanvas.height <= 0) {
-    throw new Error("去字 ONNX 缺少有效 refined mask，已禁用文本框遮罩回退");
-  }
-  const feeds = preprocessInpaintImage(originalCanvas, refinedMaskCanvas, size, normalize, maskFill, platform);
-  const runWithHandle = async (handle: WorkerSessionHandle): Promise<Uint8ClampedArray> => {
+  type PreparedInpaintExecution = {
+    model: Awaited<ReturnType<typeof getModel>>;
+    size: number;
+    outputNormalize: InpaintOutputNormalize;
+    feeds: ReturnType<typeof preprocessInpaintImage>;
+  };
+  let preparedPromise: Promise<PreparedInpaintExecution> | undefined;
+  const prepareExecution = (): Promise<PreparedInpaintExecution> => {
+    preparedPromise ??= (async () => {
+      const model = await getModel("inpaint");
+      const size = model.input?.[0] ?? 512;
+      const normalize = model.normalize ?? "zero_to_one";
+      const outputNormalize = model.outputNormalize ?? normalize;
+      const maskFill = model.maskFill ?? "zero_before_normalize";
+      if (refinedMaskCanvas.width <= 0 || refinedMaskCanvas.height <= 0) {
+        throw new Error("去字 ONNX 缺少有效 refined mask，已禁用文本框遮罩回退");
+      }
+      return {
+        model,
+        size,
+        outputNormalize,
+        feeds: preprocessInpaintImage(
+          originalCanvas,
+          refinedMaskCanvas,
+          size,
+          normalize,
+          maskFill,
+          platform,
+        ),
+      };
+    })();
+    return preparedPromise;
+  };
+  const runWithHandle = async (handle: WorkerSessionHandle): Promise<{
+    inpaintedRgba: Uint8ClampedArray;
+    size: number;
+  }> => {
+    const {
+      model,
+      size,
+      outputNormalize,
+      feeds,
+    } = await prepareExecution();
     const imageName = handle.inputNames[0];
     const maskName = model.maskInputName ?? handle.inputNames[1];
     if (!imageName || !maskName) {
@@ -289,13 +325,13 @@ async function runInpaintByOnnx(
     ) {
       throw new Error("去字 WebNN 输出未满足有效性检查");
     }
-    return inpaintedRgba;
+    return { inpaintedRgba, size };
   };
   const execution = await resolver.execute({
     model: "inpaint",
     stage: "inpaint",
     run: async (handle) => ({
-      inpaintedRgba: await runWithHandle(handle),
+      ...await runWithHandle(handle),
       actualWebnnDeviceType: handle.webnnDeviceType,
     }),
   });
@@ -309,8 +345,8 @@ async function runInpaintByOnnx(
     const originalMaskBinary = readMaskBinary(refinedMaskCanvas, outputWidth, outputHeight, platform);
     const inpaintedRgbaAtOriginalSize = resizeRgba(
       execution.value.inpaintedRgba,
-      size,
-      size,
+      execution.value.size,
+      execution.value.size,
       outputWidth,
       outputHeight,
       platform,
@@ -331,17 +367,7 @@ async function runInpaintByOnnx(
       providerReports,
     };
   } catch (error) {
-    throw new InpaintPostProcessingError(error, providerReports);
-  }
-}
-
-class InpaintPostProcessingError extends Error {
-  constructor(
-    cause: unknown,
-    readonly providerReports: ProviderExecutionReport[],
-  ) {
-    super(cause instanceof Error ? cause.message : String(cause), { cause });
-    this.name = "InpaintPostProcessingError";
+    throw new ProviderPostProcessingError(error, providerReports);
   }
 }
 

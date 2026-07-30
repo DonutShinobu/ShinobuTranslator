@@ -148,11 +148,7 @@ describe('OCR provider execution', () => {
     ]);
   });
 
-  it('uses an injected policy instead of a stage-private provider override', async () => {
-    const runtimeFlags = globalThis as typeof globalThis & {
-      __shinobuPaddleOcrProviders?: string[];
-    };
-    runtimeFlags.__shinobuPaddleOcrProviders = ['webgpu'];
+  it('uses the injected provider policy', async () => {
     vi.mocked(runInference).mockResolvedValue(successfulOcrOutput());
     const loadSession = vi.fn(async (model, providers) => ({
       sessionId: `${model}:${providers[0]}`,
@@ -177,22 +173,22 @@ describe('OCR provider execution', () => {
       loadSession,
     });
 
-    try {
-      const result = await runOcr(
-        image,
-        [region],
-        'paddleocr_v6_medium',
-        createPlatform(),
-        resolver,
-      );
+    const result = await runOcr(
+      image,
+      [region],
+      'paddleocr_v6_medium',
+      createPlatform(),
+      resolver,
+    );
 
-      expect(result.actualProvider).toBe('wasm');
-      expect(loadSession).toHaveBeenCalledWith(
-        'paddleocr_v6_medium_rec',
-        ['wasm'],
-      );
-    } finally {
-      delete runtimeFlags.__shinobuPaddleOcrProviders;
-    }
+    expect(result.actualProvider).toBe('wasm');
+    expect(result.providerReports[0]).toMatchObject({
+      contract: {
+        id: 'test.ocr-wasm-only',
+        version: 1,
+      },
+      finalProvider: 'wasm',
+      satisfied: true,
+    });
   });
 });

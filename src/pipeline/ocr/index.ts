@@ -13,7 +13,10 @@ import type {
   ProviderExecutionReport,
   ProviderRuntime,
 } from "@shinobu/image-pipeline";
-import type { ProviderSessionResolver } from "../../runtime/providerExecution";
+import {
+  ProviderPostProcessingError,
+  type ProviderSessionResolver,
+} from "../../runtime/providerExecution";
 
 registerOcrProvider(paddleocrV6MediumProvider);
 registerOcrProviderAlias("builtin", "paddleocr_v6_medium");
@@ -32,16 +35,6 @@ export type OcrResult = {
 type RunOcrOptions = {
   compactActiveBatch?: boolean;
 };
-
-class OcrPostProcessingError extends Error {
-  constructor(
-    cause: unknown,
-    readonly providerReports: ProviderExecutionReport[],
-  ) {
-    super(cause instanceof Error ? cause.message : String(cause), { cause });
-    this.name = "OcrPostProcessingError";
-  }
-}
 
 export function mapResultsToRegions(
   results: OcrRecognizeResult[],
@@ -174,6 +167,6 @@ export async function runOcr(
     }
     throw new Error("OCR 未返回有效识别结果");
   } catch (error) {
-    throw new OcrPostProcessingError(error, providerReports);
+    throw new ProviderPostProcessingError(error, providerReports);
   }
 }

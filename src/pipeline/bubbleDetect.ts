@@ -9,7 +9,10 @@ import type {
   ProviderExecutionReport,
   ProviderRuntime,
 } from "@shinobu/image-pipeline";
-import type { ProviderSessionResolver } from "../runtime/providerExecution";
+import {
+  ProviderPostProcessingError,
+  type ProviderSessionResolver,
+} from "../runtime/providerExecution";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -301,16 +304,6 @@ export function decodeBubbleMasks(
 // Public API
 // ---------------------------------------------------------------------------
 
-class BubblePostProcessingError extends Error {
-  constructor(
-    cause: unknown,
-    readonly providerReports: ProviderExecutionReport[],
-  ) {
-    super(cause instanceof Error ? cause.message : String(cause), { cause });
-    this.name = "BubblePostProcessingError";
-  }
-}
-
 export async function detectBubbles(
   image: PipelineImage,
   platform: PlatformProvider,
@@ -350,7 +343,7 @@ export async function detectBubbles(
       providerReports,
     };
   } catch (error) {
-    throw new BubblePostProcessingError(error, providerReports);
+    throw new ProviderPostProcessingError(error, providerReports);
   }
 }
 

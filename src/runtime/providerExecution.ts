@@ -138,6 +138,19 @@ export class ProviderExecutionError extends Error {
   }
 }
 
+export class ProviderPostProcessingError extends Error {
+  constructor(
+    cause: unknown,
+    readonly providerReports: ProviderExecutionReport[],
+  ) {
+    super(
+      cause instanceof Error ? cause.message : String(cause),
+      { cause },
+    );
+    this.name = 'ProviderPostProcessingError';
+  }
+}
+
 function throwProviderFailure(
   code: Parameters<typeof failureFor>[0],
   report: ProviderExecutionReport,

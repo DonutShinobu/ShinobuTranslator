@@ -15,9 +15,12 @@ import type { PipelineImage } from '../runtime/platform';
 import type { TextRegion } from '../types';
 import { browserPlatform } from '../runtime/browserPlatform';
 import {
-  createProductionProviderExecutionCapability,
   createProductionProviderSessionResolver,
 } from '../runtime/productionProviderExecution';
+import {
+  resolveBenchmarkProviderExecutionCapability,
+  type BenchmarkProviderExecutionInput,
+} from './providerExecution';
 
 export type ShinobuBenchmarkApi = {
   bake(dataUrl: string, options?: ShinobuBakeOptions): Promise<BakeResult>;
@@ -66,8 +69,9 @@ const benchmarkApi: ShinobuBenchmarkApi = {
   ),
   runPipeline: async (file, config, onProgress, options) => {
     const { runPipeline } = await import('../pipeline/orchestrator');
-    const providerExecution = createProductionProviderExecutionCapability(
-      options?.runtimeCapabilities?.providerExecution?.policy,
+    const providerExecution = resolveBenchmarkProviderExecutionCapability(
+      options?.runtimeCapabilities?.providerExecution as
+        BenchmarkProviderExecutionInput | undefined,
     );
     return runPipeline(file, config, onProgress, {
       ...options,

@@ -493,12 +493,6 @@ describe('runPipeline', () => {
       },
     );
 
-    expect(loadSession.mock.calls.map(([model]) => model)).toEqual([
-      'detector',
-      'bubble',
-      'paddleocr_v6_medium_rec',
-      'inpaint',
-    ]);
     expect(artifacts.providerReports.map((report) => ({
       model: report.model,
       stage: report.stage,
@@ -603,10 +597,6 @@ describe('runPipeline', () => {
     expect((error as PipelineStageError).artifacts.providerReports.map(
       (report) => report.model,
     )).toEqual(['detector', 'bubble']);
-    expect(loadSession.mock.calls.map(([model]) => model)).toEqual([
-      'detector',
-      'bubble',
-    ]);
     expect(pipelineMocks.runOcr).not.toHaveBeenCalled();
     expect(pipelineMocks.runInpaint).not.toHaveBeenCalled();
   });

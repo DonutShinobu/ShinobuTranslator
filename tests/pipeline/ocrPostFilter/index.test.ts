@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { filterOcrRegions } from "../../../src/pipeline/ocrPostFilter";
+import { registerOcrProvider } from "../../../src/pipeline/ocr/provider";
+import { createProviderSessionResolver } from "../../../src/runtime/providerExecution";
 import type {
   PipelineCanvas,
   PipelineImage,
@@ -167,5 +169,109 @@ describe("filterOcrRegions", () => {
 
     expect(result.regions).toEqual([]);
     expect(result.debug.filteredRegionIds).toEqual(["giant-laughter"]);
+  });
+
+  it("retains the provider report when decision post-processing fails", async () => {
+    const image = {
+      src: "",
+      naturalWidth: 100,
+      naturalHeight: 100,
+      onload: null,
+      onerror: null,
+    } satisfies PipelineImage;
+    const platform = {
+      createCanvas: (width: number, height: number): PipelineCanvas => ({
+        width,
+        height,
+        getContext: () => ({
+          imageSmoothingEnabled: false,
+          drawImage: () => undefined,
+          getImageData: () => {
+            throw new Error("mask read failed");
+          },
+        }),
+        toDataURL: () => "",
+      } as unknown as PipelineCanvas),
+      createImage: () => image,
+      loadImage: async () => image,
+      createImageData: (width: number, height: number) => ({
+        width,
+        height,
+        data: new Uint8ClampedArray(width * height * 4),
+      }),
+      registerFont: () => undefined,
+      waitForFonts: async () => undefined,
+    } satisfies PlatformProvider;
+    const providerName = "postfilter-report-test";
+    registerOcrProvider({
+      name: providerName,
+      recognize: async (_image, variants, session) => ({
+        provider: session.provider,
+        results: variants.map((variant) => ({
+          regionId: variant.id,
+          text: "民",
+          confidence: 0.9,
+          quad: variant.quad!,
+        })),
+      }),
+    });
+    const resolver = createProviderSessionResolver({
+      policy: {
+        schemaVersion: 1,
+        contract: {
+          id: "test.postfilter-report",
+          version: 1,
+        },
+        rules: [{
+          model: "paddleocr_v6_medium_rec",
+          stage: "ocr",
+          providers: ["wasm"],
+        }],
+      },
+      loadModel: async () => ({ runtime: ["wasm"] }),
+      loadSession: async () => ({
+        sessionId: "ocr:wasm",
+        provider: "wasm",
+        inputNames: ["images"],
+        outputNames: ["output"],
+      }),
+    });
+    const region = {
+      id: "postfilter-error",
+      box: { x: 10, y: 10, width: 50, height: 50 },
+      sourceText: "民",
+      translatedText: "",
+      prob: 0.2,
+      originalLineCount: 1,
+    } satisfies TextRegion;
+
+    const error = await filterOcrRegions(
+      image,
+      {
+        width: 100,
+        height: 100,
+        getContext: () => null,
+        toDataURL: () => "",
+      },
+      [region],
+      {
+        platform,
+        providerName,
+        resolver,
+      },
+    ).then(() => null, (caught: unknown) => caught);
+
+    expect(error).toMatchObject({
+      providerReports: [{
+        contract: {
+          id: "test.postfilter-report",
+          version: 1,
+        },
+        model: "paddleocr_v6_medium_rec",
+        stage: "ocr",
+        finalProvider: "wasm",
+        satisfied: true,
+      }],
+    });
   });
 });

@@ -207,4 +207,54 @@ describe('inpaint provider execution', () => {
       satisfied: true,
     });
   });
+
+  it('reports preparation failures as part of the reached provider execution', async () => {
+    vi.mocked(getModel).mockRejectedValue(new Error('inpaint metadata unavailable'));
+    const resolver = createProviderSessionResolver({
+      policy: {
+        schemaVersion: 1,
+        contract: {
+          id: 'test.inpaint-preparation-failure',
+          version: 1,
+        },
+        rules: [{
+          model: 'inpaint',
+          stage: 'inpaint',
+          providers: ['wasm'],
+        }],
+      },
+      loadModel: vi.fn(),
+      loadSession: async () => ({
+        sessionId: 'inpaint:wasm',
+        provider: 'wasm',
+        inputNames: ['image', 'mask'],
+        outputNames: ['output'],
+      }),
+    });
+
+    const error = await runInpaint(
+      createCanvas(8, 8, solidRgba(8, 8, 100)),
+      createCanvas(8, 8, solidRgba(8, 8, 255)),
+      createPlatform(),
+      resolver,
+    ).then(() => null, (caught: unknown) => caught);
+
+    expect(error).toMatchObject({
+      report: {
+        contract: {
+          id: 'test.inpaint-preparation-failure',
+          version: 1,
+        },
+        model: 'inpaint',
+        stage: 'inpaint',
+        attempts: [{
+          attempt: 1,
+          provider: 'wasm',
+          outcome: 'failed',
+          reason: 'execution-failed',
+        }],
+        satisfied: false,
+      },
+    });
+  });
 });

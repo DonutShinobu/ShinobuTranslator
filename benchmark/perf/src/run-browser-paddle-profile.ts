@@ -136,6 +136,7 @@ type PaddleProfileResult = {
   paddleColdFirstMode?: PaddleColdFirstCliMode;
   paddleModelMode?: PaddleModelCliMode;
   paddleFixedInputWidth?: number;
+  paddleGraphCapture?: boolean;
   runs: PipelineRun[];
   warmMedian: {
     totalMs: number;
@@ -286,6 +287,10 @@ function pickPaddleFixedInputWidth(): number | undefined {
     throw new Error(`Invalid --paddle-fixed-width value: ${raw}`);
   }
   return parsed;
+}
+
+function pickPaddleGraphCapture(): boolean {
+  return process.argv.includes("--paddle-graph-capture");
 }
 
 function pickOcrCompactActiveBatch(): boolean | undefined {
@@ -625,6 +630,7 @@ async function runPaddleProfile(
   paddleColdFirstMode: PaddleColdFirstCliMode,
   paddleModelMode: PaddleModelCliMode,
   paddleFixedInputWidth: number | undefined,
+  paddleGraphCapture: boolean,
 ): Promise<PaddleProfileResult> {
   const label = "paddle-profile";
   const userDataDir = join(TMP_DIR, `paddle-profile-web-${Date.now()}`);
@@ -682,6 +688,7 @@ async function runPaddleProfile(
         paddleColdFirstMode: PaddleColdFirstCliMode;
         paddleModelMode: PaddleModelCliMode;
         paddleFixedInputWidth?: number;
+        paddleGraphCapture: boolean;
       }>(
         async ({
           dataUrl,
@@ -695,6 +702,7 @@ async function runPaddleProfile(
           paddleColdFirstMode,
           paddleModelMode,
           paddleFixedInputWidth,
+          paddleGraphCapture,
         }) => {
           type PaddleRuntimeFlags = typeof globalThis & {
             __shinobuPaddleOcrWidthBucketBatch?: boolean;
@@ -721,6 +729,13 @@ async function runPaddleProfile(
                         stage: "ocr";
                         providers: RuntimeProvider[];
                       }>;
+                    };
+                    sessionOptionsByModel?: {
+                      paddleocr_v6_medium_rec?: {
+                        enableGraphCapture?: boolean;
+                        preferredOutputLocation?: "gpu-buffer";
+                        freeDimensionOverrides?: Record<string, number>;
+                      };
                     };
                   };
                   ocrExecution?: {
@@ -801,6 +816,20 @@ async function runPaddleProfile(
                         providers: [paddleProviderMode],
                       }],
                 },
+                ...(paddleGraphCapture
+                  ? {
+                      sessionOptionsByModel: {
+                        paddleocr_v6_medium_rec: {
+                          enableGraphCapture: true,
+                          preferredOutputLocation: "gpu-buffer",
+                          freeDimensionOverrides: {
+                            "DynamicDimension.0": 1,
+                            "DynamicDimension.1": paddleFixedInputWidth ?? 320,
+                          },
+                        },
+                      },
+                    }
+                  : {}),
               },
               ocrExecution: {
                 compactActiveBatch: ocrCompactActiveBatch,
@@ -859,6 +888,7 @@ async function runPaddleProfile(
           paddleColdFirstMode,
           paddleModelMode,
           paddleFixedInputWidth,
+          paddleGraphCapture,
         }
       );
       run.ocrSummary = summarizeOcr(run);
@@ -875,6 +905,7 @@ async function runPaddleProfile(
       paddleColdFirstMode,
       paddleModelMode,
       paddleFixedInputWidth,
+      paddleGraphCapture,
       runs: results,
       warmMedian: computeWarmMedian(results),
     };
@@ -929,6 +960,9 @@ function printSummary(report: PaddleProfileReport): void {
   if (typeof result.paddleFixedInputWidth === "number") {
     console.log(`  Paddle fixed W:    ${result.paddleFixedInputWidth}`);
   }
+  if (result.paddleGraphCapture) {
+    console.log("  Paddle graph cap:  true");
+  }
   console.log(`  warm median total: ${formatMs(result.warmMedian.totalMs)}`);
   console.log(`  warm median OCR:   ${formatMs(result.warmMedian.ocrStageMs)}`);
   console.log(`  warm median decode:${formatMs(result.warmMedian.decodeSessionRunTotalMs)}`);
@@ -957,6 +991,7 @@ async function main(): Promise<void> {
   const paddleColdFirstMode = pickPaddleColdFirstMode();
   const paddleModelMode = pickPaddleModelMode();
   const paddleFixedInputWidth = pickPaddleFixedInputWidth();
+  const paddleGraphCapture = pickPaddleGraphCapture();
   ensureDistReady();
   mkdirSync(TMP_DIR, { recursive: true });
   mkdirSync(REPORTS_DIR, { recursive: true });
@@ -965,7 +1000,7 @@ async function main(): Promise<void> {
   const imagePathOverride = pickImagePathOverride();
   const runs = pickRunCount();
   const ocrCompactActiveBatch = pickOcrCompactActiveBatch();
-  console.log(`Browser profile config: ocr=${ocrEngine}, process=${processMode}, paddleBatch=${paddleBatchMode}, paddleProvider=${paddleProviderMode}, paddleColdFirst=${paddleColdFirstMode}, paddleModel=${paddleModelMode}, paddleFixedW=${paddleFixedInputWidth ?? "default"}, runs=${runs}`);
+  console.log(`Browser profile config: ocr=${ocrEngine}, process=${processMode}, paddleBatch=${paddleBatchMode}, paddleProvider=${paddleProviderMode}, paddleColdFirst=${paddleColdFirstMode}, paddleModel=${paddleModelMode}, paddleFixedW=${paddleFixedInputWidth ?? "default"}, paddleGraphCapture=${paddleGraphCapture}, runs=${runs}`);
   console.log(imagePathOverride ? `Loading local image: ${imagePathOverride}` : `Resolving X image: ${xUrl}`);
   const image = imagePathOverride ? loadImageFromFile(imagePathOverride) : await resolveXImage(xUrl, imageUrlOverride);
   console.log(`Resolved image: ${image.imageUrl} (${image.contentType}, ${image.bytes} bytes)`);
@@ -983,6 +1018,7 @@ async function main(): Promise<void> {
       paddleColdFirstMode,
       paddleModelMode,
       paddleFixedInputWidth,
+      paddleGraphCapture,
     );
     const report: PaddleProfileReport = {
       createdAt: new Date().toISOString(),

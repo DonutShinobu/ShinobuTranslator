@@ -1,6 +1,6 @@
 import type { OcrRunDebugInfo, TextRegion } from "../../types";
 import type { PlatformProvider, PipelineImage } from "../../runtime/platform";
-import type { RuntimeProvider, WebNnDeviceType } from "../../runtime/onnxTypes";
+import type { WebNnDeviceType } from "../../runtime/onnxTypes";
 import {
   registerOcrProvider,
   registerOcrProviderAlias,
@@ -9,6 +9,14 @@ import {
 } from "./provider";
 import type { OcrRecognizeResult } from "./provider";
 import { paddleocrV6MediumProvider } from "./paddleocrProvider";
+import type {
+  ProviderExecutionReport,
+  ProviderRuntime,
+} from "@shinobu/image-pipeline";
+import {
+  ProviderPostProcessingError,
+  type ProviderSessionResolver,
+} from "../../runtime/providerExecution";
 
 registerOcrProvider(paddleocrV6MediumProvider);
 registerOcrProviderAlias("builtin", "paddleocr_v6_medium");
@@ -18,9 +26,10 @@ registerOcrProviderAlias("paddleocr_v6_small", "paddleocr_v6_medium");
 
 export type OcrResult = {
   regions: TextRegion[];
-  actualProvider: RuntimeProvider;
+  actualProvider: ProviderRuntime;
   actualWebnnDeviceType?: WebNnDeviceType;
   debug: OcrRunDebugInfo;
+  providerReports: ProviderExecutionReport[];
 };
 
 type RunOcrOptions = {
@@ -118,36 +127,46 @@ function normalizeOcrProviderName(providerName?: string): string {
 export async function runOcr(
   image: PipelineImage,
   detectedRegions: TextRegion[],
-  providerName?: string,
-  platform?: PlatformProvider,
-  _options?: RunOcrOptions
+  providerName: string | undefined,
+  platform: PlatformProvider,
+  resolver: ProviderSessionResolver,
+  _options: RunOcrOptions = {},
 ): Promise<OcrResult> {
-  if (!platform) {
-    throw new Error("OCR 需要 PlatformProvider");
-  }
-
   const providerNameResolved = normalizeOcrProviderName(providerName);
   const provider = getOcrProvider(providerNameResolved);
   if (!provider) throw new Error(`OCR 引擎未注册: ${providerNameResolved}`);
 
-  const output = await provider.recognize(image, detectedRegions, platform);
-  const colorFillT0 = performance.now();
-  const filled = fillMissingOcrFields(output.results, image, platform);
-  const colorFillMs = performance.now() - colorFillT0;
-  const debug = addExternalColorFillDebug(
-    output.debug ?? createDefaultDebug(output.results.length),
-    output.results,
-    detectedRegions,
-    colorFillMs
-  );
-  const regions = mapResultsToRegions(filled, detectedRegions);
-  if (regions.length > 0) {
-    return {
-      regions,
-      actualProvider: output.provider,
-      actualWebnnDeviceType: output.webnnDeviceType,
-      debug,
-    };
+  const execution = await resolver.execute({
+    model: "paddleocr_v6_medium_rec",
+    stage: "ocr",
+    run: (session) =>
+      provider.recognize(image, detectedRegions, session, platform),
+  });
+  const output = execution.value;
+  const providerReports = [execution.report];
+
+  try {
+    const colorFillT0 = performance.now();
+    const filled = fillMissingOcrFields(output.results, image, platform);
+    const colorFillMs = performance.now() - colorFillT0;
+    const debug = addExternalColorFillDebug(
+      output.debug ?? createDefaultDebug(output.results.length),
+      output.results,
+      detectedRegions,
+      colorFillMs
+    );
+    const regions = mapResultsToRegions(filled, detectedRegions);
+    if (regions.length > 0) {
+      return {
+        regions,
+        actualProvider: execution.report.finalProvider!,
+        actualWebnnDeviceType: output.webnnDeviceType,
+        debug,
+        providerReports,
+      };
+    }
+    throw new Error("OCR 未返回有效识别结果");
+  } catch (error) {
+    throw new ProviderPostProcessingError(error, providerReports);
   }
-  throw new Error("OCR 未返回有效识别结果");
 }

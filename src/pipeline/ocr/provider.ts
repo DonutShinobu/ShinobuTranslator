@@ -1,5 +1,6 @@
 import type { OcrRunDebugInfo, QuadPoint, TextDirection, TextRegion } from "../../types";
 import type { PlatformProvider, PipelineImage } from "../../runtime/platform";
+import type { ProviderExecutionSession } from "@shinobu/image-pipeline";
 import { sampleEdgeColors, sampleCornerBgColor, sampleTextColors } from "./colorSampling";
 import { colorDistance } from "../typeset/color";
 
@@ -26,6 +27,7 @@ export type OcrProvider = {
   recognize(
     image: PipelineImage,
     regions: TextRegion[],
+    session: ProviderExecutionSession,
     platform?: PlatformProvider,
   ): Promise<OcrRecognizeOutput>;
 };

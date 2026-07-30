@@ -146,12 +146,18 @@ export async function shinobuRenderDebug(
   const h = image.naturalHeight;
 
   const detected = await detectTextRegionsWithMask(image, platform, resolver);
-  const ocrResult = await runOcr(image, detected.regions, undefined, platform);
+  const ocrResult = await runOcr(
+    image,
+    detected.regions,
+    undefined,
+    platform,
+    resolver,
+  );
 
   let regions = mergeTextLines(ocrResult.regions, w, h);
   regions = sortRegionsForRender(regions, canvas, platform);
 
-  const bubbleResult = await detectBubbles(image, platform);
+  const bubbleResult = await detectBubbles(image, platform, resolver);
   if (bubbleResult.bubbles.length > 0) {
     matchRegionsToBubbles(regions, bubbleResult.bubbles);
   }
@@ -197,12 +203,13 @@ export async function shinobuRenderFixtureDebug(
   dataUrl: string,
   fixtureRegions: RenderFixtureRegion[],
   platform: PlatformProvider,
+  resolver: ProviderSessionResolver,
 ): Promise<RenderDebugResult> {
   const image = await loadImage(dataUrl, platform);
   const canvas = imageToCanvas(image, platform);
   const regions = fixtureRegions.map(fixtureRegionToTextRegion);
 
-  const bubbleResult = await detectBubbles(image, platform);
+  const bubbleResult = await detectBubbles(image, platform, resolver);
   if (bubbleResult.bubbles.length > 0) {
     matchRegionsToBubbles(regions, bubbleResult.bubbles);
   }
@@ -243,7 +250,13 @@ export async function shinobuBake(
   const h = image.naturalHeight;
 
   const detected = await detectTextRegionsWithMask(image, platform, resolver);
-  const ocrResult = await runOcr(image, detected.regions, undefined, platform);
+  const ocrResult = await runOcr(
+    image,
+    detected.regions,
+    undefined,
+    platform,
+    resolver,
+  );
 
   const selectedDirection = options.direction ?? "all";
 
@@ -255,7 +268,7 @@ export async function shinobuBake(
   let regions = mergeTextLines(ocrResult.regions, w, h);
   regions = sortRegionsForRender(regions, canvas, platform);
 
-  const bubbleResultBake = await detectBubbles(image, platform);
+  const bubbleResultBake = await detectBubbles(image, platform, resolver);
   if (bubbleResultBake.bubbles.length > 0) {
     matchRegionsToBubbles(regions, bubbleResultBake.bubbles);
   }

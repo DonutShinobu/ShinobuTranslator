@@ -15,9 +15,12 @@ import type { PipelineImage } from '../runtime/platform';
 import type { TextRegion } from '../types';
 import { browserPlatform } from '../runtime/browserPlatform';
 import {
-  createProductionProviderExecutionCapability,
   createProductionProviderSessionResolver,
 } from '../runtime/productionProviderExecution';
+import {
+  resolveBenchmarkProviderExecutionCapability,
+  type BenchmarkProviderExecutionInput,
+} from './providerExecution';
 
 export type ShinobuBenchmarkApi = {
   bake(dataUrl: string, options?: ShinobuBakeOptions): Promise<BakeResult>;
@@ -57,17 +60,24 @@ const benchmarkApi: ShinobuBenchmarkApi = {
     createProductionProviderSessionResolver(),
   ),
   renderFixtureDebug: (dataUrl, regions) => (
-    shinobuRenderFixtureDebug(dataUrl, regions, browserPlatform)
+    shinobuRenderFixtureDebug(
+      dataUrl,
+      regions,
+      browserPlatform,
+      createProductionProviderSessionResolver(),
+    )
   ),
   runPipeline: async (file, config, onProgress, options) => {
     const { runPipeline } = await import('../pipeline/orchestrator');
+    const providerExecution = resolveBenchmarkProviderExecutionCapability(
+      options?.runtimeCapabilities?.providerExecution as
+        BenchmarkProviderExecutionInput | undefined,
+    );
     return runPipeline(file, config, onProgress, {
       ...options,
       runtimeCapabilities: {
         ...options?.runtimeCapabilities,
-        providerExecution:
-          options?.runtimeCapabilities?.providerExecution
-          ?? createProductionProviderExecutionCapability(),
+        providerExecution,
       },
     });
   },
@@ -78,7 +88,13 @@ const benchmarkApi: ShinobuBenchmarkApi = {
     if (!provider) {
       throw new Error(`OCR 引擎未注册: ${providerName}`);
     }
-    return provider.recognize(image, regions, browserPlatform);
+    const execution = await createProductionProviderSessionResolver().execute({
+      model: 'paddleocr_v6_medium_rec',
+      stage: 'ocr',
+      run: (session) =>
+        provider.recognize(image, regions, session, browserPlatform),
+    });
+    return execution.value;
   },
 };
 

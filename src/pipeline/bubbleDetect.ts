@@ -2,10 +2,17 @@ import type { BubbleMask, Rect, TextRegion } from "../types";
 import type { PlatformProvider, PipelineImage } from "../runtime/platform";
 import { hasBubbleMaskPixel } from "./bubbleMask";
 import { nmsBoxes, type ScoredBox } from "./utils";
-import { getModelSession } from "../runtime/modelRegistry";
 import { runInference } from "../runtime/onnxBridge";
-import type { TensorTransport } from "../runtime/onnxWorkerTypes";
-import type { RuntimeProvider, WebNnDeviceType } from "../runtime/onnxTypes";
+import type { WorkerSessionHandle, TensorTransport } from "../runtime/onnxWorkerTypes";
+import type { WebNnDeviceType } from "../runtime/onnxTypes";
+import type {
+  ProviderExecutionReport,
+  ProviderRuntime,
+} from "@shinobu/image-pipeline";
+import {
+  ProviderPostProcessingError,
+  type ProviderSessionResolver,
+} from "../runtime/providerExecution";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -19,8 +26,9 @@ export type BubbleDetection = {
 
 export type BubbleDetectResult = {
   bubbles: BubbleDetection[];
-  actualProvider: RuntimeProvider;
+  actualProvider: ProviderRuntime;
   actualWebnnDeviceType?: WebNnDeviceType;
+  providerReports: ProviderExecutionReport[];
 };
 
 // ---------------------------------------------------------------------------
@@ -67,16 +75,18 @@ function preprocessLetterbox(image: PipelineImage, size: number, platform: Platf
 // Inference
 // ---------------------------------------------------------------------------
 
-async function runBubbleInference(image: PipelineImage, platform: PlatformProvider): Promise<{
+async function runBubbleInference(
+  handle: WorkerSessionHandle,
+  image: PipelineImage,
+  platform: PlatformProvider,
+): Promise<{
   output0: Float32Array;
   output0Shape: readonly number[];
   output1: Float32Array;
   output1Shape: readonly number[];
   prep: LetterboxResult;
-  actualProvider: RuntimeProvider;
   actualWebnnDeviceType?: WebNnDeviceType;
 }> {
-  const handle = await getModelSession("bubble");
   const size = 640;
   const prep = preprocessLetterbox(image, size, platform);
 
@@ -100,7 +110,6 @@ async function runBubbleInference(image: PipelineImage, platform: PlatformProvid
     output1: out1.data as Float32Array,
     output1Shape: out1.dims,
     prep,
-    actualProvider: handle.provider,
     actualWebnnDeviceType: handle.webnnDeviceType,
   };
 }
@@ -295,21 +304,47 @@ export function decodeBubbleMasks(
 // Public API
 // ---------------------------------------------------------------------------
 
-export async function detectBubbles(image: PipelineImage, platform: PlatformProvider): Promise<BubbleDetectResult> {
-  const { output0, output0Shape, output1, output1Shape, prep, actualProvider, actualWebnnDeviceType } = await runBubbleInference(image, platform);
-  const imgW = image.naturalWidth;
-  const imgH = image.naturalHeight;
+export async function detectBubbles(
+  image: PipelineImage,
+  platform: PlatformProvider,
+  resolver: ProviderSessionResolver,
+): Promise<BubbleDetectResult> {
+  const execution = await resolver.execute({
+    model: "bubble",
+    stage: "bubble",
+    run: (handle) => runBubbleInference(handle, image, platform),
+  });
+  const {
+    output0,
+    output0Shape,
+    output1,
+    output1Shape,
+    prep,
+    actualWebnnDeviceType,
+  } = execution.value;
+  const actualProvider = execution.report.finalProvider!;
+  const providerReports = [execution.report];
 
-  const detections = decodeDetections(output0, output0Shape, prep, imgW, imgH);
-  const masks = decodeBubbleMasks(detections, output1, output1Shape, prep, imgW, imgH);
+  try {
+    const imgW = image.naturalWidth;
+    const imgH = image.naturalHeight;
+    const detections = decodeDetections(output0, output0Shape, prep, imgW, imgH);
+    const masks = decodeBubbleMasks(detections, output1, output1Shape, prep, imgW, imgH);
+    const bubbles: BubbleDetection[] = detections.map((det, i) => ({
+      box: det.box,
+      score: det.score,
+      mask: masks[i],
+    }));
 
-  const bubbles: BubbleDetection[] = detections.map((det, i) => ({
-    box: det.box,
-    score: det.score,
-    mask: masks[i],
-  }));
-
-  return { bubbles, actualProvider, actualWebnnDeviceType };
+    return {
+      bubbles,
+      actualProvider,
+      actualWebnnDeviceType,
+      providerReports,
+    };
+  } catch (error) {
+    throw new ProviderPostProcessingError(error, providerReports);
+  }
 }
 
 // ---------------------------------------------------------------------------

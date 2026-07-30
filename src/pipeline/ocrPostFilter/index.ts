@@ -12,9 +12,13 @@ import type {
 } from "../../runtime/platform";
 import {
   getOcrProvider,
-  type OcrProvider,
   type OcrRecognizeOutput,
 } from "../ocr/provider";
+import type { ProviderExecutionReport } from "@shinobu/image-pipeline";
+import {
+  ProviderPostProcessingError,
+  type ProviderSessionResolver,
+} from "../../runtime/providerExecution";
 import {
   evaluateOcrPostFilterCandidate,
   OCR_POST_FILTER_RULE_ID,
@@ -32,12 +36,18 @@ const OCR_VARIANTS = [
 export type OcrPostFilterOptions = {
   platform: PlatformProvider;
   providerName: string;
-  recognize?: OcrProvider["recognize"];
+  resolver?: ProviderSessionResolver;
+  recognize?(
+    image: PipelineImage,
+    regions: TextRegion[],
+    platform: PlatformProvider,
+  ): Promise<OcrRecognizeOutput>;
 };
 
 export type OcrPostFilterResult = {
   regions: TextRegion[];
   debug: OcrPostFilterDebugInfo;
+  providerReports: ProviderExecutionReport[];
 };
 
 type VariantMetadata = {
@@ -375,6 +385,7 @@ export async function filterOcrRegions(
   if (candidates.length === 0) {
     return {
       regions,
+      providerReports: [],
       debug: {
         mode: "balanced",
         ruleId: OCR_POST_FILTER_RULE_ID,
@@ -388,43 +399,68 @@ export async function filterOcrRegions(
     };
   }
   const metadata = buildVariantMetadata(candidates, imageWidth, imageHeight);
-  const provider = options.recognize
-    ? undefined
-    : getOcrProvider(options.providerName);
-  const recognize = options.recognize ?? provider?.recognize.bind(provider);
-  if (!recognize) {
-    throw new Error(`OCR 引擎未注册: ${options.providerName}`);
-  }
-  const rawOcr = await recognize(
-    image,
-    metadata.map((item) => item.variantRegion),
-    options.platform,
-  );
-  const decisions = candidates.map((region) => {
-    const width = Math.max(1, region.box.width);
-    const height = Math.max(1, region.box.height);
-    return makeDebugDecision(
-      region,
-      width * height / Math.max(1, imageWidth * imageHeight),
-      Math.max(width / height, height / width),
-      variantsForRegion(region, metadata, rawOcr),
-      measureMask(rawMask, region, options.platform),
+  const variantRegions = metadata.map((item) => item.variantRegion);
+  let rawOcr: OcrRecognizeOutput;
+  let providerReports: ProviderExecutionReport[] = [];
+  if (options.recognize) {
+    rawOcr = await options.recognize(
+      image,
+      variantRegions,
+      options.platform,
     );
-  });
-  const filteredRegionIds = decisions
-    .filter((decision) => decision.shouldFilter)
-    .map((decision) => decision.regionId);
-  const filtered = new Set(filteredRegionIds);
-  return {
-    regions: regions.filter((region) => !filtered.has(region.id)),
-    debug: {
-      mode: "balanced",
-      ruleId: OCR_POST_FILTER_RULE_ID,
-      candidateCount: candidates.length,
-      filteredCount: filteredRegionIds.length,
-      filteredRegionIds,
-      decisions,
-      durationMs: performance.now() - startedAt,
-    },
-  };
+  } else {
+    const provider = getOcrProvider(options.providerName);
+    if (!provider) {
+      throw new Error(`OCR 引擎未注册: ${options.providerName}`);
+    }
+    if (!options.resolver) {
+      throw new Error("OCR 后处理需要 ProviderSessionResolver");
+    }
+    const execution = await options.resolver.execute({
+      model: "paddleocr_v6_medium_rec",
+      stage: "ocr",
+      run: (session) =>
+        provider.recognize(
+          image,
+          variantRegions,
+          session,
+          options.platform,
+        ),
+    });
+    rawOcr = execution.value;
+    providerReports = [execution.report];
+  }
+  try {
+    const decisions = candidates.map((region) => {
+      const width = Math.max(1, region.box.width);
+      const height = Math.max(1, region.box.height);
+      return makeDebugDecision(
+        region,
+        width * height / Math.max(1, imageWidth * imageHeight),
+        Math.max(width / height, height / width),
+        variantsForRegion(region, metadata, rawOcr),
+        measureMask(rawMask, region, options.platform),
+      );
+    });
+    const filteredRegionIds = decisions
+      .filter((decision) => decision.shouldFilter)
+      .map((decision) => decision.regionId);
+    const filtered = new Set(filteredRegionIds);
+    return {
+      regions: regions.filter((region) => !filtered.has(region.id)),
+      providerReports,
+      debug: {
+        mode: "balanced",
+        ruleId: OCR_POST_FILTER_RULE_ID,
+        candidateCount: candidates.length,
+        filteredCount: filteredRegionIds.length,
+        filteredRegionIds,
+        decisions,
+        durationMs: performance.now() - startedAt,
+      },
+    };
+  } catch (error) {
+    if (providerReports.length === 0) throw error;
+    throw new ProviderPostProcessingError(error, providerReports);
+  }
 }

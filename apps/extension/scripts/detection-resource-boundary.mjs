@@ -1,9 +1,10 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
-const LEGACY_DETECTOR_PATTERN = /tesseract|tessdata/iu;
+const LEGACY_DETECTOR_PATTERN =
+  /tesseract|tessdata|\.traineddata(?:\.gz)?$/iu;
 const REMOTE_EXECUTABLE_PATTERN =
-  /\bhttps?:\/\/[^\s"'`<>]+?\.(?:m?js|wasm)(?:[?#][^\s"'`<>]*)?/iu;
+  /\bhttps?:\/\/[^\s"'`<>]+?\.(?:m?js|wasm|traineddata(?:\.gz)?)(?:[?#][^\s"'`<>]*)?/iu;
 const TEXT_EXTENSIONS = new Set([
   '.css',
   '.html',

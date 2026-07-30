@@ -364,6 +364,13 @@ export function createProviderSessionResolver(
             outcome: 'failed',
             reason: 'execution-failed',
           });
+          if (stage === 'detect') {
+            throwProviderFailure(
+              'PIPELINE_PROVIDER_EXECUTION_FAILED',
+              createReport(policy, model, stage, attempts),
+              error,
+            );
+          }
         }
       }
 

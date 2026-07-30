@@ -22,6 +22,8 @@ describe('modelRegistry session cache', () => {
     vi.resetModules();
     mocks.createSession.mockReset();
     mocks.disposeAll.mockClear();
+    mocks.disposeSession.mockReset();
+    mocks.disposeSession.mockResolvedValue(undefined);
     mocks.runtimeEvents.length = 0;
   });
 
@@ -75,6 +77,7 @@ describe('modelRegistry session cache', () => {
   });
 
   it('rejects a bridge response that silently substitutes another provider', async () => {
+    mocks.disposeSession.mockRejectedValueOnce(new Error('cleanup unavailable'));
     mocks.createSession.mockResolvedValue({
       sessionId: 'detector-session',
       provider: 'wasm',
@@ -86,5 +89,6 @@ describe('modelRegistry session cache', () => {
     await expect(registry.getModelSession('detector', 'webnn')).rejects.toThrow(
       '请求 webnn，实际 wasm',
     );
+    expect(mocks.disposeSession).toHaveBeenCalledWith('detector-session');
   });
 });

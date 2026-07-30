@@ -179,8 +179,9 @@ export async function getModelSession(
     data: { sessionOptionsKey },
   });
   const creation = createSession(name, model.url, provider, sessionOptions)
-    .then((handle) => {
+    .then(async (handle) => {
       if (handle.provider !== provider) {
+        await disposeSession(handle.sessionId).catch(() => undefined);
         throw new Error(
           `模型 Session provider 契约不匹配: 请求 ${provider}，实际 ${handle.provider}`,
         );

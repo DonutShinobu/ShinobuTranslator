@@ -16,7 +16,6 @@ import {
   PRODUCTION_PROVIDER_EXECUTION_POLICY,
 } from '@shinobu/image-pipeline';
 import {
-  ProviderExecutionError,
   type ProviderSessionResolver,
 } from '../../src/runtime/providerExecution';
 
@@ -745,34 +744,52 @@ describe('runPipeline', () => {
   });
 
   it('preserves structured detector provider failures and redacted diagnostics', async () => {
-    pipelineMocks.detectTextRegionsWithMask.mockRejectedValueOnce(
-      new ProviderExecutionError(
-        {
-          code: 'PIPELINE_PROVIDER_EXECUTION_FAILED',
-          stage: 'detect',
-          scope: 'runtime',
-          retryable: false,
-          messageKey: 'pipeline.failure.providerExecution',
-          diagnostics: {
-            contract: failedDetectorProviderReport.contract,
-            model: 'detector',
-            report: failedDetectorProviderReport,
-          },
+    const loadSession = vi.fn(async (
+      model: ProviderExecutionModel,
+      provider: ProviderRuntime,
+    ) => ({
+      sessionId: `${model}:${provider}`,
+      provider,
+      inputNames: ['images'],
+      outputNames: ['output'],
+    }));
+    pipelineMocks.detectTextRegionsWithMask.mockImplementationOnce(async (
+      _image: PipelineImage,
+      _platform: PlatformProvider,
+      resolver: ProviderSessionResolver,
+    ) => {
+      await resolver.execute({
+        model: 'detector',
+        stage: 'detect',
+        run: async () => {
+          throw new Error('raw GPU device detail');
         },
-        failedDetectorProviderReport,
-        new Error('raw GPU device detail'),
-      ),
-    );
+      });
+      throw new Error('unreachable');
+    });
 
     const error = await runPipeline(
       createFile(),
       baseConfig,
       () => {},
-      { runtimeCapabilities: testRuntimeCapabilities },
+      {
+        runtimeCapabilities: {
+          providerExecution: {
+            policy: PRODUCTION_PROVIDER_EXECUTION_POLICY,
+            modelSession: {
+              loadModel: async () => ({
+                runtime: ['wasm', 'cpu'],
+              }),
+              loadSession,
+            },
+          },
+        },
+      },
     ).catch(
       (caught: unknown) => caught,
     );
 
+    expect(loadSession.mock.calls).toEqual([['detector', 'wasm']]);
     expect(error).toBeInstanceOf(PipelineStageError);
     const stageError = error as PipelineStageError;
     expect(stageError).toMatchObject({

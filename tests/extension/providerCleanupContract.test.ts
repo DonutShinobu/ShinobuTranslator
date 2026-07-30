@@ -93,6 +93,17 @@ describe('legacy detector removal contract', () => {
       /Tesseract/iu,
     );
 
+    const languageDirectory = makePackageDirectory();
+    writeFileSync(
+      join(languageDirectory, 'jpn_vert.traineddata.gz'),
+      'legacy language data',
+    );
+
+    expect(() =>
+      assertNoRemoteDetectionFallbackResources(languageDirectory)).toThrow(
+      /Tesseract/iu,
+    );
+
     const remoteDirectory = makePackageDirectory();
     writeFileSync(
       join(remoteDirectory, 'background.js'),
@@ -103,5 +114,16 @@ describe('legacy detector removal contract', () => {
       assertNoRemoteDetectionFallbackResources(remoteDirectory)).toThrow(
       /remote executable/iu,
     );
+
+    const remoteLanguageDirectory = makePackageDirectory();
+    writeFileSync(
+      join(remoteLanguageDirectory, 'background.js'),
+      'const languagePath = "https://cdn.example.test/jpn.traineddata.gz";',
+    );
+
+    expect(() =>
+      assertNoRemoteDetectionFallbackResources(
+        remoteLanguageDirectory,
+      )).toThrow(/remote executable/iu);
   });
 });

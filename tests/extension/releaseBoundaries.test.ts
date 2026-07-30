@@ -333,6 +333,48 @@ describe('extension release boundaries', () => {
   );
 
   it(
+    'rejects dynamic imports shadowed by runtime bindings',
+    () => {
+      const cases = [
+        [
+          'const modulePath = "./chunks/config.js";',
+          'try {',
+          '  throw getRuntimeModulePath();',
+          '} catch (modulePath) {',
+          '  import(modulePath);',
+          '}',
+        ].join('\n'),
+        [
+          'const modulePath = "./chunks/config.js";',
+          'for (const modulePath of getRuntimeModulePaths()) {',
+          '  import(modulePath);',
+          '}',
+        ].join('\n'),
+        [
+          'const modulePath = "./chunks/config.js";',
+          'const load = function modulePath() {',
+          '  import(modulePath);',
+          '};',
+          'load();',
+        ].join('\n'),
+      ];
+
+      for (const source of cases) {
+        const directory = createReleaseFixture('chrome');
+        writeArtifact(directory, 'popup.js', source);
+
+        const result = runReleaseBoundary('chrome', directory);
+
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain(
+          'Artifact popup.js contains dynamic import that cannot be statically resolved at',
+        );
+      }
+    },
+    20_000,
+  );
+
+  it(
     'accepts statically resolvable dynamic imports',
     () => {
       const directory = createReleaseFixture('chrome');

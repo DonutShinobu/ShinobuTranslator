@@ -283,57 +283,49 @@ function resolvePackagedReference(
 
 await initializeModuleLexer;
 
-function declarationContainsIdentifier(name, declarationName) {
-  if (ts.isIdentifier(declarationName)) {
-    return declarationName.text === name;
-  }
-  return declarationName.elements.some((element) =>
-    !ts.isOmittedExpression(element)
-    && declarationContainsIdentifier(name, element.name));
+function createSourceTypeChecker(sourcePath, source, sourceFile) {
+  const compilerOptions = {
+    allowJs: true,
+    module: ts.ModuleKind.ESNext,
+    noLib: true,
+    target: ts.ScriptTarget.Latest,
+  };
+  const host = {
+    fileExists: (fileName) => fileName === sourcePath,
+    getCanonicalFileName: (fileName) => fileName,
+    getCurrentDirectory: () => '',
+    getDefaultLibFileName: () => 'lib.d.ts',
+    getDirectories: () => [],
+    getNewLine: () => '\n',
+    getSourceFile: (fileName) =>
+      fileName === sourcePath ? sourceFile : undefined,
+    readFile: (fileName) =>
+      fileName === sourcePath ? source : undefined,
+    useCaseSensitiveFileNames: () => true,
+    writeFile: () => {},
+  };
+  return ts.createProgram(
+    [sourcePath],
+    compilerOptions,
+    host,
+  ).getTypeChecker();
 }
 
-function findVisibleConstInitializer(identifier) {
-  const name = identifier.text;
-  for (
-    let ancestor = identifier.parent;
-    ancestor !== undefined;
-    ancestor = ancestor.parent
+function findVisibleConstInitializer(identifier, typeChecker) {
+  const declaration =
+    typeChecker.getSymbolAtLocation(identifier)?.valueDeclaration;
+  if (
+    declaration === undefined
+    || !ts.isVariableDeclaration(declaration)
+    || !ts.isIdentifier(declaration.name)
+    || !ts.isVariableDeclarationList(declaration.parent)
+    || (
+      declaration.parent.flags & ts.NodeFlags.Const
+    ) === 0
   ) {
-    if (
-      ts.isFunctionLike(ancestor)
-      && ancestor.parameters.some((parameter) =>
-        declarationContainsIdentifier(name, parameter.name))
-    ) {
-      return undefined;
-    }
-    if (!ts.isSourceFile(ancestor) && !ts.isBlock(ancestor)) {
-      continue;
-    }
-    for (const statement of ancestor.statements) {
-      if (ts.isVariableStatement(statement)) {
-        for (const declaration of statement.declarationList.declarations) {
-          if (!declarationContainsIdentifier(name, declaration.name)) {
-            continue;
-          }
-          return (
-            statement.declarationList.flags & ts.NodeFlags.Const
-          ) !== 0
-            ? declaration.initializer
-            : undefined;
-        }
-      }
-      if (
-        (
-          ts.isFunctionDeclaration(statement)
-          || ts.isClassDeclaration(statement)
-        )
-        && statement.name?.text === name
-      ) {
-        return undefined;
-      }
-    }
+    return undefined;
   }
-  return undefined;
+  return declaration.initializer;
 }
 
 function isChromeRuntimeGetUrlCall(expression) {
@@ -354,7 +346,11 @@ function isChromeRuntimeGetUrlCall(expression) {
   );
 }
 
-function evaluateStaticImportReference(expression, visited = new Set()) {
+function evaluateStaticImportReference(
+  expression,
+  typeChecker,
+  visited = new Set(),
+) {
   if (
     ts.isStringLiteral(expression)
     || ts.isNoSubstitutionTemplateLiteral(expression)
@@ -362,14 +358,26 @@ function evaluateStaticImportReference(expression, visited = new Set()) {
     return expression.text;
   }
   if (ts.isParenthesizedExpression(expression)) {
-    return evaluateStaticImportReference(expression.expression, visited);
+    return evaluateStaticImportReference(
+      expression.expression,
+      typeChecker,
+      visited,
+    );
   }
   if (
     ts.isBinaryExpression(expression)
     && expression.operatorToken.kind === ts.SyntaxKind.PlusToken
   ) {
-    const left = evaluateStaticImportReference(expression.left, visited);
-    const right = evaluateStaticImportReference(expression.right, visited);
+    const left = evaluateStaticImportReference(
+      expression.left,
+      typeChecker,
+      visited,
+    );
+    const right = evaluateStaticImportReference(
+      expression.right,
+      typeChecker,
+      visited,
+    );
     return left === undefined || right === undefined
       ? undefined
       : left + right;
@@ -377,6 +385,7 @@ function evaluateStaticImportReference(expression, visited = new Set()) {
   if (isChromeRuntimeGetUrlCall(expression)) {
     const packagedPath = evaluateStaticImportReference(
       expression.arguments[0],
+      typeChecker,
       visited,
     );
     if (packagedPath === undefined || packagedPath.startsWith('/')) {
@@ -387,12 +396,19 @@ function evaluateStaticImportReference(expression, visited = new Set()) {
   if (!ts.isIdentifier(expression)) {
     return undefined;
   }
-  const initializer = findVisibleConstInitializer(expression);
+  const initializer = findVisibleConstInitializer(
+    expression,
+    typeChecker,
+  );
   if (initializer === undefined || visited.has(initializer)) {
     return undefined;
   }
   visited.add(initializer);
-  const reference = evaluateStaticImportReference(initializer, visited);
+  const reference = evaluateStaticImportReference(
+    initializer,
+    typeChecker,
+    visited,
+  );
   visited.delete(initializer);
   return reference;
 }
@@ -405,6 +421,11 @@ function collectDynamicImportReferences(sourcePath, source) {
     true,
     ts.ScriptKind.JS,
   );
+  const typeChecker = createSourceTypeChecker(
+    sourcePath,
+    source,
+    sourceFile,
+  );
   const references = [];
   const visit = (node) => {
     if (
@@ -412,7 +433,10 @@ function collectDynamicImportReferences(sourcePath, source) {
       && node.expression.kind === ts.SyntaxKind.ImportKeyword
     ) {
       const reference = node.arguments.length === 1
-        ? evaluateStaticImportReference(node.arguments[0])
+        ? evaluateStaticImportReference(
+          node.arguments[0],
+          typeChecker,
+        )
         : undefined;
       if (reference === undefined) {
         const location = sourceFile.getLineAndCharacterOfPosition(

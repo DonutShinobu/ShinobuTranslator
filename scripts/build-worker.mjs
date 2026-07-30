@@ -2,6 +2,10 @@ import { build } from 'vite';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveExtensionBuildTarget } from '../apps/extension/scripts/build-targets.mjs';
+import {
+  isPackagedOrtRuntimeModule,
+  staticOrtRuntimeImportsPlugin,
+} from '../apps/extension/scripts/static-ort-runtime-imports.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const outDirFlagIndex = process.argv.indexOf('--out-dir');
@@ -12,8 +16,15 @@ if (outDirFlagIndex >= 0 && !requestedOutDir) {
 const outputDir = requestedOutDir
   ? resolve(process.cwd(), requestedOutDir)
   : resolveExtensionBuildTarget('chrome').absoluteOutDir;
-function externalizeNodeOnlyAdapter(id) {
-  return id.includes('onnxruntime-node')
+const useStaticOrtRuntimeImports =
+  !requestedOutDir
+  || process.argv.includes('--static-ort-runtime-imports');
+function externalizeWorkerBuildModule(id) {
+  return (
+    useStaticOrtRuntimeImports
+    && isPackagedOrtRuntimeModule(id)
+  )
+    || id.includes('onnxruntime-node')
     || id.includes('onnxNodeBridge')
     || id.includes('modelRegistryNode')
     || id.includes('ocrSharedNode');
@@ -26,11 +37,14 @@ await build({
   configFile: false,
   root: resolve(__dirname, '..'),
   publicDir: false,
+  plugins: useStaticOrtRuntimeImports
+    ? [staticOrtRuntimeImportsPlugin()]
+    : [],
   build: {
     // The self-contained ONNX Runtime Worker is intentionally about 873 kB.
     chunkSizeWarningLimit: 900,
     rollupOptions: {
-      external: externalizeNodeOnlyAdapter,
+      external: externalizeWorkerBuildModule,
       input: resolve(__dirname, '../src/workers/onnx-worker.ts'),
       output: {
         entryFileNames: 'onnxWorker.js',

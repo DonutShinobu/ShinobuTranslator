@@ -12,6 +12,7 @@ import {
   init as initializeModuleLexer,
   parse as parseModuleImports,
 } from 'es-module-lexer';
+import ts from 'typescript';
 import {
   generateExtensionManifest,
   serializeExtensionManifest,
@@ -282,6 +283,155 @@ function resolvePackagedReference(
 
 await initializeModuleLexer;
 
+function declarationContainsIdentifier(name, declarationName) {
+  if (ts.isIdentifier(declarationName)) {
+    return declarationName.text === name;
+  }
+  return declarationName.elements.some((element) =>
+    !ts.isOmittedExpression(element)
+    && declarationContainsIdentifier(name, element.name));
+}
+
+function findVisibleConstInitializer(identifier) {
+  const name = identifier.text;
+  for (
+    let ancestor = identifier.parent;
+    ancestor !== undefined;
+    ancestor = ancestor.parent
+  ) {
+    if (
+      ts.isFunctionLike(ancestor)
+      && ancestor.parameters.some((parameter) =>
+        declarationContainsIdentifier(name, parameter.name))
+    ) {
+      return undefined;
+    }
+    if (!ts.isSourceFile(ancestor) && !ts.isBlock(ancestor)) {
+      continue;
+    }
+    for (const statement of ancestor.statements) {
+      if (ts.isVariableStatement(statement)) {
+        for (const declaration of statement.declarationList.declarations) {
+          if (!declarationContainsIdentifier(name, declaration.name)) {
+            continue;
+          }
+          return (
+            statement.declarationList.flags & ts.NodeFlags.Const
+          ) !== 0
+            ? declaration.initializer
+            : undefined;
+        }
+      }
+      if (
+        (
+          ts.isFunctionDeclaration(statement)
+          || ts.isClassDeclaration(statement)
+        )
+        && statement.name?.text === name
+      ) {
+        return undefined;
+      }
+    }
+  }
+  return undefined;
+}
+
+function isChromeRuntimeGetUrlCall(expression) {
+  if (
+    !ts.isCallExpression(expression)
+    || expression.arguments.length !== 1
+    || !ts.isPropertyAccessExpression(expression.expression)
+    || expression.expression.name.text !== 'getURL'
+  ) {
+    return false;
+  }
+  const runtimeAccess = expression.expression.expression;
+  return (
+    ts.isPropertyAccessExpression(runtimeAccess)
+    && runtimeAccess.name.text === 'runtime'
+    && ts.isIdentifier(runtimeAccess.expression)
+    && runtimeAccess.expression.text === 'chrome'
+  );
+}
+
+function evaluateStaticImportReference(expression, visited = new Set()) {
+  if (
+    ts.isStringLiteral(expression)
+    || ts.isNoSubstitutionTemplateLiteral(expression)
+  ) {
+    return expression.text;
+  }
+  if (ts.isParenthesizedExpression(expression)) {
+    return evaluateStaticImportReference(expression.expression, visited);
+  }
+  if (
+    ts.isBinaryExpression(expression)
+    && expression.operatorToken.kind === ts.SyntaxKind.PlusToken
+  ) {
+    const left = evaluateStaticImportReference(expression.left, visited);
+    const right = evaluateStaticImportReference(expression.right, visited);
+    return left === undefined || right === undefined
+      ? undefined
+      : left + right;
+  }
+  if (isChromeRuntimeGetUrlCall(expression)) {
+    const packagedPath = evaluateStaticImportReference(
+      expression.arguments[0],
+      visited,
+    );
+    if (packagedPath === undefined || packagedPath.startsWith('/')) {
+      return packagedPath;
+    }
+    return `/${packagedPath.replace(/^\.\//u, '')}`;
+  }
+  if (!ts.isIdentifier(expression)) {
+    return undefined;
+  }
+  const initializer = findVisibleConstInitializer(expression);
+  if (initializer === undefined || visited.has(initializer)) {
+    return undefined;
+  }
+  visited.add(initializer);
+  const reference = evaluateStaticImportReference(initializer, visited);
+  visited.delete(initializer);
+  return reference;
+}
+
+function collectDynamicImportReferences(sourcePath, source) {
+  const sourceFile = ts.createSourceFile(
+    sourcePath,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS,
+  );
+  const references = [];
+  const visit = (node) => {
+    if (
+      ts.isCallExpression(node)
+      && node.expression.kind === ts.SyntaxKind.ImportKeyword
+    ) {
+      const reference = node.arguments.length === 1
+        ? evaluateStaticImportReference(node.arguments[0])
+        : undefined;
+      if (reference === undefined) {
+        const location = sourceFile.getLineAndCharacterOfPosition(
+          node.getStart(sourceFile),
+        );
+        throw new Error(
+          `Artifact ${sourcePath} contains dynamic import that cannot be statically resolved at ${
+            location.line + 1
+          }:${location.character + 1}.`,
+        );
+      }
+      references.push(reference);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return references;
+}
+
 function collectArtifactReferences(path, source) {
   const references = [];
   const addMatches = (expression) => {
@@ -294,16 +444,14 @@ function collectArtifactReferences(path, source) {
   } else if (path.endsWith('.js') || path.endsWith('.mjs')) {
     const [imports] = parseModuleImports(source);
     for (const moduleImport of imports) {
-      if (
-        moduleImport.d === -1
-        || typeof moduleImport.n === 'string'
-      ) {
+      if (moduleImport.d === -1) {
         references.push(
           moduleImport.n
             ?? source.slice(moduleImport.s, moduleImport.e),
         );
       }
     }
+    references.push(...collectDynamicImportReferences(path, source));
   } else if (path.endsWith('.css')) {
     addMatches(/\burl\(\s*["']?([^"')]+)["']?\s*\)/giu);
   }

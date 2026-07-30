@@ -252,6 +252,111 @@ describe('extension release boundaries', () => {
   );
 
   it(
+    'rejects a const dynamic import whose artifact is missing',
+    () => {
+      const directory = createReleaseFixture('chrome');
+      writeArtifact(
+        directory,
+        'popup.js',
+        [
+          'const modulePath = "./chunks/missing-const.js";',
+          'const alias = modulePath;',
+          'import(alias);',
+        ].join('\n'),
+      );
+
+      const result = runReleaseBoundary('chrome', directory);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(
+        'Artifact popup.js references missing artifact: chunks/missing-const.js',
+      );
+    },
+    15_000,
+  );
+
+  it(
+    'rejects concatenated and template dynamic imports whose artifacts are missing',
+    () => {
+      const cases = [
+        {
+          source:
+            'import("./chunks/" + "missing-concatenated.js");\n',
+          missingPath: 'chunks/missing-concatenated.js',
+        },
+        {
+          source: 'import(`./chunks/missing-template.js`);\n',
+          missingPath: 'chunks/missing-template.js',
+        },
+      ];
+
+      for (const invalidCase of cases) {
+        const directory = createReleaseFixture('chrome');
+        writeArtifact(
+          directory,
+          'popup.js',
+          invalidCase.source,
+        );
+
+        const result = runReleaseBoundary('chrome', directory);
+
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain(
+          `Artifact popup.js references missing artifact: ${invalidCase.missingPath}`,
+        );
+      }
+    },
+    20_000,
+  );
+
+  it(
+    'rejects a dynamic import that cannot be statically resolved',
+    () => {
+      const directory = createReleaseFixture('chrome');
+      writeArtifact(
+        directory,
+        'popup.js',
+        [
+          'const modulePath = getRuntimeModulePath();',
+          'import(modulePath);',
+        ].join('\n'),
+      );
+
+      const result = runReleaseBoundary('chrome', directory);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(
+        'Artifact popup.js contains dynamic import that cannot be statically resolved at 2:1.',
+      );
+    },
+    15_000,
+  );
+
+  it(
+    'accepts statically resolvable dynamic imports',
+    () => {
+      const directory = createReleaseFixture('chrome');
+      writeArtifact(
+        directory,
+        'popup.js',
+        [
+          'import("./chunks/config.js");',
+          'const chunkName = "onnxWorker";',
+          'const modulePath = "./chunks/" + chunkName + "Bridge.js";',
+          'import(modulePath);',
+          'import(`./chunks/diagnosticLog.js`);',
+          'import(chrome.runtime.getURL("chunks/messages.js"));',
+        ].join('\n'),
+      );
+
+      const result = runReleaseBoundary('chrome', directory);
+
+      expect(result.status, result.stderr).toBe(0);
+    },
+    15_000,
+  );
+
+  it(
     'rejects a literal dynamic import outside the packaged graph',
     () => {
       const directory = createReleaseFixture('chrome');

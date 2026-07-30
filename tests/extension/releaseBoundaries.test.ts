@@ -661,42 +661,44 @@ describe('extension release boundaries', () => {
     15_000,
   );
 
+  it.each([
+    {
+      path: 'benchmark-chunks/driver.js',
+      error:
+        'Release build contains benchmark-only artifact: benchmark-chunks',
+    },
+    {
+      path: 'benchmark/driver.js',
+      error:
+        'Release build contains benchmark-only artifact: benchmark/driver.js',
+    },
+    {
+      path: 'test-controls/fault-injection.js',
+      error:
+        'Release build contains test-control artifact: test-controls/fault-injection.js',
+    },
+    {
+      path: 'test-control.js',
+      error:
+        'Release build contains test-control artifact: test-control.js',
+    },
+  ])(
+    'rejects $path from store products',
+    (invalidCase) => {
+      const directory = createReleaseFixture('firefox');
+      writeArtifact(directory, invalidCase.path, 'void 0;\n');
+
+      const result = runReleaseBoundary('firefox', directory);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(invalidCase.error);
+    },
+    15_000,
+  );
+
   it(
-    'rejects benchmark and test-control assets from store products',
+    'rejects test-control markers from store products',
     () => {
-      const cases = [
-        {
-          path: 'benchmark-chunks/driver.js',
-          error:
-            'Release build contains benchmark-only artifact: benchmark-chunks',
-        },
-        {
-          path: 'benchmark/driver.js',
-          error:
-            'Release build contains benchmark-only artifact: benchmark/driver.js',
-        },
-        {
-          path: 'test-controls/fault-injection.js',
-          error:
-            'Release build contains test-control artifact: test-controls/fault-injection.js',
-        },
-        {
-          path: 'test-control.js',
-          error:
-            'Release build contains test-control artifact: test-control.js',
-        },
-      ];
-
-      for (const invalidCase of cases) {
-        const directory = createReleaseFixture('firefox');
-        writeArtifact(directory, invalidCase.path, 'void 0;\n');
-
-        const result = runReleaseBoundary('firefox', directory);
-
-        expect(result.status).not.toBe(0);
-        expect(result.stderr).toContain(invalidCase.error);
-      }
-
       const markedDirectory = createReleaseFixture('firefox');
       writeArtifact(
         markedDirectory,
@@ -711,7 +713,13 @@ describe('extension release boundaries', () => {
       expect(markedResult.stderr).toContain(
         'Release artifact contains forbidden test-control token __shinobu_test_control: assets/control.json',
       );
+    },
+    15_000,
+  );
 
+  it(
+    'rejects undeclared artifacts from store products',
+    () => {
       const undeclaredDirectory = createReleaseFixture('firefox');
       writeArtifact(
         undeclaredDirectory,
@@ -727,7 +735,7 @@ describe('extension release boundaries', () => {
         'Release build contains artifact outside the firefox store boundary: assets/release-helper.json',
       );
     },
-    30_000,
+    15_000,
   );
 
   it(

@@ -411,6 +411,17 @@ export async function runPipeline(
     else runtimeStages.push(status);
   };
 
+  const completeWithoutTranslatableText = (): PipelineArtifacts => {
+    latestRegions = [];
+    stageRegions.ocr = [];
+    stageRegions.merged = [];
+    stageRegions.ordered = [];
+    cleanedCanvas = originalCanvas;
+    resultCanvas = originalCanvas;
+    report(onProgress, "done", "完成");
+    return buildArtifacts();
+  };
+
   throwIfCancelled(signal);
   report(onProgress, "preload", "加载检测模型");
   const preloadT0 = performance.now();
@@ -513,6 +524,10 @@ export async function runPipeline(
       error,
       hasPipelineFailure(error) ? error.failure : undefined,
     );
+  }
+
+  if (latestRegions.length === 0) {
+    return completeWithoutTranslatableText();
   }
 
   let detectedBubbles: BubbleDetection[] = [];
@@ -714,14 +729,7 @@ export async function runPipeline(
 
   const orderedRegions = latestRegions;
   if (!orderedRegions.some((region) => region.sourceText.trim().length > 0)) {
-    latestRegions = [];
-    stageRegions.ocr = [];
-    stageRegions.merged = [];
-    stageRegions.ordered = [];
-    cleanedCanvas = originalCanvas;
-    resultCanvas = originalCanvas;
-    report(onProgress, "done", "完成");
-    return buildArtifacts();
+    return completeWithoutTranslatableText();
   }
   if (stopAfterOrder) {
     report(onProgress, "done", "完成");

@@ -13,6 +13,8 @@ import type {
   ProviderRuntime,
 } from '@shinobu/image-pipeline';
 import {
+  createPipelineRecord,
+  hasTranslatableText,
   PRODUCTION_PROVIDER_EXECUTION_POLICY,
 } from '@shinobu/image-pipeline';
 import {
@@ -314,8 +316,153 @@ describe('runPipeline', () => {
       ocrProviderReport,
       inpaintProviderReport,
     ]);
+    expect(pipelineMocks.detectBubbles).toHaveBeenCalledOnce();
+    expect(pipelineMocks.runOcr).toHaveBeenCalledOnce();
     expect(pipelineMocks.runTranslate).toHaveBeenCalledOnce();
     expect(pipelineMocks.drawTypeset).toHaveBeenCalledOnce();
+  });
+
+  it('completes with input-equivalent empty artifacts before downstream model sessions', async () => {
+    const progress: PipelineProgress[] = [];
+    const policy: ProviderExecutionPolicy = {
+      schemaVersion: 1,
+      contract: {
+        id: 'test.empty-detection-wasm-only',
+        version: 1,
+      },
+      rules: [
+        { model: 'detector', stage: 'detect', providers: ['wasm'] },
+        { model: 'bubble', stage: 'bubble', providers: ['wasm'] },
+        {
+          model: 'paddleocr_v6_medium_rec',
+          stage: 'ocr',
+          providers: ['wasm'],
+        },
+      ],
+    };
+    const loadSession = vi.fn(async (
+      model: ProviderExecutionModel,
+      provider: ProviderRuntime,
+    ) => ({
+      sessionId: `${model}:${provider}`,
+      provider,
+      inputNames: ['images'],
+      outputNames: ['output'],
+    }));
+    pipelineMocks.detectTextRegionsWithMask.mockImplementationOnce(async (
+      _image: PipelineImage,
+      _platform: PlatformProvider,
+      resolver: ProviderSessionResolver,
+    ) => {
+      const execution = await resolver.execute({
+        model: 'detector',
+        stage: 'detect',
+        run: async (session) => session.provider,
+      });
+      return {
+        regions: [],
+        rawMaskCanvas: detectionMaskCanvas,
+        engine: 'onnx' as const,
+        actualProvider: execution.value,
+        providerReports: [execution.report],
+      };
+    });
+    pipelineMocks.detectBubbles.mockImplementationOnce(async (
+      _image: PipelineImage,
+      _platform: PlatformProvider,
+      resolver: ProviderSessionResolver,
+    ) => {
+      const execution = await resolver.execute({
+        model: 'bubble',
+        stage: 'bubble',
+        run: async (session) => session.provider,
+      });
+      return {
+        bubbles: [],
+        actualProvider: execution.value,
+        providerReports: [execution.report],
+      };
+    });
+    pipelineMocks.runOcr.mockImplementationOnce(async () => {
+      throw new Error('OCR must not run after an empty successful detection');
+    });
+
+    const artifacts = await runPipeline(
+      createFile(),
+      baseConfig,
+      (item) => progress.push(item),
+      {
+        runtimeCapabilities: {
+          providerExecution: {
+            policy,
+            modelSession: {
+              loadModel: vi.fn(),
+              loadSession,
+            },
+          },
+        },
+      },
+    );
+
+    expect(uniqueConsecutiveStages(progress)).toEqual([
+      'load',
+      'preload',
+      'detect',
+      'done',
+    ]);
+    expect(artifacts.stageTimings.map((timing) => timing.stage)).toEqual([
+      'load',
+      'preload',
+      'detect',
+    ]);
+    expect(artifacts.detectedRegions).toEqual([]);
+    expect(artifacts.stageRegions).toEqual({
+      detected: [],
+      ocr: [],
+      merged: [],
+      ordered: [],
+    });
+    expect(artifacts.cleanedCanvas).toBe(originalCanvas);
+    expect(artifacts.resultCanvas).toBe(originalCanvas);
+    expect(artifacts.segmentationCanvas).toBe(detectionMaskCanvas);
+    expect(artifacts.providerReports).toHaveLength(1);
+    expect(artifacts.providerReports[0]).toMatchObject({
+      model: 'detector',
+      stage: 'detect',
+      finalProvider: 'wasm',
+      satisfied: true,
+    });
+    expect(artifacts.runtimeStages).toEqual([
+      expect.objectContaining({
+        model: 'detector',
+        enabled: true,
+        engine: 'onnx',
+        provider: 'wasm',
+      }),
+    ]);
+    expect(loadSession.mock.calls).toEqual([
+      ['detector', 'wasm'],
+    ]);
+    expect(pipelineMocks.detectBubbles).not.toHaveBeenCalled();
+    expect(pipelineMocks.runOcr).not.toHaveBeenCalled();
+    expect(pipelineMocks.runTranslate).not.toHaveBeenCalled();
+    expect(pipelineMocks.refineTextMask).not.toHaveBeenCalled();
+    expect(pipelineMocks.runInpaint).not.toHaveBeenCalled();
+    expect(pipelineMocks.drawTypeset).not.toHaveBeenCalled();
+
+    const record = createPipelineRecord({
+      image: {
+        width: artifacts.original.naturalWidth,
+        height: artifacts.original.naturalHeight,
+      },
+      ocr: artifacts.stageRegions.ocr,
+      ordered: artifacts.stageRegions.ordered,
+    }, { strategy: 'source-native' });
+    expect(hasTranslatableText({
+      ordered: artifacts.stageRegions.ordered,
+    })).toBe(false);
+    expect(record.ocr).toEqual([]);
+    expect(record.translations).toEqual([]);
   });
 
   it('preloads the detector through the injected runtime capability policy', async () => {

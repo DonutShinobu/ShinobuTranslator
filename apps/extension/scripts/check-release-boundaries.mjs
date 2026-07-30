@@ -1,30 +1,24 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import {
+  generateExtensionManifest,
+  serializeExtensionManifest,
+} from './generate-manifest.mjs';
+import { readCliOption } from './cli-options.mjs';
 
-const root = resolve(import.meta.dirname, '..');
-
-function readOption(name) {
-  const inline = process.argv.find((argument) => argument.startsWith(`${name}=`));
-  if (inline) {
-    const value = inline.slice(name.length + 1);
-    if (!value) throw new Error(`${name} requires a path`);
-    return value;
-  }
-  const index = process.argv.indexOf(name);
-  if (index < 0) return undefined;
-  const value = process.argv[index + 1];
-  if (!value || value.startsWith('--')) {
-    throw new Error(`${name} requires a path`);
-  }
-  return value;
-}
-
-const requestedDistDir = readOption('--dist');
+const root = resolve(import.meta.dirname, '../../..');
+const argumentsList = process.argv.slice(2);
+const requestedDistDir = readCliOption(argumentsList, '--dist');
 const distDir = requestedDistDir
   ? resolve(process.cwd(), requestedDistDir)
-  : join(root, 'apps', 'extension', 'dist');
-const benchmarkBuild = process.argv.includes('--benchmark');
+  : join(root, 'apps', 'extension', 'dist', 'chrome');
+const target = readCliOption(argumentsList, '--target') ?? 'chrome';
+if (!['chrome', 'firefox', 'benchmark'].includes(target)) {
+  throw new Error(`Unsupported extension release target: ${target}`);
+}
+const benchmarkBuild = target === 'benchmark';
+const manifestTarget = target === 'firefox' ? 'firefox' : 'chrome';
 const forbiddenBridgeTokens = [
   '__shinobu_bake',
   '__shinobu_render',
@@ -64,14 +58,18 @@ const requiredReleaseArtifacts = [
   'popup.js',
   'background.js',
   'content.js',
-  'offscreen.html',
-  'offscreen.js',
   'chunks/messages.js',
   'chunks/localPipelineProtocol.js',
   'chunks/perfTrace.js',
-  'chunks/onnxWorkerBridge.js',
   'onnxWorker.js',
 ];
+if (manifestTarget === 'chrome') {
+  requiredReleaseArtifacts.push(
+    'offscreen.html',
+    'offscreen.js',
+    'chunks/onnxWorkerBridge.js',
+  );
+}
 
 function collectJavaScriptFiles(directory) {
   const files = [];
@@ -126,7 +124,17 @@ for (const token of forbiddenLegacyWorkerTokens) {
   }
 }
 
-const manifest = JSON.parse(readFileSync(join(distDir, 'manifest.json'), 'utf8'));
+const manifestPath = join(distDir, 'manifest.json');
+const manifestBytes = readFileSync(manifestPath, 'utf8');
+const expectedManifestBytes = serializeExtensionManifest(
+  generateExtensionManifest({ target: manifestTarget }),
+);
+if (manifestBytes !== expectedManifestBytes) {
+  throw new Error(
+    `${target} manifest does not byte-match the declarative source and extension workspace version.`,
+  );
+}
+const manifest = JSON.parse(manifestBytes);
 const extensionPackage = JSON.parse(
   readFileSync(join(root, 'apps', 'extension', 'package.json'), 'utf8'),
 );
@@ -135,11 +143,27 @@ if (manifest.version !== extensionPackage.version) {
     `Extension manifest version ${manifest.version} does not match workspace version ${extensionPackage.version}.`,
   );
 }
-if (manifest.minimum_chrome_version !== '109') {
-  throw new Error('Release manifest must require Chromium 109 for the Offscreen API.');
-}
-if (!Array.isArray(manifest.permissions) || !manifest.permissions.includes('offscreen')) {
-  throw new Error('Release manifest is missing the offscreen permission.');
+if (manifestTarget === 'chrome') {
+  if (manifest.minimum_chrome_version !== '109') {
+    throw new Error('Chrome manifest must require Chromium 109 for the Offscreen API.');
+  }
+  if (!Array.isArray(manifest.permissions) || !manifest.permissions.includes('offscreen')) {
+    throw new Error('Chrome manifest is missing the offscreen permission.');
+  }
+} else {
+  if (
+    existsSync(join(distDir, 'offscreen.html'))
+    || existsSync(join(distDir, 'offscreen.js'))
+  ) {
+    throw new Error('Firefox release build contains a Chrome-only offscreen host.');
+  }
+  if (
+    manifest.browser_specific_settings?.gecko?.id
+      !== 'shinobu-translator@donutshinobu'
+    || manifest.browser_specific_settings?.gecko?.strict_min_version !== '140.0'
+  ) {
+    throw new Error('Firefox manifest is missing the fixed Gecko identity contract.');
+  }
 }
 if (!String(manifest.content_security_policy?.extension_pages ?? '').includes("worker-src 'self'")) {
   throw new Error("Release manifest must explicitly restrict worker-src to 'self'.");
@@ -190,5 +214,5 @@ if (benchmarkBuild) {
 console.log(
   benchmarkBuild
     ? 'Benchmark artifacts are isolated from the release content bridge.'
-    : 'Release artifacts contain no benchmark bridge, benchmark-only entry, or legacy OCR Worker API.',
+    : `${target} release artifacts contain no benchmark bridge, benchmark-only entry, or legacy OCR Worker API.`,
 );

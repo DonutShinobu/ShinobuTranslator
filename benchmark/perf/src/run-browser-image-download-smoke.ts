@@ -8,10 +8,10 @@ import {
   type CDPSession,
   type Page,
 } from '@playwright/test';
+import { resolveExtensionBuildTarget } from '../../../apps/extension/scripts/build-targets.mjs';
 import type { RuntimeResponse } from '../../../src/shared/messages';
 
-const root = resolve(import.meta.dirname, '../../..');
-const distDir = join(root, 'apps', 'extension', 'dist');
+const distDir = resolveExtensionBuildTarget('chrome').absoluteOutDir;
 const fixtureBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
 const fixtureBytes = Buffer.from(fixtureBase64, 'base64');
 const pageFixtureHostname = 'reader.shinobu-smoke.test';

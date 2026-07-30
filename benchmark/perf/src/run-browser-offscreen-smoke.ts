@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
+import { resolveExtensionBuildTarget } from '../../../apps/extension/scripts/build-targets.mjs';
 
 declare const chrome: {
   storage: {
@@ -22,7 +23,7 @@ declare const chrome: {
 };
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
-const DIST_DIR = join(ROOT, 'apps', 'extension', 'dist');
+const DIST_DIR = resolveExtensionBuildTarget('chrome').absoluteOutDir;
 const TMP_DIR = join(ROOT, '.tmp');
 const USER_DATA_DIR = join(TMP_DIR, `browser-offscreen-smoke-${Date.now()}`);
 const DEFAULT_IMAGE = join(ROOT, 'benchmark/color/fixtures/typeset-debug-log-2026-05-23T06-03-39-877Z.png');

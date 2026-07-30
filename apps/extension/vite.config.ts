@@ -1,14 +1,14 @@
 import { resolve } from 'node:path';
-import { copyFileSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import type { Plugin, UserConfig } from 'vite';
 import { browserRuntimeBoundaryPlugin } from '../../scripts/vite-browser-runtime-boundary';
+import { resolveExtensionBuildTarget } from './scripts/build-targets.mjs';
 
 const REPO = 'DonutShinobu/ShinobuTranslator';
 const extensionRoot = import.meta.dirname;
 const repoRoot = resolve(extensionRoot, '../..');
-const extensionDist = resolve(extensionRoot, 'dist');
 
 function externalizeNodeOnlyModule(id: string): boolean {
   if (id.includes('onnxruntime-node')) return true;
@@ -19,17 +19,17 @@ function externalizeNodeOnlyModule(id: string): boolean {
   return false;
 }
 
-// Replaces model URLs in apps/extension/dist/models/models.json with GitHub Release URLs
+// Replaces model URLs in a target's models/models.json with GitHub Release URLs
 // when MODEL_RELEASE_TAG is set (e.g. MODEL_RELEASE_TAG=models-v0.4.0).
-function modelReleaseUrlPlugin(): Plugin {
+function modelReleaseUrlPlugin(outputDirectory: string): Plugin {
   return {
     name: 'model-release-url',
     apply: 'build',
     closeBundle() {
-      rmSync(resolve(extensionDist, 'models/ocr.onnx'), { force: true });
+      rmSync(resolve(outputDirectory, 'models/ocr.onnx'), { force: true });
       const tag = process.env.MODEL_RELEASE_TAG;
       if (!tag) return;
-      const manifestPath = resolve(extensionDist, 'models/models.json');
+      const manifestPath = resolve(outputDirectory, 'models/models.json');
       const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
       const baseUrl = `https://github.com/${REPO}/releases/download/${tag}`;
       // Manifest paths like "/models/detector.onnx" become "detector.onnx" in Release assets
@@ -49,17 +49,13 @@ function modelReleaseUrlPlugin(): Plugin {
   };
 }
 
-function extensionReleaseAssetsPlugin(): Plugin {
+function extensionReleaseAssetsPlugin(outputDirectory: string): Plugin {
   return {
     name: 'extension-release-assets',
     apply: 'build',
     closeBundle() {
-      copyFileSync(
-        resolve(extensionRoot, 'public/manifest.json'),
-        resolve(extensionDist, 'manifest.json'),
-      );
       for (const webOnlyAsset of ['manifest.webmanifest', 'sw.js']) {
-        rmSync(resolve(extensionDist, webOnlyAsset), { force: true });
+        rmSync(resolve(outputDirectory, webOnlyAsset), { force: true });
       }
     },
   };
@@ -174,19 +170,22 @@ function chromeExtensionContentScriptPlugin(): Plugin {
   };
 }
 
-export default defineConfig(({ mode }): UserConfig => {
-  if (mode === 'benchmark') {
+export default defineConfig(({ command, mode }): UserConfig => {
+  const benchmarkEntryBuild = mode === 'benchmark-entry';
+  const target = resolveExtensionBuildTarget(
+    command === 'serve'
+      ? 'chrome'
+      : benchmarkEntryBuild
+        ? 'benchmark'
+        : mode,
+  );
+  if (benchmarkEntryBuild) {
     return {
       root: extensionRoot,
       envDir: repoRoot,
       publicDir: false,
-      server: {
-        fs: {
-          allow: [repoRoot],
-        },
-      },
       build: {
-        outDir: 'dist',
+        outDir: target.absoluteOutDir,
         emptyOutDir: false,
         rollupOptions: {
           input: {
@@ -202,6 +201,14 @@ export default defineConfig(({ mode }): UserConfig => {
       },
     };
   }
+  const input: Record<string, string> = {
+    popup: resolve(extensionRoot, 'popup.html'),
+    background: resolve(repoRoot, 'src/background/index.ts'),
+    content: resolve(repoRoot, 'src/content/index.ts'),
+  };
+  if (target.browser === 'chrome') {
+    input.offscreen = resolve(extensionRoot, 'offscreen.html');
+  }
 
   return {
     root: extensionRoot,
@@ -216,8 +223,8 @@ export default defineConfig(({ mode }): UserConfig => {
       browserRuntimeBoundaryPlugin({ apply: 'serve' }),
       react(),
       chromeExtensionContentScriptPlugin(),
-      extensionReleaseAssetsPlugin(),
-      modelReleaseUrlPlugin(),
+      extensionReleaseAssetsPlugin(target.absoluteOutDir),
+      modelReleaseUrlPlugin(target.absoluteOutDir),
     ],
     worker: {
       format: 'es',
@@ -226,14 +233,10 @@ export default defineConfig(({ mode }): UserConfig => {
       ],
     },
     build: {
-      outDir: 'dist',
+      outDir: target.absoluteOutDir,
+      emptyOutDir: true,
       rollupOptions: {
-        input: {
-          popup: resolve(extensionRoot, 'popup.html'),
-          background: resolve(repoRoot, 'src/background/index.ts'),
-          content: resolve(repoRoot, 'src/content/index.ts'),
-          offscreen: resolve(extensionRoot, 'offscreen.html'),
-        },
+        input,
         output: {
           entryFileNames: (chunkInfo) => `${chunkInfo.name}.js`,
           chunkFileNames: 'chunks/[name].js',

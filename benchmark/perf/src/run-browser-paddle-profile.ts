@@ -5,11 +5,12 @@ import { dirname, extname, join, resolve, sep } from "path";
 import { fileURLToPath } from "url";
 import { chromium } from "@playwright/test";
 import type { BrowserContext } from "@playwright/test";
+import { resolveExtensionBuildTarget } from "../../../apps/extension/scripts/build-targets.mjs";
 import type { OcrEngine, ProcessMode } from "../../../src/shared/config";
 import type { OcrRunDebugInfo, PaddleOcrRunDebug } from "../../../src/types";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const DIST_DIR = join(ROOT, "apps", "extension", "dist");
+const DIST_DIR = resolveExtensionBuildTarget("benchmark").absoluteOutDir;
 const TMP_DIR = join(ROOT, ".tmp");
 const REPORTS_DIR = join(ROOT, "benchmark/perf/reports");
 const DEFAULT_X_URL = "https://x.com/nanashiwan/status/2061024890195435823/photo/1";

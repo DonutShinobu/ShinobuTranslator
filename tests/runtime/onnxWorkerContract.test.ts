@@ -120,7 +120,9 @@ describe('ONNX Worker production contract', () => {
       'paddleocr_v6_medium_rec',
     ]);
 
-    const releaseGuard = read('scripts/check-release-boundaries.mjs');
+    const releaseGuard = read(
+      'apps/extension/scripts/check-release-boundaries.mjs',
+    );
     for (const legacyModel of [
       'ocr.onnx',
       'ocr_encoder.onnx',

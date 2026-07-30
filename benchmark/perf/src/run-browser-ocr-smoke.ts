@@ -2,9 +2,10 @@ import { existsSync, mkdirSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { chromium } from "@playwright/test";
+import { resolveExtensionBuildTarget } from "../../../apps/extension/scripts/build-targets.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const DIST_DIR = join(ROOT, "apps", "extension", "dist");
+const DIST_DIR = resolveExtensionBuildTarget("chrome").absoluteOutDir;
 const TMP_DIR = join(ROOT, ".tmp");
 const USER_DATA_DIR = join(TMP_DIR, `browser-ocr-smoke-${Date.now()}`);
 const USE_SYSTEM_CHROME = process.argv.includes("--system-chrome") || Boolean(process.env.CHROME_PATH);

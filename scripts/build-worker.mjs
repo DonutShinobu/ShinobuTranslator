@@ -1,6 +1,7 @@
 import { build } from 'vite';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveExtensionBuildTarget } from '../apps/extension/scripts/build-targets.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const outDirFlagIndex = process.argv.indexOf('--out-dir');
@@ -10,7 +11,7 @@ if (outDirFlagIndex >= 0 && !requestedOutDir) {
 }
 const outputDir = requestedOutDir
   ? resolve(process.cwd(), requestedOutDir)
-  : resolve(__dirname, '../apps/extension/dist');
+  : resolveExtensionBuildTarget('chrome').absoluteOutDir;
 const browserRuntimeTarget = resolve(
   __dirname,
   '../src/runtime/browserRuntimeTarget.ts',

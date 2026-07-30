@@ -207,7 +207,9 @@ npm run dev:web
 npm run build
 ```
 
-构建完成后，将浏览器扩展管理页指向生成的 `apps/extension/dist` 目录即可加载开发版本。
+默认构建会分别生成 `apps/extension/dist/chrome` 与
+`apps/extension/dist/firefox`。加载开发版本时，应将对应浏览器的扩展管理页
+指向自己的目标目录，不要加载 `dist` 根目录。
 
 ### 构建 Web 工作台
 

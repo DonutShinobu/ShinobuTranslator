@@ -15,11 +15,6 @@ type PackageManifest = {
   dependencies?: Record<string, string>;
 };
 
-type ExtensionManifest = {
-  version: string;
-  manifest_version: number;
-};
-
 describe('monorepo application ownership', () => {
   it('ratchets workspace import boundaries through the root check command', () => {
     for (const path of [
@@ -62,7 +57,13 @@ describe('monorepo application ownership', () => {
       'apps/extension/popup.html',
       'apps/extension/offscreen.html',
       'apps/extension/benchmark.html',
-      'apps/extension/public/manifest.json',
+      'apps/extension/manifest/common.json',
+      'apps/extension/manifest/targets/chrome.json',
+      'apps/extension/manifest/targets/firefox.json',
+      'apps/extension/scripts/build.mjs',
+      'apps/extension/scripts/generate-manifest.mjs',
+      'apps/extension/scripts/check-artifacts.mjs',
+      'apps/extension/scripts/check-release-boundaries.mjs',
       'apps/extension/src/popup.tsx',
       'apps/extension/src/offscreen.ts',
       'apps/extension/src/benchmark.ts',
@@ -76,17 +77,15 @@ describe('monorepo application ownership', () => {
       'offscreen.html',
       'benchmark.html',
       'public/manifest.json',
+      'apps/extension/public/manifest.json',
     ]) {
       expect(existsSync(pathFromRoot(legacyRootPath)), legacyRootPath).toBe(false);
     }
   });
 
-  it('delegates extension commands to the workspace and keeps versions aligned', () => {
+  it('delegates isolated extension target builds to one workspace builder', () => {
     const rootPackage = readJson<PackageManifest>('package.json');
     const extensionPackage = readJson<PackageManifest>('apps/extension/package.json');
-    const extensionManifest = readJson<ExtensionManifest>(
-      'apps/extension/public/manifest.json',
-    );
 
     expect(rootPackage.workspaces).toContain('apps/*');
     expect(extensionPackage.name).toBe('@shinobu/extension');
@@ -97,7 +96,23 @@ describe('monorepo application ownership', () => {
       '--workspace=@shinobu/extension',
     );
     expect(rootPackage.scripts?.build).toBe('npm run build:extension');
-    expect(extensionManifest.manifest_version).toBe(3);
-    expect(extensionManifest.version).toBe(extensionPackage.version);
+    expect(extensionPackage.scripts?.build).toBe(
+      'npm run typecheck && node scripts/build.mjs',
+    );
+    expect(extensionPackage.scripts?.['build:chrome']).toContain(
+      'build.mjs --target chrome',
+    );
+    expect(extensionPackage.scripts?.['build:firefox']).toContain(
+      'build.mjs --target firefox',
+    );
+    expect(extensionPackage.scripts?.['build:benchmark']).toContain(
+      'build.mjs --target benchmark',
+    );
+    expect(rootPackage.scripts?.['check:artifacts']).toBe(
+      'npm run check:artifacts --workspace=@shinobu/extension',
+    );
+    expect(extensionPackage.scripts?.['check:artifacts']).toBe(
+      'node scripts/check-artifacts.mjs',
+    );
   });
 });

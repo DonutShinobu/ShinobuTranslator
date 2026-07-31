@@ -1,5 +1,6 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
+  linkSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -7,7 +8,6 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -47,6 +47,7 @@ const canonicalModelChecksum = `${
     .map((asset) => `${asset.sha256}  ${asset.path}`)
     .join('\n')
 }\n`;
+const releaseFixtureRoot = resolve(root, '.tmp');
 const temporaryDirectories: string[] = [];
 
 function writeArtifact(
@@ -60,8 +61,9 @@ function writeArtifact(
 }
 
 function createReleaseFixture(target: 'chrome' | 'firefox'): string {
+  mkdirSync(releaseFixtureRoot, { recursive: true });
   const directory = mkdtempSync(
-    join(tmpdir(), `shinobu-${target}-release-boundary-`),
+    join(releaseFixtureRoot, `shinobu-${target}-release-boundary-`),
   );
   temporaryDirectories.push(directory);
   execFileSync(
@@ -117,13 +119,24 @@ function createReleaseFixture(target: 'chrome' | 'firefox'): string {
   for (const path of ortRuntimeWasmPaths) {
     writeArtifact(directory, path);
   }
-  for (const path of ['models.json', 'paddleocr_v6_dict.txt']) {
-    writeArtifact(
-      directory,
-      `models/${path}`,
-      readFileSync(resolve(root, 'public/models', path)),
+  writeArtifact(
+    directory,
+    'models/models.json',
+    readFileSync(resolve(root, 'public/models/models.json')),
+  );
+  for (const asset of canonicalModelManifest.assets) {
+    const outputPath = join(directory, 'models', asset.path);
+    mkdirSync(dirname(outputPath), { recursive: true });
+    linkSync(
+      resolve(root, 'public/models', asset.path),
+      outputPath,
     );
   }
+  writeArtifact(
+    directory,
+    'models/models.sha256',
+    readFileSync(resolve(root, 'public/models/models.sha256')),
+  );
   writeArtifact(
     directory,
     'popup.html',
@@ -162,6 +175,7 @@ function createReleaseFixture(target: 'chrome' | 'firefox'): string {
 function runReleaseBoundary(
   target: 'chrome' | 'firefox',
   directory: string,
+  modelSourceDirectory?: string,
 ) {
   return spawnSync(
     process.execPath,
@@ -171,6 +185,9 @@ function runReleaseBoundary(
       target,
       '--dist',
       directory,
+      ...(modelSourceDirectory === undefined
+        ? []
+        : ['--model-source', modelSourceDirectory]),
     ],
     {
       cwd: root,
@@ -656,14 +673,56 @@ describe('extension release boundaries', () => {
   );
 
   it(
+    'rejects Chrome and Firefox releases with no canonical ONNX inventory or checksum',
+    () => {
+      for (const target of ['chrome', 'firefox'] as const) {
+        const directory = createReleaseFixture(target);
+        for (const asset of canonicalModelManifest.assets) {
+          if (asset.path.endsWith('.onnx')) {
+            unlinkSync(join(directory, 'models', asset.path));
+          }
+        }
+        unlinkSync(join(directory, 'models/models.sha256'));
+
+        const result = runReleaseBoundary(target, directory);
+
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toContain(
+          'missing required canonical model artifact:',
+        );
+      }
+    },
+    20_000,
+  );
+
+  it(
+    'rejects a source archive with no canonical model inventory',
+    () => {
+      const directory = createReleaseFixture('firefox');
+      const modelSourceDirectory = mkdtempSync(
+        join(releaseFixtureRoot, 'shinobu-model-source-'),
+      );
+      temporaryDirectories.push(modelSourceDirectory);
+
+      const result = runReleaseBoundary(
+        'firefox',
+        directory,
+        modelSourceDirectory,
+      );
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(
+        'Release source is missing required canonical model artifact:',
+      );
+    },
+    20_000,
+  );
+
+  it(
     'rejects an incomplete canonical model release inventory',
     () => {
       const directory = createReleaseFixture('chrome');
-      writeArtifact(
-        directory,
-        'models/models.sha256',
-        canonicalModelChecksum,
-      );
+      unlinkSync(join(directory, 'models/detector.onnx'));
 
       const result = runReleaseBoundary('chrome', directory);
 
@@ -679,6 +738,7 @@ describe('extension release boundaries', () => {
     'rejects canonical model payload integrity drift',
     () => {
       const directory = createReleaseFixture('chrome');
+      unlinkSync(join(directory, 'models/detector.onnx'));
       writeArtifact(
         directory,
         'models/detector.onnx',

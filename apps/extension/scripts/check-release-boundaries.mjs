@@ -28,6 +28,10 @@ import { readCliOption } from './cli-options.mjs';
 const root = resolve(import.meta.dirname, '../../..');
 const argumentsList = process.argv.slice(2);
 const requestedDistDir = readCliOption(argumentsList, '--dist');
+const requestedModelSourceDirectory = readCliOption(
+  argumentsList,
+  '--model-source',
+);
 const distDir = requestedDistDir
   ? resolve(process.cwd(), requestedDistDir)
   : join(root, 'apps', 'extension', 'dist', 'chrome');
@@ -37,7 +41,9 @@ if (!['chrome', 'firefox', 'benchmark'].includes(target)) {
 }
 const benchmarkBuild = target === 'benchmark';
 const manifestTarget = target === 'firefox' ? 'firefox' : 'chrome';
-const canonicalModelSourceDirectory = join(root, 'public', 'models');
+const canonicalModelSourceDirectory = requestedModelSourceDirectory
+  ? resolve(process.cwd(), requestedModelSourceDirectory)
+  : join(root, 'public', 'models');
 const canonicalModelChecksumArtifactPath = 'models/models.sha256';
 const canonicalModelAssets = new Map();
 for (const asset of canonicalModelManifest.assets ?? []) {
@@ -66,6 +72,10 @@ for (const asset of canonicalModelManifest.assets ?? []) {
 if (canonicalModelAssets.size === 0) {
   throw new Error('Canonical model manifest must declare at least one asset.');
 }
+const requiredCanonicalModelArtifactPaths = [
+  canonicalModelChecksumArtifactPath,
+  ...canonicalModelAssets.keys(),
+];
 const forbiddenBridgeTokens = [
   '__shinobu_bake',
   '__shinobu_render',
@@ -193,9 +203,7 @@ const requiredReleaseArtifacts = [
   'chunks/localPipelineProtocol.js',
   'chunks/perfTrace.js',
   'onnxWorker.js',
-  ...[...canonicalModelAssets.entries()]
-    .filter(([, asset]) => !asset.path.endsWith('.onnx'))
-    .map(([artifactPath]) => artifactPath),
+  ...requiredCanonicalModelArtifactPaths,
   ...ortRuntimeModulePaths,
   ...ortRuntimeWasmPaths,
 ];
@@ -296,61 +304,46 @@ function parseCanonicalModelChecksums(source) {
   return checksums;
 }
 
-function assertCanonicalModelArtifacts(artifactPaths) {
-  const artifactPathSet = new Set(artifactPaths);
-  const checksumPresent = artifactPathSet.has(
-    canonicalModelChecksumArtifactPath,
-  );
-  if (checksumPresent) {
-    const checksums = parseCanonicalModelChecksums(
-      readFileSync(
-        join(distDir, canonicalModelChecksumArtifactPath),
-        'utf8',
-      ),
+function assertCanonicalModelInventory({
+  directory,
+  displayPrefix,
+  inventoryLabel,
+}) {
+  const checksumPath = join(directory, 'models.sha256');
+  if (!existsSync(checksumPath)) {
+    throw new Error(
+      `${inventoryLabel} is missing required canonical model artifact: ${displayPrefix}models.sha256`,
     );
-    for (const [artifactPath, asset] of canonicalModelAssets) {
-      const checksum = checksums.get(artifactPath);
-      if (checksum === undefined) {
-        throw new Error(
-          `Canonical model checksum is missing asset: ${asset.path}`,
-        );
-      }
-      if (checksum !== asset.sha256) {
-        throw new Error(
-          `Canonical model checksum mismatch for ${asset.path}: expected ${asset.sha256}, received ${checksum}.`,
-        );
-      }
+  }
+  const checksums = parseCanonicalModelChecksums(
+    readFileSync(checksumPath, 'utf8'),
+  );
+  for (const [, asset] of canonicalModelAssets) {
+    const checksum = checksums.get(`models/${asset.path}`);
+    if (checksum === undefined) {
+      throw new Error(
+        `Canonical model checksum is missing asset: ${asset.path}`,
+      );
+    }
+    if (checksum !== asset.sha256) {
+      throw new Error(
+        `Canonical model checksum mismatch for ${asset.path}: expected ${asset.sha256}, received ${checksum}.`,
+      );
     }
   }
 
-  const sourceContainsOnnx = [...canonicalModelAssets.values()]
-    .filter((asset) => asset.path.endsWith('.onnx'))
-    .some((asset) =>
-      existsSync(join(canonicalModelSourceDirectory, asset.path)));
-  const artifactContainsOnnx = [...canonicalModelAssets.keys()]
-    .some((artifactPath) =>
-      artifactPath.endsWith('.onnx')
-      && artifactPathSet.has(artifactPath));
-  if (!checksumPresent && !sourceContainsOnnx && !artifactContainsOnnx) {
-    return;
-  }
-  if (checksumPresent) {
-    for (const artifactPath of canonicalModelAssets.keys()) {
-      if (!artifactPathSet.has(artifactPath)) {
-        throw new Error(
-          `Release build is missing required canonical model artifact: ${artifactPath}`,
-        );
-      }
+  for (const [, asset] of canonicalModelAssets) {
+    const displayPath = `${displayPrefix}${asset.path}`;
+    const absolutePath = join(directory, asset.path);
+    if (!existsSync(absolutePath)) {
+      throw new Error(
+        `${inventoryLabel} is missing required canonical model artifact: ${displayPath}`,
+      );
     }
-  }
-
-  for (const [artifactPath, asset] of canonicalModelAssets) {
-    if (!artifactPathSet.has(artifactPath)) continue;
-    const absolutePath = join(distDir, artifactPath);
     const actualSize = statSync(absolutePath).size;
     if (actualSize !== asset.size) {
       throw new Error(
-        `Canonical model asset size mismatch for ${artifactPath}: expected ${asset.size} bytes, received ${actualSize}.`,
+        `Canonical model asset size mismatch for ${displayPath}: expected ${asset.size} bytes, received ${actualSize}.`,
       );
     }
     const actualHash = createHash('sha256')
@@ -358,18 +351,8 @@ function assertCanonicalModelArtifacts(artifactPaths) {
       .digest('hex');
     if (actualHash !== asset.sha256) {
       throw new Error(
-        `Canonical model asset hash mismatch for ${artifactPath}: expected ${asset.sha256}, received ${actualHash}.`,
+        `Canonical model asset hash mismatch for ${displayPath}: expected ${asset.sha256}, received ${actualHash}.`,
       );
-    }
-  }
-
-  if (!checksumPresent) {
-    for (const artifactPath of canonicalModelAssets.keys()) {
-      if (!artifactPathSet.has(artifactPath)) {
-        throw new Error(
-          `Release build is missing required canonical model artifact: ${artifactPath}`,
-        );
-      }
     }
   }
 }
@@ -862,6 +845,17 @@ if (!existsSync(distDir)) {
   throw new Error(`Release artifact directory does not exist: ${distDir}`);
 }
 
+assertCanonicalModelInventory({
+  directory: canonicalModelSourceDirectory,
+  displayPrefix: 'public/models/',
+  inventoryLabel: 'Release source',
+});
+assertCanonicalModelInventory({
+  directory: join(distDir, 'models'),
+  displayPrefix: 'models/',
+  inventoryLabel: 'Release build',
+});
+
 assertNoRemoteDetectionFallbackResources(distDir);
 
 for (const artifact of requiredReleaseArtifacts) {
@@ -871,7 +865,6 @@ for (const artifact of requiredReleaseArtifacts) {
 }
 
 const artifactPaths = collectArtifactPaths(distDir);
-assertCanonicalModelArtifacts(artifactPaths);
 for (const artifactPath of artifactPaths) {
   const extension = posix.extname(artifactPath).toLowerCase();
   if (!scannedTextArtifactExtensions.has(extension)) continue;

@@ -207,4 +207,38 @@ describe('Firefox Event Page PipelineHostLifecycle', () => {
     await expect(closing).resolves.toBe(true);
     expect(dispose).toHaveBeenCalledOnce();
   });
+
+  it('releases a lost direct host before rebuilding for the next task', async () => {
+    const disposals = [
+      vi.fn(async () => undefined),
+      vi.fn(async () => undefined),
+    ];
+    const startHost = vi.fn(() => ({
+      dispose: disposals[startHost.mock.calls.length - 1]!,
+    }));
+    const lifecycle = createFirefoxPipelineHostLifecycle(startHost);
+    const first = await lifecycle.create();
+
+    first?.activate();
+    await vi.waitFor(() => {
+      expect(startHost).toHaveBeenCalledOnce();
+    });
+    await first?.channel.disconnect();
+
+    await vi.waitFor(() => {
+      expect(disposals[0]).toHaveBeenCalledOnce();
+    });
+    await expect(lifecycle.exists()).resolves.toBe(false);
+
+    const second = await lifecycle.create();
+    expect(second).toBeDefined();
+    second?.activate();
+    await vi.waitFor(() => {
+      expect(startHost).toHaveBeenCalledTimes(2);
+    });
+
+    await expect(lifecycle.close()).resolves.toBe(true);
+    expect(disposals[0]).toHaveBeenCalledOnce();
+    expect(disposals[1]).toHaveBeenCalledOnce();
+  });
 });

@@ -188,6 +188,10 @@ export async function runInference(
   } catch (inferenceError) {
     return {
       outputs: {},
+      failure: {
+        code: 'execution-failed',
+        detail: toErrorMessage(inferenceError),
+      },
       error: toErrorMessage(inferenceError),
     };
   }

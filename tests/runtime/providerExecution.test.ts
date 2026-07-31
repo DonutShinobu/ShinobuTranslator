@@ -7,6 +7,7 @@ import type {
 import {
   createProviderSessionResolver,
   ProviderExecutionError,
+  ProviderSessionLostError,
   type ProviderExecutionRequest,
 } from '../../src/runtime/providerExecution';
 import type { WorkerSessionHandle } from '../../src/runtime/onnxWorkerTypes';
@@ -89,6 +90,7 @@ describe('provider session resolver contract', () => {
       },
       model: 'detector',
       stage: 'detect',
+      requiredProviders: ['webgpu', 'webnn', 'wasm'],
       attempts: [
         {
           attempt: 1,
@@ -249,6 +251,190 @@ describe('provider session resolver contract', () => {
     });
     expect(JSON.stringify((error as ProviderExecutionError).failure))
       .not.toContain('secret driver detail');
+  });
+
+  it('rebuilds a lost WebGPU session within the retry budget without recording fallback', async () => {
+    let generation = 0;
+    const loadSession = vi.fn(async () => ({
+      ...handle('webgpu'),
+      sessionId: `webgpu-detector-${generation += 1}`,
+    }));
+    const resetRuntime = vi.fn(async () => undefined);
+    const resolver = createProviderSessionResolver({
+      policy: {
+        schemaVersion: 1,
+        contract: {
+          id: 'test.webgpu-only',
+          version: 1,
+        },
+        rules: [{
+          model: 'detector',
+          stage: 'detect',
+          providers: ['webgpu'],
+        }],
+      },
+      loadModel: vi.fn(),
+      loadSession,
+      resetRuntime,
+    });
+    let runs = 0;
+
+    const execution = await resolver.execute({
+      model: 'detector',
+      stage: 'detect',
+      run: async (session) => {
+        runs += 1;
+        if (runs < 3) {
+          throw new ProviderSessionLostError('redacted device loss detail');
+        }
+        return session.sessionId;
+      },
+    });
+
+    expect(execution.value).toBe('webgpu-detector-3');
+    expect(loadSession).toHaveBeenCalledTimes(3);
+    expect(resetRuntime).toHaveBeenCalledTimes(2);
+    expect(execution.report).toMatchObject({
+      finalProvider: 'webgpu',
+      fallbackTrace: [],
+      satisfied: true,
+      attempts: [
+        {
+          attempt: 1,
+          provider: 'webgpu',
+          outcome: 'failed',
+          reason: 'session-lost',
+        },
+        {
+          attempt: 2,
+          provider: 'webgpu',
+          outcome: 'failed',
+          reason: 'session-lost',
+        },
+        {
+          attempt: 3,
+          provider: 'webgpu',
+          outcome: 'succeeded',
+          reason: 'completed',
+        },
+      ],
+    });
+  });
+
+  it('fails WebGPU execution after the session-loss retry budget is exhausted', async () => {
+    const resetRuntime = vi.fn(async () => undefined);
+    const resolver = createProviderSessionResolver({
+      policy: {
+        schemaVersion: 1,
+        contract: {
+          id: 'test.webgpu-only',
+          version: 1,
+        },
+        rules: [{
+          model: 'detector',
+          stage: 'detect',
+          providers: ['webgpu'],
+        }],
+      },
+      loadModel: vi.fn(),
+      loadSession: async () => handle('webgpu'),
+      resetRuntime,
+    });
+
+    const error = await resolver.execute({
+      model: 'detector',
+      stage: 'detect',
+      run: async () => {
+        throw new ProviderSessionLostError('redacted device loss detail');
+      },
+    }).then(() => null, (reason: unknown) => reason);
+
+    expect(resetRuntime).toHaveBeenCalledTimes(2);
+    expect(error).toMatchObject({
+      failure: {
+        code: 'PIPELINE_PROVIDER_EXECUTION_FAILED',
+      },
+      report: {
+        fallbackTrace: [],
+        satisfied: false,
+        attempts: [
+          {
+            attempt: 1,
+            provider: 'webgpu',
+            outcome: 'failed',
+            reason: 'session-lost',
+          },
+          {
+            attempt: 2,
+            provider: 'webgpu',
+            outcome: 'failed',
+            reason: 'session-lost',
+          },
+          {
+            attempt: 3,
+            provider: 'webgpu',
+            outcome: 'failed',
+            reason: 'session-lost',
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify((error as ProviderExecutionError).failure))
+      .not.toContain('redacted device loss detail');
+  });
+
+  it('caps WebGPU session recovery at the shared 30 second wait budget', async () => {
+    vi.useFakeTimers();
+    try {
+      const resetRuntime = vi.fn(() => new Promise<void>(() => undefined));
+      const resolver = createProviderSessionResolver({
+        policy: {
+          schemaVersion: 1,
+          contract: {
+            id: 'test.webgpu-only',
+            version: 1,
+          },
+          rules: [{
+            model: 'detector',
+            stage: 'detect',
+            providers: ['webgpu'],
+          }],
+        },
+        loadModel: vi.fn(),
+        loadSession: async () => handle('webgpu'),
+        resetRuntime,
+      });
+
+      const execution = resolver.execute({
+        model: 'detector',
+        stage: 'detect',
+        run: async () => {
+          throw new ProviderSessionLostError();
+        },
+      }).then(() => null, (reason: unknown) => reason);
+
+      await vi.advanceTimersByTimeAsync(30_001);
+      const error = await execution;
+
+      expect(resetRuntime).toHaveBeenCalledOnce();
+      expect(error).toMatchObject({
+        failure: {
+          code: 'PIPELINE_PROVIDER_EXECUTION_FAILED',
+        },
+        report: {
+          requiredProviders: ['webgpu'],
+          attempts: [{
+            attempt: 1,
+            provider: 'webgpu',
+            outcome: 'failed',
+            reason: 'session-lost',
+          }],
+          satisfied: false,
+        },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('fails closed with an unsatisfied report when every provider is unavailable', async () => {

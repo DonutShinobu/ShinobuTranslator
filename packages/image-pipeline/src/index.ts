@@ -119,6 +119,7 @@ export type ProviderExecutionAttemptOutcome =
 export type ProviderExecutionAttemptReason =
   | 'completed'
   | 'session-unavailable'
+  | 'session-lost'
   | 'execution-failed'
   | 'contract-violated';
 
@@ -140,6 +141,7 @@ export type ProviderExecutionReport = {
   contract: ProviderExecutionContract;
   model: ProviderExecutionModel;
   stage: ProviderExecutionStage;
+  requiredProviders: ProviderRuntime[];
   attempts: ProviderExecutionAttempt[];
   finalProvider?: ProviderRuntime;
   fallbackTrace: ProviderFallbackTrace[];
@@ -158,6 +160,9 @@ export function isProviderExecutionReport(
     || !Number.isSafeInteger(value.contract.version)
     || (value.contract.version as number) < 1
     || !isProviderExecutionTarget(value.model, value.stage)
+    || !Array.isArray(value.requiredProviders)
+    || !value.requiredProviders.every(isProviderRuntime)
+    || new Set(value.requiredProviders).size !== value.requiredProviders.length
     || !Array.isArray(value.attempts)
     || !Array.isArray(value.fallbackTrace)
     || typeof value.satisfied !== 'boolean'
@@ -169,10 +174,12 @@ export function isProviderExecutionReport(
   const reasons = new Set([
     'completed',
     'session-unavailable',
+    'session-lost',
     'execution-failed',
     'contract-violated',
   ]);
   const attempts = value.attempts;
+  const requiredProviders = value.requiredProviders;
   const fallbackTrace = value.fallbackTrace;
   const attemptsValid = attempts.every((attempt, index) => {
     if (
@@ -181,6 +188,7 @@ export function isProviderExecutionReport(
       || !isProviderRuntime(attempt.provider)
       || !outcomes.has(String(attempt.outcome))
       || !reasons.has(String(attempt.reason))
+      || !requiredProviders.includes(attempt.provider)
     ) {
       return false;
     }
@@ -188,23 +196,32 @@ export function isProviderExecutionReport(
       ? attempt.reason === 'completed'
       : attempt.outcome === 'unavailable'
         ? attempt.reason === 'session-unavailable'
-        : attempt.reason === 'execution-failed'
+        : attempt.reason === 'session-lost'
+          || attempt.reason === 'execution-failed'
           || attempt.reason === 'contract-violated';
+  });
+  const expectedFallbackTrace = attempts.slice(1).flatMap((attempt, index) => {
+    const previous = attempts[index];
+    return previous.provider === attempt.provider
+      ? []
+      : [{
+          from: previous.provider,
+          to: attempt.provider,
+          reason: previous.reason,
+        }];
   });
   const fallbackValid = fallbackTrace.every((fallback, index) => {
     if (!isRecord(fallback)) return false;
-    const previous = attempts[index];
-    const next = attempts[index + 1];
-    return Boolean(previous)
-      && Boolean(next)
-      && fallback.from === previous.provider
-      && fallback.to === next.provider
-      && fallback.reason === previous.reason;
+    const expected = expectedFallbackTrace[index];
+    return expected !== undefined
+      && fallback.from === expected.from
+      && fallback.to === expected.to
+      && fallback.reason === expected.reason;
   });
   if (
     !attemptsValid
     || !fallbackValid
-    || fallbackTrace.length !== Math.max(0, attempts.length - 1)
+    || fallbackTrace.length !== expectedFallbackTrace.length
   ) {
     return false;
   }
@@ -248,6 +265,7 @@ export type ProviderModelSessionPort = {
     model: ProviderExecutionModel,
     provider: ProviderRuntime,
   ): Promise<ProviderExecutionSession>;
+  resetRuntime?(): Promise<void>;
 };
 
 export type OcrExecutionCapability = {
@@ -601,6 +619,12 @@ function snapshotRuntimeCapabilities(
                 model: ProviderExecutionModel,
                 provider: ProviderRuntime,
               ) => providerExecution.modelSession.loadSession(model, provider),
+              ...(providerExecution.modelSession.resetRuntime
+                ? {
+                    resetRuntime: () =>
+                      providerExecution.modelSession.resetRuntime!(),
+                  }
+                : {}),
             }),
           }),
         }

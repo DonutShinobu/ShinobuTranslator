@@ -132,6 +132,7 @@ const detectorProviderReport: ProviderExecutionReport = {
   },
   model: 'detector',
   stage: 'detect',
+  requiredProviders: ['wasm'],
   attempts: [
     {
       attempt: 1,
@@ -146,6 +147,7 @@ const detectorProviderReport: ProviderExecutionReport = {
 };
 const failedDetectorProviderReport: ProviderExecutionReport = {
   ...detectorProviderReport,
+  requiredProviders: ['wasm', 'cpu'],
   attempts: [
     {
       attempt: 1,

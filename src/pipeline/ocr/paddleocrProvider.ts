@@ -9,7 +9,10 @@ import type {
 } from '../../types';
 import type { PlatformProvider, PipelineImage } from '../../runtime/platform';
 import type { ModelName } from '../../runtime/modelRegistry';
-import type { TensorTransport } from '../../runtime/onnxWorkerTypes';
+import {
+  throwOnInferenceFailure,
+  type TensorTransport,
+} from '../../runtime/onnxWorkerTypes';
 import { getModel } from '../../runtime/modelRegistry';
 import { buildPaddleOcrInput } from './paddleocrPreprocess';
 import type { PaddleOcrInputData } from './paddleocrPreprocess';
@@ -443,17 +446,23 @@ function createPaddleOcrProvider(name: string, modelName: PaddleOcrModelName): O
         runDebug.durationMs = inferenceMs;
         paddleDebug.inferenceTotalMs += inferenceMs;
         paddleDebug.inputBytesTotal += inputBytes;
-        if (inferenceResult.error) {
-          runDebug.error = inferenceResult.error;
+        if (inferenceResult.failure) {
+          runDebug.error = inferenceResult.failure.code;
           paddleDebug.inferenceRuns.push(runDebug);
           addPaddleChunk(debugInfo, currentRunIndex, regionIds, inferenceMs, 0);
+          if (inferenceResult.failure.code === 'session-lost') {
+            throwOnInferenceFailure(inferenceResult);
+          }
           if (allowFallback && group.length > 1) {
             for (const item of group) {
               await runPreparedGroup([item], item.inputData.resizedWidth, false);
             }
             return;
           }
-          throw new Error(inferenceResult.error);
+          throwOnInferenceFailure(inferenceResult);
+        }
+        if (inferenceResult.error) {
+          runDebug.error = inferenceResult.error;
         }
 
         const logitsOutput = inferenceResult.outputs[sessionHandle.outputNames[0]];

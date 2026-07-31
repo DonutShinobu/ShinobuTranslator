@@ -5,6 +5,7 @@ import {
   type ProviderModelSessionPort,
 } from '@shinobu/image-pipeline';
 import {
+  disposeAllModelSessions,
   getModel,
   getModelSession,
 } from './modelRegistry';
@@ -16,6 +17,7 @@ import {
 const productionModelSessionPort: ProviderModelSessionPort = Object.freeze({
   loadModel: (model) => getModel(model),
   loadSession: (model, provider) => getModelSession(model, provider),
+  resetRuntime: () => disposeAllModelSessions(),
 });
 
 export function createProductionProviderExecutionCapability(
@@ -35,5 +37,6 @@ export function createProductionProviderSessionResolver(
     policy: capability.policy,
     loadModel: capability.modelSession.loadModel,
     loadSession: capability.modelSession.loadSession,
+    resetRuntime: capability.modelSession.resetRuntime,
   });
 }

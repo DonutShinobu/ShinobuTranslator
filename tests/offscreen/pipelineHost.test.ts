@@ -106,6 +106,7 @@ const providerReport: ProviderExecutionReport = {
   },
   model: 'detector',
   stage: 'detect',
+  requiredProviders: ['wasm'],
   attempts: [
     {
       attempt: 1,

@@ -1,8 +1,6 @@
 import * as ortAll from "onnxruntime-web/all";
 
 export type { RuntimeProvider, WebNnDeviceType } from "./onnxTypes";
-export { isContextLostRuntimeError } from "./onnxTypes";
-
 let envInitialized = false;
 let ortAssetPath: string | null = null;
 

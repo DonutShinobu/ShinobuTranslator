@@ -14,6 +14,9 @@ import {
   type ProviderExecutionModelMetadata,
   type ProviderRuntime,
 } from '@shinobu/image-pipeline';
+import { ProviderSessionLostError } from './onnxWorkerTypes';
+
+export { ProviderSessionLostError } from './onnxWorkerTypes';
 
 type ProviderSessionLoader = (
   model: ProviderExecutionModel,
@@ -26,6 +29,7 @@ export type ProviderSessionResolverOptions = {
     model: ProviderExecutionModel,
   ) => Promise<ProviderExecutionModelMetadata>;
   loadSession: ProviderSessionLoader;
+  resetRuntime?: () => Promise<void>;
 };
 
 export type ProviderExecutionRequest<T> = ProviderExecutionTarget & {
@@ -80,6 +84,50 @@ type PreparedProviderExecution = {
   session: ProviderExecutionSession;
 };
 
+const WEBGPU_SESSION_RECOVERY_MAX_ATTEMPTS = 3;
+const WEBGPU_SESSION_RECOVERY_WAIT_BUDGET_MS = 30_000;
+const WEBGPU_SESSION_RECOVERY_DELAY_MS = 120;
+
+class ProviderRecoveryBudgetExceededError extends Error {
+  constructor() {
+    super('pipeline.failure.providerRecoveryBudgetExceeded');
+    this.name = 'ProviderRecoveryBudgetExceededError';
+  }
+}
+
+async function runWithinRecoveryBudget<T>(
+  deadline: number,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const remainingMs = deadline - Date.now();
+  if (remainingMs <= 0) {
+    throw new ProviderRecoveryBudgetExceededError();
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new ProviderRecoveryBudgetExceededError()),
+          remainingMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+function waitWithinRecoveryBudget(deadline: number): Promise<void> {
+  return runWithinRecoveryBudget(
+    deadline,
+    () => new Promise((resolve) => {
+      setTimeout(resolve, WEBGPU_SESSION_RECOVERY_DELAY_MS);
+    }),
+  );
+}
+
 function assertPolicy(policy: ProviderExecutionPolicy): void {
   if (!isProviderExecutionPolicy(policy)) {
     throw new TypeError('Provider execution policy contract is invalid');
@@ -103,19 +151,26 @@ function createReport(
   policy: ProviderExecutionPolicy,
   model: ProviderExecutionModel,
   stage: ProviderExecutionStage,
+  requiredProviders: readonly ProviderRuntime[],
   attempts: ProviderExecutionAttempt[],
   finalProvider?: ProviderRuntime,
 ): ProviderExecutionReport {
-  const fallbackTrace = attempts.slice(1).map((attempt, index) => ({
-    from: attempts[index].provider,
-    to: attempt.provider,
-    reason: attempts[index].reason,
-  }));
+  const fallbackTrace = attempts.slice(1).flatMap((attempt, index) => {
+    const previous = attempts[index];
+    return previous.provider === attempt.provider
+      ? []
+      : [{
+          from: previous.provider,
+          to: attempt.provider,
+          reason: previous.reason,
+        }];
+  });
   return {
     schemaVersion: 1,
     contract: { ...policy.contract },
     model,
     stage,
+    requiredProviders: [...requiredProviders],
     attempts: attempts.map((attempt) => ({ ...attempt })),
     finalProvider,
     fallbackTrace,
@@ -190,6 +245,7 @@ export function createProviderSessionResolver(
   const policySource = options.policy ?? PRODUCTION_PROVIDER_EXECUTION_POLICY;
   const loadModel = options.loadModel;
   const loadSession = options.loadSession;
+  const resetRuntime = options.resetRuntime;
   assertPolicy(policySource);
   const policy = clonePolicy(policySource);
   const preparedExecutions = new Map<string, PreparedProviderExecution>();
@@ -219,7 +275,7 @@ export function createProviderSessionResolver(
       } catch (error) {
         throwProviderFailure(
           'PIPELINE_PROVIDER_CONTRACT_VIOLATED',
-          createReport(policy, model, stage, []),
+          createReport(policy, model, stage, [], []),
           error,
         );
       }
@@ -232,7 +288,7 @@ export function createProviderSessionResolver(
     ) {
       throwProviderFailure(
         'PIPELINE_PROVIDER_CONTRACT_VIOLATED',
-        createReport(policy, model, stage, []),
+        createReport(policy, model, stage, providers, []),
       );
     }
     return providers;
@@ -240,14 +296,22 @@ export function createProviderSessionResolver(
   const acquireSession = async (
     model: ProviderExecutionModel,
     stage: ProviderExecutionStage,
+    requiredProviders: readonly ProviderRuntime[],
     provider: ProviderRuntime,
     attempts: ProviderExecutionAttempt[],
     onUnavailable?: (error: unknown) => void,
+    recoveryDeadline?: number,
   ): Promise<ProviderExecutionSession | null> => {
     let session: ProviderExecutionSession;
     try {
-      session = await loadSession(model, provider);
+      session = recoveryDeadline === undefined
+        ? await loadSession(model, provider)
+        : await runWithinRecoveryBudget(
+            recoveryDeadline,
+            () => loadSession(model, provider),
+          );
     } catch (error) {
+      if (error instanceof ProviderRecoveryBudgetExceededError) throw error;
       if (error instanceof ProviderSessionContractError) {
         attempts.push({
           attempt: attempts.length + 1,
@@ -257,7 +321,13 @@ export function createProviderSessionResolver(
         });
         throwProviderFailure(
           'PIPELINE_PROVIDER_CONTRACT_VIOLATED',
-          createReport(policy, model, stage, attempts),
+          createReport(
+            policy,
+            model,
+            stage,
+            requiredProviders,
+            attempts,
+          ),
           error,
         );
       }
@@ -279,7 +349,7 @@ export function createProviderSessionResolver(
       });
       throwProviderFailure(
         'PIPELINE_PROVIDER_CONTRACT_VIOLATED',
-        createReport(policy, model, stage, attempts),
+        createReport(policy, model, stage, requiredProviders, attempts),
       );
     }
     return session;
@@ -315,6 +385,7 @@ export function createProviderSessionResolver(
         const session = await acquireSession(
           model,
           stage,
+          providers,
           provider,
           attempts,
           (error) => {
@@ -332,7 +403,7 @@ export function createProviderSessionResolver(
       }
       throwProviderFailure(
         'PIPELINE_PROVIDER_UNAVAILABLE',
-        createReport(policy, model, stage, attempts),
+        createReport(policy, model, stage, providers, attempts),
         lastError,
       );
     },
@@ -360,7 +431,6 @@ export function createProviderSessionResolver(
         providerIndex += 1
       ) {
         const provider = providers[providerIndex];
-        const attempt = attempts.length + 1;
         let session: ProviderExecutionSession;
         if (prepared && providerIndex === prepared.providerIndex) {
           session = prepared.session;
@@ -368,6 +438,7 @@ export function createProviderSessionResolver(
           const acquired = await acquireSession(
             model,
             stage,
+            providers,
             provider,
             attempts,
             (error) => {
@@ -378,38 +449,102 @@ export function createProviderSessionResolver(
           session = acquired;
         }
 
-        try {
-          const value = await run(session);
-          attempts.push({
-            attempt,
-            provider,
-            outcome: 'succeeded',
-            reason: 'completed',
-          });
-          return {
-            value,
-            report: createReport(policy, model, stage, attempts, provider),
-          };
-        } catch (error) {
-          lastError = error;
-          executionFailed = true;
-          attempts.push({
-            attempt,
-            provider,
-            outcome: 'failed',
-            reason: 'execution-failed',
-          });
-          if (stage === 'detect') {
-            throwProviderFailure(
-              'PIPELINE_PROVIDER_EXECUTION_FAILED',
-              createReport(policy, model, stage, attempts),
-              error,
-            );
+        const maxSessionAttempts = provider === 'webgpu' && resetRuntime
+          ? WEBGPU_SESSION_RECOVERY_MAX_ATTEMPTS
+          : 1;
+        let recoveryDeadline: number | undefined;
+        for (
+          let sessionAttempt = 1;
+          sessionAttempt <= maxSessionAttempts;
+          sessionAttempt += 1
+        ) {
+          const attempt = attempts.length + 1;
+          try {
+            const value = recoveryDeadline === undefined
+              ? await run(session)
+              : await runWithinRecoveryBudget(
+                  recoveryDeadline,
+                  () => run(session),
+                );
+            attempts.push({
+              attempt,
+              provider,
+              outcome: 'succeeded',
+              reason: 'completed',
+            });
+            return {
+              value,
+              report: createReport(
+                policy,
+                model,
+                stage,
+                providers,
+                attempts,
+                provider,
+              ),
+            };
+          } catch (error) {
+            lastError = error;
+            executionFailed = true;
+            const sessionLost = error instanceof ProviderSessionLostError
+              && provider === 'webgpu';
+            attempts.push({
+              attempt,
+              provider,
+              outcome: 'failed',
+              reason: sessionLost ? 'session-lost' : 'execution-failed',
+            });
+            if (
+              sessionLost
+              && resetRuntime
+              && sessionAttempt < maxSessionAttempts
+            ) {
+              try {
+                recoveryDeadline ??= Date.now()
+                  + WEBGPU_SESSION_RECOVERY_WAIT_BUDGET_MS;
+                await waitWithinRecoveryBudget(recoveryDeadline);
+                await runWithinRecoveryBudget(
+                  recoveryDeadline,
+                  resetRuntime,
+                );
+                const recovered = await acquireSession(
+                  model,
+                  stage,
+                  providers,
+                  provider,
+                  attempts,
+                  (recoveryError) => {
+                    lastError = recoveryError;
+                  },
+                  recoveryDeadline,
+                );
+                if (!recovered) break;
+                session = recovered;
+                continue;
+              } catch (recoveryError) {
+                lastError = recoveryError;
+              }
+            }
+            if (stage === 'detect') {
+              throwProviderFailure(
+                'PIPELINE_PROVIDER_EXECUTION_FAILED',
+                createReport(policy, model, stage, providers, attempts),
+                error,
+              );
+            }
+            break;
           }
+        }
+        if (stage === 'detect' && executionFailed) {
+          throwProviderFailure(
+            'PIPELINE_PROVIDER_EXECUTION_FAILED',
+            createReport(policy, model, stage, providers, attempts),
+            lastError,
+          );
         }
       }
 
-      const report = createReport(policy, model, stage, attempts);
+      const report = createReport(policy, model, stage, providers, attempts);
       throwProviderFailure(
         executionFailed
           ? 'PIPELINE_PROVIDER_EXECUTION_FAILED'

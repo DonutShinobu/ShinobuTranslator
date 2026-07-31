@@ -308,8 +308,10 @@ export async function runInference(
     result = await (await getProxy()).runInference(sessionId, feeds);
     // Worker 推理失败时不抛异常，通过 InferenceResult.error 返回错误信息。
     // 调用者需要自行检查 error 字段。
-    if (result.error) {
-      failure = new Error(result.error);
+    if (result.failure || result.error) {
+      failure = new Error(
+        result.failure?.code ?? result.error ?? 'execution-failed',
+      );
       recordPerfRuntimeEvent({
         kind: "inference-failure",
         model: sessionModels.get(sessionId) ?? sessionId,

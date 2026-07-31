@@ -145,12 +145,13 @@ describe('image pipeline runtime contract', () => {
       inputNames: ['images'],
       outputNames: ['output'],
     }));
+    const resetRuntime = vi.fn(async () => undefined);
     const observedCapabilities: unknown[] = [];
     const runtime = new ImagePipelineRuntime({
       capabilities: {
         providerExecution: {
           policy,
-          modelSession: { loadModel, loadSession },
+          modelSession: { loadModel, loadSession, resetRuntime },
         },
       },
       async prepare(context) {
@@ -180,6 +181,7 @@ describe('image pipeline runtime contract', () => {
         modelSession: {
           loadModel: expect.any(Function),
           loadSession: expect.any(Function),
+          resetRuntime: expect.any(Function),
         },
       },
     });
@@ -197,6 +199,7 @@ describe('image pipeline runtime contract', () => {
       },
       model: 'detector',
       stage: 'detect',
+      requiredProviders: ['wasm'],
       attempts: [
         {
           attempt: 1,
@@ -226,6 +229,26 @@ describe('image pipeline runtime contract', () => {
       finalProvider: undefined,
       satisfied: false,
     })).toBe(false);
+    expect(isProviderExecutionReport({
+      ...baseReport,
+      attempts: [
+        {
+          attempt: 1,
+          provider: 'webgpu',
+          outcome: 'failed',
+          reason: 'session-lost',
+        },
+        {
+          attempt: 2,
+          provider: 'webgpu',
+          outcome: 'succeeded',
+          reason: 'completed',
+        },
+      ],
+      requiredProviders: ['webgpu'],
+      finalProvider: 'webgpu',
+      fallbackTrace: [],
+    })).toBe(true);
   });
 
   it('uses the canonical provider target definition for policies and reports', () => {
@@ -261,6 +284,7 @@ describe('image pipeline runtime contract', () => {
       },
       model: 'detector',
       stage: 'ocr',
+      requiredProviders: [],
       attempts: [],
       fallbackTrace: [],
       satisfied: false,

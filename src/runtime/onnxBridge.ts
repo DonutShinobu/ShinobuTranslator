@@ -19,6 +19,7 @@ import type {
   InferenceResult,
   GpuDetectResult,
 } from "./onnxWorkerTypes";
+export { throwOnInferenceFailure } from './onnxWorkerTypes';
 import type { RuntimeSelfCheckReport } from "./selfCheck";
 import { isNodeRuntime } from '@shinobu/browser-runtime/runtime-target';
 

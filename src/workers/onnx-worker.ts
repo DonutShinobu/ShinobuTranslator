@@ -4,7 +4,6 @@ import type { InferenceSession } from "onnxruntime-common";
 import type { OnnxSessionOptions } from "../runtime/onnxSessionOptions";
 import { serializeOnnxSessionOptions } from "../runtime/onnxSessionOptions";
 import { toErrorMessage } from "../shared/utils";
-import { isContextLostRuntimeError, isCreateTimeoutError } from "../runtime/onnxTypes";
 import type { RuntimeProvider, WebNnDeviceType } from "../runtime/onnxTypes";
 import type {
   TensorTransport,
@@ -19,6 +18,12 @@ import type { RuntimeSelfCheckReport } from "../runtime/selfCheck";
 import { preprocessLetterboxGpu } from "./gpuPreprocess";
 import { SerialInferenceQueue } from "./inferenceQueue";
 import { installTrustedTypesPolicy } from "../runtime/trustedTypesPolicy";
+import {
+  classifyWebGpuInferenceFailure,
+  observeWebGpuDeviceLoss,
+  withWebGpuDeviceLoss,
+  type WebGpuDeviceLoss,
+} from "../runtime/webGpuDeviceLoss";
 
 installTrustedTypesPolicy();
 // ---------------------------------------------------------------------------
@@ -82,7 +87,25 @@ const sessions = new Map<string, {
   provider: RuntimeProvider;
   webnnDeviceType?: WebNnDeviceType;
   modelUrl: string;
+  webGpuDeviceLoss?: WebGpuDeviceLoss;
 }>();
+
+class SessionCreateTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`Session 创建超时(${timeoutMs}ms)`);
+    this.name = 'SessionCreateTimeoutError';
+  }
+}
+
+function inferenceFailure(
+  entry: { webGpuDeviceLoss?: WebGpuDeviceLoss },
+  error: unknown,
+): NonNullable<InferenceResult['failure']> {
+  return {
+    code: classifyWebGpuInferenceFailure(entry.webGpuDeviceLoss, error),
+    detail: toErrorMessage(error),
+  };
+}
 
 async function withPerModelLock<T>(modelUrl: string, task: () => Promise<T>): Promise<T> {
   const previous = perModelLocks.get(modelUrl) ?? Promise.resolve();
@@ -155,7 +178,10 @@ async function createSessionWithTimeout(
     return await Promise.race([
       ortAll.InferenceSession.create(modelUrl, options),
       new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`Session 创建超时(${timeoutMs}ms)`)), timeoutMs);
+        timer = setTimeout(
+          () => reject(new SessionCreateTimeoutError(timeoutMs)),
+          timeoutMs,
+        );
       }),
     ]);
   } finally {
@@ -202,53 +228,51 @@ async function createSession(
     let abortProvider = false;
     for (const ep of getExecutionProviderAttempts(provider)) {
       if (abortProvider) break;
-      const maxAttempts = provider === "webnn" ? 2 : 1;
-      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-        try {
-          const sessionOptions: Parameters<typeof ortAll.InferenceSession.create>[1] = {
-            executionProviders: [ep],
-            graphOptimizationLevel: "all",
-          };
-          if (provider === "webgpu" && experimentalSessionOptions) {
-            if (typeof experimentalSessionOptions.enableGraphCapture === "boolean") {
-              sessionOptions.enableGraphCapture = experimentalSessionOptions.enableGraphCapture;
-            }
-            if (experimentalSessionOptions.preferredOutputLocation !== undefined) {
-              sessionOptions.preferredOutputLocation = experimentalSessionOptions.preferredOutputLocation;
-            }
-            if (experimentalSessionOptions.freeDimensionOverrides) {
-              sessionOptions.freeDimensionOverrides = experimentalSessionOptions.freeDimensionOverrides;
-            }
+      try {
+        const sessionOptions: Parameters<typeof ortAll.InferenceSession.create>[1] = {
+          executionProviders: [ep],
+          graphOptimizationLevel: "all",
+        };
+        if (provider === "webgpu" && experimentalSessionOptions) {
+          if (typeof experimentalSessionOptions.enableGraphCapture === "boolean") {
+            sessionOptions.enableGraphCapture = experimentalSessionOptions.enableGraphCapture;
           }
-          if (provider === "webgpu" && modelKey === "detector") {
-            sessionOptions.preferredOutputLocation = "gpu-buffer";
+          if (experimentalSessionOptions.preferredOutputLocation !== undefined) {
+            sessionOptions.preferredOutputLocation = experimentalSessionOptions.preferredOutputLocation;
           }
-          const session = await createSessionWithTimeout(
-            modelUrl,
-            sessionOptions,
-            SESSION_CREATE_TIMEOUT_MS
-          );
-          const webnnDeviceType = provider === "webnn" ? inferWebNnDeviceType(ep) : undefined;
-          sessions.set(sessionId, { session, provider, webnnDeviceType, modelUrl });
-          return {
-            sessionId,
-            provider,
-            webnnDeviceType,
-            inputNames: [...session.inputNames],
-            outputNames: [...session.outputNames],
-          };
-        } catch (error) {
-          const message = toErrorMessage(error);
-          attemptErrors.push(message);
-          if (isCreateTimeoutError(message)) {
-            abortProvider = true;
-            break;
+          if (experimentalSessionOptions.freeDimensionOverrides) {
+            sessionOptions.freeDimensionOverrides = experimentalSessionOptions.freeDimensionOverrides;
           }
-          if (provider === "webnn" && attempt + 1 < maxAttempts && isContextLostRuntimeError(error)) {
-            await new Promise((resolve) => setTimeout(resolve, 120));
-            continue;
-          }
-          break;
+        }
+        if (provider === "webgpu" && modelKey === "detector") {
+          sessionOptions.preferredOutputLocation = "gpu-buffer";
+        }
+        const session = await createSessionWithTimeout(
+          modelUrl,
+          sessionOptions,
+          SESSION_CREATE_TIMEOUT_MS
+        );
+        const webnnDeviceType = provider === "webnn" ? inferWebNnDeviceType(ep) : undefined;
+        sessions.set(sessionId, {
+          session,
+          provider,
+          webnnDeviceType,
+          modelUrl,
+          webGpuDeviceLoss: provider === 'webgpu'
+            ? observeWebGpuDeviceLoss(getWebGpuDevice())
+            : undefined,
+        });
+        return {
+          sessionId,
+          provider,
+          webnnDeviceType,
+          inputNames: [...session.inputNames],
+          outputNames: [...session.outputNames],
+        };
+      } catch (error) {
+        attemptErrors.push(toErrorMessage(error));
+        if (error instanceof SessionCreateTimeoutError) {
+          abortProvider = true;
         }
       }
     }
@@ -316,10 +340,14 @@ async function runInference(
     let outputs: Record<string, ortAll.Tensor> | undefined;
     try {
       try {
-        outputs = await entry.session.run(ortFeeds);
+        outputs = await withWebGpuDeviceLoss(
+          entry.webGpuDeviceLoss,
+          () => entry.session.run(ortFeeds),
+        );
       } catch (inferenceError) {
         const result: InferenceResult = {
           outputs: {},
+          failure: inferenceFailure(entry, inferenceError),
           error: toErrorMessage(inferenceError),
         };
         return result;
@@ -538,24 +566,34 @@ async function runDetectWithGpuPreprocess(
 
     let inputTensor: ortAll.Tensor | undefined;
     let outputs: Record<string, ortAll.Tensor> | undefined;
+    const inputSize = 1024;
     try {
-      const inputSize = 1024;
-      const preprocessed = await preprocessLetterboxGpu(imageSource, inputSize);
-      inputTensor = preprocessed.tensor;
-
-      const inputName = entry.session.inputNames[0] ?? "images";
-      const feeds: Record<string, ortAll.Tensor> = { [inputName]: inputTensor };
-      outputs = await entry.session.run(feeds);
+      const params = await withWebGpuDeviceLoss(
+        entry.webGpuDeviceLoss,
+        async () => {
+        const preprocessed = await preprocessLetterboxGpu(
+          imageSource,
+          inputSize,
+        );
+        inputTensor = preprocessed.tensor;
+        const inputName = entry.session.inputNames[0] ?? "images";
+        const feeds: Record<string, ortAll.Tensor> = {
+          [inputName]: inputTensor,
+        };
+        outputs = await entry.session.run(feeds);
+          return preprocessed.params;
+        },
+      );
 
       const result: GpuDetectResult = {
         outputs: {},
-        ratio: preprocessed.params.ratio,
-        unpaddedWidth: preprocessed.params.unpaddedWidth,
-        unpaddedHeight: preprocessed.params.unpaddedHeight,
+        ratio: params.ratio,
+        unpaddedWidth: params.unpaddedWidth,
+        unpaddedHeight: params.unpaddedHeight,
       };
       const outTransferables: ArrayBuffer[] = [];
 
-      for (const [name, outTensor] of Object.entries(outputs)) {
+      for (const [name, outTensor] of Object.entries(outputs ?? {})) {
         let data: Float32Array | BigInt64Array | Uint8Array;
         if (outTensor.location === "gpu-buffer") {
           data = (await outTensor.getData()) as Float32Array;
@@ -572,6 +610,14 @@ async function runDetectWithGpuPreprocess(
       }
 
       return Comlink.transfer(result, outTransferables);
+    } catch (error) {
+      return {
+        outputs: {},
+        failure: inferenceFailure(entry, error),
+        ratio: 0,
+        unpaddedWidth: 0,
+        unpaddedHeight: 0,
+      };
     } finally {
       for (const tensor of Object.values(outputs ?? {})) {
         tensor.dispose();

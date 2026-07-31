@@ -32,8 +32,37 @@ export type WorkerSessionHandle = {
 
 export type InferenceResult = {
   outputs: Record<string, TensorTransport>;
+  failure?: {
+    code: 'session-lost' | 'execution-failed';
+    detail?: string;
+  };
+  /** @deprecated Use the stable failure code for control flow. */
   error?: string;
 };
+
+export class ProviderSessionLostError extends Error {
+  readonly reason = 'session-lost';
+
+  constructor(detail?: string) {
+    super('pipeline.failure.providerSessionLost', {
+      cause: detail === undefined ? undefined : { detail },
+    });
+    this.name = 'ProviderSessionLostError';
+  }
+}
+
+export function throwOnInferenceFailure(
+  result: Pick<InferenceResult, 'outputs' | 'failure' | 'error'>,
+): void {
+  if (result.failure?.code === 'session-lost') {
+    throw new ProviderSessionLostError(result.failure.detail);
+  }
+  if (result.failure) {
+    throw new Error('pipeline.failure.providerExecution', {
+      cause: result.failure.detail,
+    });
+  }
+}
 
 // ---------------------------------------------------------------------------
 // GPU detect — result from GPU-preprocessed detection inference
@@ -41,6 +70,7 @@ export type InferenceResult = {
 
 export type GpuDetectResult = {
   outputs: Record<string, TensorTransport>;
+  failure?: InferenceResult['failure'];
   ratio: number;
   unpaddedWidth: number;
   unpaddedHeight: number;

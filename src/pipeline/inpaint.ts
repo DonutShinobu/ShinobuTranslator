@@ -2,7 +2,11 @@ import type { PlatformProvider, PipelineCanvas } from "../runtime/platform";
 import { getModel } from "../runtime/modelRegistry";
 import type { WebNnDeviceType } from "../runtime/onnxTypes";
 import { runInference } from "../runtime/onnxBridge";
-import type { WorkerSessionHandle, TensorTransport } from "../runtime/onnxWorkerTypes";
+import {
+  throwOnInferenceFailure,
+  type WorkerSessionHandle,
+  type TensorTransport,
+} from "../runtime/onnxWorkerTypes";
 import { clamp } from "./utils";
 import type {
   ProviderExecutionReport,
@@ -304,7 +308,7 @@ async function runInpaintByOnnx(
       [imageName]: feeds.image,
       [maskName]: feeds.mask
     });
-    if (result.error) throw new Error(result.error);
+    throwOnInferenceFailure(result);
     const outTensor = pickInpaintTensor(result.outputs);
     if (!outTensor) {
       throw new Error("去字 ONNX 模型输出未匹配到图像张量");

@@ -35,6 +35,7 @@ function providerReport(satisfied: boolean): ProviderExecutionReport {
     },
     model: 'detector',
     stage: 'detect',
+    requiredProviders: ['wasm'],
     attempts: [
       {
         attempt: 1,

@@ -37,6 +37,17 @@ describe('production provider contract composition', () => {
     mocks.disposeSession.mockResolvedValue(undefined);
   });
 
+  it('resets the shared ONNX runtime before rebuilding a lost WebGPU session', async () => {
+    const {
+      createProductionProviderExecutionCapability,
+    } = await import('../../src/runtime/productionProviderExecution');
+    const capability = createProductionProviderExecutionCapability(policy);
+
+    await capability.modelSession.resetRuntime?.();
+
+    expect(mocks.disposeAll).toHaveBeenCalledOnce();
+  });
+
   it('fails closed when the bridge substitutes a different provider', async () => {
     mocks.createSession.mockResolvedValue({
       sessionId: 'wrong-provider-session',

@@ -3,7 +3,11 @@ import type { PlatformProvider, PipelineImage } from "../runtime/platform";
 import { hasBubbleMaskPixel } from "./bubbleMask";
 import { nmsBoxes, type ScoredBox } from "./utils";
 import { runInference } from "../runtime/onnxBridge";
-import type { WorkerSessionHandle, TensorTransport } from "../runtime/onnxWorkerTypes";
+import {
+  throwOnInferenceFailure,
+  type WorkerSessionHandle,
+  type TensorTransport,
+} from "../runtime/onnxWorkerTypes";
 import type { WebNnDeviceType } from "../runtime/onnxTypes";
 import type {
   ProviderExecutionReport,
@@ -95,7 +99,7 @@ async function runBubbleInference(
     [inputName]: { data: prep.input, dims: [1, 3, size, size], type: "float32" }
   };
   const result = await runInference(handle.sessionId, feeds);
-  if (result.error) throw new Error(result.error);
+  throwOnInferenceFailure(result);
 
   const outputNames = handle.outputNames;
   const out0 = result.outputs[outputNames[0]];

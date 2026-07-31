@@ -42,6 +42,11 @@ const region: TextRegion = {
   sourceText: '',
   translatedText: '',
 };
+const secondRegion: TextRegion = {
+  ...region,
+  id: 'region-2',
+  box: { x: 10, y: 1, width: 8, height: 4 },
+};
 
 function createPlatform(): PlatformProvider {
   return {
@@ -62,12 +67,14 @@ function createPlatform(): PlatformProvider {
   } as unknown as PlatformProvider;
 }
 
-function successfulOcrOutput() {
+function successfulOcrOutput(batchSize = 1) {
   return {
     outputs: {
       output: {
-        data: new Float32Array([0, 10, 0]),
-        dims: [1, 1, 3],
+        data: new Float32Array(
+          Array.from({ length: batchSize }, () => [0, 10, 0]).flat(),
+        ),
+        dims: [batchSize, 1, 3],
         type: 'float32' as const,
       },
     },
@@ -189,6 +196,76 @@ describe('OCR provider execution', () => {
       },
       finalProvider: 'wasm',
       satisfied: true,
+    });
+  });
+
+  it('rebuilds a lost session before retrying an OCR batch', async () => {
+    let sessionGeneration = 0;
+    const resetRuntime = vi.fn(async () => undefined);
+    vi.mocked(runInference)
+      .mockResolvedValueOnce({
+        outputs: {},
+        failure: {
+          code: 'session-lost',
+          detail: 'private adapter detail',
+        },
+      })
+      .mockImplementation(async () => successfulOcrOutput());
+    const resolver = createProviderSessionResolver({
+      policy: {
+        schemaVersion: 1,
+        contract: {
+          id: 'test.ocr-webgpu-only',
+          version: 1,
+        },
+        rules: [{
+          model: 'paddleocr_v6_medium_rec',
+          stage: 'ocr',
+          providers: ['webgpu'],
+        }],
+      },
+      loadModel: vi.fn(),
+      loadSession: async (model, provider) => ({
+        sessionId: `${model}:${provider}:${sessionGeneration += 1}`,
+        provider,
+        inputNames: ['images'],
+        outputNames: ['output'],
+      }),
+      resetRuntime,
+    });
+
+    const result = await runOcr(
+      image,
+      [region, secondRegion],
+      'paddleocr_v6_medium',
+      createPlatform(),
+      resolver,
+    );
+
+    expect(resetRuntime).toHaveBeenCalledOnce();
+    const sessionIds = vi.mocked(runInference).mock.calls
+      .map(([sessionId]) => sessionId);
+    expect(sessionIds[0]).toBe('paddleocr_v6_medium_rec:webgpu:1');
+    expect(sessionIds.slice(1)).not.toHaveLength(0);
+    expect(sessionIds.slice(1).every((sessionId) =>
+      sessionId === 'paddleocr_v6_medium_rec:webgpu:2')).toBe(true);
+    expect(result.providerReports[0]).toMatchObject({
+      requiredProviders: ['webgpu'],
+      finalProvider: 'webgpu',
+      attempts: [
+        {
+          attempt: 1,
+          provider: 'webgpu',
+          outcome: 'failed',
+          reason: 'session-lost',
+        },
+        {
+          attempt: 2,
+          provider: 'webgpu',
+          outcome: 'succeeded',
+          reason: 'completed',
+        },
+      ],
     });
   });
 });

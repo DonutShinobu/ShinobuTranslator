@@ -18,7 +18,9 @@ import {
   createProductionProviderSessionResolver,
 } from '../runtime/productionProviderExecution';
 import {
+  assertWebGpuBenchmarkExecution,
   resolveBenchmarkProviderExecutionCapability,
+  WEBGPU_BENCHMARK_PROVIDER_EXECUTION_POLICY,
   type BenchmarkProviderExecutionInput,
 } from './providerExecution';
 
@@ -73,13 +75,22 @@ const benchmarkApi: ShinobuBenchmarkApi = {
       options?.runtimeCapabilities?.providerExecution as
         BenchmarkProviderExecutionInput | undefined,
     );
-    return runPipeline(file, config, onProgress, {
+    const result = await runPipeline(file, config, onProgress, {
       ...options,
       runtimeCapabilities: {
         ...options?.runtimeCapabilities,
         providerExecution,
       },
     });
+    if (
+      providerExecution.policy.contract.id
+        === WEBGPU_BENCHMARK_PROVIDER_EXECUTION_POLICY.contract.id
+      && providerExecution.policy.contract.version
+        === WEBGPU_BENCHMARK_PROVIDER_EXECUTION_POLICY.contract.version
+    ) {
+      assertWebGpuBenchmarkExecution(result.providerReports);
+    }
+    return result;
   },
   recognizeOcrRegions: async (image, regions, providerName = 'paddleocr_v6_medium') => {
     await import('../pipeline/ocr');

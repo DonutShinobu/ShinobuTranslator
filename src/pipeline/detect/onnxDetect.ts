@@ -2,8 +2,15 @@ import type { Rect, TextRegion, QuadPoint } from "../../types";
 import type { PlatformProvider, PipelineCanvas, PipelineImage } from "../../runtime/platform";
 import { minAreaRect, type Quad } from "../typeset/geometry";
 import type { WebNnDeviceType } from "../../runtime/onnxTypes";
-import { runInference, runDetectWithGpuPreprocess } from "../../runtime/onnxBridge";
-import type { WorkerSessionHandle, TensorTransport } from "../../runtime/onnxWorkerTypes";
+import {
+  runInference,
+  runDetectWithGpuPreprocess,
+} from "../../runtime/onnxBridge";
+import {
+  throwOnInferenceFailure,
+  type WorkerSessionHandle,
+  type TensorTransport,
+} from "../../runtime/onnxWorkerTypes";
 import { clamp, polygonArea, nmsBoxes, type ScoredBox } from "../utils";
 import {
   type ProviderSessionResolver,
@@ -790,6 +797,7 @@ async function runDetectorInference(
       ? await platform.createImageBitmap(image)
       : await createImageBitmap(image as HTMLImageElement);
     const gpuResult = await runDetectWithGpuPreprocess(handle.sessionId, imageBitmap);
+    throwOnInferenceFailure(gpuResult);
     return {
       prep: {
         input: new Float32Array(0),
@@ -813,7 +821,7 @@ async function runDetectorInference(
     },
   };
   const result = await runInference(handle.sessionId, feeds);
-  if (result.error) throw new Error(result.error);
+  throwOnInferenceFailure(result);
   return {
     prep,
     outputTensors: result.outputs,

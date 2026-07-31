@@ -97,10 +97,12 @@ function detectReviewerRuntime() {
   };
 }
 
-function childEnvironment() {
+export function createAmoChildEnvironment({
+  inherited = process.env,
+  nodeEnvironment,
+} = {}) {
   const environment = {
-    ...process.env,
-    NODE_ENV: 'production',
+    ...inherited,
     TZ: 'UTC',
     LANG: 'C.UTF-8',
     LC_ALL: 'C.UTF-8',
@@ -116,12 +118,19 @@ function childEnvironment() {
   ]);
   for (const key of Object.keys(environment)) {
     const normalizedKey = key.toLowerCase();
+    if (normalizedKey === 'node_env') {
+      delete environment[key];
+      continue;
+    }
     if (
       normalizedKey.startsWith('npm_config_')
       && !retainedNpmConfiguration.has(normalizedKey)
     ) {
       delete environment[key];
     }
+  }
+  if (nodeEnvironment !== undefined) {
+    environment.NODE_ENV = nodeEnvironment;
   }
   return environment;
 }
@@ -161,20 +170,23 @@ export function buildForAmo() {
   assertAmoPackageMetadata(initialMetadata);
 
   rmSync(outputDirectory, { recursive: true, force: true });
-  const environment = childEnvironment();
-  runNpm(['ci', '--no-audit', '--no-fund'], environment);
+  const installEnvironment = createAmoChildEnvironment();
+  runNpm(['ci', '--no-audit', '--no-fund'], installEnvironment);
   const installedMetadata = readPackageMetadata();
   assertAmoPackageMetadata(installedMetadata);
   assertInstalledWebExt();
 
   const assetProof = verifyAmoBuildAssets({ root: repositoryRoot });
-  runNpm(['run', 'build:firefox'], environment);
+  const buildEnvironment = createAmoChildEnvironment({
+    nodeEnvironment: 'production',
+  });
+  runNpm(['run', 'build:firefox'], buildEnvironment);
   execFileSync(
     process.execPath,
     [resolve(import.meta.dirname, 'check-firefox-lint.mjs')],
     {
       cwd: repositoryRoot,
-      env: environment,
+      env: buildEnvironment,
       stdio: 'inherit',
     },
   );

@@ -83,7 +83,7 @@ describe('AMO source build entrypoint', () => {
       'const assetProof = verifyAmoBuildAssets',
     );
     const unifiedFirefoxBuild = source.indexOf(
-      "runNpm(['run', 'build:firefox'], environment)",
+      "runNpm(['run', 'build:firefox'], buildEnvironment)",
     );
     const lint = source.indexOf("'check-firefox-lint.mjs'");
     const packageArtifacts = source.indexOf(

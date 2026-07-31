@@ -17,6 +17,9 @@ import {
   assertAmoReviewerEnvironment,
   verifyAmoBuildAssets,
 } from '../../apps/extension/scripts/amo-build-contract.mjs';
+import {
+  createAmoChildEnvironment,
+} from '../../apps/extension/scripts/build-for-amo.mjs';
 
 const root = process.cwd();
 const temporaryDirectories: string[] = [];
@@ -111,6 +114,38 @@ describe('AMO build contract', () => {
       ).toThrow(path);
       rmSync(resolve(fixtureRoot, path));
     }
+  });
+
+  it('keeps devDependencies installable while fixing production semantics only for build commands', () => {
+    const inherited = {
+      PATH: '/usr/bin',
+      npm_config_cache: '/tmp/npm-cache',
+      npm_config_user_agent: 'npm/11.9.0 node/v24.14.0 linux arm64',
+    };
+
+    const installEnvironment = createAmoChildEnvironment({
+      inherited,
+    });
+    const buildEnvironment = createAmoChildEnvironment({
+      inherited,
+      nodeEnvironment: 'production',
+    });
+
+    expect(installEnvironment).not.toHaveProperty('NODE_ENV');
+    expect(installEnvironment).not.toHaveProperty('npm_config_user_agent');
+    expect(installEnvironment).toMatchObject({
+      PATH: '/usr/bin',
+      npm_config_cache: '/tmp/npm-cache',
+      TZ: 'UTC',
+      LANG: 'C.UTF-8',
+      LC_ALL: 'C.UTF-8',
+    });
+    expect(buildEnvironment).toMatchObject({
+      NODE_ENV: 'production',
+      TZ: 'UTC',
+      LANG: 'C.UTF-8',
+      LC_ALL: 'C.UTF-8',
+    });
   });
 
   it('pins the root command, reviewer engines, lockfile v3, npm ci, and web-ext 10.5.0', () => {

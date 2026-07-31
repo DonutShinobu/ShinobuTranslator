@@ -33,6 +33,10 @@ import {
   firefoxExtensionCookies,
   firefoxExtensionPermissions,
 } from './firefoxPermissions';
+import {
+  firefoxReferrerPolicyObserver,
+  firefoxRequestHeaderOverride,
+} from './firefoxNetwork';
 
 export type FirefoxBasicBackgroundCapabilities = Pick<
   BackgroundExtensionCapabilities,
@@ -96,12 +100,11 @@ export function createFirefoxBasicPopupCapabilities(
 
 export function createFirefoxExtensionAdapter(
   api: unknown,
-  compatibility: ExtensionCompatibilityCapabilities,
+  _compatibility: ExtensionCompatibilityCapabilities,
 ): ExtensionCapabilityAdapter {
   const firefox = firefoxApi(api);
   return {
     background() {
-      const existing = compatibility.background();
       const basic = createFirefoxBasicBackgroundCapabilities(firefox);
       const permissions = firefoxExtensionPermissions(firefox.permissions);
       return {
@@ -112,8 +115,13 @@ export function createFirefoxExtensionAdapter(
         commands: firefoxNativeCommands(firefox.commands),
         permissions,
         cookies: firefoxExtensionCookies(() => firefox.cookies, permissions),
-        referrerPolicies: existing.referrerPolicies,
-        requestHeaderOverride: existing.requestHeaderOverride,
+        referrerPolicies: firefoxReferrerPolicyObserver(
+          firefox.webRequest?.onHeadersReceived,
+        ),
+        requestHeaderOverride: firefoxRequestHeaderOverride(
+          firefox.declarativeNetRequest,
+          firefox.runtime.getURL(''),
+        ),
         environment: firefoxExtensionEnvironment(firefox.runtime),
       };
     },

@@ -6,6 +6,7 @@ import {
 import type {
   DocumentReferrerPolicy,
   DocumentReferrerPolicyObserver,
+  ExtensionPermissions,
   ExtensionStorage,
   JsonValue,
   RequestHeaderOverride,
@@ -154,8 +155,20 @@ function createImageDownloader(
 ) {
   const observer = createReferrerPolicyObserverHarness();
   const headerOverride = createHeaderOverrideHarness();
+  const permissions: ExtensionPermissions = {
+    async check() {
+      return { status: 'granted' };
+    },
+    async request() {
+      return { status: 'granted' };
+    },
+    onChanged() {
+      return () => undefined;
+    },
+  };
   return createImageDownloaderWithCapabilities({
     ...dependencies,
+    permissions: dependencies.permissions ?? permissions,
     sessionStorage: dependencies.sessionStorage ?? createTestSessionStorage(),
     referrerPolicies: dependencies.referrerPolicies ?? observer.capability,
     requestHeaderOverride: dependencies.requestHeaderOverride ?? headerOverride.capability,
@@ -524,6 +537,47 @@ describe('ImageDownloader', () => {
     expect(fetchImage).not.toHaveBeenCalled();
     expect(headerOverride.requests).toHaveLength(0);
     expect(headerOverride.releases).toHaveLength(0);
+  });
+
+  it('reports revoked target access as a structured operation failure', async () => {
+    const headerOverride = createHeaderOverrideHarness();
+    const permissions: ExtensionPermissions = {
+      async check(requirements) {
+        return {
+          status: 'not-granted',
+          missing: requirements,
+        };
+      },
+      async request() {
+        throw new Error('image download must not prompt for host access');
+      },
+      onChanged() {
+        return () => undefined;
+      },
+    };
+    const fetchImage = vi.fn(async () => createJpegResponse());
+    const downloader = createImageDownloader({
+      permissions,
+      requestHeaderOverride: headerOverride.capability,
+      fetchImage,
+    });
+
+    await expect(downloader.download({
+      imageUrl: 'https://cdn.example/private/image.jpg?token=secret',
+    }, documentSource(
+      'https://reader.example/chapter/private?session=secret',
+    ))).rejects.toMatchObject({
+      name: 'ExtensionOperationError',
+      capability: 'request-header-override',
+      operation: 'acquire',
+      code: 'browser-rejected',
+      retryable: false,
+      diagnostic: {
+        missingPermission: 'target-origin',
+      },
+    });
+    expect(fetchImage).not.toHaveBeenCalled();
+    expect(headerOverride.requests).toHaveLength(0);
   });
 
   it('does not report success while a temporary header override remains active', async () => {

@@ -1,6 +1,7 @@
 import type {
   DocumentReferrerPolicy,
   DocumentReferrerPolicyObserver,
+  ExtensionPermissions,
   ExtensionStorage,
   RequestHeaderOverride,
   RequestHeaderOverrideLease,
@@ -38,6 +39,7 @@ export type ImageDownloader = {
 };
 
 export type ImageDownloaderDependencies = {
+  permissions: ExtensionPermissions;
   sessionStorage: ExtensionStorage;
   referrerPolicies: DocumentReferrerPolicyObserver;
   requestHeaderOverride: RequestHeaderOverride;
@@ -448,6 +450,21 @@ export function createImageDownloader(
     for (let index = 0; index < candidates.length; index += 1) {
       const candidate = candidates[index];
       const targetUrl = parseHttpUrl(candidate, '图片地址');
+      const targetAccess = await dependencies.permissions.check([{
+        kind: 'target-origin',
+        origin: targetUrl.origin,
+      }]);
+      if (targetAccess.status !== 'granted') {
+        throw new ExtensionOperationError({
+          capability: 'request-header-override',
+          operation: 'acquire',
+          code: 'browser-rejected',
+          retryable: false,
+          diagnostic: {
+            missingPermission: 'target-origin',
+          },
+        });
+      }
       const referer = computeReferrer(trustedDocumentUrl, targetUrl, effectiveReferrerPolicy);
       const startedAt = Date.now();
       let headerOverrideLease: RequestHeaderOverrideLease | undefined;

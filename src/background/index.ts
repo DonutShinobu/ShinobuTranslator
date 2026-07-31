@@ -65,6 +65,7 @@ export function startBackground(
     authentication,
   });
   const imageDownloader = createImageDownloader({
+    permissions: capabilities.permissions,
     sessionStorage: capabilities.sessionStorage,
     referrerPolicies: capabilities.referrerPolicies,
     requestHeaderOverride: capabilities.requestHeaderOverride,

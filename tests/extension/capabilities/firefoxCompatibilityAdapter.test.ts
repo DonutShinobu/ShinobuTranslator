@@ -28,13 +28,6 @@ function createCompatibilityApi() {
       onAdded: listenerEvent(),
       onRemoved: listenerEvent(),
     },
-    webRequest: {
-      onHeadersReceived: listenerEvent(),
-    },
-    declarativeNetRequest: {
-      updateDynamicRules: async () => undefined,
-      updateSessionRules: async () => undefined,
-    },
   };
 }
 
@@ -54,25 +47,5 @@ describe('Firefox downstream compatibility capabilities', () => {
       code: 'context-unavailable',
       operation: 'initialize',
     });
-  });
-
-  it('registers referrer observation without Chrome-only extraHeaders', () => {
-    let extraInfoSpec: readonly string[] | undefined;
-    const api = createCompatibilityApi();
-    api.webRequest.onHeadersReceived.addListener = (
-      _listener?: unknown,
-      _filter?: unknown,
-      values?: readonly string[],
-    ) => {
-      extraInfoSpec = values;
-    };
-    const compatibility = createChromeCompatibilityCapabilities(api);
-
-    const cancel = compatibility.background().referrerPolicies.onObserved(
-      () => undefined,
-    );
-
-    expect(extraInfoSpec).toEqual(['responseHeaders']);
-    cancel();
   });
 });

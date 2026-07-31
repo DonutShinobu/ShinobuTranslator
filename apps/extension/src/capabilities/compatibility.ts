@@ -8,8 +8,6 @@ export interface ExtensionCompatibilityCapabilities {
     BackgroundExtensionCapabilities,
     | 'permissions'
     | 'cookies'
-    | 'referrerPolicies'
-    | 'requestHeaderOverride'
   >;
   popup(): Pick<PopupExtensionCapabilities, 'permissions'>;
 }

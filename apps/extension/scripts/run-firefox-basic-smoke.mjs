@@ -20,6 +20,16 @@ const onePixelPng = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
   'base64',
 );
+const imageHostOrigins = [
+  'http://twitter.com/*',
+  'http://x.com/*',
+  'http://pbs.twimg.com/*',
+];
+const imageHostAccessUrls = [
+  'http://twitter.com/fixture/status/47',
+  'http://x.com/fixture/status/49-b',
+  'http://pbs.twimg.com/media/issue-49-b.png',
+];
 
 async function isAccessible(path) {
   try {
@@ -86,24 +96,61 @@ async function assertFirefoxPackage() {
 }
 
 async function startFixtureServer() {
+  const networkRequests = [];
+  const mediaRequestCounts = new Map();
   const server = createServer((request, response) => {
     const requestUrl = new URL(
       request.url ?? '/',
       `http://${request.headers.host ?? 'twitter.com'}`,
     );
     if (requestUrl.pathname.startsWith('/media/')) {
+      const requestCount = (mediaRequestCounts.get(requestUrl.pathname) ?? 0) + 1;
+      mediaRequestCounts.set(requestUrl.pathname, requestCount);
+      const expectedReferer = requestUrl.pathname === '/media/issue-49-b.png'
+        ? 'http://x.com/'
+        : 'http://twitter.com/';
+      const isProtectedDownload = requestUrl.pathname.startsWith('/media/issue-49-')
+        && requestCount > 1;
+      const status = isProtectedDownload
+        && (
+          requestUrl.pathname === '/media/issue-49-rejected.png'
+          || request.headers.referer !== expectedReferer
+        )
+        ? 403
+        : 200;
+      networkRequests.push({
+        path: requestUrl.pathname,
+        referer: request.headers.referer,
+        status,
+      });
+      if (status === 403) {
+        response.writeHead(403, {
+          'Cache-Control': 'no-store',
+          'Content-Type': 'text/html; charset=utf-8',
+        });
+        response.end('<html>hotlink rejected</html>');
+        return;
+      }
       response.writeHead(200, {
         'Cache-Control': 'no-store',
         'Content-Type': 'image/png',
       });
-      response.end(onePixelPng);
+      const delay = requestUrl.pathname === '/media/issue-49-a.png'
+        && requestCount > 1
+        ? 250
+        : 0;
+      setTimeout(() => response.end(onePixelPng), delay);
       return;
     }
 
+    const issue49Match = /^\/fixture\/status\/(49-(?:a|b|rejected|revoked))$/u
+      .exec(requestUrl.pathname);
     response.writeHead(200, {
       'Cache-Control': 'no-store',
       'Content-Type': 'text/html; charset=utf-8',
+      ...(issue49Match ? { 'Referrer-Policy': 'origin' } : {}),
     });
+    const fixtureId = issue49Match?.[1] ?? '47';
     response.end(`<!doctype html>
       <html>
         <head>
@@ -124,15 +171,15 @@ async function startFixtureServer() {
           </style>
         </head>
         <body>
-          <div id="firefox-smoke-fixture" hidden>issue-47</div>
+          <div id="firefox-smoke-fixture" hidden>issue-${fixtureId}</div>
           <div id="layers">
             <div aria-labelledby="modal-header" role="dialog">
               <h1 id="modal-header" hidden>Media</h1>
               <article data-testid="tweet">
-                <a href="/fixture/status/47">Ticket 47 fixture</a>
+                <a href="/fixture/status/${fixtureId}">Ticket ${fixtureId} fixture</a>
                 <img
                   alt="fixture manga"
-                  src="http://pbs.twimg.com/media/issue-47.png"
+                  src="http://pbs.twimg.com/media/issue-${fixtureId}.png"
                 >
               </article>
             </div>
@@ -144,7 +191,10 @@ async function startFixtureServer() {
     server.once('error', rejectListen);
     server.listen(0, '127.0.0.1', resolveListen);
   });
-  return server;
+  return {
+    server,
+    networkRequests,
+  };
 }
 
 async function closeServer(server) {
@@ -161,6 +211,8 @@ async function grantDeclaredHostAccess(driver, addonId) {
   try {
     await driver.executeAsyncScript(`
       const addonId = arguments[0];
+      const origins = arguments[1];
+      const accessUrls = arguments[2];
       const complete = arguments[arguments.length - 1];
       const { ExtensionPermissions } = ChromeUtils.importESModule(
         'resource://gre/modules/ExtensionPermissions.sys.mjs'
@@ -182,10 +234,7 @@ async function grantDeclaredHostAccess(driver, addonId) {
         addonId,
         {
           data_collection: [],
-          origins: [
-            'http://twitter.com/*',
-            'http://pbs.twimg.com/*',
-          ],
+          origins,
           permissions: [],
         },
         policy.extension,
@@ -199,8 +248,8 @@ async function grantDeclaredHostAccess(driver, addonId) {
             parseError = String(error);
           }
           complete({
-            allowed: policy.canAccessURI(
-              Services.io.newURI('http://twitter.com/fixture/status/47')
+            allowed: accessUrls.every(
+              (url) => policy.canAccessURI(Services.io.newURI(url))
             ),
             contentUrl,
             parseError,
@@ -209,7 +258,7 @@ async function grantDeclaredHostAccess(driver, addonId) {
         },
         (error) => complete({ error: String(error) }),
       );
-    `, addonId).then((result) => {
+    `, addonId, imageHostOrigins, imageHostAccessUrls).then((result) => {
       if (!result?.ok) {
         throw new Error(
           `Could not grant declared Firefox host access: ${
@@ -219,7 +268,7 @@ async function grantDeclaredHostAccess(driver, addonId) {
       }
       if (!result.allowed) {
         throw new Error(
-          'Firefox did not activate the declared twitter.com host access.',
+          'Firefox did not activate the declared image-download host access.',
         );
       }
       if (result.parseError) {
@@ -279,6 +328,52 @@ async function updateCredentialPermissions(
   }
 }
 
+async function revokeDeclaredHostAccess(driver, addonId) {
+  await driver.setContext(firefox.Context.CHROME);
+  try {
+    const result = await driver.executeAsyncScript(`
+      const addonId = arguments[0];
+      const origins = arguments[1];
+      const accessUrls = arguments[2];
+      const complete = arguments[arguments.length - 1];
+      const { ExtensionPermissions } = ChromeUtils.importESModule(
+        'resource://gre/modules/ExtensionPermissions.sys.mjs'
+      );
+      const policy = WebExtensionPolicy.getByID(addonId);
+      if (!policy) {
+        complete({ error: 'Installed Firefox extension policy was not found.' });
+        return;
+      }
+      ExtensionPermissions.remove(
+        addonId,
+        {
+          data_collection: [],
+          origins,
+          permissions: [],
+        },
+        policy.extension,
+      ).then(
+        () => complete({
+          allowed: accessUrls.some(
+            (url) => policy.canAccessURI(Services.io.newURI(url))
+          ),
+          ok: true,
+        }),
+        (error) => complete({ error: String(error) }),
+      );
+    `, addonId, imageHostOrigins, imageHostAccessUrls);
+    if (!result?.ok || result.allowed) {
+      throw new Error(
+        `Could not revoke declared Firefox host access: ${
+          result?.error ?? JSON.stringify(result)
+        }`,
+      );
+    }
+  } finally {
+    await driver.setContext(firefox.Context.CONTENT);
+  }
+}
+
 async function respondToPermissionPrompt(driver, response, label) {
   await driver.setContext(firefox.Context.CHROME);
   try {
@@ -321,6 +416,29 @@ async function respondToPermissionPrompt(driver, response, label) {
       ).click();
     `, response);
     return prompt;
+  } finally {
+    await driver.setContext(firefox.Context.CONTENT);
+  }
+}
+
+async function readHeaderOverrideRuleIds(driver, addonId) {
+  await driver.setContext(firefox.Context.CHROME);
+  try {
+    const result = await driver.executeScript(`
+      const addonId = arguments[0];
+      const { ExtensionDNR } = ChromeUtils.importESModule(
+        'resource://gre/modules/ExtensionDNR.sys.mjs'
+      );
+      const policy = WebExtensionPolicy.getByID(addonId);
+      const manager = policy
+        ? ExtensionDNR.getRuleManager(policy.extension, false)
+        : undefined;
+      return {
+        dynamic: manager?.getDynamicRules().map((rule) => rule.id) ?? [],
+        session: manager?.getSessionRules().map((rule) => rule.id) ?? [],
+      };
+    `, addonId);
+    return result;
   } finally {
     await driver.setContext(firefox.Context.CONTENT);
   }
@@ -832,9 +950,62 @@ async function runAuthenticationSmoke(driver, addonId) {
   });
 }
 
+async function openInlineFixture(driver, path, hostname = 'twitter.com') {
+  await driver.switchTo().newWindow('tab');
+  await driver.get(`http://${hostname}${path}`);
+  await driver.wait(
+    until.elementLocated(By.id('firefox-smoke-fixture')),
+    5_000,
+    `Firefox did not load network fixture ${path}.`,
+  );
+  const inlineEntry = await driver.wait(
+    until.elementLocated(By.css('.mt-x-overlay-inline')),
+    15_000,
+    `Firefox content entry did not mount for ${path}.`,
+  );
+  await driver.wait(
+    until.elementIsVisible(inlineEntry),
+    5_000,
+    `Firefox content entry was not visible for ${path}.`,
+  );
+  return await driver.getWindowHandle();
+}
+
+async function clickInlineFixture(driver, handle) {
+  await driver.switchTo().window(handle);
+  const inlineButton = await driver.findElement(
+    By.css('.mt-x-overlay-inline .mt-x-control:not(.mt-x-control-secondary)'),
+  );
+  await inlineButton.click();
+}
+
+async function waitForInlineFailure(driver, handle, label, expectedDetail) {
+  await driver.switchTo().window(handle);
+  const inlineButton = await driver.findElement(
+    By.css('.mt-x-overlay-inline .mt-x-control:not(.mt-x-control-secondary)'),
+  );
+  await driver.wait(
+    async () => (
+      await inlineButton.getAttribute('data-status')
+    ) === 'error',
+    30_000,
+    `${label} did not reach the shared structured error UI.`,
+  );
+  const detail = await driver.findElement(
+    By.css('.mt-x-overlay-inline .mt-x-detail'),
+  ).getText();
+  if (expectedDetail && !detail.includes(expectedDetail)) {
+    throw new Error(
+      `${label} did not expose ${expectedDetail}: ${detail}`,
+    );
+  }
+  return detail;
+}
+
 async function run() {
   await assertFirefoxPackage();
-  const server = await startFixtureServer();
+  const fixture = await startFixtureServer();
+  const { server, networkRequests } = fixture;
   const address = server.address();
   if (!address || typeof address === 'string') {
     throw new Error('Fixture server did not expose a TCP port.');
@@ -849,7 +1020,7 @@ async function run() {
     .enableBidi()
     .setPreference(
       'network.dns.localDomains',
-      'twitter.com,pbs.twimg.com',
+      'twitter.com,x.com,pbs.twimg.com',
     )
     .setPreference('network.proxy.type', 1)
     .setPreference('network.proxy.http', '127.0.0.1')
@@ -957,10 +1128,114 @@ async function run() {
       'Firefox screenshot selection entry was mounted but not visible.',
     );
 
+    const concurrentA = await openInlineFixture(
+      driver,
+      '/fixture/status/49-a',
+    );
+    const concurrentB = await openInlineFixture(
+      driver,
+      '/fixture/status/49-b',
+      'x.com',
+    );
+    const rejected = await openInlineFixture(
+      driver,
+      '/fixture/status/49-rejected',
+    );
+    const revoked = await openInlineFixture(
+      driver,
+      '/fixture/status/49-revoked',
+    );
+    networkRequests.length = 0;
+
+    await clickInlineFixture(driver, concurrentA);
+    await clickInlineFixture(driver, concurrentB);
+    await waitForInlineFailure(
+      driver,
+      concurrentA,
+      'First concurrent protected-image request',
+    );
+    await waitForInlineFailure(
+      driver,
+      concurrentB,
+      'Second concurrent protected-image request',
+    );
+    const successfulNetworkRequests = networkRequests.filter(
+      (request) => request.path === '/media/issue-49-a.png'
+        || request.path === '/media/issue-49-b.png',
+    );
+    const concurrentARequest = successfulNetworkRequests.find(
+      (request) => request.path === '/media/issue-49-a.png',
+    );
+    const concurrentBRequest = successfulNetworkRequests.find(
+      (request) => request.path === '/media/issue-49-b.png',
+    );
+    if (
+      successfulNetworkRequests.length !== 2
+      || concurrentARequest?.referer !== 'http://twitter.com/'
+      || concurrentARequest.status !== 200
+      || concurrentBRequest?.referer !== 'http://x.com/'
+      || concurrentBRequest.status !== 200
+    ) {
+      throw new Error(
+        `Firefox protected-image concurrency did not preserve document Referers: ${
+          JSON.stringify(successfulNetworkRequests)
+        }`,
+      );
+    }
+
+    await clickInlineFixture(driver, rejected);
+    await waitForInlineFailure(
+      driver,
+      rejected,
+      'Rejected protected-image request',
+    );
+    if (!networkRequests.some(
+      (request) => request.path === '/media/issue-49-rejected.png'
+        && request.status === 403,
+    )) {
+      throw new Error('Firefox protected-image rejection was not exercised.');
+    }
+
+    await revokeDeclaredHostAccess(driver, addonId);
+    const revokedRequestStart = networkRequests.length;
+    await clickInlineFixture(driver, revoked);
+    await waitForInlineFailure(
+      driver,
+      revoked,
+      'Revoked host-permission request',
+      '(browser-rejected)',
+    );
+    if (networkRequests.slice(revokedRequestStart).some(
+      (request) => request.path === '/media/issue-49-revoked.png',
+    )) {
+      throw new Error(
+        'Firefox issued an image request after target host access was revoked.',
+      );
+    }
+
+    const remainingRules = await readHeaderOverrideRuleIds(driver, addonId);
+    const isHeaderOverrideRule = (id) => (
+      id === 1
+      || id === 2
+      || (id >= 1_000_000 && id <= 1_999_999)
+    );
+    if (
+      remainingRules.dynamic.some(isHeaderOverrideRule)
+      || remainingRules.session.some(isHeaderOverrideRule)
+    ) {
+      throw new Error(
+        `Firefox temporary Header override rules leaked: ${
+          JSON.stringify(remainingRules)
+        }`,
+      );
+    }
+
     console.log(
       'Firefox packaged smoke passed: add-on install, inline image entry, '
-        + 'shared retry UI, native screenshot menu interaction, all '
-        + 'credential modes, and scoped permission revocation.',
+        + 'shared retry UI, native screenshot menu interaction, protected '
+        + 'image success/rejection, host-permission revocation, concurrent '
+        + 'Header leases, cleanup, all credential modes, and scoped '
+        + 'credential permission revocation.',
     );
   } catch (error) {
     if (driver) {

@@ -69,6 +69,10 @@ export type FirefoxApi = {
   menus?: FirefoxMenus;
   permissions?: FirefoxPermissions;
   cookies?: FirefoxCookies;
+  webRequest?: {
+    onHeadersReceived?: FirefoxHeadersReceivedEvent;
+  };
+  declarativeNetRequest?: FirefoxDeclarativeNetRequest;
 };
 
 export type FirefoxPermissionDetails = {
@@ -155,6 +159,52 @@ export type FirefoxMenus = {
     info: { menuItemId?: string | number },
     tab?: { id?: number },
   ) => void>;
+};
+
+export type FirefoxHeadersReceivedDetails = {
+  documentId?: string;
+  tabId?: number;
+  frameId?: number;
+  url?: string;
+  responseHeaders?: Array<{
+    name: string;
+    value?: string;
+  }>;
+};
+
+export type FirefoxHeadersReceivedEvent = {
+  addListener(
+    listener: (details: FirefoxHeadersReceivedDetails) => void,
+    filter: {
+      urls: string[];
+      types: Array<'main_frame' | 'sub_frame'>;
+    },
+    extraInfo: Array<'responseHeaders'>,
+  ): void;
+  removeListener(
+    listener: (details: FirefoxHeadersReceivedDetails) => void,
+  ): void;
+};
+
+export type FirefoxDeclarativeNetRequestRule = {
+  id: number;
+  [key: string]: unknown;
+};
+
+export type FirefoxDeclarativeNetRequestUpdate = {
+  removeRuleIds: number[];
+  addRules: FirefoxDeclarativeNetRequestRule[];
+};
+
+export type FirefoxDeclarativeNetRequest = {
+  getDynamicRules(): Promise<FirefoxDeclarativeNetRequestRule[]>;
+  getSessionRules(): Promise<FirefoxDeclarativeNetRequestRule[]>;
+  updateDynamicRules(
+    update: FirefoxDeclarativeNetRequestUpdate,
+  ): Promise<void>;
+  updateSessionRules(
+    update: FirefoxDeclarativeNetRequestUpdate,
+  ): Promise<void>;
 };
 
 export function firefoxApi(value: unknown): FirefoxApi {

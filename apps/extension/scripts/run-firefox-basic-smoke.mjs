@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 import { createServer } from 'node:http';
-import { access, readFile } from 'node:fs/promises';
+import {
+  access,
+  mkdtemp,
+  readFile,
+  rm,
+} from 'node:fs/promises';
 import { constants } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -30,6 +36,10 @@ const imageHostAccessUrls = [
   'http://x.com/fixture/status/49-b',
   'http://pbs.twimg.com/media/issue-49-b.png',
 ];
+
+function isHeaderLeaseRuleId(id) {
+  return id >= 1_000_000 && id <= 1_999_999;
+}
 
 async function isAccessible(path) {
   try {
@@ -98,6 +108,14 @@ async function assertFirefoxPackage() {
 async function startFixtureServer() {
   const networkRequests = [];
   const mediaRequestCounts = new Map();
+  let resolveLifecycleFetchStarted;
+  let releaseLifecycleFetch;
+  const lifecycleFetchStarted = new Promise((resolveStarted) => {
+    resolveLifecycleFetchStarted = resolveStarted;
+  });
+  const lifecycleFetchReleased = new Promise((resolveReleased) => {
+    releaseLifecycleFetch = resolveReleased;
+  });
   const server = createServer((request, response) => {
     const requestUrl = new URL(
       request.url ?? '/',
@@ -135,6 +153,14 @@ async function startFixtureServer() {
         'Cache-Control': 'no-store',
         'Content-Type': 'image/png',
       });
+      if (
+        requestUrl.pathname === '/media/issue-51-stale.png'
+        && requestCount > 1
+      ) {
+        resolveLifecycleFetchStarted?.();
+        void lifecycleFetchReleased.then(() => response.end(onePixelPng));
+        return;
+      }
       const delay = requestUrl.pathname === '/media/issue-49-a.png'
         && requestCount > 1
         ? 250
@@ -143,14 +169,15 @@ async function startFixtureServer() {
       return;
     }
 
-    const issue49Match = /^\/fixture\/status\/(49-(?:a|b|rejected|revoked))$/u
+    const protectedFixtureMatch =
+      /^\/fixture\/status\/(49-(?:a|b|rejected|revoked)|51-stale)$/u
       .exec(requestUrl.pathname);
     response.writeHead(200, {
       'Cache-Control': 'no-store',
       'Content-Type': 'text/html; charset=utf-8',
-      ...(issue49Match ? { 'Referrer-Policy': 'origin' } : {}),
+      ...(protectedFixtureMatch ? { 'Referrer-Policy': 'origin' } : {}),
     });
-    const fixtureId = issue49Match?.[1] ?? '47';
+    const fixtureId = protectedFixtureMatch?.[1] ?? '47';
     response.end(`<!doctype html>
       <html>
         <head>
@@ -194,6 +221,10 @@ async function startFixtureServer() {
   return {
     server,
     networkRequests,
+    lifecycleFetchStarted,
+    releaseLifecycleFetch() {
+      releaseLifecycleFetch?.();
+    },
   };
 }
 
@@ -537,6 +568,221 @@ async function sendExtensionMessage(driver, message) {
   return result.value;
 }
 
+async function readBackgroundSnapshot(driver, addonId) {
+  await driver.setContext(firefox.Context.CHROME);
+  try {
+    return await driver.executeScript(`
+      const extension = WebExtensionPolicy.getByID(arguments[0])?.extension;
+      return {
+        contextId: extension?.backgroundContext?.contextId ?? null,
+        state: extension?.backgroundState ?? 'missing',
+      };
+    `, addonId);
+  } finally {
+    await driver.setContext(firefox.Context.CONTENT);
+  }
+}
+
+async function terminateBackground(driver, addonId, label) {
+  await driver.setContext(firefox.Context.CHROME);
+  try {
+    const result = await driver.executeAsyncScript(`
+      const extension = WebExtensionPolicy.getByID(arguments[0])?.extension;
+      const complete = arguments[arguments.length - 1];
+      if (!extension || typeof extension.terminateBackground !== 'function') {
+        complete({ error: 'Firefox Event Page termination is unavailable.' });
+        return;
+      }
+      const beforeContextId = extension.backgroundContext?.contextId ?? null;
+      extension.terminateBackground({
+        disableResetIdleForTest: true,
+      }).then(
+        () => complete({
+          beforeContextId,
+          contextId: extension.backgroundContext?.contextId ?? null,
+          state: extension.backgroundState,
+        }),
+        (error) => complete({ error: String(error) }),
+      );
+    `, addonId);
+    if (
+      result?.error
+      || result?.beforeContextId === null
+      || result?.state !== 'stopped'
+      || result?.contextId !== null
+    ) {
+      throw new Error(
+        `${label} did not terminate the Firefox Event Page: ${
+          JSON.stringify(result)
+        }`,
+      );
+    }
+    return result.beforeContextId;
+  } finally {
+    await driver.setContext(firefox.Context.CONTENT);
+  }
+}
+
+async function waitForBackgroundRebuild(
+  driver,
+  addonId,
+  previousContextId,
+  label,
+) {
+  const rebuilt = await driver.wait(
+    async () => {
+      const snapshot = await readBackgroundSnapshot(driver, addonId);
+      return snapshot.state === 'running'
+        && snapshot.contextId !== null
+        && snapshot.contextId !== previousContextId
+        ? snapshot
+        : false;
+    },
+    15_000,
+    `${label} did not rebuild the Firefox Event Page.`,
+  );
+  return rebuilt.contextId;
+}
+
+async function waitForIdleUnload(driver, addonId, activeContextId) {
+  await driver.wait(
+    async () => {
+      const snapshot = await readBackgroundSnapshot(driver, addonId);
+      return snapshot.state === 'stopped'
+        && snapshot.contextId === null;
+    },
+    75_000,
+    `Firefox Event Page ${activeContextId} did not unload while idle.`,
+  );
+}
+
+async function readExtensionStorage(driver, area, keys) {
+  const result = await driver.executeAsyncScript(`
+    const area = arguments[0];
+    const keys = arguments[1];
+    const complete = arguments[arguments.length - 1];
+    browser.storage[area].get(keys).then(
+      (value) => complete({ ok: true, value }),
+      (error) => complete({ error: String(error) }),
+    );
+  `, area, keys);
+  if (!result?.ok) {
+    throw new Error(
+      `Could not read Firefox ${area} storage: ${
+        result?.error ?? 'unknown error'
+      }`,
+    );
+  }
+  return result.value;
+}
+
+async function writeExtensionStorage(driver, area, value) {
+  const result = await driver.executeAsyncScript(`
+    const area = arguments[0];
+    const value = arguments[1];
+    const complete = arguments[arguments.length - 1];
+    browser.storage[area].set(value).then(
+      () => complete({ ok: true }),
+      (error) => complete({ error: String(error) }),
+    );
+  `, area, value);
+  if (!result?.ok) {
+    throw new Error(
+      `Could not write Firefox ${area} storage: ${
+        result?.error ?? 'unknown error'
+      }`,
+    );
+  }
+}
+
+async function startInterruptiblePipelineProbe(driver) {
+  await driver.executeScript(`
+    const inputBase64 = arguments[0];
+    const inputBytes = arguments[1];
+    const jobId = 'firefox-interrupted-' + crypto.randomUUID();
+    const port = browser.runtime.connect({ name: 'mt:local-pipeline-client' });
+    const state = {
+      disconnects: 0,
+      jobId,
+      messages: [],
+      terminalMessages: [],
+    };
+    window.__shinobuInterruptedPipeline = state;
+    port.onDisconnect.addListener(() => {
+      state.disconnects += 1;
+      state.disconnectError = browser.runtime.lastError?.message;
+    });
+    port.onMessage.addListener((message) => {
+      if (message.jobId && message.jobId !== jobId) return;
+      state.messages.push(message.type);
+      if (message.type === 'ready') {
+        port.postMessage({
+          type: 'start',
+          jobId,
+          file: {
+            name: 'firefox-interrupted.png',
+            type: 'image/png',
+            size: inputBytes,
+            lastModified: Date.now(),
+          },
+          config: {
+            sourceLang: 'ja',
+            targetLang: 'zh-CHS',
+            translator: 'google_web',
+            llmProvider: 'deepseek',
+            llmAuthMode: 'api_key',
+            llmBaseUrl: 'https://api.deepseek.com/v1',
+            llmApiKey: '',
+            llmModel: 'deepseek-chat',
+            typesetDebug: false,
+            eraseDebug: false,
+            collectDebugLog: false,
+            ocrEngine: 'paddleocr_v6_medium',
+            processMode: 'translate',
+          },
+          input: {
+            chunkCount: 1,
+            totalChars: inputBase64.length,
+          },
+        });
+        port.postMessage({
+          type: 'input-chunk',
+          jobId,
+          index: 0,
+          data: inputBase64,
+        });
+        port.postMessage({ type: 'input-complete', jobId });
+        return;
+      }
+      if (message.type === 'complete' || message.type === 'error') {
+        state.terminalMessages.push(message.type);
+      }
+    });
+    port.postMessage({ type: 'prepare', jobId });
+  `, onePixelPng.toString('base64'), onePixelPng.length);
+  await driver.wait(
+    async () => driver.executeScript(`
+      return window.__shinobuInterruptedPipeline?.messages
+        .includes('queued');
+    `),
+    30_000,
+    'Firefox interrupted pipeline did not reach active admission.',
+  );
+}
+
+async function readInterruptedPipelineProbe(driver) {
+  return await driver.executeScript(`
+    const state = window.__shinobuInterruptedPipeline;
+    return state ? {
+      disconnects: state.disconnects,
+      disconnectError: state.disconnectError,
+      jobId: state.jobId,
+      messages: [...state.messages],
+      terminalMessages: [...state.terminalMessages],
+    } : null;
+  `);
+}
+
 function assertPermissionRequired(response, expectedMissing, label) {
   const actualMissing = response?.permission?.missing?.map(
     (requirement) => requirement.kind,
@@ -585,7 +831,7 @@ async function selectPopupProvider(driver, label, keyboard = false) {
     'arguments[0].scrollIntoView({ block: "nearest" });',
     option,
   );
-  await option.click();
+  await driver.actions().move({ origin: option }).click().perform();
 }
 
 async function runAuthenticationSmoke(driver, addonId) {
@@ -1028,6 +1274,7 @@ async function waitForInlineResult(
   label,
   expectedStatus,
   expectedDetail,
+  timeoutMs = 30_000,
 ) {
   await driver.switchTo().window(handle);
   const inlineButton = await driver.findElement(
@@ -1040,7 +1287,7 @@ async function waitForInlineResult(
     async () => terminalStatuses.includes(
       await inlineButton.getAttribute('data-status'),
     ),
-    30_000,
+    timeoutMs,
     `${label} did not reach ${terminalStatuses.join(' or ')}.`,
   );
   const detail = await driver.findElement(
@@ -1226,6 +1473,476 @@ async function runDirectPipelineProbe(driver, popupUrl) {
   return providerEvidence;
 }
 
+function withDeadline(promise, timeoutMs, label) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, rejectDeadline) => {
+      timer = setTimeout(
+        () => rejectDeadline(new Error(`${label} timed out.`)),
+        timeoutMs,
+      );
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+async function runOAuthRebuildSmoke(driver, addonId, popupUrl) {
+  await driver.switchTo().newWindow('tab');
+  await driver.get(popupUrl);
+  await updateCredentialPermissions(driver, addonId, 'add', {
+    authenticationInfo: true,
+  });
+  const popupHandle = await driver.getWindowHandle();
+  const handlesBeforeLogin = await driver.getAllWindowHandles();
+  const login = await sendExtensionMessage(driver, {
+    type: 'mt:openai-oauth-login',
+  });
+  if (
+    login?.ok !== true
+    || login.type !== 'mt:openai-oauth-login'
+    || login.status?.pending !== true
+  ) {
+    throw new Error(
+      `Firefox OAuth lifecycle login did not persist pending PKCE state: ${
+        JSON.stringify(login)
+      }`,
+    );
+  }
+  const authHandle = await driver.wait(
+    async () => {
+      const handles = await driver.getAllWindowHandles();
+      return handles.find((handle) => !handlesBeforeLogin.includes(handle))
+        ?? false;
+    },
+    10_000,
+    'Firefox OAuth lifecycle login did not open an authentication tab.',
+  );
+  await driver.switchTo().window(popupHandle);
+  const pendingBefore = await readExtensionStorage(driver, 'local', [
+    'mangaTranslate.openaiOAuthPending',
+  ]);
+  const pending = pendingBefore['mangaTranslate.openaiOAuthPending'];
+  if (
+    typeof pending?.state !== 'string'
+    || typeof pending.codeVerifier !== 'string'
+    || pending.redirectUri !== 'http://localhost:1457/auth/callback'
+    || typeof pending.tabId !== 'number'
+  ) {
+    throw new Error(
+      `Firefox OAuth pending state was incomplete before rebuild: ${
+        JSON.stringify(pending)
+      }`,
+    );
+  }
+
+  const previousContextId = await terminateBackground(
+    driver,
+    addonId,
+    'OAuth callback rebuild',
+  );
+  const callbackUrl = `${pending.redirectUri}?error=access_denied`
+      + '&error_description=issue-51-lifecycle'
+      + `&state=${encodeURIComponent(pending.state)}`;
+  const callbackNavigation = await driver.executeAsyncScript(`
+    const tabId = arguments[0];
+    const callbackUrl = arguments[1];
+    const complete = arguments[arguments.length - 1];
+    browser.tabs.update(tabId, { url: callbackUrl }).then(
+      () => complete({ ok: true }),
+      (error) => complete({ error: String(error) }),
+    );
+  `, pending.tabId, callbackUrl);
+  if (!callbackNavigation?.ok) {
+    throw new Error(
+      `Firefox OAuth callback tab could not navigate after rebuild: ${
+        callbackNavigation?.error ?? 'unknown error'
+      }`,
+    );
+  }
+  await driver.wait(
+    async () => !(await driver.getAllWindowHandles()).includes(authHandle),
+    10_000,
+    'Firefox OAuth callback did not close its authentication tab.',
+  );
+  await driver.switchTo().window(popupHandle);
+  await waitForBackgroundRebuild(
+    driver,
+    addonId,
+    previousContextId,
+    'OAuth callback listener',
+  );
+  const callbackState = await readExtensionStorage(driver, 'local', [
+    'mangaTranslate.openaiOAuthPending',
+    'mangaTranslate.openaiOAuthLastError',
+  ]);
+  if (
+    callbackState['mangaTranslate.openaiOAuthPending'] !== undefined
+    || !String(
+      callbackState['mangaTranslate.openaiOAuthLastError'] ?? '',
+    ).includes('issue-51-lifecycle')
+  ) {
+    throw new Error(
+      `Firefox OAuth callback did not resume persisted pending state: ${
+        JSON.stringify(callbackState)
+      }`,
+    );
+  }
+
+  const now = Date.now();
+  await writeExtensionStorage(driver, 'local', {
+    'mangaTranslate.openaiOAuth': {
+      idToken: 'issue-51-id-token',
+      accessToken: 'issue-51-access-token',
+      refreshToken: 'issue-51-refresh-token',
+      accountId: 'issue-51-account',
+      email: 'lifecycle@example.invalid',
+      planType: 'test',
+      expiresAt: now + 60 * 60 * 1000,
+      lastRefresh: now,
+    },
+  });
+  const tokenContextId = await terminateBackground(
+    driver,
+    addonId,
+    'OAuth token rebuild',
+  );
+  const tokenStatus = await sendExtensionMessage(driver, {
+    type: 'mt:openai-oauth-status',
+  });
+  await waitForBackgroundRebuild(
+    driver,
+    addonId,
+    tokenContextId,
+    'OAuth token request listener',
+  );
+  if (
+    tokenStatus?.ok !== true
+    || tokenStatus.status?.authenticated !== true
+    || tokenStatus.status.email !== 'lifecycle@example.invalid'
+  ) {
+    throw new Error(
+      `Firefox OAuth token did not survive Event Page rebuild: ${
+        JSON.stringify(tokenStatus)
+      }`,
+    );
+  }
+}
+
+async function runInterruptedHostSmoke(driver, addonId, popupUrl) {
+  await driver.switchTo().newWindow('tab');
+  await driver.get(popupUrl);
+  const interruptedHandle = await driver.getWindowHandle();
+  await startInterruptiblePipelineProbe(driver);
+  const previousContextId = await terminateBackground(
+    driver,
+    addonId,
+    'active pipeline host loss',
+  );
+  await driver.wait(
+    async () => {
+      const probe = await readInterruptedPipelineProbe(driver);
+      return probe?.disconnects === 1;
+    },
+    10_000,
+    'Firefox active pipeline Port did not disconnect exactly once.',
+  );
+  const interrupted = await readInterruptedPipelineProbe(driver);
+  if (
+    interrupted.terminalMessages.length !== 0
+    || interrupted.disconnects !== 1
+  ) {
+    throw new Error(
+      `Firefox host loss delivered a live terminal result: ${
+        JSON.stringify(interrupted)
+      }`,
+    );
+  }
+
+  await driver.switchTo().newWindow('tab');
+  const providerEvidence = await runDirectPipelineProbe(driver, popupUrl);
+  await waitForBackgroundRebuild(
+    driver,
+    addonId,
+    previousContextId,
+    'new execution after host loss',
+  );
+  await driver.switchTo().window(interruptedHandle);
+  const afterNewExecution = await readInterruptedPipelineProbe(driver);
+  if (
+    afterNewExecution.disconnects !== 1
+    || afterNewExecution.terminalMessages.length !== 0
+  ) {
+    throw new Error(
+      `Firefox interrupted execution received a late terminal event: ${
+        JSON.stringify(afterNewExecution)
+      }`,
+    );
+  }
+  return providerEvidence;
+}
+
+async function runStaleLeaseRebuildSmoke(
+  driver,
+  addonId,
+  lifecycleFixture,
+) {
+  const handle = await openInlineFixture(
+    driver,
+    '/fixture/status/51-stale',
+  );
+  await clickInlineFixture(driver, handle);
+  await withDeadline(
+    lifecycleFixture.lifecycleFetchStarted,
+    15_000,
+    'Firefox active Header lease barrier',
+  );
+  const activeRules = await readHeaderOverrideRuleIds(driver, addonId);
+  const activeLeaseIds = activeRules.session.filter(isHeaderLeaseRuleId);
+  if (activeLeaseIds.length !== 1) {
+    throw new Error(
+      `Firefox active fetch did not hold one Header lease: ${
+        JSON.stringify(activeRules)
+      }`,
+    );
+  }
+
+  const previousContextId = await terminateBackground(
+    driver,
+    addonId,
+    'active fetch host loss',
+  );
+  lifecycleFixture.releaseLifecycleFetch();
+  await waitForInlineResult(
+    driver,
+    handle,
+    'Interrupted protected-image request',
+    'error',
+  );
+  const ownerState = await driver.executeScript(`
+    return {
+      overlays: document.querySelectorAll('.mt-x-overlay-inline').length,
+      status: document.querySelector(
+        '.mt-x-overlay-inline .mt-x-control:not(.mt-x-control-secondary)'
+      )?.dataset.status,
+    };
+  `);
+  if (
+    ownerState.overlays !== 1
+    || ownerState.status !== 'error'
+  ) {
+    throw new Error(
+      `Firefox background loss replaced content-owned page state: ${
+        JSON.stringify(ownerState)
+      }`,
+    );
+  }
+
+  await clickInlineFixture(driver, handle);
+  await waitForInlineResult(
+    driver,
+    handle,
+    'Reconnected protected-image request',
+    'translated',
+    undefined,
+    120_000,
+  );
+  await waitForBackgroundRebuild(
+    driver,
+    addonId,
+    previousContextId,
+    'network listener and Header lease cleanup',
+  );
+  const remainingRules = await readHeaderOverrideRuleIds(driver, addonId);
+  if (remainingRules.session.some(isHeaderLeaseRuleId)) {
+    throw new Error(
+      `Firefox stale Header lease survived rebuilt network work: ${
+        JSON.stringify(remainingRules)
+      }`,
+    );
+  }
+  return handle;
+}
+
+async function runIdleMenuWakeSmoke(driver, addonId, fixtureHandle) {
+  await driver.switchTo().window(fixtureHandle);
+  const fixtureImage = await driver.wait(
+    until.elementLocated(By.css('img[alt="fixture manga"]')),
+    5_000,
+    'Firefox idle menu fixture did not remain loaded.',
+  );
+  const active = await readBackgroundSnapshot(driver, addonId);
+  await waitForIdleUnload(driver, addonId, active.contextId);
+  await driver.actions().contextClick(fixtureImage).perform();
+  await driver.setContext(firefox.Context.CHROME);
+  try {
+    const menuCounts = await driver.wait(
+      async () => {
+        const counts = await driver.executeScript(`
+          const labels = Array.from(document.querySelectorAll('menuitem'))
+            .map((item) => item.label);
+          return {
+            image: labels.filter((label) => label === '翻译图片').length,
+            screenshot: labels.filter((label) => label === '截图翻译').length,
+          };
+        `);
+        return counts.image > 0 || counts.screenshot > 0 ? counts : false;
+      },
+      5_000,
+      'Firefox native menus were not available after idle unload.',
+    );
+    if (menuCounts.image !== 1 || menuCounts.screenshot !== 1) {
+      throw new Error(
+        `Firefox native menus duplicated or disappeared after rebuild: ${
+          JSON.stringify(menuCounts)
+        }`,
+      );
+    }
+    const stopped = await driver.executeScript(`
+      const extension = WebExtensionPolicy.getByID(arguments[0])?.extension;
+      return {
+        contextId: extension?.backgroundContext?.contextId ?? null,
+        state: extension?.backgroundState,
+      };
+    `, addonId);
+    if (stopped.state !== 'stopped' || stopped.contextId !== null) {
+      throw new Error(
+        `Opening a persisted Firefox menu unexpectedly woke the Event Page: ${
+          JSON.stringify(stopped)
+        }`,
+      );
+    }
+    await driver.executeScript(`
+      const item = Array.from(document.querySelectorAll('menuitem'))
+        .find((candidate) => candidate.label === '截图翻译');
+      item.click();
+    `);
+  } finally {
+    await driver.setContext(firefox.Context.CONTENT);
+  }
+  await driver.wait(
+    until.elementLocated(By.css('.mt-x-screenshot-select')),
+    10_000,
+    'Firefox persisted menu listener did not wake after idle unload.',
+  );
+  await waitForBackgroundRebuild(
+    driver,
+    addonId,
+    active.contextId,
+    'native menu listener',
+  );
+  const screenshotEntries = await driver.findElements(
+    By.css('.mt-x-screenshot-select'),
+  );
+  if (screenshotEntries.length !== 1) {
+    throw new Error(
+      `Firefox menu wake delivered ${screenshotEntries.length} selections.`,
+    );
+  }
+  await driver.actions().sendKeys(Key.ESCAPE).perform();
+}
+
+async function runIdleRequestWakeSmoke(driver, addonId, popupUrl) {
+  await driver.get('about:blank');
+  const active = await readBackgroundSnapshot(driver, addonId);
+  await waitForIdleUnload(driver, addonId, active.contextId);
+  await driver.get(popupUrl);
+  const settings = await sendExtensionMessage(driver, {
+    type: 'mt:get-settings',
+  });
+  if (settings?.ok !== true || settings.type !== 'mt:get-settings') {
+    throw new Error(
+      `Firefox runtime request did not wake after idle unload: ${
+        JSON.stringify(settings)
+      }`,
+    );
+  }
+  await waitForBackgroundRebuild(
+    driver,
+    addonId,
+    active.contextId,
+    'runtime request listener after idle unload',
+  );
+}
+
+async function persistRestartState(driver) {
+  const settingsResponse = await sendExtensionMessage(driver, {
+    type: 'mt:get-settings',
+  });
+  if (settingsResponse?.ok !== true) {
+    throw new Error(
+      `Firefox restart setup could not read settings: ${
+        JSON.stringify(settingsResponse)
+      }`,
+    );
+  }
+  const targetLang = settingsResponse.settings.targetLang === 'zh-CHS'
+    ? 'zh-CHT'
+    : 'zh-CHS';
+  const saved = await sendExtensionMessage(driver, {
+    type: 'mt:set-settings',
+    settings: {
+      ...settingsResponse.settings,
+      targetLang,
+      showElapsedTime: true,
+    },
+  });
+  if (saved?.ok !== true || saved.settings.targetLang !== targetLang) {
+    throw new Error(
+      `Firefox restart setup could not persist settings: ${
+        JSON.stringify(saved)
+      }`,
+    );
+  }
+  return {
+    targetLang,
+    tokenEmail: 'lifecycle@example.invalid',
+  };
+}
+
+async function assertRestartState(
+  driver,
+  addonId,
+  popupUrl,
+  expected,
+) {
+  await driver.get(popupUrl);
+  const settings = await sendExtensionMessage(driver, {
+    type: 'mt:get-settings',
+  });
+  const oauth = await sendExtensionMessage(driver, {
+    type: 'mt:openai-oauth-status',
+  });
+  if (
+    settings?.ok !== true
+    || settings.settings.targetLang !== expected.targetLang
+    || oauth?.ok !== true
+    || oauth.status?.authenticated !== true
+    || oauth.status.email !== expected.tokenEmail
+  ) {
+    throw new Error(
+      `Firefox browser restart did not restore persistent state: ${
+        JSON.stringify({ settings, oauth })
+      }`,
+    );
+  }
+  const sessionState = await readExtensionStorage(driver, 'session', null);
+  if (Object.keys(sessionState).length !== 0) {
+    throw new Error(
+      `Firefox browser restart restored non-persistent live state: ${
+        JSON.stringify(sessionState)
+      }`,
+    );
+  }
+  const rules = await readHeaderOverrideRuleIds(driver, addonId);
+  if (rules.session.length !== 0) {
+    throw new Error(
+      `Firefox browser restart restored session Header leases: ${
+        JSON.stringify(rules)
+      }`,
+    );
+  }
+}
+
 async function run() {
   await assertFirefoxPackage();
   const fixture = await startFixtureServer();
@@ -1236,43 +1953,54 @@ async function run() {
   }
   const firefoxBinary = await resolveFirefoxBinary();
   const headless = process.env.FIREFOX_HEADLESS !== 'false';
-  const options = new firefox.Options()
-    .addArguments(...[
-      ...(headless ? ['-headless'] : []),
-      '--width=1280',
-      '--height=900',
-    ])
-    .enableBidi()
-    .setPreference(
-      'network.dns.localDomains',
-      'twitter.com,x.com,pbs.twimg.com',
-    )
-    .setPreference('network.proxy.type', 1)
-    .setPreference('network.proxy.http', '127.0.0.1')
-    .setPreference('network.proxy.http_port', address.port)
-    .setPreference('network.proxy.no_proxies_on', '')
-    .setPreference('dom.security.https_only_mode', false)
-    .setPreference('network.stricttransportsecurity.preloadlist', false)
-    .setPreference('browser.shell.checkDefaultBrowser', false)
-    .setPreference('remote.system-access-check.enabled', false)
-    .setPreference('extensions.autoDisableScopes', 0);
-  if (firefoxBinary) options.setBinary(firefoxBinary);
-  const service = new firefox.ServiceBuilder()
-    .addArguments('--allow-system-access');
+  const profileDirectory = await mkdtemp(
+    join(tmpdir(), 'shinobu-firefox-lifecycle-'),
+  );
+  const createDriver = async () => {
+    const options = new firefox.Options()
+      .addArguments(...[
+        ...(headless ? ['-headless'] : []),
+        '-profile',
+        profileDirectory,
+        '--width=1280',
+        '--height=900',
+      ])
+      .enableBidi()
+      .setPreference(
+        'network.dns.localDomains',
+        'twitter.com,x.com,pbs.twimg.com',
+      )
+      .setPreference('network.proxy.type', 1)
+      .setPreference('network.proxy.http', '127.0.0.1')
+      .setPreference('network.proxy.http_port', address.port)
+      .setPreference('network.proxy.no_proxies_on', '')
+      .setPreference('dom.security.https_only_mode', false)
+      .setPreference('network.stricttransportsecurity.preloadlist', false)
+      .setPreference('browser.shell.checkDefaultBrowser', false)
+      .setPreference('remote.system-access-check.enabled', false)
+      .setPreference('extensions.autoDisableScopes', 0);
+    if (firefoxBinary) options.setBinary(firefoxBinary);
+    return await new Builder()
+      .forBrowser('firefox')
+      .setFirefoxOptions(options)
+      .setFirefoxService(
+        new firefox.ServiceBuilder().addArguments('--allow-system-access'),
+      )
+      .build();
+  };
 
   let driver;
   let logInspector;
   const bidiLogs = [];
-  try {
-    driver = await new Builder()
-      .forBrowser('firefox')
-      .setFirefoxOptions(options)
-      .setFirefoxService(service)
-      .build();
+  const inspectLogs = async () => {
     logInspector = await LogInspector(driver);
     await logInspector.onLog((entry) => {
       bidiLogs.push(`${entry.level}: ${entry.text}`);
     });
+  };
+  try {
+    driver = await createDriver();
+    await inspectLogs();
     const addonId = await driver.installAddon(extensionRoot, true);
     if (addonId !== 'shinobu-translator@donutshinobu') {
       throw new Error(`Unexpected installed add-on id: ${addonId}`);
@@ -1442,99 +2170,110 @@ async function run() {
     }
     }
 
-    if (!supportsPackagedContentEntry) {
-      console.log(
-        `Firefox ${browserVersion} packaged smoke passed: direct Event Page `
-          + 'structured result, provider reports, no dedicated host page, '
-          + `and all credential modes (${directProviderEvidence}).`,
+    let lifecycleFixtureHandle;
+    if (supportsPackagedContentEntry) {
+      networkRequests.length = 0;
+
+      await clickInlineFixture(driver, concurrentA);
+      await clickInlineFixture(driver, concurrentB);
+      await waitForInlineResult(
+        driver,
+        concurrentA,
+        'First concurrent protected-image request',
+        undefined,
+        undefined,
+        120_000,
       );
-      return;
-    }
-
-    networkRequests.length = 0;
-
-    await clickInlineFixture(driver, concurrentA);
-    await clickInlineFixture(driver, concurrentB);
-    await waitForInlineResult(
-      driver,
-      concurrentA,
-      'First concurrent protected-image request',
-    );
-    await waitForInlineResult(
-      driver,
-      concurrentB,
-      'Second concurrent protected-image request',
-    );
-    const successfulNetworkRequests = networkRequests.filter(
-      (request) => request.path === '/media/issue-49-a.png'
-        || request.path === '/media/issue-49-b.png',
-    );
-    const concurrentARequest = successfulNetworkRequests.find(
-      (request) => request.path === '/media/issue-49-a.png',
-    );
-    const concurrentBRequest = successfulNetworkRequests.find(
-      (request) => request.path === '/media/issue-49-b.png',
-    );
-    if (
-      successfulNetworkRequests.length !== 2
-      || concurrentARequest?.referer !== 'http://twitter.com/'
-      || concurrentARequest.status !== 200
-      || concurrentBRequest?.referer !== 'http://x.com/'
-      || concurrentBRequest.status !== 200
-    ) {
-      throw new Error(
-        `Firefox protected-image concurrency did not preserve document Referers: ${
-          JSON.stringify(successfulNetworkRequests)
-        }`,
+      await waitForInlineResult(
+        driver,
+        concurrentB,
+        'Second concurrent protected-image request',
+        undefined,
+        undefined,
+        120_000,
       );
-    }
-
-    await clickInlineFixture(driver, rejected);
-    await waitForInlineResult(
-      driver,
-      rejected,
-      'Rejected protected-image request',
-      'error',
-    );
-    if (!networkRequests.some(
-      (request) => request.path === '/media/issue-49-rejected.png'
-        && request.status === 403,
-    )) {
-      throw new Error('Firefox protected-image rejection was not exercised.');
-    }
-
-    await revokeDeclaredHostAccess(driver, addonId);
-    const revokedRequestStart = networkRequests.length;
-    await clickInlineFixture(driver, revoked);
-    await waitForInlineResult(
-      driver,
-      revoked,
-      'Revoked host-permission request',
-      'error',
-      '(browser-rejected)',
-    );
-    if (networkRequests.slice(revokedRequestStart).some(
-      (request) => request.path === '/media/issue-49-revoked.png',
-    )) {
-      throw new Error(
-        'Firefox issued an image request after target host access was revoked.',
+      const successfulNetworkRequests = networkRequests.filter(
+        (request) => request.path === '/media/issue-49-a.png'
+          || request.path === '/media/issue-49-b.png',
       );
-    }
+      const concurrentARequest = successfulNetworkRequests.find(
+        (request) => request.path === '/media/issue-49-a.png',
+      );
+      const concurrentBRequest = successfulNetworkRequests.find(
+        (request) => request.path === '/media/issue-49-b.png',
+      );
+      if (
+        successfulNetworkRequests.length !== 2
+        || concurrentARequest?.referer !== 'http://twitter.com/'
+        || concurrentARequest.status !== 200
+        || concurrentBRequest?.referer !== 'http://x.com/'
+        || concurrentBRequest.status !== 200
+      ) {
+        throw new Error(
+          `Firefox protected-image concurrency did not preserve document Referers: ${
+            JSON.stringify(successfulNetworkRequests)
+          }`,
+        );
+      }
 
-    const remainingRules = await readHeaderOverrideRuleIds(driver, addonId);
-    const isHeaderOverrideRule = (id) => (
-      id === 1
-      || id === 2
-      || (id >= 1_000_000 && id <= 1_999_999)
-    );
-    if (
-      remainingRules.dynamic.some(isHeaderOverrideRule)
-      || remainingRules.session.some(isHeaderOverrideRule)
-    ) {
-      throw new Error(
-        `Firefox temporary Header override rules leaked: ${
-          JSON.stringify(remainingRules)
-        }`,
+      await clickInlineFixture(driver, rejected);
+      await waitForInlineResult(
+        driver,
+        rejected,
+        'Rejected protected-image request',
+        'error',
+      );
+      if (!networkRequests.some(
+        (request) => request.path === '/media/issue-49-rejected.png'
+          && request.status === 403,
+      )) {
+        throw new Error(
+          'Firefox protected-image rejection was not exercised.',
+        );
+      }
+
+      await revokeDeclaredHostAccess(driver, addonId);
+      const revokedRequestStart = networkRequests.length;
+      await clickInlineFixture(driver, revoked);
+      await waitForInlineResult(
+        driver,
+        revoked,
+        'Revoked host-permission request',
+        'error',
+        '(browser-rejected)',
+      );
+      if (networkRequests.slice(revokedRequestStart).some(
+        (request) => request.path === '/media/issue-49-revoked.png',
+      )) {
+        throw new Error(
+          'Firefox issued an image request after target host access was revoked.',
+        );
+      }
+
+      const remainingRules = await readHeaderOverrideRuleIds(driver, addonId);
+      const isHeaderOverrideRule = (id) => (
+        id === 1
+        || id === 2
+        || isHeaderLeaseRuleId(id)
+      );
+      if (
+        remainingRules.dynamic.some(isHeaderOverrideRule)
+        || remainingRules.session.some(isHeaderOverrideRule)
+      ) {
+        throw new Error(
+          `Firefox temporary Header override rules leaked: ${
+            JSON.stringify(remainingRules)
+          }`,
+        );
+      }
+    }
+    if (supportsPackagedContentEntry) {
+      await grantDeclaredHostAccess(driver, addonId);
+      console.log('[firefox-lifecycle] stale Header lease and content owner');
+      lifecycleFixtureHandle = await runStaleLeaseRebuildSmoke(
+        driver,
+        addonId,
+        fixture,
       );
     }
 
@@ -1543,19 +2282,98 @@ async function run() {
         + `(${directProviderEvidence})`
       : 'native screenshot Event Page result '
         + `(providers: ${runtimeProviders.join(', ') || 'not reported'})`;
+    console.log('[firefox-lifecycle] OAuth callback and token rebuild');
+    await runOAuthRebuildSmoke(driver, addonId, popupUrl);
+    console.log('[firefox-lifecycle] active host disconnect and new task');
+    const recoveredProviderEvidence = await runInterruptedHostSmoke(
+      driver,
+      addonId,
+      popupUrl,
+    );
+    if (supportsPackagedContentEntry) {
+      console.log('[firefox-lifecycle] real idle unload and native menu wake');
+      await runIdleMenuWakeSmoke(
+        driver,
+        addonId,
+        lifecycleFixtureHandle,
+      );
+    } else {
+      console.log('[firefox-lifecycle] real idle unload and request wake');
+      await runIdleRequestWakeSmoke(driver, addonId, popupUrl);
+    }
+
+    console.log('[firefox-lifecycle] real browser restart with active task');
+    await driver.get(popupUrl);
+    const restartState = await persistRestartState(driver);
+    await startInterruptiblePipelineProbe(driver);
+    await logInspector.close();
+    logInspector = undefined;
+    await driver.quit();
+    driver = undefined;
+
+    driver = await createDriver();
+    await inspectLogs();
+    const restartedAddonId = await driver.installAddon(extensionRoot, true);
+    if (restartedAddonId !== addonId) {
+      throw new Error(
+        `Firefox browser restart changed the extension id: ${
+          restartedAddonId
+        }`,
+      );
+    }
+    await grantDeclaredHostAccess(driver, restartedAddonId);
+    await updateCredentialPermissions(driver, restartedAddonId, 'add', {
+      authenticationInfo: true,
+      cookies: true,
+    });
+    const restartedPopupUrl = await resolveExtensionUrl(
+      driver,
+      restartedAddonId,
+      'popup.html',
+    );
+    if (typeof restartedPopupUrl !== 'string') {
+      throw new Error(
+        'Firefox browser restart did not expose the extension popup.',
+      );
+    }
+    await assertRestartState(
+      driver,
+      restartedAddonId,
+      restartedPopupUrl,
+      restartState,
+    );
+    const restartedProviderEvidence = await runDirectPipelineProbe(
+      driver,
+      restartedPopupUrl,
+    );
     console.log(
       `Firefox ${browserVersion} packaged smoke passed: ${pipelineEvidence}; `
-        + 'shared structured error UI, protected image success/rejection, '
-        + 'host-permission revocation, concurrent Header leases and cleanup, '
-        + 'all credential modes, and scoped credential permission revocation.',
+        + (
+          supportsPackagedContentEntry
+            ? 'shared structured error UI, protected image success/rejection, '
+              + 'host-permission revocation, concurrent and stale Header '
+              + 'leases, content-owner reconnect, '
+            : ''
+        )
+        + 'all credential modes, scoped permission revocation, real idle '
+        + 'unload and listener wake, OAuth PKCE/token recovery, active host '
+        + 'disconnect without late terminal delivery, and browser restart '
+        + `followed by a new execution (${recoveredProviderEvidence}; `
+        + `${restartedProviderEvidence}).`,
     );
   } catch (error) {
+    console.error(
+      `Firefox smoke failure: ${
+        error instanceof Error ? error.stack : String(error)
+      }`,
+    );
     if (driver) {
-      const capabilities = await driver.getCapabilities();
-      console.error(
-        `Firefox ${capabilities.get('browserVersion') ?? 'unknown'} at `
-          + `${await driver.getCurrentUrl()}`,
-      );
+      try {
+        const capabilities = await driver.getCapabilities();
+        console.error(
+          `Firefox ${capabilities.get('browserVersion') ?? 'unknown'} at `
+            + `${await driver.getCurrentUrl()}`,
+        );
       console.error(
         `Fixture marker count: ${await driver.findElements(
           By.id('firefox-smoke-fixture'),
@@ -1628,12 +2446,22 @@ async function run() {
           }`,
         );
       }
+      } catch (diagnosticError) {
+        console.error(
+          `Firefox window diagnostics unavailable: ${
+            diagnosticError instanceof Error
+              ? diagnosticError.message
+              : String(diagnosticError)
+          }`,
+        );
+      }
     }
     throw error;
   } finally {
     if (logInspector) await logInspector.close();
     if (driver) await driver.quit();
     await closeServer(server);
+    await rm(profileDirectory, { recursive: true, force: true });
   }
 }
 

@@ -108,14 +108,24 @@ type DirectHostState = {
   readonly brokerChannel: RuntimeChannel;
   readonly hostChannel: RuntimeChannel;
   controller?: Promise<PipelineHostController>;
+  disposal?: Promise<void>;
   activated: boolean;
 };
+
+function disposeDirectHost(state: DirectHostState): Promise<void> {
+  state.disposal ??= (async () => {
+    const controller = await state.controller;
+    await controller?.dispose();
+  })();
+  return state.disposal;
+}
 
 export function createFirefoxPipelineHostLifecycle(
   startHost: PipelineHostStarter,
 ):
 PipelineHostDocumentLifecycle {
   let state: DirectHostState | null = null;
+  let cleanup = Promise.resolve();
 
   return {
     isAvailable() {
@@ -128,6 +138,7 @@ PipelineHostDocumentLifecycle {
       return state !== null;
     },
     async create() {
+      await cleanup;
       if (state) return undefined;
       const [brokerChannel, hostChannel] = createDirectChannelPair();
       const created: DirectHostState = {
@@ -136,6 +147,11 @@ PipelineHostDocumentLifecycle {
         activated: false,
       };
       state = created;
+      brokerChannel.onDisconnect(() => {
+        if (state !== created) return;
+        state = null;
+        cleanup = disposeDirectHost(created).catch(() => undefined);
+      });
       return {
         channel: brokerChannel,
         activate() {
@@ -155,9 +171,10 @@ PipelineHostDocumentLifecycle {
       const closing = state;
       if (!closing) return false;
       state = null;
+      const disposal = disposeDirectHost(closing);
+      cleanup = disposal.catch(() => undefined);
       try {
-        const controller = await closing.controller;
-        await controller?.dispose();
+        await disposal;
       } finally {
         await closing.brokerChannel.disconnect();
       }

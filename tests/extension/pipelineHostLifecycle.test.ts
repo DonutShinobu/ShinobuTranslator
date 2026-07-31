@@ -207,4 +207,49 @@ describe('Firefox Event Page PipelineHostLifecycle', () => {
     await expect(closing).resolves.toBe(true);
     expect(dispose).toHaveBeenCalledOnce();
   });
+
+  it('releases a lost direct host before rebuilding for the next task', async () => {
+    let finishFirstDisposal: (() => void) | undefined;
+    const disposals = [
+      vi.fn(() => new Promise<void>((resolve) => {
+        finishFirstDisposal = resolve;
+      })),
+      vi.fn(async () => undefined),
+    ];
+    const startHost = vi.fn(() => ({
+      dispose: disposals[startHost.mock.calls.length - 1]!,
+    }));
+    const lifecycle = createFirefoxPipelineHostLifecycle(startHost);
+    const first = await lifecycle.create();
+
+    first?.activate();
+    await vi.waitFor(() => {
+      expect(startHost).toHaveBeenCalledOnce();
+    });
+    await first?.channel.disconnect();
+
+    const rebuilding = lifecycle.create();
+    let rebuilt = false;
+    void rebuilding.then(() => {
+      rebuilt = true;
+    });
+    await vi.waitFor(() => {
+      expect(disposals[0]).toHaveBeenCalledOnce();
+    });
+    expect(rebuilt).toBe(false);
+    expect(startHost).toHaveBeenCalledOnce();
+    await expect(lifecycle.exists()).resolves.toBe(false);
+
+    finishFirstDisposal?.();
+    const second = await rebuilding;
+    expect(second).toBeDefined();
+    second?.activate();
+    await vi.waitFor(() => {
+      expect(startHost).toHaveBeenCalledTimes(2);
+    });
+
+    await expect(lifecycle.close()).resolves.toBe(true);
+    expect(disposals[0]).toHaveBeenCalledOnce();
+    expect(disposals[1]).toHaveBeenCalledOnce();
+  });
 });

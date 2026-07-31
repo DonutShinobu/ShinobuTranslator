@@ -222,6 +222,9 @@ export default defineConfig(({ command, mode }): UserConfig => {
               || normalized.endsWith(
                 '/apps/extension/src/capabilities/firefoxTargetAdapter.ts',
               )
+              || normalized.endsWith(
+                '/apps/extension/src/capabilities/authentication.ts',
+              )
             ) {
               return 'extensionAdapter';
             }

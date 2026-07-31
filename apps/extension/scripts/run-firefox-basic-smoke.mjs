@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import {
   Builder,
   By,
+  Key,
   LogInspector,
   until,
 } from 'selenium-webdriver';
@@ -169,7 +170,7 @@ async function grantDeclaredHostAccess(driver, addonId) {
         complete({ error: 'Installed Firefox extension policy was not found.' });
         return;
       }
-      ExtensionPermissions.add(
+      ExtensionPermissions.remove(
         addonId,
         {
           data_collection: [],
@@ -177,7 +178,18 @@ async function grantDeclaredHostAccess(driver, addonId) {
           permissions: [],
         },
         policy.extension,
-      ).then(
+      ).then(() => ExtensionPermissions.add(
+        addonId,
+        {
+          data_collection: [],
+          origins: [
+            'http://twitter.com/*',
+            'http://pbs.twimg.com/*',
+          ],
+          permissions: [],
+        },
+        policy.extension,
+      )).then(
         async () => {
           const contentUrl = policy.getURL('content.js');
           let parseError;
@@ -219,6 +231,605 @@ async function grantDeclaredHostAccess(driver, addonId) {
   } finally {
     await driver.setContext(firefox.Context.CONTENT);
   }
+}
+
+async function updateCredentialPermissions(
+  driver,
+  addonId,
+  operation,
+  { authenticationInfo = false, cookies = false, origins = [] },
+) {
+  await driver.setContext(firefox.Context.CHROME);
+  try {
+    const result = await driver.executeAsyncScript(`
+      const addonId = arguments[0];
+      const operation = arguments[1];
+      const permissionDetails = arguments[2];
+      const complete = arguments[arguments.length - 1];
+      const { ExtensionPermissions } = ChromeUtils.importESModule(
+        'resource://gre/modules/ExtensionPermissions.sys.mjs'
+      );
+      const policy = WebExtensionPolicy.getByID(addonId);
+      if (!policy) {
+        complete({ error: 'Installed Firefox extension policy was not found.' });
+        return;
+      }
+      ExtensionPermissions[operation](
+        addonId,
+        permissionDetails,
+        policy.extension,
+      ).then(
+        () => complete({ ok: true }),
+        (error) => complete({ error: String(error) }),
+      );
+    `, addonId, operation, {
+      data_collection: authenticationInfo ? ['authenticationInfo'] : [],
+      origins,
+      permissions: cookies ? ['cookies'] : [],
+    });
+    if (!result?.ok) {
+      throw new Error(
+        `Could not ${operation} Firefox credential permissions: ${
+          result?.error ?? 'unknown error'
+        }`,
+      );
+    }
+  } finally {
+    await driver.setContext(firefox.Context.CONTENT);
+  }
+}
+
+async function respondToPermissionPrompt(driver, response, label) {
+  await driver.setContext(firefox.Context.CHROME);
+  try {
+    let prompt;
+    try {
+      prompt = await driver.wait(
+        async () => driver.executeScript(`
+          const panel = document.querySelector('#notification-popup');
+          if (panel?.state !== 'open') return null;
+          const primary = panel.querySelector(
+            '.popup-notification-primary-button'
+          );
+          const secondary = panel.querySelector(
+            '.popup-notification-secondary-button'
+          );
+          return primary && secondary
+            ? {
+                primary: primary.getAttribute('label'),
+                secondary: secondary.getAttribute('label'),
+                text: panel.textContent,
+              }
+            : null;
+        `),
+        10_000,
+        `Firefox did not show the expected ${label} permission prompt.`,
+      );
+    } catch (error) {
+      await driver.setContext(firefox.Context.CONTENT);
+      const bodyText = await driver.findElement(By.css('body')).getText();
+      throw new Error(
+        `${error instanceof Error ? error.message : String(error)} `
+          + `Popup text: ${bodyText}`,
+      );
+    }
+    await driver.executeScript(`
+      document.querySelector('#notification-popup').querySelector(
+        arguments[0] === 'accept'
+          ? '.popup-notification-primary-button'
+          : '.popup-notification-secondary-button'
+      ).click();
+    `, response);
+    return prompt;
+  } finally {
+    await driver.setContext(firefox.Context.CONTENT);
+  }
+}
+
+async function containsExtensionPermissions(driver, details) {
+  const result = await driver.executeAsyncScript(`
+    const details = arguments[0];
+    const complete = arguments[arguments.length - 1];
+    browser.permissions.contains(details).then(
+      (granted) => complete({ ok: true, granted }),
+      (error) => complete({ error: String(error) }),
+    );
+  `, details);
+  if (!result?.ok) {
+    throw new Error(
+      `Could not inspect Firefox extension permissions: ${
+        result?.error ?? 'unknown error'
+      }`,
+    );
+  }
+  return result.granted;
+}
+
+async function resolveExtensionUrl(driver, addonId, path) {
+  await driver.setContext(firefox.Context.CHROME);
+  try {
+    return await driver.executeScript(`
+      const policy = WebExtensionPolicy.getByID(arguments[0]);
+      return policy?.getURL(arguments[1]);
+    `, addonId, path);
+  } finally {
+    await driver.setContext(firefox.Context.CONTENT);
+  }
+}
+
+async function sendExtensionMessage(driver, message) {
+  const result = await driver.executeAsyncScript(`
+    const message = arguments[0];
+    const complete = arguments[arguments.length - 1];
+    browser.runtime.sendMessage(message).then(
+      (value) => complete({ ok: true, value }),
+      (error) => complete({ error: String(error) }),
+    );
+  `, message);
+  if (!result?.ok) {
+    throw new Error(
+      `Packaged Firefox runtime request failed: ${
+        result?.error ?? 'unknown error'
+      }`,
+    );
+  }
+  return result.value;
+}
+
+function assertPermissionRequired(response, expectedMissing, label) {
+  const actualMissing = response?.permission?.missing?.map(
+    (requirement) => requirement.kind,
+  );
+  if (
+    response?.ok !== false
+    || response.permission?.status !== 'permission-required'
+    || JSON.stringify(actualMissing) !== JSON.stringify(expectedMissing)
+  ) {
+    throw new Error(
+      `${label} did not fail closed with ${expectedMissing.join(', ')}: ${
+        JSON.stringify(response)
+      }`,
+    );
+  }
+}
+
+async function selectPopupProvider(driver, label, keyboard = false) {
+  const trigger = await driver.findElement(
+    By.css('button[aria-label="LLM 提供商"]'),
+  );
+  await trigger.click();
+  if (keyboard) {
+    await trigger.sendKeys([...label][0]);
+    await driver.wait(
+      async () => {
+        const activeId = await trigger.getAttribute('aria-activedescendant');
+        if (!activeId) return false;
+        const active = await driver.findElement(By.id(activeId));
+        return (await active.getText()) === label;
+      },
+      5_000,
+      `Firefox popup did not focus provider ${label}.`,
+    );
+    await trigger.sendKeys(Key.ENTER);
+    return;
+  }
+  const option = await driver.wait(
+    until.elementLocated(By.xpath(
+      `//button[contains(@class, "select-option")][normalize-space(.)="${label}"]`,
+    )),
+    5_000,
+    `Firefox popup did not expose provider ${label}.`,
+  );
+  await driver.executeScript(
+    'arguments[0].scrollIntoView({ block: "nearest" });',
+    option,
+  );
+  await option.click();
+}
+
+async function runAuthenticationSmoke(driver, addonId) {
+  await updateCredentialPermissions(driver, addonId, 'remove', {
+    authenticationInfo: true,
+    cookies: true,
+  });
+  const popupUrl = await resolveExtensionUrl(driver, addonId, 'popup.html');
+  if (typeof popupUrl !== 'string') {
+    throw new Error('Firefox extension policy did not expose popup.html.');
+  }
+  await driver.get(popupUrl);
+  await driver.wait(
+    until.elementLocated(By.css('.popup')),
+    10_000,
+    'Firefox packaged popup did not mount.',
+  );
+
+  const llmMode = await driver.wait(
+    until.elementLocated(By.xpath('//button[normalize-space(.)="大模型"]')),
+    10_000,
+    'Firefox popup did not finish loading translation settings.',
+  );
+  if (await containsExtensionPermissions(driver, {
+    data_collection: ['authenticationInfo'],
+  })) {
+    throw new Error('Firefox retained authenticationInfo before the UI test.');
+  }
+  await llmMode.click();
+  const deniedApiKeyPrompt = await respondToPermissionPrompt(
+    driver,
+    'dismiss',
+    'API Key denial',
+  );
+  if (!deniedApiKeyPrompt.text.includes('authentication information')) {
+    throw new Error(
+      `API Key prompt omitted authentication information: ${
+        JSON.stringify(deniedApiKeyPrompt)
+      }`,
+    );
+  }
+  await driver.wait(
+    async () => (await driver.findElement(By.css('body')).getText())
+      .includes('需要授权：认证数据'),
+    5_000,
+    'Denied API Key permission did not reach the popup error state.',
+  );
+  if ((await driver.findElements(By.css('.panel-llm'))).length !== 0) {
+    throw new Error('Denied API Key permission enabled the LLM settings panel.');
+  }
+  if (await containsExtensionPermissions(driver, {
+    data_collection: ['authenticationInfo'],
+  })) {
+    throw new Error('Denied API Key permission was unexpectedly retained.');
+  }
+  await llmMode.click();
+  const grantedApiKeyPrompt = await respondToPermissionPrompt(
+    driver,
+    'accept',
+    'API Key grant',
+  );
+  if (!grantedApiKeyPrompt.text.includes('authentication information')) {
+    throw new Error(
+      `API Key grant prompt omitted authentication information: ${
+        JSON.stringify(grantedApiKeyPrompt)
+      }`,
+    );
+  }
+  const providerTrigger = await driver.wait(
+    until.elementLocated(By.css('button[aria-label="LLM 提供商"]')),
+    5_000,
+    'Firefox popup did not enable LLM provider selection.',
+  );
+  if (!await containsExtensionPermissions(driver, {
+    data_collection: ['authenticationInfo'],
+  })) {
+    throw new Error('Firefox UI grant did not retain authenticationInfo.');
+  }
+  if (await containsExtensionPermissions(driver, {
+    permissions: ['cookies'],
+  })) {
+    throw new Error(
+      'Firefox granted cookies before the Gemini user-gesture test.',
+    );
+  }
+  const selectedProvider = await providerTrigger.getText();
+  await providerTrigger.click();
+  const providerOptions = await driver.findElements(By.css('.select-option'));
+  const providerLabels = new Set([
+    selectedProvider,
+    ...await Promise.all(providerOptions.map((element) => element.getText())),
+  ]);
+  for (const label of [
+    'DeepSeek',
+    'Nano Banana',
+    'GLM (智谱)',
+    'Kimi (月之暗面)',
+    'MiniMax',
+    'MiMo (小米)',
+    'OpenAI',
+    '自定义提供商',
+  ]) {
+    if (!providerLabels.has(label)) {
+      throw new Error(`Firefox popup is missing provider ${label}.`);
+    }
+  }
+  await providerTrigger.click();
+
+  await updateCredentialPermissions(driver, addonId, 'remove', {
+    authenticationInfo: true,
+  });
+  await selectPopupProvider(driver, 'Nano Banana');
+  const deniedGeminiPrompt = await respondToPermissionPrompt(
+    driver,
+    'dismiss',
+    'Gemini denial',
+  );
+  if (!deniedGeminiPrompt.text.includes('authentication information')) {
+    throw new Error(
+      `Gemini prompt omitted authentication information: ${
+        JSON.stringify(deniedGeminiPrompt)
+      }`,
+    );
+  }
+  await driver.wait(
+    async () => (await driver.findElement(By.css('body')).getText())
+      .includes('需要授权：认证数据'),
+    5_000,
+    'Denied Gemini permission did not reach the popup error state.',
+  );
+  if ((await providerTrigger.getText()) !== selectedProvider) {
+    throw new Error('Denied Gemini permission changed the active provider.');
+  }
+  if (!await containsExtensionPermissions(driver, {
+    permissions: ['cookies'],
+  })) {
+    throw new Error(
+      'Gemini user gesture did not request the silently granted Cookie permission.',
+    );
+  }
+  await selectPopupProvider(driver, 'Nano Banana');
+  const grantedGeminiPrompt = await respondToPermissionPrompt(
+    driver,
+    'accept',
+    'Gemini grant',
+  );
+  if (!grantedGeminiPrompt.text.includes('authentication information')) {
+    throw new Error(
+      `Gemini grant prompt omitted authentication information: ${
+        JSON.stringify(grantedGeminiPrompt)
+      }`,
+    );
+  }
+  await driver.wait(
+    async () => (await providerTrigger.getText()) === 'Nano Banana',
+    5_000,
+    'Granted Gemini permission did not change the active provider.',
+  );
+  if (!await containsExtensionPermissions(driver, {
+    data_collection: ['authenticationInfo'],
+    permissions: ['cookies'],
+  })) {
+    throw new Error(
+      'Gemini UI grant did not retain authenticationInfo and cookies.',
+    );
+  }
+  for (const mode of ['Gemini 登录', 'API Key']) {
+    await driver.wait(
+      until.elementLocated(By.xpath(`//button[normalize-space(.)="${mode}"]`)),
+      5_000,
+      `Firefox popup is missing Gemini mode ${mode}.`,
+    );
+  }
+
+  await selectPopupProvider(driver, 'OpenAI');
+  for (const mode of ['OpenAI 登录', 'API Key']) {
+    await driver.wait(
+      until.elementLocated(By.xpath(`//button[normalize-space(.)="${mode}"]`)),
+      5_000,
+      `Firefox popup is missing OpenAI mode ${mode}.`,
+    );
+  }
+  const popupHandle = await driver.getWindowHandle();
+  const handlesBeforeOpenAiLogin = await driver.getAllWindowHandles();
+  await updateCredentialPermissions(driver, addonId, 'remove', {
+    authenticationInfo: true,
+  });
+  const openAiLogin = await driver.findElement(
+    By.xpath('//button[normalize-space(.)="登录 OpenAI"]'),
+  );
+  await openAiLogin.click();
+  const deniedOpenAiPrompt = await respondToPermissionPrompt(
+    driver,
+    'dismiss',
+    'OpenAI denial',
+  );
+  if (!deniedOpenAiPrompt.text.includes('authentication information')) {
+    throw new Error(
+      `OpenAI prompt omitted authentication information: ${
+        JSON.stringify(deniedOpenAiPrompt)
+      }`,
+    );
+  }
+  await driver.wait(
+    async () => (await driver.findElement(By.css('body')).getText())
+      .includes('需要授权：认证数据'),
+    5_000,
+    'Denied OpenAI permission did not reach the popup error state.',
+  );
+  if (
+    (await driver.getAllWindowHandles()).length
+      !== handlesBeforeOpenAiLogin.length
+  ) {
+    throw new Error('Denied OpenAI permission still opened a login tab.');
+  }
+  await openAiLogin.click();
+  await respondToPermissionPrompt(driver, 'accept', 'OpenAI grant');
+  await driver.wait(
+    async () => (await driver.getAllWindowHandles()).length
+      > handlesBeforeOpenAiLogin.length,
+    10_000,
+    'Granted OpenAI permission did not open the login tab.',
+  );
+  for (const handle of await driver.getAllWindowHandles()) {
+    if (handle === popupHandle) continue;
+    await driver.switchTo().window(handle);
+    await driver.close();
+  }
+  await driver.switchTo().window(popupHandle);
+
+  await selectPopupProvider(driver, '自定义提供商', true);
+  const customBaseUrl = await driver.wait(
+    until.elementLocated(By.css(
+      'input[placeholder="https://api.example.com/v1"]',
+    )),
+    5_000,
+    'Firefox popup is missing the custom Base URL field.',
+  );
+  await customBaseUrl.sendKeys('https://llm.example.test/v1');
+  const authorizeEndpoint = await driver.wait(
+    until.elementLocated(By.xpath(
+      '//button[normalize-space(.)="授权 Endpoint"]',
+    )),
+    5_000,
+    'Firefox popup is missing custom endpoint authorization.',
+  );
+  if (await containsExtensionPermissions(driver, {
+    origins: ['https://llm.example.test/*'],
+  })) {
+    throw new Error('Custom endpoint origin was granted before its UI action.');
+  }
+  await authorizeEndpoint.click();
+  const deniedEndpointPrompt = await respondToPermissionPrompt(
+    driver,
+    'dismiss',
+    'custom endpoint denial',
+  );
+  if (!deniedEndpointPrompt.text.includes('llm.example.test')) {
+    throw new Error(
+      `Custom endpoint prompt omitted its normalized host: ${
+        JSON.stringify(deniedEndpointPrompt)
+      }`,
+    );
+  }
+  await driver.wait(
+    async () => (await driver.findElement(By.css('body')).getText())
+      .includes('需要授权：https://llm.example.test'),
+    5_000,
+    'Denied custom endpoint permission did not reach the popup error state.',
+  );
+  if (await containsExtensionPermissions(driver, {
+    origins: ['https://llm.example.test/*'],
+  })) {
+    throw new Error('Denied custom endpoint origin was unexpectedly retained.');
+  }
+  await authorizeEndpoint.click();
+  await respondToPermissionPrompt(driver, 'accept', 'custom endpoint grant');
+  if (!await containsExtensionPermissions(driver, {
+    origins: ['https://llm.example.test/*'],
+  })) {
+    throw new Error(
+      'Custom endpoint UI did not retain the normalized Firefox origin.',
+    );
+  }
+  await driver.wait(
+    async () => (await driver.findElement(By.css('.status-success')).getText())
+      === '已授权 https://llm.example.test',
+    5_000,
+    'Custom endpoint authorization did not report the normalized origin.',
+  );
+  await updateCredentialPermissions(driver, addonId, 'remove', {
+    origins: ['https://llm.example.test/*'],
+  });
+  assertPermissionRequired(
+    await sendExtensionMessage(driver, {
+      type: 'mt:llm-chat-completions',
+      body: {
+        model: 'firefox-auth-smoke',
+        messages: [{ role: 'user', content: 'translate' }],
+      },
+      proxyConfig: {
+        provider: 'custom',
+        authMode: 'api_key',
+        baseUrl: 'https://llm.example.test/v1',
+      },
+    }),
+    ['target-origin'],
+    'Custom endpoint origin revocation',
+  );
+  await authorizeEndpoint.click();
+  await respondToPermissionPrompt(
+    driver,
+    'accept',
+    'custom endpoint reauthorization',
+  );
+  if (!await containsExtensionPermissions(driver, {
+    origins: ['https://llm.example.test/*'],
+  })) {
+    throw new Error('Custom endpoint UI did not reauthorize its origin.');
+  }
+
+  await updateCredentialPermissions(driver, addonId, 'remove', {
+    cookies: true,
+  });
+  const geminiRevoked = await sendExtensionMessage(driver, {
+    type: 'mt:gemini-app-auth-status',
+  });
+  assertPermissionRequired(
+    geminiRevoked,
+    ['cookie-access'],
+    'Gemini Cookie revocation',
+  );
+  const openAiStillAvailable = await sendExtensionMessage(driver, {
+    type: 'mt:openai-oauth-status',
+  });
+  if (
+    openAiStillAvailable?.ok !== true
+    || openAiStillAvailable.type !== 'mt:openai-oauth-status'
+  ) {
+    throw new Error(
+      `Cookie revocation incorrectly disabled OpenAI OAuth: ${
+        JSON.stringify(openAiStillAvailable)
+      }`,
+    );
+  }
+
+  await updateCredentialPermissions(driver, addonId, 'remove', {
+    authenticationInfo: true,
+  });
+  const providerCases = [
+    ['deepseek', 'https://api.deepseek.com'],
+    ['gemini', 'https://generativelanguage.googleapis.com/v1'],
+    ['glm', 'https://api.z.ai/api/paas/v4'],
+    ['kimi', 'https://api.moonshot.ai/v1'],
+    ['minimax', 'https://api.minimax.io/v1'],
+    ['mimo', 'https://api.xiaomimimo.com/v1'],
+    ['openai', 'https://api.openai.com/v1'],
+    ['custom', 'https://llm.example.test/v1'],
+  ];
+  for (const [provider, baseUrl] of providerCases) {
+    const response = await sendExtensionMessage(driver, {
+      type: 'mt:llm-chat-completions',
+      body: {
+        model: 'firefox-auth-smoke',
+        messages: [{ role: 'user', content: 'translate' }],
+      },
+      proxyConfig: {
+        provider,
+        authMode: 'api_key',
+        baseUrl,
+      },
+    });
+    assertPermissionRequired(
+      response,
+      ['authentication-data-use'],
+      `${provider} API Key revocation`,
+    );
+  }
+  assertPermissionRequired(
+    await sendExtensionMessage(driver, {
+      type: 'mt:openai-oauth-status',
+    }),
+    ['authentication-data-use'],
+    'OpenAI OAuth revocation',
+  );
+
+  const googleWeb = await driver.findElement(
+    By.xpath('//button[normalize-space(.)="谷歌翻译"]'),
+  );
+  await googleWeb.click();
+  for (const mode of ['原文', '去字']) {
+    const button = await driver.findElement(
+      By.xpath(`//button[normalize-space(.)="${mode}"]`),
+    );
+    if (!await button.isEnabled()) {
+      throw new Error(
+        `Credential revocation incorrectly disabled ${mode} mode.`,
+      );
+    }
+  }
+
+  await updateCredentialPermissions(driver, addonId, 'add', {
+    authenticationInfo: true,
+    cookies: true,
+  });
 }
 
 async function run() {
@@ -271,6 +882,7 @@ async function run() {
       throw new Error(`Unexpected installed add-on id: ${addonId}`);
     }
     await grantDeclaredHostAccess(driver, addonId);
+    await runAuthenticationSmoke(driver, addonId);
 
     await driver.get('http://twitter.com/fixture/status/47');
     await driver.wait(
@@ -347,7 +959,8 @@ async function run() {
 
     console.log(
       'Firefox packaged smoke passed: add-on install, inline image entry, '
-        + 'shared retry UI, and native screenshot menu interaction.',
+        + 'shared retry UI, native screenshot menu interaction, all '
+        + 'credential modes, and scoped permission revocation.',
     );
   } catch (error) {
     if (driver) {

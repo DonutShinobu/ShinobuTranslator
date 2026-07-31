@@ -86,6 +86,21 @@ function createBrowserApi() {
         removeListener: () => undefined,
       },
     },
+    permissions: {
+      async contains(): Promise<boolean> {
+        return true;
+      },
+      async request(): Promise<boolean> {
+        return true;
+      },
+      onAdded: createListenerEvent<unknown>().raw,
+      onRemoved: createListenerEvent<unknown>().raw,
+    },
+    cookies: {
+      async getAll(): Promise<[]> {
+        return [];
+      },
+    },
   };
 }
 
@@ -115,7 +130,7 @@ function createCompatibilityAdapter() {
 }
 
 describe('Firefox extension adapter composition', () => {
-  it('owns basic Firefox capabilities and preserves downstream compatibility seams', () => {
+  it('owns Firefox authentication capabilities and preserves only remaining compatibility seams', () => {
     const compatibility = createCompatibilityAdapter();
     const adapter = createFirefoxExtensionAdapter(
       createBrowserApi(),
@@ -123,8 +138,8 @@ describe('Firefox extension adapter composition', () => {
     );
 
     const background = adapter.background();
-    expect(background.permissions).toBe(compatibility.background.permissions);
-    expect(background.cookies).toBe(compatibility.background.cookies);
+    expect(background.permissions).not.toBe(compatibility.background.permissions);
+    expect(background.cookies).not.toBe(compatibility.background.cookies);
     expect(background.referrerPolicies).toBe(
       compatibility.background.referrerPolicies,
     );
@@ -136,7 +151,7 @@ describe('Firefox extension adapter composition', () => {
     );
 
     const popup = adapter.popup();
-    expect(popup.permissions).toBe(compatibility.popup.permissions);
+    expect(popup.permissions).not.toBe(compatibility.popup.permissions);
     expect(popup.environment.resourceUrl('popup.html')).toBe(
       'moz-extension://firefox-extension-id/popup.html',
     );

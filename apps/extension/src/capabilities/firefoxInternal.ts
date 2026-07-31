@@ -67,6 +67,39 @@ export type FirefoxApi = {
   tabs?: FirefoxTabs;
   commands?: FirefoxCommands;
   menus?: FirefoxMenus;
+  permissions?: FirefoxPermissions;
+  cookies?: FirefoxCookies;
+};
+
+export type FirefoxPermissionDetails = {
+  permissions?: string[];
+  origins?: string[];
+  data_collection?: string[];
+};
+
+export type FirefoxPermissions = {
+  contains(details: FirefoxPermissionDetails): Promise<boolean>;
+  request(details: FirefoxPermissionDetails): Promise<boolean>;
+  onAdded: FirefoxListenerEvent<(details: FirefoxPermissionDetails) => void>;
+  onRemoved: FirefoxListenerEvent<(details: FirefoxPermissionDetails) => void>;
+};
+
+export type FirefoxCookie = {
+  name?: unknown;
+  value?: unknown;
+  domain?: unknown;
+  path?: unknown;
+  secure?: unknown;
+  httpOnly?: unknown;
+  expirationDate?: unknown;
+};
+
+export type FirefoxCookies = {
+  getAll(query: {
+    url?: string;
+    domain?: string;
+    name?: string;
+  }): Promise<FirefoxCookie[]>;
 };
 
 export type FirefoxStorageArea = {

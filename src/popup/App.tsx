@@ -15,7 +15,9 @@ import {
   type ExtensionSettings,
 } from '../shared/config';
 import type {
+  ExtensionPermissions,
   NativeCommands,
+  PermissionRequirement,
 } from '../../apps/extension/src/capabilities/contracts';
 import {
   getLlmThinkingControl,
@@ -25,6 +27,10 @@ import {
 } from '../shared/llmThinking';
 import type { RuntimeMessageSender } from '../shared/messages';
 import { downloadText } from '../shared/utils';
+import {
+  credentialAccessTargetForProfile,
+  runCredentialAction,
+} from './authentication';
 import {
   defaultShortcutState,
   loadShortcutState,
@@ -54,6 +60,17 @@ type PersistSettingsOptions = {
 type SettingsUpdateOptions = {
   showSaveStatus?: boolean;
 };
+
+function credentialAuthorizationMessage(
+  missing: readonly PermissionRequirement[],
+): string {
+  const labels = missing.map((requirement) => {
+    if (requirement.kind === 'authentication-data-use') return '认证数据';
+    if (requirement.kind === 'cookie-access') return 'Cookie';
+    return new URL(requirement.origin).origin;
+  });
+  return `需要授权：${labels.join('、')}`;
+}
 
 const IconGitHub = () => (
   <svg viewBox="0 0 24 24" fill="currentColor">
@@ -539,10 +556,12 @@ export function App({
   sendMessage,
   extensionVersion,
   commands,
+  permissions,
 }: {
   sendMessage: RuntimeMessageSender;
   extensionVersion: string;
   commands: NativeCommands;
+  permissions: ExtensionPermissions;
 }) {
   const [settings, setSettings] = useState<ExtensionSettings>(defaultExtensionSettings);
   const [loading, setLoading] = useState(true);
@@ -655,7 +674,45 @@ export function App({
     }));
   }
 
-  function updateTranslator(translator: ExtensionSettings['translator']): void {
+  async function authorizeProfile(
+    provider: LlmProvider,
+    profile: LlmProviderProfile,
+  ): Promise<boolean> {
+    try {
+      const authorization = await runCredentialAction(
+        permissions,
+        credentialAccessTargetForProfile(provider, profile),
+        async () => undefined,
+      );
+      if (authorization.status === 'permission-required') {
+        setStatus({
+          kind: 'error',
+          message: credentialAuthorizationMessage(authorization.missing),
+        });
+        return false;
+      }
+      return true;
+    } catch (error) {
+      setStatus({
+        kind: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+  }
+
+  async function updateTranslator(
+    translator: ExtensionSettings['translator'],
+  ): Promise<void> {
+    if (
+      translator === 'llm'
+      && !await authorizeProfile(
+        settings.llmProvider,
+        settings.llmProfiles[settings.llmProvider],
+      )
+    ) {
+      return;
+    }
     queueSaveStatus();
     setSettings((prev) => applyNanoBananaDebugLocks({
       ...prev,
@@ -666,7 +723,10 @@ export function App({
     }));
   }
 
-  function updateLlmProvider(provider: LlmProvider): void {
+  async function updateLlmProvider(provider: LlmProvider): Promise<void> {
+    if (!await authorizeProfile(provider, settings.llmProfiles[provider])) {
+      return;
+    }
     queueSaveStatus();
     setSettings((prev) => applyNanoBananaDebugLocks({
       ...prev,
@@ -675,6 +735,48 @@ export function App({
         ? false
         : prev.showStageTimingDetails,
     }));
+  }
+
+  async function updateAuthMode(authMode: LlmAuthMode): Promise<void> {
+    const profile = {
+      ...settings.llmProfiles[settings.llmProvider],
+      authMode,
+    };
+    if (!await authorizeProfile(settings.llmProvider, profile)) {
+      return;
+    }
+    updateActiveLlmProfile({ authMode });
+  }
+
+  async function updateApiKey(value: string): Promise<void> {
+    if (
+      value.trim()
+      && !settings.llmProfiles[settings.llmProvider].apiKey.trim()
+      && !await authorizeProfile(
+        settings.llmProvider,
+        settings.llmProfiles[settings.llmProvider],
+      )
+    ) {
+      return;
+    }
+    updateActiveLlmProfile({ apiKey: value }, { showSaveStatus: true });
+  }
+
+  async function authorizeCustomEndpoint(): Promise<void> {
+    const profile = settings.llmProfiles.custom;
+    if (!profile.customBaseUrl.trim()) {
+      setStatus({
+        kind: 'error',
+        message: '请先填写自定义 Base URL',
+      });
+      return;
+    }
+    if (await authorizeProfile('custom', profile)) {
+      setStatus({
+        kind: 'success',
+        message: `已授权 ${new URL(profile.customBaseUrl).origin}`,
+      });
+    }
   }
 
   function updateUseCustomModel(checked: boolean): void {
@@ -738,7 +840,15 @@ export function App({
   async function loginOpenAiOAuth(): Promise<void> {
     setOpenAiStatus((prev) => ({ ...prev, busy: true, error: '' }));
     try {
-      const response = await sendMessage({ type: 'mt:openai-oauth-login' });
+      const authorization = await runCredentialAction(
+        permissions,
+        { kind: 'openai-oauth' },
+        () => sendMessage({ type: 'mt:openai-oauth-login' }),
+      );
+      if (authorization.status === 'permission-required') {
+        throw new Error(credentialAuthorizationMessage(authorization.missing));
+      }
+      const response = authorization.value;
       if (!response.ok || response.type !== 'mt:openai-oauth-login') {
         throw new Error(response.ok ? 'OpenAI 登录失败' : response.error);
       }
@@ -812,7 +922,15 @@ export function App({
   async function loginGeminiApp(): Promise<void> {
     setGeminiAppStatus((prev) => ({ ...prev, busy: true, error: '' }));
     try {
-      const response = await sendMessage({ type: 'mt:gemini-app-auth-login' });
+      const authorization = await runCredentialAction(
+        permissions,
+        { kind: 'gemini-cookie' },
+        () => sendMessage({ type: 'mt:gemini-app-auth-login' }),
+      );
+      if (authorization.status === 'permission-required') {
+        throw new Error(credentialAuthorizationMessage(authorization.missing));
+      }
+      const response = authorization.value;
       if (!response.ok || response.type !== 'mt:gemini-app-auth-login') {
         throw new Error(response.ok ? 'Gemini 登录失败' : response.error);
       }
@@ -1107,7 +1225,9 @@ export function App({
                       { value: 'llm', label: '大模型' },
                     ]}
                     value={settings.translator}
-                    onChange={(value) => updateTranslator(value as ExtensionSettings['translator'])}
+                    onChange={(value) => {
+                      void updateTranslator(value as ExtensionSettings['translator']);
+                    }}
                     disabled={loading}
                   />
                 </div>
@@ -1157,7 +1277,9 @@ export function App({
                     ariaLabel="LLM 提供商"
                     options={llmProviderOptions}
                     value={settings.llmProvider}
-                    onChange={updateLlmProvider}
+                    onChange={(provider) => {
+                      void updateLlmProvider(provider);
+                    }}
                     disabled={loading}
                   />
                 </div>
@@ -1172,7 +1294,9 @@ export function App({
                           { value: 'api_key', label: 'API Key' },
                         ]}
                         value={currentProfile.authMode}
-                        onChange={(value) => updateActiveLlmProfile({ authMode: value })}
+                        onChange={(value) => {
+                          void updateAuthMode(value);
+                        }}
                         disabled={loading}
                       />
                     </div>
@@ -1220,9 +1344,9 @@ export function App({
                       <ApiKeyField
                         key={`api-key-${settings.llmProvider}-${currentProfile.authMode}`}
                         value={currentProfile.apiKey}
-                        onChange={(value) =>
-                          updateActiveLlmProfile({ apiKey: value }, { showSaveStatus: true })
-                        }
+                        onChange={(value) => {
+                          void updateApiKey(value);
+                        }}
                         disabled={loading}
                         placeholder="AIza..."
                       />
@@ -1265,6 +1389,16 @@ export function App({
                         placeholder="https://api.example.com/v1"
                       />
                     </label>
+                    <button
+                      className="oauth-action"
+                      type="button"
+                      onClick={() => {
+                        void authorizeCustomEndpoint();
+                      }}
+                      disabled={loading || !currentProfile.customBaseUrl.trim()}
+                    >
+                      授权 Endpoint
+                    </button>
                     <label className="field">
                       <span className="field-label">模型名称</span>
                       <input
@@ -1280,9 +1414,9 @@ export function App({
                     <ApiKeyField
                       key={`api-key-${settings.llmProvider}-${currentProfile.authMode}`}
                       value={currentProfile.apiKey}
-                      onChange={(value) =>
-                        updateActiveLlmProfile({ apiKey: value }, { showSaveStatus: true })
-                      }
+                      onChange={(value) => {
+                        void updateApiKey(value);
+                      }}
                       disabled={loading}
                       placeholder="sk-..."
                     />
@@ -1298,7 +1432,9 @@ export function App({
                             { value: 'api_key', label: 'API Key' },
                           ]}
                           value={currentProfile.authMode}
-                          onChange={(value) => updateActiveLlmProfile({ authMode: value })}
+                          onChange={(value) => {
+                            void updateAuthMode(value);
+                          }}
                           disabled={loading}
                         />
                       </div>
@@ -1492,9 +1628,9 @@ export function App({
                       <ApiKeyField
                         key={`api-key-${settings.llmProvider}-${currentProfile.authMode}`}
                         value={currentProfile.apiKey}
-                        onChange={(value) =>
-                          updateActiveLlmProfile({ apiKey: value }, { showSaveStatus: true })
-                        }
+                        onChange={(value) => {
+                          void updateApiKey(value);
+                        }}
                         disabled={loading}
                         placeholder="sk-..."
                       />

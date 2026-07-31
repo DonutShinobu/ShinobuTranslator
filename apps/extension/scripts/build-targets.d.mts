@@ -1,10 +1,16 @@
-export type ExtensionBuildTarget = 'chrome' | 'firefox' | 'benchmark';
+export type ExtensionBuildTarget =
+  | 'chrome'
+  | 'firefox'
+  | 'benchmark'
+  | 'conformance-chrome'
+  | 'conformance-firefox';
 
 export type ExtensionBuildTargetDescriptor = {
   browser: 'chrome' | 'firefox';
   manifestTarget: 'chrome' | 'firefox';
   outDir: string;
   release: boolean;
+  conformance?: boolean;
 };
 
 export const extensionBuildTargets: Readonly<

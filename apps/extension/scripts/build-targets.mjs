@@ -22,6 +22,20 @@ export const extensionBuildTargets = Object.freeze({
     outDir: 'apps/extension/dist/benchmark',
     release: false,
   }),
+  'conformance-chrome': Object.freeze({
+    browser: 'chrome',
+    manifestTarget: 'chrome',
+    outDir: 'apps/extension/dist/conformance/chrome',
+    release: false,
+    conformance: true,
+  }),
+  'conformance-firefox': Object.freeze({
+    browser: 'firefox',
+    manifestTarget: 'firefox',
+    outDir: 'apps/extension/dist/conformance/firefox',
+    release: false,
+    conformance: true,
+  }),
 });
 
 export function resolveExtensionBuildTarget(target) {

@@ -357,7 +357,7 @@ describe('extension manifest generation', () => {
     );
   });
 
-  it('assigns isolated release directories and a Chrome-only non-release benchmark target', () => {
+  it('assigns isolated release and non-release build directories', () => {
     const description = execFileSync(
       process.execPath,
       [extensionBuilderPath, '--describe-targets'],
@@ -385,6 +385,20 @@ describe('extension manifest generation', () => {
         manifestTarget: 'chrome',
         outDir: 'apps/extension/dist/benchmark',
         release: false,
+      },
+      'conformance-chrome': {
+        browser: 'chrome',
+        manifestTarget: 'chrome',
+        outDir: 'apps/extension/dist/conformance/chrome',
+        release: false,
+        conformance: true,
+      },
+      'conformance-firefox': {
+        browser: 'firefox',
+        manifestTarget: 'firefox',
+        outDir: 'apps/extension/dist/conformance/firefox',
+        release: false,
+        conformance: true,
       },
     });
   });

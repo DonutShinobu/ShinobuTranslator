@@ -934,6 +934,27 @@ describe('extension release boundaries', () => {
   );
 
   it(
+    'rejects the conformance composition sentinel from store products',
+    () => {
+      const markedDirectory = createReleaseFixture('chrome');
+      writeArtifact(
+        markedDirectory,
+        'background.js',
+        'const marker = "shinobu-conformance-test-composition-v1";\n',
+      );
+      const markedResult = runReleaseBoundary(
+        'chrome',
+        markedDirectory,
+      );
+      expect(markedResult.status).not.toBe(0);
+      expect(markedResult.stderr).toContain(
+        'Release artifact contains forbidden test-control token shinobu-conformance-test-composition-v1: background.js',
+      );
+    },
+    15_000,
+  );
+
+  it(
     'rejects undeclared artifacts from store products',
     () => {
       const undeclaredDirectory = createReleaseFixture('firefox');

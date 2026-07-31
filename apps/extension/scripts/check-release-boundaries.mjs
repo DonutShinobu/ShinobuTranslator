@@ -36,11 +36,21 @@ const distDir = requestedDistDir
   ? resolve(process.cwd(), requestedDistDir)
   : join(root, 'apps', 'extension', 'dist', 'chrome');
 const target = readCliOption(argumentsList, '--target') ?? 'chrome';
-if (!['chrome', 'firefox', 'benchmark'].includes(target)) {
+if (![
+  'chrome',
+  'firefox',
+  'benchmark',
+  'conformance-chrome',
+  'conformance-firefox',
+].includes(target)) {
   throw new Error(`Unsupported extension release target: ${target}`);
 }
 const benchmarkBuild = target === 'benchmark';
-const manifestTarget = target === 'firefox' ? 'firefox' : 'chrome';
+const conformanceBuild = target.startsWith('conformance-');
+const manifestTarget = (
+  target === 'firefox'
+  || target === 'conformance-firefox'
+) ? 'firefox' : 'chrome';
 const canonicalModelSourceDirectory = requestedModelSourceDirectory
   ? resolve(process.cwd(), requestedModelSourceDirectory)
   : join(root, 'public', 'models');
@@ -81,10 +91,13 @@ const forbiddenBridgeTokens = [
   '__shinobu_render',
   '__shinobu_bridge',
 ];
+const conformanceCompositionSentinel =
+  'shinobu-conformance-test-composition-v1';
 const forbiddenTestControlTokens = [
   '__shinobu_test_control',
   '__shinobu_conformance_control',
   '__shinobu_fault_injection',
+  conformanceCompositionSentinel,
 ];
 const forbiddenTestControlPathSegments = new Set([
   '__tests__',
@@ -902,6 +915,9 @@ for (const artifactPath of artifactPaths) {
     }
   }
   for (const token of forbiddenTestControlTokens) {
+    if (conformanceBuild && token === conformanceCompositionSentinel) {
+      continue;
+    }
     if (source.includes(token)) {
       throw new Error(
         `Release artifact contains forbidden test-control token ${token}: ${artifactPath}`,
@@ -1030,7 +1046,7 @@ if (
 for (const { label, path } of collectManifestReferences(manifest)) {
   assertManifestReference(path, label);
 }
-if (!benchmarkBuild) {
+if (!benchmarkBuild && !conformanceBuild) {
   for (const artifactPath of artifactPaths) {
     const classification = classifyNonReleaseArtifact(artifactPath);
     if (classification) {

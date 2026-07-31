@@ -893,6 +893,7 @@ export async function runPipeline(
     const [translatedRegions, inpaintedCanvas] = await Promise.all([translateTask, eraseTask]);
     throwIfCancelled(signal);
     latestRegions = translatedRegions;
+    stageRegions.ordered = cloneTextRegions(latestRegions);
     cleanedCanvas = inpaintedCanvas;
     resultCanvas = cleanedCanvas;
     flushParallelTimings();

@@ -23,6 +23,7 @@ import {
 } from './chromePermissions';
 import {
   extensionEnvironment,
+  extensionResourceEnvironment,
   runtimeChannelClient,
   runtimeChannelServer,
   runtimeRequestClient,
@@ -115,7 +116,7 @@ export function createChromeExtensionAdapter(
       return {
         runtimeRequests: runtimeRequestClient(chrome.runtime),
         runtimeChannels: runtimeChannelClient(chrome.runtime),
-        environment: extensionEnvironment(chrome.runtime),
+        environment: extensionResourceEnvironment(chrome.runtime),
       };
     },
   };

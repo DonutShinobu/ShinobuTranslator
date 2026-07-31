@@ -1,6 +1,11 @@
 import { resolve } from 'node:path';
-import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { createCanvas, loadImage } from 'canvas';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import type { Plugin, UserConfig } from 'vite';
@@ -70,16 +75,64 @@ function extensionReleaseAssetsPlugin(outputDirectory: string): Plugin {
   };
 }
 
+function conformanceBuildPlugin(
+  outputDirectory: string,
+  browser: 'chrome' | 'firefox',
+): Plugin {
+  return {
+    name: 'extension-conformance-build',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'pre',
+      handler(html, context) {
+        if (!context.filename.endsWith('conformance.html')) return html;
+        const host = browser === 'chrome'
+          ? 'broker-offscreen'
+          : 'event-page-direct';
+        return {
+          html,
+          tags: [{
+            tag: 'meta',
+            attrs: {
+              name: 'shinobu-conformance-target',
+              content: `${browser}:${host}`,
+            },
+            injectTo: 'head',
+          }],
+        };
+      },
+    },
+    async closeBundle() {
+      const source = await loadImage(
+        resolve(repoRoot, 'docs/translated1.png'),
+      );
+      const canvas = createCanvas(420, 360);
+      const context = canvas.getContext('2d');
+      context.drawImage(source, 80, 0, 420, 360, 0, 0, 420, 360);
+      writeFileSync(
+        resolve(outputDirectory, 'conformance-input.png'),
+        canvas.toBuffer('image/png'),
+      );
+    },
+  };
+}
+
 function extensionTargetAdapterPlugin(
   adapterModule: string,
+  pipelineHostCompositionModule?: string,
 ): Plugin {
   return {
     name: 'extension-target-adapter',
     enforce: 'pre',
     resolveId(source) {
-      return source === './capabilities/targetAdapter'
-        ? adapterModule
-        : null;
+      if (source === './capabilities/targetAdapter') return adapterModule;
+      if (
+        source === './pipelineHost/targetComposition'
+        && pipelineHostCompositionModule
+      ) {
+        return pipelineHostCompositionModule;
+      }
+      return null;
     },
   };
 }
@@ -141,12 +194,21 @@ export default defineConfig(({ command, mode }): UserConfig => {
       ),
     );
   }
+  if (target.conformance) {
+    input.conformance = resolve(extensionRoot, 'conformance.html');
+  }
   const targetAdapterModule = resolve(
     extensionRoot,
     target.browser === 'firefox'
       ? 'src/capabilities/firefoxTargetAdapter.ts'
       : 'src/capabilities/chromeTargetAdapter.ts',
   );
+  const pipelineHostCompositionModule = target.conformance
+    ? resolve(
+        extensionRoot,
+        'conformance/pipelineHostComposition.ts',
+      )
+    : undefined;
 
   return {
     root: extensionRoot,
@@ -158,10 +220,16 @@ export default defineConfig(({ command, mode }): UserConfig => {
       },
     },
     plugins: [
-      extensionTargetAdapterPlugin(targetAdapterModule),
+      extensionTargetAdapterPlugin(
+        targetAdapterModule,
+        pipelineHostCompositionModule,
+      ),
       browserRuntimeBoundaryPlugin({ apply: 'serve' }),
       staticOrtRuntimeImportsPlugin(),
       react(),
+      ...(target.conformance
+        ? [conformanceBuildPlugin(target.absoluteOutDir, target.browser)]
+        : []),
       classicContentScriptAdapter(
         target.browser === 'firefox' ? 'browser' : 'chrome',
       ),
@@ -222,6 +290,14 @@ export default defineConfig(({ command, mode }): UserConfig => {
               return 'diagnosticLog';
             }
             if (normalized.endsWith('/src/shared/localPipelineProtocol.ts')) {
+              return 'localPipelineProtocol';
+            }
+            if (
+              target.conformance
+              && normalized.endsWith(
+                '/src/content/core/translation/localPipelineClient.ts',
+              )
+            ) {
               return 'localPipelineProtocol';
             }
             if (normalized.endsWith('/src/shared/blobCodec.ts')) {

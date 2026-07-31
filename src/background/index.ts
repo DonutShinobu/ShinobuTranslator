@@ -23,6 +23,9 @@ import type {
   PipelineHostConnection,
   PipelineHostDocumentLifecycle,
 } from '../../apps/extension/src/pipelineHost/contracts';
+import type {
+  PipelineHostRuntimeComposition,
+} from '../offscreen/index';
 import { getGeminiAppRawResponse } from './geminiAppClient';
 import { createSettingsStore } from './settings/settingsStore';
 import { createDiagnosticLogStore } from './diagnostics/logStore';
@@ -174,7 +177,8 @@ export function startBackground(
 export async function startBackgroundPipelineHost(
   capabilities: PipelineHostExtensionCapabilities,
   connection: PipelineHostConnection,
+  composition?: PipelineHostRuntimeComposition,
 ) {
   const { startOffscreenPipelineHost } = await import('../offscreen/index');
-  return startOffscreenPipelineHost(capabilities, connection);
+  return startOffscreenPipelineHost(capabilities, connection, composition);
 }

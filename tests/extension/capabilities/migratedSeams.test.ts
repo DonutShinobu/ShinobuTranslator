@@ -109,9 +109,16 @@ describe('migrated extension capability seams', () => {
 
     const compositionRoot = read('apps/extension/src/background.ts');
     expect(compositionRoot).toContain(
-      'createChromePipelineHostLifecycle(nativeChrome)',
+      'createTargetPipelineHostLifecycle()',
     );
     expect(compositionRoot).not.toMatch(/\bChromeLike\b/u);
+
+    const chromeTarget = read(
+      'apps/extension/src/capabilities/chromeTargetAdapter.ts',
+    );
+    expect(chromeTarget).toContain(
+      'createChromePipelineHostLifecycle(nativeChromeApi())',
+    );
   });
 
   it.each([

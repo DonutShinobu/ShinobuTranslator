@@ -1,14 +1,6 @@
 import { startContent } from '../../../src/content/index';
 import {
-  createChromeContentCapabilities,
-} from './capabilities/chromeAdapter';
+  createTargetExtensionAdapter,
+} from './capabilities/targetAdapter';
 
-const nativeChrome = (globalThis as typeof globalThis & {
-  chrome?: unknown;
-}).chrome;
-
-if (!nativeChrome) {
-  throw new Error('Extension content capabilities are unavailable');
-}
-
-startContent(createChromeContentCapabilities(nativeChrome));
+startContent(createTargetExtensionAdapter().content());

@@ -1,16 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
-  createChromeContentCapabilities,
-} from '../../../apps/extension/src/capabilities/chromeAdapter';
+  createFirefoxContentCapabilities,
+} from '../../../apps/extension/src/capabilities/firefoxAdapter';
 import type {
   ExtensionMessageSource,
   JsonValue,
 } from '../../../apps/extension/src/capabilities/contracts';
 import {
+  ExtensionContractError,
+} from '../../../apps/extension/src/capabilities/errors';
+import {
   runRuntimeAdapterContract,
   type RuntimeAdapterContractDriver,
 } from './runtimeAdapterContract.fixture';
-import { ExtensionContractError } from '../../../apps/extension/src/capabilities/errors';
 
 type RawSender = {
   documentId?: string;
@@ -27,8 +29,7 @@ type RawSender = {
 type RawRequestListener = (
   request: unknown,
   sender: RawSender,
-  sendResponse: (response: unknown) => void,
-) => boolean | void;
+) => Promise<unknown> | undefined;
 
 function rawSender(source: ExtensionMessageSource): RawSender {
   if (source.kind === 'tab-document') {
@@ -47,7 +48,7 @@ function rawSender(source: ExtensionMessageSource): RawSender {
     return {
       documentId: source.documentId,
       documentUrl: source.url,
-      origin: 'chrome-extension://extension-id',
+      origin: 'moz-extension://extension-id',
       tab: {
         id: 91,
         url: source.url,
@@ -57,7 +58,7 @@ function rawSender(source: ExtensionMessageSource): RawSender {
   return {};
 }
 
-function createChromeDriver(): RuntimeAdapterContractDriver {
+function createFirefoxDriver(): RuntimeAdapterContractDriver {
   let response: JsonValue | undefined;
   let rejection: Error | undefined;
   let unavailable = false;
@@ -99,31 +100,22 @@ function createChromeDriver(): RuntimeAdapterContractDriver {
   };
   const runtime = {
     id: 'extension-id',
-    lastError: undefined as { message?: string } | undefined,
     getManifest: () => ({ version: '0.8.1' }),
-    getURL: (path: string) => `chrome-extension://extension-id/${path}`,
-    sendMessage: (
-      request: unknown,
-      callback: (actualResponse: unknown) => void,
-    ): void => {
+    getURL: (path: string) => `moz-extension://extension-id/${path}`,
+    async sendMessage(request: unknown): Promise<unknown> {
       sent.push(request);
       if (unavailable) {
-        runtime.lastError = {
-          message: 'Could not establish connection. Receiving end does not exist.',
-        };
-        callback(undefined);
-        runtime.lastError = undefined;
         unavailable = false;
-        return;
+        throw new Error(
+          'Could not establish connection. Receiving end does not exist.',
+        );
       }
       if (rejection) {
-        runtime.lastError = { message: rejection.message };
-        callback(undefined);
-        runtime.lastError = undefined;
+        const error = rejection;
         rejection = undefined;
-        return;
+        throw error;
       }
-      callback(response);
+      return response;
     },
     onMessage: {
       addListener(listener: RawRequestListener): void {
@@ -139,12 +131,12 @@ function createChromeDriver(): RuntimeAdapterContractDriver {
       removeListener: () => undefined,
     },
   };
-  const capabilities = createChromeContentCapabilities({ runtime });
+  const capabilities = createFirefoxContentCapabilities({ runtime });
 
   return {
     capabilities,
     extensionDocumentUrl(path) {
-      return `chrome-extension://extension-id/${path}`;
+      return `moz-extension://extension-id/${path}`;
     },
     respondWith(value) {
       response = value;
@@ -158,11 +150,7 @@ function createChromeDriver(): RuntimeAdapterContractDriver {
     async dispatchRequest(request, source) {
       const listener = [...listeners][0];
       if (!listener) return undefined;
-      return await new Promise<JsonValue | undefined>((resolve) => {
-        listener(request, rawSender(source), (value) => {
-          resolve(value as JsonValue | undefined);
-        });
-      });
+      return await listener(request, rawSender(source)) as JsonValue | undefined;
     },
     removedRequestListeners() {
       return removedListeners;
@@ -188,26 +176,21 @@ function createChromeDriver(): RuntimeAdapterContractDriver {
   };
 }
 
-describe('Chrome extension runtime adapter contract', () => {
-  runRuntimeAdapterContract(createChromeDriver);
+describe('Firefox extension runtime adapter contract', () => {
+  runRuntimeAdapterContract(createFirefoxDriver);
 
   it('fails startup when a required event cannot be cancelled', () => {
-    expect(() => createChromeContentCapabilities({
+    const create = () => createFirefoxContentCapabilities({
       runtime: {
-        sendMessage: () => undefined,
+        sendMessage: async () => undefined,
         onMessage: {
           addListener: () => undefined,
         },
       },
-    })).toThrow(ExtensionContractError);
-    expect(() => createChromeContentCapabilities({
-      runtime: {
-        sendMessage: () => undefined,
-        onMessage: {
-          addListener: () => undefined,
-        },
-      },
-    })).toThrow(expect.objectContaining({
+    });
+
+    expect(create).toThrow(ExtensionContractError);
+    expect(create).toThrow(expect.objectContaining({
       code: 'context-unavailable',
       retryable: false,
     }));

@@ -31,6 +31,10 @@ function documentIdentityId(details: {
 
 export function referrerPolicyObserver(
   rawEvent: ChromeHeadersReceivedEvent | undefined,
+  extraInfo: Array<'responseHeaders' | 'extraHeaders'> = [
+    'responseHeaders',
+    'extraHeaders',
+  ],
 ): DocumentReferrerPolicyObserver {
   const event = requireNamespace(
     rawEvent,
@@ -80,7 +84,7 @@ export function referrerPolicyObserver(
             urls: ['<all_urls>'],
             types: ['main_frame', 'sub_frame'],
           },
-          ['responseHeaders', 'extraHeaders'],
+          extraInfo,
         );
       } catch (error) {
         throw operationFailure(

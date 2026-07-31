@@ -30,8 +30,26 @@ export type PopupCapabilityContractDriver = {
   expectedResourceUrl(path: string): string;
 };
 
-export function runPopupCapabilityContract(
-  createDriver: () => PopupCapabilityContractDriver,
+export type PopupBasicCapabilities = Pick<
+  PopupExtensionCapabilities,
+  'persistentStorage' | 'commands' | 'environment'
+>;
+
+export type PopupBasicCapabilityContractDriver = Omit<Pick<
+  PopupCapabilityContractDriver,
+  | 'capabilities'
+  | 'storedValue'
+  | 'rejectNextStorage'
+  | 'emitCommand'
+  | 'commandListenerRemovals'
+  | 'shortcutSettingsOpened'
+  | 'expectedResourceUrl'
+>, 'capabilities'> & {
+  capabilities: PopupBasicCapabilities;
+};
+
+export function runPopupBasicCapabilityContract(
+  createDriver: () => PopupBasicCapabilityContractDriver,
 ): void {
   it('provides JSON storage success, serialization, and browser-error semantics', async () => {
     const driver = createDriver();
@@ -71,6 +89,46 @@ export function runPopupCapabilityContract(
     });
     await expect(rejected).rejects.not.toThrow('top-secret-token');
   });
+
+  it('normalizes native command behavior and cancellation', async () => {
+    const driver = createDriver();
+    const triggers: ShortcutTrigger[] = [];
+    const cancel = driver.capabilities.commands.onTriggered(
+      (trigger) => triggers.push(trigger),
+    );
+
+    await expect(driver.capabilities.commands.bindings()).resolves.toEqual([{
+      command: 'translate-hover',
+      description: 'Translate hovered image',
+      shortcut: 'Alt+T',
+    }]);
+    driver.emitCommand({ command: 'translate-hover', tabId: 4 });
+    await driver.capabilities.commands.openSettings();
+
+    expect(triggers).toEqual([{ command: 'translate-hover', tabId: 4 }]);
+    expect(driver.shortcutSettingsOpened()).toBe(true);
+    cancel();
+    cancel();
+    expect(driver.commandListenerRemovals()).toBe(1);
+  });
+
+  it('provides packaged resource URLs and immutable metadata', () => {
+    const driver = createDriver();
+
+    expect(driver.capabilities.environment.metadata).toEqual({
+      version: '0.8.1',
+    });
+    expect(driver.capabilities.environment.resourceUrl('models/detect.onnx')).toBe(
+      driver.expectedResourceUrl('models/detect.onnx'),
+    );
+    expect(Object.isFrozen(driver.capabilities.environment.metadata)).toBe(true);
+  });
+}
+
+export function runPopupCapabilityContract(
+  createDriver: () => PopupCapabilityContractDriver,
+): void {
+  runPopupBasicCapabilityContract(createDriver);
 
   it('normalizes authentication-tab lifecycle and idempotent cancellation', async () => {
     const driver = createDriver();
@@ -118,28 +176,6 @@ export function runPopupCapabilityContract(
     expect(driver.authenticationListenerRemovals()).toBe(2);
   });
 
-  it('normalizes native command behavior and cancellation', async () => {
-    const driver = createDriver();
-    const triggers: ShortcutTrigger[] = [];
-    const cancel = driver.capabilities.commands.onTriggered(
-      (trigger) => triggers.push(trigger),
-    );
-
-    await expect(driver.capabilities.commands.bindings()).resolves.toEqual([{
-      command: 'translate-hover',
-      description: 'Translate hovered image',
-      shortcut: 'Alt+T',
-    }]);
-    driver.emitCommand({ command: 'translate-hover', tabId: 4 });
-    await driver.capabilities.commands.openSettings();
-
-    expect(triggers).toEqual([{ command: 'translate-hover', tabId: 4 }]);
-    expect(driver.shortcutSettingsOpened()).toBe(true);
-    cancel();
-    cancel();
-    expect(driver.commandListenerRemovals()).toBe(1);
-  });
-
   it('returns permission decisions and scoped revocation events', async () => {
     const driver = createDriver();
     const requirements: readonly PermissionRequirement[] = [
@@ -178,18 +214,6 @@ export function runPopupCapabilityContract(
     cancel();
     expect(driver.permissionListenerRemovals()).toBe(2);
   });
-
-  it('provides packaged resource URLs and immutable metadata', () => {
-    const driver = createDriver();
-
-    expect(driver.capabilities.environment.metadata).toEqual({
-      version: '0.8.1',
-    });
-    expect(driver.capabilities.environment.resourceUrl('models/detect.onnx')).toBe(
-      driver.expectedResourceUrl('models/detect.onnx'),
-    );
-    expect(Object.isFrozen(driver.capabilities.environment.metadata)).toBe(true);
-  });
 }
 
 export type BackgroundCapabilityContractDriver = {
@@ -205,10 +229,36 @@ export type BackgroundCapabilityContractDriver = {
   referrerListenerRemovals(): number;
   headerOverrideUpdateCount(): number;
   rejectNextHeaderOverrideUpdate(): void;
+  emitInstallation(reason: 'install' | 'update' | 'browser_update'): void;
+  installationListenerRemovals(): number;
 };
 
-export function runBackgroundCapabilityContract(
-  createDriver: () => BackgroundCapabilityContractDriver,
+export type BackgroundBasicCapabilities = Pick<
+  BackgroundExtensionCapabilities,
+  | 'installation'
+  | 'persistentStorage'
+  | 'sessionStorage'
+  | 'tabMessages'
+  | 'visibleTabCapture'
+  | 'menus'
+>;
+
+export type BackgroundBasicCapabilityContractDriver = Omit<Pick<
+  BackgroundCapabilityContractDriver,
+  | 'capabilities'
+  | 'makeNextTabMessageUnavailable'
+  | 'rejectNextTabMessage'
+  | 'setCaptureResult'
+  | 'emitMenuSelection'
+  | 'menuListenerRemovals'
+  | 'emitInstallation'
+  | 'installationListenerRemovals'
+>, 'capabilities'> & {
+  capabilities: BackgroundBasicCapabilities;
+};
+
+export function runBackgroundBasicCapabilityContract(
+  createDriver: () => BackgroundBasicCapabilityContractDriver,
 ): void {
   it('normalizes tab messaging, capture, and expected unavailable results', async () => {
     const driver = createDriver();
@@ -268,6 +318,40 @@ export function runBackgroundCapabilityContract(
     cancel();
     expect(driver.menuListenerRemovals()).toBe(1);
   });
+
+  it('normalizes install reasons and idempotent event cancellation', () => {
+    const driver = createDriver();
+    const reasons: string[] = [];
+    const cancel = driver.capabilities.installation.onInstalled(
+      ({ reason }) => reasons.push(reason),
+    );
+
+    driver.emitInstallation('install');
+    driver.emitInstallation('update');
+    driver.emitInstallation('browser_update');
+    expect(reasons).toEqual(['installed', 'upgraded', 'other']);
+
+    cancel();
+    cancel();
+    expect(driver.installationListenerRemovals()).toBe(1);
+  });
+
+  it('keeps persistent and session storage as distinct available capabilities', async () => {
+    const driver = createDriver();
+
+    await expect(driver.capabilities.persistentStorage.write({
+      scope: 'persistent',
+    })).resolves.toBeUndefined();
+    await expect(driver.capabilities.sessionStorage.write({
+      scope: 'session',
+    })).resolves.toBeUndefined();
+  });
+}
+
+export function runBackgroundCapabilityContract(
+  createDriver: () => BackgroundCapabilityContractDriver,
+): void {
+  runBackgroundBasicCapabilityContract(createDriver);
 
   it('distinguishes permission-required cookies from an empty cookie result', async () => {
     const driver = createDriver();
@@ -359,14 +443,4 @@ export function runBackgroundCapabilityContract(
     });
   });
 
-  it('keeps persistent and session storage as distinct available capabilities', async () => {
-    const driver = createDriver();
-
-    await expect(driver.capabilities.persistentStorage.write({
-      scope: 'persistent',
-    })).resolves.toBeUndefined();
-    await expect(driver.capabilities.sessionStorage.write({
-      scope: 'session',
-    })).resolves.toBeUndefined();
-  });
 }

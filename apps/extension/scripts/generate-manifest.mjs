@@ -24,6 +24,8 @@ const chromeRequiredPermissionAdditions = new Set([
   'cookies',
   'offscreen',
 ]);
+const firefoxRequiredPermissionAdditions = new Set(['menus']);
+const firefoxRequiredPermissionRemovals = new Set(['contextMenus']);
 const firefoxOptionalPermissionAdditions = new Set(['cookies']);
 
 function fail(path, message) {
@@ -343,12 +345,12 @@ function validateFirefoxTarget(target) {
   );
   assertExactStringSet(
     target.permission_overrides.required.add,
-    new Set(),
+    firefoxRequiredPermissionAdditions,
     'target.permission_overrides.required.add',
   );
   assertExactStringSet(
     target.permission_overrides.required.remove,
-    new Set(),
+    firefoxRequiredPermissionRemovals,
     'target.permission_overrides.required.remove',
   );
   assertExactStringSet(

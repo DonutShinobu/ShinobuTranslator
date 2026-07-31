@@ -11,6 +11,7 @@ import {
 
 export type RuntimeAdapterContractDriver = {
   capabilities: ContentExtensionCapabilities;
+  extensionDocumentUrl(path: string): string;
   respondWith(response: JsonValue | undefined): void;
   makeNextRequestUnavailable(): void;
   rejectNextRequest(error: Error): void;
@@ -155,7 +156,7 @@ export function runRuntimeAdapterContract(
     const source: ExtensionMessageSource = {
       kind: 'extension-document',
       documentId: 'extension-document-1',
-      url: 'chrome-extension://extension-id/popup.html',
+      url: driver.extensionDocumentUrl('popup.html'),
     };
 
     await driver.dispatchRequest({ type: 'extension-query' }, source);

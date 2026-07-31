@@ -145,13 +145,24 @@ describe('extension manifest generation', () => {
       },
     });
     expect(generated.manifest.permissions).toEqual([
-      'contextMenus',
       'declarativeNetRequest',
+      'menus',
       'storage',
       'tabs',
       'webRequest',
     ]);
     expect(generated.manifest.optional_permissions).toEqual(['cookies']);
+    expect(generated.manifest.web_accessible_resources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          resources: expect.arrayContaining([
+            'chunks/extensionAdapter.js',
+          ]),
+        }),
+      ]),
+    );
+    expect(JSON.stringify(generated.manifest.web_accessible_resources))
+      .not.toContain('chromeAdapter');
     expect(generated.manifest).not.toHaveProperty('minimum_chrome_version');
     expect(generated.manifest.permissions).not.toContain('offscreen');
     expect(generated.manifest.permissions).not.toContain('cookies');

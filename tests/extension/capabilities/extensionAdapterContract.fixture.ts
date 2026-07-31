@@ -225,12 +225,21 @@ export type BackgroundCapabilityContractDriver = {
   menuListenerRemovals(): number;
   grantCookieAccess(): void;
   cookieReadCount(): number;
+  emitInstallation(reason: 'install' | 'update' | 'browser_update'): void;
+  installationListenerRemovals(): number;
+} & NetworkCapabilityContractDriver;
+
+export type NetworkCapabilities = Pick<
+  BackgroundExtensionCapabilities,
+  'referrerPolicies' | 'requestHeaderOverride'
+>;
+
+export type NetworkCapabilityContractDriver = {
+  capabilities: NetworkCapabilities;
   emitReferrerPolicy(observation: DocumentReferrerPolicy): void;
   referrerListenerRemovals(): number;
   headerOverrideUpdateCount(): number;
   rejectNextHeaderOverrideUpdate(): void;
-  emitInstallation(reason: 'install' | 'update' | 'browser_update'): void;
-  installationListenerRemovals(): number;
 };
 
 export type BackgroundBasicCapabilities = Pick<
@@ -352,6 +361,7 @@ export function runBackgroundCapabilityContract(
   createDriver: () => BackgroundCapabilityContractDriver,
 ): void {
   runBackgroundBasicCapabilityContract(createDriver);
+  runNetworkCapabilityContract(createDriver);
 
   it('distinguishes permission-required cookies from an empty cookie result', async () => {
     const driver = createDriver();
@@ -377,6 +387,11 @@ export function runBackgroundCapabilityContract(
     expect(driver.cookieReadCount()).toBe(1);
   });
 
+}
+
+export function runNetworkCapabilityContract(
+  createDriver: () => NetworkCapabilityContractDriver,
+): void {
   it('normalizes referrer policy observation and idempotent cancellation', () => {
     const driver = createDriver();
     const observations: DocumentReferrerPolicy[] = [];
@@ -442,5 +457,4 @@ export function runBackgroundCapabilityContract(
       },
     });
   });
-
 }

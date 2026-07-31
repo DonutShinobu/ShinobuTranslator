@@ -3,35 +3,59 @@ import type {
   RequestHeaderOverride,
 } from './contracts';
 import {
+  ExtensionContractError,
+} from './errors';
+import {
   idempotentCancel,
   operationFailure,
   requireFunction,
   requireNamespace,
-  type ChromeDeclarativeNetRequest,
-  type ChromeHeadersReceivedDetails,
-  type ChromeHeadersReceivedEvent,
-} from './chromeInternal';
+} from './adapterInternal';
+import type {
+  FirefoxDeclarativeNetRequest,
+  FirefoxDeclarativeNetRequestRule,
+  FirefoxHeadersReceivedDetails,
+  FirefoxHeadersReceivedEvent,
+} from './firefoxInternal';
 import { coordinatedRequestHeaderOverride } from './requestHeaderOverride';
 
 const legacyDynamicHeaderOverrideRuleId = 1;
 const legacySessionHeaderOverrideRuleId = 2;
 const firstHeaderOverrideRuleId = 1_000_000;
+const lastHeaderOverrideRuleId = 1_999_999;
 
-function documentIdentityId(details: {
-  documentId?: string;
-  tabId: number;
-  frameId: number;
-}): string {
-  return details.documentId
-    || `synthetic-frame:${details.tabId}:${details.frameId}`;
+function isAppOwnedRule(rule: FirefoxDeclarativeNetRequestRule): boolean {
+  return rule.id >= firstHeaderOverrideRuleId
+    && rule.id <= lastHeaderOverrideRuleId;
 }
 
-export function referrerPolicyObserver(
-  rawEvent: ChromeHeadersReceivedEvent | undefined,
-  extraInfo: Array<'responseHeaders' | 'extraHeaders'> = [
-    'responseHeaders',
-    'extraHeaders',
-  ],
+function exactUrlRegex(url: string): string {
+  return `^${url.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}$`;
+}
+
+function extensionInitiatorDomain(extensionRootUrl: string): string {
+  try {
+    const url = new URL(extensionRootUrl);
+    if (url.protocol !== 'moz-extension:' || !url.hostname) {
+      throw new TypeError('Invalid Firefox extension origin');
+    }
+    return url.hostname;
+  } catch (error) {
+    throw new ExtensionContractError({
+      capability: 'request-header-override',
+      operation: 'initialize',
+      code: 'context-unavailable',
+      retryable: false,
+      diagnostic: {
+        missing: 'extension-origin',
+      },
+      cause: error,
+    });
+  }
+}
+
+export function firefoxReferrerPolicyObserver(
+  rawEvent: FirefoxHeadersReceivedEvent | undefined,
 ): DocumentReferrerPolicyObserver {
   const event = requireNamespace(
     rawEvent,
@@ -44,12 +68,16 @@ export function referrerPolicyObserver(
     'document-referrer-policy',
     'cancel:onObserved',
   );
+
   return {
     onObserved(listener) {
-      const rawListener = (details: ChromeHeadersReceivedDetails): void => {
+      const rawListener = (details: FirefoxHeadersReceivedDetails): void => {
         if (
-          typeof details.tabId !== 'number'
+          !details.documentId
+          || typeof details.tabId !== 'number'
+          || details.tabId < 0
           || typeof details.frameId !== 'number'
+          || details.frameId < 0
           || !details.url
         ) {
           return;
@@ -62,11 +90,7 @@ export function referrerPolicyObserver(
           .join(', ');
         listener({
           document: {
-            documentId: documentIdentityId({
-              documentId: details.documentId,
-              tabId: details.tabId,
-              frameId: details.frameId,
-            }),
+            documentId: details.documentId,
             tabId: details.tabId,
             frameId: details.frameId,
             url: details.url,
@@ -81,7 +105,7 @@ export function referrerPolicyObserver(
             urls: ['<all_urls>'],
             types: ['main_frame', 'sub_frame'],
           },
-          extraInfo,
+          ['responseHeaders'],
         );
       } catch (error) {
         throw operationFailure(
@@ -105,35 +129,65 @@ export function referrerPolicyObserver(
   };
 }
 
-export function requestHeaderOverride(
-  rawDnr: ChromeDeclarativeNetRequest | undefined,
-  extensionId: string | undefined,
+export function firefoxRequestHeaderOverride(
+  rawDnr: FirefoxDeclarativeNetRequest | undefined,
+  extensionRootUrl: string,
 ): RequestHeaderOverride {
   const dnr = requireNamespace(
     rawDnr,
     'request-header-override',
     'declarativeNetRequest',
   );
-  requireFunction(dnr.updateDynamicRules, 'request-header-override', 'acquire');
-  requireFunction(dnr.updateSessionRules, 'request-header-override', 'acquire');
-  const initiatorDomain = requireNamespace(
-    extensionId || undefined,
+  requireFunction(
+    dnr.getDynamicRules,
     'request-header-override',
-    'runtime.id',
+    'initialize',
   );
+  requireFunction(
+    dnr.getSessionRules,
+    'request-header-override',
+    'initialize',
+  );
+  requireFunction(
+    dnr.updateDynamicRules,
+    'request-header-override',
+    'acquire',
+  );
+  requireFunction(
+    dnr.updateSessionRules,
+    'request-header-override',
+    'acquire',
+  );
+  const initiatorDomain = extensionInitiatorDomain(extensionRootUrl);
   return coordinatedRequestHeaderOverride({
     firstRuleId: firstHeaderOverrideRuleId,
+    lastRuleId: lastHeaderOverrideRuleId,
     initialize: async () => {
-      await Promise.all([
-        dnr.updateDynamicRules({
-          removeRuleIds: [legacyDynamicHeaderOverrideRuleId],
-          addRules: [],
-        }),
-        dnr.updateSessionRules({
-          removeRuleIds: [legacySessionHeaderOverrideRuleId],
-          addRules: [],
-        }),
+      const [sessionRules, dynamicRules] = await Promise.all([
+        dnr.getSessionRules(),
+        dnr.getDynamicRules(),
       ]);
+      const staleSessionRuleIds = sessionRules
+        .filter((rule) => (
+          rule.id === legacySessionHeaderOverrideRuleId
+          || isAppOwnedRule(rule)
+        ))
+        .map((rule) => rule.id);
+      const staleDynamicRuleIds = dynamicRules
+        .filter((rule) => rule.id === legacyDynamicHeaderOverrideRuleId)
+        .map((rule) => rule.id);
+      if (staleSessionRuleIds.length > 0) {
+        await dnr.updateSessionRules({
+          removeRuleIds: staleSessionRuleIds,
+          addRules: [],
+        });
+      }
+      if (staleDynamicRuleIds.length > 0) {
+        await dnr.updateDynamicRules({
+          removeRuleIds: staleDynamicRuleIds,
+          addRules: [],
+        });
+      }
     },
     async install(ruleId, targetUrl, request) {
       await dnr.updateSessionRules({
@@ -155,7 +209,7 @@ export function requestHeaderOverride(
             requestMethods: ['get'],
             resourceTypes: ['xmlhttprequest'],
             tabIds: [-1],
-            urlFilter: request.url,
+            regexFilter: exactUrlRegex(targetUrl.toString()),
           },
         }],
       });

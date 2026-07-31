@@ -22,6 +22,7 @@
     "build:chrome": "npm run build:chrome --workspace=@shinobu/extension",
     "build:firefox": "npm run build:firefox --workspace=@shinobu/extension",
     "smoke:firefox-basic": "npm run build:firefox && node apps/extension/scripts/run-firefox-basic-smoke.mjs",
+    "smoke:firefox-network": "npm run smoke:firefox-basic",
     "build:web": "npm run build --workspace=@shinobu/web",
     "build:all": "npm run build:extension && npm run build:web",
     "build:benchmark": "npm run typecheck:benchmark && npm run build:benchmark --workspace=@shinobu/extension",

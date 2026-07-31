@@ -7,10 +7,6 @@ import {
   chromeApi,
 } from './chromeInternal';
 import {
-  referrerPolicyObserver,
-  requestHeaderOverride,
-} from './chromeNetwork';
-import {
   extensionCookies,
   extensionPermissions,
 } from './chromePermissions';
@@ -27,8 +23,6 @@ export function createChromeCompatibilityCapabilities(
         BackgroundExtensionCapabilities,
         | 'permissions'
         | 'cookies'
-        | 'referrerPolicies'
-        | 'requestHeaderOverride'
       >
     | undefined;
   const capabilities = () => {
@@ -49,14 +43,6 @@ export function createChromeCompatibilityCapabilities(
     background = {
       permissions,
       cookies,
-      referrerPolicies: referrerPolicyObserver(
-        chrome.webRequest?.onHeadersReceived,
-        ['responseHeaders'],
-      ),
-      requestHeaderOverride: requestHeaderOverride(
-        chrome.declarativeNetRequest,
-        chrome.runtime.id,
-      ),
     };
     return background;
   };

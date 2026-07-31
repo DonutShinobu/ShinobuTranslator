@@ -101,19 +101,31 @@ function createBrowserApi() {
         return [];
       },
     },
+    webRequest: {
+      onHeadersReceived: {
+        addListener: () => undefined,
+        removeListener: () => undefined,
+      },
+    },
+    declarativeNetRequest: {
+      async getDynamicRules(): Promise<[]> {
+        return [];
+      },
+      async getSessionRules(): Promise<[]> {
+        return [];
+      },
+      async updateDynamicRules(): Promise<void> {},
+      async updateSessionRules(): Promise<void> {},
+    },
   };
 }
 
 function createCompatibilityAdapter() {
   const permissions = { source: 'compatibility-permissions' };
   const cookies = { source: 'compatibility-cookies' };
-  const referrerPolicies = { source: 'compatibility-referrer' };
-  const requestHeaderOverride = { source: 'compatibility-header-override' };
   const background = {
     permissions,
     cookies,
-    referrerPolicies,
-    requestHeaderOverride,
   } as unknown as BackgroundExtensionCapabilities;
   const popup = {
     permissions,
@@ -130,7 +142,7 @@ function createCompatibilityAdapter() {
 }
 
 describe('Firefox extension adapter composition', () => {
-  it('owns Firefox authentication capabilities and preserves only remaining compatibility seams', () => {
+  it('owns Firefox authentication and network capabilities', async () => {
     const compatibility = createCompatibilityAdapter();
     const adapter = createFirefoxExtensionAdapter(
       createBrowserApi(),
@@ -140,12 +152,16 @@ describe('Firefox extension adapter composition', () => {
     const background = adapter.background();
     expect(background.permissions).not.toBe(compatibility.background.permissions);
     expect(background.cookies).not.toBe(compatibility.background.cookies);
-    expect(background.referrerPolicies).toBe(
-      compatibility.background.referrerPolicies,
-    );
-    expect(background.requestHeaderOverride).toBe(
-      compatibility.background.requestHeaderOverride,
-    );
+    expect(background.referrerPolicies).toBeDefined();
+    expect(background.requestHeaderOverride).toBeDefined();
+    const lease = await background.requestHeaderOverride.acquire({
+      url: 'https://cdn.example.test/image.png',
+      headers: [{
+        name: 'Referer',
+        value: 'https://reader.example.test/',
+      }],
+    });
+    await lease.release();
     expect(background.environment.resourceUrl('popup.html')).toBe(
       'moz-extension://firefox-extension-id/popup.html',
     );

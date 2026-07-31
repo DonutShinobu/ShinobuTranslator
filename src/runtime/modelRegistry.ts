@@ -8,7 +8,7 @@ import {
   createOriginModelAssetSource,
   type ModelAssetSource,
 } from './modelSource';
-import { isNodeRuntime } from './runtimeTarget';
+import { isNodeRuntime } from '@shinobu/browser-runtime/runtime-target';
 import { ProviderSessionContractError } from './providerExecution';
 
 type ManifestModel = {

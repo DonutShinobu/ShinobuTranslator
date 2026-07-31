@@ -265,22 +265,27 @@ describe('extension manifest generation', () => {
     const chrome = generate('chrome');
     const firefox = generate('firefox');
 
-    expect(() => {
-      execFileSync(
-        process.execPath,
-        [
-          pairCheckerPath,
-          '--chrome',
-          chrome.outputPath,
-          '--firefox',
-          firefox.outputPath,
-        ],
-        {
-          cwd: root,
-          stdio: 'pipe',
-        },
-      );
-    }).not.toThrow();
+    const pairOutput = execFileSync(
+      process.execPath,
+      [
+        pairCheckerPath,
+        '--chrome',
+        chrome.outputPath,
+        '--firefox',
+        firefox.outputPath,
+      ],
+      {
+        cwd: root,
+        encoding: 'utf8',
+      },
+    );
+    expect(pairOutput).toContain('Actual manifest difference paths:');
+    expect(pairOutput).toContain('- background.scripts');
+    expect(pairOutput).toContain('- background.service_worker');
+    expect(pairOutput).toContain('- browser_specific_settings');
+    expect(pairOutput).toContain('- minimum_chrome_version');
+    expect(pairOutput).toContain('- optional_permissions');
+    expect(pairOutput).toContain('- permissions');
 
     const changedFirefoxPath = makeTemporaryJson('manifest.json', {
       ...firefox.manifest,
@@ -303,6 +308,37 @@ describe('extension manifest generation', () => {
     expect(changedResult.status).not.toBe(0);
     expect(changedResult.stderr).toContain(
       'undeclared target manifest difference at description',
+    );
+
+    const sharedDescription = 'shared but unsourced description';
+    const changedChromePath = makeTemporaryJson('chrome-manifest.json', {
+      ...chrome.manifest,
+      description: sharedDescription,
+    });
+    const equallyChangedFirefoxPath = makeTemporaryJson(
+      'firefox-manifest.json',
+      {
+        ...firefox.manifest,
+        description: sharedDescription,
+      },
+    );
+    const sharedDriftResult = spawnSync(
+      process.execPath,
+      [
+        pairCheckerPath,
+        '--chrome',
+        changedChromePath,
+        '--firefox',
+        equallyChangedFirefoxPath,
+      ],
+      {
+        cwd: root,
+        encoding: 'utf8',
+      },
+    );
+    expect(sharedDriftResult.status).not.toBe(0);
+    expect(sharedDriftResult.stderr).toContain(
+      'Chrome manifest does not byte-match the declarative specification at description',
     );
   });
 

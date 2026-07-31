@@ -12,13 +12,20 @@ if (outDirFlagIndex >= 0 && !requestedOutDir) {
 const outputDir = requestedOutDir
   ? resolve(process.cwd(), requestedOutDir)
   : resolveExtensionBuildTarget('chrome').absoluteOutDir;
-const browserRuntimeTarget = resolve(
-  __dirname,
-  '../src/runtime/browserRuntimeTarget.ts',
-);
-
-function externalizeNodeOnlyAdapter(id) {
-  return id.includes('onnxruntime-node')
+const useStaticOrtRuntimeImports =
+  !requestedOutDir
+  || process.argv.includes('--static-ort-runtime-imports');
+const staticOrtRuntimeSupport = useStaticOrtRuntimeImports
+  ? await import(
+    '../apps/extension/scripts/static-ort-runtime-imports.mjs'
+  )
+  : undefined;
+function externalizeWorkerBuildModule(id) {
+  return (
+    staticOrtRuntimeSupport !== undefined
+    && staticOrtRuntimeSupport.isPackagedOrtRuntimeModule(id)
+  )
+    || id.includes('onnxruntime-node')
     || id.includes('onnxNodeBridge')
     || id.includes('modelRegistryNode')
     || id.includes('ocrSharedNode');
@@ -31,23 +38,14 @@ await build({
   configFile: false,
   root: resolve(__dirname, '..'),
   publicDir: false,
-  resolve: {
-    alias: [
-      {
-        find: './runtimeTarget',
-        replacement: browserRuntimeTarget,
-      },
-      {
-        find: '../../runtime/runtimeTarget',
-        replacement: browserRuntimeTarget,
-      },
-    ],
-  },
+  plugins: staticOrtRuntimeSupport === undefined
+    ? []
+    : [staticOrtRuntimeSupport.staticOrtRuntimeImportsPlugin()],
   build: {
     // The self-contained ONNX Runtime Worker is intentionally about 873 kB.
     chunkSizeWarningLimit: 900,
     rollupOptions: {
-      external: externalizeNodeOnlyAdapter,
+      external: externalizeWorkerBuildModule,
       input: resolve(__dirname, '../src/workers/onnx-worker.ts'),
       output: {
         entryFileNames: 'onnxWorker.js',

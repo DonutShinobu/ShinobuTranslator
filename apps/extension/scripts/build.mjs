@@ -61,6 +61,7 @@ async function buildExtensionTarget(target) {
   runNodeScript(resolve(root, 'scripts/build-worker.mjs'), [
     '--out-dir',
     descriptor.absoluteOutDir,
+    '--static-ort-runtime-imports',
   ]);
   writeExtensionManifest({
     target: descriptor.manifestTarget,
@@ -84,6 +85,13 @@ function checkManifestPair() {
 }
 
 async function buildRequestedTargets(target) {
+  runNodeScript(
+    resolve(
+      import.meta.dirname,
+      'generate-browser-ort-entries.mjs',
+    ),
+    ['--check'],
+  );
   if (target) {
     await buildExtensionTarget(target);
     return;

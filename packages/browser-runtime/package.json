@@ -7,6 +7,19 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./diagnostic-log-client": {
+      "types": "./src/diagnosticLogClient.ts",
+      "default": "./src/diagnosticLogClient.ts"
+    },
+    "./diagnostic-log": {
+      "types": "./src/diagnosticLog.ts",
+      "default": "./src/diagnosticLog.ts"
+    },
+    "./runtime-target": {
+      "types": "./src/runtimeTarget.ts",
+      "browser": "./src/browserRuntimeTarget.ts",
+      "default": "./src/runtimeTarget.ts"
     }
   },
   "scripts": {

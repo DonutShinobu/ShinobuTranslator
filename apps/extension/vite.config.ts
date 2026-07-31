@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import type { Plugin, UserConfig } from 'vite';
@@ -8,12 +9,17 @@ import {
   classicContentScriptAdapter,
 } from './build/classicContentScriptAdapter';
 import { resolveExtensionBuildTarget } from './scripts/build-targets.mjs';
+import {
+  isPackagedOrtRuntimeModule,
+  staticOrtRuntimeImportsPlugin,
+} from './scripts/static-ort-runtime-imports.mjs';
 
 const REPO = 'DonutShinobu/ShinobuTranslator';
 const extensionRoot = import.meta.dirname;
 const repoRoot = resolve(extensionRoot, '../..');
 
-function externalizeNodeOnlyModule(id: string): boolean {
+function externalizeExtensionBuildModule(id: string): boolean {
+  if (isPackagedOrtRuntimeModule(id)) return true;
   if (id.includes('onnxruntime-node')) return true;
   if (id.includes('onnxNodeBridge')) return true;
   if (id.includes('modelRegistryNode')) return true;
@@ -90,7 +96,7 @@ export default defineConfig(({ command, mode }): UserConfig => {
             chunkFileNames: 'benchmark-chunks/[name].js',
             assetFileNames: 'benchmark-assets/[name][extname]',
           },
-          external: externalizeNodeOnlyModule,
+          external: externalizeExtensionBuildModule,
         },
       },
     };
@@ -99,9 +105,27 @@ export default defineConfig(({ command, mode }): UserConfig => {
     popup: resolve(extensionRoot, 'popup.html'),
     background: resolve(extensionRoot, 'src/background.ts'),
     content: resolve(extensionRoot, 'src/content.ts'),
+    'ort/ort-wasm-simd-threaded': resolve(
+      extensionRoot,
+      'src/ort/ort-wasm-simd-threaded.mjs',
+    ),
+    'ort/ort-wasm-simd-threaded.asyncify': resolve(
+      extensionRoot,
+      'src/ort/ort-wasm-simd-threaded.asyncify.mjs',
+    ),
+    'ort/ort-wasm-simd-threaded.jsep': resolve(
+      extensionRoot,
+      'src/ort/ort-wasm-simd-threaded.jsep.mjs',
+    ),
   };
   if (target.browser === 'chrome') {
     input.offscreen = resolve(extensionRoot, 'offscreen.html');
+  } else {
+    input['chunks/diagnosticLogClient'] = fileURLToPath(
+      import.meta.resolve(
+        '@shinobu/browser-runtime/diagnostic-log-client',
+      ),
+    );
   }
 
   return {
@@ -115,6 +139,7 @@ export default defineConfig(({ command, mode }): UserConfig => {
     },
     plugins: [
       browserRuntimeBoundaryPlugin({ apply: 'serve' }),
+      staticOrtRuntimeImportsPlugin(),
       react(),
       classicContentScriptAdapter(),
       extensionReleaseAssetsPlugin(target.absoluteOutDir),
@@ -131,12 +156,23 @@ export default defineConfig(({ command, mode }): UserConfig => {
       emptyOutDir: true,
       rollupOptions: {
         input,
+        preserveEntrySignatures: 'strict',
         output: {
-          entryFileNames: (chunkInfo) => `${chunkInfo.name}.js`,
+          entryFileNames: (chunkInfo) =>
+            chunkInfo.name.startsWith('ort/')
+              ? `${chunkInfo.name}.mjs`
+              : `${chunkInfo.name}.js`,
           chunkFileNames: 'chunks/[name].js',
           assetFileNames: 'assets/[name][extname]',
           manualChunks(id) {
             const normalized = id.replace(/\\/g, '/');
+            if (
+              normalized.endsWith(
+                '/packages/browser-runtime/src/diagnosticLog.ts',
+              )
+            ) {
+              return 'diagnosticPrimitives';
+            }
             if (normalized.endsWith('/src/shared/messages.ts')) {
               return 'messages';
             }
@@ -160,7 +196,7 @@ export default defineConfig(({ command, mode }): UserConfig => {
         // but Vite/Rollup still resolves and bundles them as reachable chunks.
         // Externalizing prevents them from appearing in the browser extension
         // and avoids __vite-browser-external.js shims that can break Chrome extensions.
-        external: externalizeNodeOnlyModule,
+        external: externalizeExtensionBuildModule,
       },
     },
   };

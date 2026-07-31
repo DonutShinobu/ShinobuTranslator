@@ -5,12 +5,24 @@ import { describe, expect, it } from 'vitest';
 
 const root = process.cwd();
 const workflowPath = resolve(root, '.github/workflows/release.yml');
+const qualityGateWorkflowPath = resolve(root, '.github/workflows/ci.yml');
 const extensionBuilderPath = resolve(
   root,
   'apps/extension/scripts/build.mjs',
 );
 
 describe('Chrome extension release workflow', () => {
+  it('materializes the canonical model inventory before the quality gate', () => {
+    const workflow = readFileSync(qualityGateWorkflowPath, 'utf8');
+    const downloadModels = workflow.indexOf(
+      'npm run models:download -- latest --force',
+    );
+    const runQualityGate = workflow.indexOf('npm run check');
+
+    expect(downloadModels).toBeGreaterThan(-1);
+    expect(runQualityGate).toBeGreaterThan(downloadModels);
+  });
+
   it('publishes the declared Chrome build directory through one workflow variable', () => {
     const workflow = readFileSync(workflowPath, 'utf8');
 

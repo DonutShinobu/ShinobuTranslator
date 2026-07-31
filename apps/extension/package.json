@@ -11,6 +11,7 @@
     "build:firefox": "npm run typecheck && node scripts/build.mjs --target firefox",
     "build:benchmark": "npm run typecheck && node scripts/build.mjs --target benchmark",
     "check:artifacts": "node scripts/check-artifacts.mjs",
+    "lint:firefox": "node scripts/check-firefox-lint.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

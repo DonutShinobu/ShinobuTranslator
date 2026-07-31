@@ -138,6 +138,10 @@ describe('extension manifest generation', () => {
             optional: ['authenticationInfo'],
           },
         },
+        gecko_android: {
+          strict_min_version: '142.0',
+          strict_max_version: '141.*',
+        },
       },
       content_security_policy: {
         extension_pages:

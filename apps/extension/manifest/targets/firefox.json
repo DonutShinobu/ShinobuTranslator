@@ -20,6 +20,10 @@
       ]
     }
   },
+  "gecko_android": {
+    "strict_min_version": "142.0",
+    "strict_max_version": "141.*"
+  },
   "permission_overrides": {
     "required": {
       "add": [

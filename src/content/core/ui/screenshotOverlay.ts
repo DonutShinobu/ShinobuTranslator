@@ -13,7 +13,7 @@ import type {
   ScreenshotResizeHandle,
   ScreenshotSelection,
 } from '../screenshot';
-import { ICONS } from './icons';
+import { replaceSvgIcon } from './icons';
 import { createUiElements, renderUi } from './imageControls';
 
 export type ScreenshotResultUiElements = {
@@ -522,13 +522,13 @@ export function requestScreenshotSelection(): Promise<ScreenshotSelection | null
     confirmButton.className = 'mt-x-screenshot-select-action';
     confirmButton.type = 'button';
     confirmButton.dataset.action = 'confirm';
-    confirmButton.innerHTML = ICONS.confirm;
+    replaceSvgIcon(confirmButton, 'confirm');
     confirmButton.title = '确认选区';
     const resetButton = document.createElement('button');
     resetButton.className = 'mt-x-screenshot-select-action';
     resetButton.type = 'button';
     resetButton.dataset.action = 'reset';
-    resetButton.innerHTML = ICONS.close;
+    replaceSvgIcon(resetButton, 'close');
     resetButton.title = '重新框选';
     toolbar.appendChild(confirmButton);
     toolbar.appendChild(resetButton);
@@ -822,7 +822,7 @@ export function createScreenshotResultUi(rect: ScreenshotRect): ScreenshotResult
   const closeButton = document.createElement('button');
   closeButton.className = 'mt-x-pill-close';
   closeButton.type = 'button';
-  closeButton.innerHTML = ICONS.close;
+  replaceSvgIcon(closeButton, 'close');
   closeButton.title = '关闭';
 
   base.primaryAction.appendChild(closeButton);

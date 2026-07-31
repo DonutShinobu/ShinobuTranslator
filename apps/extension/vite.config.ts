@@ -190,6 +190,13 @@ export default defineConfig(({ command, mode }): UserConfig => {
           manualChunks(id) {
             const normalized = id.replace(/\\/g, '/');
             if (
+              normalized.includes('/node_modules/react/')
+              || normalized.includes('/node_modules/react-dom/')
+              || normalized.includes('/node_modules/scheduler/')
+            ) {
+              return 'reactVendor';
+            }
+            if (
               normalized.endsWith(
                 '/packages/browser-runtime/src/diagnosticLog.ts',
               )

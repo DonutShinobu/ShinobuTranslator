@@ -114,6 +114,7 @@ const scannedTextArtifactExtensions = new Set([
 ]);
 const commonStoreArtifactPaths = new Set([
   'assets/popup.css',
+  'assets/ort-wasm-simd-threaded.jsep.wasm',
   'background.js',
   'brand/shinobu-wordmark.svg',
   'chunks/extensionAdapter.js',
@@ -123,6 +124,8 @@ const commonStoreArtifactPaths = new Set([
   'chunks/diagnosticPrimitives.js',
   'chunks/localPipelineProtocol.js',
   'chunks/messages.js',
+  'chunks/onnxWorkerBridge.js',
+  'chunks/ortVendor.js',
   'chunks/perfTrace.js',
   'chunks/reactVendor.js',
   'content.js',
@@ -146,12 +149,13 @@ const commonStoreArtifactPaths = new Set([
   'popup.js',
 ]);
 const chromeStoreArtifactPaths = new Set([
-  'assets/ort-wasm-simd-threaded.jsep.wasm',
   'chunks/chromeLifecycle.js',
   'chunks/modulepreload-polyfill.js',
-  'chunks/onnxWorkerBridge.js',
   'offscreen.html',
   'offscreen.js',
+]);
+const firefoxStoreArtifactPaths = new Set([
+  'chunks/pipelineHostRuntime.js',
 ]);
 const hashedWorkerAssetPattern =
   /^assets\/ort-wasm-simd-threaded\.jsep-[A-Za-z0-9_-]{8}\.wasm$/u;
@@ -214,6 +218,10 @@ if (manifestTarget === 'chrome') {
     'offscreen.js',
     'chunks/onnxWorkerBridge.js',
   );
+} else {
+  requiredReleaseArtifacts.push(
+    'chunks/pipelineHostRuntime.js',
+  );
 }
 
 function collectArtifactPaths(directory, baseDirectory = directory) {
@@ -266,6 +274,10 @@ function isApprovedStoreArtifact(path) {
     || (
       manifestTarget === 'chrome'
       && chromeStoreArtifactPaths.has(path)
+    )
+    || (
+      manifestTarget === 'firefox'
+      && firefoxStoreArtifactPaths.has(path)
     )
     || hashedWorkerAssetPattern.test(path);
 }

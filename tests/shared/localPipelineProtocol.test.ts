@@ -7,6 +7,9 @@ import {
   serializePipelineError,
   splitBase64Chunks,
 } from '../../src/shared/localPipelineProtocol';
+import {
+  ImagePipelineCancelledError,
+} from '@shinobu/image-pipeline';
 
 describe('local pipeline Port protocol', () => {
   it('splits Base64 at the 4 MiB boundary', () => {
@@ -44,6 +47,8 @@ describe('local pipeline Port protocol', () => {
 
   it('validates message shape and chunk size', () => {
     expect(isLocalPipelineClientMessage({ type: 'prepare', jobId: 'job-1' })).toBe(true);
+    expect(isLocalPipelineClientMessage({ type: 'heartbeat', jobId: 'job-1' })).toBe(true);
+    expect(isLocalPipelineClientMessage({ type: 'heartbeat', jobId: '' })).toBe(false);
     expect(isLocalPipelineClientMessage({ type: 'prepare', jobId: '' })).toBe(false);
     expect(isLocalPipelineClientMessage({
       type: 'start',
@@ -150,6 +155,25 @@ describe('local pipeline Port protocol', () => {
     const remote = new LocalPipelineRemoteError(serialized);
     expect(remote.message).toBe('outer');
     expect(remote.code).toBe('PIPELINE_STAGE_FAILED');
+  });
+
+  it('preserves the shared cancellation reason in serialized errors', () => {
+    const serialized = serializePipelineError(
+      new ImagePipelineCancelledError({
+        code: 'transport-disconnected',
+        messageKey: 'pipeline.cancelled.transportDisconnected',
+        diagnosticSummary: 'host Port disconnected',
+      }),
+    );
+
+    expect(serialized).toMatchObject({
+      code: 'TASK_CANCELLED',
+      cancellationReason: {
+        code: 'transport-disconnected',
+        messageKey: 'pipeline.cancelled.transportDisconnected',
+        diagnosticSummary: 'host Port disconnected',
+      },
+    });
   });
 
   it('preserves only the safe shared failure envelope across the legacy Port boundary', () => {

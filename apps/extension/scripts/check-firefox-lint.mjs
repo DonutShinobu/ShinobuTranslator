@@ -13,6 +13,7 @@ const defaultSourceDirectory = resolve(extensionRoot, 'dist/firefox');
 // exclusion exact so every extension-owned artifact remains under web-ext.
 export const firefoxLintVendorExclusions = Object.freeze([
   'chunks/reactVendor.js',
+  'chunks/ortVendor.js',
   'onnxWorker.js',
   'ort/ort-wasm-simd-threaded.asyncify.mjs',
   'ort/ort-wasm-simd-threaded.jsep.mjs',

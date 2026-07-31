@@ -95,6 +95,7 @@ export function createChromePipelineHostLifecycle(
           throw error;
         }
       }
+      return undefined;
     },
     async close() {
       const closeDocument = chrome.offscreen?.closeDocument;

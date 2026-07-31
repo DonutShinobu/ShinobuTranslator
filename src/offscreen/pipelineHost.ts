@@ -36,6 +36,9 @@ import type {
   PipelineArtifacts,
   PipelineConfig as LegacyPipelineConfig,
 } from '../types';
+import type {
+  PlatformProvider,
+} from '../runtime/platform';
 import { PipelineStageError, runPipeline } from '../pipeline/orchestrator';
 import { disposePipelineArtifacts } from '../pipeline/resources';
 import { disposeAllModelSessions } from '../runtime/modelRegistry';
@@ -121,6 +124,7 @@ export class OffscreenPipelineHost {
   private idleGeneration = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
+  private disposePromise: Promise<void> | null = null;
   private activeApiKey = '';
   private readonly imageRuntime: ImagePipelineRuntime<PipelineArtifacts>;
 
@@ -128,6 +132,7 @@ export class OffscreenPipelineHost {
     capabilities: ImagePipelineRuntimeCapabilities,
     private readonly dependencies: {
       lifecycle: PipelineHostConnection;
+      platform: PlatformProvider;
       translationTransport: TextTranslationTransport;
       diagnosticMessageSender: RuntimeMessageSender;
     },
@@ -181,6 +186,7 @@ export class OffscreenPipelineHost {
           }),
           {
             signal: context.signal,
+            platform: this.dependencies.platform,
             translationTransport: retryingTranslationTransport,
             runtimeCapabilities: context.capabilities,
             diagnosticContext: 'offscreen',
@@ -268,8 +274,8 @@ export class OffscreenPipelineHost {
     }
   }
 
-  dispose(): void {
-    if (this.disposed) return;
+  dispose(): Promise<void> {
+    if (this.disposePromise) return this.disposePromise;
     this.disposed = true;
     this.clearIdleClose();
     if (this.reconnectTimer) {
@@ -290,14 +296,21 @@ export class OffscreenPipelineHost {
     }
     this.queue.length = 0;
     this.jobs.clear();
-    void this.imageRuntime.dispose({
+    const runtimeDisposal = this.imageRuntime.dispose({
       code: 'runtime-disposed',
       messageKey: 'pipeline.cancelled.runtimeDisposed',
       diagnosticSummary: cancellation.message,
     });
     const port = this.port;
     this.port = null;
-    if (port) void port.disconnect();
+    const portDisconnection = port
+      ? port.disconnect().catch(() => undefined)
+      : Promise.resolve();
+    this.disposePromise = Promise.all([
+      runtimeDisposal,
+      portDisconnection,
+    ]).then(() => undefined);
+    return this.disposePromise;
   }
 
   private async handleMessage(value: unknown): Promise<void> {
@@ -309,6 +322,8 @@ export class OffscreenPipelineHost {
     this.clearIdleClose();
     try {
       switch (value.type) {
+        case 'heartbeat':
+          break;
         case 'prepare':
           await this.prepare(value);
           break;

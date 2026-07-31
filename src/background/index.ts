@@ -17,8 +17,10 @@ import { normalizeJsonValue } from '../shared/jsonValue';
 import type {
   BackgroundExtensionCapabilities,
   JsonValue,
+  PipelineHostExtensionCapabilities,
 } from '../../apps/extension/src/capabilities/contracts';
 import type {
+  PipelineHostConnection,
   PipelineHostDocumentLifecycle,
 } from '../../apps/extension/src/pipelineHost/contracts';
 import { getGeminiAppRawResponse } from './geminiAppClient';
@@ -167,4 +169,12 @@ export function startBackground(
     .catch(() => undefined);
 
   registerMenusAndCommands(capabilities);
+}
+
+export async function startBackgroundPipelineHost(
+  capabilities: PipelineHostExtensionCapabilities,
+  connection: PipelineHostConnection,
+) {
+  const { startOffscreenPipelineHost } = await import('../offscreen/index');
+  return startOffscreenPipelineHost(capabilities, connection);
 }

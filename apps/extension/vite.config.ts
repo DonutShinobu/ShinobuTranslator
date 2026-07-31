@@ -185,7 +185,13 @@ export default defineConfig(({ command, mode }): UserConfig => {
             chunkInfo.name.startsWith('ort/')
               ? `${chunkInfo.name}.mjs`
               : `${chunkInfo.name}.js`,
-          chunkFileNames: 'chunks/[name].js',
+          chunkFileNames: (chunkInfo) => (
+            chunkInfo.name === 'index'
+            && chunkInfo.moduleIds.some((id) =>
+              id.replace(/\\/g, '/').endsWith('/src/offscreen/index.ts'))
+              ? 'chunks/pipelineHostRuntime.js'
+              : 'chunks/[name].js'
+          ),
           assetFileNames: 'assets/[name][extname]',
           manualChunks(id) {
             const normalized = id.replace(/\\/g, '/');
@@ -195,6 +201,9 @@ export default defineConfig(({ command, mode }): UserConfig => {
               || normalized.includes('/node_modules/scheduler/')
             ) {
               return 'reactVendor';
+            }
+            if (normalized.includes('/node_modules/onnxruntime-web/')) {
+              return 'ortVendor';
             }
             if (
               normalized.endsWith(
@@ -206,7 +215,16 @@ export default defineConfig(({ command, mode }): UserConfig => {
             if (normalized.endsWith('/src/shared/messages.ts')) {
               return 'messages';
             }
+            if (normalized.endsWith('/src/shared/config.ts')) {
+              return 'config';
+            }
+            if (normalized.endsWith('/src/shared/diagnosticLog.ts')) {
+              return 'diagnosticLog';
+            }
             if (normalized.endsWith('/src/shared/localPipelineProtocol.ts')) {
+              return 'localPipelineProtocol';
+            }
+            if (normalized.endsWith('/src/shared/blobCodec.ts')) {
               return 'localPipelineProtocol';
             }
             if (

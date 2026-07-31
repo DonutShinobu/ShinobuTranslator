@@ -374,6 +374,49 @@ async function revokeDeclaredHostAccess(driver, addonId) {
   }
 }
 
+async function configurePipelineEvidence(driver, addonId) {
+  await driver.setContext(firefox.Context.CHROME);
+  let popupUrl;
+  try {
+    popupUrl = await driver.executeScript(`
+      const policy = WebExtensionPolicy.getByID(arguments[0]);
+      return policy?.getURL('popup.html');
+    `, addonId);
+  } finally {
+    await driver.setContext(firefox.Context.CONTENT);
+  }
+  if (typeof popupUrl !== 'string' || popupUrl.length === 0) {
+    throw new Error('Installed Firefox extension popup URL was not found.');
+  }
+  await driver.get(popupUrl);
+  await driver.executeAsyncScript(`
+    const complete = arguments[arguments.length - 1];
+    browser.storage.local.get('mangaTranslate.settings').then((saved) => {
+      const settings = saved['mangaTranslate.settings'] || {};
+      return browser.storage.local.set({
+        'mangaTranslate.settings': {
+          ...settings,
+          showElapsedTime: true,
+          showStageTimingDetails: true,
+          stageTimingCardExpanded: true,
+        },
+      });
+    }).then(
+      () => complete({ ok: true }),
+      (error) => complete({ error: String(error) }),
+    );
+  `).then((result) => {
+    if (!result?.ok) {
+      throw new Error(
+        `Could not configure Firefox pipeline evidence: ${
+          result?.error ?? 'unknown error'
+        }`,
+      );
+    }
+  });
+  return popupUrl;
+}
+
 async function respondToPermissionPrompt(driver, response, label) {
   await driver.setContext(firefox.Context.CHROME);
   try {
@@ -979,17 +1022,26 @@ async function clickInlineFixture(driver, handle) {
   await inlineButton.click();
 }
 
-async function waitForInlineFailure(driver, handle, label, expectedDetail) {
+async function waitForInlineResult(
+  driver,
+  handle,
+  label,
+  expectedStatus,
+  expectedDetail,
+) {
   await driver.switchTo().window(handle);
   const inlineButton = await driver.findElement(
     By.css('.mt-x-overlay-inline .mt-x-control:not(.mt-x-control-secondary)'),
   );
+  const terminalStatuses = expectedStatus
+    ? [expectedStatus]
+    : ['error', 'translated'];
   await driver.wait(
-    async () => (
-      await inlineButton.getAttribute('data-status')
-    ) === 'error',
+    async () => terminalStatuses.includes(
+      await inlineButton.getAttribute('data-status'),
+    ),
     30_000,
-    `${label} did not reach the shared structured error UI.`,
+    `${label} did not reach ${terminalStatuses.join(' or ')}.`,
   );
   const detail = await driver.findElement(
     By.css('.mt-x-overlay-inline .mt-x-detail'),
@@ -1002,6 +1054,178 @@ async function waitForInlineFailure(driver, handle, label, expectedDetail) {
   return detail;
 }
 
+async function runDirectPipelineProbe(driver, popupUrl) {
+  const windowCountBefore = (await driver.getAllWindowHandles()).length;
+  await driver.get(popupUrl);
+  await driver.manage().setTimeouts({ script: 180_000 });
+  const report = await driver.executeAsyncScript(`
+    const inputBase64 = arguments[0];
+    const inputBytes = arguments[1];
+    const complete = arguments[arguments.length - 1];
+    const jobId = 'firefox-smoke-' + crypto.randomUUID();
+    const port = browser.runtime.connect({ name: 'mt:local-pipeline-client' });
+    const progress = [];
+    const resultChunks = new Map();
+    let resultMeta;
+    let settled = false;
+
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      clearInterval(heartbeat);
+      clearTimeout(deadline);
+      port.disconnect();
+      complete(value);
+    };
+    const deadline = setTimeout(() => {
+      finish({ error: 'Firefox direct pipeline probe timed out.', progress });
+    }, 170_000);
+    const heartbeat = setInterval(() => {
+      port.postMessage({ type: 'heartbeat', jobId });
+    }, 1_000);
+
+    port.onDisconnect.addListener(() => {
+      if (!settled) {
+        finish({
+          error: browser.runtime.lastError?.message
+            || 'Firefox direct pipeline Port disconnected.',
+          progress,
+        });
+      }
+    });
+    port.onMessage.addListener((message) => {
+      if (message.jobId && message.jobId !== jobId) return;
+      if (message.type === 'ready') {
+        port.postMessage({
+          type: 'start',
+          jobId,
+          file: {
+            name: 'firefox-smoke.png',
+            type: 'image/png',
+            size: inputBytes,
+            lastModified: Date.now(),
+          },
+          config: {
+            sourceLang: 'ja',
+            targetLang: 'zh-CHS',
+            translator: 'google_web',
+            llmProvider: 'deepseek',
+            llmAuthMode: 'api_key',
+            llmBaseUrl: 'https://api.deepseek.com/v1',
+            llmApiKey: '',
+            llmModel: 'deepseek-chat',
+            typesetDebug: false,
+            eraseDebug: false,
+            collectDebugLog: false,
+            ocrEngine: 'paddleocr_v6_medium',
+            processMode: 'translate',
+          },
+          input: {
+            chunkCount: 1,
+            totalChars: inputBase64.length,
+          },
+        });
+        port.postMessage({
+          type: 'input-chunk',
+          jobId,
+          index: 0,
+          data: inputBase64,
+        });
+        port.postMessage({ type: 'input-complete', jobId });
+        return;
+      }
+      if (message.type === 'queued') {
+        progress.push('queued');
+        return;
+      }
+      if (message.type === 'progress') {
+        progress.push(message.progress?.stage || 'unknown');
+        return;
+      }
+      if (message.type === 'result-meta') {
+        resultMeta = message;
+        return;
+      }
+      if (message.type === 'result-chunk' && message.artifact === 'result') {
+        resultChunks.set(message.index, message.data);
+        return;
+      }
+      if (message.type === 'error') {
+        finish({ error: message.error, progress });
+        return;
+      }
+      if (message.type === 'complete') {
+        finish({
+          ok: true,
+          progress,
+          resultMeta,
+          resultChunkCount: resultChunks.size,
+          resultTotalChars: [...resultChunks.values()]
+            .reduce((total, chunk) => total + chunk.length, 0),
+        });
+      }
+    });
+    port.postMessage({ type: 'prepare', jobId });
+  `, onePixelPng.toString('base64'), onePixelPng.length);
+
+  if (!report?.ok) {
+    throw new Error(
+      `Firefox direct Event Page pipeline failed: ${
+        JSON.stringify(report?.error ?? report)
+      }`,
+    );
+  }
+  if (
+    !report.progress?.includes('runtime-prepare')
+    || !report.progress?.includes('detect')
+    || !report.progress?.includes('done')
+  ) {
+    throw new Error(
+      `Firefox direct Event Page pipeline progress was incomplete: ${
+        JSON.stringify(report.progress)
+      }`,
+    );
+  }
+  if (
+    !['completed', 'no-translatable-text'].includes(report.resultMeta?.status)
+    || !report.resultMeta?.summary
+    || !report.resultMeta?.record
+    || !Array.isArray(report.resultMeta?.providerReports)
+  ) {
+    throw new Error(
+      `Firefox direct Event Page result contract was incomplete: ${
+        JSON.stringify(report.resultMeta)
+      }`,
+    );
+  }
+  if (
+    report.resultChunkCount !== report.resultMeta.result.chunkCount
+    || report.resultTotalChars !== report.resultMeta.result.totalChars
+  ) {
+    throw new Error(
+      'Firefox direct Event Page result image chunks did not match metadata.',
+    );
+  }
+  const expectedProvider = process.env.FIREFOX_EXPECTED_PROVIDER;
+  const providerEvidence = JSON.stringify({
+    providerReports: report.resultMeta.providerReports,
+    runtimeStages: report.resultMeta.summary.runtimeStages,
+  });
+  if (expectedProvider && !providerEvidence.includes(expectedProvider)) {
+    throw new Error(
+      `Firefox direct Event Page pipeline did not use expected ${
+        expectedProvider
+      } provider: ${providerEvidence}`,
+    );
+  }
+  if ((await driver.getAllWindowHandles()).length !== windowCountBefore) {
+    throw new Error(
+      'Firefox direct Event Page pipeline created a dedicated host page.',
+    );
+  }
+  return providerEvidence;
+}
+
 async function run() {
   await assertFirefoxPackage();
   const fixture = await startFixtureServer();
@@ -1011,12 +1235,13 @@ async function run() {
     throw new Error('Fixture server did not expose a TCP port.');
   }
   const firefoxBinary = await resolveFirefoxBinary();
+  const headless = process.env.FIREFOX_HEADLESS !== 'false';
   const options = new firefox.Options()
-    .addArguments(
-      '-headless',
+    .addArguments(...[
+      ...(headless ? ['-headless'] : []),
       '--width=1280',
       '--height=900',
-    )
+    ])
     .enableBidi()
     .setPreference(
       'network.dns.localDomains',
@@ -1053,9 +1278,48 @@ async function run() {
       throw new Error(`Unexpected installed add-on id: ${addonId}`);
     }
     await grantDeclaredHostAccess(driver, addonId);
+    const capabilities = await driver.getCapabilities();
+    const browserVersion = String(
+      capabilities.get('browserVersion') ?? 'unknown',
+    );
+    const browserMajorVersion = Number.parseInt(browserVersion, 10);
+    const useDirectProbe = process.env.FIREFOX_DIRECT_PORT_PROBE === 'true'
+      || browserMajorVersion <= 140;
+    const supportsPackagedContentEntry = browserMajorVersion > 140;
     await runAuthenticationSmoke(driver, addonId);
-
-    await driver.get('http://twitter.com/fixture/status/47');
+    const popupUrl = await configurePipelineEvidence(driver, addonId);
+    let concurrentA;
+    let concurrentB;
+    let rejected;
+    let revoked;
+    if (supportsPackagedContentEntry) {
+      const pipelineHandle = await driver.getWindowHandle();
+      concurrentA = await openInlineFixture(
+        driver,
+        '/fixture/status/49-a',
+      );
+      concurrentB = await openInlineFixture(
+        driver,
+        '/fixture/status/49-b',
+        'x.com',
+      );
+      rejected = await openInlineFixture(
+        driver,
+        '/fixture/status/49-rejected',
+      );
+      revoked = await openInlineFixture(
+        driver,
+        '/fixture/status/49-revoked',
+      );
+      await driver.switchTo().window(pipelineHandle);
+    }
+    let directProviderEvidence;
+    let runtimeProviders = [];
+    if (useDirectProbe) {
+      directProviderEvidence = await runDirectPipelineProbe(driver, popupUrl);
+    } else {
+      const windowCountBefore = (await driver.getAllWindowHandles()).length;
+      await driver.get('http://twitter.com/fixture/status/47');
     await driver.wait(
       until.elementLocated(By.id('firefox-smoke-fixture')),
       5_000,
@@ -1072,31 +1336,6 @@ async function run() {
       5_000,
       'Firefox inline image control was mounted but not visible.',
     );
-    const inlineButton = await inlineEntry.findElement(
-      By.css('.mt-x-control:not(.mt-x-control-secondary)'),
-    );
-    await inlineButton.click();
-    await driver.wait(
-      async () => (
-        await inlineButton.getAttribute('data-status')
-      ) === 'error',
-      20_000,
-      'Firefox inline image entry did not reach the shared error UI.',
-    );
-    await driver.wait(
-      async () => (
-        await inlineButton.findElement(By.css('.mt-x-label')).getText()
-      ) === '重试',
-      5_000,
-      'Firefox inline image entry did not expose the shared retry action.',
-    );
-    const inlineDetail = await inlineEntry.findElement(By.css('.mt-x-detail'));
-    if (!(await inlineDetail.getText()).startsWith('翻译失败：')) {
-      throw new Error(
-        'Firefox inline image entry did not expose shared failure details.',
-      );
-    }
-
     const fixtureImage = await driver.findElement(
       By.css('img[alt="fixture manga"]'),
     );
@@ -1127,34 +1366,101 @@ async function run() {
       5_000,
       'Firefox screenshot selection entry was mounted but not visible.',
     );
+    await driver.actions()
+      .move({ origin: fixtureImage, x: 20, y: 20 })
+      .click()
+      .sendKeys(Key.ENTER)
+      .perform();
 
-    const concurrentA = await openInlineFixture(
-      driver,
-      '/fixture/status/49-a',
+    const screenshotResult = await driver.wait(
+      until.elementLocated(By.css('.mt-x-screenshot-result')),
+      10_000,
+      'Firefox screenshot selection did not start a local pipeline result.',
     );
-    const concurrentB = await openInlineFixture(
-      driver,
-      '/fixture/status/49-b',
-      'x.com',
+    await driver.executeScript(`
+      const result = arguments[0];
+      window.__shinobuPipelineStatuses = [result.dataset.status || ''];
+      new MutationObserver(() => {
+        window.__shinobuPipelineStatuses.push(result.dataset.status || '');
+      }).observe(result, {
+        attributes: true,
+        attributeFilter: ['data-status'],
+      });
+    `, screenshotResult);
+    await driver.wait(
+      async () => (
+        await screenshotResult.getAttribute('data-status')
+      ) === 'translated',
+      120_000,
+      'Firefox Event Page local pipeline did not return a screenshot result.',
     );
-    const rejected = await openInlineFixture(
-      driver,
-      '/fixture/status/49-rejected',
+    const statuses = await driver.executeScript(
+      'return window.__shinobuPipelineStatuses;',
     );
-    const revoked = await openInlineFixture(
-      driver,
-      '/fixture/status/49-revoked',
-    );
+    if (
+      !Array.isArray(statuses)
+      || !statuses.includes('running')
+      || !statuses.includes('translated')
+    ) {
+      throw new Error(
+        `Firefox local pipeline did not expose running → translated UI state: ${
+          JSON.stringify(statuses)
+        }`,
+      );
+    }
+    if (await screenshotResult.getAttribute('data-image') !== 'translated') {
+      throw new Error(
+        'Firefox local pipeline did not commit the returned screenshot image.',
+      );
+    }
+    const resultImage = await screenshotResult.findElement(By.css('img'));
+    if (!(await resultImage.getAttribute('src')).startsWith('blob:')) {
+      throw new Error(
+        'Firefox local pipeline screenshot result was not app-owned image data.',
+      );
+    }
+      runtimeProviders = await screenshotResult.findElements(
+        By.css('.mt-x-runtime-provider'),
+      ).then((elements) => Promise.all(
+        elements.map((element) => element.getText()),
+      ));
+    const expectedProvider = process.env.FIREFOX_EXPECTED_PROVIDER;
+    if (
+      expectedProvider
+      && !runtimeProviders.some((provider) => provider.includes(expectedProvider))
+    ) {
+      throw new Error(
+        `Firefox local pipeline did not use expected ${expectedProvider} provider: ${
+          JSON.stringify(runtimeProviders)
+        }`,
+      );
+    }
+    if ((await driver.getAllWindowHandles()).length !== windowCountBefore) {
+      throw new Error(
+        'Firefox local pipeline unexpectedly created a dedicated extension page.',
+      );
+    }
+    }
+
+    if (!supportsPackagedContentEntry) {
+      console.log(
+        `Firefox ${browserVersion} packaged smoke passed: direct Event Page `
+          + 'structured result, provider reports, no dedicated host page, '
+          + `and all credential modes (${directProviderEvidence}).`,
+      );
+      return;
+    }
+
     networkRequests.length = 0;
 
     await clickInlineFixture(driver, concurrentA);
     await clickInlineFixture(driver, concurrentB);
-    await waitForInlineFailure(
+    await waitForInlineResult(
       driver,
       concurrentA,
       'First concurrent protected-image request',
     );
-    await waitForInlineFailure(
+    await waitForInlineResult(
       driver,
       concurrentB,
       'Second concurrent protected-image request',
@@ -1184,10 +1490,11 @@ async function run() {
     }
 
     await clickInlineFixture(driver, rejected);
-    await waitForInlineFailure(
+    await waitForInlineResult(
       driver,
       rejected,
       'Rejected protected-image request',
+      'error',
     );
     if (!networkRequests.some(
       (request) => request.path === '/media/issue-49-rejected.png'
@@ -1199,10 +1506,11 @@ async function run() {
     await revokeDeclaredHostAccess(driver, addonId);
     const revokedRequestStart = networkRequests.length;
     await clickInlineFixture(driver, revoked);
-    await waitForInlineFailure(
+    await waitForInlineResult(
       driver,
       revoked,
       'Revoked host-permission request',
+      'error',
       '(browser-rejected)',
     );
     if (networkRequests.slice(revokedRequestStart).some(
@@ -1230,12 +1538,16 @@ async function run() {
       );
     }
 
+    const pipelineEvidence = useDirectProbe
+      ? 'direct Event Page structured result and provider reports '
+        + `(${directProviderEvidence})`
+      : 'native screenshot Event Page result '
+        + `(providers: ${runtimeProviders.join(', ') || 'not reported'})`;
     console.log(
-      'Firefox packaged smoke passed: add-on install, inline image entry, '
-        + 'shared retry UI, native screenshot menu interaction, protected '
-        + 'image success/rejection, host-permission revocation, concurrent '
-        + 'Header leases, cleanup, all credential modes, and scoped '
-        + 'credential permission revocation.',
+      `Firefox ${browserVersion} packaged smoke passed: ${pipelineEvidence}; `
+        + 'shared structured error UI, protected image success/rejection, '
+        + 'host-permission revocation, concurrent Header leases and cleanup, '
+        + 'all credential modes, and scoped credential permission revocation.',
     );
   } catch (error) {
     if (driver) {
@@ -1249,6 +1561,35 @@ async function run() {
           By.id('firefox-smoke-fixture'),
         ).then((elements) => elements.length)}`,
       );
+      const inlineEntries = await driver.findElements(
+        By.css('.mt-x-overlay-inline'),
+      );
+      if (inlineEntries.length > 0) {
+        const button = await inlineEntries[0].findElement(
+          By.css('.mt-x-control:not(.mt-x-control-secondary)'),
+        );
+        const detail = await inlineEntries[0].findElement(
+          By.css('.mt-x-detail'),
+        );
+        console.error(
+          `Firefox pipeline UI: status=${
+            await button.getAttribute('data-status')
+          }, detail=${await detail.getText()}`,
+        );
+      }
+      const screenshotResults = await driver.findElements(
+        By.css('.mt-x-screenshot-result'),
+      );
+      if (screenshotResults.length > 0) {
+        const detail = await screenshotResults[0].findElement(
+          By.css('.mt-x-detail'),
+        );
+        console.error(
+          `Firefox screenshot pipeline UI: status=${
+            await screenshotResults[0].getAttribute('data-status')
+          }, detail=${await detail.getText()}`,
+        );
+      }
       try {
         const browserLogs = await driver.manage().logs().get('browser');
         for (const entry of browserLogs) {

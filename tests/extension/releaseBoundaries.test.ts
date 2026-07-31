@@ -89,6 +89,7 @@ function createReleaseFixture(target: 'chrome' | 'firefox'): string {
     'onnxWorker.js',
     'chunks/messages.js',
     'chunks/localPipelineProtocol.js',
+    'chunks/onnxWorkerBridge.js',
     'chunks/extensionAdapter.js',
     'chunks/config.js',
     'chunks/diagnosticLog.js',
@@ -96,12 +97,14 @@ function createReleaseFixture(target: 'chrome' | 'firefox'): string {
     'chunks/diagnosticPrimitives.js',
     'chunks/perfTrace.js',
     'chunks/reactVendor.js',
+    'chunks/ortVendor.js',
     'icons/icon16.png',
     'icons/icon32.png',
     'icons/icon48.png',
     'icons/icon128.png',
     'fonts/SourceHanSansCN-VF.ttf.woff2',
     'assets/popup.css',
+    'assets/ort-wasm-simd-threaded.jsep.wasm',
   ];
   for (const path of commonArtifacts) {
     writeArtifact(
@@ -164,9 +167,10 @@ function createReleaseFixture(target: 'chrome' | 'firefox'): string {
       'popup.js',
       'import "./chunks/modulepreload-polyfill.js";\n',
     );
+  } else {
     writeArtifact(
       directory,
-      'chunks/onnxWorkerBridge.js',
+      'chunks/pipelineHostRuntime.js',
       'void 0;\n',
     );
   }

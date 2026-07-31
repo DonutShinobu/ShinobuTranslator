@@ -2,12 +2,15 @@ import { base64ToBlob, blobToBase64 } from '../../../shared/blobCodec';
 import type {
   RuntimeChannel,
   RuntimeChannelClient,
+  RuntimeChannelDisconnectReason,
 } from '../../../../apps/extension/src/capabilities/contracts';
 import {
   Base64ChunkAssembler,
   LOCAL_PIPELINE_CLIENT_PORT,
   LocalPipelineRemoteError,
+  LOCAL_PIPELINE_HEARTBEAT_INTERVAL_MS,
   createProtocolError,
+  isPipelineCancellationReason,
   isLocalPipelineHostMessage,
   serializePipelineError,
   splitBase64Chunks,
@@ -43,7 +46,16 @@ function post(
   return channel.send(normalizeJsonValue(message));
 }
 
-function userCancellationReason(reason: unknown): PipelineCancellationReason {
+function clientCancellationReason(reason: unknown): PipelineCancellationReason {
+  if (isPipelineCancellationReason(reason)) return reason;
+  if (
+    reason
+    && typeof reason === 'object'
+    && 'reason' in reason
+    && isPipelineCancellationReason(reason.reason)
+  ) {
+    return reason.reason;
+  }
   return {
     code: 'user-requested',
     messageKey: 'pipeline.cancelled.userRequested',
@@ -56,12 +68,23 @@ function userCancellationReason(reason: unknown): PipelineCancellationReason {
 }
 
 function cancellationRemoteError(reason: unknown): LocalPipelineRemoteError {
-  const cancellation = userCancellationReason(reason);
+  const cancellation = clientCancellationReason(reason);
   return new LocalPipelineRemoteError({
     name: 'ImagePipelineCancelledError',
     code: 'TASK_CANCELLED',
     message: cancellation.messageKey,
     messageKey: cancellation.messageKey,
+    cancellationReason: cancellation,
+  });
+}
+
+function transportDisconnectedError(
+  diagnosticSummary: string,
+): LocalPipelineRemoteError {
+  return cancellationRemoteError({
+    code: 'transport-disconnected',
+    messageKey: 'pipeline.cancelled.transportDisconnected',
+    diagnosticSummary,
   });
 }
 
@@ -100,9 +123,13 @@ export function createRunLocalPipeline(
     let expectsDebug = false;
     let cancelMessage: () => void = () => undefined;
     let cancelDisconnect: () => void = () => undefined;
+    let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+    let requestedCancellation: LocalPipelineRemoteError | null = null;
 
     const cleanup = (): void => {
       options.signal?.removeEventListener('abort', onAbort);
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
       cancelMessage();
       cancelDisconnect();
       void channel.disconnect().catch(() => undefined);
@@ -112,10 +139,14 @@ export function createRunLocalPipeline(
       if (settled) return;
       settled = true;
       cleanup();
-      if (error instanceof Error) {
-        reject(error);
+      const terminalError = requestedCancellation ?? error;
+      if (terminalError instanceof Error) {
+        reject(terminalError);
       } else {
-        reject(new LocalPipelineRemoteError(serializePipelineError(error, 'TRANSFER_PROTOCOL_ERROR')));
+        reject(new LocalPipelineRemoteError(serializePipelineError(
+          terminalError,
+          'TRANSFER_PROTOCOL_ERROR',
+        )));
       }
     };
 
@@ -245,22 +276,24 @@ export function createRunLocalPipeline(
       }
     };
 
-    const onDisconnect = (): void => {
+    const onDisconnect = (
+      reason: RuntimeChannelDisconnectReason,
+    ): void => {
       if (settled) return;
-      fail(new LocalPipelineRemoteError({
-        name: 'OffscreenPipelineError',
-        code: 'OFFSCREEN_DISCONNECTED',
-        message: '本地流水线 channel 已断开',
-      }));
+      fail(transportDisconnectedError(
+        `本地流水线 channel 已断开（${reason}）`,
+      ));
     };
 
     const onAbort = (): void => {
       if (settled) return;
+      const reason = clientCancellationReason(options.signal?.reason);
+      requestedCancellation = cancellationRemoteError(reason);
       try {
         void post(channel, {
           type: 'cancel',
           jobId,
-          reason: userCancellationReason(options.signal?.reason),
+          reason,
         }).catch(fail);
       } catch (error) {
         fail(error);
@@ -269,6 +302,13 @@ export function createRunLocalPipeline(
 
     cancelMessage = channel.onMessage(onMessage);
     cancelDisconnect = channel.onDisconnect(onDisconnect);
+    heartbeatTimer = setInterval(() => {
+      if (settled) return;
+      void post(channel, {
+        type: 'heartbeat',
+        jobId,
+      }).catch(fail);
+    }, LOCAL_PIPELINE_HEARTBEAT_INTERVAL_MS);
     options.signal?.addEventListener('abort', onAbort, { once: true });
     if (options.signal?.aborted) {
       onAbort();

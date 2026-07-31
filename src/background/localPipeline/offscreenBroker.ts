@@ -55,6 +55,16 @@ function codedError(code: LocalPipelineErrorCode, message: string, cause?: unkno
   return error;
 }
 
+function transportDisconnectedError(
+  diagnosticSummary: string,
+): ImagePipelineCancelledError {
+  return new ImagePipelineCancelledError({
+    code: 'transport-disconnected',
+    messageKey: 'pipeline.cancelled.transportDisconnected',
+    diagnosticSummary,
+  });
+}
+
 function getJobId(value: unknown): string | null {
   if (!value || typeof value !== 'object') return null;
   const jobId = (value as { jobId?: unknown }).jobId;
@@ -147,6 +157,8 @@ export class OffscreenPipelineBroker {
       return;
     }
     switch (value.type) {
+      case 'heartbeat':
+        return;
       case 'start':
         if (job.state !== 'prepared') {
           this.rejectJobMessage(
@@ -382,7 +394,7 @@ export class OffscreenPipelineBroker {
     if (port !== this.hostPort) return;
     this.hostPort = null;
     this.hostReady = false;
-    const error = codedError('OFFSCREEN_DISCONNECTED', 'offscreen 流水线连接已断开');
+    const error = transportDisconnectedError('pipeline host channel 已断开');
     this.rejectHostWaiters(error);
     if (!this.expectedHostClose) {
       this.failAllJobs(error);
@@ -530,10 +542,11 @@ export class OffscreenPipelineBroker {
     });
   }
 
-  private handleHostPostFailure(error: unknown = codedError(
-    'OFFSCREEN_DISCONNECTED',
-    '向 offscreen 流水线投递任务失败',
-  )): void {
+  private handleHostPostFailure(
+    error: unknown = transportDisconnectedError(
+      '向 pipeline host 投递任务失败',
+    ),
+  ): void {
     const port = this.hostPort;
     this.hostPort = null;
     this.hostReady = false;
@@ -646,7 +659,11 @@ export class OffscreenPipelineBroker {
 
   private async createHost(): Promise<void> {
     try {
-      await this.lifecycle.create();
+      const activation = await this.lifecycle.create();
+      if (activation) {
+        this.attachHost(activation.channel);
+        activation.activate();
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw codedError(

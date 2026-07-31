@@ -2,6 +2,7 @@ import type {
   ExtensionCapabilityAdapter,
 } from './contracts';
 import type {
+  PipelineHostStarter,
   PipelineHostDocumentLifecycle,
 } from '../pipelineHost/contracts';
 import {
@@ -21,7 +22,9 @@ export function createTargetExtensionAdapter(): ExtensionCapabilityAdapter {
   return createChromeExtensionAdapter(nativeChromeApi());
 }
 
-export function createTargetPipelineHostLifecycle():
+export function createTargetPipelineHostLifecycle(
+  _startHost: PipelineHostStarter,
+):
 PipelineHostDocumentLifecycle {
   return createChromePipelineHostLifecycle(nativeChromeApi());
 }

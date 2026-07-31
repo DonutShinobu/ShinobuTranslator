@@ -5,6 +5,7 @@ import type {
 } from '@shinobu/image-pipeline';
 import { PRODUCTION_PROVIDER_EXECUTION_POLICY } from '@shinobu/image-pipeline';
 import type { PipelineArtifacts } from '../../src/types';
+import type { PlatformProvider } from '../../src/runtime/platform';
 import type {
   JsonValue,
   RuntimeChannel,
@@ -147,6 +148,7 @@ const defaultCapabilities: ImagePipelineRuntimeCapabilities = {
     modelSession,
   },
 };
+const testPlatform = {} as PlatformProvider;
 
 function deferred<T>(): {
   promise: Promise<T>;
@@ -243,6 +245,7 @@ describe('OffscreenPipelineHost single-task admission', () => {
       capabilities ?? defaultCapabilities,
       {
         lifecycle,
+        platform: testPlatform,
         translationTransport: {
           requestChatCompletion: vi.fn(),
           translatePlain: vi.fn(),
@@ -336,6 +339,28 @@ describe('OffscreenPipelineHost single-task admission', () => {
       .runtimeCapabilities as ImagePipelineRuntimeCapabilities;
     await injectedCapabilities.providerExecution?.modelSession.loadModel('detector');
     expect(modelSession.loadModel).toHaveBeenCalledWith('detector');
+  });
+
+  it('runs Canvas work through the platform injected by the composition root', async () => {
+    mocks.runPipeline.mockResolvedValue(artifacts());
+    const host = createHost();
+    host.connect();
+    await vi.waitFor(() => {
+      expect(port.sent).toContainEqual({ type: 'host-ready' });
+    });
+
+    sendImageJob(port, 'injected-canvas-platform');
+
+    await vi.waitFor(() => {
+      expect(mocks.runPipeline).toHaveBeenCalledWith(
+        expect.any(File),
+        expect.any(Object),
+        expect.any(Function),
+        expect.objectContaining({
+          platform: testPlatform,
+        }),
+      );
+    });
   });
 
   it('transports an unsatisfied provider report in structured failure diagnostics', async () => {
@@ -489,6 +514,31 @@ describe('OffscreenPipelineHost single-task admission', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('settles host disposal only after shared runtime resources are released once', async () => {
+    const release = deferred<undefined>();
+    mocks.disposeAllModelSessions.mockImplementationOnce(
+      async () => release.promise,
+    );
+    const host = createHost();
+
+    const firstDispose = host.dispose();
+    const secondDispose = host.dispose();
+
+    expect(firstDispose).toBe(secondDispose);
+    await Promise.resolve();
+    expect(mocks.disposeAllModelSessions).toHaveBeenCalledOnce();
+    let settled = false;
+    void firstDispose.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    release.resolve(undefined);
+    await expect(firstDispose).resolves.toBeUndefined();
+    expect(mocks.disposeAllModelSessions).toHaveBeenCalledOnce();
   });
 
   it('reconnects its host Port after the background service worker restarts', async () => {

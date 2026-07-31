@@ -261,6 +261,7 @@ describe('Firefox lint fail-closed boundary', () => {
   it('limits exclusions to release-checked generated vendor files', () => {
     expect(firefoxLintVendorExclusions).toEqual([
       'chunks/reactVendor.js',
+      'chunks/ortVendor.js',
       'onnxWorker.js',
       'ort/ort-wasm-simd-threaded.asyncify.mjs',
       'ort/ort-wasm-simd-threaded.jsep.mjs',

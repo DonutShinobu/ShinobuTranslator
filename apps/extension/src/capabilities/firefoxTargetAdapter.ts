@@ -2,6 +2,7 @@ import type {
   ExtensionCapabilityAdapter,
 } from './contracts';
 import type {
+  PipelineHostStarter,
   PipelineHostDocumentLifecycle,
 } from '../pipelineHost/contracts';
 import {
@@ -33,7 +34,9 @@ export function createTargetExtensionAdapter(): ExtensionCapabilityAdapter {
   );
 }
 
-export function createTargetPipelineHostLifecycle():
+export function createTargetPipelineHostLifecycle(
+  startHost: PipelineHostStarter,
+):
 PipelineHostDocumentLifecycle {
-  return createFirefoxPipelineHostLifecycle();
+  return createFirefoxPipelineHostLifecycle(startHost);
 }

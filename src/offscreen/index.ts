@@ -40,6 +40,7 @@ export function startOffscreenPipelineHost(
     },
     {
       lifecycle,
+      platform: browserPlatform,
       translationTransport: createExtensionTextTranslationTransport(
         sendMessage,
       ),

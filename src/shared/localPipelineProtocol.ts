@@ -20,6 +20,7 @@ import {
 
 export const LOCAL_PIPELINE_CLIENT_PORT = 'mt:local-pipeline-client';
 export const LOCAL_PIPELINE_CHUNK_SIZE = 4 * 1024 * 1024;
+export const LOCAL_PIPELINE_HEARTBEAT_INTERVAL_MS = 1_000;
 export const LOCAL_PIPELINE_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 
 export type LocalPipelineErrorCode =
@@ -51,6 +52,7 @@ export type SerializedPipelineError = {
   name: string;
   code: string;
   message: string;
+  cancellationReason?: PipelineCancellationReason;
   stack?: string;
   stage?: string;
   scope?: PipelineFailureEnvelope['scope'];
@@ -91,6 +93,10 @@ export type LocalPipelineClientMessage =
       type: 'prepare';
       jobId: string;
       diagnosticRunId?: string;
+    }
+  | {
+      type: 'heartbeat';
+      jobId: string;
     }
   | {
       type: 'start';
@@ -176,7 +182,9 @@ function isJobMessage(value: Record<string, unknown>): boolean {
   return typeof value.jobId === 'string' && value.jobId.length > 0;
 }
 
-function isPipelineCancellationReason(value: unknown): value is PipelineCancellationReason {
+export function isPipelineCancellationReason(
+  value: unknown,
+): value is PipelineCancellationReason {
   if (!isRecord(value)) return false;
   return (
     value.code === 'user-requested'
@@ -200,6 +208,8 @@ export function isLocalPipelineClientMessage(value: unknown): value is LocalPipe
   switch (value.type) {
     case 'prepare':
       return value.diagnosticRunId === undefined || typeof value.diagnosticRunId === 'string';
+    case 'heartbeat':
+      return true;
     case 'start':
       return isValidFileMeta(value.file) && isValidPipelineConfig(value.config) && isValidChunkMeta(value.input);
     case 'input-chunk':
@@ -268,7 +278,11 @@ export function isLocalPipelineHostMessage(value: unknown): value is LocalPipeli
         )
         && (value.error.retryable === undefined || typeof value.error.retryable === 'boolean')
         && (value.error.messageKey === undefined || typeof value.error.messageKey === 'string')
-        && (value.error.diagnostics === undefined || isRecord(value.error.diagnostics));
+        && (value.error.diagnostics === undefined || isRecord(value.error.diagnostics))
+        && (
+          value.error.cancellationReason === undefined
+          || isPipelineCancellationReason(value.error.cancellationReason)
+        );
     default:
       return false;
   }
@@ -456,6 +470,15 @@ function toSerializedCause(
         ? failure.messageKey
         : typeof record.message === 'string' ? record.message : String(value),
     };
+    if (code === 'TASK_CANCELLED' && isPipelineCancellationReason(record.reason)) {
+      serialized.cancellationReason = {
+        code: record.reason.code,
+        messageKey: record.reason.messageKey,
+        ...(record.reason.diagnosticSummary === undefined
+          ? {}
+          : { diagnosticSummary: record.reason.diagnosticSummary }),
+      };
+    }
     if (!hasFailureEnvelope && typeof record.stack === 'string') serialized.stack = record.stack;
     if (typeof failure.stage === 'string') {
       serialized.stage = failure.stage;
@@ -529,6 +552,7 @@ export function isLocalPipelineErrorCode(value: unknown): value is LocalPipeline
 
 export class LocalPipelineRemoteError extends Error {
   readonly code: string;
+  readonly cancellationReason?: PipelineCancellationReason;
   readonly stage?: string;
   readonly scope?: PipelineFailureEnvelope['scope'];
   readonly retryable?: boolean;
@@ -540,6 +564,7 @@ export class LocalPipelineRemoteError extends Error {
     super(serialized.message, serialized.cause === undefined ? undefined : { cause: serialized.cause });
     this.name = serialized.name;
     this.code = serialized.code;
+    this.cancellationReason = serialized.cancellationReason;
     this.stage = serialized.stage;
     this.scope = serialized.scope;
     this.retryable = serialized.retryable;

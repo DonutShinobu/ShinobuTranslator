@@ -10,7 +10,11 @@ import {
   createChromePipelineHostLifecycle,
 } from '../../apps/extension/src/pipelineHost/chromeLifecycle';
 import {
+  createFirefoxPipelineHostLifecycle,
+} from '../../apps/extension/src/pipelineHost/firefoxLifecycle';
+import {
   LOCAL_PIPELINE_OFFSCREEN_PORT,
+  type PipelineHostConnection,
 } from '../../apps/extension/src/pipelineHost/contracts';
 import {
   LOCAL_PIPELINE_CLIENT_PORT,
@@ -161,6 +165,72 @@ function createHarness(): {
 }
 
 describe('OffscreenPipelineBroker', () => {
+  it('lazily activates the Firefox Event Page direct host and forwards structured progress', async () => {
+    const dispose = vi.fn(async () => undefined);
+    const startHost = vi.fn((connection: PipelineHostConnection) => {
+      void connection.connect().then(async (host: RuntimeChannel) => {
+        host.onMessage((message: JsonValue) => {
+          if (
+            typeof message === 'object'
+            && message !== null
+            && !Array.isArray(message)
+            && message.type === 'prepare'
+          ) {
+            void host.send({
+              type: 'ready',
+              jobId: message.jobId,
+            });
+          }
+          if (
+            typeof message === 'object'
+            && message !== null
+            && !Array.isArray(message)
+            && message.type === 'input-complete'
+          ) {
+            void host.send({
+              type: 'progress',
+              jobId: message.jobId,
+              progress: {
+                stage: 'runtime-prepare',
+                operation: 'load-models',
+                detail: 'Firefox Event Page 正在准备模型',
+              },
+            });
+          }
+        });
+        await host.send({ type: 'host-ready' });
+      });
+      return { dispose };
+    });
+    const lifecycle = createFirefoxPipelineHostLifecycle(startHost);
+    const broker = new OffscreenPipelineBroker(lifecycle, runtimeChannels);
+    const client = new FakePort(LOCAL_PIPELINE_CLIENT_PORT);
+    broker.handlePort(client);
+
+    client.emitMessage({ type: 'prepare', jobId: 'firefox-direct-job' });
+    await vi.waitFor(() => {
+      expect(client.sent).toContainEqual({
+        type: 'ready',
+        jobId: 'firefox-direct-job',
+      });
+    });
+    expect(startHost).toHaveBeenCalledOnce();
+
+    transferJob(client, 'firefox-direct-job');
+    await vi.waitFor(() => {
+      expect(client.sent).toContainEqual({
+        type: 'progress',
+        jobId: 'firefox-direct-job',
+        progress: {
+          stage: 'runtime-prepare',
+          operation: 'load-models',
+          detail: 'Firefox Event Page 正在准备模型',
+        },
+      });
+    });
+    await lifecycle.close();
+  });
+
   it('deduplicates concurrent document creation and acknowledges prepares without forwarding queued work', async () => {
     const { broker, host, createDocument } = createHarness();
     const first = new FakePort(LOCAL_PIPELINE_CLIENT_PORT);
@@ -343,12 +413,22 @@ describe('OffscreenPipelineBroker', () => {
       expect(first.sent).toContainEqual(expect.objectContaining({
         type: 'error',
         jobId: 'job-1',
-        error: expect.objectContaining({ code: 'OFFSCREEN_DISCONNECTED' }),
+        error: expect.objectContaining({
+          code: 'TASK_CANCELLED',
+          cancellationReason: expect.objectContaining({
+            code: 'transport-disconnected',
+          }),
+        }),
       }));
       expect(second.sent).toContainEqual(expect.objectContaining({
         type: 'error',
         jobId: 'job-2',
-        error: expect.objectContaining({ code: 'OFFSCREEN_DISCONNECTED' }),
+        error: expect.objectContaining({
+          code: 'TASK_CANCELLED',
+          cancellationReason: expect.objectContaining({
+            code: 'transport-disconnected',
+          }),
+        }),
       }));
     });
   });
@@ -416,7 +496,12 @@ describe('OffscreenPipelineBroker', () => {
     await vi.waitFor(() => expect(second.sent).toContainEqual(expect.objectContaining({
       type: 'error',
       jobId: 'job-2',
-      error: expect.objectContaining({ code: 'OFFSCREEN_DISCONNECTED' }),
+      error: expect.objectContaining({
+        code: 'TASK_CANCELLED',
+        cancellationReason: expect.objectContaining({
+          code: 'transport-disconnected',
+        }),
+      }),
     })));
     expect(host.disconnected).toBe(true);
   });
@@ -587,7 +672,12 @@ describe('OffscreenPipelineBroker', () => {
       expect(client.sent).toContainEqual(expect.objectContaining({
         type: 'error',
         jobId: 'active-job',
-        error: expect.objectContaining({ code: 'OFFSCREEN_DISCONNECTED' }),
+        error: expect.objectContaining({
+          code: 'TASK_CANCELLED',
+          cancellationReason: expect.objectContaining({
+            code: 'transport-disconnected',
+          }),
+        }),
       }));
     });
   });

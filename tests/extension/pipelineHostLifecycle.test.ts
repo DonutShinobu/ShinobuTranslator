@@ -8,6 +8,9 @@ import {
   createChromePipelineHostLifecycle,
 } from '../../apps/extension/src/pipelineHost/chromeLifecycle';
 import {
+  createFirefoxPipelineHostLifecycle,
+} from '../../apps/extension/src/pipelineHost/firefoxLifecycle';
+import {
   LOCAL_PIPELINE_OFFSCREEN_DOCUMENT,
   LOCAL_PIPELINE_OFFSCREEN_PORT,
 } from '../../apps/extension/src/pipelineHost/contracts';
@@ -124,5 +127,84 @@ describe('Chrome PipelineHostLifecycle', () => {
         url: `chrome-extension://test/${LOCAL_PIPELINE_OFFSCREEN_DOCUMENT}`,
       },
     ))).toBe(false);
+  });
+});
+
+describe('Firefox Event Page PipelineHostLifecycle', () => {
+  it('activates one direct host after its broker channel is attached and disposes it once', async () => {
+    const hostMessages: JsonValue[] = [];
+    const brokerMessages: JsonValue[] = [];
+    const disconnectReasons: RuntimeChannelDisconnectReason[] = [];
+    const dispose = vi.fn(async () => undefined);
+    const startHost = vi.fn((connection) => {
+      void connection.connect().then((hostChannel: RuntimeChannel) => {
+        hostChannel.onMessage((message) => {
+          hostMessages.push(message);
+        });
+        hostChannel.onDisconnect((reason) => {
+          disconnectReasons.push(reason);
+        });
+        void hostChannel.send({ type: 'host-ready' });
+      });
+      return { dispose };
+    });
+    const lifecycle = createFirefoxPipelineHostLifecycle(startHost);
+
+    expect(lifecycle.isAvailable()).toBe(true);
+    await expect(lifecycle.exists()).resolves.toBe(false);
+
+    const activation = await lifecycle.create();
+    expect(activation).toBeDefined();
+    expect(startHost).not.toHaveBeenCalled();
+    activation?.channel.onMessage((message) => {
+      brokerMessages.push(message);
+    });
+    activation?.activate();
+
+    await vi.waitFor(() => {
+      expect(brokerMessages).toEqual([{ type: 'host-ready' }]);
+    });
+    expect(startHost).toHaveBeenCalledOnce();
+    await expect(lifecycle.exists()).resolves.toBe(true);
+
+    await activation?.channel.send({
+      type: 'prepare',
+      jobId: 'firefox-direct-job',
+    });
+    expect(hostMessages).toEqual([{
+      type: 'prepare',
+      jobId: 'firefox-direct-job',
+    }]);
+
+    await expect(lifecycle.close()).resolves.toBe(true);
+    await expect(lifecycle.close()).resolves.toBe(false);
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(disconnectReasons).toEqual(['peer-disconnected']);
+    await expect(lifecycle.exists()).resolves.toBe(false);
+  });
+
+  it('waits for an asynchronously loaded host before closing it', async () => {
+    const dispose = vi.fn(async () => undefined);
+    let resolveHost: ((controller: { dispose(): Promise<void> }) => void)
+      | undefined;
+    const startHost = vi.fn(() => new Promise<{ dispose(): Promise<void> }>(
+      (resolve) => {
+        resolveHost = resolve;
+      },
+    ));
+    const lifecycle = createFirefoxPipelineHostLifecycle(startHost);
+    const activation = await lifecycle.create();
+
+    activation?.activate();
+    await vi.waitFor(() => {
+      expect(startHost).toHaveBeenCalledOnce();
+    });
+    const closing = lifecycle.close();
+    expect(dispose).not.toHaveBeenCalled();
+
+    resolveHost?.({ dispose });
+
+    await expect(closing).resolves.toBe(true);
+    expect(dispose).toHaveBeenCalledOnce();
   });
 });

@@ -270,6 +270,7 @@ function validateFirefoxTarget(target) {
       'browser',
       'background',
       'gecko',
+      'gecko_android',
       'permission_overrides',
     ],
     'target',
@@ -329,6 +330,20 @@ function validateFirefoxTarget(target) {
     new Set(['authenticationInfo']),
     'target.gecko.data_collection_permissions.optional',
   );
+  assertExactKeys(
+    target.gecko_android,
+    ['strict_min_version', 'strict_max_version'],
+    'target.gecko_android',
+  );
+  if (
+    target.gecko_android.strict_min_version !== '142.0'
+    || target.gecko_android.strict_max_version !== '141.*'
+  ) {
+    fail(
+      'target.gecko_android',
+      'expected an empty supported range from 142.0 through 141.*',
+    );
+  }
 
   assertExactKeys(
     target.permission_overrides,
@@ -462,6 +477,12 @@ export function generateExtensionManifest({
         strict_min_version: targetSource.gecko.strict_min_version,
         data_collection_permissions:
           targetSource.gecko.data_collection_permissions,
+      },
+      gecko_android: {
+        strict_min_version:
+          targetSource.gecko_android.strict_min_version,
+        strict_max_version:
+          targetSource.gecko_android.strict_max_version,
       },
     };
   }

@@ -1,18 +1,44 @@
-name: Quality Gate
+name: Dual Browser Gate
 
 on:
   push:
   pull_request:
+  merge_group:
 
 permissions:
   contents: read
 
 concurrency:
-  group: quality-${{ github.workflow }}-${{ github.ref }}
+  group: dual-browser-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  check:
+  classify:
+    runs-on: ubuntu-latest
+    outputs:
+      base: ${{ steps.classify.outputs.base }}
+      extension_artifacts: ${{ steps.classify.outputs.extension_artifacts }}
+      execution_conformance: ${{ steps.classify.outputs.execution_conformance }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Classify required evidence
+        id: classify
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+        run: >-
+          node scripts/dual-browser-gate.mjs classify
+          --base "$BASE_SHA"
+          --head "$HEAD_SHA"
+          --github-output "$GITHUB_OUTPUT"
+
+  base:
+    needs: classify
     runs-on: ubuntu-latest
 
     steps:
@@ -33,8 +59,60 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-      - name: Run quality gate
-        run: npm run check
+      - name: Run base evidence
+        run: npm run check:base
 
       - name: Check models.dev thinking capability drift
         run: npm run llm-thinking:check-drift
+
+  extension-artifacts:
+    needs: classify
+    if: needs.classify.outputs.extension_artifacts == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Materialize canonical model inventory
+        run: npm run models:download -- latest --force
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Run dual-target artifact evidence
+        run: npm run check:extension-artifacts
+
+  dual-browser-gate:
+    name: dual-browser-gate
+    needs:
+      - classify
+      - base
+      - extension-artifacts
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout aggregate policy
+        uses: actions/checkout@v4
+
+      - name: Require every selected evidence task
+        env:
+          EXPECTED_EXTENSION_ARTIFACTS: ${{ needs.classify.outputs.extension_artifacts }}
+          CLASSIFY_RESULT: ${{ needs.classify.result }}
+          BASE_RESULT: ${{ needs.base.result }}
+          EXTENSION_ARTIFACTS_RESULT: ${{ needs.extension-artifacts.result }}
+        run: >-
+          node scripts/dual-browser-gate.mjs aggregate
+          --expected-extension-artifacts "$EXPECTED_EXTENSION_ARTIFACTS"
+          --classify-result "$CLASSIFY_RESULT"
+          --base-result "$BASE_RESULT"
+          --extension-artifacts-result "$EXTENSION_ARTIFACTS_RESULT"

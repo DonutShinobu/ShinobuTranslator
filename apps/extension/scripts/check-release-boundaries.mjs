@@ -124,6 +124,7 @@ const commonStoreArtifactPaths = new Set([
   'chunks/localPipelineProtocol.js',
   'chunks/messages.js',
   'chunks/perfTrace.js',
+  'chunks/reactVendor.js',
   'content.js',
   'fonts/SourceHanSansCN-VF.ttf.woff2',
   'fonts/SourceHanSansTW-VF.ttf.woff2',
@@ -1089,8 +1090,10 @@ if (manifestTarget === 'chrome') {
     manifest.browser_specific_settings?.gecko?.id
       !== 'shinobu-translator@donutshinobu'
     || manifest.browser_specific_settings?.gecko?.strict_min_version !== '140.0'
+    || manifest.browser_specific_settings?.gecko_android?.strict_min_version !== '142.0'
+    || manifest.browser_specific_settings?.gecko_android?.strict_max_version !== '141.*'
   ) {
-    throw new Error('Firefox manifest is missing the fixed Gecko identity contract.');
+    throw new Error('Firefox manifest is missing the fixed desktop-only Gecko identity contract.');
   }
 }
 if (!String(manifest.content_security_policy?.extension_pages ?? '').includes("worker-src 'self'")) {

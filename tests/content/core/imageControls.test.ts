@@ -63,6 +63,7 @@ describe('image controls', () => {
   it('renders tweet-context notices on a second gray detail line', () => {
     vi.stubGlobal('document', {
       createElement: vi.fn(() => new FakeElement()),
+      createElementNS: vi.fn(() => new FakeElement()),
     });
     const ui = createUiElements();
     const state = createInitialPhotoState('https://example.com/image.jpg');

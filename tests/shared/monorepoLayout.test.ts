@@ -30,7 +30,13 @@ describe('monorepo application ownership', () => {
     expect(rootPackage.scripts?.['check:architecture']).toBe(
       'node scripts/check-workspace-import-boundaries.mjs',
     );
-    expect(rootPackage.scripts?.check).toContain('npm run check:architecture');
+    expect(rootPackage.scripts?.check).toContain('npm run check:base');
+    expect(rootPackage.scripts?.['check:base']).toContain(
+      'npm run check:architecture',
+    );
+    expect(rootPackage.scripts?.['typecheck:workspaces']).toBe(
+      'npm run typecheck --workspaces',
+    );
   });
 
   it('checks every supported JavaScript and TypeScript module extension', () => {

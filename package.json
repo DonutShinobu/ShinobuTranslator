@@ -3,6 +3,11 @@
   "version": "0.8.1",
   "private": true,
   "type": "module",
+  "packageManager": "npm@11.9.0",
+  "engines": {
+    "node": "24.14.0",
+    "npm": "11.9.0"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -22,6 +27,7 @@
     "build:chrome": "npm run build:chrome --workspace=@shinobu/extension",
     "build:firefox": "npm run build:firefox --workspace=@shinobu/extension",
     "build:conformance": "npm run build:conformance --workspace=@shinobu/extension",
+    "build-for-amo": "node apps/extension/scripts/build-for-amo.mjs",
     "smoke:firefox-basic": "npm run build:firefox && node apps/extension/scripts/run-firefox-basic-smoke.mjs",
     "smoke:firefox-network": "npm run smoke:firefox-basic",
     "conformance:success": "npm run build:conformance && tsx apps/extension/conformance/run-success.ts",
@@ -29,8 +35,7 @@
     "build:all": "npm run build:extension && npm run build:web",
     "build:benchmark": "npm run typecheck:benchmark && npm run build:benchmark --workspace=@shinobu/extension",
     "check:artifacts": "npm run check:artifacts --workspace=@shinobu/extension",
-    "install:firefox-lint": "npm ci --prefix tools/web-ext --ignore-scripts",
-    "lint:firefox": "npm run install:firefox-lint && npm run lint:firefox --workspace=@shinobu/extension",
+    "lint:firefox": "npm run lint:firefox --workspace=@shinobu/extension",
     "check:licenses": "node scripts/check-production-licenses.mjs",
     "check:web-production": "node scripts/web-production-preflight.mjs --repository",
     "check:web-regression": "vitest run tests/shared/config.test.ts tests/shared/webConfig.test.ts tests/content/core/screenshotController.test.ts tests/content/core/imageTranslationController.test.ts tests/content/adapters/ehentai.test.ts tests/content/adapters/twitter.test.ts tests/shared/translatorCore.test.ts tests/shared/browserRuntime.test.ts tests/offscreen/pipelineHost.test.ts tests/pipeline/orchestrator.test.ts tests/web/webPipelineConfig.test.ts",
@@ -97,7 +102,8 @@
     "typescript": "^5.7.3",
     "vite": "^6.1.0",
     "vitest": "^4.1.5",
-    "wawoff2": "^2.0.1"
+    "wawoff2": "^2.0.1",
+    "web-ext": "10.5.0"
   },
   "optionalDependencies": {
     "onnxruntime-node": "^1.26.0"

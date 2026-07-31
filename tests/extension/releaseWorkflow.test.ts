@@ -10,6 +10,10 @@ const extensionBuilderPath = resolve(
   root,
   'apps/extension/scripts/build.mjs',
 );
+const amoBuilderPath = resolve(
+  root,
+  'apps/extension/scripts/build-for-amo.mjs',
+);
 
 describe('Chrome extension release workflow', () => {
   it('materializes the canonical model inventory before the quality gate', () => {
@@ -59,6 +63,43 @@ describe('Chrome extension release workflow', () => {
       'ShinobuTranslator.zip',
     ]) {
       expect(workflow, releaseConsumer).toContain(releaseConsumer);
+    }
+  });
+});
+
+describe('AMO source build entrypoint', () => {
+  it('uses the unified Firefox target after preflight and never downloads, signs, or uploads', () => {
+    const packageMetadata = JSON.parse(
+      readFileSync(resolve(root, 'package.json'), 'utf8'),
+    ) as {
+      scripts: Record<string, string>;
+    };
+    const source = readFileSync(amoBuilderPath, 'utf8');
+
+    expect(packageMetadata.scripts['build-for-amo']).toBe(
+      'node apps/extension/scripts/build-for-amo.mjs',
+    );
+    const verifyAssets = source.indexOf(
+      'const assetProof = verifyAmoBuildAssets',
+    );
+    const unifiedFirefoxBuild = source.indexOf(
+      "runNpm(['run', 'build:firefox'], environment)",
+    );
+    const lint = source.indexOf("'check-firefox-lint.mjs'");
+    const packageArtifacts = source.indexOf(
+      'const result = writeAmoArtifacts',
+    );
+    expect(verifyAssets).toBeGreaterThan(-1);
+    expect(unifiedFirefoxBuild).toBeGreaterThan(verifyAssets);
+    expect(lint).toBeGreaterThan(unifiedFirefoxBuild);
+    expect(packageArtifacts).toBeGreaterThan(lint);
+    for (const forbiddenOperation of [
+      'models:download',
+      'web-ext sign',
+      '--upload-source-code',
+      'gh release upload',
+    ]) {
+      expect(source).not.toContain(forbiddenOperation);
     }
   });
 });

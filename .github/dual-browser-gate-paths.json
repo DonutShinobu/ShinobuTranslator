@@ -45,7 +45,6 @@
         "tests/shared/**",
         "tests/translators/**",
         "tests/workers/**",
-        "tools/web-ext/**",
         "tsconfig*.json",
         "vitest.config.ts"
       ]
@@ -93,7 +92,6 @@
         "tests/shared/**",
         "tests/translators/**",
         "tests/workers/**",
-        "tools/web-ext/**",
         "tsconfig*.json",
         "vitest.config.ts"
       ]

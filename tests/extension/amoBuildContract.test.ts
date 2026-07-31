@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   AMO_BUILD_CONTRACT,
   assertAmoBuildEnvironment,
+  assertNoAmoBuildEnvironmentFiles,
   assertAmoPackageMetadata,
   assertAmoReviewerEnvironment,
   verifyAmoBuildAssets,
@@ -76,13 +77,39 @@ describe('AMO build contract', () => {
       'VITE_REMOTE_MODELS',
       'WEB_EXT_API_KEY',
       'NODE_OPTIONS',
+      'NODE_ENV',
       'npm_config_ignore_scripts',
       'npm_config_omit',
       'npm_config_platform',
+      'NPM_CONFIG_IGNORE_SCRIPTS',
+      'NPM_CONFIG_OMIT',
     ]) {
       expect(() =>
         assertAmoBuildEnvironment({ [variable]: 'changed' }),
       ).toThrow(variable);
+    }
+  });
+
+  it('rejects repository dotenv files that Vite would load as semantic build input', () => {
+    const fixtureRoot = mkdtempSync(resolve(tmpdir(), 'shinobu-amo-env-'));
+    temporaryDirectories.push(fixtureRoot);
+
+    expect(() =>
+      assertNoAmoBuildEnvironmentFiles({ root: fixtureRoot }),
+    ).not.toThrow();
+
+    for (const path of [
+      '.env',
+      '.env.local',
+      '.env.firefox',
+      '.env.firefox.local',
+      '.env.production',
+    ]) {
+      writeFixtureFile(fixtureRoot, path, 'VITE_REMOTE_MODELS=1\n');
+      expect(() =>
+        assertNoAmoBuildEnvironmentFiles({ root: fixtureRoot }),
+      ).toThrow(path);
+      rmSync(resolve(fixtureRoot, path));
     }
   });
 
@@ -164,7 +191,7 @@ describe('AMO build contract', () => {
       },
       {
         role: 'ort',
-        path: 'public/ort/ort-wasm-simd-threaded.asyncify.mjs',
+        path: 'apps/extension/src/ort/ort-wasm-simd-threaded.asyncify.mjs',
         bytes: 'ort-asyncify-js',
       },
       {
@@ -174,7 +201,7 @@ describe('AMO build contract', () => {
       },
       {
         role: 'ort',
-        path: 'public/ort/ort-wasm-simd-threaded.jsep.mjs',
+        path: 'apps/extension/src/ort/ort-wasm-simd-threaded.jsep.mjs',
         bytes: 'ort-jsep-js',
       },
       {
@@ -184,7 +211,7 @@ describe('AMO build contract', () => {
       },
       {
         role: 'ort',
-        path: 'public/ort/ort-wasm-simd-threaded.mjs',
+        path: 'apps/extension/src/ort/ort-wasm-simd-threaded.mjs',
         bytes: 'ort-js',
       },
       {
@@ -250,12 +277,12 @@ describe('AMO build contract', () => {
         assets: staticManifest.assets.filter(
           (asset) =>
             asset.path
-            !== 'public/ort/ort-wasm-simd-threaded.asyncify.mjs',
+            !== 'apps/extension/src/ort/ort-wasm-simd-threaded.asyncify.mjs',
         ),
       }, null, 2)}\n`,
     );
     expect(() => verifyAmoBuildAssets({ root: fixtureRoot })).toThrow(
-      'public/ort/ort-wasm-simd-threaded.asyncify.mjs',
+      'apps/extension/src/ort/ort-wasm-simd-threaded.asyncify.mjs',
     );
   });
 });

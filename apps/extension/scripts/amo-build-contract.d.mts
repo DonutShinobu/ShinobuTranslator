@@ -37,6 +37,10 @@ export function assertAmoBuildEnvironment(
   environment: Record<string, string | undefined>,
 ): void;
 
+export function assertNoAmoBuildEnvironmentFiles(input: {
+  root: string;
+}): void;
+
 export function assertAmoPackageMetadata(input: {
   packageMetadata: Record<string, any>;
   lockfile: Record<string, any>;

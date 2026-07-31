@@ -9,9 +9,9 @@
     },
     {
       "role": "ort",
-      "path": "public/ort/ort-wasm-simd-threaded.asyncify.mjs",
-      "size": 48649,
-      "sha256": "91d573a25463f14dc19233aa82f6867c5e10e81080e0aa4ab711e4f1d152ac8a"
+      "path": "apps/extension/src/ort/ort-wasm-simd-threaded.asyncify.mjs",
+      "size": 48616,
+      "sha256": "342dd04d1cf770260c05bee9fb8bbb43292678f4535861de77ac754508952e5c"
     },
     {
       "role": "ort",
@@ -21,9 +21,9 @@
     },
     {
       "role": "ort",
-      "path": "public/ort/ort-wasm-simd-threaded.jsep.mjs",
-      "size": 46701,
-      "sha256": "f3d224985fc0a00d50fd585013b4ca9c700e4e28cd1e26db86c90c750d926369"
+      "path": "apps/extension/src/ort/ort-wasm-simd-threaded.jsep.mjs",
+      "size": 46734,
+      "sha256": "f83210722891f5b16ca511a60980b2a10ba2369994c86739c897b1d489373616"
     },
     {
       "role": "ort",
@@ -33,9 +33,9 @@
     },
     {
       "role": "ort",
-      "path": "public/ort/ort-wasm-simd-threaded.mjs",
-      "size": 24333,
-      "sha256": "ab6faad5fbe066c5a2cf23aeb27220f6523c539a8c174d4048be749948d62270"
+      "path": "apps/extension/src/ort/ort-wasm-simd-threaded.mjs",
+      "size": 24212,
+      "sha256": "eb230fe2c20eb27f756f5c7699acce2adb309fe738ed73666c43efdc825a8f72"
     },
     {
       "role": "ort",

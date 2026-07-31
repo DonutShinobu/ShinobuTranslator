@@ -139,6 +139,21 @@ describe('AMO canonical ZIP', () => {
       error: 'POSIX path',
     },
     {
+      label: 'tab in path',
+      entries: [{ path: 'nested/manifest\t.json', bytes: Buffer.from('{}') }],
+      error: 'control character',
+    },
+    {
+      label: 'line feed in path',
+      entries: [{ path: 'nested/manifest\n.json', bytes: Buffer.from('{}') }],
+      error: 'control character',
+    },
+    {
+      label: 'carriage return in path',
+      entries: [{ path: 'nested/manifest\r.json', bytes: Buffer.from('{}') }],
+      error: 'control character',
+    },
+    {
       label: 'duplicate entry',
       entries: [
         { path: 'manifest.json', bytes: Buffer.from('{}') },

@@ -42,6 +42,7 @@ const deniedDirectorySegments = new Set([
   '.agents',
   '.codex',
   '.idea',
+  '.ssh',
   '.tmp',
   '.vscode',
   '.worktrees',
@@ -55,6 +56,9 @@ const deniedDirectorySegments = new Set([
   'test',
   'tests',
   'tmp',
+]);
+const deniedSourcePaths = new Set([
+  'apps/extension/scripts/run-firefox-basic-smoke.mjs',
 ]);
 
 function utf8PathCompare(left, right) {
@@ -78,6 +82,9 @@ function controlledSegment(segment, controlledNames) {
 }
 
 function isDeniedSourcePath(path) {
+  if (deniedSourcePaths.has(path.toLowerCase())) {
+    return true;
+  }
   const segments = path.split('/');
   if (
     segments.some((segment) =>
@@ -90,11 +97,29 @@ function isDeniedSourcePath(path) {
     fileName === '.ds_store'
     || fileName === '.env'
     || fileName.startsWith('.env.')
+    || fileName === '.netrc'
+    || fileName === '.npmrc'
+    || fileName === '.pypirc'
+    || fileName === '.yarnrc'
+    || fileName === '.yarnrc.yml'
     || fileName === 'credentials.json'
+    || fileName === 'credentials.yaml'
+    || fileName === 'credentials.yml'
     || fileName === 'secrets.json'
+    || fileName === 'secrets.yaml'
+    || fileName === 'secrets.yml'
+    || fileName === 'id_dsa'
+    || fileName === 'id_ecdsa'
+    || fileName === 'id_ed25519'
+    || fileName === 'id_rsa'
+    || fileName.endsWith('.jks')
     || fileName.endsWith('.key')
+    || fileName.endsWith('.kdbx')
+    || fileName.endsWith('.keystore')
     || fileName.endsWith('.log')
+    || fileName.endsWith('.p12')
     || fileName.endsWith('.pem')
+    || fileName.endsWith('.pfx')
     || fileName.endsWith('.tmp')
   );
 }

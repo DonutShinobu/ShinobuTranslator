@@ -19,6 +19,7 @@ import {
 import {
   AMO_BUILD_CONTRACT,
   assertAmoBuildEnvironment,
+  assertNoAmoBuildEnvironmentFiles,
   assertAmoPackageMetadata,
   assertAmoReviewerEnvironment,
   verifyAmoBuildAssets,
@@ -99,6 +100,7 @@ function detectReviewerRuntime() {
 function childEnvironment() {
   const environment = {
     ...process.env,
+    NODE_ENV: 'production',
     TZ: 'UTC',
     LANG: 'C.UTF-8',
     LC_ALL: 'C.UTF-8',
@@ -113,9 +115,10 @@ function childEnvironment() {
     'npm_config_registry',
   ]);
   for (const key of Object.keys(environment)) {
+    const normalizedKey = key.toLowerCase();
     if (
-      key.startsWith('npm_config_')
-      && !retainedNpmConfiguration.has(key)
+      normalizedKey.startsWith('npm_config_')
+      && !retainedNpmConfiguration.has(normalizedKey)
     ) {
       delete environment[key];
     }
@@ -152,6 +155,7 @@ function assertInstalledWebExt() {
 
 export function buildForAmo() {
   assertAmoBuildEnvironment(process.env);
+  assertNoAmoBuildEnvironmentFiles({ root: repositoryRoot });
   const runtime = assertAmoReviewerEnvironment(detectReviewerRuntime());
   const initialMetadata = readPackageMetadata();
   assertAmoPackageMetadata(initialMetadata);

@@ -66,6 +66,11 @@ function assertCanonicalEntry(entry, seenPaths) {
   if (entry.path.includes('\\')) {
     throw new Error(`Canonical ZIP requires a POSIX path: ${entry.path}`);
   }
+  if (/[\u0000-\u001f\u007f]/u.test(entry.path)) {
+    throw new Error(
+      `Canonical ZIP rejects control character in path: ${JSON.stringify(entry.path)}`,
+    );
+  }
   const segments = entry.path.split('/');
   if (segments.includes('..')) {
     throw new Error(
@@ -74,7 +79,6 @@ function assertCanonicalEntry(entry, seenPaths) {
   }
   if (
     segments.some((segment) => segment === '' || segment === '.')
-    || entry.path.includes('\0')
   ) {
     throw new Error(`Canonical ZIP rejects invalid entry path: ${entry.path}`);
   }

@@ -40,11 +40,11 @@ const allowedNpmConfigVariables = new Set([
 ]);
 const requiredStaticAssetPaths = new Set([
   'public/models/models.json',
-  'public/ort/ort-wasm-simd-threaded.asyncify.mjs',
+  'apps/extension/src/ort/ort-wasm-simd-threaded.asyncify.mjs',
   'public/ort/ort-wasm-simd-threaded.asyncify.wasm',
-  'public/ort/ort-wasm-simd-threaded.jsep.mjs',
+  'apps/extension/src/ort/ort-wasm-simd-threaded.jsep.mjs',
   'public/ort/ort-wasm-simd-threaded.jsep.wasm',
-  'public/ort/ort-wasm-simd-threaded.mjs',
+  'apps/extension/src/ort/ort-wasm-simd-threaded.mjs',
   'public/ort/ort-wasm-simd-threaded.wasm',
   'public/fonts/SourceHanSansCN-VF.ttf.woff2',
   'public/fonts/SourceHanSansTW-VF.ttf.woff2',
@@ -70,18 +70,36 @@ export function assertAmoReviewerEnvironment(runtime) {
 
 export function assertAmoBuildEnvironment(environment) {
   for (const key of Object.keys(environment)) {
+    const normalizedKey = key.toLowerCase();
     if (
-      key === 'MODEL_RELEASE_TAG'
-      || key === 'NODE_OPTIONS'
-      || key.startsWith('VITE_')
-      || key.startsWith('WEB_EXT_')
+      normalizedKey === 'model_release_tag'
+      || normalizedKey === 'node_env'
+      || normalizedKey === 'node_options'
+      || normalizedKey.startsWith('vite_')
+      || normalizedKey.startsWith('web_ext_')
       || (
-        key.startsWith('npm_config_')
-        && !allowedNpmConfigVariables.has(key)
+        normalizedKey.startsWith('npm_config_')
+        && !allowedNpmConfigVariables.has(normalizedKey)
       )
     ) {
       throw new Error(
         `AMO build rejects semantic environment input ${key}.`,
+      );
+    }
+  }
+}
+
+export function assertNoAmoBuildEnvironmentFiles({ root }) {
+  for (const entry of readdirSync(resolve(root), {
+    withFileTypes: true,
+  })) {
+    const normalizedName = entry.name.toLowerCase();
+    if (
+      normalizedName === '.env'
+      || normalizedName.startsWith('.env.')
+    ) {
+      throw new Error(
+        `AMO build rejects Vite environment file ${entry.name}.`,
       );
     }
   }
@@ -357,6 +375,7 @@ export function verifyAmoBuildAssets({ root }) {
 }
 import { createHash } from 'node:crypto';
 import {
+  readdirSync,
   readFileSync,
   statSync,
 } from 'node:fs';

@@ -1,6 +1,7 @@
 import type {
   LlmProvider,
   LlmThinkingLevel,
+  ProviderExecutionCapability,
   ProviderExecutionPolicy,
 } from '@shinobu/image-pipeline';
 import type { RuntimeChannel } from '../capabilities/contracts';
@@ -54,6 +55,9 @@ export interface PipelineHostTranslationTransport {
 
 export type PipelineHostRuntimeComposition = {
   providerPolicy?: ProviderExecutionPolicy;
+  providerExecutionTransform?: (
+    production: ProviderExecutionCapability,
+  ) => ProviderExecutionCapability;
   translationTransport?: PipelineHostTranslationTransport;
 };
 

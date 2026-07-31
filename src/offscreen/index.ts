@@ -42,11 +42,13 @@ export function startOffscreenPipelineHost(
   });
   const sendMessage = createRuntimeMessageSender(capabilities.runtimeRequests);
 
+  const productionProviderExecution =
+    createProductionProviderExecutionCapability(composition.providerPolicy);
   const host = new OffscreenPipelineHost(
     {
-      providerExecution: createProductionProviderExecutionCapability(
-        composition.providerPolicy,
-      ),
+      providerExecution: composition.providerExecutionTransform?.(
+        productionProviderExecution,
+      ) ?? productionProviderExecution,
     },
     {
       lifecycle,

@@ -42,6 +42,12 @@ if (![
   'benchmark',
   'conformance-chrome',
   'conformance-firefox',
+  'conformance-detector-chrome',
+  'conformance-detector-firefox',
+  'conformance-translation-chrome',
+  'conformance-translation-firefox',
+  'conformance-lifecycle-chrome',
+  'conformance-lifecycle-firefox',
 ].includes(target)) {
   throw new Error(`Unsupported extension release target: ${target}`);
 }
@@ -49,7 +55,7 @@ const benchmarkBuild = target === 'benchmark';
 const conformanceBuild = target.startsWith('conformance-');
 const manifestTarget = (
   target === 'firefox'
-  || target === 'conformance-firefox'
+  || target.endsWith('-firefox')
 ) ? 'firefox' : 'chrome';
 const canonicalModelSourceDirectory = requestedModelSourceDirectory
   ? resolve(process.cwd(), requestedModelSourceDirectory)
@@ -98,7 +104,18 @@ const forbiddenTestControlTokens = [
   '__shinobu_conformance_control',
   '__shinobu_fault_injection',
   conformanceCompositionSentinel,
+  'setConformanceBarrierSink',
+  'semantic-trace',
+  'execution-finalized',
+  'runtime-result-produced',
 ];
+const allowedConformanceTestControlTokens = new Set([
+  conformanceCompositionSentinel,
+  'setConformanceBarrierSink',
+  'semantic-trace',
+  'execution-finalized',
+  'runtime-result-produced',
+]);
 const forbiddenTestControlPathSegments = new Set([
   '__tests__',
   'conformance',
@@ -915,7 +932,7 @@ for (const artifactPath of artifactPaths) {
     }
   }
   for (const token of forbiddenTestControlTokens) {
-    if (conformanceBuild && token === conformanceCompositionSentinel) {
+    if (conformanceBuild && allowedConformanceTestControlTokens.has(token)) {
       continue;
     }
     if (source.includes(token)) {

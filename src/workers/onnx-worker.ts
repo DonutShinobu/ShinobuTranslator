@@ -329,7 +329,13 @@ async function runInference(
   return inferenceQueue.enqueue(async () => {
     const entry = sessions.get(sessionId);
     if (!entry) {
-      throw new Error(`Session 不存在: ${sessionId}`);
+      return {
+        outputs: {},
+        failure: {
+          code: 'session-lost',
+          detail: `Session 不存在: ${sessionId}`,
+        },
+      };
     }
 
     const ortFeeds: Record<string, ortAll.Tensor> = {};
@@ -558,9 +564,20 @@ async function runDetectWithGpuPreprocess(
   return inferenceQueue.enqueue(async () => {
     const entry = sessions.get(sessionId);
     if (!entry) {
-      throw new Error(`Session 不存在: ${sessionId}`);
+      imageSource.close();
+      return {
+        outputs: {},
+        failure: {
+          code: 'session-lost',
+          detail: `Session 不存在: ${sessionId}`,
+        },
+        ratio: 0,
+        unpaddedWidth: 0,
+        unpaddedHeight: 0,
+      };
     }
     if (entry.provider !== "webgpu") {
+      imageSource.close();
       throw new Error(`GPU 预处理仅支持 WebGPU EP，当前: ${entry.provider}`);
     }
 

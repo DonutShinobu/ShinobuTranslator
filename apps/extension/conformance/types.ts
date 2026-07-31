@@ -117,3 +117,62 @@ export type ConformanceDriverResult = {
   browserVersion: string;
   packagePath: string;
 };
+
+export type SemanticTraceScenarioId =
+  | 'detector-webgpu-failure-v1'
+  | 'translation-retry-exhaustion-v1'
+  | 'parallel-user-cancellation-v1'
+  | 'host-disconnect-recovery-v1';
+
+export type SemanticTraceExecutionObservation = {
+  ordinal: number;
+  barriers: string[];
+  progress: PipelineProgress[];
+  resultProducedCount: number;
+  result: ConformanceResultObservation | null;
+  failure: PipelineFailureEnvelope | null;
+  cancellation: {
+    code: 'TASK_CANCELLED';
+    reason: PipelineCancellationReason;
+  } | null;
+  finalizationCount: number;
+  resourceSettlementCount: number;
+  commitCount: number;
+  publicEventsAfterTerminal: number;
+};
+
+export type SemanticTraceObservation = {
+  schemaVersion: 1;
+  browser: ConformanceBrowser;
+  host: ConformanceHost;
+  scenarioId: SemanticTraceScenarioId;
+  hostRebuildCount: number;
+  executions: SemanticTraceExecutionObservation[];
+};
+
+export type NormalizedSemanticTraceExecution = Omit<
+  SemanticTraceExecutionObservation,
+  'result' | 'failure' | 'cancellation'
+> & {
+  terminal:
+    | { kind: 'completed'; status: ConformanceResultObservation['status'] }
+    | { kind: 'failure'; failure: PipelineFailureEnvelope }
+    | {
+        kind: 'cancelled';
+        code: 'TASK_CANCELLED';
+        reason: PipelineCancellationReason;
+      };
+};
+
+export type NormalizedSemanticTraceObservation = {
+  schemaVersion: 1;
+  scenarioId: SemanticTraceScenarioId;
+  hostRebuildCount: number;
+  executions: NormalizedSemanticTraceExecution[];
+};
+
+export type SemanticConformanceDriverResult = {
+  observations: SemanticTraceObservation[];
+  browserVersion: string;
+  packagePath: string;
+};

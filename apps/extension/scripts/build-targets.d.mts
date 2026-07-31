@@ -3,7 +3,13 @@ export type ExtensionBuildTarget =
   | 'firefox'
   | 'benchmark'
   | 'conformance-chrome'
-  | 'conformance-firefox';
+  | 'conformance-firefox'
+  | 'conformance-detector-chrome'
+  | 'conformance-detector-firefox'
+  | 'conformance-translation-chrome'
+  | 'conformance-translation-firefox'
+  | 'conformance-lifecycle-chrome'
+  | 'conformance-lifecycle-firefox';
 
 export type ExtensionBuildTargetDescriptor = {
   browser: 'chrome' | 'firefox';
@@ -11,6 +17,10 @@ export type ExtensionBuildTargetDescriptor = {
   outDir: string;
   release: boolean;
   conformance?: boolean;
+  conformanceProfile?:
+    | 'detector-failure'
+    | 'translation-failure'
+    | 'lifecycle';
 };
 
 export const extensionBuildTargets: Readonly<

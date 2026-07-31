@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   runPipeline: vi.fn(),
   disposeAllModelSessions: vi.fn(async () => undefined),
   blobToBase64: vi.fn(async () => 'cmVzdWx0'),
+  emitDiagnosticLogAsync: vi.fn(async () => true),
 }));
 
 vi.mock('../../src/pipeline/orchestrator', () => ({
@@ -35,7 +36,7 @@ vi.mock('../../src/runtime/modelRegistry', () => ({
 
 vi.mock('../../src/shared/diagnosticLogClient', () => ({
   emitDiagnosticLog: vi.fn(),
-  emitDiagnosticLogAsync: vi.fn(async () => true),
+  emitDiagnosticLogAsync: mocks.emitDiagnosticLogAsync,
 }));
 
 vi.mock('../../src/shared/blobCodec', () => ({
@@ -226,6 +227,7 @@ describe('OffscreenPipelineHost single-task admission', () => {
     mocks.disposeAllModelSessions.mockClear();
     mocks.blobToBase64.mockReset();
     mocks.blobToBase64.mockResolvedValue('cmVzdWx0');
+    mocks.emitDiagnosticLogAsync.mockClear();
     hosts = [];
     port = new FakePort();
   });
@@ -435,6 +437,50 @@ describe('OffscreenPipelineHost single-task admission', () => {
       expect(port.sent).toContainEqual(expect.objectContaining({
         type: 'error',
         jobId: 'active-cancel',
+        error: expect.objectContaining({ code: 'TASK_CANCELLED' }),
+      }));
+    });
+  });
+
+  it('delays the cancellation terminal until runtime resource settlement', async () => {
+    const releaseExecution = deferred<void>();
+    mocks.runPipeline.mockImplementation((
+      _file,
+      _config,
+      _progress,
+      options: { signal: AbortSignal },
+    ) => new Promise<PipelineArtifacts>((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => {
+        void releaseExecution.promise.then(() => reject(options.signal.reason));
+      }, { once: true });
+    }));
+    const host = createHost();
+    host.connect();
+    sendImageJob(port, 'settled-cancel');
+    await vi.waitFor(() => expect(mocks.runPipeline).toHaveBeenCalledOnce());
+
+    port.emit({
+      type: 'cancel',
+      jobId: 'settled-cancel',
+      reason: 'cancel after resources settle',
+    });
+    await vi.waitFor(() => {
+      expect(mocks.emitDiagnosticLogAsync).toHaveBeenCalledWith(
+        expect.objectContaining({ level: 'error' }),
+        expect.any(Function),
+      );
+    });
+
+    expect(port.sent).not.toContainEqual(expect.objectContaining({
+      type: 'error',
+      jobId: 'settled-cancel',
+    }));
+
+    releaseExecution.resolve(undefined);
+    await vi.waitFor(() => {
+      expect(port.sent).toContainEqual(expect.objectContaining({
+        type: 'error',
+        jobId: 'settled-cancel',
         error: expect.objectContaining({ code: 'TASK_CANCELLED' }),
       }));
     });

@@ -16,8 +16,10 @@ import {
   createPipelineRecord,
   hasTranslatableText,
   PRODUCTION_PROVIDER_EXECUTION_POLICY,
+  WEBGPU_BENCHMARK_PROVIDER_EXECUTION_POLICY,
 } from '@shinobu/image-pipeline';
 import {
+  ProviderSessionLostError,
   type ProviderSessionResolver,
 } from '../../src/runtime/providerExecution';
 
@@ -975,5 +977,60 @@ describe('runPipeline', () => {
     ]);
     expect(pipelineMocks.detectBubbles).not.toHaveBeenCalled();
     expect(pipelineMocks.runOcr).not.toHaveBeenCalled();
+  });
+
+  it('passes runtime reset through the pipeline resolver for consecutive detector session loss', async () => {
+    const resetRuntime = vi.fn(async () => undefined);
+    const loadSession = vi.fn(async () => ({
+      sessionId: `detector-webgpu-${loadSession.mock.calls.length}`,
+      provider: 'webgpu' as const,
+      inputNames: ['images'],
+      outputNames: ['det'],
+    }));
+    pipelineMocks.detectTextRegionsWithMask.mockImplementationOnce(async (
+      _image: PipelineImage,
+      _platform: PlatformProvider,
+      resolver: ProviderSessionResolver,
+    ) => {
+      await resolver.execute({
+        model: 'detector',
+        stage: 'detect',
+        run: async () => {
+          throw new ProviderSessionLostError('device lost');
+        },
+      });
+      throw new Error('unreachable');
+    });
+
+    const error = await runPipeline(createFile(), baseConfig, () => {}, {
+      runtimeCapabilities: {
+        providerExecution: {
+          policy: WEBGPU_BENCHMARK_PROVIDER_EXECUTION_POLICY,
+          modelSession: {
+            loadModel: async () => ({ runtime: ['webgpu'] }),
+            loadSession,
+            resetRuntime,
+          },
+        },
+      },
+    }).catch((caught: unknown) => caught);
+
+    expect(loadSession).toHaveBeenCalledTimes(3);
+    expect(resetRuntime).toHaveBeenCalledTimes(2);
+    expect(error).toMatchObject({
+      failure: {
+        code: 'PIPELINE_PROVIDER_EXECUTION_FAILED',
+        diagnostics: {
+          report: {
+            fallbackTrace: [],
+            attempts: [
+              { attempt: 1, reason: 'session-lost' },
+              { attempt: 2, reason: 'session-lost' },
+              { attempt: 3, reason: 'session-lost' },
+            ],
+          },
+        },
+      },
+    });
   });
 });

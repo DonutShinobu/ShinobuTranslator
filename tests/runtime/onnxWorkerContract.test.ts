@@ -77,6 +77,22 @@ describe('ONNX Worker production contract', () => {
     }
   });
 
+  it('closes transferred detector images when their session was lost', () => {
+    const worker = read('src/workers/onnx-worker.ts');
+    const detector = worker.slice(
+      worker.indexOf('async function runDetectWithGpuPreprocess('),
+      worker.indexOf('async function probePaddleGraphCapture('),
+    );
+    const missingSession = detector.slice(
+      detector.indexOf('if (!entry)'),
+      detector.indexOf('if (entry.provider'),
+    );
+
+    expect(missingSession).toContain('imageSource.close()');
+    expect(missingSession.indexOf('imageSource.close()'))
+      .toBeLessThan(missingSession.indexOf("code: 'session-lost'"));
+  });
+
   it('removes executable legacy modules while preserving history and conversion references', () => {
     for (const removedPath of [
       'src/pipeline/ocr/decodeAutoregressive.ts',

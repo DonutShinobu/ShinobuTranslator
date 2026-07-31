@@ -10,6 +10,7 @@
     "build:chrome": "npm run typecheck && node scripts/build.mjs --target chrome",
     "build:firefox": "npm run typecheck && node scripts/build.mjs --target firefox",
     "build:conformance": "npm run typecheck && node scripts/build.mjs --target conformance-chrome && node scripts/build.mjs --target conformance-firefox",
+    "build:conformance:semantics": "npm run typecheck && node scripts/build-semantic-conformance.mjs",
     "build:benchmark": "npm run typecheck && node scripts/build.mjs --target benchmark",
     "check:artifacts": "node scripts/check-artifacts.mjs",
     "lint:firefox": "node scripts/check-firefox-lint.mjs",

@@ -43,6 +43,10 @@ import { PipelineStageError, runPipeline } from '../pipeline/orchestrator';
 import { disposePipelineArtifacts } from '../pipeline/resources';
 import { disposeAllModelSessions } from '../runtime/modelRegistry';
 import {
+  createPipelineHostExecutionTrace,
+  type PipelineHostExecutionTrace,
+} from './pipelineHostExecutionTrace';
+import {
   type TextTranslationTransport,
 } from '../translators/transport';
 
@@ -126,6 +130,11 @@ export class OffscreenPipelineHost {
   private disposed = false;
   private disposePromise: Promise<void> | null = null;
   private activeApiKey = '';
+  private executionCount = 0;
+  private activeExecutionTrace: PipelineHostExecutionTrace | null = null;
+  private readonly providerExecution: NonNullable<
+    ImagePipelineRuntimeCapabilities['providerExecution']
+  >;
   private readonly imageRuntime: ImagePipelineRuntime<PipelineArtifacts>;
 
   constructor(
@@ -140,6 +149,7 @@ export class OffscreenPipelineHost {
     if (!capabilities.providerExecution) {
       throw new TypeError('Provider execution capability is required');
     }
+    this.providerExecution = capabilities.providerExecution;
     const translationTransport = dependencies.translationTransport;
     this.imageRuntime = new ImagePipelineRuntime<PipelineArtifacts>({
       capabilities,
@@ -181,7 +191,7 @@ export class OffscreenPipelineHost {
           } as LegacyPipelineConfig,
           (progress) => context.reportProgress({
             stage: progress.stage,
-            operation: progress.stage,
+            operation: progress.operation ?? progress.stage,
             detail: progress.detail,
           }),
           {
@@ -230,12 +240,14 @@ export class OffscreenPipelineHost {
           },
         };
       },
-      release(output) {
+      release: async (output) => {
         disposePipelineArtifacts(output.artifacts);
+        await this.activeExecutionTrace?.recordResourceSettlement();
       },
-      releaseFailure(error) {
+      releaseFailure: async (error) => {
         if (error instanceof PipelineStageError) {
           disposePipelineArtifacts(error.artifacts);
+          await this.activeExecutionTrace?.recordResourceSettlement();
         }
       },
       dispose: async () => {
@@ -467,6 +479,15 @@ export class OffscreenPipelineHost {
       return;
     }
 
+    const executionOrdinal = ++this.executionCount;
+    const executionTrace = createPipelineHostExecutionTrace({
+      executionOrdinal,
+      jobId: job.id,
+      providerExecution: this.providerExecution,
+      translationTransport: this.dependencies.translationTransport,
+      post: (message) => safelyPost(this.port, message),
+    });
+    this.activeExecutionTrace = executionTrace;
     const aggregates = new Map<string, RuntimeAggregate>();
     const removePerfSink = setPerfTraceSink({
       recordWorkerCall: (call) => this.aggregateWorkerCall(aggregates, call),
@@ -492,6 +513,14 @@ export class OffscreenPipelineHost {
 
     let stopProgress = (): void => undefined;
     let stopCancellation = (): void => undefined;
+    let pendingFailure: unknown;
+    let hasPendingFailure = false;
+    let executionFinalizationRecorded = false;
+    const recordExecutionFinalization = async (): Promise<void> => {
+      if (executionFinalizationRecorded) return;
+      executionFinalizationRecorded = true;
+      await executionTrace.recordFinalization();
+    };
     try {
       this.activeApiKey = job.config.llmApiKey;
       const task = this.imageRuntime.run({
@@ -538,6 +567,7 @@ export class OffscreenPipelineHost {
       };
       const pipelineResult = await task.result;
       throwIfJobCancelled();
+      await recordExecutionFinalization();
       const summary = pipelineResult.diagnostics?.summary as ReturnType<
         typeof summarizePipelineArtifacts
       >;
@@ -569,6 +599,7 @@ export class OffscreenPipelineHost {
         job.id,
         'result',
         resultChunks,
+        executionTrace,
       );
       throwIfJobCancelled();
       delivered = delivered
@@ -577,6 +608,7 @@ export class OffscreenPipelineHost {
           job.id,
           'debug',
           debugChunks,
+          executionTrace,
         ));
       throwIfJobCancelled();
       delivered = delivered
@@ -606,7 +638,8 @@ export class OffscreenPipelineHost {
       const finalError = job.abortController.signal.aborted && !isAbortError(error)
         ? job.abortController.signal.reason ?? createCancelledError()
         : error;
-      this.failJob(job, finalError);
+      pendingFailure = finalError;
+      hasPendingFailure = true;
       await emitDiagnosticLogAsync({
         runId: job.diagnosticRunId,
         level: 'error',
@@ -626,6 +659,17 @@ export class OffscreenPipelineHost {
       await this.imageRuntime.whenIdle();
       this.activeApiKey = '';
       removePerfSink();
+      try {
+        await recordExecutionFinalization();
+      } catch (traceError) {
+        pendingFailure = traceError;
+        hasPendingFailure = true;
+      }
+      if (hasPendingFailure) this.failJob(job, pendingFailure);
+      executionTrace.dispose();
+      if (this.activeExecutionTrace === executionTrace) {
+        this.activeExecutionTrace = null;
+      }
     }
   }
 
@@ -674,6 +718,7 @@ export class OffscreenPipelineHost {
     jobId: string,
     artifact: 'result' | 'debug',
     chunks: string[],
+    executionTrace: PipelineHostExecutionTrace,
   ): Promise<boolean> {
     for (let index = 0; index < chunks.length; index += 1) {
       if (!await safelyPost(port, {
@@ -685,6 +730,7 @@ export class OffscreenPipelineHost {
       })) {
         return false;
       }
+      await executionTrace.afterArtifactChunk(artifact, index);
     }
     return true;
   }

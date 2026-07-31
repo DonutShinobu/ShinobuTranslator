@@ -78,6 +78,7 @@ function extensionReleaseAssetsPlugin(outputDirectory: string): Plugin {
 function conformanceBuildPlugin(
   outputDirectory: string,
   browser: 'chrome' | 'firefox',
+  profile: string,
 ): Plugin {
   return {
     name: 'extension-conformance-build',
@@ -95,7 +96,7 @@ function conformanceBuildPlugin(
             tag: 'meta',
             attrs: {
               name: 'shinobu-conformance-target',
-              content: `${browser}:${host}`,
+              content: `${browser}:${host}:${profile}`,
             },
             injectTo: 'head',
           }],
@@ -120,6 +121,7 @@ function conformanceBuildPlugin(
 function extensionTargetAdapterPlugin(
   adapterModule: string,
   pipelineHostCompositionModule?: string,
+  pipelineHostExecutionTraceModule?: string,
 ): Plugin {
   return {
     name: 'extension-target-adapter',
@@ -131,6 +133,12 @@ function extensionTargetAdapterPlugin(
         && pipelineHostCompositionModule
       ) {
         return pipelineHostCompositionModule;
+      }
+      if (
+        source === './pipelineHostExecutionTrace'
+        && pipelineHostExecutionTraceModule
+      ) {
+        return pipelineHostExecutionTraceModule;
       }
       return null;
     },
@@ -206,7 +214,19 @@ export default defineConfig(({ command, mode }): UserConfig => {
   const pipelineHostCompositionModule = target.conformance
     ? resolve(
         extensionRoot,
-        'conformance/pipelineHostComposition.ts',
+        target.conformanceProfile === 'detector-failure'
+          ? 'conformance/pipelineHostComposition.detectorFailure.ts'
+          : target.conformanceProfile === 'translation-failure'
+            ? 'conformance/pipelineHostComposition.translationFailure.ts'
+            : 'conformance/pipelineHostComposition.ts',
+      )
+    : undefined;
+  const pipelineHostExecutionTraceModule = target.conformanceProfile
+    ? resolve(
+        extensionRoot,
+        target.conformanceProfile === 'lifecycle'
+          ? 'conformance/pipelineHostExecutionTrace.lifecycle.ts'
+          : 'conformance/pipelineHostExecutionTrace.semantic.ts',
       )
     : undefined;
 
@@ -223,12 +243,17 @@ export default defineConfig(({ command, mode }): UserConfig => {
       extensionTargetAdapterPlugin(
         targetAdapterModule,
         pipelineHostCompositionModule,
+        pipelineHostExecutionTraceModule,
       ),
       browserRuntimeBoundaryPlugin({ apply: 'serve' }),
       staticOrtRuntimeImportsPlugin(),
       react(),
       ...(target.conformance
-        ? [conformanceBuildPlugin(target.absoluteOutDir, target.browser)]
+        ? [conformanceBuildPlugin(
+            target.absoluteOutDir,
+            target.browser,
+            target.conformanceProfile ?? 'success',
+          )]
         : []),
       classicContentScriptAdapter(
         target.browser === 'firefox' ? 'browser' : 'chrome',

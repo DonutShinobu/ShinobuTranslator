@@ -185,8 +185,13 @@ function buildEraseDebugCanvas(
   return canvas;
 }
 
-function report(cb: ProgressCallback, stage: string, detail: string): void {
-  cb({ stage, detail });
+function report(
+  cb: ProgressCallback,
+  stage: string,
+  detail: string,
+  operation = stage,
+): void {
+  cb({ stage, operation, detail });
 }
 
 function throwIfCancelled(signal?: AbortSignal): void {
@@ -351,6 +356,7 @@ export async function runPipeline(
     policy: providerExecution.policy,
     loadModel: providerExecution.modelSession.loadModel,
     loadSession: providerExecution.modelSession.loadSession,
+    resetRuntime: providerExecution.modelSession.resetRuntime,
   });
 
   throwIfCancelled(signal);
@@ -786,7 +792,19 @@ export async function runPipeline(
   };
 
   const reportParallel = (): void => {
-    report(onProgress, "parallel", `${getTranslateDetail()} | ${getEraseDetail()}`);
+    const operation = parallelTranslateStatus === "running"
+      && (
+        parallelEraseStatus === "mask_refine"
+        || parallelEraseStatus === "inpaint"
+      )
+      ? "parallel-translate-inpaint-running"
+      : "parallel";
+    report(
+      onProgress,
+      "parallel",
+      `${getTranslateDetail()} | ${getEraseDetail()}`,
+      operation,
+    );
   };
 
   reportParallel();
@@ -816,8 +834,15 @@ export async function runPipeline(
           reportParallel();
           return translatedRegions;
         } catch (error) {
-          if (hasPipelineFailure(error)) throw error;
-          throw new PipelineStageError("translate", "\u7ffb\u8bd1", toErrorDetail(error), buildArtifacts(), "runtime", error);
+          throw new PipelineStageError(
+            "translate",
+            "\u7ffb\u8bd1",
+            toErrorDetail(error),
+            buildArtifacts(),
+            "runtime",
+            error,
+            hasPipelineFailure(error) ? error.failure : undefined,
+          );
         }
       })();
 
@@ -881,7 +906,8 @@ export async function runPipeline(
       });
       parallelEraseStatus = "done";
       reportParallel();
-      return inpaintResult.canvas;
+      cleanedCanvas = inpaintResult.canvas;
+      return cleanedCanvas;
     } catch (error) {
       providerReports.push(...providerReportsFromError(error));
       logPipelineStage(config, "pipeline.inpaint", "去字推理失败", undefined, error);
@@ -906,8 +932,27 @@ export async function runPipeline(
   } catch (error) {
     await Promise.allSettled([translateTask, eraseTask]);
     flushParallelTimings();
-    if (error instanceof PipelineStageError || hasPipelineFailure(error)) {
-      throw error;
+    if (error instanceof PipelineStageError) {
+      throw new PipelineStageError(
+        error.stage,
+        error.stageLabel,
+        toErrorDetail(error.cause ?? error),
+        buildArtifacts(),
+        error.failure.scope,
+        error,
+        error.failure,
+      );
+    }
+    if (hasPipelineFailure(error)) {
+      throw new PipelineStageError(
+        error.failure.stage ?? "parallel",
+        "\u5e76\u884c\u5904\u7406",
+        toErrorDetail(error),
+        buildArtifacts(),
+        error.failure.scope,
+        error,
+        error.failure,
+      );
     }
     throw new PipelineStageError("parallel", "并行处理", toErrorDetail(error), buildArtifacts(), "runtime", error);
   }

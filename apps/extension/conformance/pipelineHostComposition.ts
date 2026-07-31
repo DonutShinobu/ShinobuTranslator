@@ -9,7 +9,10 @@ export const CONFORMANCE_COMPOSITION_SENTINEL =
   'shinobu-conformance-test-composition-v1';
 
 export function createConformancePipelineHostComposition():
-Required<PipelineHostRuntimeComposition> {
+PipelineHostRuntimeComposition & Required<Pick<
+  PipelineHostRuntimeComposition,
+  'providerPolicy' | 'translationTransport'
+>> {
   const scenario = successfulConformanceScenario();
   if (scenario.id !== 'successful-translate-v1') {
     throw new Error(CONFORMANCE_COMPOSITION_SENTINEL);

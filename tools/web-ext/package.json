@@ -1,8 +1,0 @@
-{
-  "name": "@shinobu/web-ext-tool",
-  "version": "0.0.0",
-  "private": true,
-  "devDependencies": {
-    "web-ext": "10.5.0"
-  }
-}

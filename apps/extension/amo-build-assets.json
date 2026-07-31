@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "assets": [
+    {
+      "role": "runtime-metadata",
+      "path": "public/models/models.json",
+      "size": 1954,
+      "sha256": "79824893054d6da398112b1c1ecb1ba182c0eb1e22b068654c20cf85a94cf515"
+    },
+    {
+      "role": "ort",
+      "path": "apps/extension/src/ort/ort-wasm-simd-threaded.asyncify.mjs",
+      "size": 48616,
+      "sha256": "342dd04d1cf770260c05bee9fb8bbb43292678f4535861de77ac754508952e5c"
+    },
+    {
+      "role": "ort",
+      "path": "public/ort/ort-wasm-simd-threaded.asyncify.wasm",
+      "size": 27084114,
+      "sha256": "79dfc1d756e2dba03ad015ad84ba804583853bb567fddb669487abb4ee1bf273"
+    },
+    {
+      "role": "ort",
+      "path": "apps/extension/src/ort/ort-wasm-simd-threaded.jsep.mjs",
+      "size": 46734,
+      "sha256": "f83210722891f5b16ca511a60980b2a10ba2369994c86739c897b1d489373616"
+    },
+    {
+      "role": "ort",
+      "path": "public/ort/ort-wasm-simd-threaded.jsep.wasm",
+      "size": 24911187,
+      "sha256": "5febcf74919ee7ba3c7e838290c9ef2c03d6da297f06a8facfd7d22f623d7cd9"
+    },
+    {
+      "role": "ort",
+      "path": "apps/extension/src/ort/ort-wasm-simd-threaded.mjs",
+      "size": 24212,
+      "sha256": "eb230fe2c20eb27f756f5c7699acce2adb309fe738ed73666c43efdc825a8f72"
+    },
+    {
+      "role": "ort",
+      "path": "public/ort/ort-wasm-simd-threaded.wasm",
+      "size": 12297086,
+      "sha256": "fd078a39438a65660fc6c9df8d42fc886b5bf2931d6dbdd8dc51a17b1221499f"
+    },
+    {
+      "role": "font",
+      "path": "public/fonts/SourceHanSansCN-VF.ttf.woff2",
+      "size": 7711988,
+      "sha256": "f971e3bff46f76b49e1d5510556c2297c618ec4b491a295a4e741cdd38257799"
+    },
+    {
+      "role": "font",
+      "path": "public/fonts/SourceHanSansTW-VF.ttf.woff2",
+      "size": 5374996,
+      "sha256": "02d13bf72beafab07aa4a738477e7bccf6ed5cfc29d17b24908fb3b67e9f9318"
+    }
+  ]
+}

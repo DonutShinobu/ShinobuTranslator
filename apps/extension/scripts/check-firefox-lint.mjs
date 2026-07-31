@@ -46,7 +46,7 @@ function runFirefoxLint(argumentsList) {
   }
   const webExtCli = resolve(
     root,
-    'tools/web-ext/node_modules/web-ext/bin/web-ext.js',
+    'node_modules/web-ext/bin/web-ext.js',
   );
   const result = spawnSync(
     process.execPath,

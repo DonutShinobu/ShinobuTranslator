@@ -83,11 +83,6 @@
       "license": "MIT"
     },
     {
-      "name": "escape-string-regexp",
-      "version": "4.0.0",
-      "license": "MIT"
-    },
-    {
       "name": "fflate",
       "version": "0.8.3",
       "license": "MIT"

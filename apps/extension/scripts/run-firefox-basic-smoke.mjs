@@ -37,6 +37,10 @@ const imageHostAccessUrls = [
   'http://pbs.twimg.com/media/issue-49-b.png',
 ];
 
+function isHeaderLeaseRuleId(id) {
+  return id >= 1_000_000 && id <= 1_999_999;
+}
+
 async function isAccessible(path) {
   try {
     await access(path, constants.R_OK);
@@ -1270,6 +1274,7 @@ async function waitForInlineResult(
   label,
   expectedStatus,
   expectedDetail,
+  timeoutMs = 30_000,
 ) {
   await driver.switchTo().window(handle);
   const inlineButton = await driver.findElement(
@@ -1282,7 +1287,7 @@ async function waitForInlineResult(
     async () => terminalStatuses.includes(
       await inlineButton.getAttribute('data-status'),
     ),
-    180_000,
+    timeoutMs,
     `${label} did not reach ${terminalStatuses.join(' or ')}.`,
   );
   const detail = await driver.findElement(
@@ -1560,7 +1565,7 @@ async function runOAuthRebuildSmoke(driver, addonId, popupUrl) {
     'Firefox OAuth callback did not close its authentication tab.',
   );
   await driver.switchTo().window(popupHandle);
-  const rebuiltContextId = await waitForBackgroundRebuild(
+  await waitForBackgroundRebuild(
     driver,
     addonId,
     previousContextId,
@@ -1621,7 +1626,6 @@ async function runOAuthRebuildSmoke(driver, addonId, popupUrl) {
       }`,
     );
   }
-  return rebuiltContextId;
 }
 
 async function runInterruptedHostSmoke(driver, addonId, popupUrl) {
@@ -1686,12 +1690,6 @@ async function runStaleLeaseRebuildSmoke(
     driver,
     '/fixture/status/51-stale',
   );
-  await driver.executeScript(`
-    window.__shinobuContentOwnerState = {
-      displayMode: 'translated',
-      queue: ['issue-51-stale'],
-    };
-  `);
   await clickInlineFixture(driver, handle);
   await withDeadline(
     lifecycleFixture.lifecycleFetchStarted,
@@ -1699,9 +1697,7 @@ async function runStaleLeaseRebuildSmoke(
     'Firefox active Header lease barrier',
   );
   const activeRules = await readHeaderOverrideRuleIds(driver, addonId);
-  const activeLeaseIds = activeRules.session.filter(
-    (id) => id >= 1_000_000 && id <= 1_999_999,
-  );
+  const activeLeaseIds = activeRules.session.filter(isHeaderLeaseRuleId);
   if (activeLeaseIds.length !== 1) {
     throw new Error(
       `Firefox active fetch did not hold one Header lease: ${
@@ -1725,13 +1721,14 @@ async function runStaleLeaseRebuildSmoke(
   const ownerState = await driver.executeScript(`
     return {
       overlays: document.querySelectorAll('.mt-x-overlay-inline').length,
-      state: window.__shinobuContentOwnerState,
+      status: document.querySelector(
+        '.mt-x-overlay-inline .mt-x-control:not(.mt-x-control-secondary)'
+      )?.dataset.status,
     };
   `);
   if (
     ownerState.overlays !== 1
-    || ownerState.state?.displayMode !== 'translated'
-    || ownerState.state?.queue?.[0] !== 'issue-51-stale'
+    || ownerState.status !== 'error'
   ) {
     throw new Error(
       `Firefox background loss replaced content-owned page state: ${
@@ -1746,6 +1743,8 @@ async function runStaleLeaseRebuildSmoke(
     handle,
     'Reconnected protected-image request',
     'translated',
+    undefined,
+    120_000,
   );
   await waitForBackgroundRebuild(
     driver,
@@ -1754,9 +1753,7 @@ async function runStaleLeaseRebuildSmoke(
     'network listener and Header lease cleanup',
   );
   const remainingRules = await readHeaderOverrideRuleIds(driver, addonId);
-  if (remainingRules.session.some(
-    (id) => id >= 1_000_000 && id <= 1_999_999,
-  )) {
+  if (remainingRules.session.some(isHeaderLeaseRuleId)) {
     throw new Error(
       `Firefox stale Header lease survived rebuilt network work: ${
         JSON.stringify(remainingRules)
@@ -1827,7 +1824,7 @@ async function runIdleMenuWakeSmoke(driver, addonId, fixtureHandle) {
     10_000,
     'Firefox persisted menu listener did not wake after idle unload.',
   );
-  const rebuilt = await waitForBackgroundRebuild(
+  await waitForBackgroundRebuild(
     driver,
     addonId,
     active.contextId,
@@ -1842,7 +1839,6 @@ async function runIdleMenuWakeSmoke(driver, addonId, fixtureHandle) {
     );
   }
   await driver.actions().sendKeys(Key.ESCAPE).perform();
-  return rebuilt;
 }
 
 async function runIdleRequestWakeSmoke(driver, addonId, popupUrl) {
@@ -1860,7 +1856,7 @@ async function runIdleRequestWakeSmoke(driver, addonId, popupUrl) {
       }`,
     );
   }
-  return await waitForBackgroundRebuild(
+  await waitForBackgroundRebuild(
     driver,
     addonId,
     active.contextId,
@@ -2018,21 +2014,13 @@ async function run() {
     const useDirectProbe = process.env.FIREFOX_DIRECT_PORT_PROBE === 'true'
       || browserMajorVersion <= 140;
     const supportsPackagedContentEntry = browserMajorVersion > 140;
-    const lifecycleOnly = process.env.FIREFOX_LIFECYCLE_ONLY === 'true';
-    if (lifecycleOnly) {
-      await updateCredentialPermissions(driver, addonId, 'add', {
-        authenticationInfo: true,
-        cookies: true,
-      });
-    } else {
-      await runAuthenticationSmoke(driver, addonId);
-    }
+    await runAuthenticationSmoke(driver, addonId);
     const popupUrl = await configurePipelineEvidence(driver, addonId);
     let concurrentA;
     let concurrentB;
     let rejected;
     let revoked;
-    if (supportsPackagedContentEntry && !lifecycleOnly) {
+    if (supportsPackagedContentEntry) {
       const pipelineHandle = await driver.getWindowHandle();
       concurrentA = await openInlineFixture(
         driver,
@@ -2183,7 +2171,7 @@ async function run() {
     }
 
     let lifecycleFixtureHandle;
-    if (supportsPackagedContentEntry && !lifecycleOnly) {
+    if (supportsPackagedContentEntry) {
       networkRequests.length = 0;
 
       await clickInlineFixture(driver, concurrentA);
@@ -2192,11 +2180,17 @@ async function run() {
         driver,
         concurrentA,
         'First concurrent protected-image request',
+        undefined,
+        undefined,
+        120_000,
       );
       await waitForInlineResult(
         driver,
         concurrentB,
         'Second concurrent protected-image request',
+        undefined,
+        undefined,
+        120_000,
       );
       const successfulNetworkRequests = networkRequests.filter(
         (request) => request.path === '/media/issue-49-a.png'
@@ -2260,7 +2254,7 @@ async function run() {
       const isHeaderOverrideRule = (id) => (
         id === 1
         || id === 2
-        || (id >= 1_000_000 && id <= 1_999_999)
+        || isHeaderLeaseRuleId(id)
       );
       if (
         remainingRules.dynamic.some(isHeaderOverrideRule)

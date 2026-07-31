@@ -168,4 +168,108 @@ describe('ReadingModeController', () => {
       });
     });
   });
+
+  it('keeps the translate-all queue in the content owner after a host disconnect', async () => {
+    vi.stubGlobal('document', {
+      querySelector: vi.fn(() => null),
+      querySelectorAll: vi.fn(() => []),
+    });
+    vi.stubGlobal('window', {
+      requestAnimationFrame: vi.fn(() => 1),
+      cancelAnimationFrame: vi.fn(),
+    });
+    const pages = [
+      {
+        key: 'page-1',
+        originalUrl: 'https://cdn.example/page-1.jpg',
+        pageIndex: 0,
+      },
+      {
+        key: 'page-2',
+        originalUrl: 'https://cdn.example/page-2.jpg',
+        pageIndex: 1,
+      },
+    ];
+    const applyImageByKey = vi.fn();
+    const adapter: SiteAdapter = {
+      match: () => true,
+      findImages: () => [],
+      createUiAnchor: () => ({} as HTMLElement),
+      applyImage: () => {},
+      observe: () => () => {},
+      createBottomBarAnchor: () => (
+        { appendChild: vi.fn() } as unknown as HTMLElement
+      ),
+      findAllPageUrls: () => pages,
+      getVisiblePages: () => [],
+      applyImageByKey,
+    };
+    const store = new PhotoStateStore(200, { revokeObjectURL: vi.fn() });
+    const runner = new TranslationRunner();
+    vi.spyOn(runner, 'loadPipelineRunSettings').mockResolvedValue({
+      settings: defaultExtensionSettings,
+      showElapsedTime: false,
+      showStageTimingDetails: false,
+      showRuntimeStages: false,
+      stageTimingCardExpanded: false,
+      showTypesetDebug: false,
+      enableDebugLog: false,
+    });
+    let rejectDisconnectedHost: ((error: Error) => void) | undefined;
+    const disconnectedDownload = new Promise<never>((_, reject) => {
+      rejectDisconnectedHost = reject;
+    });
+    const downloadImageFile = vi.spyOn(runner, 'downloadImageFile')
+      .mockImplementationOnce(() => disconnectedDownload)
+      .mockResolvedValue({
+        file: {} as File,
+        blob: {} as Blob,
+      });
+    const runPipelineFromFile = vi.spyOn(runner, 'runPipelineFromFile')
+      .mockImplementation(async ({ state }) => {
+        state.translatedUrl = `blob:translated-${state.originalUrl}`;
+        state.status = 'translated';
+        state.mode = 'translated';
+        return undefined as never;
+      });
+    const scheduleCoreSync = vi.fn();
+    const bar = createFakeBar();
+    const controller = new ReadingModeController(
+      adapter,
+      store,
+      runner,
+      scheduleCoreSync,
+      vi.fn(),
+      () => bar.ui,
+    );
+
+    controller.sync();
+    bar.all.click?.();
+    await vi.waitFor(() => {
+      expect(downloadImageFile).toHaveBeenCalledTimes(1);
+    });
+    expect(bar.all.dataset.status).toBe('running');
+
+    rejectDisconnectedHost?.(new Error('Firefox Event Page disconnected'));
+
+    await vi.waitFor(() => {
+      expect(downloadImageFile).toHaveBeenCalledTimes(2);
+      expect(runPipelineFromFile).toHaveBeenCalledOnce();
+      expect(bar.all.dataset.status).toBe('');
+    });
+    expect(store.get(pages[0].key)).toMatchObject({
+      errorText: 'Firefox Event Page disconnected',
+      status: 'error',
+    });
+    expect(store.get(pages[1].key)).toMatchObject({
+      mode: 'translated',
+      status: 'translated',
+      translatedUrl: `blob:translated-${pages[1].originalUrl}`,
+    });
+    expect(applyImageByKey).toHaveBeenCalledWith(
+      pages[1].key,
+      `blob:translated-${pages[1].originalUrl}`,
+    );
+    expect(scheduleCoreSync).toHaveBeenCalledTimes(2);
+  });
 });

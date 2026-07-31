@@ -209,8 +209,11 @@ describe('Firefox Event Page PipelineHostLifecycle', () => {
   });
 
   it('releases a lost direct host before rebuilding for the next task', async () => {
+    let finishFirstDisposal: (() => void) | undefined;
     const disposals = [
-      vi.fn(async () => undefined),
+      vi.fn(() => new Promise<void>((resolve) => {
+        finishFirstDisposal = resolve;
+      })),
       vi.fn(async () => undefined),
     ];
     const startHost = vi.fn(() => ({
@@ -225,12 +228,20 @@ describe('Firefox Event Page PipelineHostLifecycle', () => {
     });
     await first?.channel.disconnect();
 
+    const rebuilding = lifecycle.create();
+    let rebuilt = false;
+    void rebuilding.then(() => {
+      rebuilt = true;
+    });
     await vi.waitFor(() => {
       expect(disposals[0]).toHaveBeenCalledOnce();
     });
+    expect(rebuilt).toBe(false);
+    expect(startHost).toHaveBeenCalledOnce();
     await expect(lifecycle.exists()).resolves.toBe(false);
 
-    const second = await lifecycle.create();
+    finishFirstDisposal?.();
+    const second = await rebuilding;
     expect(second).toBeDefined();
     second?.activate();
     await vi.waitFor(() => {

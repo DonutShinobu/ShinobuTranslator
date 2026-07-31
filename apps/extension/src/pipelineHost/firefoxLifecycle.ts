@@ -125,6 +125,7 @@ export function createFirefoxPipelineHostLifecycle(
 ):
 PipelineHostDocumentLifecycle {
   let state: DirectHostState | null = null;
+  let cleanup = Promise.resolve();
 
   return {
     isAvailable() {
@@ -137,6 +138,7 @@ PipelineHostDocumentLifecycle {
       return state !== null;
     },
     async create() {
+      await cleanup;
       if (state) return undefined;
       const [brokerChannel, hostChannel] = createDirectChannelPair();
       const created: DirectHostState = {
@@ -148,7 +150,7 @@ PipelineHostDocumentLifecycle {
       brokerChannel.onDisconnect(() => {
         if (state !== created) return;
         state = null;
-        void disposeDirectHost(created).catch(() => undefined);
+        cleanup = disposeDirectHost(created).catch(() => undefined);
       });
       return {
         channel: brokerChannel,
@@ -169,8 +171,10 @@ PipelineHostDocumentLifecycle {
       const closing = state;
       if (!closing) return false;
       state = null;
+      const disposal = disposeDirectHost(closing);
+      cleanup = disposal.catch(() => undefined);
       try {
-        await disposeDirectHost(closing);
+        await disposal;
       } finally {
         await closing.brokerChannel.disconnect();
       }

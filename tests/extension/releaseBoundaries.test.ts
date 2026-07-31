@@ -30,12 +30,29 @@ const ortRuntimeWasmPaths = [
   'ort/ort-wasm-simd-threaded.jsep.wasm',
   'ort/ort-wasm-simd-threaded.wasm',
 ];
+const canonicalModelManifest = JSON.parse(
+  readFileSync(
+    resolve(root, 'packages/model-manifest/manifest.json'),
+    'utf8',
+  ),
+) as {
+  assets: Array<{
+    path: string;
+    size: number;
+    sha256: string;
+  }>;
+};
+const canonicalModelChecksum = `${
+  canonicalModelManifest.assets
+    .map((asset) => `${asset.sha256}  ${asset.path}`)
+    .join('\n')
+}\n`;
 const temporaryDirectories: string[] = [];
 
 function writeArtifact(
   directory: string,
   path: string,
-  contents = '',
+  contents: string | Buffer = '',
 ): void {
   const outputPath = join(directory, path);
   mkdirSync(dirname(outputPath), { recursive: true });
@@ -99,6 +116,13 @@ function createReleaseFixture(target: 'chrome' | 'firefox'): string {
   }
   for (const path of ortRuntimeWasmPaths) {
     writeArtifact(directory, path);
+  }
+  for (const path of ['models.json', 'paddleocr_v6_dict.txt']) {
+    writeArtifact(
+      directory,
+      `models/${path}`,
+      readFileSync(resolve(root, 'public/models', path)),
+    );
   }
   writeArtifact(
     directory,
@@ -626,6 +650,116 @@ describe('extension release boundaries', () => {
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain(
         `Release build is missing required artifact: ${ortRuntimeWasmPaths[0]}`,
+      );
+    },
+    15_000,
+  );
+
+  it(
+    'rejects an incomplete canonical model release inventory',
+    () => {
+      const directory = createReleaseFixture('chrome');
+      writeArtifact(
+        directory,
+        'models/models.sha256',
+        canonicalModelChecksum,
+      );
+
+      const result = runReleaseBoundary('chrome', directory);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(
+        'Release build is missing required canonical model artifact: models/detector.onnx',
+      );
+    },
+    15_000,
+  );
+
+  it(
+    'rejects canonical model payload integrity drift',
+    () => {
+      const directory = createReleaseFixture('chrome');
+      writeArtifact(
+        directory,
+        'models/detector.onnx',
+        'truncated-model',
+      );
+
+      const result = runReleaseBoundary('chrome', directory);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(
+        'Canonical model asset size mismatch for models/detector.onnx: expected 94669756 bytes, received 15.',
+      );
+    },
+    15_000,
+  );
+
+  it(
+    'rejects canonical model checksum drift',
+    () => {
+      const directory = createReleaseFixture('chrome');
+      const [firstAsset] = canonicalModelManifest.assets;
+      writeArtifact(
+        directory,
+        'models/models.sha256',
+        canonicalModelChecksum.replace(
+          firstAsset.sha256,
+          '0'.repeat(64),
+        ),
+      );
+
+      const result = runReleaseBoundary('chrome', directory);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(
+        `Canonical model checksum mismatch for ${firstAsset.path}: expected ${firstAsset.sha256}, received ${'0'.repeat(64)}.`,
+      );
+    },
+    15_000,
+  );
+
+  it(
+    'rejects a missing asset referenced through new URL and import.meta.url',
+    () => {
+      const directory = createReleaseFixture('chrome');
+      const workerAsset =
+        'assets/ort-wasm-simd-threaded.jsep-Abcdef12.wasm';
+      writeArtifact(directory, workerAsset);
+      writeArtifact(
+        directory,
+        'onnxWorker.js',
+        `new URL("/${workerAsset}", import.meta.url);\n`,
+      );
+      const validResult = runReleaseBoundary('chrome', directory);
+      expect(validResult.status, validResult.stderr).toBe(0);
+
+      unlinkSync(join(directory, workerAsset));
+      const missingResult = runReleaseBoundary('chrome', directory);
+
+      expect(missingResult.status).not.toBe(0);
+      expect(missingResult.stderr).toContain(
+        `Artifact onnxWorker.js references missing artifact: ${workerAsset}`,
+      );
+    },
+    20_000,
+  );
+
+  it(
+    'rejects a new URL artifact reference that cannot be statically resolved',
+    () => {
+      const directory = createReleaseFixture('chrome');
+      writeArtifact(
+        directory,
+        'onnxWorker.js',
+        'new URL(resolveWorkerAsset(), import.meta.url);\n',
+      );
+
+      const result = runReleaseBoundary('chrome', directory);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(
+        'Artifact onnxWorker.js contains new URL(..., import.meta.url) reference that cannot be statically resolved at 1:1.',
       );
     },
     15_000,

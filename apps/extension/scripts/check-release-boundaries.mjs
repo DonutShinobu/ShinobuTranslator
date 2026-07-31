@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   existsSync,
   readdirSync,
@@ -12,6 +13,8 @@ import {
   init as initializeModuleLexer,
   parse as parseModuleImports,
 } from 'es-module-lexer';
+import canonicalModelManifest from '@shinobu/model-manifest/manifest'
+  with { type: 'json' };
 import ts from 'typescript';
 import {
   generateExtensionManifest,
@@ -34,6 +37,35 @@ if (!['chrome', 'firefox', 'benchmark'].includes(target)) {
 }
 const benchmarkBuild = target === 'benchmark';
 const manifestTarget = target === 'firefox' ? 'firefox' : 'chrome';
+const canonicalModelSourceDirectory = join(root, 'public', 'models');
+const canonicalModelChecksumArtifactPath = 'models/models.sha256';
+const canonicalModelAssets = new Map();
+for (const asset of canonicalModelManifest.assets ?? []) {
+  if (
+    typeof asset?.path !== 'string'
+    || asset.path.length === 0
+    || asset.path.includes('/')
+    || asset.path.includes('\\')
+    || !Number.isSafeInteger(asset.size)
+    || asset.size <= 0
+    || typeof asset.sha256 !== 'string'
+    || !/^[a-f0-9]{64}$/u.test(asset.sha256)
+  ) {
+    throw new Error(
+      `Canonical model manifest contains an invalid asset: ${JSON.stringify(asset)}`,
+    );
+  }
+  const artifactPath = `models/${asset.path}`;
+  if (canonicalModelAssets.has(artifactPath)) {
+    throw new Error(
+      `Canonical model manifest contains duplicate asset path: ${asset.path}`,
+    );
+  }
+  canonicalModelAssets.set(artifactPath, asset);
+}
+if (canonicalModelAssets.size === 0) {
+  throw new Error('Canonical model manifest must declare at least one asset.');
+}
 const forbiddenBridgeTokens = [
   '__shinobu_bake',
   '__shinobu_render',
@@ -92,7 +124,6 @@ const commonStoreArtifactPaths = new Set([
   'icons/icon128.png',
   'manifest.json',
   'models/models.json',
-  'models/paddleocr_v6_dict.txt',
   'onnxWorker.js',
   'ort/ort-wasm-simd-threaded.asyncify.mjs',
   'ort/ort-wasm-simd-threaded.asyncify.wasm',
@@ -153,6 +184,7 @@ const forbiddenLegacyModelArtifacts = [
 ];
 const requiredReleaseArtifacts = [
   'manifest.json',
+  'models/models.json',
   'popup.html',
   'popup.js',
   'background.js',
@@ -161,6 +193,9 @@ const requiredReleaseArtifacts = [
   'chunks/localPipelineProtocol.js',
   'chunks/perfTrace.js',
   'onnxWorker.js',
+  ...[...canonicalModelAssets.entries()]
+    .filter(([, asset]) => !asset.path.endsWith('.onnx'))
+    .map(([artifactPath]) => artifactPath),
   ...ortRuntimeModulePaths,
   ...ortRuntimeWasmPaths,
 ];
@@ -217,6 +252,8 @@ function classifyNonReleaseArtifact(path) {
 
 function isApprovedStoreArtifact(path) {
   return commonStoreArtifactPaths.has(path)
+    || canonicalModelAssets.has(path)
+    || path === canonicalModelChecksumArtifactPath
     || (
       manifestTarget === 'chrome'
       && chromeStoreArtifactPaths.has(path)
@@ -229,6 +266,112 @@ function matchesResourcePattern(pattern, resource) {
     .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
     .replaceAll('*', '.*');
   return new RegExp(`^${escaped}$`).test(resource);
+}
+
+function parseCanonicalModelChecksums(source) {
+  const checksums = new Map();
+  for (const [lineIndex, rawLine] of source.split(/\r?\n/u).entries()) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const match = line.match(/^([a-fA-F0-9]{64})\s+\*?(.+)$/u);
+    if (!match) {
+      throw new Error(
+        `Canonical model checksum contains invalid line ${lineIndex + 1}.`,
+      );
+    }
+    const assetName = match[2].trim();
+    const artifactPath = `models/${assetName}`;
+    if (!canonicalModelAssets.has(artifactPath)) {
+      throw new Error(
+        `Canonical model checksum contains undeclared asset: ${assetName}`,
+      );
+    }
+    if (checksums.has(artifactPath)) {
+      throw new Error(
+        `Canonical model checksum contains duplicate asset: ${assetName}`,
+      );
+    }
+    checksums.set(artifactPath, match[1].toLowerCase());
+  }
+  return checksums;
+}
+
+function assertCanonicalModelArtifacts(artifactPaths) {
+  const artifactPathSet = new Set(artifactPaths);
+  const checksumPresent = artifactPathSet.has(
+    canonicalModelChecksumArtifactPath,
+  );
+  if (checksumPresent) {
+    const checksums = parseCanonicalModelChecksums(
+      readFileSync(
+        join(distDir, canonicalModelChecksumArtifactPath),
+        'utf8',
+      ),
+    );
+    for (const [artifactPath, asset] of canonicalModelAssets) {
+      const checksum = checksums.get(artifactPath);
+      if (checksum === undefined) {
+        throw new Error(
+          `Canonical model checksum is missing asset: ${asset.path}`,
+        );
+      }
+      if (checksum !== asset.sha256) {
+        throw new Error(
+          `Canonical model checksum mismatch for ${asset.path}: expected ${asset.sha256}, received ${checksum}.`,
+        );
+      }
+    }
+  }
+
+  const sourceContainsOnnx = [...canonicalModelAssets.values()]
+    .filter((asset) => asset.path.endsWith('.onnx'))
+    .some((asset) =>
+      existsSync(join(canonicalModelSourceDirectory, asset.path)));
+  const artifactContainsOnnx = [...canonicalModelAssets.keys()]
+    .some((artifactPath) =>
+      artifactPath.endsWith('.onnx')
+      && artifactPathSet.has(artifactPath));
+  if (!checksumPresent && !sourceContainsOnnx && !artifactContainsOnnx) {
+    return;
+  }
+  if (checksumPresent) {
+    for (const artifactPath of canonicalModelAssets.keys()) {
+      if (!artifactPathSet.has(artifactPath)) {
+        throw new Error(
+          `Release build is missing required canonical model artifact: ${artifactPath}`,
+        );
+      }
+    }
+  }
+
+  for (const [artifactPath, asset] of canonicalModelAssets) {
+    if (!artifactPathSet.has(artifactPath)) continue;
+    const absolutePath = join(distDir, artifactPath);
+    const actualSize = statSync(absolutePath).size;
+    if (actualSize !== asset.size) {
+      throw new Error(
+        `Canonical model asset size mismatch for ${artifactPath}: expected ${asset.size} bytes, received ${actualSize}.`,
+      );
+    }
+    const actualHash = createHash('sha256')
+      .update(readFileSync(absolutePath))
+      .digest('hex');
+    if (actualHash !== asset.sha256) {
+      throw new Error(
+        `Canonical model asset hash mismatch for ${artifactPath}: expected ${asset.sha256}, received ${actualHash}.`,
+      );
+    }
+  }
+
+  if (!checksumPresent) {
+    for (const artifactPath of canonicalModelAssets.keys()) {
+      if (!artifactPathSet.has(artifactPath)) {
+        throw new Error(
+          `Release build is missing required canonical model artifact: ${artifactPath}`,
+        );
+      }
+    }
+  }
 }
 
 function resolvePackagedReference(
@@ -350,6 +493,27 @@ function isChromeRuntimeGetUrlCall(expression, typeChecker) {
   );
 }
 
+function isImportMetaUrl(expression) {
+  return (
+    ts.isPropertyAccessExpression(expression)
+    && expression.name.text === 'url'
+    && ts.isMetaProperty(expression.expression)
+    && expression.expression.keywordToken === ts.SyntaxKind.ImportKeyword
+    && expression.expression.name.text === 'meta'
+  );
+}
+
+function isArtifactUrlConstruction(expression, typeChecker) {
+  return (
+    ts.isNewExpression(expression)
+    && ts.isIdentifier(expression.expression)
+    && expression.expression.text === 'URL'
+    && typeChecker.getSymbolAtLocation(expression.expression) === undefined
+    && expression.arguments?.length === 2
+    && isImportMetaUrl(expression.arguments[1])
+  );
+}
+
 function evaluateStaticImportReference(
   expression,
   typeChecker,
@@ -431,8 +595,26 @@ function collectJavaScriptReferences(sourcePath, source) {
     sourceFile,
   );
   const references = [];
+  const assetReferences = [];
   const runtimeResourceReferences = [];
   const visit = (node) => {
+    if (isArtifactUrlConstruction(node, typeChecker)) {
+      const reference = evaluateStaticImportReference(
+        node.arguments[0],
+        typeChecker,
+      );
+      if (reference === undefined) {
+        const location = sourceFile.getLineAndCharacterOfPosition(
+          node.getStart(sourceFile),
+        );
+        throw new Error(
+          `Artifact ${sourcePath} contains new URL(..., import.meta.url) reference that cannot be statically resolved at ${
+            location.line + 1
+          }:${location.character + 1}.`,
+        );
+      }
+      assetReferences.push(reference);
+    }
     if (
       ts.isCallExpression(node)
       && isChromeRuntimeGetUrlCall(node, typeChecker)
@@ -478,10 +660,15 @@ function collectJavaScriptReferences(sourcePath, source) {
     ts.forEachChild(node, visit);
   };
   visit(sourceFile);
-  return { references, runtimeResourceReferences };
+  return {
+    assetReferences,
+    references,
+    runtimeResourceReferences,
+  };
 }
 
 function collectArtifactReferences(path, source) {
+  const assetReferences = [];
   const references = [];
   const runtimeResourceReferences = [];
   const addMatches = (expression) => {
@@ -506,13 +693,18 @@ function collectArtifactReferences(path, source) {
       source,
     );
     references.push(...javaScriptReferences.references);
+    assetReferences.push(...javaScriptReferences.assetReferences);
     runtimeResourceReferences.push(
       ...javaScriptReferences.runtimeResourceReferences,
     );
   } else if (path.endsWith('.css')) {
     addMatches(/\burl\(\s*["']?([^"')]+)["']?\s*\)/giu);
   }
-  return { references, runtimeResourceReferences };
+  return {
+    assetReferences,
+    references,
+    runtimeResourceReferences,
+  };
 }
 
 function assertArtifactReferences(artifactPaths) {
@@ -537,6 +729,20 @@ function assertArtifactReferences(artifactPaths) {
         ownerPath,
         reference,
         ownerPath.endsWith('.js') || ownerPath.endsWith('.mjs'),
+      );
+      if (
+        referencedPath !== undefined
+        && !artifactPathSet.has(referencedPath)
+      ) {
+        throw new Error(
+          `Artifact ${ownerPath} references missing artifact: ${referencedPath}`,
+        );
+      }
+    }
+    for (const reference of collectedReferences.assetReferences) {
+      const referencedPath = resolvePackagedReference(
+        ownerPath,
+        reference,
       );
       if (
         referencedPath !== undefined
@@ -665,6 +871,7 @@ for (const artifact of requiredReleaseArtifacts) {
 }
 
 const artifactPaths = collectArtifactPaths(distDir);
+assertCanonicalModelArtifacts(artifactPaths);
 for (const artifactPath of artifactPaths) {
   const extension = posix.extname(artifactPath).toLowerCase();
   if (!scannedTextArtifactExtensions.has(extension)) continue;

@@ -1,11 +1,11 @@
 import { resolve } from 'node:path';
 import {
+  cpSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { createCanvas, loadImage } from 'canvas';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import type { Plugin, UserConfig } from 'vite';
@@ -102,16 +102,11 @@ function conformanceBuildPlugin(
         };
       },
     },
-    async closeBundle() {
-      const source = await loadImage(
-        resolve(repoRoot, 'docs/translated1.png'),
-      );
-      const canvas = createCanvas(420, 360);
-      const context = canvas.getContext('2d');
-      context.drawImage(source, 80, 0, 420, 360, 0, 0, 420, 360);
-      writeFileSync(
-        resolve(outputDirectory, 'conformance-input.png'),
-        canvas.toBuffer('image/png'),
+    closeBundle() {
+      cpSync(
+        resolve(extensionRoot, 'conformance/fixtures/inputs/v1'),
+        resolve(outputDirectory, 'conformance-inputs/v1'),
+        { recursive: true },
       );
     },
   };

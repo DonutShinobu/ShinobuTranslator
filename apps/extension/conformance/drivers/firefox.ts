@@ -142,16 +142,19 @@ Promise<ConformanceDriverResult> {
         'Firefox conformance created a dedicated pipeline host page.',
       );
     }
-    const observation = JSON.parse(payload) as ConformanceObservation;
+    const observations = JSON.parse(payload) as ConformanceObservation[];
     if (
-      observation.browser !== 'firefox'
-      || observation.host !== 'event-page-direct'
+      !Array.isArray(observations)
+      || observations.length !== 9
+      || observations.some((observation) =>
+        observation.browser !== 'firefox'
+        || observation.host !== 'event-page-direct')
     ) {
-      throw new Error('Firefox driver received the wrong host observation');
+      throw new Error('Firefox driver received an invalid observation matrix');
     }
     const capabilities = await driver.getCapabilities();
     return {
-      observation,
+      observations,
       browserVersion: String(
         capabilities.get('browserVersion') ?? 'unknown',
       ),

@@ -116,15 +116,18 @@ Promise<ConformanceDriverResult> {
         'Chrome conformance did not traverse the packaged Offscreen host.',
       );
     }
-    const observation = JSON.parse(payload) as ConformanceObservation;
+    const observations = JSON.parse(payload) as ConformanceObservation[];
     if (
-      observation.browser !== 'chrome'
-      || observation.host !== 'broker-offscreen'
+      !Array.isArray(observations)
+      || observations.length !== 9
+      || observations.some((observation) =>
+        observation.browser !== 'chrome'
+        || observation.host !== 'broker-offscreen')
     ) {
-      throw new Error('Chrome driver received the wrong host observation');
+      throw new Error('Chrome driver received an invalid observation matrix');
     }
     return {
-      observation,
+      observations,
       browserVersion: context.browser()?.version() ?? 'unknown',
       packagePath,
     };

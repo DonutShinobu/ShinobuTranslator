@@ -8,7 +8,14 @@ import {
 } from '@shinobu/image-pipeline';
 import {
   WEBGPU_CONFORMANCE_PROVIDER_POLICY,
+  conformanceScenarioById,
 } from './scenarios';
+import {
+  CONFORMANCE_FIELD_CLASSIFICATION,
+  firstDifference,
+  type GoldenComparable,
+  type NumericObservation,
+} from './comparator';
 import type {
   ConformanceObservation,
   NormalizedConformanceObservation,
@@ -98,12 +105,17 @@ const RESULT_FIELDS = new Set([
   'status',
   'artifact',
   'record',
+  'typesetMetrics',
   'providerReports',
 ]);
 const ARTIFACT_FIELDS = new Set([
   'contentType',
   'width',
   'height',
+  'channelOrder',
+  'colorSpace',
+  'decodedRgbaBase64',
+  'inputEquivalentToSource',
   'byteLength',
   'nativeBytesSha256',
 ]);
@@ -118,20 +130,33 @@ const PROVIDER_REPORT_FIELDS = new Set([
   'fallbackTrace',
   'satisfied',
 ]);
+const BOX_FIELDS = new Set(['x', 'y', 'width', 'height']);
+const QUAD_POINT_FIELDS = new Set(['x', 'y']);
+const SOURCE_NATIVE_SPEC_FIELDS = new Set(['strategy']);
+const NORMALIZED_SPEC_FIELDS = new Set([
+  'strategy',
+  'sourceSize',
+  'size',
+  'imageOrientation',
+  'background',
+]);
+const IMAGE_SIZE_FIELDS = new Set(['width', 'height']);
+const IDENTITY_TRANSFORM_FIELDS = new Set(['kind']);
+const SCALE_TRANSFORM_FIELDS = new Set(['kind', 'scaleX', 'scaleY']);
+const PROVIDER_CONTRACT_FIELDS = new Set(['id', 'version']);
+const PROVIDER_ATTEMPT_FIELDS = new Set([
+  'attempt',
+  'provider',
+  'outcome',
+  'reason',
+]);
+const PROVIDER_FALLBACK_FIELDS = new Set(['from', 'to', 'reason']);
 const PARALLEL_PROGRESS_STAGES = new Set(['translate', 'inpaint']);
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
-export const CONFORMANCE_EXCLUDED_FIELDS = Object.freeze([
-  'progress[].detail',
-  'result.artifact.byteLength',
-  'result.artifact.nativeBytesSha256',
-  'result.record.ocr[].box',
-  'result.record.ocr[].quad',
-  'result.record.ocr[].confidence',
-  'result.record.translations[].box',
-  'result.record.translations[].quad',
-] as const);
+export const CONFORMANCE_EXCLUDED_FIELDS =
+  CONFORMANCE_FIELD_CLASSIFICATION.excluded;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -198,11 +223,42 @@ function normalizeProgress(progress: readonly PipelineProgress[]): {
   };
 }
 
+function addBoxMetrics(
+  target: Record<string, number>,
+  path: string,
+  box: { x: number; y: number; width: number; height: number },
+): void {
+  assertOnlyFields(box, BOX_FIELDS, path);
+  target[`${path}.x`] = box.x;
+  target[`${path}.y`] = box.y;
+  target[`${path}.width`] = box.width;
+  target[`${path}.height`] = box.height;
+}
+
+function addQuadMetrics(
+  target: Record<string, number>,
+  path: string,
+  quad: readonly { x: number; y: number }[] | undefined,
+): void {
+  if (!quad) return;
+  if (quad.length !== 4) {
+    throw new TypeError(`${path} must contain exactly four points`);
+  }
+  for (const [index, point] of quad.entries()) {
+    assertOnlyFields(point, QUAD_POINT_FIELDS, `${path}[${index}]`);
+    target[`${path}[${index}].x`] = point.x;
+    target[`${path}[${index}].y`] = point.y;
+  }
+}
+
 function normalizeRecord(record: PipelineRecord): {
-  schemaVersion: PipelineRecord['schemaVersion'];
-  workingCopy: PipelineRecord['workingCopy'];
-  ocr: NormalizedRecordRegion[];
-  translations: NormalizedRecordRegion[];
+  record: {
+    schemaVersion: PipelineRecord['schemaVersion'];
+    workingCopy: PipelineRecord['workingCopy'];
+    ocr: NormalizedRecordRegion[];
+    translations: NormalizedRecordRegion[];
+  };
+  numeric: Pick<NumericObservation, 'confidence' | 'geometry' | 'quad'>;
 } {
   assertOnlyFields(record, RECORD_FIELDS, 'result.record');
   assertOnlyFields(
@@ -210,7 +266,39 @@ function normalizeRecord(record: PipelineRecord): {
     WORKING_COPY_FIELDS,
     'result.record.workingCopy',
   );
+  const specFields = record.workingCopy.spec.strategy === 'source-native'
+    ? SOURCE_NATIVE_SPEC_FIELDS
+    : NORMALIZED_SPEC_FIELDS;
+  assertOnlyFields(
+    record.workingCopy.spec,
+    specFields,
+    'result.record.workingCopy.spec',
+  );
+  if (record.workingCopy.spec.strategy === 'normalized') {
+    assertOnlyFields(
+      record.workingCopy.spec.sourceSize,
+      IMAGE_SIZE_FIELDS,
+      'result.record.workingCopy.spec.sourceSize',
+    );
+    assertOnlyFields(
+      record.workingCopy.spec.size,
+      IMAGE_SIZE_FIELDS,
+      'result.record.workingCopy.spec.size',
+    );
+  }
+  const transformFields = record.workingCopy.sourceToWorkingCopy.kind
+    === 'identity'
+    ? IDENTITY_TRANSFORM_FIELDS
+    : SCALE_TRANSFORM_FIELDS;
+  assertOnlyFields(
+    record.workingCopy.sourceToWorkingCopy,
+    transformFields,
+    'result.record.workingCopy.sourceToWorkingCopy',
+  );
   const idMap = new Map<string, string>();
+  const confidence: Record<string, number> = {};
+  const geometry: Record<string, number> = {};
+  const quad: Record<string, number> = {};
   const normalizedId = (id: string): string => {
     if (!UUID_PATTERN.test(id)) {
       throw new TypeError('result.record region id must be a UUID');
@@ -225,6 +313,11 @@ function normalizeRecord(record: PipelineRecord): {
     assertOnlyFields(region, OCR_FIELDS, `result.record.ocr[${index}]`);
     if (idMap.has(region.id)) {
       throw new TypeError(`result.record contains duplicate OCR id ${region.id}`);
+    }
+    addBoxMetrics(geometry, `ocr[${index}].box`, region.box);
+    addQuadMetrics(quad, `ocr[${index}].quad`, region.quad);
+    if (region.confidence !== undefined) {
+      confidence[`ocr[${index}].confidence`] = region.confidence;
     }
     return {
       id: normalizedId(region.id),
@@ -242,6 +335,8 @@ function normalizeRecord(record: PipelineRecord): {
       TRANSLATION_FIELDS,
       `result.record.translations[${index}]`,
     );
+    addBoxMetrics(geometry, `translations[${index}].box`, region.box);
+    addQuadMetrics(quad, `translations[${index}].quad`, region.quad);
     return {
       id: normalizedId(region.id),
       order: region.order,
@@ -257,15 +352,47 @@ function normalizeRecord(record: PipelineRecord): {
     };
   });
   return {
-    schemaVersion: record.schemaVersion,
-    workingCopy: clone(record.workingCopy),
-    ocr,
-    translations,
+    record: {
+      schemaVersion: record.schemaVersion,
+      workingCopy: clone(record.workingCopy),
+      ocr,
+      translations,
+    },
+    numeric: { confidence, geometry, quad },
   };
+}
+
+function normalizeTypesetMetrics(
+  value: unknown,
+): Pick<NumericObservation, 'font' | 'layout'> {
+  assertOnlyFields(
+    value,
+    new Set(['font', 'layout']),
+    'result.typesetMetrics',
+  );
+  const normalized = {} as Pick<NumericObservation, 'font' | 'layout'>;
+  for (const category of ['font', 'layout'] as const) {
+    const metrics = value[category];
+    if (!isRecord(metrics)) {
+      throw new TypeError(`result.typesetMetrics.${category} must be an object`);
+    }
+    const entries = Object.entries(metrics)
+      .sort(([left], [right]) => left.localeCompare(right));
+    for (const [path, metric] of entries) {
+      if (typeof metric !== 'number' || !Number.isFinite(metric)) {
+        throw new TypeError(
+          `result.typesetMetrics.${category}.${path} must be finite`,
+        );
+      }
+    }
+    normalized[category] = Object.fromEntries(entries) as Record<string, number>;
+  }
+  return normalized;
 }
 
 function normalizeProviderReports(
   reports: readonly ProviderExecutionReport[],
+  expectedTargets: readonly string[],
 ): readonly ProviderExecutionReport[] {
   const normalized = reports.map((report, index) => {
     assertOnlyFields(
@@ -276,23 +403,34 @@ function normalizeProviderReports(
     if (!isProviderExecutionReport(report)) {
       throw new TypeError(`invalid provider report at index ${index}`);
     }
+    assertOnlyFields(
+      report.contract,
+      PROVIDER_CONTRACT_FIELDS,
+      `result.providerReports[${index}].contract`,
+    );
+    report.attempts.forEach((attempt, attemptIndex) => assertOnlyFields(
+      attempt,
+      PROVIDER_ATTEMPT_FIELDS,
+      `result.providerReports[${index}].attempts[${attemptIndex}]`,
+    ));
+    report.fallbackTrace.forEach((fallback, fallbackIndex) => assertOnlyFields(
+      fallback,
+      PROVIDER_FALLBACK_FIELDS,
+      `result.providerReports[${index}].fallbackTrace[${fallbackIndex}]`,
+    ));
     return clone(report);
   });
-  const expectedTargets = new Set(
-    WEBGPU_CONFORMANCE_PROVIDER_POLICY.rules.map(
-      (rule) => `${rule.model}:${rule.stage}`,
-    ),
-  );
+  const expectedTargetSet = new Set(expectedTargets);
   const actualTargets = new Set(
     normalized.map((report) => `${report.model}:${report.stage}`),
   );
   if (
-    normalized.length !== expectedTargets.size
-    || actualTargets.size !== expectedTargets.size
-    || [...expectedTargets].some((target) => !actualTargets.has(target))
+    normalized.length !== expectedTargetSet.size
+    || actualTargets.size !== expectedTargetSet.size
+    || [...expectedTargetSet].some((target) => !actualTargets.has(target))
   ) {
     throw new TypeError(
-      'successful conformance requires all four WebGPU model stages',
+      'conformance provider reports do not match expected reached stages',
     );
   }
   for (const report of normalized) {
@@ -327,6 +465,7 @@ export function normalizeConformanceObservation(
   if (observation.schemaVersion !== 1) {
     throw new TypeError('unsupported conformance observation schema');
   }
+  const scenario = conformanceScenarioById(observation.scenarioId);
   assertOnlyFields(observation.request, REQUEST_FIELDS, 'request');
   assertOnlyFields(observation.request.config, CONFIG_FIELDS, 'request.config');
   assertOnlyFields(
@@ -350,8 +489,10 @@ export function normalizeConformanceObservation(
   if (!observation.result) {
     throw new TypeError('successful conformance observation must include a result');
   }
-  if (observation.result.status !== 'completed') {
-    throw new TypeError('successful translate scenario must complete with text');
+  if (observation.result.status !== scenario.expectedStatus) {
+    throw new TypeError(
+      `scenario ${scenario.id} must finish as ${scenario.expectedStatus}`,
+    );
   }
   if (observation.finalizationCount !== 1) {
     throw new TypeError('conformance execution must finalize exactly once');
@@ -361,6 +502,16 @@ export function normalizeConformanceObservation(
   }
   assertOnlyFields(observation.result, RESULT_FIELDS, 'result');
   assertOnlyFields(observation.result.artifact, ARTIFACT_FIELDS, 'result.artifact');
+  if (observation.request.inputSha256 !== scenario.input.sha256) {
+    throw new TypeError(`scenario ${scenario.id} input SHA-256 does not match matrix`);
+  }
+  if (
+    observation.result.artifact.channelOrder !== 'rgba'
+    || observation.result.artifact.colorSpace !== 'srgb'
+    || observation.result.artifact.decodedRgbaBase64.length === 0
+  ) {
+    throw new TypeError('conformance artifact must include decoded sRGB RGBA');
+  }
   const finalizationProgress = observation.progress.filter(
     (event) => event.stage === 'finalize',
   );
@@ -372,12 +523,28 @@ export function normalizeConformanceObservation(
   }
   const normalizedProgress = normalizeProgress(observation.progress);
   const normalizedRecord = normalizeRecord(observation.result.record);
-  if (
-    normalizedRecord.translations.length === 0
-    || normalizedRecord.translations.some(
+  const typesetMetrics = normalizeTypesetMetrics(
+    observation.result.typesetMetrics,
+  );
+  if (scenario.expectedStatus === 'no-translatable-text') {
+    if (
+      normalizedRecord.record.ocr.length !== 0
+      || normalizedRecord.record.translations.length !== 0
+      || !observation.result.artifact.inputEquivalentToSource
+    ) {
+      throw new TypeError(
+        'no-translatable-text must return input-equivalent RGBA and an empty record',
+      );
+    }
+  } else if (
+    scenario.config.processMode === 'translate'
+    && (
+      normalizedRecord.record.translations.length === 0
+      || normalizedRecord.record.translations.some(
       (region) =>
         region.translatedText
           !== observation.request.fixedTranslationResponse,
+      )
     )
   ) {
     throw new TypeError(
@@ -389,69 +556,32 @@ export function normalizeConformanceObservation(
     scenarioId: observation.scenarioId,
     request: clone(observation.request),
     ...normalizedProgress,
-    resultStatus: 'completed',
+    resultStatus: observation.result.status,
     artifact: {
       contentType: observation.result.artifact.contentType,
       width: observation.result.artifact.width,
       height: observation.result.artifact.height,
+      channelOrder: observation.result.artifact.channelOrder,
+      colorSpace: observation.result.artifact.colorSpace,
+      inputEquivalentToSource:
+        observation.result.artifact.inputEquivalentToSource,
     },
-    record: normalizedRecord,
+    record: normalizedRecord.record,
     providerReports: normalizeProviderReports(
       observation.result.providerReports,
+      scenario.expectedProviderTargets,
     ),
+    numeric: {
+      ...normalizedRecord.numeric,
+      ...typesetMetrics,
+    },
+    decodedRgbaBase64: observation.result.artifact.decodedRgbaBase64,
     failure: null,
     cancellation: null,
     finalizationCount: 1,
     commitCount: 1,
     excludedFields: CONFORMANCE_EXCLUDED_FIELDS,
   };
-}
-
-function firstDifference(
-  left: unknown,
-  right: unknown,
-  path = 'observation',
-): string | null {
-  if (Object.is(left, right)) return null;
-  if (
-    !left
-    || !right
-    || typeof left !== 'object'
-    || typeof right !== 'object'
-  ) {
-    return path;
-  }
-  if (Array.isArray(left) || Array.isArray(right)) {
-    if (!Array.isArray(left) || !Array.isArray(right)) return path;
-    if (left.length !== right.length) return `${path}.length`;
-    for (let index = 0; index < left.length; index += 1) {
-      const difference = firstDifference(
-        left[index],
-        right[index],
-        `${path}[${index}]`,
-      );
-      if (difference) return difference;
-    }
-    return null;
-  }
-  const leftRecord = left as Record<string, unknown>;
-  const rightRecord = right as Record<string, unknown>;
-  const keys = [...new Set([
-    ...Object.keys(leftRecord),
-    ...Object.keys(rightRecord),
-  ])].sort();
-  for (const key of keys) {
-    if (!Object.hasOwn(leftRecord, key) || !Object.hasOwn(rightRecord, key)) {
-      return `${path}.${key}`;
-    }
-    const difference = firstDifference(
-      leftRecord[key],
-      rightRecord[key],
-      `${path}.${key}`,
-    );
-    if (difference) return difference;
-  }
-  return null;
 }
 
 export class ConformanceMismatchError extends Error {
@@ -465,7 +595,37 @@ export function compareConformanceObservations(
   chrome: NormalizedConformanceObservation,
   firefox: NormalizedConformanceObservation,
 ): { matches: true } {
-  const difference = firstDifference(chrome, firefox);
+  const { numeric: _chromeNumeric, decodedRgbaBase64: _chromeRgba, ...chromeStrict }
+    = chrome;
+  const { numeric: _firefoxNumeric, decodedRgbaBase64: _firefoxRgba, ...firefoxStrict }
+    = firefox;
+  const difference = firstDifference(chromeStrict, firefoxStrict);
   if (difference) throw new ConformanceMismatchError(difference);
   return { matches: true };
+}
+
+function decodeBase64(value: string): Uint8Array {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+export function toGoldenComparable(
+  observation: NormalizedConformanceObservation,
+): GoldenComparable {
+  const { numeric, decodedRgbaBase64, ...strict } = observation;
+  return {
+    strict,
+    numeric,
+    rgba: {
+      width: observation.artifact.width,
+      height: observation.artifact.height,
+      channelOrder: observation.artifact.channelOrder,
+      colorSpace: observation.artifact.colorSpace,
+      data: decodeBase64(decodedRgbaBase64),
+    },
+  };
 }

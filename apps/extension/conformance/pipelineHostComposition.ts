@@ -11,7 +11,7 @@ export const CONFORMANCE_COMPOSITION_SENTINEL =
 export function createConformancePipelineHostComposition():
 Required<PipelineHostRuntimeComposition> {
   const scenario = successfulConformanceScenario();
-  if (scenario.id !== 'successful-translate-v1') {
+  if (scenario.matrixVersion !== 1) {
     throw new Error(CONFORMANCE_COMPOSITION_SENTINEL);
   }
   return {

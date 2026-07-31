@@ -56,9 +56,9 @@ function observation(
     host: browser === 'chrome'
       ? 'broker-offscreen'
       : 'event-page-direct',
-    scenarioId: 'successful-translate-v1',
+    scenarioId: 'translate-vertical-sparse-v1',
     request: {
-      inputSha256: 'input-sha256',
+      inputSha256: 'fc0324b1adc4f4d4b9c7870643ca72bdd47cf04bf5308e0b607ec158cafc4daa',
       config: {
         sourceLang: 'ja',
         targetLang: 'zh-CHS',
@@ -119,6 +119,10 @@ function observation(
         contentType: 'image/png',
         width: 120,
         height: 80,
+        channelOrder: 'rgba',
+        colorSpace: 'srgb',
+        decodedRgbaBase64: 'AA==',
+        inputEquivalentToSource: false,
         byteLength: browser === 'chrome' ? 400 : 425,
         nativeBytesSha256: `${browser}-png-sha256`,
       },
@@ -165,6 +169,15 @@ function observation(
           },
         ],
       },
+      typesetMetrics: {
+        font: {
+          'typeset[0].initialFontSize': 24,
+          'typeset[0].fittedFontSize': browser === 'chrome' ? 22 : 22.25,
+        },
+        layout: {
+          'typeset[0].layoutContentHeight': browser === 'chrome' ? 48 : 48.25,
+        },
+      },
       providerReports: [
         providerReport('detector', 'detect'),
         providerReport('bubble', 'bubble'),
@@ -179,11 +192,11 @@ function observation(
   };
 }
 
-describe('single-success real-host conformance harness', () => {
-  it('owns exactly the successful sample assigned to issue #54', () => {
-    expect(SUCCESS_CONFORMANCE_SCENARIOS).toHaveLength(1);
+describe('real-host conformance harness', () => {
+  it('extends the successful sample assigned to issue #54 into the golden matrix', () => {
+    expect(SUCCESS_CONFORMANCE_SCENARIOS).toHaveLength(9);
     expect(SUCCESS_CONFORMANCE_SCENARIOS[0]).toMatchObject({
-      id: 'successful-translate-v1',
+      id: 'translate-vertical-sparse-v1',
       config: {
         processMode: 'translate',
       },
@@ -208,14 +221,14 @@ describe('single-success real-host conformance harness', () => {
     expect(chrome.record.ocr[0]?.id).toBe('region-1');
     expect(chrome.record.translations[0]?.id).toBe('region-2');
     expect(chrome.excludedFields).toEqual([
+      'browser',
+      'host',
       'progress[].detail',
       'result.artifact.byteLength',
       'result.artifact.nativeBytesSha256',
-      'result.record.ocr[].box',
-      'result.record.ocr[].quad',
-      'result.record.ocr[].confidence',
-      'result.record.translations[].box',
-      'result.record.translations[].quad',
+      'result.stageTimings',
+      'failure.underlyingErrorText',
+      'failure.stack',
     ]);
     expect(compareConformanceObservations(chrome, firefox)).toEqual({
       matches: true,
@@ -287,7 +300,7 @@ describe('single-success real-host conformance harness', () => {
 
     expect(() =>
       normalizeConformanceObservation(missingInpaint)).toThrow(
-      /all four WebGPU model stages/iu,
+      /expected reached stages/iu,
     );
   });
 
@@ -299,5 +312,58 @@ describe('single-success real-host conformance harness', () => {
       normalizeConformanceObservation(untranslated)).toThrow(
       /fixed translation response/iu,
     );
+  });
+
+  it('fails closed when a nested numeric field is unclassified', () => {
+    const withUnknownBoxField = observation('chrome', chromeRegionId);
+    const box = withUnknownBoxField.result!.record.ocr[0]!.box as {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      angle?: number;
+    };
+    box.angle = 4;
+
+    expect(() => normalizeConformanceObservation(withUnknownBoxField))
+      .toThrow(/unclassified observation field.*box\.angle/iu);
+  });
+
+  it('accepts an input-equivalent no-text sample with only its reached WebGPU stage', () => {
+    const noText = observation('chrome', chromeRegionId);
+    noText.scenarioId = 'no-text-transparent-png-v1';
+    noText.request.inputSha256 =
+      '77badf0f9c5d4da8655548fcc6d5b6c94b2a598aa4539270c18f6525fd50e1fd';
+    noText.request.fixedTranslationResponse = '';
+    noText.request.config.typesetDebug = false;
+    noText.result!.status = 'no-translatable-text';
+    noText.result!.record.ocr = [];
+    noText.result!.record.translations = [];
+    noText.result!.typesetMetrics = { font: {}, layout: {} };
+    noText.result!.providerReports = [providerReport('detector', 'detect')];
+    noText.result!.artifact.inputEquivalentToSource = true;
+
+    const normalized = normalizeConformanceObservation(noText);
+    expect(normalized.resultStatus).toBe('no-translatable-text');
+    expect(normalized.record.ocr).toEqual([]);
+    expect(normalized.record.translations).toEqual([]);
+    expect(normalized.numeric).toEqual({
+      confidence: {},
+      geometry: {},
+      quad: {},
+      font: {},
+      layout: {},
+    });
+  });
+
+  it('fails closed when a typeset metric category is not classified', () => {
+    const withUnknownMetricCategory = observation('chrome', chromeRegionId);
+    const metrics = withUnknownMetricCategory.result!.typesetMetrics as
+      NonNullable<ConformanceObservation['result']>['typesetMetrics']
+      & { glyphRaster?: Record<string, number> };
+    metrics.glyphRaster = { unexpected: 1 };
+
+    expect(() => normalizeConformanceObservation(withUnknownMetricCategory))
+      .toThrow(/unclassified observation field.*glyphRaster/iu);
   });
 });

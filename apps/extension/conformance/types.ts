@@ -9,17 +9,49 @@ import type {
   ProviderExecutionReport,
   WorkingCopySpec,
 } from '@shinobu/image-pipeline';
+import type {
+  NumericObservation,
+} from './comparator';
 
 export type ConformanceBrowser = 'chrome' | 'firefox';
 
 export type ConformanceHost = 'broker-offscreen' | 'event-page-direct';
 
+export type ConformanceCoverage =
+  | 'vertical'
+  | 'horizontal'
+  | 'mixed'
+  | 'irregular-quad'
+  | 'font-punctuation-latin'
+  | 'long-high-resolution'
+  | 'erase'
+  | 'no-text-opaque'
+  | 'no-text-transparent';
+
+export type ConformanceScenarioId =
+  | 'translate-vertical-sparse-v1'
+  | 'translate-horizontal-jpeg-v1'
+  | 'translate-mixed-dense-v1'
+  | 'translate-irregular-quad-v1'
+  | 'translate-font-punctuation-latin-v1'
+  | 'translate-long-high-resolution-v1'
+  | 'erase-complete-v1'
+  | 'no-text-opaque-jpeg-v1'
+  | 'no-text-transparent-png-v1';
+
 export type ConformanceScenario = {
-  id: 'successful-translate-v1';
+  matrixVersion: 1;
+  id: ConformanceScenarioId;
   input: {
     path: string;
-    contentType: 'image/png';
+    contentType: 'image/png' | 'image/jpeg';
+    sha256: string;
+    alpha: 'opaque' | 'transparent';
   };
+  expectedStatus: 'completed' | 'no-translatable-text';
+  coverage: readonly ConformanceCoverage[];
+  requiresInputEquivalentResult: boolean;
+  expectedProviderTargets: readonly string[];
   config: PipelineConfig;
   workingCopy: WorkingCopySpec;
   fixedTranslationResponse: string;
@@ -48,6 +80,10 @@ export type ConformanceArtifactObservation = {
   contentType: string;
   width: number;
   height: number;
+  channelOrder: 'rgba';
+  colorSpace: 'srgb';
+  decodedRgbaBase64: string;
+  inputEquivalentToSource: boolean;
   byteLength: number;
   nativeBytesSha256: string;
 };
@@ -56,6 +92,7 @@ export type ConformanceResultObservation = {
   status: 'completed' | 'no-translatable-text';
   artifact: ConformanceArtifactObservation;
   record: PipelineRecord;
+  typesetMetrics: Pick<NumericObservation, 'font' | 'layout'>;
   providerReports: readonly ProviderExecutionReport[];
 };
 
@@ -93,10 +130,15 @@ export type NormalizedConformanceObservation = {
     string,
     Array<Omit<PipelineProgress, 'detail'>>
   >;
-  resultStatus: 'completed';
+  resultStatus: 'completed' | 'no-translatable-text';
   artifact: Pick<
     ConformanceArtifactObservation,
-    'contentType' | 'width' | 'height'
+    | 'contentType'
+    | 'width'
+    | 'height'
+    | 'channelOrder'
+    | 'colorSpace'
+    | 'inputEquivalentToSource'
   >;
   record: {
     schemaVersion: PipelineRecord['schemaVersion'];
@@ -105,6 +147,8 @@ export type NormalizedConformanceObservation = {
     translations: NormalizedRecordRegion[];
   };
   providerReports: readonly ProviderExecutionReport[];
+  numeric: NumericObservation;
+  decodedRgbaBase64: string;
   failure: null;
   cancellation: null;
   finalizationCount: 1;
@@ -113,7 +157,7 @@ export type NormalizedConformanceObservation = {
 };
 
 export type ConformanceDriverResult = {
-  observation: ConformanceObservation;
+  observations: ConformanceObservation[];
   browserVersion: string;
   packagePath: string;
 };

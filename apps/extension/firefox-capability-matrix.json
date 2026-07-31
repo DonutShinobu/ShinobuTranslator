@@ -1,0 +1,224 @@
+{
+  "schemaVersion": 1,
+  "title": "Firefox Desktop 140+ complete capability parity",
+  "prohibitedBehaviors": [
+    "firefox-only-hidden",
+    "provider-silent-fallback",
+    "parallel-pipeline",
+    "parallel-config",
+    "parallel-controller",
+    "silent-no-op",
+    "browser-message-control-flow"
+  ],
+  "traceability": {
+    "entry.inline-image": { "entry": ["src/content/index.ts"], "contract": ["src/content/core/translation/imageTranslationController.ts"], "tests": ["tests/content/core/imageTranslationController.test.ts"] },
+    "entry.screenshot": { "entry": ["src/content/core/screenshot/screenshotController.ts"], "contract": ["apps/extension/src/capabilities/contracts.ts"], "tests": ["tests/content/core/screenshotController.test.ts"] },
+    "entry.context-menu": { "entry": ["apps/extension/src/background.ts"], "contract": ["apps/extension/src/capabilities/firefoxInteraction.ts"], "tests": ["tests/extension/capabilities/firefoxBasicAdapter.test.ts"] },
+    "entry.commands": { "entry": ["src/popup/App.tsx"], "contract": ["apps/extension/src/capabilities/firefoxInteraction.ts"], "tests": ["tests/extension/capabilities/firefoxBasicAdapter.test.ts"] },
+    "entry.continuous": { "entry": ["src/content/core/reading/readingModeController.ts"], "contract": ["src/content/core/state/photoStateStore.ts"], "tests": ["tests/content/core/readingModeController.test.ts"] },
+    "settings.configuration": { "entry": ["src/popup/App.tsx"], "contract": ["src/shared/config.ts"], "tests": ["tests/shared/config.test.ts"] },
+    "ui.progress-errors-cancel": { "entry": ["src/content/core/ui/cardState.ts"], "contract": ["packages/translator-core/src/index.ts"], "tests": ["tests/content/core/photoStateStore.test.ts", "tests/content/core/imageTranslationController.test.ts"] },
+    "pipeline.local-onnx": { "entry": ["apps/extension/src/background.ts"], "contract": ["packages/image-pipeline/src/index.ts"], "tests": ["tests/extension/conformanceHarness.test.ts", "tests/offscreen/pipelineHost.test.ts"] },
+    "network.image-download-headers": { "entry": ["src/background/images/imageDownloader.ts"], "contract": ["apps/extension/src/capabilities/contracts.ts"], "tests": ["tests/background/imageDownloader.test.ts", "tests/extension/capabilities/firefoxNetworkAdapter.test.ts"] },
+    "translator.google-web": { "entry": ["src/popup/App.tsx"], "contract": ["src/translators/googleWeb.ts"], "tests": ["tests/translators/llm.test.ts"] },
+    "llm.deepseek": { "entry": ["src/popup/App.tsx"], "contract": ["src/translators/llm.ts", "src/translators/transport.ts"], "tests": ["tests/translators/llm.test.ts", "tests/extension/capabilities/authenticationAccess.test.ts"] },
+    "llm.gemini": { "entry": ["src/popup/App.tsx"], "contract": ["src/translators/llm.ts", "src/translators/transport.ts"], "tests": ["tests/translators/llm.test.ts", "tests/extension/capabilities/authenticationAccess.test.ts"] },
+    "llm.glm": { "entry": ["src/popup/App.tsx"], "contract": ["src/translators/llm.ts", "src/translators/transport.ts"], "tests": ["tests/translators/llm.test.ts", "tests/extension/capabilities/authenticationAccess.test.ts"] },
+    "llm.kimi": { "entry": ["src/popup/App.tsx"], "contract": ["src/translators/llm.ts", "src/translators/transport.ts"], "tests": ["tests/translators/llm.test.ts", "tests/extension/capabilities/authenticationAccess.test.ts"] },
+    "llm.minimax": { "entry": ["src/popup/App.tsx"], "contract": ["src/translators/llm.ts", "src/translators/transport.ts"], "tests": ["tests/translators/llm.test.ts", "tests/extension/capabilities/authenticationAccess.test.ts"] },
+    "llm.mimo": { "entry": ["src/popup/App.tsx"], "contract": ["src/translators/llm.ts", "src/translators/transport.ts"], "tests": ["tests/translators/llm.test.ts", "tests/extension/capabilities/authenticationAccess.test.ts"] },
+    "llm.openai-api": { "entry": ["src/popup/App.tsx"], "contract": ["src/translators/llm.ts", "src/translators/transport.ts"], "tests": ["tests/translators/llm.test.ts", "tests/popup/authentication.test.ts"] },
+    "llm.custom": { "entry": ["src/popup/App.tsx"], "contract": ["src/translators/llm.ts", "src/translators/transport.ts"], "tests": ["tests/translators/transport.test.ts", "tests/popup/authentication.test.ts"] },
+    "image.gemini-api": { "entry": ["src/popup/App.tsx"], "contract": ["src/background/geminiApiImageClient.ts"], "tests": ["tests/background/geminiApiImageClient.test.ts"] },
+    "image.gemini-cookie": { "entry": ["src/popup/App.tsx"], "contract": ["src/background/geminiAppClient.ts"], "tests": ["tests/background/geminiAppClient.test.ts"] },
+    "auth.openai-oauth": { "entry": ["src/popup/App.tsx"], "contract": ["src/shared/openaiOAuth.ts", "src/popup/authentication.ts"], "tests": ["tests/shared/openaiOAuth.test.ts", "tests/popup/authentication.test.ts"] },
+    "contract.permissions": { "entry": ["src/popup/App.tsx"], "contract": ["apps/extension/src/capabilities/authentication.ts", "apps/extension/src/capabilities/firefoxPermissions.ts"], "tests": ["tests/extension/capabilities/firefoxAuthenticationAdapter.test.ts", "tests/extension/capabilities/authenticationAccess.test.ts"] },
+    "contract.event-page-recovery": { "entry": ["apps/extension/src/background.ts"], "contract": ["apps/extension/src/pipelineHost/firefoxLifecycle.ts"], "tests": ["tests/extension/pipelineHostLifecycle.test.ts", "apps/extension/scripts/run-firefox-basic-smoke.mjs"] }
+  },
+  "capabilities": [
+    {
+      "id": "entry.inline-image",
+      "title": "站内单图按钮翻译",
+      "userEntry": "站点图片上的翻译按钮",
+      "sharedContract": "SiteAdapter → ImageTranslationController → TranslationRunner",
+      "scenarios": { "success": ["inline-image.completed"], "criticalFailure": ["inline-image.transport-disconnected"] },
+      "evidence": { "inventory": ["content.inline-image-entry"], "adapterContract": ["runtime.request-channel"], "firefox140Packaged": ["inline-image.completed", "inline-image.transport-disconnected"], "firefoxCurrentPackaged": ["inline-image.completed", "inline-image.transport-disconnected"], "chrome109Regression": ["inline-image.completed"] }
+    },
+    {
+      "id": "entry.screenshot",
+      "title": "截图与区域截图翻译",
+      "userEntry": "区域截图入口与原生截图菜单",
+      "sharedContract": "ScreenshotController → ImageTranslationController",
+      "scenarios": { "success": ["screenshot.completed", "region-screenshot.completed"], "criticalFailure": ["screenshot.capture-rejected"] },
+      "evidence": { "inventory": ["content.screenshot-entry"], "adapterContract": ["tabs.capture-visible"], "firefox140Packaged": ["screenshot.completed", "region-screenshot.completed", "screenshot.capture-rejected"], "firefoxCurrentPackaged": ["screenshot.completed", "region-screenshot.completed", "screenshot.capture-rejected"], "chrome109Regression": ["screenshot.completed", "region-screenshot.completed"] }
+    },
+    {
+      "id": "entry.context-menu",
+      "title": "原生右键菜单翻译",
+      "userEntry": "浏览器原生图片翻译与截图翻译菜单",
+      "sharedContract": "NativeMenus → content translation commands",
+      "scenarios": { "success": ["context-menu.image", "context-menu.screenshot"], "criticalFailure": ["context-menu.receiver-missing"] },
+      "evidence": { "inventory": ["manifest.context-menu-entry"], "adapterContract": ["menus.install-click"], "firefox140Packaged": ["context-menu.image", "context-menu.screenshot", "context-menu.receiver-missing"], "firefoxCurrentPackaged": ["context-menu.image", "context-menu.screenshot", "context-menu.receiver-missing"], "chrome109Regression": ["context-menu.image", "context-menu.screenshot"] }
+    },
+    {
+      "id": "entry.commands",
+      "title": "快捷键触发与原生快捷键设置",
+      "userEntry": "浏览器命令与原生快捷键设置入口",
+      "sharedContract": "NativeCommands → content translation commands",
+      "scenarios": { "success": ["commands.translate-hovered", "commands.screenshot", "commands.open-settings"], "criticalFailure": ["commands.binding-missing"] },
+      "evidence": { "inventory": ["manifest.commands-entry"], "adapterContract": ["commands.bindings-events-settings"], "firefox140Packaged": ["commands.translate-hovered", "commands.screenshot", "commands.open-settings", "commands.binding-missing"], "firefoxCurrentPackaged": ["commands.translate-hovered", "commands.screenshot", "commands.open-settings", "commands.binding-missing"], "chrome109Regression": ["commands.translate-hovered", "commands.screenshot", "commands.open-settings"] }
+    },
+    {
+      "id": "entry.continuous",
+      "title": "连续与阅读模式翻译",
+      "userEntry": "连续翻译与阅读模式控制",
+      "sharedContract": "ReadingModeController + content execution owner/arbiter",
+      "scenarios": { "success": ["continuous.queue-pause-resume", "reading.display-state"], "criticalFailure": ["continuous.host-reconnect"] },
+      "evidence": { "inventory": ["content.continuous-reading-entry"], "adapterContract": ["runtime.reconnect"], "firefox140Packaged": ["continuous.queue-pause-resume", "reading.display-state", "continuous.host-reconnect"], "firefoxCurrentPackaged": ["continuous.queue-pause-resume", "reading.display-state", "continuous.host-reconnect"], "chrome109Regression": ["continuous.queue-pause-resume", "reading.display-state"] }
+    },
+    {
+      "id": "settings.configuration",
+      "title": "语言、供应商、模型、处理与调试配置",
+      "userEntry": "扩展弹窗设置",
+      "sharedContract": "ExtensionSettings schema/normalization/migration + popup repository",
+      "scenarios": { "success": ["settings.full-roundtrip"], "criticalFailure": ["settings.storage-rejected"] },
+      "evidence": { "inventory": ["popup.settings-inventory"], "adapterContract": ["storage.persistent-json"], "firefox140Packaged": ["settings.full-roundtrip", "settings.storage-rejected"], "firefoxCurrentPackaged": ["settings.full-roundtrip", "settings.storage-rejected"], "chrome109Regression": ["settings.full-roundtrip"] }
+    },
+    {
+      "id": "ui.progress-errors-cancel",
+      "title": "进度、耗时、结果切换、错误详情、取消与重试",
+      "userEntry": "图片翻译反馈 UI",
+      "sharedContract": "TranslationTask + PhotoStateStore + CardStateController",
+      "scenarios": { "success": ["feedback.progress-result-toggle"], "criticalFailure": ["feedback.structured-error", "feedback.cancel-retry", "feedback.no-late-terminal"] },
+      "evidence": { "inventory": ["content.feedback-controls"], "adapterContract": ["runtime.structured-terminal"], "firefox140Packaged": ["feedback.progress-result-toggle", "feedback.structured-error", "feedback.cancel-retry", "feedback.no-late-terminal"], "firefoxCurrentPackaged": ["feedback.progress-result-toggle", "feedback.structured-error", "feedback.cancel-retry", "feedback.no-late-terminal"], "chrome109Regression": ["feedback.progress-result-toggle", "feedback.structured-error", "feedback.cancel-retry"] }
+    },
+    {
+      "id": "pipeline.local-onnx",
+      "title": "本地 ONNX 完整图片流水线",
+      "userEntry": "translate 与 erase 图片执行",
+      "sharedContract": "@shinobu/image-pipeline ImagePipelineRuntime",
+      "scenarios": { "success": ["pipeline.translate.completed", "pipeline.erase.completed", "pipeline.no-translatable-text"], "criticalFailure": ["pipeline.provider-failed", "pipeline.transport-disconnected"] },
+      "evidence": { "inventory": ["pipeline.public-runtime-boundary"], "adapterContract": ["pipeline-host.lifecycle"], "firefox140Packaged": ["pipeline.translate.completed", "pipeline.erase.completed", "pipeline.no-translatable-text", "pipeline.provider-failed", "pipeline.transport-disconnected"], "firefoxCurrentPackaged": ["pipeline.translate.completed", "pipeline.erase.completed", "pipeline.no-translatable-text", "pipeline.provider-failed", "pipeline.transport-disconnected"], "chrome109Regression": ["pipeline.translate.completed", "pipeline.erase.completed", "pipeline.no-translatable-text"] }
+    },
+    {
+      "id": "network.image-download-headers",
+      "title": "图片下载、Referrer-Policy 与临时 Header override",
+      "userEntry": "受保护站点图片翻译",
+      "sharedContract": "image downloader + DocumentReferrerPolicyObserver + RequestHeaderOverride lease",
+      "scenarios": { "success": ["network.protected-image", "network.concurrent-leases", "network.cleanup-after-success"], "criticalFailure": ["network.permission-denied", "network.permission-revoked", "network.cleanup-after-failure", "network.cleanup-after-cancel", "network.cleanup-failed"] },
+      "evidence": { "inventory": ["background.image-download"], "adapterContract": ["network.referrer-header-lease"], "firefox140Packaged": ["network.protected-image", "network.concurrent-leases", "network.cleanup-after-success", "network.permission-denied", "network.permission-revoked", "network.cleanup-after-failure", "network.cleanup-after-cancel", "network.cleanup-failed"], "firefoxCurrentPackaged": ["network.protected-image", "network.concurrent-leases", "network.cleanup-after-success", "network.permission-denied", "network.permission-revoked", "network.cleanup-after-failure", "network.cleanup-after-cancel", "network.cleanup-failed"], "chrome109Regression": ["network.protected-image", "network.concurrent-leases", "network.permission-denied", "network.permission-revoked"] }
+    },
+    {
+      "id": "translator.google-web",
+      "title": "Google Web 文本翻译",
+      "userEntry": "Google 网页翻译供应商选项",
+      "sharedContract": "translator selection + translation transport + pipeline",
+      "scenarios": { "success": ["provider.google-web.completed"], "criticalFailure": ["provider.google-web.origin-denied", "provider.google-web.network-failed"] },
+      "evidence": { "inventory": ["popup.provider.google-web"], "adapterContract": ["permissions.origin-fetch"], "firefox140Packaged": ["provider.google-web.completed", "provider.google-web.origin-denied", "provider.google-web.network-failed"], "firefoxCurrentPackaged": ["provider.google-web.completed", "provider.google-web.origin-denied", "provider.google-web.network-failed"], "chrome109Regression": ["provider.google-web.completed", "provider.google-web.origin-denied"] }
+    },
+    {
+      "id": "llm.deepseek",
+      "title": "DeepSeek API",
+      "userEntry": "DeepSeek provider profile",
+      "sharedContract": "provider profile + OpenAI-compatible transport",
+      "scenarios": { "success": ["provider.deepseek.completed"], "criticalFailure": ["provider.deepseek.permission-denied", "provider.deepseek.revoked"] },
+      "evidence": { "inventory": ["popup.provider.deepseek"], "adapterContract": ["authentication.api-key-origin"], "firefox140Packaged": ["provider.deepseek.completed", "provider.deepseek.permission-denied", "provider.deepseek.revoked"], "firefoxCurrentPackaged": ["provider.deepseek.completed", "provider.deepseek.permission-denied", "provider.deepseek.revoked"], "chrome109Regression": ["provider.deepseek.completed", "provider.deepseek.permission-denied", "provider.deepseek.revoked"] }
+    },
+    {
+      "id": "llm.gemini",
+      "title": "Gemini API 文本翻译",
+      "userEntry": "Gemini provider profile",
+      "sharedContract": "provider profile + Gemini transport",
+      "scenarios": { "success": ["provider.gemini.completed"], "criticalFailure": ["provider.gemini.permission-denied", "provider.gemini.revoked"] },
+      "evidence": { "inventory": ["popup.provider.gemini"], "adapterContract": ["authentication.api-key-origin"], "firefox140Packaged": ["provider.gemini.completed", "provider.gemini.permission-denied", "provider.gemini.revoked"], "firefoxCurrentPackaged": ["provider.gemini.completed", "provider.gemini.permission-denied", "provider.gemini.revoked"], "chrome109Regression": ["provider.gemini.completed", "provider.gemini.permission-denied", "provider.gemini.revoked"] }
+    },
+    {
+      "id": "llm.glm",
+      "title": "Z.AI / GLM API",
+      "userEntry": "Z.AI / GLM provider profile",
+      "sharedContract": "provider profile + OpenAI-compatible transport",
+      "scenarios": { "success": ["provider.glm.completed"], "criticalFailure": ["provider.glm.permission-denied", "provider.glm.revoked"] },
+      "evidence": { "inventory": ["popup.provider.glm"], "adapterContract": ["authentication.api-key-origin"], "firefox140Packaged": ["provider.glm.completed", "provider.glm.permission-denied", "provider.glm.revoked"], "firefoxCurrentPackaged": ["provider.glm.completed", "provider.glm.permission-denied", "provider.glm.revoked"], "chrome109Regression": ["provider.glm.completed", "provider.glm.permission-denied", "provider.glm.revoked"] }
+    },
+    {
+      "id": "llm.kimi",
+      "title": "Moonshot / Kimi API",
+      "userEntry": "Moonshot / Kimi provider profile",
+      "sharedContract": "provider profile + OpenAI-compatible transport",
+      "scenarios": { "success": ["provider.kimi.completed"], "criticalFailure": ["provider.kimi.permission-denied", "provider.kimi.revoked"] },
+      "evidence": { "inventory": ["popup.provider.kimi"], "adapterContract": ["authentication.api-key-origin"], "firefox140Packaged": ["provider.kimi.completed", "provider.kimi.permission-denied", "provider.kimi.revoked"], "firefoxCurrentPackaged": ["provider.kimi.completed", "provider.kimi.permission-denied", "provider.kimi.revoked"], "chrome109Regression": ["provider.kimi.completed", "provider.kimi.permission-denied", "provider.kimi.revoked"] }
+    },
+    {
+      "id": "llm.minimax",
+      "title": "MiniMax API",
+      "userEntry": "MiniMax provider profile",
+      "sharedContract": "provider profile + OpenAI-compatible transport",
+      "scenarios": { "success": ["provider.minimax.completed"], "criticalFailure": ["provider.minimax.permission-denied", "provider.minimax.revoked"] },
+      "evidence": { "inventory": ["popup.provider.minimax"], "adapterContract": ["authentication.api-key-origin"], "firefox140Packaged": ["provider.minimax.completed", "provider.minimax.permission-denied", "provider.minimax.revoked"], "firefoxCurrentPackaged": ["provider.minimax.completed", "provider.minimax.permission-denied", "provider.minimax.revoked"], "chrome109Regression": ["provider.minimax.completed", "provider.minimax.permission-denied", "provider.minimax.revoked"] }
+    },
+    {
+      "id": "llm.mimo",
+      "title": "MiMo API",
+      "userEntry": "MiMo provider profile",
+      "sharedContract": "provider profile + OpenAI-compatible transport",
+      "scenarios": { "success": ["provider.mimo.completed"], "criticalFailure": ["provider.mimo.permission-denied", "provider.mimo.revoked"] },
+      "evidence": { "inventory": ["popup.provider.mimo"], "adapterContract": ["authentication.api-key-origin"], "firefox140Packaged": ["provider.mimo.completed", "provider.mimo.permission-denied", "provider.mimo.revoked"], "firefoxCurrentPackaged": ["provider.mimo.completed", "provider.mimo.permission-denied", "provider.mimo.revoked"], "chrome109Regression": ["provider.mimo.completed", "provider.mimo.permission-denied", "provider.mimo.revoked"] }
+    },
+    {
+      "id": "llm.openai-api",
+      "title": "OpenAI API Key",
+      "userEntry": "OpenAI API Key 模式",
+      "sharedContract": "OpenAI provider profile + API Key authentication",
+      "scenarios": { "success": ["provider.openai-api.completed"], "criticalFailure": ["provider.openai-api.permission-denied", "provider.openai-api.revoked"] },
+      "evidence": { "inventory": ["popup.provider.openai-api"], "adapterContract": ["authentication.api-key-origin"], "firefox140Packaged": ["provider.openai-api.completed", "provider.openai-api.permission-denied", "provider.openai-api.revoked"], "firefoxCurrentPackaged": ["provider.openai-api.completed", "provider.openai-api.permission-denied", "provider.openai-api.revoked"], "chrome109Regression": ["provider.openai-api.completed", "provider.openai-api.permission-denied", "provider.openai-api.revoked"] }
+    },
+    {
+      "id": "llm.custom",
+      "title": "自定义 OpenAI-compatible endpoint",
+      "userEntry": "自定义 Base URL 与模型配置",
+      "sharedContract": "custom provider profile + normalized target-origin authorization",
+      "scenarios": { "success": ["provider.custom.completed"], "criticalFailure": ["provider.custom.origin-denied", "provider.custom.origin-revoked", "provider.custom.cross-origin-reuse-blocked"] },
+      "evidence": { "inventory": ["popup.provider.custom"], "adapterContract": ["authentication.custom-origin"], "firefox140Packaged": ["provider.custom.completed", "provider.custom.origin-denied", "provider.custom.origin-revoked", "provider.custom.cross-origin-reuse-blocked"], "firefoxCurrentPackaged": ["provider.custom.completed", "provider.custom.origin-denied", "provider.custom.origin-revoked", "provider.custom.cross-origin-reuse-blocked"], "chrome109Regression": ["provider.custom.completed", "provider.custom.origin-denied", "provider.custom.origin-revoked", "provider.custom.cross-origin-reuse-blocked"] }
+    },
+    {
+      "id": "image.gemini-api",
+      "title": "Nano Banana / Gemini API 整图翻译",
+      "userEntry": "Nano Banana Gemini API 模式",
+      "sharedContract": "GeminiApiImageClient + image execution owner/arbiter",
+      "scenarios": { "success": ["image.gemini-api.completed"], "criticalFailure": ["image.gemini-api.permission-denied", "image.gemini-api.provider-failed"] },
+      "evidence": { "inventory": ["popup.image-provider.gemini-api"], "adapterContract": ["authentication.api-key-origin"], "firefox140Packaged": ["image.gemini-api.completed", "image.gemini-api.permission-denied", "image.gemini-api.provider-failed"], "firefoxCurrentPackaged": ["image.gemini-api.completed", "image.gemini-api.permission-denied", "image.gemini-api.provider-failed"], "chrome109Regression": ["image.gemini-api.completed", "image.gemini-api.permission-denied"] }
+    },
+    {
+      "id": "image.gemini-cookie",
+      "title": "Gemini Cookie 整图翻译",
+      "userEntry": "Nano Banana Gemini Cookie 模式",
+      "sharedContract": "GeminiWebImageClient + image execution owner/arbiter",
+      "scenarios": { "success": ["image.gemini-cookie.completed"], "criticalFailure": ["image.gemini-cookie.permission-denied", "image.gemini-cookie.permission-revoked", "image.gemini-cookie.empty-cookie", "image.gemini-cookie.browser-failed"] },
+      "evidence": { "inventory": ["popup.image-provider.gemini-cookie"], "adapterContract": ["authentication.cookie-access"], "firefox140Packaged": ["image.gemini-cookie.completed", "image.gemini-cookie.permission-denied", "image.gemini-cookie.permission-revoked", "image.gemini-cookie.empty-cookie", "image.gemini-cookie.browser-failed"], "firefoxCurrentPackaged": ["image.gemini-cookie.completed", "image.gemini-cookie.permission-denied", "image.gemini-cookie.permission-revoked", "image.gemini-cookie.empty-cookie", "image.gemini-cookie.browser-failed"], "chrome109Regression": ["image.gemini-cookie.completed", "image.gemini-cookie.permission-denied", "image.gemini-cookie.permission-revoked", "image.gemini-cookie.empty-cookie", "image.gemini-cookie.browser-failed"] }
+    },
+    {
+      "id": "auth.openai-oauth",
+      "title": "OpenAI OAuth 登录、callback、刷新与退出",
+      "userEntry": "OpenAI OAuth 账户模式",
+      "sharedContract": "OpenAI OAuth state/token repository + popup authentication flow",
+      "scenarios": { "success": ["oauth.openai.login-callback", "oauth.openai.refresh", "oauth.openai.logout"], "criticalFailure": ["oauth.openai.permission-denied", "oauth.openai.callback-after-rebuild"] },
+      "evidence": { "inventory": ["popup.auth.openai-oauth"], "adapterContract": ["authentication.oauth-tab-persistence"], "firefox140Packaged": ["oauth.openai.login-callback", "oauth.openai.refresh", "oauth.openai.logout", "oauth.openai.permission-denied", "oauth.openai.callback-after-rebuild"], "firefoxCurrentPackaged": ["oauth.openai.login-callback", "oauth.openai.refresh", "oauth.openai.logout", "oauth.openai.permission-denied", "oauth.openai.callback-after-rebuild"], "chrome109Regression": ["oauth.openai.login-callback", "oauth.openai.refresh", "oauth.openai.logout", "oauth.openai.permission-denied"] }
+    },
+    {
+      "id": "contract.permissions",
+      "title": "权限提示、拒绝、撤销与重新授权",
+      "userEntry": "需要凭据或目标 origin 的明确用户操作",
+      "sharedContract": "semantic permissions + authentication access policy",
+      "scenarios": { "success": ["permissions.website-content-install-prompt", "permissions.request-granted", "permissions.reauthorize"], "criticalFailure": ["permissions.request-denied", "permissions.revoked", "permissions.unrelated-mode-still-available"] },
+      "evidence": { "inventory": ["manifest.required-optional-permissions"], "adapterContract": ["permissions.check-request-change"], "firefox140Packaged": ["permissions.website-content-install-prompt", "permissions.request-granted", "permissions.request-denied", "permissions.revoked", "permissions.reauthorize", "permissions.unrelated-mode-still-available"], "firefoxCurrentPackaged": ["permissions.website-content-install-prompt", "permissions.request-granted", "permissions.request-denied", "permissions.revoked", "permissions.reauthorize", "permissions.unrelated-mode-still-available"], "chrome109Regression": ["permissions.request-granted", "permissions.request-denied", "permissions.revoked", "permissions.reauthorize", "permissions.unrelated-mode-still-available"] }
+    },
+    {
+      "id": "contract.event-page-recovery",
+      "title": "Event Page 空闲卸载、唤醒、宿主丢失与浏览器重启",
+      "userEntry": "菜单、命令、消息、认证 callback、网络规则与新任务唤醒",
+      "sharedContract": "PipelineHostLifecycle + content execution owner + persistent OAuth/settings repositories",
+      "scenarios": { "success": ["event-page.idle-wake", "event-page.new-task-after-rebuild", "event-page.browser-restart"], "criticalFailure": ["event-page.active-disconnect", "event-page.no-live-resume", "event-page.stale-header-cleanup"] },
+      "evidence": { "inventory": ["background.top-level-listeners"], "adapterContract": ["pipeline-host.event-page-lifecycle"], "firefox140Packaged": ["event-page.idle-wake", "event-page.new-task-after-rebuild", "event-page.browser-restart", "event-page.active-disconnect", "event-page.no-live-resume", "event-page.stale-header-cleanup"], "firefoxCurrentPackaged": ["event-page.idle-wake", "event-page.new-task-after-rebuild", "event-page.browser-restart", "event-page.active-disconnect", "event-page.no-live-resume", "event-page.stale-header-cleanup"], "chrome109Regression": ["lifecycle.new-task-after-host-rebuild", "lifecycle.active-disconnect"] }
+    }
+  ]
+}

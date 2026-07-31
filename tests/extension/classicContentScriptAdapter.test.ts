@@ -42,4 +42,37 @@ describe('classic content-script build adapter', () => {
     expect(generatedCode).not.toContain('self.location.href');
     expect(generatedCode).not.toContain('globalThis.browser');
   });
+
+  it('emits Firefox resource URLs through the Promise-native browser namespace', () => {
+    const contentChunk = {
+      type: 'chunk',
+      code: [
+        'const currentUrl=import.meta.url;',
+        'const worker=import("./chunks/worker.js");',
+      ].join(''),
+    };
+    const workerChunk = {
+      type: 'chunk',
+      code: 'const workerUrl=import.meta.url;',
+    };
+    const bundle = {
+      'content.js': contentChunk,
+      'chunks/worker.js': workerChunk,
+    } as unknown as OutputBundle;
+
+    rewriteClassicContentScriptBundle(bundle, 'browser');
+
+    expect(contentChunk.code).toContain(
+      'browser.runtime.getURL("content.js")',
+    );
+    expect(contentChunk.code).toContain(
+      'import(browser.runtime.getURL("chunks/worker.js"))',
+    );
+    expect(workerChunk.code).toContain(
+      'browser.runtime.getURL("chunks/worker.js")',
+    );
+    expect(`${contentChunk.code}\n${workerChunk.code}`).not.toContain(
+      'chrome.runtime.getURL',
+    );
+  });
 });

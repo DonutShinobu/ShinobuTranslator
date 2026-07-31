@@ -323,8 +323,11 @@ function createBackgroundHarness() {
     sentTabMessages,
     createdMenus,
     onClicked,
-    emitInstallation(reason: 'install' | 'update' | 'chrome_update') {
+    emitInstallation(reason: 'install' | 'update' | 'browser_update' | 'chrome_update') {
       onInstalled.emit({ reason });
+    },
+    installationListenerRemovals() {
+      return onInstalled.removals();
     },
     grantCookieAccess() {
       cookieAccessGranted = true;

@@ -1,6 +1,8 @@
 import type { OutputBundle } from 'rollup';
 import type { Plugin } from 'vite';
 
+export type ExtensionRuntimeNamespace = 'browser' | 'chrome';
+
 function toSafeIdentifier(identifier: string): string {
   return identifier.replace(/\$/g, '\\u0024');
 }
@@ -37,18 +39,20 @@ function buildNamespaceAssignments(
 
 export function rewriteClassicContentScriptBundle(
   bundle: OutputBundle,
+  runtimeNamespace: ExtensionRuntimeNamespace = 'chrome',
 ): void {
+  const runtimeGetUrl = `${runtimeNamespace}.runtime.getURL`;
   for (const [fileName, chunk] of Object.entries(bundle)) {
     if (chunk.type !== 'chunk' || fileName !== 'content.js') continue;
 
     chunk.code = chunk.code.replace(
       /\bimport\.meta\.url\b/g,
-      'chrome.runtime.getURL("content.js")',
+      `${runtimeGetUrl}("content.js")`,
     );
 
     chunk.code = chunk.code.replace(
       /\bimport\(\s*"\.\/([^"]+)"\s*\)/g,
-      'import(chrome.runtime.getURL("$1"))',
+      `import(${runtimeGetUrl}("$1"))`,
     );
 
     const exportMatch = chunk.code.match(/export\s*\{([^}]+)\}\s*;\s*$/);
@@ -84,7 +88,7 @@ export function rewriteClassicContentScriptBundle(
         chunk.code = chunk.code.replace(
           staticImport.full,
           () => (
-            `const ${namespace}=await import(chrome.runtime.getURL("${staticImport.path}"));`
+            `const ${namespace}=await import(${runtimeGetUrl}("${staticImport.path}"));`
             + buildNamespaceAssignments(
               namespace,
               staticImport.bindings,
@@ -111,7 +115,7 @@ export function rewriteClassicContentScriptBundle(
 
     chunk.code = chunk.code.replace(
       /\bimport\.meta\.url\b/g,
-      `chrome.runtime.getURL("${fileName}")`,
+      `${runtimeGetUrl}("${fileName}")`,
     );
   }
 }
@@ -121,12 +125,14 @@ export function rewriteClassicContentScriptBundle(
  * This build adapter absorbs the native extension resource URL needed to load
  * Vite chunks without leaking that namespace into content business code.
  */
-export function classicContentScriptAdapter(): Plugin {
+export function classicContentScriptAdapter(
+  runtimeNamespace: ExtensionRuntimeNamespace = 'chrome',
+): Plugin {
   return {
     name: 'classic-content-script-adapter',
     enforce: 'post',
     generateBundle(_options, bundle) {
-      rewriteClassicContentScriptBundle(bundle);
+      rewriteClassicContentScriptBundle(bundle, runtimeNamespace);
     },
   };
 }

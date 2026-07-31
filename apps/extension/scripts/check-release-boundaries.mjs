@@ -116,7 +116,7 @@ const commonStoreArtifactPaths = new Set([
   'assets/popup.css',
   'background.js',
   'brand/shinobu-wordmark.svg',
-  'chunks/chromeAdapter.js',
+  'chunks/extensionAdapter.js',
   'chunks/config.js',
   'chunks/diagnosticLog.js',
   'chunks/diagnosticLogClient.js',
@@ -454,26 +454,36 @@ function findVisibleConstInitializer(identifier, typeChecker) {
   return declaration.initializer;
 }
 
-function isChromeRuntimeGetUrlCall(expression, typeChecker) {
+function extensionRuntimeNamespace(expression, typeChecker) {
   if (
     !ts.isCallExpression(expression)
     || expression.arguments.length !== 1
     || !ts.isPropertyAccessExpression(expression.expression)
     || expression.expression.name.text !== 'getURL'
   ) {
-    return false;
+    return undefined;
   }
   const runtimeAccess = expression.expression.expression;
-  const chromeIdentifier = ts.isPropertyAccessExpression(runtimeAccess)
+  const runtimeIdentifier = ts.isPropertyAccessExpression(runtimeAccess)
     ? runtimeAccess.expression
     : undefined;
-  return (
+  if (
     ts.isPropertyAccessExpression(runtimeAccess)
     && runtimeAccess.name.text === 'runtime'
-    && ts.isIdentifier(chromeIdentifier)
-    && chromeIdentifier.text === 'chrome'
-    && typeChecker.getSymbolAtLocation(chromeIdentifier) === undefined
-  );
+    && ts.isIdentifier(runtimeIdentifier)
+    && (
+      runtimeIdentifier.text === 'browser'
+      || runtimeIdentifier.text === 'chrome'
+    )
+    && typeChecker.getSymbolAtLocation(runtimeIdentifier) === undefined
+  ) {
+    return runtimeIdentifier.text;
+  }
+  return undefined;
+}
+
+function isExtensionRuntimeGetUrlCall(expression, typeChecker) {
+  return extensionRuntimeNamespace(expression, typeChecker) !== undefined;
 }
 
 function isImportMetaUrl(expression) {
@@ -533,7 +543,7 @@ function evaluateStaticImportReference(
       ? undefined
       : left + right;
   }
-  if (isChromeRuntimeGetUrlCall(expression, typeChecker)) {
+  if (isExtensionRuntimeGetUrlCall(expression, typeChecker)) {
     const packagedPath = evaluateStaticImportReference(
       expression.arguments[0],
       typeChecker,
@@ -600,7 +610,7 @@ function collectJavaScriptReferences(sourcePath, source) {
     }
     if (
       ts.isCallExpression(node)
-      && isChromeRuntimeGetUrlCall(node, typeChecker)
+      && isExtensionRuntimeGetUrlCall(node, typeChecker)
     ) {
       const reference = evaluateStaticImportReference(
         node,
@@ -611,7 +621,9 @@ function collectJavaScriptReferences(sourcePath, source) {
           node.getStart(sourceFile),
         );
         throw new Error(
-          `Artifact ${sourcePath} contains chrome.runtime.getURL reference that cannot be statically resolved at ${
+          `Artifact ${sourcePath} contains ${
+            extensionRuntimeNamespace(node, typeChecker)
+          }.runtime.getURL reference that cannot be statically resolved at ${
             location.line + 1
           }:${location.character + 1}.`,
         );

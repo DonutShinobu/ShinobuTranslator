@@ -89,7 +89,7 @@ function createReleaseFixture(target: 'chrome' | 'firefox'): string {
     'onnxWorker.js',
     'chunks/messages.js',
     'chunks/localPipelineProtocol.js',
-    'chunks/chromeAdapter.js',
+    'chunks/extensionAdapter.js',
     'chunks/config.js',
     'chunks/diagnosticLog.js',
     'chunks/diagnosticLogClient.js',
@@ -467,6 +467,23 @@ describe('extension release boundaries', () => {
       );
 
       const result = runReleaseBoundary('chrome', directory);
+
+      expect(result.status, result.stderr).toBe(0);
+    },
+    15_000,
+  );
+
+  it(
+    'accepts Firefox runtime resource URLs through the browser namespace',
+    () => {
+      const directory = createReleaseFixture('firefox');
+      writeArtifact(
+        directory,
+        'content.js',
+        'import(browser.runtime.getURL("chunks/messages.js"));\n',
+      );
+
+      const result = runReleaseBoundary('firefox', directory);
 
       expect(result.status, result.stderr).toBe(0);
     },

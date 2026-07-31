@@ -61,7 +61,7 @@
       "resources": [
         "chunks/messages.js",
         "chunks/localPipelineProtocol.js",
-        "chunks/chromeAdapter.js",
+        "chunks/extensionAdapter.js",
         "chunks/config.js",
         "chunks/diagnosticLog.js",
         "chunks/diagnosticLogClient.js",

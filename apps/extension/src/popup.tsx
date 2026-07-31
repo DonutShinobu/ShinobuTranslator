@@ -1,13 +1,9 @@
 import {
-  createChromeExtensionAdapter,
-} from './capabilities/chromeAdapter';
+  createTargetExtensionAdapter,
+} from './capabilities/targetAdapter';
 import { mountPopup } from '../../../src/popup/main';
 
-const nativeChrome = (globalThis as typeof globalThis & { chrome?: unknown }).chrome;
-if (!nativeChrome) {
-  throw new Error('Chrome extension capabilities are unavailable');
-}
-const capabilities = createChromeExtensionAdapter(nativeChrome).popup();
+const capabilities = createTargetExtensionAdapter().popup();
 
 mountPopup({
   runtimeRequests: capabilities.runtimeRequests,

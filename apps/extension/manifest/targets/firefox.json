@@ -22,8 +22,12 @@
   },
   "permission_overrides": {
     "required": {
-      "add": [],
-      "remove": []
+      "add": [
+        "menus"
+      ],
+      "remove": [
+        "contextMenus"
+      ]
     },
     "optional": {
       "add": [

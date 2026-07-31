@@ -70,6 +70,20 @@ function extensionReleaseAssetsPlugin(outputDirectory: string): Plugin {
   };
 }
 
+function extensionTargetAdapterPlugin(
+  adapterModule: string,
+): Plugin {
+  return {
+    name: 'extension-target-adapter',
+    enforce: 'pre',
+    resolveId(source) {
+      return source === './capabilities/targetAdapter'
+        ? adapterModule
+        : null;
+    },
+  };
+}
+
 export default defineConfig(({ command, mode }): UserConfig => {
   const benchmarkEntryBuild = mode === 'benchmark-entry';
   const target = resolveExtensionBuildTarget(
@@ -127,6 +141,12 @@ export default defineConfig(({ command, mode }): UserConfig => {
       ),
     );
   }
+  const targetAdapterModule = resolve(
+    extensionRoot,
+    target.browser === 'firefox'
+      ? 'src/capabilities/firefoxTargetAdapter.ts'
+      : 'src/capabilities/chromeTargetAdapter.ts',
+  );
 
   return {
     root: extensionRoot,
@@ -138,10 +158,13 @@ export default defineConfig(({ command, mode }): UserConfig => {
       },
     },
     plugins: [
+      extensionTargetAdapterPlugin(targetAdapterModule),
       browserRuntimeBoundaryPlugin({ apply: 'serve' }),
       staticOrtRuntimeImportsPlugin(),
       react(),
-      classicContentScriptAdapter(),
+      classicContentScriptAdapter(
+        target.browser === 'firefox' ? 'browser' : 'chrome',
+      ),
       extensionReleaseAssetsPlugin(target.absoluteOutDir),
       modelReleaseUrlPlugin(target.absoluteOutDir),
     ],
@@ -179,8 +202,21 @@ export default defineConfig(({ command, mode }): UserConfig => {
             if (normalized.endsWith('/src/shared/localPipelineProtocol.ts')) {
               return 'localPipelineProtocol';
             }
-            if (normalized.endsWith('/apps/extension/src/capabilities/chromeAdapter.ts')) {
-              return 'chromeAdapter';
+            if (
+              normalized.endsWith(
+                '/apps/extension/src/capabilities/chromeAdapter.ts',
+              )
+              || normalized.endsWith(
+                '/apps/extension/src/capabilities/firefoxAdapter.ts',
+              )
+              || normalized.endsWith(
+                '/apps/extension/src/capabilities/chromeTargetAdapter.ts',
+              )
+              || normalized.endsWith(
+                '/apps/extension/src/capabilities/firefoxTargetAdapter.ts',
+              )
+            ) {
+              return 'extensionAdapter';
             }
             if (normalized.endsWith('/src/shared/perfTrace.ts')) {
               return 'perfTrace';

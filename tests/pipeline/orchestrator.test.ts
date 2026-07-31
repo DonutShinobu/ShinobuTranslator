@@ -311,6 +311,7 @@ describe('runPipeline', () => {
       'typeset',
     ]);
     expect(artifacts.detectedRegions).toEqual([translatedRegion]);
+    expect(artifacts.stageRegions.ordered).toEqual([translatedRegion]);
     expect(artifacts.resultCanvas).toBe(typesetCanvas);
     expect(artifacts.providerReports).toEqual([
       detectorProviderReport,

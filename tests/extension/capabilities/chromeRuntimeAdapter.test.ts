@@ -11,6 +11,9 @@ import {
   type RuntimeAdapterContractDriver,
 } from './runtimeAdapterContract.fixture';
 import { ExtensionContractError } from '../../../apps/extension/src/capabilities/errors';
+import {
+  extensionResourceEnvironment,
+} from '../../../apps/extension/src/capabilities/chromeRuntime';
 
 type RawSender = {
   documentId?: string;
@@ -190,6 +193,18 @@ function createChromeDriver(): RuntimeAdapterContractDriver {
 
 describe('Chrome extension runtime adapter contract', () => {
   runRuntimeAdapterContract(createChromeDriver);
+
+  it('exposes packaged resource URLs when an Offscreen context omits getManifest', () => {
+    const environment = extensionResourceEnvironment({
+      getURL: (path: string) =>
+        `chrome-extension://extension-id/${path}`,
+    });
+
+    expect(environment.resourceUrl('onnxWorker.js')).toBe(
+      'chrome-extension://extension-id/onnxWorker.js',
+    );
+    expect(environment).not.toHaveProperty('metadata');
+  });
 
   it('fails startup when a required event cannot be cancelled', () => {
     expect(() => createChromeContentCapabilities({

@@ -368,7 +368,7 @@ export interface PopupExtensionCapabilities {
 export interface PipelineHostExtensionCapabilities {
   readonly runtimeRequests: RuntimeRequestClient;
   readonly runtimeChannels: RuntimeChannelClient;
-  readonly environment: ExtensionEnvironment;
+  readonly environment: Pick<ExtensionEnvironment, 'resourceUrl'>;
 }
 
 export interface ExtensionCapabilityAdapter {

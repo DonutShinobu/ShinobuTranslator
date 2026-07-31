@@ -358,3 +358,18 @@ export function extensionEnvironment(
     },
   };
 }
+
+export function extensionResourceEnvironment(
+  runtime: Pick<ChromeRuntime, 'getURL'>,
+): Pick<ExtensionEnvironment, 'resourceUrl'> {
+  requireFunction(runtime.getURL, 'extension-environment', 'resourceUrl');
+  return {
+    resourceUrl(path) {
+      try {
+        return runtime.getURL(path);
+      } catch (error) {
+        throw operationFailure('extension-environment', 'resourceUrl', error);
+      }
+    },
+  };
+}

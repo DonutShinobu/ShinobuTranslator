@@ -3,6 +3,10 @@ import type {
   LlmChatCompletionsProxyConfig,
   RuntimeMessageSender,
 } from '../shared/messages';
+import type {
+  PipelineHostChatCompletionResponse,
+  PipelineHostTranslationTransport,
+} from '../../apps/extension/src/pipelineHost/contracts';
 import {
   createDirectChatCompletionRequester,
   DirectChatCompletionError,
@@ -14,9 +18,7 @@ import {
 } from '../shared/llmThinking';
 import { googleWebTranslate } from './googleWeb';
 
-export type ChatCompletionResponse = {
-  choices?: Array<{ message?: { content?: string } }>;
-};
+export type ChatCompletionResponse = PipelineHostChatCompletionResponse;
 
 export type ChatCompletionTransportRequest = {
   body: LlmChatCompletionRequestBody;
@@ -34,12 +36,7 @@ export type PlainTranslationTransportRequest = {
   signal?: AbortSignal;
 };
 
-export interface TextTranslationTransport {
-  requestChatCompletion(
-    request: ChatCompletionTransportRequest,
-  ): Promise<ChatCompletionResponse>;
-  translatePlain(request: PlainTranslationTransportRequest): Promise<string>;
-}
+export type TextTranslationTransport = PipelineHostTranslationTransport;
 
 export class TextTranslationTransportError extends Error {
   readonly status?: number;

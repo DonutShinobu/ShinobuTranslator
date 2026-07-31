@@ -5,8 +5,12 @@ import type { LlmAuthMode, LlmProvider, StageTiming } from '../types';
 import type {
   RuntimeRequestClient,
 } from '../../apps/extension/src/capabilities/contracts';
+import type {
+  PipelineHostChatCompletionRequestBody,
+  PipelineHostChatCompletionsProxyConfig,
+  PipelineHostChatMessage,
+} from '../../apps/extension/src/pipelineHost/contracts';
 import { isLlmThinkingLevel } from './llmThinking';
-import type { LlmThinkingLevel } from './llmThinking';
 import { isReferrerPolicy } from './referrerPolicy';
 import { toErrorMessage } from './utils';
 import { normalizeJsonValue } from './jsonValue';
@@ -56,31 +60,13 @@ export type GeminiAppAuthLoginMessage = {
   type: 'mt:gemini-app-auth-login';
 };
 
-export type LlmChatMessage = {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-};
+export type LlmChatMessage = PipelineHostChatMessage;
 
-export type LlmChatCompletionRequestBody = {
-  model: string;
-  messages: LlmChatMessage[];
-  response_format?: {
-    type: 'json_object' | 'text';
-  };
-  reasoning_effort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-  reasoning_split?: boolean;
-  thinking?: {
-    type: 'disabled' | 'enabled' | 'adaptive';
-  };
-};
+export type LlmChatCompletionRequestBody =
+  PipelineHostChatCompletionRequestBody;
 
-export type LlmChatCompletionsProxyConfig = {
-  provider: LlmProvider;
-  authMode: LlmAuthMode;
-  baseUrl: string;
-  useCustomModel?: boolean;
-  thinkingLevel?: LlmThinkingLevel;
-};
+export type LlmChatCompletionsProxyConfig =
+  PipelineHostChatCompletionsProxyConfig;
 
 export type LlmChatCompletionsMessage = {
   type: 'mt:llm-chat-completions';

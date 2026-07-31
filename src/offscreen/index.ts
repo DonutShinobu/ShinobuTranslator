@@ -17,11 +17,19 @@ import {
 import {
   createExtensionTextTranslationTransport,
 } from '../translators/transport';
+import type {
+  PipelineHostRuntimeComposition,
+} from '../../apps/extension/src/pipelineHost/contracts';
 import { OffscreenPipelineHost } from './pipelineHost';
+
+export type {
+  PipelineHostRuntimeComposition,
+} from '../../apps/extension/src/pipelineHost/contracts';
 
 export function startOffscreenPipelineHost(
   capabilities: PipelineHostExtensionCapabilities,
   lifecycle: PipelineHostConnection,
+  composition: PipelineHostRuntimeComposition = {},
 ): OffscreenPipelineHost {
   const resourceUrl = capabilities.environment.resourceUrl;
   configureModelAssetSource(createExtensionModelAssetSource(resourceUrl));
@@ -36,14 +44,15 @@ export function startOffscreenPipelineHost(
 
   const host = new OffscreenPipelineHost(
     {
-      providerExecution: createProductionProviderExecutionCapability(),
+      providerExecution: createProductionProviderExecutionCapability(
+        composition.providerPolicy,
+      ),
     },
     {
       lifecycle,
       platform: browserPlatform,
-      translationTransport: createExtensionTextTranslationTransport(
-        sendMessage,
-      ),
+      translationTransport: composition.translationTransport
+        ?? createExtensionTextTranslationTransport(sendMessage),
       diagnosticMessageSender: sendMessage,
     },
   );

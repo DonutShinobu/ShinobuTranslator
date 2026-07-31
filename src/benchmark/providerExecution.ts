@@ -6,7 +6,10 @@ import type {
   ProviderExecutionStage,
   ProviderModelSessionPort,
 } from '@shinobu/image-pipeline';
-import { isProviderExecutionReport } from '@shinobu/image-pipeline';
+import {
+  isProviderExecutionReport,
+  WEBGPU_BENCHMARK_PROVIDER_EXECUTION_POLICY,
+} from '@shinobu/image-pipeline';
 import { createProductionProviderExecutionCapability } from '../runtime/productionProviderExecution';
 import {
   disposeAllModelSessions,
@@ -14,37 +17,9 @@ import {
   getModelSession,
 } from '../runtime/modelRegistry';
 import type { OnnxSessionOptions } from '../runtime/onnxSessionOptions';
-
-export const WEBGPU_BENCHMARK_PROVIDER_EXECUTION_POLICY:
-ProviderExecutionPolicy = Object.freeze({
-  schemaVersion: 1,
-  contract: Object.freeze({
-    id: 'shinobu.webgpu-benchmark-provider-policy',
-    version: 1,
-  }),
-  rules: Object.freeze([
-    Object.freeze({
-      model: 'detector',
-      stage: 'detect',
-      providers: Object.freeze(['webgpu'] as const),
-    }),
-    Object.freeze({
-      model: 'bubble',
-      stage: 'bubble',
-      providers: Object.freeze(['webgpu'] as const),
-    }),
-    Object.freeze({
-      model: 'paddleocr_v6_medium_rec',
-      stage: 'ocr',
-      providers: Object.freeze(['webgpu'] as const),
-    }),
-    Object.freeze({
-      model: 'inpaint',
-      stage: 'inpaint',
-      providers: Object.freeze(['webgpu'] as const),
-    }),
-  ]),
-});
+export {
+  WEBGPU_BENCHMARK_PROVIDER_EXECUTION_POLICY,
+} from '@shinobu/image-pipeline';
 
 export type WebGpuBenchmarkViolationReason =
   | 'missing-provider-report'

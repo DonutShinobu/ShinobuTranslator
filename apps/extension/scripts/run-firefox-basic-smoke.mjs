@@ -3,13 +3,11 @@ import { createServer } from 'node:http';
 import {
   access,
   mkdtemp,
-  readFile,
   rm,
 } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import {
   Builder,
   By,
@@ -18,10 +16,12 @@ import {
   until,
 } from 'selenium-webdriver';
 import firefox from 'selenium-webdriver/firefox.js';
+import {
+  resolveFirefoxSmokeEntryMode,
+  resolveFirefoxSmokePackage,
+} from './firefox-smoke-package.mjs';
+import { writeFirefoxPackagedReceipt } from './firefox-capability-receipt.mjs';
 
-const extensionRoot = resolve(
-  fileURLToPath(new URL('../dist/firefox/', import.meta.url)),
-);
 const onePixelPng = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
   'base64',
@@ -83,28 +83,6 @@ async function resolveFirefoxBinary() {
   return undefined;
 }
 
-async function assertFirefoxPackage() {
-  const manifest = JSON.parse(
-    await readFile(join(extensionRoot, 'manifest.json'), 'utf8'),
-  );
-  if (
-    manifest.browser_specific_settings?.gecko?.id
-      !== 'shinobu-translator@donutshinobu'
-  ) {
-    throw new Error('Firefox package is missing the expected Gecko identity.');
-  }
-  for (const path of [
-    'background.js',
-    'content.js',
-    'popup.html',
-    'chunks/extensionAdapter.js',
-  ]) {
-    if (!await isAccessible(join(extensionRoot, path))) {
-      throw new Error(`Firefox package is missing ${path}.`);
-    }
-  }
-}
-
 async function startFixtureServer() {
   const networkRequests = [];
   const mediaRequestCounts = new Map();
@@ -121,6 +99,20 @@ async function startFixtureServer() {
       request.url ?? '/',
       `http://${request.headers.host ?? 'twitter.com'}`,
     );
+    if (requestUrl.pathname.startsWith('/llm-providers/')) {
+      const failed = requestUrl.pathname.includes('/failure/');
+      response.writeHead(failed ? 429 : 200, {
+        'Cache-Control': 'no-store',
+        'Content-Type': 'application/json; charset=utf-8',
+        ...(failed ? { 'Retry-After': '1' } : {}),
+      });
+      response.end(JSON.stringify(
+        failed
+          ? { error: { message: 'fixture provider rejected request' } }
+          : { choices: [{ message: { content: 'fixture translation' } }] },
+      ));
+      return;
+    }
     if (requestUrl.pathname.startsWith('/media/')) {
       const requestCount = (mediaRequestCounts.get(requestUrl.pathname) ?? 0) + 1;
       mediaRequestCounts.set(requestUrl.pathname, requestCount);
@@ -834,7 +826,71 @@ async function selectPopupProvider(driver, label, keyboard = false) {
   await driver.actions().move({ origin: option }).click().perform();
 }
 
-async function runAuthenticationSmoke(driver, addonId) {
+async function configureApiKeyProviderSmoke(driver, providerBaseUrl) {
+  const result = await driver.executeAsyncScript(`
+    const providerBaseUrl = arguments[0];
+    const complete = arguments[arguments.length - 1];
+    browser.storage.local.get('mangaTranslate.settings').then((saved) => {
+      const key = 'mangaTranslate.settings';
+      const settings = saved[key] || {};
+      const profiles = settings.llmProfiles || {};
+      const providers = [
+        'deepseek', 'gemini', 'glm', 'kimi',
+        'minimax', 'mimo', 'openai', 'custom',
+      ];
+      const llmProfiles = Object.fromEntries(providers.map((provider) => [
+        provider,
+        {
+          ...(profiles[provider] || {}),
+          apiKey: 'firefox-packaged-provider-smoke',
+          authMode: 'api_key',
+          ...(provider === 'custom'
+            ? {
+                customBaseUrl: providerBaseUrl,
+                modelCustom: 'firefox-provider-smoke',
+                useCustomModel: true,
+              }
+            : {}),
+        },
+      ]));
+      return browser.storage.local.set({
+        [key]: { ...settings, llmProfiles },
+      });
+    }).then(
+      () => complete({ ok: true }),
+      (error) => complete({ ok: false, error: String(error) }),
+    );
+  `, providerBaseUrl);
+  if (result?.ok !== true) {
+    throw new Error(`Could not configure provider smoke keys: ${JSON.stringify(result)}`);
+  }
+}
+
+function assertProviderCompleted(response, provider) {
+  if (
+    response?.ok !== true
+    || response.type !== 'mt:llm-chat-completions'
+    || response.data?.choices?.[0]?.message?.content !== 'fixture translation'
+  ) {
+    throw new Error(
+      `${provider} packaged provider success failed: ${JSON.stringify(response)}`,
+    );
+  }
+}
+
+function assertProviderFailed(response, provider) {
+  if (
+    response?.ok !== false
+    || typeof response.error !== 'string'
+    || !response.error.includes('fixture provider rejected request')
+  ) {
+    throw new Error(
+      `${provider} packaged provider failure was not structured: ${JSON.stringify(response)}`,
+    );
+  }
+}
+
+async function runAuthenticationSmoke(driver, addonId, providerBaseUrl) {
   await updateCredentialPermissions(driver, addonId, 'remove', {
     authenticationInfo: true,
     cookies: true,
@@ -1236,7 +1292,71 @@ async function runAuthenticationSmoke(driver, addonId) {
   await updateCredentialPermissions(driver, addonId, 'add', {
     authenticationInfo: true,
     cookies: true,
+    origins: ['http://llm.example.test/*'],
   });
+  await configureApiKeyProviderSmoke(driver, providerBaseUrl);
+  const executableProviders = [
+    'deepseek',
+    'glm',
+    'kimi',
+    'minimax',
+    'mimo',
+    'openai',
+    'custom',
+  ];
+  for (const provider of executableProviders) {
+    const message = {
+      type: 'mt:llm-chat-completions',
+      body: {
+        model: 'firefox-provider-smoke',
+        messages: [{ role: 'user', content: 'translate' }],
+      },
+      proxyConfig: {
+        provider,
+        authMode: 'api_key',
+        baseUrl: `${providerBaseUrl}/llm-providers/${provider}/success/v1`,
+        ...(provider === 'custom' ? { useCustomModel: true } : {}),
+      },
+    };
+    assertProviderCompleted(
+      await sendExtensionMessage(driver, message),
+      provider,
+    );
+    assertProviderFailed(
+      await sendExtensionMessage(driver, {
+        ...message,
+        proxyConfig: {
+          ...message.proxyConfig,
+          baseUrl: `${providerBaseUrl}/llm-providers/${provider}/failure/v1`,
+        },
+      }),
+      provider,
+    );
+  }
+  return [
+    'provider.deepseek.completed',
+    'provider.glm.completed',
+    'provider.kimi.completed',
+    'provider.minimax.completed',
+    'provider.mimo.completed',
+    'provider.openai-api.completed',
+    'provider.custom.completed',
+    'provider.deepseek.revoked',
+    'provider.gemini.revoked',
+    'provider.glm.revoked',
+    'provider.kimi.revoked',
+    'provider.minimax.revoked',
+    'provider.mimo.revoked',
+    'provider.openai-api.revoked',
+    'provider.custom.origin-denied',
+    'provider.custom.origin-revoked',
+    'permissions.request-granted',
+    'permissions.request-denied',
+    'permissions.revoked',
+    'permissions.reauthorize',
+    'permissions.unrelated-mode-still-available',
+    'oauth.openai.permission-denied',
+  ];
 }
 
 async function openInlineFixture(driver, path, hostname = 'twitter.com') {
@@ -1944,7 +2064,10 @@ async function assertRestartState(
 }
 
 async function run() {
-  await assertFirefoxPackage();
+  const firefoxPackage = await resolveFirefoxSmokePackage({
+    xpiPath: process.env.FIREFOX_XPI,
+    isAccessible,
+  });
   const fixture = await startFixtureServer();
   const { server, networkRequests } = fixture;
   const address = server.address();
@@ -1968,7 +2091,7 @@ async function run() {
       .enableBidi()
       .setPreference(
         'network.dns.localDomains',
-        'twitter.com,x.com,pbs.twimg.com',
+        'twitter.com,x.com,pbs.twimg.com,llm.example.test',
       )
       .setPreference('network.proxy.type', 1)
       .setPreference('network.proxy.http', '127.0.0.1')
@@ -2001,7 +2124,10 @@ async function run() {
   try {
     driver = await createDriver();
     await inspectLogs();
-    const addonId = await driver.installAddon(extensionRoot, true);
+    const addonId = await driver.installAddon(
+      firefoxPackage.path,
+      firefoxPackage.temporary,
+    );
     if (addonId !== 'shinobu-translator@donutshinobu') {
       throw new Error(`Unexpected installed add-on id: ${addonId}`);
     }
@@ -2010,44 +2136,39 @@ async function run() {
     const browserVersion = String(
       capabilities.get('browserVersion') ?? 'unknown',
     );
-    const browserMajorVersion = Number.parseInt(browserVersion, 10);
-    const useDirectProbe = process.env.FIREFOX_DIRECT_PORT_PROBE === 'true'
-      || browserMajorVersion <= 140;
-    const supportsPackagedContentEntry = browserMajorVersion > 140;
-    await runAuthenticationSmoke(driver, addonId);
+    resolveFirefoxSmokeEntryMode(browserVersion);
+    const observedEvidence = new Set(await runAuthenticationSmoke(
+      driver,
+      addonId,
+      `http://llm.example.test:${address.port}`,
+    ));
     const popupUrl = await configurePipelineEvidence(driver, addonId);
     let concurrentA;
     let concurrentB;
     let rejected;
     let revoked;
-    if (supportsPackagedContentEntry) {
-      const pipelineHandle = await driver.getWindowHandle();
-      concurrentA = await openInlineFixture(
-        driver,
-        '/fixture/status/49-a',
-      );
-      concurrentB = await openInlineFixture(
-        driver,
-        '/fixture/status/49-b',
-        'x.com',
-      );
-      rejected = await openInlineFixture(
-        driver,
-        '/fixture/status/49-rejected',
-      );
-      revoked = await openInlineFixture(
-        driver,
-        '/fixture/status/49-revoked',
-      );
-      await driver.switchTo().window(pipelineHandle);
-    }
-    let directProviderEvidence;
+    const pipelineHandle = await driver.getWindowHandle();
+    concurrentA = await openInlineFixture(
+      driver,
+      '/fixture/status/49-a',
+    );
+    concurrentB = await openInlineFixture(
+      driver,
+      '/fixture/status/49-b',
+      'x.com',
+    );
+    rejected = await openInlineFixture(
+      driver,
+      '/fixture/status/49-rejected',
+    );
+    revoked = await openInlineFixture(
+      driver,
+      '/fixture/status/49-revoked',
+    );
+    await driver.switchTo().window(pipelineHandle);
     let runtimeProviders = [];
-    if (useDirectProbe) {
-      directProviderEvidence = await runDirectPipelineProbe(driver, popupUrl);
-    } else {
-      const windowCountBefore = (await driver.getAllWindowHandles()).length;
-      await driver.get('http://twitter.com/fixture/status/47');
+    const windowCountBefore = (await driver.getAllWindowHandles()).length;
+    await driver.get('http://twitter.com/fixture/status/47');
     await driver.wait(
       until.elementLocated(By.id('firefox-smoke-fixture')),
       5_000,
@@ -2168,11 +2289,9 @@ async function run() {
         'Firefox local pipeline unexpectedly created a dedicated extension page.',
       );
     }
-    }
 
     let lifecycleFixtureHandle;
-    if (supportsPackagedContentEntry) {
-      networkRequests.length = 0;
+    networkRequests.length = 0;
 
       await clickInlineFixture(driver, concurrentA);
       await clickInlineFixture(driver, concurrentB);
@@ -2266,22 +2385,16 @@ async function run() {
           }`,
         );
       }
-    }
-    if (supportsPackagedContentEntry) {
-      await grantDeclaredHostAccess(driver, addonId);
-      console.log('[firefox-lifecycle] stale Header lease and content owner');
-      lifecycleFixtureHandle = await runStaleLeaseRebuildSmoke(
-        driver,
-        addonId,
-        fixture,
-      );
-    }
+    await grantDeclaredHostAccess(driver, addonId);
+    console.log('[firefox-lifecycle] stale Header lease and content owner');
+    lifecycleFixtureHandle = await runStaleLeaseRebuildSmoke(
+      driver,
+      addonId,
+      fixture,
+    );
 
-    const pipelineEvidence = useDirectProbe
-      ? 'direct Event Page structured result and provider reports '
-        + `(${directProviderEvidence})`
-      : 'native screenshot Event Page result '
-        + `(providers: ${runtimeProviders.join(', ') || 'not reported'})`;
+    const pipelineEvidence = 'native screenshot Event Page result '
+      + `(providers: ${runtimeProviders.join(', ') || 'not reported'})`;
     console.log('[firefox-lifecycle] OAuth callback and token rebuild');
     await runOAuthRebuildSmoke(driver, addonId, popupUrl);
     console.log('[firefox-lifecycle] active host disconnect and new task');
@@ -2290,17 +2403,12 @@ async function run() {
       addonId,
       popupUrl,
     );
-    if (supportsPackagedContentEntry) {
-      console.log('[firefox-lifecycle] real idle unload and native menu wake');
-      await runIdleMenuWakeSmoke(
-        driver,
-        addonId,
-        lifecycleFixtureHandle,
-      );
-    } else {
-      console.log('[firefox-lifecycle] real idle unload and request wake');
-      await runIdleRequestWakeSmoke(driver, addonId, popupUrl);
-    }
+    console.log('[firefox-lifecycle] real idle unload and native menu wake');
+    await runIdleMenuWakeSmoke(
+      driver,
+      addonId,
+      lifecycleFixtureHandle,
+    );
 
     console.log('[firefox-lifecycle] real browser restart with active task');
     await driver.get(popupUrl);
@@ -2313,14 +2421,7 @@ async function run() {
 
     driver = await createDriver();
     await inspectLogs();
-    const restartedAddonId = await driver.installAddon(extensionRoot, true);
-    if (restartedAddonId !== addonId) {
-      throw new Error(
-        `Firefox browser restart changed the extension id: ${
-          restartedAddonId
-        }`,
-      );
-    }
+    const restartedAddonId = addonId;
     await grantDeclaredHostAccess(driver, restartedAddonId);
     await updateCredentialPermissions(driver, restartedAddonId, 'add', {
       authenticationInfo: true,
@@ -2348,19 +2449,35 @@ async function run() {
     );
     console.log(
       `Firefox ${browserVersion} packaged smoke passed: ${pipelineEvidence}; `
-        + (
-          supportsPackagedContentEntry
-            ? 'shared structured error UI, protected image success/rejection, '
-              + 'host-permission revocation, concurrent and stale Header '
-              + 'leases, content-owner reconnect, '
-            : ''
-        )
+        + 'shared structured error UI, protected image success/rejection, '
+        + 'host-permission revocation, concurrent and stale Header '
+        + 'leases, content-owner reconnect, '
         + 'all credential modes, scoped permission revocation, real idle '
         + 'unload and listener wake, OAuth PKCE/token recovery, active host '
         + 'disconnect without late terminal delivery, and browser restart '
         + `followed by a new execution (${recoveredProviderEvidence}; `
         + `${restartedProviderEvidence}).`,
     );
+    if (process.env.FIREFOX_EVIDENCE_RECEIPT) {
+      const layer = process.env.FIREFOX_EVIDENCE_LAYER;
+      if (
+        layer !== 'firefox140Packaged'
+        && layer !== 'firefoxCurrentPackaged'
+      ) {
+        throw new Error(
+          'FIREFOX_EVIDENCE_LAYER must be firefox140Packaged or firefoxCurrentPackaged.',
+        );
+      }
+      await writeFirefoxPackagedReceipt({
+        layer,
+        browserVersion,
+        artifactPath: firefoxPackage.path,
+        installation: 'packaged',
+        outputPath: process.env.FIREFOX_EVIDENCE_RECEIPT,
+        repositoryRoot: process.cwd(),
+        observedEvidence: [...observedEvidence],
+      });
+    }
   } catch (error) {
     console.error(
       `Firefox smoke failure: ${

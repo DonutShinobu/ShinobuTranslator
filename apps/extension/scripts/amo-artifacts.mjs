@@ -58,6 +58,8 @@ const deniedDirectorySegments = new Set([
   'tmp',
 ]);
 const deniedSourcePaths = new Set([
+  'apps/extension/conformance',
+  'apps/extension/conformance.html',
   'apps/extension/scripts/run-firefox-basic-smoke.mjs',
 ]);
 

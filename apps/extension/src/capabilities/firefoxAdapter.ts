@@ -29,6 +29,10 @@ import {
 import {
   firefoxExtensionStorage,
 } from './firefoxStorage';
+import {
+  firefoxExtensionCookies,
+  firefoxExtensionPermissions,
+} from './firefoxPermissions';
 
 export type FirefoxBasicBackgroundCapabilities = Pick<
   BackgroundExtensionCapabilities,
@@ -99,14 +103,15 @@ export function createFirefoxExtensionAdapter(
     background() {
       const existing = compatibility.background();
       const basic = createFirefoxBasicBackgroundCapabilities(firefox);
+      const permissions = firefoxExtensionPermissions(firefox.permissions);
       return {
         ...basic,
         runtimeRequests: firefoxRuntimeRequestServer(firefox.runtime),
         runtimeChannels: firefoxRuntimeChannelServer(firefox.runtime),
         authenticationTabs: firefoxAuthenticationTabs(firefox.tabs),
         commands: firefoxNativeCommands(firefox.commands),
-        permissions: existing.permissions,
-        cookies: existing.cookies,
+        permissions,
+        cookies: firefoxExtensionCookies(() => firefox.cookies, permissions),
         referrerPolicies: existing.referrerPolicies,
         requestHeaderOverride: existing.requestHeaderOverride,
         environment: firefoxExtensionEnvironment(firefox.runtime),
@@ -116,13 +121,12 @@ export function createFirefoxExtensionAdapter(
       return createFirefoxContentCapabilities(firefox);
     },
     popup() {
-      const existing = compatibility.popup();
       const basic = createFirefoxBasicPopupCapabilities(firefox);
       return {
         ...basic,
         runtimeRequests: firefoxRuntimeRequestClient(firefox.runtime),
         authenticationTabs: firefoxAuthenticationTabs(firefox.tabs),
-        permissions: existing.permissions,
+        permissions: firefoxExtensionPermissions(firefox.permissions),
       };
     },
     pipelineHost() {

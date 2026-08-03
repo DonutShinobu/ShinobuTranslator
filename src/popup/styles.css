@@ -41,6 +41,7 @@ html, body {
 
 .popup {
   width: 380px;
+  max-height: 600px;
   margin: 0;
   padding: 0;
   color: var(--text-primary);
@@ -50,7 +51,10 @@ html, body {
   line-height: 1.5;
   box-sizing: border-box;
   -webkit-font-smoothing: antialiased;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  overscroll-behavior-y: contain;
   position: relative;
 }
 

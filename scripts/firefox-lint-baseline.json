@@ -8,7 +8,7 @@
       "count": 1,
       "dependency": "web-ext",
       "dependencyVersion": "10.3.0",
-      "sha256": "e5a5cd750a219ec3e88378f2d9f20683f62026f47b8042d145fb4970bf54af86"
+      "sha256": "54545a4ede1c375ff15bd9ec43d6fa0f5521f48cfdba75d4f05f99d49a5a6e98"
     },
     {
       "code": "DANGEROUS_EVAL",

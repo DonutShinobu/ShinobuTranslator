@@ -53,7 +53,6 @@ describe('dual-target extension manifests', () => {
     expect(manifest.permissions).not.toContain('offscreen');
     expect(manifest.background).toEqual({
       page: 'background-firefox.html',
-      persistent: false,
     });
     expect(manifest.browser_specific_settings).toEqual({
       gecko: {

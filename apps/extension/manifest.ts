@@ -84,7 +84,6 @@ export function createExtensionManifest(target: ExtensionTarget, version: string
     ...common,
     background: {
       page: 'background-firefox.html',
-      persistent: false,
     },
     browser_specific_settings: {
       gecko: {

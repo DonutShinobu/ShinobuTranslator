@@ -35,7 +35,7 @@ let firefoxBackgroundLease: ExtensionPort | null = null;
 function ensureFirefoxBackgroundLease(runtime: ExtensionRuntime): void {
   if (firefoxBackgroundLease) return;
   try {
-    if (!runtime.getURL('').startsWith('moz-extension://')) return;
+    if (!runtime.keepsBackgroundAliveWithPort()) return;
     const lease = runtime.connect(LOCAL_PIPELINE_BACKGROUND_LEASE_PORT);
     firefoxBackgroundLease = lease;
     lease.onDisconnect.addListener(() => {

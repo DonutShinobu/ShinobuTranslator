@@ -230,6 +230,7 @@ export interface ExtensionRuntime {
   readonly api: ExtensionBrowserApi;
   getURL(path: string): string;
   getVersion(): string;
+  keepsBackgroundAliveWithPort(): boolean;
   connect(name: string): ExtensionPort;
   sendMessage<TResponse>(message: unknown): Promise<TResponse>;
   getLastErrorMessage(): string | undefined;
@@ -247,6 +248,9 @@ function createExtensionRuntime(api: ExtensionBrowserApi): ExtensionRuntime {
     },
     getVersion() {
       return api.runtime?.getManifest?.().version ?? '';
+    },
+    keepsBackgroundAliveWithPort() {
+      return api.runtime?.getURL?.('')?.startsWith('moz-extension://') ?? false;
     },
     connect(name) {
       const port = api.runtime?.connect?.({ name });

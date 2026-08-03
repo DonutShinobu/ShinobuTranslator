@@ -25,6 +25,7 @@ describe('ExtensionRuntime', () => {
     await expect(runtime?.sendMessage({ type: 'ping' })).resolves.toEqual({ ok: true });
     expect(runtime?.getURL('worker.js')).toBe('chrome-extension://test/worker.js');
     expect(runtime?.getVersion()).toBe('1.2.3');
+    expect(runtime?.keepsBackgroundAliveWithPort()).toBe(false);
 
     api.runtime!.lastError = { message: 'port closed' };
     await expect(runtime?.sendMessage({ type: 'ping' })).rejects.toThrow('port closed');
@@ -35,6 +36,7 @@ describe('ExtensionRuntime', () => {
     const createTab = vi.fn(async () => ({}));
     const api = {
       runtime: {
+        getURL: (path: string) => `moz-extension://test/${path}`,
         sendMessage: vi.fn(async () => ({ ok: true })),
       },
       commands: { openShortcutSettings },
@@ -44,6 +46,7 @@ describe('ExtensionRuntime', () => {
 
     const runtime = getExtensionRuntime();
     await expect(runtime?.sendMessage({ type: 'ping' })).resolves.toEqual({ ok: true });
+    expect(runtime?.keepsBackgroundAliveWithPort()).toBe(true);
     await runtime?.openShortcutSettings();
     expect(openShortcutSettings).toHaveBeenCalledOnce();
     expect(createTab).not.toHaveBeenCalled();

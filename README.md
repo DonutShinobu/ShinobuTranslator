@@ -5,7 +5,7 @@
 <h1 align="center">ShinobuTranslator</h1>
 
 <p align="center">
-  在浏览器里直接翻译漫画图片的 Chromium / Firefox 扩展与本地 Web 工作台。
+  在浏览器里直接翻译漫画图片的 Chromium / Firefox 扩展与网页版。
 </p>
 
 <p align="center">
@@ -174,82 +174,32 @@ ShinobuTranslator 使用 `onnxruntime-web` 在浏览器端运行视觉模型。�
 
 ## 从源码运行
 
-### 环境要求
-
-- Node.js
-- npm
-- Chrome / Edge 109+，或 Firefox Desktop 140+
-
-### 安装依赖
+需要 Node.js、npm，以及 Chrome / Edge 109+ 或 Firefox Desktop 140+。先安装依赖：
 
 ```bash
 npm install
 ```
 
-### 开发模式
+### 扩展
 
 ```bash
-npm run dev:extension:chromium
-npm run dev:extension:firefox
+npm run dev:extension          # Chromium
+npm run dev:extension:firefox  # Firefox
+npm run build:extension        # 构建并校验两个目标
 ```
 
-两个命令分别持续重建目标目录并通过 `web-ext` 启动对应浏览器。扩展与 Web 工作台使用独立 workspace：
+### 网页版
 
 ```bash
-npm run dev:extension
 npm run dev:web
-```
-
-### 构建扩展
-
-```bash
-npm run build:extension:chromium
-npm run build:extension:firefox
-npm run build:extension
-```
-
-`build:extension:chromium` 只生成 `apps/extension/dist-chromium`，`build:extension:firefox` 只生成 `apps/extension/dist-firefox`。`build:extension`（以及根 `build`）顺序生成两端，并校验 Manifest、公共代码、样式、字体、模型、ORT 与 Worker 的 SHA-256 一致性。项目不使用无目标含义的 `apps/extension/dist`。
-
-AMO 提交构建使用固定模型 Release，并依次执行 Firefox 构建、lint、打包与 source archive：
-
-```bash
-npm run build-for-amo
-```
-
-### 商店自动发布
-
-正式、非预发布的 `v*` GitHub Release 会在质量检查通过后，复用同一份双端构建产物并行提交到 Chrome Web Store 与 Firefox AMO。工作流成功表示商店已接受审核；审核通过后更新会自动全量上线，工作流不会持续等待商店审核。
-
-Chrome 使用 Web Store API V2 与 GitHub OIDC/WIF 短期凭据，Firefox 使用 `web-ext` 与 AMO JWT。首次启用前需要创建 `browser-stores` GitHub Environment 并配置对应变量和 Secrets。
-
-### 构建 Web 工作台
-
-```bash
 npm run build:web
 ```
 
-Web 构建输出位于 `apps/web/dist`。构建会执行发布边界检查：私有模型文件不得进入 Pages 产物，模型只能经内容哈希网关安装到浏览器 OPFS。
-
-### 常用检查
+### 检查与模型
 
 ```bash
-npm run test
-npm run check:web-regression
-npm run check:web-production
-npm run check
-```
-
-`npm run check:web-regression` 单独验证扩展设置迁移、截图翻译、站点 Adapter、共享核心和本地流水线。`npm run check` 会运行全部类型检查、测试、该代表性回归门禁、生产依赖许可漂移检查，以及扩展和 Web 的生产构建。
-`npm run check:web-production` 验证生产工作流、Worker 安全默认值、模型兼容清单和发布门禁之间没有漂移；正式发布还会运行 fail-closed 的 `npm run web:production:preflight -- --release`。
-Web 使用问题见 [WEB_TROUBLESHOOTING.md](WEB_TROUBLESHOOTING.md)，发布范围与限制见
-[WEB_PUBLIC_BETA_RELEASE_NOTES.md](WEB_PUBLIC_BETA_RELEASE_NOTES.md)；公开反馈前请先导出并人工检查设置页的脱敏诊断 JSON。
-
-### 模型资源
-
-ONNX 模型文件通常随 Release 模型资产分发，源码仓库只保留 manifest 和字典等小文件。如果本地缺少模型文件，可运行：
-
-```bash
-npm run models:download
+npm run check            # 完整质量门控
+npm run models:download  # 下载缺少的 ONNX 模型
 ```
 
 ## 项目结构
@@ -257,13 +207,13 @@ npm run models:download
 ```text
 apps/
   extension/        Chrome/Edge 扩展 package、HTML 入口、MV3 manifest 与构建配置
-  web/              本地批量工作台、历史、PWA 与项目包
+  web/              网页版、历史、PWA 与项目包
   model-gateway/    Cloudflare Workers 私有 R2 模型网关
 packages/
-  translator-core/  扩展与 Web 共用的任务核心
+  translator-core/  扩展与网页版共用的任务核心
   browser-runtime/  Worker 宿主与浏览器运行时 Adapter
-  shared-config/    Web 配置 Schema、默认值与迁移
-  model-manifest/   Web 与网关共用的内容哈希模型清单
+  shared-config/    网页版配置 Schema、默认值与迁移
+  model-manifest/   网页版与网关共用的内容哈希模型清单
 src/                增量迁移中的共享实现源码，由 extension workspace 与测试直接消费
   background/       扩展后台、右键菜单、快捷键、第三方图像翻译调用
   content/          页面注入逻辑、悬浮按钮、截图翻译、译图展示
@@ -273,7 +223,7 @@ src/                增量迁移中的共享实现源码，由 extension workspa
   shared/           配置、消息、浏览器 API 封装
 public/
   models/           浏览器端 ONNX 模型资源
-  icons/            扩展与 Web 图标
+  icons/            扩展与网页版图标
 assets/
   readme/           README 展示图、设置截图与演示视频
 docs/
@@ -290,7 +240,7 @@ benchmark/
 - 本地视觉流水线在浏览器端运行，不依赖个人服务器
 - 使用 Google Web、LLM 或 Nano Banana 时，请自行确认对应服务的隐私政策、费用和使用条款
 - 扩展权限以 `apps/extension/public/manifest.json` 为准
-- Web 版隐私边界、Cloudflare 元数据和本地存储规则见 [PRIVACY_POLICY.md](PRIVACY_POLICY.md)
+- 网页版隐私边界、Cloudflare 元数据和本地存储规则见 [PRIVACY_POLICY.md](PRIVACY_POLICY.md)
 
 ## 致谢
 

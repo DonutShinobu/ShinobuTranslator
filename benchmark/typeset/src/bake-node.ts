@@ -19,9 +19,10 @@ import { basename, dirname, extname, join, relative, resolve } from "path";
 import { fileURLToPath } from "url";
 import { execSync } from "child_process";
 import type { BakeInfo, Fixture } from "./types";
-import type { BakeDirection } from "../../../src/pipeline/bake";
-import { shinobuBake } from "../../../src/pipeline/bake";
-import { nodePlatform } from "../../../src/runtime/nodePlatform";
+import type { BakeDirection } from '@shinobu/image-pipeline/benchmark';
+import { shinobuBake } from '@shinobu/image-pipeline/benchmark';
+import { nodePipelinePlatform as nodePlatform } from '../../nodePipelinePlatform';
+import { benchmarkModelRuntime } from '../../model-runtime';
 import { parseBakeDirectionArgs } from "./bake-options";
 import { bakeResultRegionToFixtureRegion } from "./fixture-build";
 import { parseTypesetSuiteArgs, resolveTypesetBenchmarkPath } from "./suite-paths";
@@ -209,7 +210,7 @@ async function main(): Promise<void> {
     try {
       const dataUrl = imageToDataUrl(imgPath);
 
-      const result = await shinobuBake(dataUrl, nodePlatform, {
+      const result = await shinobuBake(dataUrl, nodePlatform, benchmarkModelRuntime, {
         direction: options.direction,
       });
 

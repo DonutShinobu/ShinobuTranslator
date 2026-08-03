@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import type { TextRegion } from "../../../src/types";
-import type { PipelineRenderingContext } from "../../../src/runtime/platform";
+import type { TextRegion } from "../../../packages/image-pipeline/src/types";
+import type { PipelineRenderingContext } from "../../../packages/image-pipeline/src/runtime/platform";
 
 function parseCanvasFontSize(font: string, fallback: number): number {
   return Number.parseFloat(font.match(/([\d.]+)px/u)?.[1] ?? "") || fallback;
@@ -29,14 +29,14 @@ import {
   sourceGeometryActualBoxScale,
   estimateVerticalPreferredProfile,
   minVerticalAdvanceScale,
-} from "../../../src/pipeline/typeset/fontFit";
+} from "../../../packages/image-pipeline/src/pipeline/typeset/fontFit";
 import type {
   VerticalCellMetrics,
   VerticalLayoutResult,
   VerticalSourceGeometryProfile,
   VColumn,
-} from "../../../src/pipeline/typeset/fontFit";
-import { tokenizeVerticalText } from "../../../src/pipeline/typeset/verticalOrientation";
+} from "../../../packages/image-pipeline/src/pipeline/typeset/fontFit";
+import { tokenizeVerticalText } from "../../../packages/image-pipeline/src/pipeline/typeset/verticalOrientation";
 
 // ---------------------------------------------------------------------------
 // Helpers

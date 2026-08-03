@@ -4,7 +4,7 @@ import type {
   PipelineImage,
   PipelineRenderingContext,
   PlatformProvider,
-} from '../../../src/runtime/platform';
+} from '../../../packages/image-pipeline/src/runtime/platform';
 
 const mocks = vi.hoisted(() => ({
   createWorker: vi.fn(),
@@ -17,7 +17,7 @@ vi.mock('tesseract.js', () => ({
   createWorker: mocks.createWorker,
 }));
 
-import { detectByTesseract } from '../../../src/pipeline/detect/heuristicDetect';
+import { detectByTesseract } from '../../../packages/image-pipeline/src/pipeline/detect/heuristicDetect';
 
 describe('Tesseract detector input', () => {
   beforeEach(() => {

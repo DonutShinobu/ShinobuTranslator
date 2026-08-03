@@ -3,8 +3,8 @@
 // Re-exports from pipeline source + additional helpers for diagnostic/comparison.
 // ---------------------------------------------------------------------------
 
-import { rgbToLab as _rgbToLab, colorDistance as _colorDistance, resolveColors as _resolveColors } from "../../../src/pipeline/typeset/color";
-import { sampleEdgeColors as _sampleEdgeColors, sampleCornerBgColor as _sampleCornerBgColor, grayAt as _grayAt, histogramBimodal as _histogramBimodal, sampleTextColors as _sampleTextColors } from "../../../src/pipeline/ocr/colorSampling";
+import { rgbToLab as _rgbToLab, colorDistance as _colorDistance, resolveColors as _resolveColors } from '@shinobu/image-pipeline/benchmark';
+import { sampleEdgeColors as _sampleEdgeColors, sampleCornerBgColor as _sampleCornerBgColor, grayAt as _grayAt, histogramBimodal as _histogramBimodal, sampleTextColors as _sampleTextColors } from '@shinobu/image-pipeline/benchmark';
 import { existsSync, readFileSync, readdirSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
@@ -85,7 +85,7 @@ export function cropRegion(
 
 // ---------------------------------------------------------------------------
 // Re-implement extractColorsFromOutputs (fixed version) for benchmark.
-// This is NOT exported from src/pipeline/ocr/color.ts, so we copy it here.
+// This is NOT exported from packages/image-pipeline/src/pipeline/ocr/color.ts, so we copy it here.
 // hasBg bug is now fixed: when hasBg=false, we skip the bg accumulator.
 // ---------------------------------------------------------------------------
 

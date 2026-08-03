@@ -1,4 +1,4 @@
-import type { ModelAssetSource } from '../../../../src/runtime/modelSource';
+import type { ModelAssetSource } from '@shinobu/model-runtime/browser';
 import {
   WEB_MODEL_PACKAGE,
   type WebModelPackageManifest,

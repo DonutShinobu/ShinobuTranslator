@@ -1,26 +1,28 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PipelineArtifacts } from '../../src/types';
+import type { PipelineArtifacts } from '../../packages/image-pipeline/src/types';
+import type { PipelinePlatform } from '@shinobu/image-pipeline';
+import type { ModelRuntime } from '@shinobu/model-runtime';
 
 const mocks = vi.hoisted(() => ({
   runPipeline: vi.fn(),
   disposeAllModelSessions: vi.fn(async () => undefined),
 }));
 
-vi.mock('../../src/pipeline/orchestrator', () => ({
+vi.mock('../../packages/image-pipeline/src/pipeline/orchestrator', () => ({
   runPipeline: mocks.runPipeline,
   PipelineStageError: class PipelineStageError extends Error {},
 }));
 
-vi.mock('../../src/runtime/modelRegistry', () => ({
+vi.mock('../../packages/model-runtime/src/runtime/modelRegistry', () => ({
   disposeAllModelSessions: mocks.disposeAllModelSessions,
 }));
 
-vi.mock('../../src/shared/diagnosticLogClient', () => ({
+vi.mock('../../packages/diagnostics/src/diagnosticLogClient', () => ({
   emitDiagnosticLog: vi.fn(),
   emitDiagnosticLogAsync: vi.fn(async () => true),
 }));
 
-vi.mock('../../src/shared/blobCodec', () => ({
+vi.mock('../../packages/image-pipeline/src/protocol/blobCodec', () => ({
   base64ToBlob: (base64: string, contentType: string) => {
     const binary = atob(base64);
     return new Blob(
@@ -36,7 +38,7 @@ import { FirefoxPipelineHostLifecycle } from '../../src/background/localPipeline
 import { PipelineHostBroker } from '../../src/background/localPipeline/offscreenBroker';
 import type { ExtensionBrowserApi, ExtensionPort } from '../../src/shared/extensionRuntime';
 import { createLocalExtensionPortPair } from '../../src/shared/localExtensionPort';
-import { LOCAL_PIPELINE_CLIENT_PORT } from '../../src/shared/localPipelineProtocol';
+import { LOCAL_PIPELINE_CLIENT_PORT } from '../../packages/image-pipeline/src/protocol/index';
 
 function artifacts(): PipelineArtifacts {
   return {
@@ -88,7 +90,6 @@ function transferImageJob(client: ExtensionPort, jobId: string): void {
       llmProvider: 'deepseek',
       llmAuthMode: 'api_key',
       llmBaseUrl: 'https://api.deepseek.com/',
-      llmApiKey: '',
       llmModel: 'deepseek-v4-flash',
       typesetDebug: false,
       eraseDebug: false,
@@ -112,6 +113,19 @@ afterEach(() => {
 });
 
 describe('FirefoxPipelineHostLifecycle', () => {
+  const createRuntimeDependencies = () => ({
+    modelRuntime: {
+      readModel: vi.fn(),
+      getSession: vi.fn(),
+      run: vi.fn(),
+      runImage: vi.fn(),
+      readTextResource: vi.fn(),
+      releaseSession: vi.fn(async () => undefined),
+      dispose: mocks.disposeAllModelSessions,
+    } satisfies ModelRuntime,
+    platform: {} as PipelinePlatform,
+  });
+
   beforeEach(() => {
     mocks.runPipeline.mockReset();
     mocks.disposeAllModelSessions.mockClear();
@@ -129,7 +143,7 @@ describe('FirefoxPipelineHostLifecycle', () => {
       },
     };
     vi.stubGlobal('chrome', api);
-    const lifecycle = new FirefoxPipelineHostLifecycle();
+    const lifecycle = new FirefoxPipelineHostLifecycle(createRuntimeDependencies());
     const broker = new PipelineHostBroker(api, lifecycle);
     const [brokerClient, contentClient] = createLocalExtensionPortPair(
       LOCAL_PIPELINE_CLIENT_PORT,
@@ -162,11 +176,14 @@ describe('FirefoxPipelineHostLifecycle', () => {
     };
     vi.stubGlobal('chrome', api);
     const requestChatCompletion = vi.fn(async () => ({
-      choices: [{ message: { content: 'translated' } }],
+      choices: [{ message: { content: JSON.stringify({
+        regions: [{ id: 'region-1', translation: 'translated' }],
+      }) } }],
     }));
     const emitDiagnosticLog = vi.fn();
     const emitDiagnosticLogAsync = vi.fn(async () => true);
     const lifecycle = new FirefoxPipelineHostLifecycle({
+      ...createRuntimeDependencies(),
       translationTransport: {
         requestChatCompletion,
         translatePlain: vi.fn(async () => 'translated'),
@@ -188,22 +205,19 @@ describe('FirefoxPipelineHostLifecycle', () => {
       _config,
       _progress,
       options: {
-        translationTransport: {
-          requestChatCompletion(request: unknown): Promise<unknown>;
+        textTranslator: {
+          translateRegions(request: unknown): Promise<unknown>;
         };
       },
     ) => {
-      await options.translationTransport.requestChatCompletion({
-        body: {
-          model: 'deepseek-v4-flash',
-          messages: [{ role: 'user', content: 'source' }],
-        },
-        proxyConfig: {
-          provider: 'deepseek',
-          authMode: 'api_key',
-          baseUrl: 'https://api.deepseek.com/',
-        },
-        diagnosticRunId: 'run-firefox-translate',
+      await options.textTranslator.translateRegions({
+        regions: [{
+          id: 'region-1',
+          sourceText: 'source',
+          translatedText: '',
+          direction: 'h',
+        }],
+        config: _config,
       });
       return artifacts();
     });
@@ -232,7 +246,6 @@ describe('FirefoxPipelineHostLifecycle', () => {
         llmProvider: 'deepseek',
         llmAuthMode: 'api_key',
         llmBaseUrl: 'https://api.deepseek.com/',
-        llmApiKey: '',
         llmModel: 'deepseek-v4-flash',
         typesetDebug: false,
         eraseDebug: false,
@@ -282,6 +295,7 @@ describe('FirefoxPipelineHostLifecycle', () => {
       return true;
     });
     const lifecycle = new FirefoxPipelineHostLifecycle({
+      ...createRuntimeDependencies(),
       diagnostics: {
         emit: vi.fn(),
         emitAsync: emitDiagnosticLogAsync,

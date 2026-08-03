@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   createExtensionModelAssetSource,
   createOriginModelAssetSource,
-} from '../../src/runtime/modelSource';
+} from '../../packages/model-runtime/src/runtime/modelSource';
 
 describe('model asset source Adapter contract', () => {
   it('resolves Web assets against the application origin and manifest', () => {

@@ -12,15 +12,6 @@ const extensionPackage = JSON.parse(
   readFileSync(resolve(extensionRoot, 'package.json'), 'utf8'),
 ) as { version: string };
 
-function externalizeNodeOnlyModule(id: string): boolean {
-  if (id.includes('onnxruntime-node')) return true;
-  if (id.includes('onnxNodeBridge')) return true;
-  if (id.includes('modelRegistryNode')) return true;
-  if (id.includes('nodePlatform')) return true;
-  if (id.includes('ocrSharedNode')) return true;
-  return false;
-}
-
 function extensionReleaseAssetsPlugin(
   target: ExtensionTarget,
   extensionDist: string,
@@ -60,24 +51,6 @@ function resolveExtensionTarget(mode: string): ExtensionTarget {
   throw new Error('Extension target is required: use Vite mode "chromium" or "firefox".');
 }
 
-function extensionDetectorCompositionPlugin(): Plugin {
-  const orchestratorPath = resolve(repoRoot, 'src/pipeline/orchestrator.ts').replace(/\\/g, '/');
-  const extensionDetectorPath = resolve(repoRoot, 'src/pipeline/detect/extensionDetect.ts');
-  return {
-    name: 'extension-detector-composition',
-    enforce: 'pre',
-    resolveId(source, importer) {
-      if (
-        source === './detect'
-        && importer?.replace(/\\/g, '/').split('?')[0] === orchestratorPath
-      ) {
-        return extensionDetectorPath;
-      }
-      return null;
-    },
-  };
-}
-
 export default defineConfig(({ mode }): UserConfig => {
   const target = resolveExtensionTarget(mode);
   const extensionDist = resolve(extensionRoot, `dist-${target}`);
@@ -104,7 +77,6 @@ export default defineConfig(({ mode }): UserConfig => {
             chunkFileNames: 'benchmark-chunks/[name].js',
             assetFileNames: 'benchmark-assets/[name][extname]',
           },
-          external: externalizeNodeOnlyModule,
         },
       },
     };
@@ -124,7 +96,6 @@ export default defineConfig(({ mode }): UserConfig => {
     },
     plugins: [
       browserRuntimeBoundaryPlugin({ apply: 'serve' }),
-      extensionDetectorCompositionPlugin(),
       react(),
       extensionReleaseAssetsPlugin(target, extensionDist),
     ],
@@ -150,14 +121,14 @@ export default defineConfig(({ mode }): UserConfig => {
           assetFileNames: 'assets/[name][extname]',
           manualChunks(id) {
             const normalized = id.replace(/\\/g, '/');
-            if (normalized.endsWith('/src/shared/perfTrace.ts')) {
+            if (normalized.endsWith('/packages/diagnostics/src/perfTrace.ts')) {
               return 'perfTrace';
             }
             if (normalized.endsWith('/src/shared/messages.ts')) {
               return 'messages';
             }
-            if (normalized.endsWith('/src/shared/localPipelineProtocol.ts')) {
-              return 'localPipelineProtocol';
+            if (normalized.endsWith('/packages/model-runtime/src/runtime/onnxWorkerBridge.ts')) {
+              return 'onnxWorkerBridge';
             }
             if (normalized.endsWith('/src/shared/diagnosticLogClient.ts')) {
               return 'diagnosticLogClient';
@@ -168,12 +139,6 @@ export default defineConfig(({ mode }): UserConfig => {
             return undefined;
           },
         },
-        // Node-only modules must be externalized for the browser build.
-        // These modules are loaded via dynamic import() guarded by isNode,
-        // but Vite/Rollup still resolves and bundles them as reachable chunks.
-        // Externalizing prevents them from appearing in the browser extension
-        // and avoids __vite-browser-external.js shims that can break Chrome extensions.
-        external: externalizeNodeOnlyModule,
       },
     },
   };

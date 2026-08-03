@@ -10,8 +10,8 @@ import {
   convexHull,
   convexHullArea,
   UnionFind,
-} from "../../src/pipeline/utils";
-import type { Rect } from "../../src/types";
+} from "../../packages/image-pipeline/src/pipeline/utils";
+import type { Rect } from "../../packages/image-pipeline/src/types";
 
 describe("clamp", () => {
   it("returns value when in range", () => {

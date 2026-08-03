@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { sendRuntimeMessage } from '../../src/shared/messages';
 import {
   createDirectTextTranslationTransport,
-  extensionTextTranslationTransport,
   TextTranslationTransportError,
-} from '../../src/translators/transport';
+} from '../../packages/text-translation/src/translators/transport';
+import { extensionTextTranslationTransport } from '../../src/shared/textTranslationTransport';
 
 vi.mock('../../src/shared/messages', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/shared/messages')>();
@@ -60,11 +60,10 @@ describe('text translation transport Adapters', () => {
     }));
     vi.stubGlobal('fetch', fetchMock);
     const controller = new AbortController();
-    const transport = createDirectTextTranslationTransport();
+    const transport = createDirectTextTranslationTransport({ apiKey: 'sk-local' });
 
     await expect(transport.requestChatCompletion({
       ...request,
-      apiKey: 'sk-local',
       signal: controller.signal,
     })).resolves.toEqual({
       choices: [{ message: { content: '你好' } }],
@@ -87,11 +86,10 @@ describe('text translation transport Adapters', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
       error: { message: 'invalid credential' },
     }), { status: 401 })));
-    const transport = createDirectTextTranslationTransport();
+    const transport = createDirectTextTranslationTransport({ apiKey: 'sk-secret-value' });
 
     const error = await transport.requestChatCompletion({
       ...request,
-      apiKey: 'sk-secret-value',
     }).catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(TextTranslationTransportError);
@@ -112,13 +110,13 @@ describe('text translation transport Adapters', () => {
       }), { status: 200 }));
     const sleep = vi.fn(async () => undefined);
     const transport = createDirectTextTranslationTransport({
+      apiKey: 'sk-local',
       fetchImpl: fetchMock as typeof fetch,
       sleep,
     });
 
     await expect(transport.requestChatCompletion({
       ...request,
-      apiKey: 'sk-local',
     })).resolves.toEqual({
       choices: [{ message: { content: '你好' } }],
     });
@@ -130,23 +128,23 @@ describe('text translation transport Adapters', () => {
   it('does not retry authentication failures and marks network failures for the pipeline retry owner', async () => {
     const authFetch = vi.fn().mockResolvedValue(new Response('denied', { status: 403 }));
     const authTransport = createDirectTextTranslationTransport({
+      apiKey: 'sk-local',
       fetchImpl: authFetch as typeof fetch,
       sleep: vi.fn(async () => undefined),
     });
     await expect(authTransport.requestChatCompletion({
       ...request,
-      apiKey: 'sk-local',
     })).rejects.toMatchObject({ status: 403 });
     expect(authFetch).toHaveBeenCalledOnce();
 
     const networkFetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
     const networkTransport = createDirectTextTranslationTransport({
+      apiKey: 'sk-local',
       fetchImpl: networkFetch as typeof fetch,
       sleep: vi.fn(async () => undefined),
     });
     await expect(networkTransport.requestChatCompletion({
       ...request,
-      apiKey: 'sk-local',
     })).rejects.toMatchObject({
       name: 'TextTranslationTransportError',
       retryable: true,
@@ -160,13 +158,13 @@ describe('text translation transport Adapters', () => {
     const aborted = new TypeError('Failed to fetch');
     const networkFetch = vi.fn().mockRejectedValue(aborted);
     const transport = createDirectTextTranslationTransport({
+      apiKey: 'sk-local',
       fetchImpl: networkFetch as typeof fetch,
       maxRetries: 0,
     });
 
     await expect(transport.requestChatCompletion({
       ...request,
-      apiKey: 'sk-local',
       signal: controller.signal,
     })).rejects.toBe(aborted);
   });
@@ -179,13 +177,13 @@ describe('text translation transport Adapters', () => {
       text: vi.fn().mockRejectedValue(new TypeError('connection reset')),
     });
     const transport = createDirectTextTranslationTransport({
+      apiKey: 'sk-local',
       fetchImpl: fetchMock as typeof fetch,
       maxRetries: 0,
     });
 
     await expect(transport.requestChatCompletion({
       ...request,
-      apiKey: 'sk-local',
     })).rejects.toMatchObject({
       name: 'TextTranslationTransportError',
       status: 200,

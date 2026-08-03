@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 const unicodeVersion = "17.0.0";
 const sourceUrl = `https://www.unicode.org/Public/${unicodeVersion}/ucd/VerticalOrientation.txt`;
-const outputUrl = new URL("../src/pipeline/typeset/verticalOrientationData.ts", import.meta.url);
+const outputUrl = new URL("../packages/image-pipeline/src/pipeline/typeset/verticalOrientationData.ts", import.meta.url);
 const valueCodes = new Map([
   ["R", 0],
   ["U", 1],

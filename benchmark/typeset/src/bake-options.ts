@@ -1,4 +1,4 @@
-import type { BakeDirection } from "../../../src/pipeline/bake";
+import type { BakeDirection } from '@shinobu/image-pipeline/benchmark';
 
 export type ParsedBakeDirectionArgs = {
   direction: BakeDirection;

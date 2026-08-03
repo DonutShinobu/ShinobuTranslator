@@ -1,8 +1,8 @@
 import { buildGeminiImagePrompt, getGeminiAppModelLabel } from '../shared/config';
 import type { ExtensionSettings } from '../shared/config';
 import type { GeminiAppAuthStatusInfo, GeminiAppImageTranslateMetadata } from '../shared/messages';
-import type { StageTiming } from '../types';
-import type { GeminiAppModel } from '../types';
+import type { StageTiming } from '@shinobu/image-pipeline/benchmark';
+import type { GeminiAppModel } from '../shared/config';
 import { getExtensionApi } from '../shared/extensionRuntime';
 import {
   createExtensionPermissions,

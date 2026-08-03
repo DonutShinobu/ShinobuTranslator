@@ -5,14 +5,7 @@ export const LOCKED_PROCESSING_CONFIG_SCHEMA_VERSION = 1 as const;
 export type UiLocale = 'zh-CN' | 'zh-TW';
 export type TargetLanguage = 'zh-CHS' | 'zh-CHT';
 export type ProcessMode = 'translate' | 'original' | 'erase';
-export type TranslationProviderId =
-  | 'deepseek'
-  | 'glm'
-  | 'kimi'
-  | 'minimax'
-  | 'mimo'
-  | 'openai'
-  | 'custom';
+export type TranslationProviderId = Exclude<LlmProvider, 'gemini'>;
 
 export type WebProviderProfile = {
   baseUrl: string;
@@ -50,39 +43,38 @@ export const translationProviderOptions: ReadonlyArray<{
   id: TranslationProviderId;
   label: string;
 }> = [
-  { id: 'deepseek', label: 'DeepSeek' },
-  { id: 'glm', label: 'GLM / Z.AI' },
-  { id: 'kimi', label: 'Kimi / Moonshot' },
-  { id: 'minimax', label: 'MiniMax' },
-  { id: 'mimo', label: 'MiMo' },
-  { id: 'openai', label: 'OpenAI' },
+  ...(['deepseek', 'glm', 'kimi', 'minimax', 'mimo', 'openai'] as const)
+    .map((id) => ({
+      id,
+      label: llmBuiltInProviderDefinitions[id].webLabel,
+    })),
   { id: 'custom', label: 'OpenAI Compatible' },
 ];
 
 export const defaultWebProviderProfiles: WebProviderProfiles = {
   deepseek: {
-    baseUrl: 'https://api.deepseek.com',
-    model: 'deepseek-v4-flash',
+    baseUrl: llmBuiltInProviderDefinitions.deepseek.baseUrl,
+    model: llmBuiltInProviderDefinitions.deepseek.models[0],
   },
   glm: {
-    baseUrl: 'https://api.z.ai/api/paas/v4',
-    model: 'glm-5.2',
+    baseUrl: llmBuiltInProviderDefinitions.glm.baseUrl,
+    model: llmBuiltInProviderDefinitions.glm.models[0],
   },
   kimi: {
-    baseUrl: 'https://api.moonshot.ai/v1',
-    model: 'kimi-k3',
+    baseUrl: llmBuiltInProviderDefinitions.kimi.baseUrl,
+    model: llmBuiltInProviderDefinitions.kimi.models[0],
   },
   minimax: {
-    baseUrl: 'https://api.minimax.io/v1',
-    model: 'MiniMax-M3',
+    baseUrl: llmBuiltInProviderDefinitions.minimax.baseUrl,
+    model: llmBuiltInProviderDefinitions.minimax.models[0],
   },
   mimo: {
-    baseUrl: 'https://api.xiaomimimo.com/v1',
-    model: 'mimo-v2.5-pro',
+    baseUrl: llmBuiltInProviderDefinitions.mimo.baseUrl,
+    model: llmBuiltInProviderDefinitions.mimo.models[0],
   },
   openai: {
-    baseUrl: 'https://api.openai.com/v1',
-    model: 'gpt-5.6-luna',
+    baseUrl: llmBuiltInProviderDefinitions.openai.baseUrl,
+    model: llmBuiltInProviderDefinitions.openai.models[0],
   },
   custom: {
     baseUrl: '',
@@ -371,3 +363,7 @@ export function encodeWebSettings(settings: WebSettings): string {
     providerProfiles: settings.providerProfiles,
   });
 }
+import {
+  llmBuiltInProviderDefinitions,
+  type LlmProvider,
+} from '@shinobu/text-translation';

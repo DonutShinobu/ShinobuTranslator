@@ -3,10 +3,10 @@ import type {
   PipelineCanvas,
   PipelineRenderingContext,
   PlatformProvider,
-} from "../../../src/runtime/platform";
-import type { HorizontalLineBox } from "../../../src/pipeline/typeset/horizontalFit";
-import { buildHorizontalGlyphPlacements } from "../../../src/pipeline/typeset/horizontalFit";
-import { renderHorizontal } from "../../../src/pipeline/typeset/renderHorizontal";
+} from "../../../packages/image-pipeline/src/runtime/platform";
+import type { HorizontalLineBox } from "../../../packages/image-pipeline/src/pipeline/typeset/horizontalFit";
+import { buildHorizontalGlyphPlacements } from "../../../packages/image-pipeline/src/pipeline/typeset/horizontalFit";
+import { renderHorizontal } from "../../../packages/image-pipeline/src/pipeline/typeset/renderHorizontal";
 
 describe("renderHorizontal", () => {
   it("uses the layout baseline for both stroke and fill passes", () => {

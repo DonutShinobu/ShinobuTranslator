@@ -13,7 +13,7 @@ export {
   base64ToBlob,
   blobToBase64,
   canvasToPngBlob as canvasToBlob,
-} from '../../shared/blobCodec';
+} from '@shinobu/image-pipeline/protocol';
 
 function toNonEmptyReferrerPolicy(value: unknown): ReferrerPolicy | undefined {
   if (typeof value !== 'string' || !value) return undefined;

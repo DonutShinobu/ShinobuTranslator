@@ -1,6 +1,6 @@
-import type { BakeResultRegion, DetectedColumn } from "../../../src/pipeline/bake";
-import { segmentVerticalGraphemes } from "../../../src/pipeline/typeset/verticalOrientation";
-import type { TextDirection } from "../../../src/types";
+import type { BakeResultRegion, DetectedColumn } from '@shinobu/image-pipeline/benchmark';
+import { segmentVerticalGraphemes } from '@shinobu/image-pipeline/benchmark';
+import type { TextDirection } from '@shinobu/image-pipeline/benchmark';
 import type { FixtureRegion, GroundTruthColumn } from "./types";
 
 type Point = { x: number; y: number };

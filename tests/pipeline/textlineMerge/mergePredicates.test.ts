@@ -1,14 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { mergeTextLines } from "../../../src/pipeline/textlineMerge";
+import { mergeTextLines } from "../../../packages/image-pipeline/src/pipeline/textlineMerge";
 import {
   buildInternalQuad,
   canMergeRegion,
   splitTextRegion,
   mergeTextRegions,
-} from "../../../src/pipeline/textlineMerge/mergePredicates";
-import type { TextRegion, TextDirection } from "../../../src/types";
-import type { InternalQuad } from "../../../src/pipeline/textlineMerge/mergePredicates";
-import { minAreaRect, quadAngle, quadDimensions } from "../../../src/pipeline/typeset/geometry";
+} from "../../../packages/image-pipeline/src/pipeline/textlineMerge/mergePredicates";
+import type { TextRegion, TextDirection } from "../../../packages/image-pipeline/src/types";
+import type { InternalQuad } from "../../../packages/image-pipeline/src/pipeline/textlineMerge/mergePredicates";
+import { minAreaRect, quadAngle, quadDimensions } from "../../../packages/image-pipeline/src/pipeline/typeset/geometry";
 
 // Helper to create a minimal TextRegion for testing
 function makeRegion(overrides: Partial<TextRegion> = {}): TextRegion {

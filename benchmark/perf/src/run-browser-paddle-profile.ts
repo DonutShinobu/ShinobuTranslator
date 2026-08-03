@@ -6,7 +6,7 @@ import { fileURLToPath } from "url";
 import { chromium, firefox } from "@playwright/test";
 import type { BrowserContext } from "@playwright/test";
 import type { OcrEngine, ProcessMode } from "../../../src/shared/config";
-import type { OcrRunDebugInfo, PaddleOcrRunDebug } from "../../../src/types";
+import type { OcrRunDebugInfo, PaddleOcrRunDebug } from '@shinobu/image-pipeline/benchmark';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const DIST_DIR = join(ROOT, "apps", "extension", "dist-chromium");
@@ -883,7 +883,6 @@ async function runPaddleProfile(
             translator: "google_web",
             llmProvider: "deepseek",
             llmBaseUrl: "https://api.deepseek.com",
-            llmApiKey: "",
             llmModel: "deepseek-v4-flash",
             llmTemperature: 1,
             typesetDebug: false,

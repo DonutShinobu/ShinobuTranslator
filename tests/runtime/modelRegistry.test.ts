@@ -1,31 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createModelRegistry } from '../../packages/model-runtime/src/runtime/modelRegistry';
 
-const mocks = vi.hoisted(() => ({
-  createSession: vi.fn(),
-  disposeAll: vi.fn(async () => undefined),
-  disposeSession: vi.fn(async () => undefined),
-  runtimeEvents: [] as Array<Record<string, unknown>>,
-}));
+const createSession = vi.fn();
+const disposeAll = vi.fn(async () => undefined);
+const disposeSession = vi.fn(async () => undefined);
 
-vi.mock('../../src/runtime/onnxBridge', () => ({
-  createSession: mocks.createSession,
-  disposeAll: mocks.disposeAll,
-  disposeSession: mocks.disposeSession,
-}));
-
-vi.mock('../../src/shared/perfTrace', () => ({
-  recordPerfRuntimeEvent: (event: Record<string, unknown>) => mocks.runtimeEvents.push(event),
-}));
-
-describe('modelRegistry session cache', () => {
+describe('ModelRuntime instance session cache', () => {
   beforeEach(() => {
-    vi.resetModules();
-    mocks.createSession.mockReset();
-    mocks.disposeAll.mockClear();
-    mocks.runtimeEvents.length = 0;
+    createSession.mockReset();
+    disposeAll.mockClear();
+    disposeSession.mockClear();
   });
 
   it('deduplicates concurrent creation, records provider fallback, and reuses the cache', async () => {
+    const runtimeEvents: Array<Record<string, unknown>> = [];
     let resolveCreation!: (value: {
       sessionId: string;
       provider: 'wasm';
@@ -40,12 +28,30 @@ describe('modelRegistry session cache', () => {
     }>((resolve) => {
       resolveCreation = resolve;
     });
-    mocks.createSession.mockReturnValue(creation);
-    const registry = await import('../../src/runtime/modelRegistry');
+    createSession.mockReturnValue(creation);
+    const registry = createModelRegistry({
+      environment: 'browser',
+      backend: { createSession, disposeAll, disposeSession },
+      loadManifest: async () => ({
+        models: {
+          detector: {
+            name: 'detector',
+            task: 'detect',
+            url: '/models/detector.onnx',
+            input: [1, 3, 1024, 1024],
+            runtime: ['webnn', 'wasm'],
+          },
+        },
+      }),
+      performanceObserver: {
+        recordWorkerCall: vi.fn(),
+        recordRuntimeEvent: (event) => runtimeEvents.push(event),
+      },
+    });
 
-    const first = registry.getModelSession('detector', ['webnn', 'wasm']);
-    const second = registry.getModelSession('detector', ['webnn', 'wasm']);
-    await vi.waitFor(() => expect(mocks.createSession).toHaveBeenCalledTimes(1));
+    const first = registry.getSession('detector', ['webnn', 'wasm']);
+    const second = registry.getSession('detector', ['webnn', 'wasm']);
+    await vi.waitFor(() => expect(createSession).toHaveBeenCalledTimes(1));
     resolveCreation({
       sessionId: 'detector-session',
       provider: 'wasm',
@@ -54,18 +60,49 @@ describe('modelRegistry session cache', () => {
     });
 
     const [firstHandle, secondHandle] = await Promise.all([first, second]);
-    const cached = await registry.getModelSession('detector', ['webnn', 'wasm']);
+    const cached = await registry.getSession('detector', ['webnn', 'wasm']);
 
     expect(firstHandle).toBe(secondHandle);
     expect(cached).toBe(firstHandle);
-    expect(mocks.createSession).toHaveBeenCalledTimes(1);
-    expect(mocks.runtimeEvents).toContainEqual(expect.objectContaining({
+    expect(createSession).toHaveBeenCalledTimes(1);
+    expect(runtimeEvents).toContainEqual(expect.objectContaining({
       kind: 'provider-fallback',
       provider: 'wasm',
     }));
-    expect(mocks.runtimeEvents.filter((event) => event.kind === 'session-cache-hit')).toHaveLength(2);
+    expect(runtimeEvents.filter((event) => event.kind === 'session-cache-hit')).toHaveLength(2);
 
-    await registry.disposeAllModelSessions();
-    expect(mocks.disposeAll).toHaveBeenCalledTimes(1);
+    await registry.dispose();
+    expect(disposeAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps caches isolated between runtime instances', async () => {
+    createSession.mockImplementation(async (model: string) => ({
+      sessionId: `${model}-${createSession.mock.calls.length}`,
+      provider: 'wasm' as const,
+      inputNames: ['input'],
+      outputNames: ['output'],
+    }));
+    const options = {
+      environment: 'browser' as const,
+      backend: { createSession, disposeAll, disposeSession },
+      loadManifest: async () => ({
+        models: {
+          detector: {
+            name: 'detector',
+            task: 'detect',
+            url: '/models/detector.onnx',
+            input: [1, 3, 1024, 1024],
+          },
+        },
+      }),
+    };
+    const first = createModelRegistry(options);
+    const second = createModelRegistry(options);
+
+    await first.getSession('detector');
+    await first.getSession('detector');
+    await second.getSession('detector');
+
+    expect(createSession).toHaveBeenCalledTimes(2);
   });
 });

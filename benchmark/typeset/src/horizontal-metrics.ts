@@ -1,6 +1,6 @@
-import { convexHull, polygonArea, polygonSignedArea } from "../../../src/pipeline/utils";
-import { segmentVerticalGraphemes } from "../../../src/pipeline/typeset/verticalOrientation";
-import type { QuadPoint } from "../../../src/types";
+import { convexHull, polygonArea, polygonSignedArea } from '@shinobu/image-pipeline/benchmark';
+import { segmentVerticalGraphemes } from '@shinobu/image-pipeline/benchmark';
+import type { QuadPoint } from '@shinobu/image-pipeline/benchmark';
 import { clamp01, mean, meanOr, median, percentile } from "./metric-utils";
 import type {
   GroundTruthColumn,

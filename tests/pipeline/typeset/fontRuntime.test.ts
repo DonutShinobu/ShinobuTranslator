@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { PlatformProvider } from '../../../src/runtime/platform';
+import type { PlatformProvider } from '../../../packages/image-pipeline/src/runtime/platform';
 import {
   formatTypesetFont,
   registerTypesetFonts,
   TYPESET_FONT_WEIGHT,
-} from '../../../src/pipeline/typeset/fontRuntime';
+} from '../../../packages/image-pipeline/src/pipeline/typeset/fontRuntime';
 
 describe('typeset font runtime', () => {
   it('uses the requested bold weight for canvas measurement and rendering', () => {

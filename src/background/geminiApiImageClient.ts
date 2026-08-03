@@ -6,8 +6,8 @@ import {
 } from '../shared/config';
 import type { ExtensionSettings } from '../shared/config';
 import type { CloudImageTranslateSuccess } from '../shared/messages';
-import type { StageTiming } from '../types';
-import type { GeminiAppModel } from '../types';
+import type { StageTiming } from '@shinobu/image-pipeline/benchmark';
+import type { GeminiAppModel } from '../shared/config';
 import { toErrorMessage } from '../shared/utils';
 
 type GeminiApiImageTranslateOptions = {

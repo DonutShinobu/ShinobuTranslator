@@ -3,10 +3,10 @@ import type {
   PipelineCanvas,
   PipelineRenderingContext,
   PlatformProvider,
-} from "../../../src/runtime/platform";
-import type { VerticalGlyph } from "../../../src/pipeline/typeset/fontMetrics";
-import { renderVertical } from "../../../src/pipeline/typeset/renderVertical";
-import { tokenizeVerticalText } from "../../../src/pipeline/typeset/verticalOrientation";
+} from "../../../packages/image-pipeline/src/runtime/platform";
+import type { VerticalGlyph } from "../../../packages/image-pipeline/src/pipeline/typeset/fontMetrics";
+import { renderVertical } from "../../../packages/image-pipeline/src/pipeline/typeset/renderVertical";
+import { tokenizeVerticalText } from "../../../packages/image-pipeline/src/pipeline/typeset/verticalOrientation";
 
 describe("renderVertical", () => {
   it("applies the optical horizontal offset to upright glyphs", () => {

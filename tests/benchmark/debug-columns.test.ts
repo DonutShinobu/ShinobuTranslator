@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { debugRegionToColumns } from "../../benchmark/typeset/src/debug-columns";
-import type { TypesetDebugRegionLog } from "../../src/types";
+import type { TypesetDebugRegionLog } from "../../packages/image-pipeline/src/types";
 
 function makeDebugRegion(
   overrides: Partial<TypesetDebugRegionLog> = {},

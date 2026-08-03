@@ -4,7 +4,7 @@ import type {
   PipelineImageData,
   PipelineRenderingContext,
   PlatformProvider,
-} from '../../../../src/runtime/platform';
+} from '@shinobu/image-pipeline/benchmark';
 
 class BitmapPipelineImage implements PipelineImage {
   readonly src: string;

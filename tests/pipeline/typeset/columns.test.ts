@@ -9,8 +9,8 @@ import {
   resolveTranslatedColumns,
   rebalanceVerticalColumns,
   resolveVerticalPreferredColumns,
-} from "../../../src/pipeline/typeset/columns";
-import type { TextRegion } from "../../../src/types";
+} from "../../../packages/image-pipeline/src/pipeline/typeset/columns";
+import type { TextRegion } from "../../../packages/image-pipeline/src/types";
 
 function makeRegion(overrides: Partial<TextRegion> = {}): TextRegion {
   return {

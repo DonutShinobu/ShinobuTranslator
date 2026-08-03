@@ -7,7 +7,7 @@ import type {
 import {
   adaptLlmThinkingChatCompletionRequest,
   isLlmThinkingConfigurationRejection,
-} from '../shared/llmThinking';
+} from '@shinobu/text-translation';
 
 export class LlmChatCompletionHttpError extends Error {
   readonly status: number;

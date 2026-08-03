@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExtensionPort } from '../../src/shared/extensionRuntime';
-import type { PipelineArtifacts } from '../../src/types';
+import type { PipelineArtifacts } from '../../packages/image-pipeline/src/types';
+import type { PipelinePlatform } from '@shinobu/image-pipeline';
+import type { ModelRuntime } from '@shinobu/model-runtime';
 
 const mocks = vi.hoisted(() => ({
   runPipeline: vi.fn(),
@@ -8,21 +10,21 @@ const mocks = vi.hoisted(() => ({
   blobToBase64: vi.fn(async () => 'cmVzdWx0'),
 }));
 
-vi.mock('../../src/pipeline/orchestrator', () => ({
+vi.mock('../../packages/image-pipeline/src/pipeline/orchestrator', () => ({
   runPipeline: mocks.runPipeline,
   PipelineStageError: class PipelineStageError extends Error {},
 }));
 
-vi.mock('../../src/runtime/modelRegistry', () => ({
+vi.mock('../../packages/model-runtime/src/runtime/modelRegistry', () => ({
   disposeAllModelSessions: mocks.disposeAllModelSessions,
 }));
 
-vi.mock('../../src/shared/diagnosticLogClient', () => ({
+vi.mock('../../packages/diagnostics/src/diagnosticLogClient', () => ({
   emitDiagnosticLog: vi.fn(),
   emitDiagnosticLogAsync: vi.fn(async () => true),
 }));
 
-vi.mock('../../src/shared/blobCodec', () => ({
+vi.mock('../../packages/image-pipeline/src/protocol/blobCodec', () => ({
   base64ToBlob: (base64: string, contentType: string) => {
     const binary = atob(base64);
     return new Blob([Uint8Array.from(binary, (char) => char.charCodeAt(0))], { type: contentType });
@@ -32,7 +34,7 @@ vi.mock('../../src/shared/blobCodec', () => ({
 }));
 
 import { PipelineHost } from '../../src/offscreen/pipelineHost';
-import { LOCAL_PIPELINE_HOST_PORT } from '../../src/shared/localPipelineProtocol';
+import { LOCAL_PIPELINE_HOST_PORT } from '../../packages/image-pipeline/src/protocol/index';
 
 class FakePort implements ExtensionPort {
   readonly name = LOCAL_PIPELINE_HOST_PORT;
@@ -116,7 +118,6 @@ function sendImageJob(port: FakePort, jobId: string): void {
       llmProvider: 'deepseek',
       llmAuthMode: 'api_key',
       llmBaseUrl: '',
-      llmApiKey: '',
       llmModel: '',
       typesetDebug: false,
       eraseDebug: false,
@@ -157,7 +158,17 @@ describe('PipelineHost single-task admission', () => {
   });
 
   function createHost(): PipelineHost {
-    const host = new PipelineHost();
+    const modelRuntime: ModelRuntime = {
+      readModel: vi.fn(),
+      getSession: vi.fn(),
+      run: vi.fn(),
+      runImage: vi.fn(),
+      readTextResource: vi.fn(),
+      releaseSession: vi.fn(async () => undefined),
+      dispose: mocks.disposeAllModelSessions,
+    };
+    const platform = {} as PipelinePlatform;
+    const host = new PipelineHost(undefined, { modelRuntime, platform });
     hosts.push(host);
     return host;
   }

@@ -54,6 +54,9 @@ describe('monorepo application ownership', () => {
     );
     expect(imagePipeline.name).toBe('@shinobu/image-pipeline');
     expect(imagePipeline.dependencies).toEqual({
+      '@shinobu/diagnostics': '0.1.0',
+      '@shinobu/model-runtime': '0.1.0',
+      '@shinobu/text-translation': '0.1.0',
       '@shinobu/translator-core': '0.1.0',
     });
   });

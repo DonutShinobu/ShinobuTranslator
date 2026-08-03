@@ -2,7 +2,7 @@ import { createCanvas, loadImage } from "canvas";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Rect, TextRegion } from "../../../src/types";
+import type { Rect, TextRegion } from '@shinobu/image-pipeline/benchmark';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const DEFAULT_RESULTS_DIR = join(

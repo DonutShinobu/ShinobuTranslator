@@ -8,7 +8,7 @@ import type {
   TextRegion,
   TranslationReferenceContext,
   TranslationDebugInfo,
-} from '../../types';
+} from '@shinobu/image-pipeline/benchmark';
 
 export interface ImageTarget {
   element: HTMLImageElement;

@@ -1,12 +1,12 @@
 import { getExtensionApi } from './extensionRuntime';
 import {
-  createDiagnosticEvent,
+  createDiagnosticLogEmitter as createPackageDiagnosticLogEmitter,
   createDiagnosticId,
   toDiagnosticError,
   type DiagnosticLogEvent,
   type DiagnosticLogEventInput,
   type DiagnosticLogContext,
-} from './diagnosticLog';
+} from '@shinobu/diagnostics';
 
 const sessionId = createDiagnosticId('session');
 
@@ -42,21 +42,7 @@ export function createDiagnosticLogEmitter(
   sink: DiagnosticLogEventSink,
   emitterSessionId = sessionId,
 ): DiagnosticLogEmitter {
-  const emitAsync = (input: DiagnosticLogEventInput): Promise<boolean> => {
-    try {
-      return Promise.resolve(
-        sink(createDiagnosticEvent(input, emitterSessionId)),
-      ).catch(() => false);
-    } catch {
-      return Promise.resolve(false);
-    }
-  };
-  return {
-    emit(input) {
-      void emitAsync(input);
-    },
-    emitAsync,
-  };
+  return createPackageDiagnosticLogEmitter(sink, emitterSessionId);
 }
 
 const extensionDiagnosticLogEmitter = createDiagnosticLogEmitter((event) => {

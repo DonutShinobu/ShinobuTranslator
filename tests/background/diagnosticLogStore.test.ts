@@ -4,7 +4,7 @@ import {
   exportDiagnosticLog,
   recordDiagnosticLogEvent,
 } from '../../src/background/diagnostics/logStore';
-import type { DiagnosticLogEvent } from '../../src/shared/diagnosticLog';
+import type { DiagnosticLogEvent } from '../../packages/diagnostics/src/diagnosticLog';
 
 const diagnosticLogStorageKey = 'mangaTranslate.diagnosticLog';
 

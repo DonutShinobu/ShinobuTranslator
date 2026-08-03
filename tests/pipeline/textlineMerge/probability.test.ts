@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { TextRegion } from "../../../src/types";
-import { mergeTextLines } from "../../../src/pipeline/textlineMerge";
+import type { TextRegion } from "../../../packages/image-pipeline/src/types";
+import { mergeTextLines } from "../../../packages/image-pipeline/src/pipeline/textlineMerge";
 
 function region(id: string, x: number, probability: number): TextRegion {
   return {

@@ -52,5 +52,5 @@ export const MODEL_GATEWAY_ALLOWLIST = buildModelGatewayAllowlist([
   MODEL_PACKAGE,
   ...MODEL_GATEWAY_COMPATIBILITY_PACKAGES,
 ]);
-import compatibility from '../compatibility.json';
-import manifest from '../manifest.json';
+import compatibility from '../compatibility.json' with { type: 'json' };
+import manifest from '../manifest.json' with { type: 'json' };

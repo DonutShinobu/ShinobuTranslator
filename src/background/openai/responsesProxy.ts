@@ -5,14 +5,14 @@ import type {
 import {
   adaptLlmThinkingChatCompletionRequest,
   isLlmThinkingConfigurationRejection,
-} from "../../shared/llmThinking";
-import { openAiOAuthOriginator } from "../../shared/openaiOAuth";
-import type { StoredOpenAiOAuthTokens } from "../../shared/openaiOAuth";
+} from '@shinobu/text-translation';
+import { openAiOAuthOriginator } from '@shinobu/text-translation/openai';
+import type { StoredOpenAiOAuthTokens } from '@shinobu/text-translation/openai';
 import {
   buildOpenAiResponsesRequest,
   extractOpenAiResponsesJsonText,
   extractOpenAiResponsesSseText,
-} from "../../shared/openaiResponses";
+} from '@shinobu/text-translation/openai';
 import {
   createOpenAiRequestId,
   extractResponseError,

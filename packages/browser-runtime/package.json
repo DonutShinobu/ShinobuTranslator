@@ -7,6 +7,10 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./trusted-types": {
+      "types": "./src/trustedTypesPolicy.ts",
+      "default": "./src/trustedTypesPolicy.ts"
     }
   },
   "scripts": {

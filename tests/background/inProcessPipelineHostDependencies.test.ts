@@ -33,7 +33,12 @@ describe('in-process Firefox pipeline host dependencies', () => {
     const runtimeSendMessage = vi.fn(() => {
       throw new Error('runtime self-message must not be used');
     });
-    vi.stubGlobal('chrome', { runtime: { sendMessage: runtimeSendMessage } });
+    vi.stubGlobal('chrome', {
+      runtime: {
+        sendMessage: runtimeSendMessage,
+        getURL: (path: string) => `moz-extension://test/${path}`,
+      },
+    });
     mocks.dispatchBackgroundMessage.mockImplementation(async (message: { type: string }) => {
       if (message.type === 'mt:diagnostic-log-event') {
         return { ok: true, type: 'mt:diagnostic-log-event' };
@@ -80,6 +85,11 @@ describe('in-process Firefox pipeline host dependencies', () => {
   });
 
   it('preserves permission and retry metadata returned by the background dispatcher', async () => {
+    vi.stubGlobal('chrome', {
+      runtime: {
+        getURL: (path: string) => `moz-extension://test/${path}`,
+      },
+    });
     mocks.dispatchBackgroundMessage.mockResolvedValue({
       ok: false,
       type: 'mt:llm-chat-completions',

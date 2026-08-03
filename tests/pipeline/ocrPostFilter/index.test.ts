@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { filterOcrRegions } from "../../../src/pipeline/ocrPostFilter";
+import { filterOcrRegions } from "../../../packages/image-pipeline/src/pipeline/ocrPostFilter";
 import type {
   PipelineCanvas,
   PipelineImage,
   PlatformProvider,
-} from "../../../src/runtime/platform";
-import type { TextRegion } from "../../../src/types";
+} from "../../../packages/image-pipeline/src/runtime/platform";
+import type { TextRegion } from "../../../packages/image-pipeline/src/types";
 
 describe("filterOcrRegions", () => {
   it("keeps a region with repeated kana evidence in the plugin pipeline", async () => {

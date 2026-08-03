@@ -1,18 +1,18 @@
 import { describe, expect, it } from "vitest";
-import type { PipelineRenderingContext } from "../../../src/runtime/platform";
-import type { BubbleMask, TextRegion } from "../../../src/types";
+import type { PipelineRenderingContext } from "../../../packages/image-pipeline/src/runtime/platform";
+import type { BubbleMask, TextRegion } from "../../../packages/image-pipeline/src/types";
 import {
   buildHorizontalLineBoxes,
   buildHorizontalGlyphPlacements,
   rebalanceHorizontalShortTailLines,
   resolveHorizontalLineMetrics,
   resolveHorizontalSafeInterval,
-} from "../../../src/pipeline/typeset/horizontalFit";
+} from "../../../packages/image-pipeline/src/pipeline/typeset/horizontalFit";
 import {
   resolveHorizontalSourceGeometryProfile,
   resolveHorizontalSourceLineAnchor,
   resolveHorizontalSourceLineLayouts,
-} from "../../../src/pipeline/typeset/sourceGeometry";
+} from "../../../packages/image-pipeline/src/pipeline/typeset/sourceGeometry";
 
 function parseCanvasFontSize(font: string, fallback: number): number {
   return Number.parseFloat(font.match(/([\d.]+)px/u)?.[1] ?? "") || fallback;

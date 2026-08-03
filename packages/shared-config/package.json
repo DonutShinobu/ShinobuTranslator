@@ -11,5 +11,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@shinobu/text-translation": "0.1.0"
   }
 }

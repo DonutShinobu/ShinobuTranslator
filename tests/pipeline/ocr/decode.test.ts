@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { decodeCtcGreedy, tokenToText } from "../../../src/pipeline/ocr/decodeCtc";
+import { decodeCtcGreedy, tokenToText } from "../../../packages/image-pipeline/src/pipeline/ocr/decodeCtc";
 
 describe("decodeCtcGreedy", () => {
   it("returns empty array for all-blank path (all class 0)", () => {

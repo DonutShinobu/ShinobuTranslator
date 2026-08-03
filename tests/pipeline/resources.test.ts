@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-import { disposePipelineArtifacts } from '../../src/pipeline/resources';
+import { disposePipelineArtifacts } from '../../packages/image-pipeline/src/pipeline/resources';
 import type {
   PipelineCanvas,
   PipelineImage,
-} from '../../src/runtime/platform';
+} from '../../packages/image-pipeline/src/runtime/platform';
 import type {
   BubbleMask,
   PipelineArtifacts,
   TextRegion,
-} from '../../src/types';
+} from '../../packages/image-pipeline/src/types';
 
 function createCanvas(dispose: () => void): PipelineCanvas {
   return {

@@ -2,8 +2,8 @@ import {
   createTranslatorCore,
   type TranslatorCore,
 } from '@shinobu/translator-core';
-import type { LocalPipelineResult } from '../../../shared/localPipelineProtocol';
-import type { PipelineConfig, PipelineProgress } from '../../../types';
+import type { LocalPipelineResult } from '@shinobu/image-pipeline/protocol';
+import type { PipelineConfig, PipelineProgress } from '@shinobu/image-pipeline';
 import {
   runLocalPipeline,
   type RunLocalPipeline,

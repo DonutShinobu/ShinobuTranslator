@@ -1,10 +1,11 @@
 import type { ExtensionSettings } from './config';
-import type { DiagnosticLogEvent, DiagnosticLogTextExport } from './diagnosticLog';
-import type { OpenAiOAuthStatusInfo } from './openaiOAuth';
-import type { LlmAuthMode, LlmProvider, StageTiming } from '../types';
+import type { DiagnosticLogEvent, DiagnosticLogTextExport } from '@shinobu/diagnostics';
+import type { OpenAiOAuthStatusInfo } from '@shinobu/text-translation/openai';
+import type { StageTiming } from '@shinobu/image-pipeline/benchmark';
+import type { LlmAuthMode, LlmProvider } from '@shinobu/text-translation';
 import { requireExtensionRuntime } from './extensionRuntime';
-import { isLlmThinkingLevel } from './llmThinking';
-import type { LlmThinkingLevel } from './llmThinking';
+import { isLlmThinkingLevel } from '@shinobu/text-translation';
+import type { LlmThinkingLevel } from '@shinobu/text-translation';
 import { isReferrerPolicy } from './referrerPolicy';
 import { toErrorMessage } from './utils';
 

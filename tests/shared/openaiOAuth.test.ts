@@ -9,7 +9,7 @@ import {
   normalizeOpenAiOAuthTokenResponse,
   openAiOAuthLoopbackRedirectUri,
   parseOpenAiOAuthCallbackUrl,
-} from "../../src/shared/openaiOAuth";
+} from "../../packages/text-translation/src/openaiOAuth";
 
 function jwtWithPayload(payload: Record<string, unknown>): string {
   const encode = (value: string) =>

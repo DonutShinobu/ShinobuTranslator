@@ -6,7 +6,7 @@ import {
   isLocalPipelineClientMessage,
   serializePipelineError,
   splitBase64Chunks,
-} from '../../src/shared/localPipelineProtocol';
+} from '../../packages/image-pipeline/src/protocol/index';
 
 describe('local pipeline Port protocol', () => {
   it('splits Base64 at the 4 MiB boundary', () => {
@@ -89,7 +89,6 @@ describe('local pipeline Port protocol', () => {
         llmProvider: 'openai',
         llmAuthMode: 'api_key',
         llmBaseUrl: 'https://api.openai.com/v1',
-        llmApiKey: 'sk-test',
         llmModel: 'gpt-5.4-mini',
         typesetDebug: false,
         eraseDebug: false,
@@ -111,6 +110,13 @@ describe('local pipeline Port protocol', () => {
         },
       },
     })).toBe(true);
+    expect(isLocalPipelineClientMessage({
+      ...startMessage,
+      config: {
+        ...startMessage.config,
+        llmApiKey: 'sk-must-not-cross-the-boundary',
+      },
+    })).toBe(false);
     expect(isLocalPipelineClientMessage({
       ...startMessage,
       config: {

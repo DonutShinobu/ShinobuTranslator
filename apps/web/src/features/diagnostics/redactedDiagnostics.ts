@@ -1,5 +1,5 @@
 import type { TranslationProviderId, UiLocale } from '@shinobu/shared-config';
-import { isLocalPipelineErrorCode } from '../../../../../src/shared/localPipelineProtocol';
+import { isLocalPipelineErrorCode } from '@shinobu/image-pipeline/protocol';
 import type { PipelineProgress } from '@shinobu/image-pipeline';
 import type {
   ProcessingRuntimeModelPackageState,

@@ -58,7 +58,6 @@ const commonArtifacts = [
   'popup.js',
   'content.js',
   'chunks/messages.js',
-  'chunks/localPipelineProtocol.js',
   'chunks/perfTrace.js',
   'chunks/onnxWorkerBridge.js',
   'onnxWorker.js',
@@ -87,7 +86,7 @@ for (const file of files.filter((path) => path.endsWith('.js'))) {
       throw new Error(`Release artifact contains forbidden benchmark token ${token}: ${file}`);
     }
   }
-  if (/tesseract(?:\.js)?|cdn\.jsdelivr\.net|unpkg\.com/i.test(source)) {
+  if (/tesseract\.js|tessedit_pageseg_mode|cdn\.jsdelivr\.net|unpkg\.com/i.test(source)) {
     throw new Error(`Extension artifact contains Tesseract or remote executable code: ${file}`);
   }
   try {

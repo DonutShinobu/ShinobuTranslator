@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SerialInferenceQueue } from "../../src/workers/inferenceQueue";
+import { SerialInferenceQueue } from "../../packages/model-runtime/src/workers/inferenceQueue";
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve!: () => void;

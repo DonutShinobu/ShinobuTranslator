@@ -5,33 +5,69 @@ import {
   type TranslationFailure,
   type TranslationTask,
 } from '@shinobu/translator-core';
+import type {
+  LlmProvider,
+  LlmThinkingLevel,
+  TextTranslator,
+  TranslationReferenceContext,
+} from '@shinobu/text-translation';
+import type { ModelRuntime } from '@shinobu/model-runtime';
+import type { DiagnosticLogObserver } from '@shinobu/diagnostics';
+import type { PlatformProvider } from './runtime/platform';
+import { runPipeline, PipelineStageError } from './pipeline/orchestrator';
+import { disposePipelineArtifacts } from './pipeline/resources';
+import { registerTypesetFonts } from './pipeline/typeset/fontRuntime';
+import { canvasToPngBlob, summarizePipelineArtifacts } from './protocol';
+import type { PipelineArtifacts } from './types';
+import type { DetectionFallbackStrategy } from './pipeline/detect';
+
+export type {
+  LlmProvider,
+  LlmThinkingLevel,
+  TranslationReferenceContext,
+} from '@shinobu/text-translation';
+
+export type PipelinePlatform = PlatformProvider & {
+  prepareSource?(
+    source: Blob,
+    workingCopy: Readonly<WorkingCopySpec>,
+  ): Promise<Blob>;
+};
+
+export type {
+  PipelineCanvas,
+  PipelineFontDescriptors,
+  PipelineImage,
+  PipelineImageData,
+  PipelineRenderingContext,
+  PipelineTextMetrics,
+  PlatformProvider,
+} from './runtime/platform';
+
+export type ImagePipelineExecution = {
+  textTranslator: TextTranslator;
+};
+
+export type ImagePipelineDependencies = {
+  platform: PipelinePlatform;
+  modelRuntime: ModelRuntime;
+  detectionFallbackStrategy: DetectionFallbackStrategy;
+  fontSource?: (path: string) => string;
+  observer?: DiagnosticLogObserver;
+};
+
+export type { DetectionFallbackStrategy } from './pipeline/detect';
+
+export interface ImagePipeline {
+  run(
+    request: ImagePipelineRequest,
+    execution: ImagePipelineExecution,
+  ): TranslationTask<PipelineProgress, ImagePipelineResult>;
+  whenIdle(): Promise<void>;
+  dispose(reason?: unknown): Promise<void>;
+}
 
 export const PIPELINE_RECORD_SCHEMA_VERSION = 2 as const;
-
-export type LlmProvider =
-  | 'deepseek'
-  | 'gemini'
-  | 'glm'
-  | 'kimi'
-  | 'minimax'
-  | 'mimo'
-  | 'openai'
-  | 'custom';
-
-export type LlmThinkingLevel =
-  | 'off'
-  | 'on'
-  | 'low'
-  | 'medium'
-  | 'high'
-  | 'xhigh'
-  | 'max';
-
-export type TranslationReferenceContext = {
-  source: 'x_tweet';
-  currentTweetText: string;
-  quotedTweetText?: string;
-};
 
 /**
  * Immutable choices that determine the produced image. Runtime credentials and
@@ -213,7 +249,7 @@ export type ImagePipelineResult = {
   diagnostics?: Readonly<Record<string, unknown>>;
 };
 
-export type ImagePipelineExecutionOutput<Artifacts> = {
+type ImagePipelineExecutionOutput<Artifacts> = {
   status: ImagePipelineResult['status'];
   artifacts: Artifacts;
 };
@@ -583,7 +619,7 @@ export class ImagePipelineExecutionError extends TranslationExecutionError {
  * Owns one browser-local image execution at a time, including admission,
  * cancellation settlement, finalization, and release of live artifacts.
  */
-export class ImagePipelineRuntime<Artifacts> {
+class ImagePipelineRuntime<Artifacts> {
   private active: ActiveExecution | null = null;
   private preparePromise: Promise<void> | null = null;
   private prepared = false;
@@ -1251,4 +1287,143 @@ export function isPipelineRecord(value: unknown): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Creates the sole owner of pipeline admission, retries, cancellation,
+ * records, encoding, and model/artifact disposal for a host.
+ */
+export function createImagePipeline(
+  dependencies: ImagePipelineDependencies,
+): ImagePipeline {
+  let activeExecution: ImagePipelineExecution | null = null;
+  const runtime = new ImagePipelineRuntime<PipelineArtifacts>({
+    async prepare() {
+      if (dependencies.fontSource) {
+        registerTypesetFonts(dependencies.platform, dependencies.fontSource);
+        await dependencies.platform.waitForFonts();
+      }
+    },
+    async execute(request, context) {
+      const execution = activeExecution;
+      if (!execution) {
+        throw new Error('流水线执行 capability 不可用');
+      }
+      const preparedSource = dependencies.platform.prepareSource
+        ? await dependencies.platform.prepareSource(
+            request.source,
+            request.workingCopy,
+          )
+        : request.source;
+      const source = preparedSource instanceof File
+        ? preparedSource
+        : new File([preparedSource], 'source-image', {
+            type: preparedSource.type,
+          });
+      const textTranslator: TextTranslator = {
+        translateRegions(translationRequest) {
+          return context.runOperation(
+            {
+              stage: 'translate',
+              operation: 'translate-regions',
+            },
+            () => execution.textTranslator.translateRegions(
+              translationRequest,
+            ),
+          );
+        },
+      };
+      const artifacts = await runPipeline(
+        source,
+        request.config,
+        context.reportProgress,
+        {
+          signal: context.signal,
+          platform: dependencies.platform,
+          modelRuntime: dependencies.modelRuntime,
+          textTranslator,
+          observer: dependencies.observer,
+          detectionFallbackStrategy:
+            dependencies.detectionFallbackStrategy,
+        },
+      );
+      return {
+        status: hasTranslatableText({
+          ordered: artifacts.stageRegions.ordered,
+        })
+          ? 'completed'
+          : 'no-translatable-text',
+        artifacts,
+      };
+    },
+    async finalize(output, request) {
+      const finalizeStartedAt = performance.now();
+      const image = await canvasToPngBlob(output.artifacts.resultCanvas);
+      const debug = request.config.typesetDebug
+        && output.artifacts.debugOriginalCanvas
+        ? await canvasToPngBlob(output.artifacts.debugOriginalCanvas)
+        : undefined;
+      output.artifacts.stageTimings.push({
+        stage: 'finalize',
+        label: '生成结果图片',
+        durationMs: performance.now() - finalizeStartedAt,
+      });
+      return {
+        status: output.status,
+        image,
+        debug,
+        record: createPipelineRecord({
+          image: {
+            width: output.artifacts.original.naturalWidth,
+            height: output.artifacts.original.naturalHeight,
+          },
+          ocr: output.artifacts.stageRegions.ocr,
+          ordered: output.artifacts.stageRegions.ordered,
+        }, request.workingCopy),
+        diagnostics: {
+          summary: summarizePipelineArtifacts(output.artifacts),
+        },
+      };
+    },
+    release(output) {
+      disposePipelineArtifacts(output.artifacts);
+    },
+    releaseFailure(error) {
+      if (error instanceof PipelineStageError) {
+        disposePipelineArtifacts(error.artifacts);
+      }
+    },
+    dispose() {
+      return dependencies.modelRuntime.dispose();
+    },
+  });
+
+  return Object.freeze({
+    run(request: ImagePipelineRequest, execution: ImagePipelineExecution) {
+      activeExecution = execution;
+      let task: TranslationTask<PipelineProgress, ImagePipelineResult>;
+      try {
+        task = runtime.run(request);
+      } catch (error) {
+        activeExecution = null;
+        throw error;
+      }
+      task.result.then(
+        () => {
+          activeExecution = null;
+        },
+        () => {
+          activeExecution = null;
+        },
+      );
+      return task;
+    },
+    whenIdle() {
+      return runtime.whenIdle();
+    },
+    dispose(reason?: unknown) {
+      activeExecution = null;
+      return runtime.dispose(reason);
+    },
+  });
 }

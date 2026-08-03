@@ -1,7 +1,7 @@
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { OCR_POST_FILTER_RULE_ID } from "../../../src/pipeline/ocrPostFilter/rule";
+import { OCR_POST_FILTER_RULE_ID } from '@shinobu/image-pipeline/benchmark';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const REQUIRED_WEBGPU_MODELS = ["detector", "bubble", "ocr"] as const;

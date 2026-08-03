@@ -7,8 +7,8 @@ import type {
   ProgressJankUiStats,
   ProgressJankWorkerHeartbeatMode,
 } from './types';
-import type { PerfTraceWorkerCall } from '../../shared/perfTrace';
-import { setPerfTraceSink } from '../../shared/perfTrace';
+import type { PerfTraceWorkerCall } from '@shinobu/diagnostics';
+import { setPerfTraceSink } from '@shinobu/diagnostics';
 
 type FrameSample = {
   startMs: number;

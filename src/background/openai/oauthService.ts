@@ -17,12 +17,12 @@ import {
   openAiOAuthRevokeEndpoint,
   openAiOAuthTokenEndpoint,
   parseOpenAiOAuthCallbackUrl,
-} from "../../shared/openaiOAuth";
+} from '@shinobu/text-translation/openai';
 import type {
   OpenAiOAuthStatusInfo,
   OpenAiOAuthTokenResponse,
   StoredOpenAiOAuthTokens,
-} from "../../shared/openaiOAuth";
+} from '@shinobu/text-translation/openai';
 import { toErrorMessage } from "../../shared/utils";
 import {
   storageGet,

@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { defaultExtensionSettings } from '../../src/shared/config';
 import type { ExtensionSettings } from '../../src/shared/config';
 import type { ExtensionMessageSender } from '../../src/shared/extensionRuntime';
-import { createDiagnosticEvent } from '../../src/shared/diagnosticLog';
-import type { DiagnosticLogEvent } from '../../src/shared/diagnosticLog';
+import { createDiagnosticEvent } from '../../packages/diagnostics/src/diagnosticLog';
+import type { DiagnosticLogEvent } from '../../packages/diagnostics/src/diagnosticLog';
 import type { RuntimeMessage } from '../../src/shared/messages';
 import {
   routeBackgroundMessage,

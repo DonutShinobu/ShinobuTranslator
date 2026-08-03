@@ -5,7 +5,7 @@ import {
   LOCAL_PIPELINE_BACKGROUND_LEASE_PORT,
   LOCAL_PIPELINE_CLIENT_PORT,
   LOCAL_PIPELINE_HOST_PORT,
-} from '../../src/shared/localPipelineProtocol';
+} from '../../packages/image-pipeline/src/protocol/index';
 
 class FakePort implements ExtensionPort {
   readonly sent: unknown[] = [];
@@ -63,7 +63,6 @@ const pipelineConfig = {
   llmProvider: 'openai',
   llmAuthMode: 'api_key',
   llmBaseUrl: 'https://example.invalid',
-  llmApiKey: 'runtime-only',
   llmModel: 'test-model',
   typesetDebug: false,
   eraseDebug: false,

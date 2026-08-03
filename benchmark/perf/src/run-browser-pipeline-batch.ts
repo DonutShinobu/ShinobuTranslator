@@ -18,7 +18,7 @@ import type {
   RuntimeStageStatus,
   StageTiming,
   TextRegion,
-} from "../../../src/types";
+} from '@shinobu/image-pipeline/benchmark';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const DIST_DIR = join(ROOT, "apps", "extension", "dist-chromium");

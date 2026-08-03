@@ -10,7 +10,7 @@ import {
   sanitizeDiagnosticUrl,
   toDiagnosticError,
   type DiagnosticLogEvent,
-} from '../../src/shared/diagnosticLog';
+} from '../../packages/diagnostics/src/diagnosticLog';
 
 describe('formatDiagnosticReadableLog', () => {
   it('formats events in the readable log style', () => {

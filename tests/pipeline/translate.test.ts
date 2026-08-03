@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { runTranslate } from '../../src/pipeline/translate';
-import type { PipelineConfig, TextRegion } from '../../src/types';
+import { runTranslate as runTextTranslate } from '../../packages/text-translation/src/translator';
+import type { PipelineConfig, TextRegion } from '../../packages/image-pipeline/src/types';
+import { extensionTextTranslationTransport } from '../../src/shared/textTranslationTransport';
+
+const runTranslate = (regions: TextRegion[], config: PipelineConfig) => (
+  runTextTranslate(regions, config, {
+    transport: extensionTextTranslationTransport,
+  })
+);
 
 const testGlobal = globalThis as typeof globalThis & { chrome?: unknown };
 const originalChrome = testGlobal.chrome;
@@ -12,7 +19,6 @@ const baseConfig: PipelineConfig = {
   llmProvider: 'openai',
   llmAuthMode: 'api_key',
   llmBaseUrl: 'https://api.openai.com/v1',
-  llmApiKey: 'sk-test',
   llmModel: 'gpt-5.4-mini',
   llmThinkingLevel: 'off',
   typesetDebug: false,

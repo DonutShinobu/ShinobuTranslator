@@ -1,17 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PipelineImage, PlatformProvider } from '../../../src/runtime/platform';
-import type { TextRegion } from '../../../src/types';
+import type { PipelineImage, PlatformProvider } from '../../../packages/image-pipeline/src/runtime/platform';
+import type { TextRegion } from '../../../packages/image-pipeline/src/types';
+import type { ModelRuntime } from '@shinobu/model-runtime';
 
-vi.mock('../../../src/pipeline/detect/onnxDetect', () => ({
+vi.mock('../../../packages/image-pipeline/src/pipeline/detect/onnxDetect', () => ({
   detectByOnnx: vi.fn(),
 }));
-vi.mock('../../../src/pipeline/detect/heuristicOnly', () => ({
+vi.mock('../../../packages/image-pipeline/src/pipeline/detect/heuristicDetect', () => ({
+  detectByTesseract: vi.fn(),
+}));
+vi.mock('../../../packages/image-pipeline/src/pipeline/detect/heuristicOnly', () => ({
   detectByHeuristic: vi.fn(),
 }));
 
-import { detectTextRegionsWithMask } from '../../../src/pipeline/detect/extensionDetect';
-import { detectByHeuristic } from '../../../src/pipeline/detect/heuristicOnly';
-import { detectByOnnx } from '../../../src/pipeline/detect/onnxDetect';
+import { detectTextRegionsWithMask } from '../../../packages/image-pipeline/src/pipeline/detect';
+import { detectByTesseract } from '../../../packages/image-pipeline/src/pipeline/detect/heuristicDetect';
+import { detectByHeuristic } from '../../../packages/image-pipeline/src/pipeline/detect/heuristicOnly';
+import { detectByOnnx } from '../../../packages/image-pipeline/src/pipeline/detect/onnxDetect';
 
 const region: TextRegion = {
   id: 'region-1',
@@ -21,11 +26,13 @@ const region: TextRegion = {
 };
 const image = {} as PipelineImage;
 const platform = {} as PlatformProvider;
+const modelRuntime = {} as ModelRuntime;
 
 describe('extension detector composition', () => {
   beforeEach(() => {
     vi.mocked(detectByOnnx).mockReset();
     vi.mocked(detectByHeuristic).mockReset();
+    vi.mocked(detectByTesseract).mockReset();
   });
 
   it('uses ONNX when it finds text', async () => {
@@ -35,18 +42,19 @@ describe('extension detector composition', () => {
       engine: 'onnx',
     });
 
-    await expect(detectTextRegionsWithMask(image, platform)).resolves.toMatchObject({
+    await expect(detectTextRegionsWithMask(image, platform, modelRuntime, { kind: 'heuristic-only' })).resolves.toMatchObject({
       regions: [region],
       engine: 'onnx',
     });
     expect(detectByHeuristic).not.toHaveBeenCalled();
+    expect(detectByTesseract).not.toHaveBeenCalled();
   });
 
   it('falls back directly from ONNX failure to the local heuristic', async () => {
     vi.mocked(detectByOnnx).mockRejectedValue(new Error('WASM unavailable'));
     vi.mocked(detectByHeuristic).mockResolvedValue([region]);
 
-    await expect(detectTextRegionsWithMask(image, platform)).resolves.toMatchObject({
+    await expect(detectTextRegionsWithMask(image, platform, modelRuntime, { kind: 'heuristic-only' })).resolves.toMatchObject({
       regions: [region],
       rawMaskCanvas: null,
       engine: 'heuristic',
@@ -58,6 +66,6 @@ describe('extension detector composition', () => {
     vi.mocked(detectByOnnx).mockRejectedValue(new Error('model failed'));
     vi.mocked(detectByHeuristic).mockResolvedValue([]);
 
-    await expect(detectTextRegionsWithMask(image, platform)).rejects.toThrow('未找到文本');
+    await expect(detectTextRegionsWithMask(image, platform, modelRuntime, { kind: 'heuristic-only' })).rejects.toThrow('未找到文本');
   });
 });

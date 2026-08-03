@@ -9,11 +9,6 @@ if (!requestedOutDir || requestedOutDir.startsWith('--')) {
   throw new Error('--out-dir is required and must name a target-specific extension directory');
 }
 const outputDir = resolve(process.cwd(), requestedOutDir);
-const browserRuntimeTarget = resolve(
-  __dirname,
-  '../src/runtime/browserRuntimeTarget.ts',
-);
-
 function externalizeNodeOnlyAdapter(id) {
   return id.includes('onnxruntime-node')
     || id.includes('onnxNodeBridge')
@@ -30,23 +25,13 @@ await build({
   publicDir: false,
   resolve: {
     conditions: ['onnxruntime-web-use-extern-wasm'],
-    alias: [
-      {
-        find: './runtimeTarget',
-        replacement: browserRuntimeTarget,
-      },
-      {
-        find: '../../runtime/runtimeTarget',
-        replacement: browserRuntimeTarget,
-      },
-    ],
   },
   build: {
     // The self-contained ONNX Runtime Worker is intentionally about 873 kB.
     chunkSizeWarningLimit: 900,
     rollupOptions: {
       external: externalizeNodeOnlyAdapter,
-      input: resolve(__dirname, '../src/workers/onnx-worker.ts'),
+      input: resolve(__dirname, '../packages/model-runtime/src/workers/onnx-worker.ts'),
       output: {
         entryFileNames: 'onnxWorker.js',
         format: 'es',

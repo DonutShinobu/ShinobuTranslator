@@ -1,4 +1,4 @@
-import { base64ToBlob, blobToBase64 } from '../../../shared/blobCodec';
+import { base64ToBlob, blobToBase64 } from '@shinobu/image-pipeline/protocol';
 import {
   getExtensionRuntime,
   type ExtensionPort,
@@ -16,12 +16,12 @@ import {
   type LocalPipelineArtifactSummary,
   type LocalPipelineClientMessage,
   type LocalPipelineResult,
-} from '../../../shared/localPipelineProtocol';
+} from '@shinobu/image-pipeline/protocol';
 import type {
   PipelineCancellationReason,
   PipelineRecord,
 } from '@shinobu/image-pipeline';
-import type { PipelineConfig, PipelineProgress } from '../../../types';
+import type { PipelineConfig, PipelineProgress } from '@shinobu/image-pipeline';
 
 export type RunLocalPipeline = (
   file: File,
@@ -208,6 +208,7 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
         case 'queued':
           onProgress({
             stage: 'queued',
+            operation: 'queue',
             detail: value.position === 0 ? '本地流水线任务开始执行' : `本地流水线排队中（前方 ${value.position} 个任务）`,
           });
           break;

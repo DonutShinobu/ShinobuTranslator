@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { bakeResultRegionToFixtureRegion } from "../../benchmark/typeset/src/fixture-build";
-import type { BakeResultRegion } from "../../src/pipeline/bake";
+import type { BakeResultRegion } from "../../packages/image-pipeline/src/pipeline/bake";
 
 function makeBakeRegion(direction: "h" | "v"): BakeResultRegion {
   return {

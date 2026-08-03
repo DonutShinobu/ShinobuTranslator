@@ -22,7 +22,7 @@ import type {
   TypesetDirection,
   VerticalRegionMetrics,
 } from "./types";
-import type { PipelineTypesetDebugLog } from "../../../src/types";
+import type { PipelineTypesetDebugLog } from '@shinobu/image-pipeline/benchmark';
 
 const ROOT = resolve(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "../../..");
 

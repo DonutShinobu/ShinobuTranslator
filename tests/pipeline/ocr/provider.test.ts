@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
-import type { OcrRecognizeResult } from "../../../src/pipeline/ocr/provider";
+import type { OcrRecognizeResult } from "../../../packages/image-pipeline/src/pipeline/ocr/provider";
 import {
   inferDirectionFromQuad,
   fillMissingOcrFields,
-} from "../../../src/pipeline/ocr/provider";
-import type { QuadPoint } from "../../../src/types";
+} from "../../../packages/image-pipeline/src/pipeline/ocr/provider";
+import type { QuadPoint } from "../../../packages/image-pipeline/src/types";
 
 /** Helper: build a quad representing a horizontal rectangle (width >= height). */
 function hQuad(): [QuadPoint, QuadPoint, QuadPoint, QuadPoint] {

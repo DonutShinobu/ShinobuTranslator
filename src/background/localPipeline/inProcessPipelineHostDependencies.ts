@@ -4,9 +4,12 @@ import {
 } from '../../shared/diagnosticLogClient';
 import {
   createMessageTextTranslationTransport,
-} from '../../translators/transport';
+} from '../../shared/textTranslationTransport';
 import type { PipelineHostDependencies } from '../../offscreen/pipelineHost';
 import { dispatchBackgroundMessage } from '../index';
+import { createExtensionModelRuntime } from '../../shared/extensionModelRuntime';
+import { browserPipelinePlatform } from '../../shared/browserPipelinePlatform';
+import { requireExtensionRuntime } from '../../shared/extensionRuntime';
 
 const pipelineHostSender: ExtensionMessageSender = {};
 
@@ -15,6 +18,9 @@ export function createInProcessPipelineHostDependencies(): PipelineHostDependenc
     dispatchBackgroundMessage(message, pipelineHostSender);
 
   return {
+    modelRuntime: createExtensionModelRuntime(),
+    platform: browserPipelinePlatform,
+    fontSource: requireExtensionRuntime().getURL.bind(requireExtensionRuntime()),
     translationTransport: createMessageTextTranslationTransport(sendMessage),
     diagnostics: createDiagnosticLogEmitter(async (event) => {
       const response = await sendMessage({

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { decodePaddleCtc } from '../../../src/pipeline/ocr/paddleocrDecode';
+import { decodePaddleCtc } from '../../../packages/image-pipeline/src/pipeline/ocr/paddleocrDecode';
 
 describe('decodePaddleCtc', () => {
   it('解码简单的 CTC 输出：重复合并 + blank 去除', () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { TextRegion } from "../../../src/types";
-import type { OcrRecognizeResult } from "../../../src/pipeline/ocr/provider";
-import { mapResultsToRegions } from "../../../src/pipeline/ocr";
+import type { TextRegion } from "../../../packages/image-pipeline/src/types";
+import type { OcrRecognizeResult } from "../../../packages/image-pipeline/src/pipeline/ocr/provider";
+import { mapResultsToRegions } from "../../../packages/image-pipeline/src/pipeline/ocr";
 
 function region(id: string, x: number): TextRegion {
   return {

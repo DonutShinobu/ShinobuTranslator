@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { hasBubbleMaskPixel } from '../../src/pipeline/bubbleMask';
-import { decodeBubbleMasks, matchRegionsToBubbles } from '../../src/pipeline/bubbleDetect';
-import type { BubbleMask, TextRegion } from '../../src/types';
+import { hasBubbleMaskPixel } from '../../packages/image-pipeline/src/pipeline/bubbleMask';
+import { decodeBubbleMasks, matchRegionsToBubbles } from '../../packages/image-pipeline/src/pipeline/bubbleDetect';
+import type { BubbleMask, TextRegion } from '../../packages/image-pipeline/src/types';
 
 function createLocalMask(): BubbleMask {
   return {

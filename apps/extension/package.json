@@ -19,7 +19,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@shinobu/browser-runtime": "0.1.0",
+    "@shinobu/diagnostics": "0.1.0",
     "@shinobu/image-pipeline": "0.1.0",
+    "@shinobu/model-runtime": "0.1.0",
+    "@shinobu/text-translation": "0.1.0",
     "@shinobu/translator-core": "0.1.0",
     "comlink": "^4.4.2",
     "onnxruntime-web": "^1.24.1",

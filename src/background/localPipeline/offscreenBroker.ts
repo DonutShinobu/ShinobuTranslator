@@ -15,7 +15,7 @@ import {
   type LocalPipelineClientMessage,
   type LocalPipelineErrorCode,
   type LocalPipelineHostMessage,
-} from '../../shared/localPipelineProtocol';
+} from '@shinobu/image-pipeline/protocol';
 import {
   ChromiumPipelineHostLifecycle,
   createPipelineHostError,

@@ -13,17 +13,22 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { dirname, extname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { execSync } from "child_process";
-import { imageToCanvas } from "../../../src/pipeline/image";
-import { detectTextRegionsWithMask } from "../../../src/pipeline/detect";
-import { runOcr } from "../../../src/pipeline/ocr";
-import { runInpaint } from "../../../src/pipeline/inpaint";
-import { drawTypeset } from "../../../src/pipeline/typeset";
-import { mergeTextLines } from "../../../src/pipeline/textlineMerge";
-import { refineTextMask } from "../../../src/pipeline/maskRefinement";
-import { sortRegionsForRender } from "../../../src/pipeline/readingOrder";
-import { detectBubbles, matchRegionsToBubbles } from "../../../src/pipeline/bubbleDetect";
-import { nodePlatform } from "../../../src/runtime/nodePlatform";
-import type { OcrRunDebugInfo } from "../../../src/types";
+import {
+  detectBubbles,
+  detectByTesseract,
+  detectTextRegionsWithMask,
+  drawTypeset,
+  imageToCanvas,
+  matchRegionsToBubbles,
+  mergeTextLines,
+  refineTextMask,
+  runInpaint,
+  runOcr,
+  sortRegionsForRender,
+} from '@shinobu/image-pipeline/benchmark';
+import { nodePipelinePlatform as nodePlatform } from '../../nodePipelinePlatform';
+import type { OcrRunDebugInfo } from '@shinobu/image-pipeline/benchmark';
+import { benchmarkModelRuntime } from '../../model-runtime';
 
 // ---------------------------------------------------------------------------
 // Path constants
@@ -176,15 +181,30 @@ async function runPipelineOnce(imageDataUrl: string): Promise<{ stages: StageTim
   const originalCanvas = imageToCanvas(image, nodePlatform);
 
   // detect
-  const detected = await time("detect", "文本检测", () => detectTextRegionsWithMask(image, nodePlatform));
+  const detected = await time("detect", "文本检测", () => detectTextRegionsWithMask(
+    image,
+    nodePlatform,
+    benchmarkModelRuntime,
+    {
+      kind: 'tesseract-then-heuristic',
+      detectWithTesseract: detectByTesseract,
+    },
+  ));
   let regions = detected.regions;
   const detectionMaskCanvas = detected.rawMaskCanvas;
 
   // bubble
-  const bubbleResult = await time("bubble", "气泡检测", () => detectBubbles(image, nodePlatform));
+  const bubbleResult = await time("bubble", "气泡检测", () => detectBubbles(image, nodePlatform, benchmarkModelRuntime));
 
   // ocr
-  const ocrResult = await time("ocr", "OCR 日文识别", () => runOcr(image, regions, undefined, nodePlatform));
+  const ocrResult = await time("ocr", "OCR 日文识别", () => runOcr(
+    image,
+    regions,
+    undefined,
+    nodePlatform,
+    undefined,
+    benchmarkModelRuntime,
+  ));
   regions = ocrResult.regions;
   const ocrDebug = summarizeOcrDebug(ocrResult.debug);
 
@@ -231,7 +251,12 @@ async function runPipelineOnce(imageDataUrl: string): Promise<{ stages: StageTim
       maskRefineTiming = { stage: "mask_refine", label: "细化去字遮罩", durationMs: performance.now() - mrT0 };
 
       const ipT0 = performance.now();
-      const inpaintResult = await runInpaint(originalCanvas, refineResult.refinedMaskCanvas, nodePlatform);
+      const inpaintResult = await runInpaint(
+        originalCanvas,
+        refineResult.refinedMaskCanvas,
+        nodePlatform,
+        benchmarkModelRuntime,
+      );
       inpaintTiming = { stage: "inpaint", label: "去字", durationMs: performance.now() - ipT0 };
       return inpaintResult.canvas;
     })(),
@@ -391,8 +416,7 @@ async function main(): Promise<void> {
     // Detect runtime on first image's first run
     if (imgIdx === 0 && runtime === "unknown") {
       try {
-        const { getModelSession } = await import("../../../src/runtime/modelRegistry");
-        const handle = await getModelSession("detector");
+        const handle = await benchmarkModelRuntime.getSession('detector');
         runtime = handle.provider ?? "unknown";
       } catch {
         runtime = "unknown";

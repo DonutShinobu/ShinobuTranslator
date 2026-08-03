@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { rgbToLab, colorDistance, resolveColors } from "../../../src/pipeline/typeset/color";
+import { rgbToLab, colorDistance, resolveColors } from "../../../packages/image-pipeline/src/pipeline/typeset/color";
 
 describe("rgbToLab", () => {
   it("maps pure black [0,0,0] to Lab [0,0,0]", () => {

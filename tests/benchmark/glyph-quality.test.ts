@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { TypesetDebugRegionLog } from "../../src/types";
+import type { TypesetDebugRegionLog } from "../../packages/image-pipeline/src/types";
 import { computeVerticalGlyphQuality } from "../../benchmark/typeset/src/glyph-quality";
-import { tokenizeVerticalText } from "../../src/pipeline/typeset/verticalOrientation";
+import { tokenizeVerticalText } from "../../packages/image-pipeline/src/pipeline/typeset/verticalOrientation";
 
 function makeRegion(text: string): TypesetDebugRegionLog {
   const tokens = tokenizeVerticalText(text);

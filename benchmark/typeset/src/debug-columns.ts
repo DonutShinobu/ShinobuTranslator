@@ -1,5 +1,5 @@
 import type { GroundTruthColumn } from "./types";
-import type { QuadPoint, TypesetDebugRegionLog } from "../../../src/types";
+import type { QuadPoint, TypesetDebugRegionLog } from '@shinobu/image-pipeline/benchmark';
 
 function quadBounds(quad: [QuadPoint, QuadPoint, QuadPoint, QuadPoint]): {
   minX: number;

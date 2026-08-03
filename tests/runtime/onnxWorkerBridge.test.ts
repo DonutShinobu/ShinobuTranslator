@@ -74,7 +74,7 @@ describe('onnxWorkerBridge bootstrap policy', () => {
 
   afterEach(async () => {
     try {
-      const bridge = await import('../../src/runtime/onnxWorkerBridge');
+      const bridge = await import('../../packages/model-runtime/src/runtime/onnxWorkerBridge');
       await bridge.disposeAll();
     } catch {
       // A failed bootstrap may leave no bridge resources to dispose.
@@ -91,7 +91,12 @@ describe('onnxWorkerBridge bootstrap policy', () => {
       runtime: { getURL: (path: string) => `chrome-extension://test/${path}` },
     };
     comlinkState.factory = () => proxy(async () => undefined);
-    const bridge = await import('../../src/runtime/onnxWorkerBridge');
+    const bridge = await import('../../packages/model-runtime/src/runtime/onnxWorkerBridge');
+    bridge.configureOnnxWorkerBootstrap({
+      scriptUrl: 'chrome-extension://test/onnxWorker.js',
+      ortPath: 'chrome-extension://test/ort/',
+      policy: 'direct-only',
+    });
 
     await bridge.createSession('detector', '/models/detector.onnx', ['wasm']);
 
@@ -107,7 +112,12 @@ describe('onnxWorkerBridge bootstrap policy', () => {
     const init = vi.fn(async () => undefined);
     const workerProxy = proxy(init);
     comlinkState.factory = () => workerProxy;
-    const bridge = await import('../../src/runtime/onnxWorkerBridge');
+    const bridge = await import('../../packages/model-runtime/src/runtime/onnxWorkerBridge');
+    bridge.configureOnnxWorkerBootstrap({
+      scriptUrl: '/onnxWorker.js',
+      ortPath: '/ort/',
+      policy: 'direct-only',
+    });
 
     await bridge.createSession('detector', '/models/detector.onnx', ['wasm']);
 
@@ -122,16 +132,17 @@ describe('onnxWorkerBridge bootstrap policy', () => {
     vi.stubGlobal('location', new URL('https://app.example/workbench'));
     const init = vi.fn(async () => undefined);
     comlinkState.factory = () => proxy(init);
-    const bridge = await import('../../src/runtime/onnxWorkerBridge');
+    const bridge = await import('../../packages/model-runtime/src/runtime/onnxWorkerBridge');
 
     bridge.configureOnnxWorkerBootstrap({
-      scriptUrl: '/src/workers/onnx-worker.ts?worker_file&type=module',
+      scriptUrl: '/packages/model-runtime/src/workers/onnx-worker.ts?worker_file&type=module',
       ortPath: '/ort/',
+      policy: 'direct-then-blob',
     });
     await bridge.createSession('detector', '/models/detector.onnx', ['wasm']);
 
     expect(FakeWorker.instances.map((worker) => worker.url)).toEqual([
-      'https://app.example/src/workers/onnx-worker.ts?worker_file&type=module',
+      'https://app.example/packages/model-runtime/src/workers/onnx-worker.ts?worker_file&type=module',
     ]);
     expect(init).toHaveBeenCalledWith('https://app.example/ort/');
   });
@@ -142,14 +153,19 @@ describe('onnxWorkerBridge bootstrap policy', () => {
     };
     comlinkState.factory = () => proxy(async () => { throw new Error('extension CSP failure'); });
     const createObjectUrl = vi.spyOn(URL, 'createObjectURL');
-    const bridge = await import('../../src/runtime/onnxWorkerBridge');
+    const bridge = await import('../../packages/model-runtime/src/runtime/onnxWorkerBridge');
+    bridge.configureOnnxWorkerBootstrap({
+      scriptUrl: 'chrome-extension://test/onnxWorker.js',
+      ortPath: 'chrome-extension://test/ort/',
+      policy: 'direct-only',
+    });
 
     const error = await bridge.createSession('detector', '/models/detector.onnx', ['wasm'])
       .then(() => null, (reason: unknown) => reason);
 
     expect(error).toBeInstanceOf(bridge.WorkerBootstrapError);
     expect((error as InstanceType<typeof bridge.WorkerBootstrapError>).attempts).toMatchObject([
-      { mode: 'direct-extension', status: 'failed' },
+      { mode: 'direct', status: 'failed' },
     ]);
     expect(createObjectUrl).not.toHaveBeenCalled();
     expect(globalThis.fetch).not.toHaveBeenCalled();
@@ -177,7 +193,12 @@ describe('onnxWorkerBridge bootstrap policy', () => {
     })) as unknown as typeof fetch;
     const createObjectUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test-worker');
     const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
-    const bridge = await import('../../src/runtime/onnxWorkerBridge');
+    const bridge = await import('../../packages/model-runtime/src/runtime/onnxWorkerBridge');
+    bridge.configureOnnxWorkerBootstrap({
+      scriptUrl: 'http://127.0.0.1:4173/onnxWorker.js',
+      ortPath: 'http://127.0.0.1:4173/ort/',
+      policy: 'direct-then-blob',
+    });
 
     const creation = bridge.createSession('detector', '/models/detector.onnx', ['wasm']);
     await vi.waitFor(() => expect(createObjectUrl).toHaveBeenCalledTimes(1));
@@ -204,7 +225,12 @@ describe('onnxWorkerBridge bootstrap policy', () => {
       statusText: 'Not Found',
       text: async () => '',
     })) as unknown as typeof fetch;
-    const bridge = await import('../../src/runtime/onnxWorkerBridge');
+    const bridge = await import('../../packages/model-runtime/src/runtime/onnxWorkerBridge');
+    bridge.configureOnnxWorkerBootstrap({
+      scriptUrl: 'http://127.0.0.1:4173/onnxWorker.js',
+      ortPath: 'http://127.0.0.1:4173/ort/',
+      policy: 'direct-then-blob',
+    });
 
     const error = await bridge.createSession('detector', '/models/detector.onnx', ['wasm'])
       .then(() => null, (reason: unknown) => reason);

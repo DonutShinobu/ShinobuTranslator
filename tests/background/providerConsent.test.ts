@@ -45,7 +45,10 @@ describe('provider authentication consent gate', () => {
     const runtimeSendMessage = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
     vi.stubGlobal('chrome', {
-      runtime: { sendMessage: runtimeSendMessage },
+      runtime: {
+        sendMessage: runtimeSendMessage,
+        getURL: (path: string) => `moz-extension://test/${path}`,
+      },
       commands: {
         openShortcutSettings: async () => undefined,
       },

@@ -7,7 +7,7 @@ import {
   getLlmThinkingControl,
   llmThinkingCapabilityRegistry,
   normalizeLlmThinkingByModel,
-} from '../../src/shared/llmThinking';
+} from '../../packages/text-translation/src/llmThinking';
 import { llmBuiltInProviderDefinitions } from '../../src/shared/config';
 
 describe('built-in LLM thinking capabilities', () => {

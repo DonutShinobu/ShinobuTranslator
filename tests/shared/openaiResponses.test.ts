@@ -3,7 +3,7 @@ import {
   buildOpenAiResponsesRequest,
   extractOpenAiResponsesJsonText,
   extractOpenAiResponsesSseText,
-} from "../../src/shared/openaiResponses";
+} from "../../packages/text-translation/src/openaiResponses";
 import type { LlmChatCompletionRequestBody } from "../../src/shared/messages";
 
 describe("buildOpenAiResponsesRequest", () => {

@@ -1,4 +1,4 @@
 export {
   assertTrustedScriptUrl,
   installTrustedTypesPolicy,
-} from '../../../../src/runtime/trustedTypesPolicy';
+} from '@shinobu/browser-runtime/trusted-types';

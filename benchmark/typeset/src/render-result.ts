@@ -6,9 +6,9 @@ import { dirname, extname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { execSync } from "child_process";
 import type { Fixture } from "./types";
-import type { RenderFixtureRegion } from "../../../src/pipeline/bake";
+import type { RenderFixtureRegion } from '@shinobu/image-pipeline/benchmark';
 import type { ShinobuBenchmarkWindow } from "../../../src/benchmark/browserEntry";
-import type { PipelineTypesetDebugLog, QuadPoint } from "../../../src/types";
+import type { PipelineTypesetDebugLog, QuadPoint } from '@shinobu/image-pipeline/benchmark';
 import { toRenderFixtureRegions } from "./fixture-render";
 import { parseTypesetSuiteArgs } from "./suite-paths";
 

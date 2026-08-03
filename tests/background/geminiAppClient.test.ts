@@ -10,7 +10,7 @@ import {
   runGeminiAppImageTranslate,
 } from "../../src/background/geminiAppClient";
 import { defaultExtensionSettings } from "../../src/shared/config";
-import type { GeminiAppModel } from "../../src/types";
+import type { GeminiAppModel } from "../../packages/image-pipeline/src/types";
 
 function createCandidateWithGeneratedImage(url: string): unknown[] {
   const candidate: unknown[] = [];

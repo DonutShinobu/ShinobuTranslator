@@ -4,7 +4,7 @@ import {
   sampleEdgeColors,
   sampleCornerBgColor,
   sampleTextColors,
-} from "../../../src/pipeline/ocr/colorSampling";
+} from "../../../packages/image-pipeline/src/pipeline/ocr/colorSampling";
 
 /**
  * Helper: create a Uint8ClampedArray representing an image of given width/height.

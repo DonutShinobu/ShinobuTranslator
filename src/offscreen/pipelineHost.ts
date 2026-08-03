@@ -1,13 +1,13 @@
 import {
   ImagePipelineCancelledError,
-  ImagePipelineRuntime,
-  createPipelineRecord,
-  hasTranslatableText,
-  type PipelineConfig as ImagePipelineConfig,
+  createImagePipeline,
+  type ImagePipeline,
+  type PipelineConfig,
   type PipelineCancellationReason,
+  type PipelinePlatform,
 } from '@shinobu/image-pipeline';
 import type { ExtensionPort } from '../shared/extensionRuntime';
-import { base64ToBlob, blobToBase64, canvasToPngBlob } from '../shared/blobCodec';
+import { base64ToBlob, blobToBase64 } from '@shinobu/image-pipeline/protocol';
 import {
   RuntimePipelineHostTransport,
   type PipelineHostTransport,
@@ -31,19 +31,16 @@ import {
   type LocalPipelineClientMessage,
   type LocalPipelineFileMeta,
   type LocalPipelineHostMessage,
-} from '../shared/localPipelineProtocol';
-import { setPerfTraceSink, type PerfTraceRuntimeEvent, type PerfTraceWorkerCall } from '../shared/perfTrace';
-import type {
-  PipelineArtifacts,
-  PipelineConfig as LegacyPipelineConfig,
-} from '../types';
-import { PipelineStageError, runPipeline } from '../pipeline/orchestrator';
-import { disposePipelineArtifacts } from '../pipeline/resources';
-import { disposeAllModelSessions } from '../runtime/modelRegistry';
+} from '@shinobu/image-pipeline/protocol';
+import { setPerfTraceSink, type PerfTraceRuntimeEvent, type PerfTraceWorkerCall } from '@shinobu/diagnostics';
+import type { ModelRuntime } from '@shinobu/model-runtime';
 import {
   extensionTextTranslationTransport,
+} from '../shared/textTranslationTransport';
+import {
+  createTextTranslator,
   type TextTranslationTransport,
-} from '../translators/transport';
+} from '@shinobu/text-translation';
 
 type RuntimeAggregate = {
   model: string;
@@ -59,6 +56,9 @@ type RuntimeAggregate = {
 export type PipelineHostDependencies = {
   translationTransport?: TextTranslationTransport;
   diagnostics?: DiagnosticLogEmitter;
+  modelRuntime: ModelRuntime;
+  platform: PipelinePlatform;
+  fontSource?: (path: string) => string;
 };
 
 const extensionPipelineHostDiagnostics: DiagnosticLogEmitter = {
@@ -70,7 +70,7 @@ type PipelineJob = {
   id: string;
   diagnosticRunId?: string;
   fileMeta?: LocalPipelineFileMeta;
-  config?: LegacyPipelineConfig;
+  config?: PipelineConfig;
   input?: Base64ChunkAssembler;
   file?: File;
   abortController: AbortController;
@@ -106,11 +106,6 @@ function isAbortError(error: unknown): boolean {
     || Boolean(error && typeof error === 'object' && 'code' in error && (error as { code?: unknown }).code === 'TASK_CANCELLED');
 }
 
-function toImagePipelineConfig(config: LegacyPipelineConfig): ImagePipelineConfig {
-  const { llmApiKey: _runtimeCredential, ...pipeline } = config;
-  return pipeline as ImagePipelineConfig;
-}
-
 function getMessageJobId(value: unknown): string | null {
   if (!value || typeof value !== 'object') return null;
   const jobId = (value as { jobId?: unknown }).jobId;
@@ -127,114 +122,26 @@ export class PipelineHost {
   private idleGeneration = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
-  private activeApiKey = '';
-  private readonly imageRuntime: ImagePipelineRuntime<PipelineArtifacts>;
+  private readonly imageRuntime: ImagePipeline;
+  private readonly modelRuntime: ModelRuntime;
   private readonly translationTransport: TextTranslationTransport;
   private readonly diagnostics: DiagnosticLogEmitter;
 
   constructor(
     private readonly transport: PipelineHostTransport = new RuntimePipelineHostTransport(),
-    dependencies: PipelineHostDependencies = {},
+    dependencies: PipelineHostDependencies,
   ) {
     this.translationTransport = dependencies.translationTransport
       ?? extensionTextTranslationTransport;
     this.diagnostics = dependencies.diagnostics
       ?? extensionPipelineHostDiagnostics;
-    this.imageRuntime = new ImagePipelineRuntime<PipelineArtifacts>({
-      execute: async (request, context) => {
-        const source = request.source instanceof File
-          ? request.source
-          : new File([request.source], 'source-image', {
-              type: request.source.type,
-            });
-        const translationTransport = this.translationTransport;
-        const retryingTranslationTransport: TextTranslationTransport = {
-          requestChatCompletion(translationRequest) {
-            return context.runOperation(
-              {
-                stage: 'translate',
-                operation: 'request-chat-completion',
-              },
-              () => translationTransport.requestChatCompletion(
-                translationRequest,
-              ),
-            );
-          },
-          translatePlain(translationRequest) {
-            return context.runOperation(
-              {
-                stage: 'translate',
-                operation: 'translate-plain',
-              },
-              () => translationTransport.translatePlain(
-                translationRequest,
-              ),
-            );
-          },
-        };
-        const artifacts = await runPipeline(
-          source,
-          {
-            ...request.config,
-            llmApiKey: this.activeApiKey,
-          } as LegacyPipelineConfig,
-          (progress) => context.reportProgress({
-            stage: progress.stage,
-            operation: progress.stage,
-            detail: progress.detail,
-          }),
-          {
-            signal: context.signal,
-            translationTransport: retryingTranslationTransport,
-          },
-        );
-        return {
-          status: hasTranslatableText({ ordered: artifacts.stageRegions.ordered })
-            ? 'completed' as const
-            : 'no-translatable-text' as const,
-          artifacts,
-        };
-      },
-      async finalize(output, request) {
-        const finalizeStartedAt = performance.now();
-        const image = await canvasToPngBlob(output.artifacts.resultCanvas);
-        const debug = request.config.typesetDebug
-          && output.artifacts.debugOriginalCanvas
-          ? await canvasToPngBlob(output.artifacts.debugOriginalCanvas)
-          : undefined;
-        output.artifacts.stageTimings.push({
-          stage: 'finalize',
-          label: '生成结果图片',
-          durationMs: performance.now() - finalizeStartedAt,
-        });
-        return {
-          status: output.status,
-          image,
-          debug,
-          record: createPipelineRecord({
-            image: {
-              width: output.artifacts.original.naturalWidth,
-              height: output.artifacts.original.naturalHeight,
-            },
-            ocr: output.artifacts.stageRegions.ocr,
-            ordered: output.artifacts.stageRegions.ordered,
-          }, request.workingCopy),
-          diagnostics: {
-            summary: summarizePipelineArtifacts(output.artifacts),
-          },
-        };
-      },
-      release(output) {
-        disposePipelineArtifacts(output.artifacts);
-      },
-      releaseFailure(error) {
-        if (error instanceof PipelineStageError) {
-          disposePipelineArtifacts(error.artifacts);
-        }
-      },
-      dispose: async () => {
-        await disposeAllModelSessions();
-      },
+    this.modelRuntime = dependencies.modelRuntime;
+    this.imageRuntime = createImagePipeline({
+      platform: dependencies.platform,
+      modelRuntime: this.modelRuntime,
+      detectionFallbackStrategy: { kind: 'heuristic-only' },
+      fontSource: dependencies.fontSource,
+      observer: this.diagnostics,
     });
   }
 
@@ -470,11 +377,15 @@ export class PipelineHost {
     let stopProgress = (): void => undefined;
     let stopCancellation = (): void => undefined;
     try {
-      this.activeApiKey = job.config.llmApiKey;
       const task = this.imageRuntime.run({
         source: job.file,
-        config: toImagePipelineConfig(job.config),
+        config: job.config,
         workingCopy: { strategy: 'source-native' },
+      }, {
+        textTranslator: createTextTranslator({
+          transport: this.translationTransport,
+          observer: this.diagnostics,
+        }),
       });
       stopProgress = task.progress((progress) => {
         safelyPost(this.port, {
@@ -590,7 +501,6 @@ export class PipelineHost {
       stopCancellation();
       stopProgress();
       await this.imageRuntime.whenIdle();
-      this.activeApiKey = '';
       removePerfSink();
     }
   }
@@ -740,7 +650,7 @@ export class PipelineHost {
 
   private async releaseIdleResources(generation: number): Promise<void> {
     if (generation !== this.idleGeneration || this.activeJob || this.jobs.size > 0) return;
-    const releasePromise = disposeAllModelSessions();
+    const releasePromise = this.modelRuntime.dispose();
     this.idleReleasePromise = releasePromise;
     try {
       await releasePromise;

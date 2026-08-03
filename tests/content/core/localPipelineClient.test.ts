@@ -4,8 +4,8 @@ import type { ExtensionBrowserApi, ExtensionPort } from '../../../src/shared/ext
 import {
   LOCAL_PIPELINE_BACKGROUND_LEASE_PORT,
   LOCAL_PIPELINE_CLIENT_PORT,
-} from '../../../src/shared/localPipelineProtocol';
-import type { PipelineConfig } from '../../../src/types';
+} from '../../../packages/image-pipeline/src/protocol/index';
+import type { PipelineConfig } from '../../../packages/image-pipeline/src/types';
 
 class FakePort implements ExtensionPort {
   readonly sent: unknown[] = [];
@@ -71,7 +71,6 @@ const pipelineConfig: PipelineConfig = {
   llmProvider: 'openai',
   llmAuthMode: 'api_key',
   llmBaseUrl: 'https://example.invalid',
-  llmApiKey: 'runtime-only',
   llmModel: 'test-model',
   typesetDebug: false,
   eraseDebug: false,

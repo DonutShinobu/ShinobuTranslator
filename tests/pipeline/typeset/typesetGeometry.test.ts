@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import type { BubbleMask, TextRegion } from "../../../src/types";
-import { computeFullVerticalTypeset } from "../../../src/pipeline/typeset/verticalLayout";
-import { calcVertical, queryMaskMaxY } from "../../../src/pipeline/typeset/verticalFit";
+import type { BubbleMask, TextRegion } from "../../../packages/image-pipeline/src/types";
+import { computeFullVerticalTypeset } from "../../../packages/image-pipeline/src/pipeline/typeset/verticalLayout";
+import { calcVertical, queryMaskMaxY } from "../../../packages/image-pipeline/src/pipeline/typeset/verticalFit";
 
 function parseCanvasFontSize(font: string, fallback: number): number {
   return Number.parseFloat(font.match(/([\d.]+)px/u)?.[1] ?? "") || fallback;

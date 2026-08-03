@@ -2,7 +2,7 @@ import type {
   ExtensionBrowserApi,
   ExtensionPort,
 } from '../../shared/extensionRuntime';
-import type { LocalPipelineErrorCode } from '../../shared/localPipelineProtocol';
+import type { LocalPipelineErrorCode } from '@shinobu/image-pipeline/protocol';
 
 export interface PipelineHostLifecycle {
   ensureHost(): Promise<PipelineHostAttachment | undefined>;

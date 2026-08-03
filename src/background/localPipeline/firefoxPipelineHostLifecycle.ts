@@ -1,6 +1,6 @@
 import type { ExtensionPort } from '../../shared/extensionRuntime';
 import { createLocalExtensionPortPair } from '../../shared/localExtensionPort';
-import { LOCAL_PIPELINE_HOST_PORT } from '../../shared/localPipelineProtocol';
+import { LOCAL_PIPELINE_HOST_PORT } from '@shinobu/image-pipeline/protocol';
 import { FixedPipelineHostTransport } from '../../shared/pipelineHostTransport';
 import type { PipelineHostDependencies } from '../../offscreen/pipelineHost';
 import type {
@@ -14,7 +14,7 @@ export class FirefoxPipelineHostLifecycle implements PipelineHostLifecycle {
   private loading: Promise<PipelineHostAttachment> | null = null;
 
   constructor(
-    private readonly dependencies: PipelineHostDependencies = {},
+    private readonly dependencies: PipelineHostDependencies,
   ) {}
 
   matchesHostPort(port: ExtensionPort): boolean {

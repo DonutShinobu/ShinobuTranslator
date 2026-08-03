@@ -3,17 +3,23 @@ import {
   shinobuRender,
   shinobuRenderDebug,
   shinobuRenderFixtureDebug,
-} from '../pipeline/bake';
+} from '@shinobu/image-pipeline/benchmark';
+import { browserPipelinePlatform } from '../shared/browserPipelinePlatform';
+import { createExtensionModelRuntime } from '../shared/extensionModelRuntime';
+
+const modelRuntime = createExtensionModelRuntime();
 import type {
   BakeResult,
   ShinobuBakeOptions,
   RenderDebugResult,
   RenderFixtureRegion,
-} from '../pipeline/bake';
-import type { OcrRecognizeOutput } from '../pipeline/ocr/provider';
-import type { PipelineImage } from '../runtime/platform';
-import type { TextRegion } from '../types';
-import { browserPlatform } from '../runtime/browserPlatform';
+  OcrRecognizeOutput,
+  PipelineImage,
+  PipelineArtifacts,
+  PipelineConfig,
+  PipelineProgress,
+  TextRegion,
+} from '@shinobu/image-pipeline/benchmark';
 
 export type ShinobuBenchmarkApi = {
   bake(dataUrl: string, options?: ShinobuBakeOptions): Promise<BakeResult>;
@@ -23,7 +29,12 @@ export type ShinobuBenchmarkApi = {
     dataUrl: string,
     regions: RenderFixtureRegion[],
   ): Promise<RenderDebugResult>;
-  runPipeline: typeof import('../pipeline/orchestrator')['runPipeline'];
+  runPipeline(
+    file: File,
+    config: PipelineConfig,
+    onProgress: (progress: PipelineProgress) => void,
+    options?: { signal?: AbortSignal; stopAfter?: 'order' },
+  ): Promise<PipelineArtifacts>;
   recognizeOcrRegions(
     image: PipelineImage,
     regions: TextRegion[],
@@ -36,24 +47,27 @@ export type ShinobuBenchmarkWindow = typeof window & {
 };
 
 const benchmarkApi: ShinobuBenchmarkApi = {
-  bake: (dataUrl, options) => shinobuBake(dataUrl, browserPlatform, options),
-  render: (dataUrl) => shinobuRender(dataUrl, browserPlatform),
-  renderDebug: (dataUrl) => shinobuRenderDebug(dataUrl, browserPlatform),
+  bake: (dataUrl, options) => shinobuBake(dataUrl, browserPipelinePlatform, modelRuntime, options),
+  render: (dataUrl) => shinobuRender(dataUrl, browserPipelinePlatform, modelRuntime),
+  renderDebug: (dataUrl) => shinobuRenderDebug(dataUrl, browserPipelinePlatform, modelRuntime),
   renderFixtureDebug: (dataUrl, regions) => (
-    shinobuRenderFixtureDebug(dataUrl, regions, browserPlatform)
+    shinobuRenderFixtureDebug(dataUrl, regions, browserPipelinePlatform, modelRuntime)
   ),
   runPipeline: async (file, config, onProgress, options) => {
-    const { runPipeline } = await import('../pipeline/orchestrator');
-    return runPipeline(file, config, onProgress, options);
+    const { runPipeline } = await import('@shinobu/image-pipeline/benchmark');
+    return runPipeline(file, config, onProgress, {
+      ...options,
+      modelRuntime,
+      detectionFallbackStrategy: { kind: 'heuristic-only' },
+    });
   },
   recognizeOcrRegions: async (image, regions, providerName = 'paddleocr_v6_medium') => {
-    await import('../pipeline/ocr');
-    const { getOcrProvider } = await import('../pipeline/ocr/provider');
+    const { getOcrProvider } = await import('@shinobu/image-pipeline/benchmark');
     const provider = getOcrProvider(providerName);
     if (!provider) {
       throw new Error(`OCR 引擎未注册: ${providerName}`);
     }
-    return provider.recognize(image, regions, browserPlatform);
+    return provider.recognize(image, regions, browserPipelinePlatform, modelRuntime);
   },
 };
 

@@ -1,18 +1,11 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { copyFileSync, readFileSync, rmSync } from 'node:fs';
+import { copyFileSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { browserRuntimeBoundaryPlugin } from '../../scripts/vite-browser-runtime-boundary';
+import { MODEL_PACKAGE } from '@shinobu/model-manifest';
 
-const browserRuntimeTarget = resolve(
-  import.meta.dirname,
-  '../../src/runtime/browserRuntimeTarget.ts',
-);
-
-const modelManifest = JSON.parse(readFileSync(
-  resolve(import.meta.dirname, '../../packages/model-manifest/manifest.json'),
-  'utf8',
-)) as { assets: Array<{ path: string }> };
+const modelManifest = MODEL_PACKAGE;
 
 const isolationHeaders = {
   'Cross-Origin-Opener-Policy': 'same-origin',
@@ -21,18 +14,6 @@ const isolationHeaders = {
 };
 
 export default defineConfig({
-  resolve: {
-    alias: [
-      {
-        find: './runtimeTarget',
-        replacement: browserRuntimeTarget,
-      },
-      {
-        find: '../../runtime/runtimeTarget',
-        replacement: browserRuntimeTarget,
-      },
-    ],
-  },
   plugins: [
     browserRuntimeBoundaryPlugin(),
     react(),

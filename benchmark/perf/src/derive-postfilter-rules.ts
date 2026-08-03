@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { evaluateOcrPostFilterCandidate } from "../../../src/pipeline/ocrPostFilter/rule";
+import { evaluateOcrPostFilterCandidate } from '@shinobu/image-pipeline/benchmark';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const DEFAULT_ANALYSIS = join(

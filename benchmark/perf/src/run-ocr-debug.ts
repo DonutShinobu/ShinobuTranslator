@@ -9,9 +9,13 @@
 import { existsSync, readFileSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
-import { detectTextRegionsWithMask } from "../../../src/pipeline/detect";
-import { runOcr } from "../../../src/pipeline/ocr";
-import { nodePlatform } from "../../../src/runtime/nodePlatform";
+import {
+  detectByTesseract,
+  detectTextRegionsWithMask,
+  runOcr,
+} from '@shinobu/image-pipeline/benchmark';
+import { nodePipelinePlatform as nodePlatform } from '../../nodePipelinePlatform';
+import { benchmarkModelRuntime } from '../../model-runtime';
 import type { OcrEngine } from "../../../src/shared/config";
 
 const ROOT = resolve(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -213,7 +217,14 @@ async function runEngine(
   try {
     for (let i = 0; i < runCount; i += 1) {
       const ocrT0 = performance.now();
-      const ocr = await runOcr(image, regions, engine, nodePlatform);
+      const ocr = await runOcr(
+        image,
+        regions,
+        engine,
+        nodePlatform,
+        undefined,
+        benchmarkModelRuntime,
+      );
       const ocrMs = performance.now() - ocrT0;
       runs.push({
         runIndex: i,
@@ -244,7 +255,15 @@ async function main(): Promise<void> {
   const image = await nodePlatform.loadImage(imageToDataUrl(imagePath));
 
   const detectT0 = performance.now();
-  const detected = await detectTextRegionsWithMask(image, nodePlatform);
+  const detected = await detectTextRegionsWithMask(
+    image,
+    nodePlatform,
+    benchmarkModelRuntime,
+    {
+      kind: 'tesseract-then-heuristic',
+      detectWithTesseract: detectByTesseract,
+    },
+  );
   const detectMs = performance.now() - detectT0;
 
   const engineResults: EngineResult[] = [];

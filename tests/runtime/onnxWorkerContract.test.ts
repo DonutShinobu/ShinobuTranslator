@@ -15,7 +15,7 @@ const legacyRpcNames = [
 
 describe('ONNX Worker production contract', () => {
   it('exposes only the current session, probe, and detector operations', () => {
-    const workerTypes = read('src/runtime/onnxWorkerTypes.ts');
+    const workerTypes = read('packages/model-runtime/src/runtime/onnxWorkerTypes.ts');
     for (const operation of [
       'init(',
       'createSession(',
@@ -35,10 +35,9 @@ describe('ONNX Worker production contract', () => {
 
   it('contains no legacy AR RPC implementation in any production bridge or Worker', () => {
     const productionSources = [
-      'src/runtime/onnxBridge.ts',
-      'src/runtime/onnxWorkerBridge.ts',
-      'src/runtime/onnxNodeBridge.ts',
-      'src/workers/onnx-worker.ts',
+      'packages/model-runtime/src/runtime/onnxWorkerBridge.ts',
+      'packages/model-runtime/src/runtime/onnxNodeBridge.ts',
+      'packages/model-runtime/src/workers/onnx-worker.ts',
     ].map(read).join('\n');
 
     for (const token of [
@@ -54,7 +53,7 @@ describe('ONNX Worker production contract', () => {
   });
 
   it('serializes every ONNX Worker inference run through one global queue', () => {
-    const worker = read('src/workers/onnx-worker.ts');
+    const worker = read('packages/model-runtime/src/workers/onnx-worker.ts');
     expect(worker).toContain('const inferenceQueue = new SerialInferenceQueue()');
     expect(worker.match(/\.run\(/g)).toHaveLength(3);
 
@@ -79,10 +78,10 @@ describe('ONNX Worker production contract', () => {
 
   it('removes executable legacy modules while preserving history and conversion references', () => {
     for (const removedPath of [
-      'src/pipeline/ocr/decodeAutoregressive.ts',
-      'src/pipeline/ocr/gpuArgmax.ts',
-      'src/pipeline/ocr/color.ts',
-      'src/pipeline/ocr/colorDecodeShared.ts',
+      'packages/image-pipeline/src/pipeline/ocr/decodeAutoregressive.ts',
+      'packages/image-pipeline/src/pipeline/ocr/gpuArgmax.ts',
+      'packages/image-pipeline/src/pipeline/ocr/color.ts',
+      'packages/image-pipeline/src/pipeline/ocr/colorDecodeShared.ts',
       'benchmark/perf/src/run-ocr-gpu-argmax.ts',
       'benchmark/perf/src/run-browser-x-compare.ts',
     ]) {

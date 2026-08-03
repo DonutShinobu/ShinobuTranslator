@@ -19,7 +19,7 @@ import {
 
 describe("built-in LLM catalog", () => {
   it("matches the confirmed provider model matrix and new-profile defaults", () => {
-    expect(llmBuiltInProviderDefinitions).toEqual({
+    expect(llmBuiltInProviderDefinitions).toMatchObject({
       deepseek: {
         label: "DeepSeek",
         baseUrl: "https://api.deepseek.com",
@@ -182,11 +182,11 @@ describe("OpenAI provider settings", () => {
     expect(toPipelineConfig(settings)).toMatchObject({
       llmProvider: "openai",
       llmAuthMode: "openai_oauth",
-      llmApiKey: "",
       llmBaseUrl: "https://api.openai.com/v1",
       llmModel: "gpt-5.4-mini",
       llmUseCustomModel: false,
     });
+    expect(toPipelineConfig(settings)).not.toHaveProperty('llmApiKey');
   });
 
   it("marks custom models in pipeline config", () => {

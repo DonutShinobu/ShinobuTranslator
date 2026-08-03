@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { drawTypeset } from '../../../src/pipeline/typeset';
-import { computeFullHorizontalTypeset } from '../../../src/pipeline/typeset/horizontalLayout';
+import { drawTypeset } from '../../../packages/image-pipeline/src/pipeline/typeset';
+import { computeFullHorizontalTypeset } from '../../../packages/image-pipeline/src/pipeline/typeset/horizontalLayout';
 import type {
   PipelineCanvas,
   PipelineRenderingContext,
   PlatformProvider,
-} from '../../../src/runtime/platform';
-import type { TextRegion } from '../../../src/types';
+} from '../../../packages/image-pipeline/src/runtime/platform';
+import type { TextRegion } from '../../../packages/image-pipeline/src/types';
 
 function parseCanvasFontSize(font: string, fallback: number): number {
   return Number.parseFloat(font.match(/([\d.]+)px/u)?.[1] ?? '') || fallback;

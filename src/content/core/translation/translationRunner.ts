@@ -8,15 +8,17 @@ import {
 import type { ExtensionSettings } from '../../../shared/config';
 import {
   sanitizeDiagnosticUrl,
+  toDiagnosticError,
+} from '@shinobu/diagnostics';
+import {
   sanitizeExtensionSettings,
   sanitizePipelineConfig,
-  toDiagnosticError,
-} from '../../../shared/diagnosticLog';
+} from '../../../shared/diagnosticSettings';
 import { createDiagnosticRunId, emitDiagnosticLog, emitDiagnosticLogAsync } from '../../../shared/diagnosticLogClient';
 import type {
   LocalPipelineArtifactSummary,
   LocalPipelineResult,
-} from '../../../shared/localPipelineProtocol';
+} from '@shinobu/image-pipeline/protocol';
 import { sendRuntimeMessage } from '../../../shared/messages';
 import type { RuntimeErrorDetail } from '../../../shared/messages';
 import type {
@@ -308,22 +310,23 @@ export class TranslationRunner {
       onProgress: (stageText: string) => void,
       jankMonitor?: ProgressJankMonitor,
     ): void {
+      const detail = progress.detail ?? progress.operation;
       if (
         progress.stage === 'runtime-prepare'
         || progress.stage === 'finalize'
       ) {
-        jankMonitor?.setStage(progress.stage, progress.detail, state.stageText);
+        jankMonitor?.setStage(progress.stage, detail, state.stageText);
         return;
       }
       const stageLabel = getStageLabel(progress.stage);
       if (progress.stage === 'parallel') {
-        state.stageText = progress.detail;
+        state.stageText = detail;
       } else if (progress.stage === 'done') {
         state.stageText = '完成';
       } else {
         state.stageText = `${stageLabel}中`;
       }
-      jankMonitor?.setStage(progress.stage, progress.detail, state.stageText);
+      jankMonitor?.setStage(progress.stage, detail, state.stageText);
       onProgress(state.stageText);
     }
 

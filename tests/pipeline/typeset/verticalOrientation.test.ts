@@ -4,7 +4,7 @@ import {
   segmentVerticalGraphemes,
   tokenizeVerticalText,
   verticalOrientationUnicodeVersion,
-} from "../../../src/pipeline/typeset/verticalOrientation";
+} from "../../../packages/image-pipeline/src/pipeline/typeset/verticalOrientation";
 
 describe("resolveUnicodeVerticalOrientation", () => {
   it("uses the pinned Unicode 17 data", () => {

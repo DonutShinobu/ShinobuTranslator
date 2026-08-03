@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateOcrPostFilterCandidate } from "../../../src/pipeline/ocrPostFilter/rule";
+import { evaluateOcrPostFilterCandidate } from "../../../packages/image-pipeline/src/pipeline/ocrPostFilter/rule";
 
 describe("evaluateOcrPostFilterCandidate", () => {
   it("keeps kana evidence when OCR only disagrees about voicing marks", () => {

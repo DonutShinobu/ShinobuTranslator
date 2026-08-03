@@ -11,7 +11,7 @@ import {
   classifyLlmFetchError,
   sanitizeDiagnosticUrl,
   toDiagnosticError,
-} from "../../shared/diagnosticLog";
+} from '@shinobu/diagnostics';
 import type {
   LlmChatCompletionsProxyConfig,
   RuntimeMessage,

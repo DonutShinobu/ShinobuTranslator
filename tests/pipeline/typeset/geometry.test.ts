@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { QuadPoint, TextRegion } from "../../../src/types";
+import type { QuadPoint, TextRegion } from "../../../packages/image-pipeline/src/types";
 import {
   quadAngle,
   quadDimensions,
@@ -14,8 +14,8 @@ import {
   scaleQuadFromOrigin,
   mapOffscreenPointToCanvas,
   mapOffscreenRectToCanvasQuad,
-} from "../../../src/pipeline/typeset/geometry";
-import type { CompositeTransform } from "../../../src/pipeline/typeset/geometry";
+} from "../../../packages/image-pipeline/src/pipeline/typeset/geometry";
+import type { CompositeTransform } from "../../../packages/image-pipeline/src/pipeline/typeset/geometry";
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -64,7 +64,7 @@ async function findCrossWorkspaceImports() {
     for (const match of source.matchAll(modulePathPattern)) {
       const specifier = match[1];
       if (
-        owner === 'packages/image-pipeline'
+        owner.startsWith('packages/')
         && (
           specifier === '@shinobu/web'
           || specifier.startsWith('@shinobu/web/')
@@ -90,6 +90,48 @@ async function findCrossWorkspaceImports() {
 
   return violations.sort();
 }
+
+async function assertAcyclicPackageDependencies() {
+  const packageRoot = path.join(repositoryRoot, 'packages');
+  const directories = await readdir(packageRoot, { withFileTypes: true });
+  const manifests = new Map();
+  for (const entry of directories) {
+    if (!entry.isDirectory()) continue;
+    const manifest = JSON.parse(await readFile(
+      path.join(packageRoot, entry.name, 'package.json'),
+      'utf8',
+    ));
+    manifests.set(manifest.name, manifest);
+  }
+  const graph = new Map();
+  for (const [name, manifest] of manifests) {
+    const dependencyNames = Object.keys({
+      ...manifest.dependencies,
+      ...manifest.optionalDependencies,
+      ...manifest.peerDependencies,
+    }).filter((dependency) => manifests.has(dependency));
+    graph.set(name, dependencyNames);
+  }
+  const visiting = new Set();
+  const visited = new Set();
+  const visit = (name, trail) => {
+    if (visiting.has(name)) {
+      const cycleStart = trail.indexOf(name);
+      const cycle = [...trail.slice(cycleStart), name];
+      throw new Error(`package dependency cycle: ${cycle.join(' -> ')}`);
+    }
+    if (visited.has(name)) return;
+    visiting.add(name);
+    for (const dependency of graph.get(name) ?? []) {
+      visit(dependency, [...trail, name]);
+    }
+    visiting.delete(name);
+    visited.add(name);
+  };
+  for (const name of graph.keys()) visit(name, []);
+}
+
+await assertAcyclicPackageDependencies();
 
 const baseline = JSON.parse(await readFile(baselinePath, 'utf8'));
 if (

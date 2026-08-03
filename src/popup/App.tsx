@@ -20,7 +20,7 @@ import {
   llmThinkingCapabilityKey,
   resolveLlmThinkingLevel,
   type LlmThinkingLevel,
-} from '../shared/llmThinking';
+} from '@shinobu/text-translation';
 import { sendRuntimeMessage } from '../shared/messages';
 import { downloadText } from '../shared/utils';
 

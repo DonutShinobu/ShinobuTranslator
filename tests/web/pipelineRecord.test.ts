@@ -4,7 +4,7 @@ import {
   isWebPipelineRecord,
   recoverWebPipelineRecord,
 } from '../../apps/web/src/domain/pipelineRecord';
-import type { TextRegion } from '../../src/types';
+import type { TextRegion } from '../../packages/image-pipeline/src/types';
 
 function region(overrides: Partial<TextRegion> = {}): TextRegion {
   return {

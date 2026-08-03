@@ -1,5 +1,5 @@
-import type { RenderFixtureRegion } from "../../../src/pipeline/bake";
-import type { SourceTextLineGeometry, TextDirection } from "../../../src/types";
+import type { RenderFixtureRegion } from '@shinobu/image-pipeline/benchmark';
+import type { SourceTextLineGeometry, TextDirection } from '@shinobu/image-pipeline/benchmark';
 import type { Fixture, GroundTruthColumn } from "./types";
 
 export function groundTruthColumnToSourceGeometry(

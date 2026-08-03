@@ -10,8 +10,8 @@ import type {
   PipelineProgress,
 } from '@shinobu/image-pipeline';
 import { isCurrentPipelineRecord } from '@shinobu/image-pipeline';
-import type { LocalPipelineArtifactSummary } from '../../../../src/shared/localPipelineProtocol';
-import { LocalPipelineRemoteError } from '../../../../src/shared/localPipelineProtocol';
+import type { LocalPipelineArtifactSummary } from '@shinobu/image-pipeline/protocol';
+import { LocalPipelineRemoteError } from '@shinobu/image-pipeline/protocol';
 
 export type WebPipelineRuntimeCapabilities = {
   textTranslation: {

@@ -2,7 +2,7 @@ import {
   llmThinkingCapabilityRegistry,
   type LlmThinkingCapability,
   type LlmThinkingLevel,
-} from '../src/shared/llmThinking';
+} from '@shinobu/text-translation';
 
 type ModelsDevReasoningOption = {
   type: 'toggle' | 'effort';
@@ -129,7 +129,7 @@ async function main(): Promise<void> {
   if (drift.length > 0) {
     console.error([
       'models.dev 的思考能力数据发生漂移。',
-      '请对照官方供应商文档人工核验；不要自动覆盖 src/shared/llmThinking.ts。',
+      '请对照官方供应商文档人工核验；不要自动覆盖 packages/text-translation/src/llmThinking.ts。',
       ...drift,
     ].join('\n'));
     process.exitCode = 1;

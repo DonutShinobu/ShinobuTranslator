@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { convexHull, sortMiniBoxPoints, minAreaRect } from "../../src/pipeline/typeset/geometry";
-import type { QuadPoint } from "../../src/types";
+import { convexHull, sortMiniBoxPoints, minAreaRect } from "../../packages/image-pipeline/src/pipeline/typeset/geometry";
+import type { QuadPoint } from "../../packages/image-pipeline/src/types";
 
 describe("convexHull", () => {
   it("returns empty array for empty input", () => {

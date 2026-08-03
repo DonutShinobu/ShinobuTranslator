@@ -8,9 +8,9 @@ import {
   extractCtdTextLineContours,
   scoreCtdContourPixels,
   sortCtdQuadPoints,
-} from "../../../src/pipeline/detect/onnxDetect";
-import type { Rect } from "../../../src/types";
-import type { Quad } from "../../../src/pipeline/typeset/geometry";
+} from "../../../packages/image-pipeline/src/pipeline/detect/onnxDetect";
+import type { Rect } from "../../../packages/image-pipeline/src/types";
+import type { Quad } from "../../../packages/image-pipeline/src/pipeline/typeset/geometry";
 
 // onnxDetect.ts imports onnxruntime-web/all at module level for non-pure functions.
 // Mock it so the module can load without a browser environment.

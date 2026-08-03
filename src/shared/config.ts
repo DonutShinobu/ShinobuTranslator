@@ -1,17 +1,28 @@
-import type { PipelineConfig } from '../types';
-import type { GeminiAppAuthMode, GeminiAppModel, ImageEngine } from '../types';
+import type { PipelineConfig } from '@shinobu/image-pipeline';
 import {
   createDefaultLlmThinkingByModel,
+  detectBuiltInProviderByBaseUrl,
+  getDefaultModelPreset,
+  isBuiltInProvider,
+  isLlmProvider,
+  llmBuiltInProviderDefinitions,
+  llmProviderOptions,
+  migrateBuiltInModelPreset,
   normalizeLlmThinkingByModel,
   resolveLlmThinkingLevel,
-} from './llmThinking';
-import type { LlmThinkingByModel } from './llmThinking';
+} from '@shinobu/text-translation';
+import type { LlmThinkingByModel } from '@shinobu/text-translation';
+
+export type ImageEngine = 'local' | 'gemini_app';
+export type GeminiAppAuthMode = 'browser_session' | 'cookies_permission';
+export type GeminiAppModel = 'nano_banana_2' | 'nano_banana_pro';
 
 export const extensionSettingsStorageKey = 'mangaTranslate.settings';
 
 export type LlmProvider = PipelineConfig['llmProvider'];
 export type LlmAuthMode = PipelineConfig['llmAuthMode'];
 export type BuiltInLlmProvider = Exclude<LlmProvider, 'custom'>;
+export { llmBuiltInProviderDefinitions, llmProviderOptions };
 export type LlmProviderProfile = {
   apiKey: string;
   authMode: LlmAuthMode;
@@ -20,121 +31,6 @@ export type LlmProviderProfile = {
   useCustomModel: boolean;
   customBaseUrl: string;
 };
-
-type BuiltInProviderDefinition = {
-  label: string;
-  baseUrl: string;
-  models: string[];
-};
-
-export const llmBuiltInProviderDefinitions: Record<BuiltInLlmProvider, BuiltInProviderDefinition> = {
-  deepseek: {
-    label: 'DeepSeek',
-    baseUrl: 'https://api.deepseek.com',
-    models: ['deepseek-v4-flash', 'deepseek-v4-pro'],
-  },
-  gemini: {
-    label: 'Nano Banana',
-    baseUrl: 'https://generativelanguage.googleapis.com/v1',
-    models: ['gemini-3.1-flash-image', 'gemini-3-pro-image'],
-  },
-  glm: {
-    label: 'GLM (智谱)',
-    baseUrl: 'https://api.z.ai/api/paas/v4',
-    models: ['glm-5.2', 'glm-5.1', 'glm-5-turbo', 'glm-5', 'glm-4.7', 'glm-4.7-flash', 'glm-4.7-flashx'],
-  },
-  kimi: {
-    label: 'Kimi (月之暗面)',
-    baseUrl: 'https://api.moonshot.ai/v1',
-    models: ['kimi-k3', 'kimi-k2.6'],
-  },
-  minimax: {
-    label: 'MiniMax',
-    baseUrl: 'https://api.minimax.io/v1',
-    models: ['MiniMax-M3', 'MiniMax-M2.7', 'MiniMax-M2.7-highspeed', 'MiniMax-M2.5', 'MiniMax-M2.5-highspeed'],
-  },
-  mimo: {
-    label: 'MiMo (小米)',
-    baseUrl: 'https://api.xiaomimimo.com/v1',
-    models: ['mimo-v2.5-pro', 'mimo-v2.5'],
-  },
-  openai: {
-    label: 'OpenAI',
-    baseUrl: 'https://api.openai.com/v1',
-    models: ['gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-5.5-pro', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano'],
-  },
-};
-
-export const llmProviderOptions: Array<{ value: LlmProvider; label: string }> = [
-  { value: 'deepseek', label: llmBuiltInProviderDefinitions.deepseek.label },
-  { value: 'gemini', label: llmBuiltInProviderDefinitions.gemini.label },
-  { value: 'glm', label: llmBuiltInProviderDefinitions.glm.label },
-  { value: 'kimi', label: llmBuiltInProviderDefinitions.kimi.label },
-  { value: 'minimax', label: llmBuiltInProviderDefinitions.minimax.label },
-  { value: 'mimo', label: llmBuiltInProviderDefinitions.mimo.label },
-  { value: 'openai', label: llmBuiltInProviderDefinitions.openai.label },
-  { value: 'custom', label: '自定义提供商' },
-];
-
-const builtInProviders = Object.keys(llmBuiltInProviderDefinitions) as BuiltInLlmProvider[];
-
-const builtInModelPresetMigrations: Partial<Record<BuiltInLlmProvider, Record<string, string>>> = {
-  kimi: {
-    'kimi-k2.5': 'kimi-k2.6',
-  },
-  mimo: {
-    'MiMo-V2.5-Pro': 'mimo-v2.5-pro',
-    'MiMo-V2.5': 'mimo-v2.5',
-  },
-};
-
-function migrateBuiltInModelPreset(provider: LlmProvider, model: string): string {
-  if (!isBuiltInProvider(provider)) {
-    return model;
-  }
-  return builtInModelPresetMigrations[provider]?.[model] ?? model;
-}
-
-function isLlmProvider(value: unknown): value is LlmProvider {
-  return (
-    value === 'deepseek' ||
-    value === 'gemini' ||
-    value === 'glm' ||
-    value === 'kimi' ||
-    value === 'minimax' ||
-    value === 'mimo' ||
-    value === 'openai' ||
-    value === 'custom'
-  );
-}
-
-function isBuiltInProvider(provider: LlmProvider): provider is BuiltInLlmProvider {
-  return provider !== 'custom';
-}
-
-function detectBuiltInProviderByBaseUrl(baseUrl: string): BuiltInLlmProvider | null {
-  const normalized = baseUrl.trim().replace(/\/+$/, '').toLowerCase();
-  if (!normalized) {
-    return null;
-  }
-  if (normalized === 'https://gemini.google.com') {
-    return 'gemini';
-  }
-  if (normalized === 'https://api.mimo-v2.com/v1') {
-    return 'mimo';
-  }
-  for (const provider of builtInProviders) {
-    const candidate = llmBuiltInProviderDefinitions[provider].baseUrl.replace(/\/+$/, '').toLowerCase();
-    if (candidate === normalized) {
-      return provider;
-    }
-  }
-  return null;
-}
-
-function getDefaultModelPreset(provider: BuiltInLlmProvider): string {
-  return llmBuiltInProviderDefinitions[provider].models[0] ?? '';
-}
 
 function createDefaultProviderProfile(provider: LlmProvider): LlmProviderProfile {
   if (isBuiltInProvider(provider)) {
@@ -598,7 +494,6 @@ export function toPipelineConfig(settings: ExtensionSettings): PipelineConfig {
     llmProvider: settings.llmProvider,
     llmAuthMode: profile.authMode,
     llmBaseUrl: resolveLlmBaseUrl(settings),
-    llmApiKey: profile.apiKey,
     llmModel: resolveLlmModel(settings),
     llmUseCustomModel: settings.llmProvider === 'custom' || profile.useCustomModel,
     llmThinkingLevel: settings.llmProvider === 'custom' || profile.useCustomModel

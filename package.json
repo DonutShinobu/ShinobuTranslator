@@ -17,7 +17,7 @@
     "typecheck:extension": "npm run typecheck --workspace=@shinobu/extension",
     "typecheck:tests": "tsc --noEmit -p tsconfig.tests.json",
     "typecheck:benchmark": "tsc --noEmit -p tsconfig.benchmark.json",
-    "typecheck:workspaces": "npm run typecheck --workspace=@shinobu/extension && npm run typecheck --workspace=@shinobu/shared-config && npm run typecheck --workspace=@shinobu/model-manifest && npm run typecheck --workspace=@shinobu/translator-core && npm run typecheck --workspace=@shinobu/image-pipeline && npm run typecheck --workspace=@shinobu/browser-runtime && npm run typecheck --workspace=@shinobu/model-gateway && npm run typecheck --workspace=@shinobu/web",
+    "typecheck:workspaces": "npm run typecheck --workspace=@shinobu/extension && npm run typecheck --workspace=@shinobu/shared-config && npm run typecheck --workspace=@shinobu/model-manifest && npm run typecheck --workspace=@shinobu/translator-core && npm run typecheck --workspace=@shinobu/diagnostics && npm run typecheck --workspace=@shinobu/text-translation && npm run typecheck --workspace=@shinobu/model-runtime && npm run typecheck --workspace=@shinobu/image-pipeline && npm run typecheck --workspace=@shinobu/browser-runtime && npm run typecheck --workspace=@shinobu/model-gateway && npm run typecheck --workspace=@shinobu/web",
     "typecheck": "npm run typecheck:workspaces && npm run typecheck:tests && npm run typecheck:benchmark",
     "build": "npm run build:extension",
     "build:extension:chromium": "npm run build:chromium --workspace=@shinobu/extension",

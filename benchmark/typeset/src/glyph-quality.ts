@@ -1,5 +1,5 @@
-import type { TypesetDebugRegionLog, TypesetDebugVerticalItem } from "../../../src/types";
-import { tokenizeVerticalText } from "../../../src/pipeline/typeset/verticalOrientation";
+import type { TypesetDebugRegionLog, TypesetDebugVerticalItem } from '@shinobu/image-pipeline/benchmark';
+import { tokenizeVerticalText } from '@shinobu/image-pipeline/benchmark';
 
 export type VerticalGlyphQualityMetrics = {
   glyphQualityCoverage: number;

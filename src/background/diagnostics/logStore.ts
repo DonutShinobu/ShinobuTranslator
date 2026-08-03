@@ -5,14 +5,14 @@ import {
   createDiagnosticId,
   formatDiagnosticTextLog,
   normalizeDiagnosticTimestamp,
-  sanitizeExtensionSettings,
-} from "../../shared/diagnosticLog";
+} from '@shinobu/diagnostics';
+import { sanitizeExtensionSettings } from '../../shared/diagnosticSettings';
 import type {
   DiagnosticLogEvent,
   DiagnosticLogEventInput,
   DiagnosticLogRun,
   DiagnosticLogTextExport,
-} from "../../shared/diagnosticLog";
+} from '@shinobu/diagnostics';
 import { getSettings } from "../settings/settingsStore";
 import {
   storageGet,

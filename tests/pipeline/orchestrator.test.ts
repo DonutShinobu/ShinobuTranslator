@@ -3,8 +3,10 @@ import type {
   PipelineCanvas,
   PipelineImage,
   PlatformProvider,
-} from '../../src/runtime/platform';
-import type { PipelineConfig, PipelineProgress, TextRegion } from '../../src/types';
+} from '../../packages/image-pipeline/src/runtime/platform';
+import type { PipelineConfig, PipelineProgress, TextRegion } from '../../packages/image-pipeline/src/types';
+import type { ModelRuntime } from '@shinobu/model-runtime';
+import type { TextTranslator } from '@shinobu/text-translation';
 
 const pipelineMocks = vi.hoisted(() => ({
   fileToImage: vi.fn(),
@@ -33,53 +35,50 @@ const pipelineMocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../../src/runtime/browserPlatform', () => ({
-  browserPlatform: pipelineMocks.browserPlatform,
-}));
-vi.mock('../../src/pipeline/image', () => ({
+vi.mock('../../packages/image-pipeline/src/pipeline/image', () => ({
   fileToImage: pipelineMocks.fileToImage,
   imageToCanvas: pipelineMocks.imageToCanvas,
 }));
-vi.mock('../../src/pipeline/detect', () => ({
+vi.mock('../../packages/image-pipeline/src/pipeline/detect', () => ({
   detectTextRegionsWithMask: pipelineMocks.detectTextRegionsWithMask,
 }));
-vi.mock('../../src/pipeline/ocr', () => ({
+vi.mock('../../packages/image-pipeline/src/pipeline/ocr', () => ({
   runOcr: pipelineMocks.runOcr,
 }));
-vi.mock('../../src/pipeline/ocr/paddleocrProvider', () => ({
+vi.mock('../../packages/image-pipeline/src/pipeline/ocr/paddleocrProvider', () => ({
   preparePaddleOcrRuntime: pipelineMocks.preparePaddleOcrRuntime,
   warmupPaddleOcrRuntime: pipelineMocks.warmupPaddleOcrRuntime,
 }));
-vi.mock('../../src/pipeline/translate', () => ({
+vi.mock('../../packages/image-pipeline/src/pipeline/translate', () => ({
   runTranslate: pipelineMocks.runTranslate,
 }));
-vi.mock('../../src/pipeline/inpaint', () => ({
+vi.mock('../../packages/image-pipeline/src/pipeline/inpaint', () => ({
   runInpaint: pipelineMocks.runInpaint,
 }));
-vi.mock('../../src/pipeline/typeset', () => ({
+vi.mock('../../packages/image-pipeline/src/pipeline/typeset', () => ({
   drawTypeset: pipelineMocks.drawTypeset,
 }));
-vi.mock('../../src/pipeline/visualize', () => ({
+vi.mock('../../packages/image-pipeline/src/pipeline/visualize', () => ({
   drawRegions: pipelineMocks.drawRegions,
 }));
-vi.mock('../../src/pipeline/textlineMerge', () => ({
+vi.mock('../../packages/image-pipeline/src/pipeline/textlineMerge', () => ({
   mergeTextLines: pipelineMocks.mergeTextLines,
 }));
-vi.mock('../../src/pipeline/maskRefinement', () => ({
+vi.mock('../../packages/image-pipeline/src/pipeline/maskRefinement', () => ({
   refineTextMask: pipelineMocks.refineTextMask,
 }));
-vi.mock('../../src/pipeline/readingOrder', () => ({
+vi.mock('../../packages/image-pipeline/src/pipeline/readingOrder', () => ({
   sortRegionsForRender: pipelineMocks.sortRegionsForRender,
 }));
-vi.mock('../../src/pipeline/bubbleDetect', () => ({
+vi.mock('../../packages/image-pipeline/src/pipeline/bubbleDetect', () => ({
   detectBubbles: pipelineMocks.detectBubbles,
   matchRegionsToBubbles: pipelineMocks.matchRegionsToBubbles,
 }));
-vi.mock('../../src/runtime/modelRegistry', () => ({
+vi.mock('../../packages/model-runtime/src/runtime/modelRegistry', () => ({
   getModelSession: pipelineMocks.getModelSession,
 }));
 
-import { PipelineStageError, runPipeline } from '../../src/pipeline/orchestrator';
+import { PipelineStageError, runPipeline } from '../../packages/image-pipeline/src/pipeline/orchestrator';
 
 function createCanvas(width = 100, height = 200): PipelineCanvas {
   return {
@@ -127,7 +126,6 @@ const baseConfig: PipelineConfig = {
   llmProvider: 'deepseek',
   llmAuthMode: 'api_key',
   llmBaseUrl: 'https://api.deepseek.com',
-  llmApiKey: '',
   llmModel: 'deepseek-v4-flash',
   typesetDebug: false,
   eraseDebug: false,
@@ -135,6 +133,27 @@ const baseConfig: PipelineConfig = {
   ocrEngine: 'paddleocr_v6_medium',
   ocrPostFilter: 'off',
   processMode: 'translate',
+};
+
+const modelRuntime: ModelRuntime = {
+  readModel: vi.fn(),
+  getSession: pipelineMocks.getModelSession,
+  run: vi.fn(),
+  runImage: vi.fn(),
+  readTextResource: vi.fn(),
+  releaseSession: vi.fn(async () => undefined),
+  dispose: vi.fn(async () => undefined),
+};
+
+const textTranslator: TextTranslator = {
+  translateRegions: pipelineMocks.runTranslate,
+};
+
+const runtimeOptions = {
+  modelRuntime,
+  textTranslator,
+  platform: pipelineMocks.browserPlatform as PlatformProvider,
+  detectionFallbackStrategy: { kind: 'heuristic-only' } as const,
 };
 
 function createFile(): File {
@@ -213,7 +232,12 @@ describe('runPipeline', () => {
   it('preserves the full translate-stage order and returns typeset output', async () => {
     const progress: PipelineProgress[] = [];
 
-    const artifacts = await runPipeline(createFile(), baseConfig, (item) => progress.push(item));
+    const artifacts = await runPipeline(
+      createFile(),
+      baseConfig,
+      (item) => progress.push(item),
+      runtimeOptions,
+    );
 
     expect(uniqueConsecutiveStages(progress)).toEqual([
       'load',
@@ -253,6 +277,7 @@ describe('runPipeline', () => {
       createFile(),
       { ...baseConfig, processMode: 'erase' },
       () => {},
+      runtimeOptions,
     );
 
     expect(pipelineMocks.runTranslate).not.toHaveBeenCalled();
@@ -267,6 +292,7 @@ describe('runPipeline', () => {
       createFile(),
       { ...baseConfig, processMode: 'original' },
       () => {},
+      runtimeOptions,
     );
 
     expect(pipelineMocks.runTranslate).not.toHaveBeenCalled();
@@ -325,7 +351,7 @@ describe('runPipeline', () => {
       createFile(),
       { ...baseConfig, processMode: 'original' },
       (item) => progress.push(item),
-      { stopAfter: 'order' },
+      { ...runtimeOptions, stopAfter: 'order' },
     );
 
     expect(uniqueConsecutiveStages(progress)).toEqual([
@@ -378,7 +404,7 @@ describe('runPipeline', () => {
   it('attaches completed intermediate artifacts to stage errors', async () => {
     pipelineMocks.detectTextRegionsWithMask.mockRejectedValueOnce(new Error('detector unavailable'));
 
-    const error = await runPipeline(createFile(), baseConfig, () => {}).catch(
+    const error = await runPipeline(createFile(), baseConfig, () => {}, runtimeOptions).catch(
       (caught: unknown) => caught,
     );
 

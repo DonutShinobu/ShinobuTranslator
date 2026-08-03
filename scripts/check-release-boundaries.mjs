@@ -147,7 +147,7 @@ if (target === 'chromium') {
   if (manifest.minimum_chrome_version !== undefined || manifest.permissions?.includes('offscreen')) {
     throw new Error('Firefox manifest contains Chromium-only fields or permissions.');
   }
-  if (manifest.background?.page !== 'background-firefox.html' || manifest.background?.persistent !== false) {
+  if (manifest.background?.page !== 'background-firefox.html' || manifest.background?.persistent === true) {
     throw new Error('Firefox must use the non-persistent background page.');
   }
   if (gecko?.id !== 'shinobu-translator@donutshinobu' || gecko?.strict_min_version !== '140.0') {

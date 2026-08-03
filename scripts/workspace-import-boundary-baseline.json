@@ -3,6 +3,7 @@
   "allowedCrossWorkspaceRelativeImports": [
     "apps/extension/src/benchmark.ts -> ../../../src/benchmark/browserEntry",
     "apps/extension/src/background-firefox.ts -> ../../../src/background/index",
+    "apps/extension/src/background-firefox.ts -> ../../../src/background/localPipeline/inProcessPipelineHostDependencies",
     "apps/extension/src/background-firefox.ts -> ../../../src/background/localPipeline/firefoxPipelineHostLifecycle",
     "apps/extension/src/offscreen.ts -> ../../../src/offscreen/index",
     "apps/extension/src/popup.tsx -> ../../../src/popup/main",

@@ -20,8 +20,8 @@ for (const field of ['name', 'summary', 'description', 'homepage', 'support_url'
 if (metadata.default_locale !== 'en-US') {
   throw new Error('AMO metadata default_locale must be en-US');
 }
-if (!metadata.categories?.firefox?.includes('photos-media')) {
-  throw new Error('AMO metadata must declare the Firefox photos-media category');
+if (!metadata.categories?.firefox?.includes('photos-music-videos')) {
+  throw new Error('AMO metadata must declare the Firefox photos-music-videos category');
 }
 if (metadata.version?.license !== 'GPL-3.0-only') {
   throw new Error('AMO version license must use the case-sensitive GPL-3.0-only slug');

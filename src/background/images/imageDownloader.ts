@@ -1,10 +1,10 @@
 import {
-  getChromeApi,
-  type ChromeDnrRuleUpdate,
-  type ChromeLike,
-  type ChromeMessageSender,
-  type ChromeWebRequestHeadersDetails,
-} from '../../shared/chrome';
+  getExtensionApi,
+  type ExtensionDnrRuleUpdate,
+  type ExtensionBrowserApi,
+  type ExtensionMessageSender,
+  type ExtensionWebRequestHeadersDetails,
+} from '../../shared/extensionRuntime';
 import { isReferrerPolicy } from '../../shared/referrerPolicy';
 import { arrayBufferToBase64, toErrorMessage } from '../../shared/utils';
 
@@ -29,12 +29,12 @@ export type DownloadedImage = {
 export type ImageDownloader = {
   download(
     request: ImageDownloadRequest,
-    sender: ChromeMessageSender,
+    sender: ExtensionMessageSender,
   ): Promise<DownloadedImage>;
 };
 
 type ImageDownloaderDependencies = {
-  chromeApi?: ChromeLike | null;
+  chromeApi?: ExtensionBrowserApi | null;
   fetchImage?: typeof fetch;
   timeoutMs?: number;
 };
@@ -56,7 +56,7 @@ type TrackedDocumentPolicy = {
 };
 
 type DocumentPolicyTracker = {
-  get(sender: ChromeMessageSender): Promise<ReferrerPolicy | undefined>;
+  get(sender: ExtensionMessageSender): Promise<ReferrerPolicy | undefined>;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -77,7 +77,7 @@ function getDocumentPolicyKeys(details: {
 }
 
 function extractReferrerPolicyFromHeaders(
-  headers: ChromeWebRequestHeadersDetails['responseHeaders'],
+  headers: ExtensionWebRequestHeadersDetails['responseHeaders'],
 ): ReferrerPolicy | undefined {
   let policy: ReferrerPolicy | undefined;
   for (const header of headers ?? []) {
@@ -118,7 +118,7 @@ async function hashDocumentUrl(value: string): Promise<string | undefined> {
   }
 }
 
-function createDocumentPolicyTracker(chromeApi: ChromeLike | null | undefined): DocumentPolicyTracker {
+function createDocumentPolicyTracker(chromeApi: ExtensionBrowserApi | null | undefined): DocumentPolicyTracker {
   const policies = new Map<string, TrackedDocumentPolicy>();
   const locallyUpdatedKeys = new Set<string>();
   const pendingUpdates = new Map<string, Promise<void>>();
@@ -192,7 +192,7 @@ function createDocumentPolicyTracker(chromeApi: ChromeLike | null | undefined): 
   })();
   if (!sessionStorage?.get) storageLoaded = true;
 
-  const listener = (details: ChromeWebRequestHeadersDetails): void => {
+  const listener = (details: ExtensionWebRequestHeadersDetails): void => {
     const keys = getDocumentPolicyKeys(details);
     if (keys.length === 0) return;
     const policy = extractReferrerPolicyFromHeaders(details.responseHeaders);
@@ -315,7 +315,7 @@ function parseHttpUrl(value: string, label: string): URL {
   return parsed;
 }
 
-function getTrustedDocumentUrl(sender: ChromeMessageSender): URL | undefined {
+function getTrustedDocumentUrl(sender: ExtensionMessageSender): URL | undefined {
   for (const candidate of [sender.documentUrl, sender.tab?.url]) {
     if (!candidate) continue;
     try {
@@ -428,7 +428,7 @@ function toDnrError(error: unknown): string {
 }
 
 async function removeRule(
-  updateRules: ((options: ChromeDnrRuleUpdate) => Promise<void>) | undefined,
+  updateRules: ((options: ExtensionDnrRuleUpdate) => Promise<void>) | undefined,
   ruleId: number,
 ): Promise<string | undefined> {
   if (!updateRules) return undefined;
@@ -459,7 +459,7 @@ export function createImageDownloader(
   dependencies: ImageDownloaderDependencies = {},
 ): ImageDownloader {
   const chromeApi = dependencies.chromeApi === undefined
-    ? getChromeApi()
+    ? getExtensionApi()
     : dependencies.chromeApi;
   const dnr = chromeApi?.declarativeNetRequest;
   const extensionId = chromeApi?.runtime?.id;
@@ -475,7 +475,7 @@ export function createImageDownloader(
 
   async function downloadSerialized(
     request: ImageDownloadRequest,
-    sender: ChromeMessageSender,
+    sender: ExtensionMessageSender,
   ): Promise<DownloadedImage> {
     parseHttpUrl(request.imageUrl, '图片地址');
     const trustedDocumentUrl = getTrustedDocumentUrl(sender);

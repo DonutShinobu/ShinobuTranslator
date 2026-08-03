@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { createExtensionManifest } from '../../apps/extension/manifest';
 
 const root = process.cwd();
 const pathFromRoot = (path: string): string => resolve(root, path);
@@ -30,8 +31,11 @@ describe('monorepo application ownership', () => {
     }
 
     const rootPackage = readJson<PackageManifest>('package.json');
-    expect(rootPackage.scripts?.['check:architecture']).toBe(
+    expect(rootPackage.scripts?.['check:architecture']).toContain(
       'node scripts/check-workspace-import-boundaries.mjs',
+    );
+    expect(rootPackage.scripts?.['check:architecture']).toContain(
+      'node scripts/check-extension-architecture.mjs',
     );
     expect(rootPackage.scripts?.check).toContain('npm run check:architecture');
   });
@@ -61,10 +65,12 @@ describe('monorepo application ownership', () => {
       'apps/extension/vite.config.ts',
       'apps/extension/popup.html',
       'apps/extension/offscreen.html',
+      'apps/extension/background-firefox.html',
       'apps/extension/benchmark.html',
-      'apps/extension/public/manifest.json',
+      'apps/extension/manifest.ts',
       'apps/extension/src/popup.tsx',
       'apps/extension/src/offscreen.ts',
+      'apps/extension/src/background-firefox.ts',
       'apps/extension/src/benchmark.ts',
     ]) {
       expect(existsSync(pathFromRoot(path)), path).toBe(true);
@@ -84,20 +90,27 @@ describe('monorepo application ownership', () => {
   it('delegates extension commands to the workspace and keeps versions aligned', () => {
     const rootPackage = readJson<PackageManifest>('package.json');
     const extensionPackage = readJson<PackageManifest>('apps/extension/package.json');
-    const extensionManifest = readJson<ExtensionManifest>(
-      'apps/extension/public/manifest.json',
-    );
+    const chromiumManifest = createExtensionManifest(
+      'chromium',
+      extensionPackage.version,
+    ) as ExtensionManifest;
+    const firefoxManifest = createExtensionManifest(
+      'firefox',
+      extensionPackage.version,
+    ) as ExtensionManifest;
 
     expect(rootPackage.workspaces).toContain('apps/*');
     expect(extensionPackage.name).toBe('@shinobu/extension');
-    expect(rootPackage.scripts?.['dev:extension']).toContain(
+    expect(rootPackage.scripts?.['dev:extension:chromium']).toContain(
       '--workspace=@shinobu/extension',
     );
     expect(rootPackage.scripts?.['build:extension']).toContain(
       '--workspace=@shinobu/extension',
     );
     expect(rootPackage.scripts?.build).toBe('npm run build:extension');
-    expect(extensionManifest.manifest_version).toBe(3);
-    expect(extensionManifest.version).toBe(extensionPackage.version);
+    expect(chromiumManifest.manifest_version).toBe(3);
+    expect(firefoxManifest.manifest_version).toBe(3);
+    expect(chromiumManifest.version).toBe(extensionPackage.version);
+    expect(firefoxManifest.version).toBe(extensionPackage.version);
   });
 });

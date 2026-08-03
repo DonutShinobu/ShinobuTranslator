@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createImageDownloader } from '../../src/background/images/imageDownloader';
 import type {
-  ChromeDnrRuleUpdate,
-  ChromeWebRequestHeadersDetails,
-} from '../../src/shared/chrome';
+  ExtensionDnrRuleUpdate,
+  ExtensionWebRequestHeadersDetails,
+} from '../../src/shared/extensionRuntime';
 
 const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
 
-type RuleUpdate = ChromeDnrRuleUpdate;
+type RuleUpdate = ExtensionDnrRuleUpdate;
 
 function createJpegResponse(
   options: {
@@ -274,9 +274,9 @@ describe('ImageDownloader', () => {
   });
 
   it('honors a tracked navigation Referrer-Policy header when the page has no DOM override', async () => {
-    let headersListener: ((details: ChromeWebRequestHeadersDetails) => void) | undefined;
+    let headersListener: ((details: ExtensionWebRequestHeadersDetails) => void) | undefined;
     const addListener = vi.fn((
-      listener: (details: ChromeWebRequestHeadersDetails) => void,
+      listener: (details: ExtensionWebRequestHeadersDetails) => void,
     ) => {
       headersListener = listener;
     });
@@ -342,7 +342,7 @@ describe('ImageDownloader', () => {
   });
 
   it('does not reuse a tracked policy after the same frame navigates to a different document URL', async () => {
-    let headersListener: ((details: ChromeWebRequestHeadersDetails) => void) | undefined;
+    let headersListener: ((details: ExtensionWebRequestHeadersDetails) => void) | undefined;
     const updateSessionRules = vi.fn(async (_update: RuleUpdate) => {});
     const downloader = createImageDownloader({
       chromeApi: {

@@ -6,7 +6,7 @@ Test image:
 
 - X URL: `https://x.com/QVdld/status/2061438475728277610/photo/1`
 - Image URL: `https://pbs.twimg.com/media/HJuzJGbbMAArfNI?format=jpg&name=orig`
-- Chrome/system benchmark command family: `npm run bench:browser-x-current -- --system-chrome --runs=N --url=... --image-url=...`
+- Playwright Chromium benchmark command family: `npm run bench:browser-x-current -- --runs=N --url=... --image-url=...`
 
 ## Summary
 

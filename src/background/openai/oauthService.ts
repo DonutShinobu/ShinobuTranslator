@@ -1,4 +1,8 @@
-import { getChromeApi } from "../../shared/chrome";
+import { getExtensionApi } from '../../shared/extensionRuntime';
+import {
+  AUTHENTICATION_INFO_PERMISSION,
+  createExtensionPermissions,
+} from '../../shared/extensionPermissions';
 import {
   buildOpenAiAuthorizeUrl,
   createOpenAiOAuthCodeChallenge,
@@ -159,7 +163,7 @@ async function clearPendingOpenAiOAuthLogin(): Promise<void> {
 }
 
 function openOpenAiAuthTab(url: string): Promise<number | undefined> {
-  const chromeApi = getChromeApi();
+  const chromeApi = getExtensionApi();
   if (!chromeApi?.tabs?.create) {
     return Promise.reject(new Error('当前浏览器不支持打开 OpenAI 登录页，请确认扩展已授予 tabs 权限'));
   }
@@ -177,7 +181,7 @@ function openOpenAiAuthTab(url: string): Promise<number | undefined> {
 }
 
 function closeOpenAiAuthTab(tabId?: number): Promise<void> {
-  const chromeApi = getChromeApi();
+  const chromeApi = getExtensionApi();
   if (typeof tabId !== 'number' || !chromeApi?.tabs?.remove) {
     return Promise.resolve();
   }
@@ -274,6 +278,7 @@ export async function getOpenAiOAuthStatus(): Promise<OpenAiOAuthStatusInfo> {
   }
 
   try {
+    await createExtensionPermissions().assertGranted(AUTHENTICATION_INFO_PERMISSION);
     const refreshed = await refreshOpenAiOAuthTokens(tokens);
     return toOpenAiOAuthStatus(refreshed);
   } catch (error) {
@@ -297,6 +302,7 @@ export async function getOpenAiOAuthStatus(): Promise<OpenAiOAuthStatusInfo> {
 }
 
 export async function loginOpenAiOAuth(): Promise<OpenAiOAuthStatusInfo> {
+  await createExtensionPermissions().assertGranted(AUTHENTICATION_INFO_PERMISSION);
   const redirectUri = openAiOAuthLoopbackRedirectUri;
   const state = createOpenAiOAuthRandomString(32);
   const codeVerifier = createOpenAiOAuthRandomString(64);
@@ -346,6 +352,7 @@ export async function handleOpenAiOAuthCallbackUrl(tabId: number, rawUrl: string
     if (callback.state !== pending.state) {
       throw new Error('OpenAI 登录状态校验失败，请重试');
     }
+    await createExtensionPermissions().assertGranted(AUTHENTICATION_INFO_PERMISSION);
     const tokens = await exchangeOpenAiAuthorizationCode(callback.code, pending.redirectUri, pending.codeVerifier);
     await saveOpenAiOAuthTokens(tokens);
     await clearPendingOpenAiOAuthLogin();
@@ -388,7 +395,8 @@ async function revokeOpenAiOAuthRefreshToken(refreshToken: string): Promise<void
 export async function logoutOpenAiOAuth(): Promise<OpenAiOAuthStatusInfo> {
   const pending = await getPendingOpenAiOAuthLogin();
   const tokens = await getStoredOpenAiOAuthTokens();
-  if (tokens) {
+  const hasConsent = await createExtensionPermissions().contains(AUTHENTICATION_INFO_PERMISSION);
+  if (tokens && hasConsent) {
     try {
       await revokeOpenAiOAuthRefreshToken(tokens.refreshToken);
     } catch {
@@ -422,6 +430,7 @@ export async function getValidOpenAiOAuthTokens(): Promise<StoredOpenAiOAuthToke
   if (!tokens) {
     throw new Error('请先在扩展弹窗中登录 OpenAI');
   }
+  await createExtensionPermissions().assertGranted(AUTHENTICATION_INFO_PERMISSION);
   if (!isOpenAiOAuthExpired(tokens)) {
     return tokens;
   }

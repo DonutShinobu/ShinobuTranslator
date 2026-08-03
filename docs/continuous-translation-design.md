@@ -193,7 +193,7 @@ type ContinuousTranslationDisplayMode = 'original' | 'translated';
 - 浏览器重启后不恢复；
 - 刷新后保留启用状态和启动时配置快照，但不保留译图结果，页面重新检测和翻译。
 
-后台使用 `chrome.storage.session` 保存按 `tabId` 索引的会话控制状态，以跨越 MV3 后台脚本休眠和同源刷新：
+后台通过 `ExtensionRuntime` 暴露的 `storage.session` 能力保存按 `tabId` 索引的会话控制状态，以跨越 MV3 后台脚本休眠和同源刷新：
 
 ```ts
 type ContinuousTranslationPhase = 'running' | 'pausing' | 'paused' | 'blocked';
@@ -510,7 +510,7 @@ src/content/continuousTranslation/
 
 ```text
 src/background/continuousTranslation/
-  tabStateStore.ts            chrome.storage.session 的按 tab 状态
+  tabStateStore.ts            ExtensionRuntime storage.session 的按 tab 状态
   coordinator.ts              活动标签页解析、校验、跨域与命令转发
 ```
 
@@ -587,7 +587,7 @@ flowchart TD
 | --- | --- |
 | `src/shared/messages.ts` | 连续模式消息与响应 |
 | `src/shared/config.ts` | 连续模式专用配置校验，不增加持久化开关 |
-| `src/shared/chrome.ts` | 补齐 `storage.session`、tab 查询与 tab 消息类型 |
+| `src/shared/extensionRuntime.ts` | 补齐浏览器无关的 `storage.session`、tab 查询与 tab 消息类型 |
 | `src/background/index.ts` | 注册连续模式状态协调与 tab 生命周期 |
 | `src/background/messages/router.ts` | 路由 Popup/内容页连续模式消息 |
 | `src/background/continuousTranslation/*` | 新增按 tab 状态与命令协调 |

@@ -1,4 +1,4 @@
-name: Build & Attach Extension
+name: Build, Release & Submit Extensions
 
 on:
   release:
@@ -11,7 +11,8 @@ jobs:
     permissions:
       contents: write
     env:
-      EXTENSION_DIST: apps/extension/dist
+      EXTENSION_CHROMIUM_DIST: apps/extension/dist-chromium
+      EXTENSION_FIREFOX_DIST: apps/extension/dist-firefox
 
     steps:
       - name: Checkout
@@ -26,76 +27,69 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Find latest model release tag
+      - name: Read pinned model release
         id: models
-        run: |
-          TAG=$(gh release list --repo ${{ github.repository }} \
-            --json tagName --jq '.[] | select(.tagName | startswith("models-")) | .tagName' \
-            | head -1)
-          if [ -z "$TAG" ]; then
-            echo "ERROR: No models-* release found. Create a model release first."
-            exit 1
-          fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "tag=$(jq -r .tag apps/extension/model-release.json)" >> "$GITHUB_OUTPUT"
 
-      - name: Download model files
-        run: npm run models:download -- "${{ steps.models.outputs.tag }}" --force
+      - name: Download and verify pinned models
+        run: npm run models:download -- "${{ steps.models.outputs.tag }}"
 
-      - name: Run quality gate
+      - name: Run quality gates and dual-target build
         run: npm run check
 
-      - name: Verify version matches release tag
+      - name: Firefox lint audit
+        run: npm run lint:firefox --workspace=@shinobu/extension
+
+      - name: Verify tag and all extension versions
         run: |
           TAG_VERSION="${{ github.event.release.tag_name }}"
           TAG_VERSION="${TAG_VERSION#v}"
-          MANIFEST_VERSION=$(jq -r .version "$EXTENSION_DIST/manifest.json")
-          if [ "$TAG_VERSION" != "$MANIFEST_VERSION" ]; then
-            echo "ERROR: Release tag version ($TAG_VERSION) != manifest.json version ($MANIFEST_VERSION)"
-            exit 1
-          fi
-          echo "Version check passed: $TAG_VERSION"
+          PACKAGE_VERSION=$(jq -r .version apps/extension/package.json)
+          CHROMIUM_VERSION=$(jq -r .version "$EXTENSION_CHROMIUM_DIST/manifest.json")
+          FIREFOX_VERSION=$(jq -r .version "$EXTENSION_FIREFOX_DIST/manifest.json")
+          test "$TAG_VERSION" = "$PACKAGE_VERSION"
+          test "$TAG_VERSION" = "$CHROMIUM_VERSION"
+          test "$TAG_VERSION" = "$FIREFOX_VERSION"
 
-      - name: Verify model files in extension dist
+      - name: Generate parity report
         run: |
-          if find "$EXTENSION_DIST/models" -name '*.onnx' | grep -q .; then
-            echo "ONNX files present in $EXTENSION_DIST/models/"
-          else
-            echo "ERROR: Missing bundled ONNX files in $EXTENSION_DIST/models/"
-            exit 1
-          fi
-          node --input-type=module <<'NODE'
-          import { collectModelAssets } from './scripts/model-release-assets.mjs';
-          import { existsSync } from 'node:fs';
-          import { join } from 'node:path';
+          node scripts/check-extension-parity.mjs \
+            --chromium "$EXTENSION_CHROMIUM_DIST" \
+            --firefox "$EXTENSION_FIREFOX_DIST" \
+            --report artifacts/extension-parity-report.json
 
-          const dist = process.env.EXTENSION_DIST;
-          const assets = await collectModelAssets(join(dist, 'models/models.json'));
-          for (const file of assets) {
-            if (!existsSync(join(dist, 'models', file))) {
-              console.error(`ERROR: Missing ${file} in ${dist}/models/`);
-              process.exit(1);
-            }
-          }
-          console.log(`Verified model assets: ${assets.join(', ')}`);
-          NODE
-          if [ -f "$EXTENSION_DIST/models/ocr.onnx" ]; then
-            echo "ERROR: Legacy AR ocr.onnx must not be bundled in the Paddle-only release"
-            exit 1
-          fi
-          echo "All manifest model files present in $EXTENSION_DIST/models/"
-
-      - name: Create extension zip
+      - name: Package reproducible artifacts and enforce budgets
         run: |
-          cd "$EXTENSION_DIST"
-          zip -r "$GITHUB_WORKSPACE/ShinobuTranslator.zip" .
+          node scripts/package-extensions.mjs \
+            --chromium "$EXTENSION_CHROMIUM_DIST" \
+            --firefox "$EXTENSION_FIREFOX_DIST" \
+            --artifacts artifacts
 
-      - name: Upload zip to release
+      - name: Upload all release artifacts
         run: |
-          gh release upload ${{ github.event.release.tag_name }} \
-            ShinobuTranslator.zip \
-            --repo ${{ github.repository }} \
+          gh release upload "${{ github.event.release.tag_name }}" \
+            artifacts/ShinobuTranslator-chromium-*.zip \
+            artifacts/ShinobuTranslator-firefox-*.zip \
+            artifacts/ShinobuTranslator-source-*.zip \
+            artifacts/SHA256SUMS.txt \
+            artifacts/extension-parity-report.json \
+            --repo "${{ github.repository }}" \
             --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Submit listed Firefox build to AMO
+        run: |
+          SOURCE_ARCHIVE=$(find artifacts -maxdepth 1 -name 'ShinobuTranslator-source-*.zip' -print -quit)
+          npx web-ext sign \
+            --source-dir "$EXTENSION_FIREFOX_DIST" \
+            --artifacts-dir artifacts/amo-signed \
+            --channel listed \
+            --api-key "$WEB_EXT_API_KEY" \
+            --api-secret "$WEB_EXT_API_SECRET" \
+            --amo-metadata apps/extension/amo/metadata.json \
+            --upload-source-code "$SOURCE_ARCHIVE" \
+            --approval-timeout 0
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
+          WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}

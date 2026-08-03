@@ -259,7 +259,7 @@ function logPipelineStage(
     runId: config.diagnosticRunId,
     level: error === undefined ? "info" : "error",
     category,
-    source: { context: "offscreen", module: "orchestrator.ts" },
+    source: { context: 'pipeline-host', module: 'orchestrator.ts' },
     message,
     data,
     error: error === undefined ? undefined : toDiagnosticError(error),

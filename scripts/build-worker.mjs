@@ -5,12 +5,10 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const outDirFlagIndex = process.argv.indexOf('--out-dir');
 const requestedOutDir = outDirFlagIndex >= 0 ? process.argv[outDirFlagIndex + 1] : undefined;
-if (outDirFlagIndex >= 0 && !requestedOutDir) {
-  throw new Error('--out-dir requires a path');
+if (!requestedOutDir || requestedOutDir.startsWith('--')) {
+  throw new Error('--out-dir is required and must name a target-specific extension directory');
 }
-const outputDir = requestedOutDir
-  ? resolve(process.cwd(), requestedOutDir)
-  : resolve(__dirname, '../apps/extension/dist');
+const outputDir = resolve(process.cwd(), requestedOutDir);
 const browserRuntimeTarget = resolve(
   __dirname,
   '../src/runtime/browserRuntimeTarget.ts',
@@ -24,13 +22,14 @@ function externalizeNodeOnlyAdapter(id) {
 }
 
 // Separate build for the ONNX Worker. The production offscreen document loads
-// this self-contained module directly from chrome-extension://. HTTP benchmark
+// this self-contained module directly from the extension origin. HTTP benchmark
 // builds may still use the development-only Blob fallback.
 await build({
   configFile: false,
   root: resolve(__dirname, '..'),
   publicDir: false,
   resolve: {
+    conditions: ['onnxruntime-web-use-extern-wasm'],
     alias: [
       {
         find: './runtimeTarget',

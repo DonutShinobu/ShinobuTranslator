@@ -14,7 +14,7 @@ import {
   type LlmProvider,
   type ExtensionSettings,
 } from '../shared/config';
-import { getChromeApi } from '../shared/chrome';
+import { getExtensionRuntime } from '../shared/extensionRuntime';
 import {
   getLlmThinkingControl,
   llmThinkingCapabilityKey,
@@ -595,23 +595,14 @@ export function App() {
     async function loadShortcuts(): Promise<void> {
       setShortcutsLoading(true);
       setShortcutError('');
-      const chromeApi = getChromeApi();
-      if (!chromeApi?.commands?.getAll) {
+      const runtime = getExtensionRuntime();
+      if (!runtime) {
         setShortcutError('当前浏览器不支持读取扩展命令');
         setShortcutsLoading(false);
         return;
       }
       try {
-        const commands = await new Promise<ShortcutCommandInfo[]>((resolve, reject) => {
-          chromeApi.commands?.getAll?.((items) => {
-            const lastError = chromeApi.runtime?.lastError;
-            if (lastError?.message) {
-              reject(new Error(lastError.message));
-              return;
-            }
-            resolve(items);
-          });
-        });
+        const commands = await runtime.getCommands() as ShortcutCommandInfo[];
         const nextShortcuts: ShortcutState = { ...defaultShortcutState };
         for (const commandDefinition of shortcutCommandDefinitions) {
           const command = commands.find((item) => item.name === commandDefinition.name);
@@ -914,19 +905,19 @@ export function App() {
         : geminiAppStatus.pending
           ? '未登录'
           : '未登录';
-  const extensionVersion = getChromeApi()?.runtime?.getManifest?.().version ?? '';
+  const extensionRuntime = getExtensionRuntime();
+  const extensionVersion = extensionRuntime?.getVersion() ?? '';
 
   function openShortcutManager(): void {
-    const chromeApi = getChromeApi();
-    if (!chromeApi?.tabs?.create) {
+    if (!extensionRuntime) {
       setStatus({ kind: 'error', message: '无法打开扩展命令管理页' });
       return;
     }
-    chromeApi.tabs.create({ url: 'chrome://extensions/shortcuts', active: true }, () => {
-      const lastError = chromeApi.runtime?.lastError;
-      if (lastError?.message) {
-        setStatus({ kind: 'error', message: lastError.message });
-      }
+    void extensionRuntime.openShortcutSettings().catch((error: unknown) => {
+      setStatus({
+        kind: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      });
     });
   }
 

@@ -3,7 +3,12 @@ import type { ExtensionSettings } from '../shared/config';
 import type { GeminiAppAuthStatusInfo, GeminiAppImageTranslateMetadata } from '../shared/messages';
 import type { StageTiming } from '../types';
 import type { GeminiAppModel } from '../types';
-import { getChromeApi } from '../shared/chrome';
+import { getExtensionApi } from '../shared/extensionRuntime';
+import {
+  createExtensionPermissions,
+  ExtensionPermissionError,
+  GEMINI_COOKIE_PERMISSION,
+} from '../shared/extensionPermissions';
 import { arrayBufferToBase64, toErrorMessage } from '../shared/utils';
 
 type GeminiAppImageTranslateOptions = {
@@ -435,7 +440,7 @@ async function readTextResponse(response: Response, failureMessage: string): Pro
 }
 
 function readCookieHeaderForUrl(url: string): Promise<string> {
-  const chromeApi = getChromeApi();
+  const chromeApi = getExtensionApi();
   if (!chromeApi?.cookies?.getAll) {
     return Promise.resolve('');
   }
@@ -457,6 +462,9 @@ function readCookieHeaderForUrl(url: string): Promise<string> {
 async function readGeminiCookieHeader(authMode: ExtensionSettings['geminiAppAuthMode']): Promise<string | null> {
   if (authMode !== 'cookies_permission') {
     return null;
+  }
+  if (!await createExtensionPermissions().contains(GEMINI_COOKIE_PERMISSION)) {
+    throw new ExtensionPermissionError(GEMINI_COOKIE_PERMISSION);
   }
   const headers = await Promise.all([
     readCookieHeaderForUrl('https://gemini.google.com/'),

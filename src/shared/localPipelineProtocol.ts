@@ -17,15 +17,15 @@ import {
 } from '@shinobu/image-pipeline';
 
 export const LOCAL_PIPELINE_CLIENT_PORT = 'mt:local-pipeline-client';
-export const LOCAL_PIPELINE_OFFSCREEN_PORT = 'mt:offscreen-pipeline-host';
-export const LOCAL_PIPELINE_OFFSCREEN_DOCUMENT = 'offscreen.html';
+export const LOCAL_PIPELINE_BACKGROUND_LEASE_PORT = 'mt:pipeline-background-lease';
+export const LOCAL_PIPELINE_HOST_PORT = 'mt:pipeline-host';
 export const LOCAL_PIPELINE_CHUNK_SIZE = 4 * 1024 * 1024;
 export const LOCAL_PIPELINE_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 
 export type LocalPipelineErrorCode =
-  | 'OFFSCREEN_UNAVAILABLE'
-  | 'OFFSCREEN_CREATE_FAILED'
-  | 'OFFSCREEN_DISCONNECTED'
+  | 'PIPELINE_HOST_UNAVAILABLE'
+  | 'PIPELINE_HOST_CREATE_FAILED'
+  | 'PIPELINE_HOST_DISCONNECTED'
   | 'TRANSFER_PROTOCOL_ERROR'
   | 'TASK_CANCELLED'
   | 'RUNTIME_BUSY'
@@ -489,9 +489,9 @@ export function createCancelledError(message = '本地流水线任务已取消')
 }
 
 export function isLocalPipelineErrorCode(value: unknown): value is LocalPipelineErrorCode {
-  return value === 'OFFSCREEN_UNAVAILABLE'
-    || value === 'OFFSCREEN_CREATE_FAILED'
-    || value === 'OFFSCREEN_DISCONNECTED'
+  return value === 'PIPELINE_HOST_UNAVAILABLE'
+    || value === 'PIPELINE_HOST_CREATE_FAILED'
+    || value === 'PIPELINE_HOST_DISCONNECTED'
     || value === 'TRANSFER_PROTOCOL_ERROR'
     || value === 'TASK_CANCELLED'
     || value === 'RUNTIME_BUSY'

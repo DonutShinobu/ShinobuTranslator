@@ -52,10 +52,17 @@ describe('background stable identifiers', () => {
   it('registers menus and forwards menu/command actions with stable messages', async () => {
     const create = vi.fn();
     const sendMessage = vi.fn(async () => undefined);
+    let onInstalled: (() => void) | undefined;
     let onClicked: ((info: { menuItemId?: string | number }, tab?: { id?: number }) => void) | undefined;
     let onCommand: ((command: string, tab?: { id?: number }) => void) | undefined;
     vi.stubGlobal('chrome', {
-      runtime: {},
+      runtime: {
+        onInstalled: {
+          addListener(listener: typeof onInstalled) {
+            onInstalled = listener;
+          },
+        },
+      },
       tabs: { sendMessage },
       contextMenus: {
         create,
@@ -79,6 +86,8 @@ describe('background stable identifiers', () => {
 
     registerMenusAndCommands();
 
+    expect(create).not.toHaveBeenCalled();
+    onInstalled?.();
     expect(create).toHaveBeenCalledTimes(2);
     expect(create).toHaveBeenNthCalledWith(1, expect.objectContaining({ id: translateImageMenuId }));
     expect(create).toHaveBeenNthCalledWith(2, expect.objectContaining({ id: translateScreenshotMenuId }));

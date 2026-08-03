@@ -1,18 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
-import { OffscreenPipelineBroker } from '../../src/background/localPipeline/offscreenBroker';
-import type { ChromeLike, ChromePort } from '../../src/shared/chrome';
+import { PipelineHostBroker } from '../../src/background/localPipeline/offscreenBroker';
+import type { ExtensionBrowserApi, ExtensionPort } from '../../src/shared/extensionRuntime';
 import {
+  LOCAL_PIPELINE_BACKGROUND_LEASE_PORT,
   LOCAL_PIPELINE_CLIENT_PORT,
-  LOCAL_PIPELINE_OFFSCREEN_PORT,
+  LOCAL_PIPELINE_HOST_PORT,
 } from '../../src/shared/localPipelineProtocol';
 
-class FakePort implements ChromePort {
+class FakePort implements ExtensionPort {
   readonly sent: unknown[] = [];
-  readonly messageListeners: Array<(message: unknown, port: ChromePort) => void> = [];
-  readonly disconnectListeners: Array<(port: ChromePort) => void> = [];
+  readonly messageListeners: Array<(message: unknown, port: ExtensionPort) => void> = [];
+  readonly disconnectListeners: Array<(port: ExtensionPort) => void> = [];
   disconnected = false;
   failPosts = false;
-  sender?: ChromePort['sender'];
+  sender?: ExtensionPort['sender'];
 
   constructor(readonly name: string, documentUrl?: string) {
     this.sender = documentUrl ? { documentUrl } : undefined;
@@ -31,20 +32,20 @@ class FakePort implements ChromePort {
   }
 
   onMessage = {
-    addListener: (listener: (message: unknown, port: ChromePort) => void): void => {
+    addListener: (listener: (message: unknown, port: ExtensionPort) => void): void => {
       this.messageListeners.push(listener);
     },
-    removeListener: (listener: (message: unknown, port: ChromePort) => void): void => {
+    removeListener: (listener: (message: unknown, port: ExtensionPort) => void): void => {
       const index = this.messageListeners.indexOf(listener);
       if (index >= 0) this.messageListeners.splice(index, 1);
     },
   };
 
   onDisconnect = {
-    addListener: (listener: (port: ChromePort) => void): void => {
+    addListener: (listener: (port: ExtensionPort) => void): void => {
       this.disconnectListeners.push(listener);
     },
-    removeListener: (listener: (port: ChromePort) => void): void => {
+    removeListener: (listener: (port: ExtensionPort) => void): void => {
       const index = this.disconnectListeners.indexOf(listener);
       if (index >= 0) this.disconnectListeners.splice(index, 1);
     },
@@ -89,20 +90,20 @@ function transferJob(client: FakePort, jobId: string, data = 'YQ=='): void {
 }
 
 function createHarness(): {
-  broker: OffscreenPipelineBroker;
+  broker: PipelineHostBroker;
   host: FakePort;
   createDocument: ReturnType<typeof vi.fn>;
   closeDocument: ReturnType<typeof vi.fn>;
 } {
   const offscreenUrl = 'chrome-extension://test/offscreen.html';
-  const host = new FakePort(LOCAL_PIPELINE_OFFSCREEN_PORT, offscreenUrl);
-  let broker: OffscreenPipelineBroker;
+  const host = new FakePort(LOCAL_PIPELINE_HOST_PORT, offscreenUrl);
+  let broker: PipelineHostBroker;
   const createDocument = vi.fn(async () => {
     broker.handlePort(host);
     host.emitMessage({ type: 'host-ready' });
   });
   const closeDocument = vi.fn(async () => undefined);
-  const chromeApi: ChromeLike = {
+  const chromeApi: ExtensionBrowserApi = {
     runtime: {
       getURL: (path) => `chrome-extension://test/${path}`,
       getContexts: async () => [],
@@ -113,11 +114,11 @@ function createHarness(): {
       closeDocument,
     },
   };
-  broker = new OffscreenPipelineBroker(chromeApi);
+  broker = new PipelineHostBroker(chromeApi);
   return { broker, host, createDocument, closeDocument };
 }
 
-describe('OffscreenPipelineBroker', () => {
+describe('PipelineHostBroker', () => {
   it('deduplicates concurrent document creation and acknowledges prepares without forwarding queued work', async () => {
     const { broker, host, createDocument } = createHarness();
     const first = new FakePort(LOCAL_PIPELINE_CLIENT_PORT);
@@ -288,12 +289,12 @@ describe('OffscreenPipelineBroker', () => {
       expect(first.sent).toContainEqual(expect.objectContaining({
         type: 'error',
         jobId: 'job-1',
-        error: expect.objectContaining({ code: 'OFFSCREEN_DISCONNECTED' }),
+        error: expect.objectContaining({ code: 'PIPELINE_HOST_DISCONNECTED' }),
       }));
       expect(second.sent).toContainEqual(expect.objectContaining({
         type: 'error',
         jobId: 'job-2',
-        error: expect.objectContaining({ code: 'OFFSCREEN_DISCONNECTED' }),
+        error: expect.objectContaining({ code: 'PIPELINE_HOST_DISCONNECTED' }),
       }));
     });
   });
@@ -317,7 +318,7 @@ describe('OffscreenPipelineBroker', () => {
     await vi.waitFor(() => expect(second.sent).toContainEqual(expect.objectContaining({
       type: 'error',
       jobId: 'job-2',
-      error: expect.objectContaining({ code: 'OFFSCREEN_DISCONNECTED' }),
+      error: expect.objectContaining({ code: 'PIPELINE_HOST_DISCONNECTED' }),
     })));
     expect(host.disconnected).toBe(true);
   });
@@ -471,8 +472,25 @@ describe('OffscreenPipelineBroker', () => {
     expect(client.sent).toContainEqual(expect.objectContaining({
       type: 'error',
       jobId: 'active-job',
-      error: expect.objectContaining({ code: 'OFFSCREEN_DISCONNECTED' }),
+      error: expect.objectContaining({ code: 'PIPELINE_HOST_DISCONNECTED' }),
     }));
+  });
+
+  it('holds a background lease until the idle host has closed', async () => {
+    const { broker, host, closeDocument } = createHarness();
+    const lease = new FakePort(LOCAL_PIPELINE_BACKGROUND_LEASE_PORT);
+    broker.handlePort(lease);
+    broker.handlePort(host);
+    host.emitMessage({ type: 'host-ready' });
+
+    expect(lease.disconnected).toBe(false);
+
+    host.emitMessage({ type: 'idle-close' });
+
+    await vi.waitFor(() => {
+      expect(closeDocument).toHaveBeenCalledOnce();
+      expect(lease.disconnected).toBe(true);
+    });
   });
 
   it('closes the document only after the host reports idle with no jobs', async () => {
@@ -515,10 +533,10 @@ describe('OffscreenPipelineBroker', () => {
       return { promise, resolve };
     })();
     const offscreenUrl = 'chrome-extension://test/offscreen.html';
-    const firstHost = new FakePort(LOCAL_PIPELINE_OFFSCREEN_PORT, offscreenUrl);
-    const secondHost = new FakePort(LOCAL_PIPELINE_OFFSCREEN_PORT, offscreenUrl);
+    const firstHost = new FakePort(LOCAL_PIPELINE_HOST_PORT, offscreenUrl);
+    const secondHost = new FakePort(LOCAL_PIPELINE_HOST_PORT, offscreenUrl);
     let documentExists = true;
-    let broker!: OffscreenPipelineBroker;
+    let broker!: PipelineHostBroker;
     const createDocument = vi.fn(async () => {
       documentExists = true;
       broker.handlePort(secondHost);
@@ -529,7 +547,7 @@ describe('OffscreenPipelineBroker', () => {
       documentExists = false;
       firstHost.disconnect();
     });
-    broker = new OffscreenPipelineBroker({
+    broker = new PipelineHostBroker({
       runtime: {
         getURL: (path) => `chrome-extension://test/${path}`,
         getContexts: async () => documentExists
@@ -585,17 +603,23 @@ describe('OffscreenPipelineBroker', () => {
     vi.useFakeTimers();
     try {
       const offscreenUrl = 'chrome-extension://test/offscreen.html';
-      const host = new FakePort(LOCAL_PIPELINE_OFFSCREEN_PORT, offscreenUrl);
-      let broker!: OffscreenPipelineBroker;
+      const host = new FakePort(LOCAL_PIPELINE_HOST_PORT, offscreenUrl);
+      let documentExists = true;
+      let broker!: PipelineHostBroker;
       const createDocument = vi.fn(async () => {
+        documentExists = true;
         broker.handlePort(host);
         host.emitMessage({ type: 'host-ready' });
       });
-      const closeDocument = vi.fn(async () => undefined);
-      broker = new OffscreenPipelineBroker({
+      const closeDocument = vi.fn(async () => {
+        documentExists = false;
+      });
+      broker = new PipelineHostBroker({
         runtime: {
           getURL: (path) => `chrome-extension://test/${path}`,
-          getContexts: async () => [{ contextType: 'OFFSCREEN_DOCUMENT', documentUrl: offscreenUrl }],
+          getContexts: async () => documentExists
+            ? [{ contextType: 'OFFSCREEN_DOCUMENT', documentUrl: offscreenUrl }]
+            : [],
         },
         offscreen: { createDocument, closeDocument },
       });

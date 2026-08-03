@@ -1,0 +1,33 @@
+{
+  "default_locale": "en-US",
+  "name": {
+    "en-US": "ShinobuTranslator",
+    "zh-CN": "ShinobuTranslator"
+  },
+  "categories": {
+    "firefox": [
+      "photos-media"
+    ]
+  },
+  "summary": {
+    "en-US": "Translate text inside images on X, Pixiv, eHentai, and ordinary web pages.",
+    "zh-CN": "翻译 X、Pixiv、eHentai 与普通网页图片中的文字。"
+  },
+  "description": {
+    "en-US": "ShinobuTranslator detects, recognizes, translates, removes, and typesets text inside images. Local image processing runs in the extension; configured translation providers receive only the data described in the privacy policy. Source: https://github.com/DonutShinobu/ShinobuTranslator Privacy: https://github.com/DonutShinobu/ShinobuTranslator/blob/main/PRIVACY_POLICY.md Support: https://github.com/DonutShinobu/ShinobuTranslator/issues",
+    "zh-CN": "ShinobuTranslator 可检测、识别、翻译、去字并重新排版网页图片中的文字。本地图片处理在扩展内完成；仅按隐私政策向用户配置的翻译服务发送所需数据。源码：https://github.com/DonutShinobu/ShinobuTranslator 隐私政策：https://github.com/DonutShinobu/ShinobuTranslator/blob/main/PRIVACY_POLICY.md 支持：https://github.com/DonutShinobu/ShinobuTranslator/issues"
+  },
+  "homepage": {
+    "en-US": "https://github.com/DonutShinobu/ShinobuTranslator",
+    "zh-CN": "https://github.com/DonutShinobu/ShinobuTranslator"
+  },
+  "support_url": {
+    "en-US": "https://github.com/DonutShinobu/ShinobuTranslator/issues",
+    "zh-CN": "https://github.com/DonutShinobu/ShinobuTranslator/issues"
+  },
+  "requires_payment": false,
+  "version": {
+    "license": "GPL-3.0-only",
+    "approval_notes": "Build with Node.js 22: npm ci && npm run build-for-amo. The command verifies pinned model size/SHA-256, builds dist-firefox, enforces 0 Firefox lint errors, and packages source. Detailed reviewer steps are in apps/extension/amo/reviewer-notes.md. Test popup persistence, page image controls, Alt+Q/Alt+W, context menus, local pipeline host idle/recovery, install-time authentication/Cookie consent, and direct Gemini Cookie login without a second permission prompt."
+  }
+}

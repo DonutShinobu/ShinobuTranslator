@@ -4,11 +4,8 @@ function trimLeadingSlash(path: string): string {
 
 export function resolveAssetUrl(path: string): string {
   const cleanedPath = trimLeadingSlash(path);
-  const chromeApi = (globalThis as typeof globalThis & {
-    chrome?: { runtime?: { getURL?: (assetPath: string) => string } };
-  }).chrome;
-  if (chromeApi?.runtime?.getURL) {
-    return chromeApi.runtime.getURL(cleanedPath);
-  }
+  const runtime = getExtensionRuntime();
+  if (runtime) return runtime.getURL(cleanedPath);
   return `/${cleanedPath}`;
 }
+import { getExtensionRuntime } from './extensionRuntime';

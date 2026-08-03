@@ -1,5 +1,5 @@
 import type { ExtensionSettings } from "../../shared/config";
-import { getChromeApi } from "../../shared/chrome";
+import { getExtensionApi } from '../../shared/extensionRuntime';
 import {
   createDiagnosticEvent,
   createDiagnosticId,
@@ -196,7 +196,7 @@ export async function exportDiagnosticLog(): Promise<DiagnosticLogTextExport> {
   await diagnosticLogWriteQueue.catch(() => undefined);
   const store = await readDiagnosticLogStore();
   const settings = await getSettings();
-  const chromeApi = getChromeApi();
+  const chromeApi = getExtensionApi();
   const manifest = chromeApi?.runtime?.getManifest?.();
   const events = store.events;
   const exportedAt = new Date().toISOString();

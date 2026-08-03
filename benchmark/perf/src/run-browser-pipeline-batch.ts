@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,7 +21,7 @@ import type {
 } from "../../../src/types";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const DIST_DIR = join(ROOT, "apps", "extension", "dist");
+const DIST_DIR = join(ROOT, "apps", "extension", "dist-chromium");
 const TMP_DIR = join(ROOT, ".tmp");
 const USER_DATA_DIR = join(TMP_DIR, `browser-pipeline-batch-${Date.now()}`);
 const DEFAULT_CONCURRENCY = 2;
@@ -186,33 +186,13 @@ function requireFile(relativePath: string): void {
 }
 
 function findChromeExecutable(): string {
-  const playwrightChromiumRoot = process.env.LOCALAPPDATA
-    ? join(process.env.LOCALAPPDATA, "ms-playwright")
-    : null;
-  const installedPlaywrightChromium = playwrightChromiumRoot && existsSync(playwrightChromiumRoot)
-    ? readdirSync(playwrightChromiumRoot, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && /^chromium-\d+$/.test(entry.name))
-      .sort((a, b) => b.name.localeCompare(a.name, undefined, { numeric: true }))
-      .map((entry) => join(playwrightChromiumRoot, entry.name, "chrome-win64", "chrome.exe"))
-    : [];
-  const candidates = [
-    process.env.CHROME_PATH,
-    chromium.executablePath(),
-    ...installedPlaywrightChromium,
-    "C:/Program Files/Google/Chrome for Testing/Application/chrome.exe",
-    "C:/Program Files (x86)/Google/Chrome for Testing/Application/chrome.exe",
-    "/Applications/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing",
-    "/Applications/Chromium.app/Contents/MacOS/Chromium",
-    "/usr/bin/chromium",
-    "/usr/bin/chromium-browser",
-  ].filter((value): value is string => Boolean(value));
-
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) return candidate;
+  const executable = chromium.executablePath();
+  if (existsSync(executable)) {
+    return executable;
   }
   throw new Error(
-    "未找到可加载未打包扩展的 Chrome/Chromium。请安装 Playwright Chromium，"
-      + "或通过 CHROME_PATH 指定 Chrome for Testing。",
+    `未找到项目锁定的 Playwright Chromium：${executable}。`
+      + "请运行 npx playwright install chromium。",
   );
 }
 

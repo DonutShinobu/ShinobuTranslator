@@ -6,7 +6,16 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT_DIR = join(ROOT, ".tmp", "model-variants", "runtime-ort-best");
-const DIST_MODELS_DIR = join(ROOT, "apps", "extension", "dist", "models");
+const distFlagIndex = process.argv.indexOf("--dist");
+const requestedDist = distFlagIndex >= 0 ? process.argv[distFlagIndex + 1] : undefined;
+if (!requestedDist || requestedDist.startsWith("--")) {
+  throw new Error("--dist is required and must name dist-chromium or dist-firefox");
+}
+const resolvedDist = resolve(process.cwd(), requestedDist);
+if (!/dist-(?:chromium|firefox)$/.test(resolvedDist.replaceAll("\\", "/"))) {
+  throw new Error(`Refusing ambiguous extension output directory: ${resolvedDist}`);
+}
+const DIST_MODELS_DIR = join(resolvedDist, "models");
 const MANIFEST_PATH = join(DIST_MODELS_DIR, "models.json");
 
 const MODELS = [

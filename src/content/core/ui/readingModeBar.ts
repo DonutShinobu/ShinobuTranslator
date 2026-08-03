@@ -1,5 +1,5 @@
 import type { ReadingModeBarUi } from '../types';
-import { ICONS } from './icons';
+import { createIcon, replaceIcon } from './icons';
 
 export function createReadingModeBarUi(): ReadingModeBarUi {
   const host = document.createElement('div');
@@ -12,10 +12,10 @@ export function createReadingModeBarUi(): ReadingModeBarUi {
   translateCurrentBtn.dataset.theme = 'light';
   const currentIcon = document.createElement('span');
   currentIcon.className = 'mt-x-icon';
-  currentIcon.innerHTML = ICONS.translate;
+  replaceIcon(currentIcon, 'translate');
   const currentSpinner = document.createElement('span');
   currentSpinner.className = 'mt-x-spinner';
-  currentSpinner.innerHTML = '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/></svg>';
+  currentSpinner.appendChild(createIcon('spinner'));
   const currentLabel = document.createElement('span');
   currentLabel.className = 'mt-x-label';
   currentLabel.textContent = '翻译当前页';
@@ -30,10 +30,10 @@ export function createReadingModeBarUi(): ReadingModeBarUi {
   translateAllBtn.dataset.theme = 'light';
   const allIcon = document.createElement('span');
   allIcon.className = 'mt-x-icon';
-  allIcon.innerHTML = ICONS.translate;
+  replaceIcon(allIcon, 'translate');
   const allSpinner = document.createElement('span');
   allSpinner.className = 'mt-x-spinner';
-  allSpinner.innerHTML = '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/></svg>';
+  allSpinner.appendChild(createIcon('spinner'));
   const allLabel = document.createElement('span');
   allLabel.className = 'mt-x-label';
   allLabel.textContent = '翻译全部';

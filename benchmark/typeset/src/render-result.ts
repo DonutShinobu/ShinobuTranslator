@@ -13,7 +13,7 @@ import { toRenderFixtureRegions } from "./fixture-render";
 import { parseTypesetSuiteArgs } from "./suite-paths";
 
 const ROOT = resolve(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "../../..");
-const DIST_DIR = join(ROOT, "apps", "extension", "dist");
+const DIST_DIR = join(ROOT, "apps", "extension", "dist-chromium");
 
 type RenderDebugResponse = {
   dataUrl: string;

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { defaultExtensionSettings } from '../../src/shared/config';
 import type { ExtensionSettings } from '../../src/shared/config';
-import type { ChromeMessageSender } from '../../src/shared/chrome';
+import type { ExtensionMessageSender } from '../../src/shared/extensionRuntime';
 import { createDiagnosticEvent } from '../../src/shared/diagnosticLog';
 import type { DiagnosticLogEvent } from '../../src/shared/diagnosticLog';
 import type { RuntimeMessage } from '../../src/shared/messages';
@@ -12,7 +12,7 @@ import {
 
 type MessageOf<T extends RuntimeMessage['type']> = Extract<RuntimeMessage, { type: T }>;
 
-const sender: ChromeMessageSender = {
+const sender: ExtensionMessageSender = {
   tab: { id: 7, windowId: 3, url: 'https://example.com/page' },
 };
 const diagnosticLog = {
@@ -38,13 +38,13 @@ function createServices(settings: ExtensionSettings = defaultExtensionSettings):
     images: {
       download: vi.fn(async (
         request: { imageUrl: string; referrerPolicy?: ReferrerPolicy },
-        _sender: ChromeMessageSender,
+        _sender: ExtensionMessageSender,
       ) => ({
         base64: 'aW1hZ2U=',
         contentType: 'image/png',
         sourceUrl: request.imageUrl,
       })),
-      capture: vi.fn(async (_sender: ChromeMessageSender) => ({
+      capture: vi.fn(async (_sender: ExtensionMessageSender) => ({
         base64: 'c2NyZWVuc2hvdA==',
         contentType: 'image/png',
         sourceUrl: 'https://example.com/page',

@@ -22,16 +22,10 @@ declare const chrome: {
 };
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
-const DIST_DIR = join(ROOT, 'apps', 'extension', 'dist');
+const DIST_DIR = join(ROOT, 'apps', 'extension', 'dist-chromium');
 const TMP_DIR = join(ROOT, '.tmp');
 const USER_DATA_DIR = join(TMP_DIR, `browser-offscreen-smoke-${Date.now()}`);
 const DEFAULT_IMAGE = join(ROOT, 'benchmark/color/fixtures/typeset-debug-log-2026-05-23T06-03-39-877Z.png');
-const USE_SYSTEM_CHROME = process.argv.includes('--system-chrome') || Boolean(process.env.CHROME_PATH);
-const CHROME_CANDIDATES = [
-  process.env.CHROME_PATH,
-  'C:/Program Files/Google/Chrome/Application/chrome.exe',
-  'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
-].filter((value): value is string => Boolean(value));
 
 type DiagnosticEvent = {
   message?: string;
@@ -42,15 +36,6 @@ type DiagnosticEvent = {
 
 function requireFile(path: string): void {
   if (!existsSync(path)) throw new Error(`Missing required smoke asset: ${path}`);
-}
-
-function findBrowserExecutable(): { executablePath: string; label: string } {
-  if (!USE_SYSTEM_CHROME) {
-    return { executablePath: chromium.executablePath(), label: 'Playwright Chromium' };
-  }
-  const executablePath = CHROME_CANDIDATES.find((candidate) => existsSync(candidate));
-  if (!executablePath) throw new Error('System Chrome not found. Set CHROME_PATH to Chrome for Testing/Chromium.');
-  return { executablePath, label: process.env.CHROME_PATH ? 'CHROME_PATH browser' : 'branded Google Chrome' };
 }
 
 function pickImagePath(): string {
@@ -121,7 +106,7 @@ function getRuntimeModels(events: DiagnosticEvent[]): string[] {
 async function main(): Promise<void> {
   for (const artifact of [
     'manifest.json',
-    'background.js',
+    'background-chromium.js',
     'content.js',
     'offscreen.html',
     'offscreen.js',
@@ -138,9 +123,8 @@ async function main(): Promise<void> {
   mkdirSync(USER_DATA_DIR, { recursive: true });
   const imagePath = pickImagePath();
   const { server, url } = await startStrictCspServer(imagePath);
-  const browser = findBrowserExecutable();
   const context = await chromium.launchPersistentContext(USER_DATA_DIR, {
-    executablePath: browser.executablePath,
+    executablePath: chromium.executablePath(),
     headless: false,
     ignoreDefaultArgs: ['--disable-extensions'],
     args: [
@@ -266,7 +250,7 @@ async function main(): Promise<void> {
 
     console.log(JSON.stringify({
       extensionId,
-      browser: browser.label,
+      browser: 'Playwright Chromium',
       pageUrl: url,
       image: imagePath,
       translatedImage,

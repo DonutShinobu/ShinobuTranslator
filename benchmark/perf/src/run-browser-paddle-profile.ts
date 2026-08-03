@@ -3,29 +3,20 @@ import type { AddressInfo } from "net";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { dirname, extname, join, resolve, sep } from "path";
 import { fileURLToPath } from "url";
-import { chromium } from "@playwright/test";
+import { chromium, firefox } from "@playwright/test";
 import type { BrowserContext } from "@playwright/test";
 import type { OcrEngine, ProcessMode } from "../../../src/shared/config";
 import type { OcrRunDebugInfo, PaddleOcrRunDebug } from "../../../src/types";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const DIST_DIR = join(ROOT, "apps", "extension", "dist");
+const DIST_DIR = join(ROOT, "apps", "extension", "dist-chromium");
 const TMP_DIR = join(ROOT, ".tmp");
 const REPORTS_DIR = join(ROOT, "benchmark/perf/reports");
 const DEFAULT_X_URL = "https://x.com/nanashiwan/status/2061024890195435823/photo/1";
-const USE_SYSTEM_CHROME = process.argv.includes("--system-chrome") || Boolean(process.env.CHROME_PATH);
-const CHROME_CANDIDATES = [
-  process.env.CHROME_PATH,
-  ...(USE_SYSTEM_CHROME
-    ? [
-        "C:/Program Files/Google/Chrome/Application/chrome.exe",
-        "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
-      ]
-    : []),
-].filter((value): value is string => !!value);
 
 type RuntimeProvider = "webnn" | "webgpu" | "wasm" | "cuda" | "cpu";
 type PaddleBatchCliMode = "default" | "serial" | "width-bucket";
+type BrowserCliMode = "chromium" | "firefox";
 type PaddleProviderCliMode = "default" | "webgpu" | "webnn" | "wasm";
 type PaddleColdFirstCliMode = "default" | "on" | "off";
 type PaddleModelCliMode = "medium";
@@ -143,6 +134,7 @@ type PaddleProfileResult = {
   inpaintRuntimeProbeSchedule?: InpaintRuntimeProbeScheduleCliMode;
   bubbleRuntimeProbeSchedule?: BubbleRuntimeProbeScheduleCliMode;
   paddleFixedInputWidth?: number;
+  paddleGpuOutput?: boolean;
   paddleGraphCapture?: boolean;
   runs: PipelineRun[];
   warmMedian: {
@@ -200,6 +192,31 @@ function pickRunCount(): number {
     throw new Error(`Invalid --runs value: ${raw}`);
   }
   return parsed;
+}
+
+function pickMaxWarmOcrMs(): number | undefined {
+  const raw = argValue("max-warm-ocr-ms");
+  if (!raw) return undefined;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`Invalid --max-warm-ocr-ms value: ${raw}`);
+  }
+  return parsed;
+}
+
+function pickBrowser(): BrowserCliMode {
+  const raw = argValue("browser") ?? "chromium";
+  if (raw === "chromium" || raw === "firefox") return raw;
+  throw new Error(`Invalid --browser value: ${raw}`);
+}
+
+function pickProfileKey(): string | undefined {
+  const raw = argValue("profile-key");
+  if (!raw) return undefined;
+  if (!/^[a-z0-9_-]+$/i.test(raw)) {
+    throw new Error(`Invalid --profile-key value: ${raw}`);
+  }
+  return raw;
 }
 
 function normalizeOcrEngine(value: string): OcrEngine {
@@ -342,6 +359,10 @@ function pickPaddleGraphCapture(): boolean {
   return process.argv.includes("--paddle-graph-capture");
 }
 
+function pickPaddleGpuOutput(): boolean {
+  return process.argv.includes("--paddle-gpu-output");
+}
+
 function pickOcrCompactActiveBatch(): boolean | undefined {
   if (process.argv.includes("--fixed-ocr-batch")) {
     return false;
@@ -352,14 +373,6 @@ function pickOcrCompactActiveBatch(): boolean | undefined {
   if (normalized === "false" || normalized === "0" || normalized === "no") return false;
   if (normalized === "true" || normalized === "1" || normalized === "yes") return true;
   throw new Error(`Invalid --ocr-compact-active-batch value: ${raw}`);
-}
-
-function findChromeExecutable(): string | undefined {
-  if (!USE_SYSTEM_CHROME) return undefined;
-  for (const candidate of CHROME_CANDIDATES) {
-    if (existsSync(candidate)) return candidate;
-  }
-  throw new Error("Chrome executable not found. Set CHROME_PATH to chrome.exe.");
 }
 
 function requireDistAsset(relativePath: string): void {
@@ -438,9 +451,8 @@ function loadImageFromFile(imagePath: string): XImage {
 }
 
 async function resolveXImage(xUrl: string, imageUrlOverride: string | null): Promise<XImage> {
-  const chromePath = findChromeExecutable();
   const browser = await chromium.launch({
-    ...(chromePath ? { executablePath: chromePath } : {}),
+    executablePath: chromium.executablePath(),
     headless: false,
     args: [
       "--no-first-run",
@@ -668,6 +680,8 @@ function computeWarmMedian(runs: PipelineRun[]): PaddleProfileResult["warmMedian
 }
 
 async function runPaddleProfile(
+  browserMode: BrowserCliMode,
+  profileKey: string | undefined,
   pageUrl: string,
   image: XImage,
   runs: number,
@@ -683,23 +697,31 @@ async function runPaddleProfile(
   inpaintRuntimeProbeSchedule: InpaintRuntimeProbeScheduleCliMode,
   bubbleRuntimeProbeSchedule: BubbleRuntimeProbeScheduleCliMode,
   paddleFixedInputWidth: number | undefined,
+  paddleGpuOutput: boolean,
   paddleGraphCapture: boolean,
 ): Promise<PaddleProfileResult> {
-  const label = "paddle-profile";
-  const userDataDir = join(TMP_DIR, `paddle-profile-web-${Date.now()}`);
-  rmInsideTmp(userDataDir);
+  const label = `paddle-profile:${browserMode}`;
+  const userDataDir = join(
+    TMP_DIR,
+    profileKey
+      ? `paddle-profile-${browserMode}-${profileKey}`
+      : `paddle-profile-${browserMode}-${Date.now()}`,
+  );
+  if (!profileKey) rmInsideTmp(userDataDir);
   mkdirSync(userDataDir, { recursive: true });
-  const chromePath = findChromeExecutable();
-  const context = await chromium.launchPersistentContext(userDataDir, {
-    ...(chromePath ? { executablePath: chromePath } : {}),
+  const browserType = browserMode === "firefox" ? firefox : chromium;
+  const context = await browserType.launchPersistentContext(userDataDir, {
+    executablePath: browserType.executablePath(),
     headless: false,
-    args: [
-      "--no-first-run",
-      "--no-default-browser-check",
-      "--disable-background-timer-throttling",
-      "--disable-renderer-backgrounding",
-      "--enable-unsafe-webgpu",
-    ],
+    args: browserMode === "chromium"
+      ? [
+          "--no-first-run",
+          "--no-default-browser-check",
+          "--disable-background-timer-throttling",
+          "--disable-renderer-backgrounding",
+          "--enable-unsafe-webgpu",
+        ]
+      : [],
   });
   context.setDefaultTimeout(900000);
   try {
@@ -745,6 +767,7 @@ async function runPaddleProfile(
         inpaintRuntimeProbeSchedule: InpaintRuntimeProbeScheduleCliMode;
         bubbleRuntimeProbeSchedule: BubbleRuntimeProbeScheduleCliMode;
         paddleFixedInputWidth?: number;
+        paddleGpuOutput: boolean;
         paddleGraphCapture: boolean;
       }>(
         async ({
@@ -763,6 +786,7 @@ async function runPaddleProfile(
           inpaintRuntimeProbeSchedule,
           bubbleRuntimeProbeSchedule,
           paddleFixedInputWidth,
+          paddleGpuOutput,
           paddleGraphCapture,
         }) => {
           type PaddleRuntimeFlags = typeof globalThis & {
@@ -832,15 +856,19 @@ async function runPaddleProfile(
             delete runtimeFlags.__shinobuPaddleOcrWarmupInputWidth;
           }
           runtimeFlags.__shinobuPaddleOcrWarmupBatchSize = 1;
-          if (paddleGraphCapture) {
+          if (paddleGraphCapture || paddleGpuOutput) {
             const fixedWidth = paddleFixedInputWidth ?? 320;
             runtimeFlags.__shinobuPaddleOcrSessionOptions = {
-              enableGraphCapture: true,
               preferredOutputLocation: "gpu-buffer",
-              freeDimensionOverrides: {
-                "DynamicDimension.0": 1,
-                "DynamicDimension.1": fixedWidth,
-              },
+              ...(paddleGraphCapture
+                ? {
+                    enableGraphCapture: true,
+                    freeDimensionOverrides: {
+                      "DynamicDimension.0": 1,
+                      "DynamicDimension.1": fixedWidth,
+                    },
+                  }
+                : {}),
             };
           } else {
             delete runtimeFlags.__shinobuPaddleOcrSessionOptions;
@@ -923,6 +951,7 @@ async function runPaddleProfile(
           inpaintRuntimeProbeSchedule,
           bubbleRuntimeProbeSchedule,
           paddleFixedInputWidth,
+          paddleGpuOutput,
           paddleGraphCapture,
         }
       );
@@ -944,6 +973,7 @@ async function runPaddleProfile(
       inpaintRuntimeProbeSchedule,
       bubbleRuntimeProbeSchedule,
       paddleFixedInputWidth,
+      paddleGpuOutput,
       paddleGraphCapture,
       runs: results,
       warmMedian: computeWarmMedian(results),
@@ -1014,6 +1044,9 @@ function printSummary(report: PaddleProfileReport): void {
   if (result.paddleGraphCapture) {
     console.log("  Paddle graph cap:  true");
   }
+  if (result.paddleGpuOutput) {
+    console.log("  Paddle GPU output:true");
+  }
   console.log(`  warm median total: ${formatMs(result.warmMedian.totalMs)}`);
   console.log(`  warm median OCR:   ${formatMs(result.warmMedian.ocrStageMs)}`);
   console.log(`  warm median decode:${formatMs(result.warmMedian.decodeSessionRunTotalMs)}`);
@@ -1035,6 +1068,8 @@ function printSummary(report: PaddleProfileReport): void {
 }
 
 async function main(): Promise<void> {
+  const browserMode = pickBrowser();
+  const profileKey = pickProfileKey();
   const ocrEngine = pickOcrEngine();
   const processMode = pickProcessMode();
   const paddleBatchMode = pickPaddleBatchMode();
@@ -1046,6 +1081,7 @@ async function main(): Promise<void> {
   const inpaintRuntimeProbeSchedule = pickInpaintRuntimeProbeSchedule();
   const bubbleRuntimeProbeSchedule = pickBubbleRuntimeProbeSchedule();
   const paddleFixedInputWidth = pickPaddleFixedInputWidth();
+  const paddleGpuOutput = pickPaddleGpuOutput();
   const paddleGraphCapture = pickPaddleGraphCapture();
   ensureDistReady();
   mkdirSync(TMP_DIR, { recursive: true });
@@ -1054,14 +1090,17 @@ async function main(): Promise<void> {
   const imageUrlOverride = pickImageUrlOverride();
   const imagePathOverride = pickImagePathOverride();
   const runs = pickRunCount();
+  const maxWarmOcrMs = pickMaxWarmOcrMs();
   const ocrCompactActiveBatch = pickOcrCompactActiveBatch();
-  console.log(`Browser profile config: ocr=${ocrEngine}, process=${processMode}, paddleBatch=${paddleBatchMode}, paddleProvider=${paddleProviderMode}, paddleColdFirst=${paddleColdFirstMode}, paddleModel=${paddleModelMode}, paddleProbe=${paddleRuntimeProbeMode}, paddleSchedule=${paddleRuntimeProbeSchedule}, inpaintSchedule=${inpaintRuntimeProbeSchedule}, bubbleSchedule=${bubbleRuntimeProbeSchedule}, paddleFixedW=${paddleFixedInputWidth ?? "default"}, paddleGraphCapture=${paddleGraphCapture}, runs=${runs}`);
+  console.log(`Browser profile config: browser=${browserMode}, ocr=${ocrEngine}, process=${processMode}, paddleBatch=${paddleBatchMode}, paddleProvider=${paddleProviderMode}, paddleColdFirst=${paddleColdFirstMode}, paddleModel=${paddleModelMode}, paddleProbe=${paddleRuntimeProbeMode}, paddleSchedule=${paddleRuntimeProbeSchedule}, inpaintSchedule=${inpaintRuntimeProbeSchedule}, bubbleSchedule=${bubbleRuntimeProbeSchedule}, paddleFixedW=${paddleFixedInputWidth ?? "default"}, paddleGpuOutput=${paddleGpuOutput}, paddleGraphCapture=${paddleGraphCapture}, runs=${runs}`);
   console.log(imagePathOverride ? `Loading local image: ${imagePathOverride}` : `Resolving X image: ${xUrl}`);
   const image = imagePathOverride ? loadImageFromFile(imagePathOverride) : await resolveXImage(xUrl, imageUrlOverride);
   console.log(`Resolved image: ${image.imageUrl} (${image.contentType}, ${image.bytes} bytes)`);
   const server = await startProbeServer();
   try {
     const result = await runPaddleProfile(
+      browserMode,
+      profileKey,
       server.url,
       image,
       runs,
@@ -1077,6 +1116,7 @@ async function main(): Promise<void> {
       inpaintRuntimeProbeSchedule,
       bubbleRuntimeProbeSchedule,
       paddleFixedInputWidth,
+      paddleGpuOutput,
       paddleGraphCapture,
     );
     const report: PaddleProfileReport = {
@@ -1095,6 +1135,11 @@ async function main(): Promise<void> {
     const reportPath = join(REPORTS_DIR, `paddle-profile-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
     writeFileSync(reportPath, JSON.stringify(report, null, 2));
     console.log(`\nReport saved: ${reportPath}`);
+    if (maxWarmOcrMs !== undefined && result.warmMedian.ocrStageMs > maxWarmOcrMs) {
+      throw new Error(
+        `Warm OCR ${result.warmMedian.ocrStageMs}ms exceeded ${maxWarmOcrMs}ms`,
+      );
+    }
   } finally {
     await server.close();
   }

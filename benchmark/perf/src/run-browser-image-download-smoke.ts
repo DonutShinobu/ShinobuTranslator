@@ -11,7 +11,7 @@ import {
 import type { RuntimeResponse } from '../../../src/shared/messages';
 
 const root = resolve(import.meta.dirname, '../../..');
-const distDir = join(root, 'apps', 'extension', 'dist');
+const distDir = join(root, 'apps', 'extension', 'dist-chromium');
 const fixtureBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
 const fixtureBytes = Buffer.from(fixtureBase64, 'base64');
 const pageFixtureHostname = 'reader.shinobu-smoke.test';
@@ -169,11 +169,11 @@ async function sendDownloadFromContentScript(
 }
 
 async function main(): Promise<void> {
-  for (const artifact of ['manifest.json', 'background.js', 'content.js']) {
+  for (const artifact of ['manifest.json', 'background-chromium.js', 'content.js']) {
     requireDistAsset(artifact);
   }
 
-  const backgroundSource = readFileSync(join(distDir, 'background.js'), 'utf8');
+  const backgroundSource = readFileSync(join(distDir, 'background-chromium.js'), 'utf8');
   for (const hostname of [pageFixtureHostname, imageFixtureHostname]) {
     if (backgroundSource.includes(hostname)) {
       throw new Error(`Production background contains a fixture-host special case: ${hostname}`);

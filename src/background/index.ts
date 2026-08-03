@@ -2,12 +2,13 @@ import {
   defaultExtensionSettings,
   extensionSettingsStorageKey,
 } from '../shared/config';
-import { getChromeApi } from '../shared/chrome';
-import type { ChromeMessageSender } from '../shared/chrome';
+import { getExtensionApi } from '../shared/extensionRuntime';
+import type { ExtensionMessageSender } from '../shared/extensionRuntime';
 import {
   getRuntimeErrorCode,
   getRuntimeTransportMetadata,
   isRuntimeMessage,
+  type RuntimeMessage,
   type RuntimeResponse,
 } from '../shared/messages';
 import { toErrorMessage } from '../shared/utils';
@@ -39,7 +40,8 @@ import {
 } from './providers/providerService';
 import { routeBackgroundMessage } from './messages/router';
 import type { BackgroundServices } from './messages/router';
-import { registerOffscreenPipelineBroker } from './localPipeline/offscreenBroker';
+import { registerPipelineHostBroker } from './localPipeline/offscreenBroker';
+import type { PipelineHostLifecycle } from './localPipeline/pipelineHostLifecycle';
 
 const imageDownloader = createImageDownloader();
 
@@ -74,42 +76,54 @@ const services: BackgroundServices = {
 };
 
 
-function initializeBackground(): void {
-  const chromeApi = getChromeApi();
+let initialized = false;
+
+export async function dispatchBackgroundMessage(
+  message: RuntimeMessage,
+  sender: ExtensionMessageSender = {},
+): Promise<RuntimeResponse> {
+  try {
+    return await routeBackgroundMessage(message, sender, services);
+  } catch (error) {
+    const geminiRawResponse = getGeminiAppRawResponse(error);
+    const errorCode = getRuntimeErrorCode(error);
+    const transportMetadata = getRuntimeTransportMetadata(error);
+    return {
+      ok: false,
+      type: message.type,
+      error: toErrorMessage(error),
+      ...(errorCode ? { errorCode } : {}),
+      ...transportMetadata,
+      ...(geminiRawResponse !== null
+        ? {
+            errorDetail: {
+              title: 'Gemini 实际回复',
+              content: geminiRawResponse,
+            },
+          }
+        : {}),
+    } satisfies RuntimeResponse;
+  }
+}
+
+export function initializeBackground(lifecycle: PipelineHostLifecycle): void {
+  if (initialized) return;
+  const chromeApi = getExtensionApi();
   if (!chromeApi?.runtime?.onMessage?.addListener) {
     return;
   }
+  initialized = true;
 
-  registerOffscreenPipelineBroker(chromeApi);
+  registerPipelineHostBroker(chromeApi, lifecycle);
 
-  chromeApi.runtime.onMessage.addListener((message: unknown, sender: ChromeMessageSender, sendResponse: (response: unknown) => void) => {
+  chromeApi.runtime.onMessage.addListener((message: unknown, sender: ExtensionMessageSender, sendResponse: (response: unknown) => void) => {
     if (!isRuntimeMessage(message)) {
       return false;
     }
 
-    void routeBackgroundMessage(message, sender, services)
+    void dispatchBackgroundMessage(message, sender)
       .then((response) => {
         sendResponse(response);
-      })
-      .catch((error: unknown) => {
-        const geminiRawResponse = getGeminiAppRawResponse(error);
-        const errorCode = getRuntimeErrorCode(error);
-        const transportMetadata = getRuntimeTransportMetadata(error);
-        sendResponse({
-          ok: false,
-          type: message.type,
-          error: toErrorMessage(error),
-          ...(errorCode ? { errorCode } : {}),
-          ...transportMetadata,
-          ...(geminiRawResponse !== null
-            ? {
-                errorDetail: {
-                  title: 'Gemini 实际回复',
-                  content: geminiRawResponse,
-                },
-              }
-            : {}),
-        } satisfies RuntimeResponse);
       });
     return true;
   });
@@ -131,5 +145,3 @@ function initializeBackground(): void {
 
   registerMenusAndCommands();
 }
-
-void initializeBackground();

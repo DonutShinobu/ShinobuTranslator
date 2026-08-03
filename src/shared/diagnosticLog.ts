@@ -16,11 +16,11 @@ export type DiagnosticLogCategory =
   | 'pipeline.typeset'
   | 'llm.api'
   | 'image.io'
-  | 'chrome.api'
+  | 'extension.api'
   | 'ui.perf'
   | 'error';
 
-export type DiagnosticLogContext = 'popup' | 'content' | 'background' | 'offscreen' | 'worker';
+export type DiagnosticLogContext = 'popup' | 'content' | 'background' | 'pipeline-host' | 'worker';
 
 export type DiagnosticLogSource = {
   context: DiagnosticLogContext;

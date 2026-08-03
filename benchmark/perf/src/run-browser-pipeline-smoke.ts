@@ -5,21 +5,11 @@ import { chromium } from "@playwright/test";
 import type { ShinobuBenchmarkWindow } from "../../../src/benchmark/browserEntry";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const DIST_DIR = join(ROOT, "apps", "extension", "dist");
+const DIST_DIR = join(ROOT, "apps", "extension", "dist-chromium");
 const TMP_DIR = join(ROOT, ".tmp");
 const USER_DATA_DIR = join(TMP_DIR, `browser-pipeline-smoke-${Date.now()}`);
 const DEFAULT_IMAGE = join(ROOT, "benchmark/color/fixtures/typeset-debug-log-2026-05-23T06-03-39-877Z.png");
-const USE_SYSTEM_CHROME = process.argv.includes("--system-chrome") || Boolean(process.env.CHROME_PATH);
 const EXERCISE_ALL_API = process.argv.includes("--all-api");
-const CHROME_CANDIDATES = [
-  process.env.CHROME_PATH,
-  ...(USE_SYSTEM_CHROME
-    ? [
-        "C:/Program Files/Google/Chrome/Application/chrome.exe",
-        "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
-      ]
-    : []),
-].filter((value): value is string => !!value);
 
 type BakeRegion = {
   sourceText: string;
@@ -49,18 +39,6 @@ function requireFile(relativePath: string): void {
   if (!existsSync(fullPath)) {
     throw new Error(`Missing dist asset: ${fullPath}. Run npm run build:benchmark first.`);
   }
-}
-
-function findChromeExecutable(): string | undefined {
-  if (!USE_SYSTEM_CHROME) {
-    return undefined;
-  }
-  for (const candidate of CHROME_CANDIDATES) {
-    if (existsSync(candidate)) {
-      return candidate;
-    }
-  }
-  throw new Error("Chrome executable not found. Set CHROME_PATH to chrome.exe.");
 }
 
 function pickImagePath(): string {
@@ -94,9 +72,8 @@ async function main(): Promise<void> {
 
   const imagePath = pickImagePath();
   const dataUrl = imageToDataUrl(imagePath);
-  const chromePath = findChromeExecutable();
   const context = await chromium.launchPersistentContext(USER_DATA_DIR, {
-    ...(chromePath ? { executablePath: chromePath } : {}),
+    executablePath: chromium.executablePath(),
     headless: false,
     ignoreDefaultArgs: ["--disable-extensions"],
     args: [

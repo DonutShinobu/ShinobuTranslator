@@ -2,7 +2,7 @@ import type { ExtensionSettings } from './config';
 import type { DiagnosticLogEvent, DiagnosticLogTextExport } from './diagnosticLog';
 import type { OpenAiOAuthStatusInfo } from './openaiOAuth';
 import type { LlmAuthMode, LlmProvider, StageTiming } from '../types';
-import { requireChromeApi } from './chrome';
+import { requireExtensionRuntime } from './extensionRuntime';
 import { isLlmThinkingLevel } from './llmThinking';
 import type { LlmThinkingLevel } from './llmThinking';
 import { isReferrerPolicy } from './referrerPolicy';
@@ -455,23 +455,12 @@ export function isRuntimeMessage(value: unknown): value is RuntimeMessage {
 }
 
 export function sendRuntimeMessage(message: RuntimeMessage): Promise<RuntimeResponse> {
-  const chromeApi = requireChromeApi();
-  if (!chromeApi.runtime?.sendMessage) {
-    return Promise.reject(new Error('当前环境不支持 runtime.sendMessage'));
-  }
-  return new Promise<RuntimeResponse>((resolve, reject) => {
-    chromeApi.runtime?.sendMessage?.(message, (response: unknown) => {
-      const lastError = chromeApi.runtime?.lastError;
-      if (lastError?.message) {
-        reject(new Error(lastError.message));
-        return;
-      }
+  const runtime = requireExtensionRuntime();
+  return runtime.sendMessage<RuntimeResponse>(message).then((response) => {
       if (!response || typeof response !== 'object') {
-        reject(new Error('扩展消息返回为空'));
-        return;
+        throw new Error('扩展消息返回为空');
       }
-      resolve(response as RuntimeResponse);
-    });
+      return response;
   }).catch((error: unknown) => {
     throw new Error(`扩展通信失败: ${toErrorMessage(error)}`);
   });

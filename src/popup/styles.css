@@ -1275,6 +1275,26 @@ html, body {
   opacity: 0;
 }
 
+.thinking-slider::-moz-range-track {
+  height: 16px;
+  border: 0;
+  background: transparent;
+}
+
+.thinking-slider::-moz-range-progress {
+  height: 16px;
+  border: 0;
+  background: transparent;
+}
+
+.thinking-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 0;
+  background: transparent;
+  opacity: 0;
+}
+
 .thinking-slider-thumb {
   position: absolute;
   z-index: 1;

@@ -36,7 +36,7 @@ function init(ortPath: string): Promise<void> {
 function ensureOrtEnv(): void {
   if (envInitialized) return;
 
-  // Blob URL Workers run in the page's origin and cannot access chrome.runtime.
+  // Blob URL Workers run in the page's origin and cannot access extension APIs.
   // The ORT WASM path must be provided by the main thread via init().
   const ortPath = ortPathOverride ?? "/ort/";
 
@@ -48,7 +48,10 @@ function ensureOrtEnv(): void {
     typeof globalThis !== "undefined" && !!(globalThis as unknown as { crossOriginIsolated?: boolean }).crossOriginIsolated;
   const wasmThreads = canUseWasmThreads ? Math.max(1, Math.min(8, hwThreads)) : 1;
 
-  ortAll.env.wasm.wasmPaths = ortPath;
+  ortAll.env.wasm.wasmPaths = {
+    wasm: `${ortPath}ort-wasm-simd-threaded.jsep.wasm`,
+    mjs: `${ortPath}ort-wasm-simd-threaded.jsep.mjs`,
+  };
   ortAll.env.wasm.numThreads = wasmThreads;
   ortAll.env.wasm.proxy = false;
 
@@ -350,6 +353,20 @@ async function runInference(
     try {
       try {
         outputs = await entry.session.run(ortFeeds);
+        const result: InferenceResult = {
+          outputs: {},
+        };
+        const outTransferables: ArrayBuffer[] = [];
+        for (const [name, tensor] of Object.entries(outputs)) {
+          const transport = await tensorToTransport(tensor);
+          result.outputs[name] = transport;
+          if (transport.data instanceof Float32Array) {
+            outTransferables.push(transport.data.buffer as ArrayBuffer);
+          } else if (transport.data instanceof BigInt64Array) {
+            outTransferables.push(transport.data.buffer as ArrayBuffer);
+          }
+        }
+        return Comlink.transfer(result, outTransferables);
       } catch (inferenceError) {
         const result: InferenceResult = {
           outputs: {},
@@ -358,21 +375,6 @@ async function runInference(
         return result;
       }
 
-      const result: InferenceResult = {
-        outputs: {},
-      };
-      const outTransferables: ArrayBuffer[] = [];
-      for (const [name, tensor] of Object.entries(outputs)) {
-        const transport = await tensorToTransport(tensor);
-        result.outputs[name] = transport;
-        if (transport.data instanceof Float32Array) {
-          outTransferables.push(transport.data.buffer as ArrayBuffer);
-        } else if (transport.data instanceof BigInt64Array) {
-          outTransferables.push(transport.data.buffer as ArrayBuffer);
-        }
-      }
-
-      return Comlink.transfer(result, outTransferables);
     } finally {
       for (const tensor of Object.values(outputs ?? {})) {
         tensor.dispose();

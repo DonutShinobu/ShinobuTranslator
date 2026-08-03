@@ -1,6 +1,8 @@
 import type {
   LlmChatCompletionRequestBody,
   LlmChatCompletionsProxyConfig,
+  RuntimeMessage,
+  RuntimeResponse,
 } from '../shared/messages';
 import { sendRuntimeMessage } from '../shared/messages';
 import {
@@ -71,37 +73,48 @@ export class TextTranslationTransportError extends Error {
 export type DirectTextTranslationTransportOptions =
   DirectChatCompletionRequesterOptions;
 
-export const extensionTextTranslationTransport: TextTranslationTransport = {
-  async requestChatCompletion(request) {
-    const response = await sendRuntimeMessage({
-      type: 'mt:llm-chat-completions',
-      body: request.body,
-      proxyConfig: request.proxyConfig,
-      diagnosticRunId: request.diagnosticRunId,
-    });
-    if (!response.ok || response.type !== 'mt:llm-chat-completions') {
-      throw new TextTranslationTransportError(
-        response.ok ? 'LLM 翻译请求失败' : response.error,
-        {
-          code: !response.ok ? response.errorCode : undefined,
-          status: !response.ok ? response.status : undefined,
-          retryAfterMs: !response.ok ? response.retryAfterMs : undefined,
-          retryable: !response.ok ? response.retryable : undefined,
-        },
-      );
-    }
-    return response.data as ChatCompletionResponse;
-  },
+export type RuntimeMessageSender = (
+  message: RuntimeMessage,
+) => Promise<RuntimeResponse>;
 
-  translatePlain(request) {
-    return googleWebTranslate(
-      request.text,
-      request.from,
-      request.to,
-      request.signal,
-    );
-  },
-};
+export function createMessageTextTranslationTransport(
+  sendMessage: RuntimeMessageSender,
+): TextTranslationTransport {
+  return {
+    async requestChatCompletion(request) {
+      const response = await sendMessage({
+        type: 'mt:llm-chat-completions',
+        body: request.body,
+        proxyConfig: request.proxyConfig,
+        diagnosticRunId: request.diagnosticRunId,
+      });
+      if (!response.ok || response.type !== 'mt:llm-chat-completions') {
+        throw new TextTranslationTransportError(
+          response.ok ? 'LLM 翻译请求失败' : response.error,
+          {
+            code: !response.ok ? response.errorCode : undefined,
+            status: !response.ok ? response.status : undefined,
+            retryAfterMs: !response.ok ? response.retryAfterMs : undefined,
+            retryable: !response.ok ? response.retryable : undefined,
+          },
+        );
+      }
+      return response.data as ChatCompletionResponse;
+    },
+
+    translatePlain(request) {
+      return googleWebTranslate(
+        request.text,
+        request.from,
+        request.to,
+        request.signal,
+      );
+    },
+  };
+}
+
+export const extensionTextTranslationTransport =
+  createMessageTextTranslationTransport(sendRuntimeMessage);
 
 export function createDirectTextTranslationTransport(
   options: DirectTextTranslationTransportOptions = {},

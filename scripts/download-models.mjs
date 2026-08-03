@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createWriteStream } from "node:fs";
-import { mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -11,6 +11,7 @@ import {
   DEFAULT_MODEL_DIR,
   DEFAULT_REPO,
   collectModelAssets,
+  assetNameFromModelUrl,
   fileExists,
   normalizeModelTag,
   parseChecksumText,
@@ -35,6 +36,8 @@ Options:
   --manifest=<path>      Model manifest (default: ${DEFAULT_MANIFEST})
   --dest=<path>          Download directory (default: ${DEFAULT_MODEL_DIR})
   --force                Re-download existing files
+  --use-verified-existing
+                         Skip network when every existing asset matches models.json size/SHA-256
   --dry-run              Print what would be downloaded
   --help                 Show this help
 `);
@@ -112,6 +115,26 @@ async function verifyChecksum(filePath, name, checksums) {
   }
 }
 
+async function existingAssetsMatchManifest(manifestPath, destDir) {
+  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+  for (const model of Object.values(manifest.models ?? {})) {
+    for (const [urlKey, sizeKey, hashKey] of [
+      ["url", "size", "sha256"],
+      ["dictUrl", "dictSize", "dictSha256"],
+    ]) {
+      const url = model?.[urlKey];
+      if (typeof url !== "string" || !url) continue;
+      const expectedSize = model?.[sizeKey];
+      const expectedHash = model?.[hashKey];
+      if (!Number.isFinite(expectedSize) || typeof expectedHash !== "string") return false;
+      const path = join(destDir, assetNameFromModelUrl(url));
+      if (!await fileExists(path) || (await stat(path)).size !== expectedSize) return false;
+      if (await sha256File(path) !== expectedHash.toLowerCase()) return false;
+    }
+  }
+  return true;
+}
+
 async function main() {
   const { options, positionals } = parseCliArgs(process.argv.slice(2));
   if (options.help) {
@@ -123,6 +146,7 @@ async function main() {
   const manifestPath = resolveFromRoot(String(options.manifest ?? DEFAULT_MANIFEST));
   const destDir = resolveFromRoot(String(options.dest ?? DEFAULT_MODEL_DIR));
   const force = options.force === true;
+  const useVerifiedExisting = options["use-verified-existing"] === true;
   const dryRun = options["dry-run"] === true;
   const requestedTag = positionals[0] ?? process.env.MODEL_RELEASE_TAG ?? "latest";
 
@@ -146,6 +170,11 @@ async function main() {
   }
 
   await mkdir(destDir, { recursive: true });
+
+  if (!force && useVerifiedExisting && await existingAssetsMatchManifest(manifestPath, destDir)) {
+    console.log("All existing model assets match models.json; network download skipped.");
+    return;
+  }
 
   const checksumText = await fetchTextIfExists(`${baseUrl}/${CHECKSUM_ASSET}`);
   const checksums = checksumText ? parseChecksumText(checksumText) : new Map();

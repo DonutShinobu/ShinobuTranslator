@@ -15,7 +15,7 @@ function createStoredEvent(index: number): DiagnosticLogEvent {
     timestamp: new Date(Date.parse('2026-07-15T00:00:00.000Z') + index).toISOString(),
     level: 'info',
     category: 'pipeline.stage',
-    source: { context: 'offscreen', module: 'orchestrator.ts' },
+    source: { context: 'pipeline-host', module: 'orchestrator.ts' },
     message: `event-${index}`,
   };
 }
@@ -92,7 +92,7 @@ describe('diagnostic log store export', () => {
 
     expect(exported.eventCount).toBe(2);
     expect(exported.text).toContain(
-      '[unknown-time][INF][offscreen][no-run][pipeline.stage] orchestrator.ts | legacy event without timestamp',
+      '[unknown-time][INF][pipeline-host][no-run][pipeline.stage] orchestrator.ts | legacy event without timestamp',
     );
   });
 

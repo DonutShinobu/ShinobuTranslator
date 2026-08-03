@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "webExtVersion": "10.3.0",
+  "warnings": [
+    {
+      "code": "KEY_FIREFOX_ANDROID_UNSUPPORTED_BY_MIN_VERSION",
+      "file": "manifest.json",
+      "count": 1,
+      "dependency": "web-ext",
+      "dependencyVersion": "10.3.0",
+      "sha256": "917696793e26ab95337821149ca4e53058a217dfc5625576b2f39c6bba5b7982"
+    },
+    {
+      "code": "DANGEROUS_EVAL",
+      "file": "ort/ort-wasm-simd-threaded.jsep.mjs",
+      "count": 1,
+      "dependency": "onnxruntime-web",
+      "dependencyVersion": "1.24.1",
+      "sha256": "9b7e9dbe87f1cb3df68660418492e8c6b0cae6fe83ce46ef1a51dbc95580e690"
+    },
+    {
+      "code": "UNSAFE_VAR_ASSIGNMENT",
+      "file": "popup.js",
+      "count": 2,
+      "dependency": "react-dom",
+      "dependencyVersion": "18.3.1",
+      "sha256": "c44ebf86f5c4632c9ea6b899652b1e9d9d4b71f28df5daeb2cc89f02a6640e92"
+    },
+    {
+      "code": "DANGEROUS_EVAL",
+      "file": "onnxWorker.js",
+      "count": 1,
+      "dependency": "onnxruntime-web",
+      "dependencyVersion": "1.24.1",
+      "sha256": "7910457b5b6efa033cdeffd0f85432282862158ecc8ecb44d1359100671f7096"
+    },
+    {
+      "code": "UNSAFE_VAR_ASSIGNMENT",
+      "file": "onnxWorker.js",
+      "count": 1,
+      "dependency": "onnxruntime-web",
+      "dependencyVersion": "1.24.1",
+      "sha256": "7910457b5b6efa033cdeffd0f85432282862158ecc8ecb44d1359100671f7096"
+    }
+  ]
+}

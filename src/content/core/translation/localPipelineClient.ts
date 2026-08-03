@@ -1,7 +1,12 @@
 import { base64ToBlob, blobToBase64 } from '../../../shared/blobCodec';
-import { getChromeApi, type ChromePort } from '../../../shared/chrome';
+import {
+  getExtensionRuntime,
+  type ExtensionPort,
+  type ExtensionRuntime,
+} from '../../../shared/extensionRuntime';
 import {
   Base64ChunkAssembler,
+  LOCAL_PIPELINE_BACKGROUND_LEASE_PORT,
   LOCAL_PIPELINE_CLIENT_PORT,
   LocalPipelineRemoteError,
   createProtocolError,
@@ -25,13 +30,30 @@ export type RunLocalPipeline = (
   options?: { signal?: AbortSignal },
 ) => Promise<LocalPipelineResult>;
 
+let firefoxBackgroundLease: ExtensionPort | null = null;
+
+function ensureFirefoxBackgroundLease(runtime: ExtensionRuntime): void {
+  if (firefoxBackgroundLease) return;
+  try {
+    if (!runtime.getURL('').startsWith('moz-extension://')) return;
+    const lease = runtime.connect(LOCAL_PIPELINE_BACKGROUND_LEASE_PORT);
+    firefoxBackgroundLease = lease;
+    lease.onDisconnect.addListener(() => {
+      if (firefoxBackgroundLease === lease) firefoxBackgroundLease = null;
+    });
+  } catch {
+    // The lease only preserves warm state; pipeline execution must remain available.
+    firefoxBackgroundLease = null;
+  }
+}
+
 function createJobId(): string {
   return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
     ? `pipeline-${crypto.randomUUID()}`
     : `pipeline-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function post(port: ChromePort, message: LocalPipelineClientMessage): void {
+function post(port: ExtensionPort, message: LocalPipelineClientMessage): void {
   port.postMessage(message);
 }
 
@@ -61,17 +83,18 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
   if (options.signal?.aborted) {
     return Promise.reject(cancellationRemoteError(options.signal.reason));
   }
-  const chromeApi = getChromeApi();
-  if (!chromeApi?.runtime?.connect) {
+  const runtime = getExtensionRuntime();
+  if (!runtime) {
     return Promise.reject(new LocalPipelineRemoteError({
-      name: 'OffscreenPipelineError',
-      code: 'OFFSCREEN_UNAVAILABLE',
+      name: 'PipelineHostError',
+      code: 'PIPELINE_HOST_UNAVAILABLE',
       message: '当前环境不支持扩展 Port 通信',
     }));
   }
 
   const jobId = createJobId();
-  const port = chromeApi.runtime.connect({ name: LOCAL_PIPELINE_CLIENT_PORT });
+  ensureFirefoxBackgroundLease(runtime);
+  const port = runtime.connect(LOCAL_PIPELINE_CLIENT_PORT);
   return new Promise<LocalPipelineResult>((resolve, reject) => {
     let settled = false;
     let transferStarted = false;
@@ -179,6 +202,7 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
       if (value.type === 'host-ready' || value.type === 'idle-close') return;
       switch (value.type) {
         case 'ready':
+          ensureFirefoxBackgroundLease(runtime);
           void sendInput();
           break;
         case 'queued':
@@ -227,9 +251,9 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
     const onDisconnect = (): void => {
       if (settled) return;
       fail(new LocalPipelineRemoteError({
-        name: 'OffscreenPipelineError',
-        code: 'OFFSCREEN_DISCONNECTED',
-        message: chromeApi.runtime?.lastError?.message || '本地流水线 Port 已断开',
+        name: 'PipelineHostError',
+        code: 'PIPELINE_HOST_DISCONNECTED',
+        message: runtime.getLastErrorMessage() || '本地流水线 Port 已断开',
       }));
     };
 

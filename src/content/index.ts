@@ -3,7 +3,7 @@ import { pixivAdapter } from './adapters/pixiv';
 import { ehentaiAdapter } from './adapters/ehentai';
 import type { SiteAdapter } from './core/types';
 import { TranslatorCore } from './core/TranslatorCore';
-import { getChromeApi } from '../shared/chrome';
+import { getExtensionApi } from '../shared/extensionRuntime';
 import { toErrorMessage } from '../shared/utils';
 import {
   buildScreenshotElementCandidates,
@@ -286,7 +286,7 @@ document.addEventListener('mouseleave', () => {
 }, true);
 
 // Listen for context-menu translate requests from background
-const chromeApi = getChromeApi();
+const chromeApi = getExtensionApi();
 if (chromeApi?.runtime?.onMessage?.addListener) {
   chromeApi.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
     if (!isRecord(message) || typeof message.type !== 'string') {

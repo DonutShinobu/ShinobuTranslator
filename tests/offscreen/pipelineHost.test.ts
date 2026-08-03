@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ChromePort } from '../../src/shared/chrome';
+import type { ExtensionPort } from '../../src/shared/extensionRuntime';
 import type { PipelineArtifacts } from '../../src/types';
 
 const mocks = vi.hoisted(() => ({
@@ -31,14 +31,14 @@ vi.mock('../../src/shared/blobCodec', () => ({
   canvasToPngBlob: vi.fn(async () => new Blob(['result'], { type: 'image/png' })),
 }));
 
-import { OffscreenPipelineHost } from '../../src/offscreen/pipelineHost';
-import { LOCAL_PIPELINE_OFFSCREEN_PORT } from '../../src/shared/localPipelineProtocol';
+import { PipelineHost } from '../../src/offscreen/pipelineHost';
+import { LOCAL_PIPELINE_HOST_PORT } from '../../src/shared/localPipelineProtocol';
 
-class FakePort implements ChromePort {
-  readonly name = LOCAL_PIPELINE_OFFSCREEN_PORT;
+class FakePort implements ExtensionPort {
+  readonly name = LOCAL_PIPELINE_HOST_PORT;
   readonly sent: unknown[] = [];
-  readonly messageListeners: Array<(message: unknown, port: ChromePort) => void> = [];
-  readonly disconnectListeners: Array<(port: ChromePort) => void> = [];
+  readonly messageListeners: Array<(message: unknown, port: ExtensionPort) => void> = [];
+  readonly disconnectListeners: Array<(port: ExtensionPort) => void> = [];
   disconnected = false;
 
   postMessage(message: unknown): void {
@@ -52,14 +52,14 @@ class FakePort implements ChromePort {
   }
 
   onMessage = {
-    addListener: (listener: (message: unknown, port: ChromePort) => void): void => {
+    addListener: (listener: (message: unknown, port: ExtensionPort) => void): void => {
       this.messageListeners.push(listener);
     },
     removeListener: (): void => undefined,
   };
 
   onDisconnect = {
-    addListener: (listener: (port: ChromePort) => void): void => {
+    addListener: (listener: (port: ExtensionPort) => void): void => {
       this.disconnectListeners.push(listener);
     },
     removeListener: (): void => undefined,
@@ -130,10 +130,10 @@ function sendImageJob(port: FakePort, jobId: string): void {
   port.emit({ type: 'input-complete', jobId });
 }
 
-describe('OffscreenPipelineHost single-task admission', () => {
+describe('PipelineHost single-task admission', () => {
   let port: FakePort;
   let originalChrome: unknown;
-  let hosts: OffscreenPipelineHost[];
+  let hosts: PipelineHost[];
 
   beforeEach(() => {
     mocks.runPipeline.mockReset();
@@ -156,8 +156,8 @@ describe('OffscreenPipelineHost single-task admission', () => {
     port.disconnect();
   });
 
-  function createHost(): OffscreenPipelineHost {
-    const host = new OffscreenPipelineHost();
+  function createHost(): PipelineHost {
+    const host = new PipelineHost();
     hosts.push(host);
     return host;
   }

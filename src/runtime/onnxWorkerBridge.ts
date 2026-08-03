@@ -12,6 +12,7 @@ import type {
 } from "./onnxWorkerTypes";
 import type { RuntimeSelfCheckReport } from "./selfCheck";
 import { resolveAssetUrl } from "../shared/assetUrl";
+import { getExtensionRuntime } from '../shared/extensionRuntime';
 import { recordPerfRuntimeEvent, recordPerfWorkerCall } from "../shared/perfTrace";
 import {
   serializePipelineError,
@@ -21,7 +22,7 @@ import {
 // ---------------------------------------------------------------------------
 // Worker singleton — created once, reused across pipeline calls.
 //
-// The production offscreen document always creates the Worker directly from
+// The production pipeline host always creates the Worker directly from
 // the extension URL. Blob fallback exists only for HTTP development and
 // benchmark pages, where it is not subject to a website's production CSP.
 // ---------------------------------------------------------------------------
@@ -185,13 +186,11 @@ async function runBootstrapAttempt(
 async function bootstrapWorker(): Promise<{ worker: Worker; proxy: Comlink.Remote<OnnxWorkerApi> }> {
   const attempts: WorkerBootstrapAttempt[] = [];
 
-  const chromeApi = (globalThis as typeof globalThis & {
-    chrome?: { runtime?: { getURL?: (path: string) => string } };
-  }).chrome;
-  const rawScriptUrl = chromeApi?.runtime?.getURL?.("onnxWorker.js")
+  const extensionRuntime = getExtensionRuntime();
+  const rawScriptUrl = extensionRuntime?.getURL('onnxWorker.js')
     ?? webBootstrapConfig?.scriptUrl
     ?? resolveAssetUrl("onnxWorker.js");
-  const rawOrtPath = chromeApi?.runtime?.getURL?.("ort/")
+  const rawOrtPath = extensionRuntime?.getURL('ort/')
     ?? webBootstrapConfig?.ortPath
     ?? "/ort/";
   const scriptUrl = rawScriptUrl.startsWith("/")
@@ -201,7 +200,7 @@ async function bootstrapWorker(): Promise<{ worker: Worker; proxy: Comlink.Remot
     ? new URL(rawOrtPath, globalThis.location?.href).toString()
     : rawOrtPath;
 
-  if (scriptUrl.startsWith("chrome-extension://")) {
+  if (/^(?:chrome|moz)-extension:\/\//i.test(scriptUrl)) {
     try {
       return await runBootstrapAttempt(attempts, "direct-extension", scriptUrl, async () => {
         const candidate = new Worker(scriptUrl, { type: "module" });
@@ -235,6 +234,13 @@ async function bootstrapWorker(): Promise<{ worker: Worker; proxy: Comlink.Remot
     } catch (error) {
       throw new WorkerBootstrapError(attempts, new AggregateError([directError, error], "HTTP Worker 启动方式均失败"));
     }
+  }
+
+  if (extensionRuntime) {
+    throw new WorkerBootstrapError(
+      attempts,
+      new Error(`扩展生产环境拒绝非扩展 Worker URL: ${scriptUrl}`),
+    );
   }
 
   throw new WorkerBootstrapError(attempts, new Error(`不支持的 Worker 脚本 URL: ${scriptUrl}`));

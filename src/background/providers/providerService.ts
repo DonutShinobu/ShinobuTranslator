@@ -18,6 +18,10 @@ import type {
   RuntimeResponse,
 } from "../../shared/messages";
 import {
+  AUTHENTICATION_INFO_PERMISSION,
+  createExtensionPermissions,
+} from '../../shared/extensionPermissions';
+import {
   recordBackgroundDiagnosticLog,
   toImageTranslateDiagnosticData,
 } from "../diagnostics/logStore";
@@ -90,6 +94,7 @@ function getLlmProxyErrorData(error: unknown): Record<string, unknown> {
 export async function handleLlmChatCompletions(message: LlmChatMessage): Promise<LlmChatResponse> {
   const settings = await getSettings();
   const proxyConfig = resolveLlmProxyConfig(settings, message.proxyConfig);
+  await createExtensionPermissions().assertGranted(AUTHENTICATION_INFO_PERMISSION);
   const startedAt = Date.now();
   const baseLogData = {
     provider: proxyConfig.provider,
@@ -162,6 +167,7 @@ export async function handleGeminiAppImageTranslate(message: GeminiAppImageMessa
   if (validationError) {
     throw new Error(validationError);
   }
+  await createExtensionPermissions().assertGranted(AUTHENTICATION_INFO_PERMISSION);
   const startedAt = Date.now();
   const baseLogData = {
     provider: 'gemini',
@@ -240,6 +246,7 @@ export async function handleGeminiApiImageTranslate(message: GeminiApiImageMessa
   if (validationError) {
     throw new Error(validationError);
   }
+  await createExtensionPermissions().assertGranted(AUTHENTICATION_INFO_PERMISSION);
   const startedAt = Date.now();
   const model = resolveGeminiApiImageModel(settings.geminiAppModel);
   const endpoint = `${resolveLlmBaseUrl(settings).replace(/\/+$/u, '')}/models/${encodeURIComponent(model)}:generateContent`;

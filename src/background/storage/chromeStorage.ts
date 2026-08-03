@@ -1,7 +1,7 @@
-import { getChromeApi } from "../../shared/chrome";
+import { getExtensionApi } from '../../shared/extensionRuntime';
 
 export function storageGet(key: string): Promise<unknown> {
-  const chromeApi = getChromeApi();
+  const chromeApi = getExtensionApi();
   if (!chromeApi?.storage?.local?.get) {
     return Promise.resolve(undefined);
   }
@@ -18,7 +18,7 @@ export function storageGet(key: string): Promise<unknown> {
 }
 
 export function storageSet(key: string, value: unknown): Promise<void> {
-  const chromeApi = getChromeApi();
+  const chromeApi = getExtensionApi();
   if (!chromeApi?.storage?.local?.set) {
     return Promise.resolve();
   }
@@ -35,7 +35,7 @@ export function storageSet(key: string, value: unknown): Promise<void> {
 }
 
 export function storageRemove(key: string): Promise<void> {
-  const chromeApi = getChromeApi();
+  const chromeApi = getExtensionApi();
   if (!chromeApi?.storage?.local?.remove) {
     return Promise.resolve();
   }

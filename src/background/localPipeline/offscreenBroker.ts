@@ -1,13 +1,13 @@
-import type { ChromeLike, ChromePort } from '../../shared/chrome';
+import type { ExtensionBrowserApi, ExtensionPort } from '../../shared/extensionRuntime';
 import {
   ImagePipelineCancelledError,
   type PipelineCancellationReason,
 } from '@shinobu/image-pipeline';
 import {
+  LOCAL_PIPELINE_BACKGROUND_LEASE_PORT,
   LOCAL_PIPELINE_CLIENT_PORT,
   LOCAL_PIPELINE_CHUNK_SIZE,
-  LOCAL_PIPELINE_OFFSCREEN_DOCUMENT,
-  LOCAL_PIPELINE_OFFSCREEN_PORT,
+  LOCAL_PIPELINE_HOST_PORT,
   isLocalPipelineClientMessage,
   isLocalPipelineErrorCode,
   isLocalPipelineHostMessage,
@@ -16,17 +16,22 @@ import {
   type LocalPipelineErrorCode,
   type LocalPipelineHostMessage,
 } from '../../shared/localPipelineProtocol';
+import {
+  ChromiumPipelineHostLifecycle,
+  createPipelineHostError,
+  type PipelineHostLifecycle,
+} from './pipelineHostLifecycle';
 
-const OFFSCREEN_CONNECT_TIMEOUT_MS = 10_000;
+const PIPELINE_HOST_CONNECT_TIMEOUT_MS = 10_000;
 
 type ClientConnection = {
-  port: ChromePort;
+  port: ExtensionPort;
   jobs: Set<string>;
   closed: boolean;
 };
 
 type HostWaiter = {
-  resolve: (port: ChromePort) => void;
+  resolve: (port: ExtensionPort) => void;
   reject: (error: unknown) => void;
   timer: ReturnType<typeof setTimeout>;
 };
@@ -45,7 +50,7 @@ const INPUT_RECEIVE_TIMEOUT_MS = 60_000;
 
 function codedError(code: LocalPipelineErrorCode, message: string, cause?: unknown): Error & { code: LocalPipelineErrorCode } {
   const error = new Error(message, cause === undefined ? undefined : { cause }) as Error & { code: LocalPipelineErrorCode };
-  error.name = 'OffscreenPipelineError';
+  error.name = 'PipelineHostError';
   error.code = code;
   return error;
 }
@@ -56,7 +61,7 @@ function getJobId(value: unknown): string | null {
   return typeof jobId === 'string' && jobId.length > 0 ? jobId : null;
 }
 
-function safelyPost(port: ChromePort, message: unknown): boolean {
+function safelyPost(port: ExtensionPort, message: unknown): boolean {
   try {
     port.postMessage(message);
     return true;
@@ -65,28 +70,36 @@ function safelyPost(port: ChromePort, message: unknown): boolean {
   }
 }
 
-export class OffscreenPipelineBroker {
+export class PipelineHostBroker {
+  private readonly backgroundLeases = new Set<ExtensionPort>();
   private readonly clients = new Set<ClientConnection>();
   private readonly owners = new Map<string, ClientConnection>();
   private readonly jobs = new Map<string, BufferedJob>();
-  private hostPort: ChromePort | null = null;
+  private hostPort: ExtensionPort | null = null;
   private hostReady = false;
   private hostWaiters = new Set<HostWaiter>();
-  private creationPromise: Promise<ChromePort> | null = null;
+  private creationPromise: Promise<ExtensionPort> | null = null;
   private expectedHostClose = false;
   private closingPromise: Promise<void> | null = null;
   private readonly admissionQueue: string[] = [];
   private activeJobId: string | null = null;
   private pendingIdleClose = false;
 
-  constructor(private readonly chromeApi: ChromeLike) {}
+  constructor(
+    private readonly api: ExtensionBrowserApi,
+    private readonly lifecycle: PipelineHostLifecycle = new ChromiumPipelineHostLifecycle(api),
+  ) {}
 
   register(): void {
-    this.chromeApi.runtime?.onConnect?.addListener((port) => this.handlePort(port));
+    this.api.runtime?.onConnect?.addListener((port) => this.handlePort(port));
   }
 
-  handlePort(port: ChromePort): void {
-    if (port.name === LOCAL_PIPELINE_OFFSCREEN_PORT) {
+  handlePort(port: ExtensionPort): void {
+    if (port.name === LOCAL_PIPELINE_BACKGROUND_LEASE_PORT) {
+      this.attachBackgroundLease(port);
+      return;
+    }
+    if (port.name === LOCAL_PIPELINE_HOST_PORT) {
       this.attachHost(port);
       return;
     }
@@ -97,7 +110,21 @@ export class OffscreenPipelineBroker {
     port.disconnect();
   }
 
-  private attachClient(port: ChromePort): void {
+  private attachBackgroundLease(port: ExtensionPort): void {
+    this.backgroundLeases.add(port);
+    port.onDisconnect.addListener(() => {
+      this.backgroundLeases.delete(port);
+    });
+  }
+
+  private releaseBackgroundLeases(): void {
+    for (const port of [...this.backgroundLeases]) {
+      this.backgroundLeases.delete(port);
+      port.disconnect();
+    }
+  }
+
+  private attachClient(port: ExtensionPort): void {
     const connection: ClientConnection = { port, jobs: new Set(), closed: false };
     this.clients.add(connection);
     port.onMessage.addListener((message) => {
@@ -257,7 +284,7 @@ export class OffscreenPipelineBroker {
     this.admissionQueue.push(message.jobId);
 
     try {
-      await this.ensureOffscreenHost();
+      await this.ensurePipelineHost();
       if (connection.closed || this.owners.get(message.jobId) !== connection) {
         return;
       }
@@ -272,10 +299,8 @@ export class OffscreenPipelineBroker {
     }
   }
 
-  private attachHost(port: ChromePort): void {
-    const expectedUrl = this.chromeApi.runtime?.getURL?.(LOCAL_PIPELINE_OFFSCREEN_DOCUMENT);
-    const actualUrl = port.sender?.documentUrl;
-    if (expectedUrl && actualUrl && actualUrl !== expectedUrl) {
+  private attachHost(port: ExtensionPort): void {
+    if (!this.lifecycle.matchesHostPort(port)) {
       port.disconnect();
       return;
     }
@@ -295,12 +320,12 @@ export class OffscreenPipelineBroker {
     });
   }
 
-  private async handleHostMessage(port: ChromePort, value: unknown): Promise<void> {
+  private async handleHostMessage(port: ExtensionPort, value: unknown): Promise<void> {
     if (port !== this.hostPort || !isLocalPipelineHostMessage(value)) {
       if (port === this.hostPort) {
         this.handleHostPostFailure(codedError(
           'TRANSFER_PROTOCOL_ERROR',
-          'offscreen 返回了无效消息',
+          '流水线宿主返回了无效消息',
         ));
       }
       return;
@@ -312,7 +337,7 @@ export class OffscreenPipelineBroker {
     }
     if (value.type === 'idle-close') {
       if (this.owners.size === 0) {
-        await this.closeIdleDocument();
+        await this.closeIdleHost();
       } else {
         this.pendingIdleClose = true;
       }
@@ -370,11 +395,11 @@ export class OffscreenPipelineBroker {
     this.postAdmissionQueuePositions();
   }
 
-  private disconnectHost(port: ChromePort): void {
+  private disconnectHost(port: ExtensionPort): void {
     if (port !== this.hostPort) return;
     this.hostPort = null;
     this.hostReady = false;
-    const error = codedError('OFFSCREEN_DISCONNECTED', 'offscreen 流水线连接已断开');
+    const error = codedError('PIPELINE_HOST_DISCONNECTED', '流水线宿主连接已断开');
     this.rejectHostWaiters(error);
     if (!this.expectedHostClose) {
       this.failAllJobs(error);
@@ -395,7 +420,7 @@ export class OffscreenPipelineBroker {
     if (queueIndex >= 0) this.admissionQueue.splice(queueIndex, 1);
     if (this.pendingIdleClose && this.owners.size === 0) {
       this.pendingIdleClose = false;
-      void this.closeIdleDocument();
+      void this.closeIdleHost();
     }
   }
 
@@ -467,8 +492,8 @@ export class OffscreenPipelineBroker {
   }
 
   private handleHostPostFailure(error: unknown = codedError(
-    'OFFSCREEN_DISCONNECTED',
-    '向 offscreen 流水线投递任务失败',
+    'PIPELINE_HOST_DISCONNECTED',
+    '向流水线宿主投递任务失败',
   )): void {
     const port = this.hostPort;
     this.hostPort = null;
@@ -508,7 +533,7 @@ export class OffscreenPipelineBroker {
       : undefined;
     const fallbackCode: LocalPipelineErrorCode = isLocalPipelineErrorCode(errorCode)
       ? errorCode
-      : 'OFFSCREEN_CREATE_FAILED';
+      : 'PIPELINE_HOST_CREATE_FAILED';
     safelyPost(owner.port, {
       type: 'error',
       jobId,
@@ -524,45 +549,44 @@ export class OffscreenPipelineBroker {
     }
   }
 
-  private async ensureOffscreenHost(): Promise<ChromePort> {
+  private async ensurePipelineHost(): Promise<ExtensionPort> {
     if (this.closingPromise) await this.closingPromise;
     if (this.hostPort && this.hostReady) return this.hostPort;
     if (this.creationPromise) return this.creationPromise;
 
     this.creationPromise = (async () => {
-      const offscreenApi = this.chromeApi.offscreen;
-      if (!offscreenApi?.createDocument) {
-        throw codedError('OFFSCREEN_UNAVAILABLE', '当前 Chromium 不支持扩展 offscreen document');
-      }
-
-      const exists = await this.hasOffscreenDocument();
-      if (!exists) {
-        await this.createOffscreenDocument(offscreenApi);
+      const attachment = await this.lifecycle.ensureHost();
+      if (attachment) {
+        this.handlePort(attachment.port);
+        attachment.activate();
       }
 
       try {
         return await this.waitForHost();
       } catch (initialError) {
-        // An offscreen document can outlive a crashed script or a stale Port.
+        // A browser host can outlive a crashed script or retain a stale Port.
         // Recreate it once so the next task is not permanently wedged.
-        if (!offscreenApi.closeDocument) throw initialError;
         this.expectedHostClose = true;
         try {
-          await offscreenApi.closeDocument();
+          await this.lifecycle.closeHost();
         } catch {
-          // It may already have disappeared between getContexts and close.
+          // It may already have disappeared while the reconnect was pending.
         }
         this.hostPort = null;
         this.hostReady = false;
         this.expectedHostClose = false;
-        await this.createOffscreenDocument(offscreenApi);
+        const retryAttachment = await this.lifecycle.ensureHost();
+        if (retryAttachment) {
+          this.handlePort(retryAttachment.port);
+          retryAttachment.activate();
+        }
         try {
           return await this.waitForHost();
         } catch (retryError) {
-          throw codedError(
-            'OFFSCREEN_CREATE_FAILED',
-            '重建 offscreen document 后仍未建立流水线连接',
-            new AggregateError([initialError, retryError], 'offscreen reconnect attempts failed'),
+          throw createPipelineHostError(
+            'PIPELINE_HOST_CREATE_FAILED',
+            '重建流水线宿主后仍未建立连接',
+            new AggregateError([initialError, retryError], 'pipeline host reconnect attempts failed'),
           );
         }
       }
@@ -573,62 +597,22 @@ export class OffscreenPipelineBroker {
     return this.creationPromise;
   }
 
-  private async createOffscreenDocument(offscreenApi: NonNullable<ChromeLike['offscreen']>): Promise<void> {
-    if (!offscreenApi.createDocument) {
-      throw codedError('OFFSCREEN_UNAVAILABLE', '当前 Chromium 不支持扩展 offscreen document');
-    }
-    try {
-      await offscreenApi.createDocument({
-        url: LOCAL_PIPELINE_OFFSCREEN_DOCUMENT,
-        reasons: ['WORKERS'],
-        justification: '在扩展同源上下文中运行本地 ONNX 图片翻译流水线',
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (!/single offscreen|already exists|only one offscreen/i.test(message)) {
-        throw codedError('OFFSCREEN_CREATE_FAILED', `创建 offscreen document 失败: ${message}`, error);
-      }
-    }
-  }
-
-  private async hasOffscreenDocument(): Promise<boolean> {
-    const targetUrl = this.chromeApi.runtime?.getURL?.(LOCAL_PIPELINE_OFFSCREEN_DOCUMENT);
-    if (!targetUrl) return false;
-    const runtimeApi = this.chromeApi.runtime;
-    if (runtimeApi?.getContexts) {
-      const contexts = await runtimeApi.getContexts({
-        contextTypes: ['OFFSCREEN_DOCUMENT'],
-        documentUrls: [targetUrl],
-      });
-      return contexts.length > 0;
-    }
-
-    const serviceWorkerScope = globalThis as typeof globalThis & {
-      clients?: { matchAll: () => Promise<Array<{ url: string }>> };
-    };
-    if (serviceWorkerScope.clients?.matchAll) {
-      const clients = await serviceWorkerScope.clients.matchAll();
-      return clients.some((client) => client.url === targetUrl);
-    }
-    return false;
-  }
-
-  private waitForHost(): Promise<ChromePort> {
+  private waitForHost(): Promise<ExtensionPort> {
     if (this.hostPort && this.hostReady) return Promise.resolve(this.hostPort);
-    return new Promise<ChromePort>((resolve, reject) => {
+    return new Promise<ExtensionPort>((resolve, reject) => {
       const waiter: HostWaiter = {
         resolve,
         reject,
         timer: setTimeout(() => {
           this.hostWaiters.delete(waiter);
-          reject(codedError('OFFSCREEN_CREATE_FAILED', '等待 offscreen 流水线连接超时'));
-        }, OFFSCREEN_CONNECT_TIMEOUT_MS),
+          reject(codedError('PIPELINE_HOST_CREATE_FAILED', '等待流水线宿主连接超时'));
+        }, PIPELINE_HOST_CONNECT_TIMEOUT_MS),
       };
       this.hostWaiters.add(waiter);
     });
   }
 
-  private resolveHostWaiters(port: ChromePort): void {
+  private resolveHostWaiters(port: ExtensionPort): void {
     for (const waiter of this.hostWaiters) {
       clearTimeout(waiter.timer);
       waiter.resolve(port);
@@ -644,18 +628,18 @@ export class OffscreenPipelineBroker {
     this.hostWaiters.clear();
   }
 
-  private async closeIdleDocument(): Promise<void> {
-    if (!this.chromeApi.offscreen?.closeDocument) return;
+  private async closeIdleHost(): Promise<void> {
     if (this.closingPromise) return this.closingPromise;
     const closingHost = this.hostPort;
     this.expectedHostClose = true;
     this.pendingIdleClose = false;
-    const closing = this.chromeApi.offscreen.closeDocument()
+    const closing = this.lifecycle.closeHost()
       .then(() => {
         if (this.hostPort === closingHost) {
           this.hostPort = null;
           this.hostReady = false;
         }
+        this.releaseBackgroundLeases();
       })
       .catch(() => {
         // A rejected close leaves the existing ready Port usable. The next idle
@@ -670,8 +654,11 @@ export class OffscreenPipelineBroker {
   }
 }
 
-export function registerOffscreenPipelineBroker(chromeApi: ChromeLike): OffscreenPipelineBroker {
-  const broker = new OffscreenPipelineBroker(chromeApi);
+export function registerPipelineHostBroker(
+  api: ExtensionBrowserApi,
+  lifecycle: PipelineHostLifecycle,
+): PipelineHostBroker {
+  const broker = new PipelineHostBroker(api, lifecycle);
   broker.register();
   return broker;
 }

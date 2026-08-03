@@ -1,4 +1,4 @@
-import { getChromeApi } from '../../shared/chrome';
+import { getExtensionApi } from '../../shared/extensionRuntime';
 import type { RuntimeMessage } from '../../shared/messages';
 
 export const translateImageMenuId = 'translate-image';
@@ -6,8 +6,8 @@ export const translateScreenshotMenuId = 'translate-screenshot';
 export const startScreenshotTranslateCommand = 'start-screenshot-translate';
 export const translateHoverTargetCommand = 'translate-hover-target';
 
-function createContextMenus(): void {
-  const chromeApi = getChromeApi();
+export function createContextMenus(): void {
+  const chromeApi = getExtensionApi();
   if (!chromeApi?.contextMenus?.create) return;
   chromeApi.contextMenus.create({
     id: translateImageMenuId,
@@ -22,7 +22,7 @@ function createContextMenus(): void {
 }
 
 function sendTabMessage(tabId: number, message: RuntimeMessage): void {
-  const chromeApi = getChromeApi();
+  const chromeApi = getExtensionApi();
   if (!chromeApi?.tabs?.sendMessage) return;
   chromeApi.tabs.sendMessage(tabId, message).catch(() => {
     // content script may not be injected yet — ignore
@@ -30,13 +30,15 @@ function sendTabMessage(tabId: number, message: RuntimeMessage): void {
 }
 
 export function registerMenusAndCommands(): void {
-  const chromeApi = getChromeApi();
+  const chromeApi = getExtensionApi();
   if (chromeApi?.contextMenus?.create) {
-    if (chromeApi.contextMenus.removeAll) {
-      chromeApi.contextMenus.removeAll(() => createContextMenus());
-    } else {
-      createContextMenus();
-    }
+    chromeApi.runtime?.onInstalled?.addListener(() => {
+      if (chromeApi.contextMenus?.removeAll) {
+        chromeApi.contextMenus.removeAll(() => createContextMenus());
+      } else {
+        createContextMenus();
+      }
+    });
     chromeApi.contextMenus.onClicked?.addListener((info, tab) => {
       if (typeof tab?.id !== 'number') return;
       if (info.menuItemId === translateImageMenuId) {

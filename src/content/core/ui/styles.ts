@@ -1,8 +1,10 @@
+import { getExtensionRuntime } from '../../../shared/extensionRuntime';
+
 const styleId = 'mt-overlay-style';
 
 export function resolveRuntimeAssetUrl(path: string): string | null {
-  const chromeApi = (globalThis as typeof globalThis & { chrome?: { runtime?: { getURL?: (p: string) => string } } }).chrome;
-  return chromeApi?.runtime?.getURL ? chromeApi.runtime.getURL(path) : null;
+  const runtime = getExtensionRuntime();
+  return runtime ? runtime.getURL(path) : null;
 }
 
 export function injectStyles(): void {

@@ -1,8 +1,9 @@
-import { getChromeApi } from './chrome';
+import { getExtensionApi } from './extensionRuntime';
 import {
   createDiagnosticEvent,
   createDiagnosticId,
   toDiagnosticError,
+  type DiagnosticLogEvent,
   type DiagnosticLogEventInput,
   type DiagnosticLogContext,
 } from './diagnosticLog';
@@ -19,20 +20,48 @@ export function createDiagnosticRunId(prefix = 'run'): string {
 
 export function getDiagnosticExecutionContext(): DiagnosticLogContext {
   const locationValue = typeof location === 'undefined' ? null : location;
-  if (locationValue?.protocol === 'chrome-extension:' && /\/offscreen\.html$/i.test(locationValue.pathname)) {
-    return 'offscreen';
+  if (
+    (locationValue?.protocol === 'chrome-extension:' || locationValue?.protocol === 'moz-extension:')
+    && /\/(offscreen|background-firefox)\.html$/i.test(locationValue.pathname)
+  ) {
+    return 'pipeline-host';
   }
   return 'content';
 }
 
-export function emitDiagnosticLog(input: DiagnosticLogEventInput): void {
-  void emitDiagnosticLogAsync(input);
+export type DiagnosticLogEventSink = (
+  event: DiagnosticLogEvent,
+) => Promise<boolean>;
+
+export type DiagnosticLogEmitter = {
+  emit(input: DiagnosticLogEventInput): void;
+  emitAsync(input: DiagnosticLogEventInput): Promise<boolean>;
+};
+
+export function createDiagnosticLogEmitter(
+  sink: DiagnosticLogEventSink,
+  emitterSessionId = sessionId,
+): DiagnosticLogEmitter {
+  const emitAsync = (input: DiagnosticLogEventInput): Promise<boolean> => {
+    try {
+      return Promise.resolve(
+        sink(createDiagnosticEvent(input, emitterSessionId)),
+      ).catch(() => false);
+    } catch {
+      return Promise.resolve(false);
+    }
+  };
+  return {
+    emit(input) {
+      void emitAsync(input);
+    },
+    emitAsync,
+  };
 }
 
-export function emitDiagnosticLogAsync(input: DiagnosticLogEventInput): Promise<boolean> {
-  const chromeApi = getChromeApi();
+const extensionDiagnosticLogEmitter = createDiagnosticLogEmitter((event) => {
+  const chromeApi = getExtensionApi();
   if (!chromeApi?.runtime?.sendMessage) return Promise.resolve(false);
-  const event = createDiagnosticEvent(input, sessionId);
   return new Promise((resolve) => {
     try {
       chromeApi.runtime?.sendMessage?.({ type: 'mt:diagnostic-log-event', event }, (response) => {
@@ -44,6 +73,14 @@ export function emitDiagnosticLogAsync(input: DiagnosticLogEventInput): Promise<
       resolve(false);
     }
   });
+});
+
+export function emitDiagnosticLog(input: DiagnosticLogEventInput): void {
+  extensionDiagnosticLogEmitter.emit(input);
+}
+
+export function emitDiagnosticLogAsync(input: DiagnosticLogEventInput): Promise<boolean> {
+  return extensionDiagnosticLogEmitter.emitAsync(input);
 }
 
 export function emitDiagnosticError(input: Omit<DiagnosticLogEventInput, 'level' | 'error'> & { error: unknown }): void {

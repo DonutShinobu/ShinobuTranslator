@@ -1,5 +1,5 @@
 import type { ExtensionSettings } from '../../shared/config';
-import type { ChromeMessageSender } from '../../shared/chrome';
+import type { ExtensionMessageSender } from '../../shared/extensionRuntime';
 import type {
   RuntimeMessage,
   RuntimeResponse,
@@ -23,9 +23,9 @@ export type BackgroundServices = {
   images: {
     download(
       request: ImageDownloadRequest,
-      sender: ChromeMessageSender,
+      sender: ExtensionMessageSender,
     ): Promise<PayloadOf<'mt:download-image'>>;
-    capture(sender: ChromeMessageSender): Promise<PayloadOf<'mt:capture-visible-tab'>>;
+    capture(sender: ExtensionMessageSender): Promise<PayloadOf<'mt:capture-visible-tab'>>;
   };
   openAi: {
     status(): Promise<PayloadOf<'mt:openai-oauth-status'>['status']>;
@@ -45,7 +45,7 @@ export type BackgroundServices = {
 
 export async function routeBackgroundMessage(
   message: RuntimeMessage,
-  sender: ChromeMessageSender,
+  sender: ExtensionMessageSender,
   services: BackgroundServices,
 ): Promise<RuntimeResponse> {
   if (message.type === 'mt:diagnostic-log-event') {

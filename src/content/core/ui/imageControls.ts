@@ -1,5 +1,5 @@
 import type { PhotoState } from '../types';
-import { ICONS } from './icons';
+import { createIcon, replaceIcon } from './icons';
 import type { IconKey } from './icons';
 import { renderErrorDetailCard, renderStageTimingCard } from './cards';
 
@@ -64,10 +64,10 @@ export function createUiElements(): UiElements {
   button.type = 'button';
   const buttonIcon = document.createElement('span');
   buttonIcon.className = 'mt-x-icon';
-  buttonIcon.innerHTML = ICONS.translate;
+  replaceIcon(buttonIcon, 'translate');
   const buttonSpinner = document.createElement('span');
   buttonSpinner.className = 'mt-x-spinner';
-  buttonSpinner.innerHTML = '<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/></svg>';
+  buttonSpinner.appendChild(createIcon('spinner'));
   const buttonLabel = document.createElement('span');
   buttonLabel.className = 'mt-x-label';
   buttonLabel.textContent = '翻译';
@@ -226,7 +226,7 @@ export function renderUi(ui: UiElements, state: PhotoState | null): void {
   if (!state) {
     button.disabled = true;
     button.dataset.status = '';
-    buttonIcon.innerHTML = ICONS.translate;
+    replaceIcon(buttonIcon, 'translate');
     buttonLabel.textContent = '翻译';
     updateStatusLine('');
     contextNoticeLine.textContent = '';
@@ -245,7 +245,7 @@ export function renderUi(ui: UiElements, state: PhotoState | null): void {
   const prevStatus = button.dataset.status;
   const prevWidth = button.getBoundingClientRect().width;
   const prevText = buttonLabel.textContent || '';
-  const prevIconHtml = buttonIcon.innerHTML;
+  const prevIconKey = (buttonIcon.dataset.icon as IconKey | undefined) ?? 'translate';
 
   // Detect transitions: status change OR stageText change during running
   const statusChanged = !!prevStatus && prevStatus !== '' && state.status !== prevStatus;
@@ -290,7 +290,7 @@ export function renderUi(ui: UiElements, state: PhotoState | null): void {
   renderStageTimingCard(ui, state);
 
   if (!isTransition) {
-    buttonIcon.innerHTML = ICONS[nextIconKey];
+    replaceIcon(buttonIcon, nextIconKey);
     buttonLabel.textContent = nextText;
     return;
   }
@@ -303,7 +303,7 @@ export function renderUi(ui: UiElements, state: PhotoState | null): void {
 
   // Pre-measure target width: temporarily render target state, measure, then restore
   buttonLabel.textContent = nextText;
-  if (iconChange) buttonIcon.innerHTML = ICONS[nextIconKey];
+  if (iconChange) replaceIcon(buttonIcon, nextIconKey);
   button.style.width = '';
   button.style.overflow = '';
   button.style.transition = '';
@@ -311,7 +311,7 @@ export function renderUi(ui: UiElements, state: PhotoState | null): void {
 
   // Restore pre-animation content
   buttonLabel.textContent = prevText;
-  if (iconChange) buttonIcon.innerHTML = prevIconHtml;
+  if (iconChange) replaceIcon(buttonIcon, prevIconKey);
   button.style.width = `${prevWidth}px`;
   button.style.overflow = 'hidden';
   button.style.transition = '';
@@ -348,13 +348,13 @@ export function renderUi(ui: UiElements, state: PhotoState | null): void {
     scheduleTimer(() => {
       if (transitionGen !== myGen) return;
       if (fromRunning) {
-        buttonIcon.innerHTML = ICONS[nextIconKey];
+        replaceIcon(buttonIcon, nextIconKey);
         buttonIcon.style.opacity = '';
       } else {
         buttonIcon.style.opacity = '0';
         scheduleTimer(() => {
           if (transitionGen !== myGen) return;
-          buttonIcon.innerHTML = ICONS[nextIconKey];
+          replaceIcon(buttonIcon, nextIconKey);
           buttonIcon.style.opacity = '';
         }, 40);
       }

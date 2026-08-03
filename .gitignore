@@ -3,6 +3,8 @@ node_modules/
 
 # Build output
 dist/
+apps/extension/dist-chromium/
+apps/extension/dist-firefox/
 docs/*
 !docs/agents/
 !docs/agents/*.md

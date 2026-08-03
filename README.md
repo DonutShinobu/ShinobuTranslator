@@ -5,7 +5,7 @@
 <h1 align="center">ShinobuTranslator</h1>
 
 <p align="center">
-  在浏览器里直接翻译漫画图片的 Chrome / Edge 扩展与本地 Web 工作台。
+  在浏览器里直接翻译漫画图片的 Chromium / Firefox 扩展与本地 Web 工作台。
 </p>
 
 <p align="center">
@@ -29,12 +29,10 @@
 
 ### 手动安装
 
-1. 前往 [Releases](../../releases) 下载最新版 `ShinobuTranslator.zip`
+1. 前往 [Releases](../../releases) 下载当前版本对应浏览器的压缩包：Chromium 使用 `ShinobuTranslator-chromium-v*.zip`，Firefox 使用 `ShinobuTranslator-firefox-v*.zip`
 2. 解压到本地文件夹
-3. 打开 Chrome / Edge 的扩展管理页
-4. 启用「开发者模式」
-5. 点击「加载已解压的扩展程序」
-6. 选择刚才解压出的文件夹
+3. Chrome / Edge：打开扩展管理页，启用「开发者模式」，选择「加载已解压的扩展程序」
+4. Firefox Desktop 140+：打开 `about:debugging#/runtime/this-firefox`，选择「临时载入附加组件」，再选择解压目录中的 `manifest.json`
 
 ## 效果展示
 
@@ -180,7 +178,7 @@ ShinobuTranslator 使用 `onnxruntime-web` 在浏览器端运行视觉模型。�
 
 - Node.js
 - npm
-- Chrome 或 Edge
+- Chrome / Edge 109+，或 Firefox Desktop 140+
 
 ### 安装依赖
 
@@ -191,10 +189,11 @@ npm install
 ### 开发模式
 
 ```bash
-npm run dev
+npm run dev:extension:chromium
+npm run dev:extension:firefox
 ```
 
-扩展与 Web 工作台分别使用独立 workspace：
+两个命令分别持续重建目标目录并通过 `web-ext` 启动对应浏览器。扩展与 Web 工作台使用独立 workspace：
 
 ```bash
 npm run dev:extension
@@ -204,10 +203,18 @@ npm run dev:web
 ### 构建扩展
 
 ```bash
-npm run build
+npm run build:extension:chromium
+npm run build:extension:firefox
+npm run build:extension
 ```
 
-构建完成后，将浏览器扩展管理页指向生成的 `apps/extension/dist` 目录即可加载开发版本。
+`build:extension:chromium` 只生成 `apps/extension/dist-chromium`，`build:extension:firefox` 只生成 `apps/extension/dist-firefox`。`build:extension`（以及根 `build`）顺序生成两端，并校验 Manifest、公共代码、样式、字体、模型、ORT 与 Worker 的 SHA-256 一致性。项目不使用无目标含义的 `apps/extension/dist`。
+
+AMO 提交构建使用固定模型 Release，并依次执行 Firefox 构建、lint、打包与 source archive：
+
+```bash
+npm run build-for-amo
+```
 
 ### 构建 Web 工作台
 

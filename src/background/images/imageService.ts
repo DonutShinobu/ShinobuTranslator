@@ -1,5 +1,5 @@
-import { getChromeApi } from "../../shared/chrome";
-import type { ChromeMessageSender } from "../../shared/chrome";
+import { getExtensionApi } from '../../shared/extensionRuntime';
+import type { ExtensionMessageSender } from '../../shared/extensionRuntime';
 
 export function parseImageDataUrl(dataUrl: string): {
   base64: string;
@@ -15,12 +15,12 @@ export function parseImageDataUrl(dataUrl: string): {
   };
 }
 
-export function captureVisibleTab(sender: ChromeMessageSender): Promise<{
+export function captureVisibleTab(sender: ExtensionMessageSender): Promise<{
   base64: string;
   contentType: string;
   sourceUrl: string;
 }> {
-  const chromeApi = getChromeApi();
+  const chromeApi = getExtensionApi();
   if (!chromeApi?.tabs?.captureVisibleTab) {
     return Promise.reject(new Error('当前浏览器不支持标签页截图'));
   }

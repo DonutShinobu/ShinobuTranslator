@@ -78,6 +78,11 @@ type PipelineJob = {
   state: 'prepared' | 'receiving' | 'queued' | 'active' | 'finished';
 };
 
+type PipelineTerminalMessage = Extract<
+  LocalPipelineHostMessage,
+  { type: 'complete' | 'error' }
+>;
+
 function safelyPost(port: ExtensionPort | null, message: LocalPipelineHostMessage): boolean {
   if (!port) return false;
   try {
@@ -419,16 +424,24 @@ export class PipelineHost {
     this.activeJob = job;
     job.state = 'active';
     this.postQueuePositions();
-    await this.execute(job);
+    let terminalMessage: PipelineTerminalMessage;
+    try {
+      terminalMessage = await this.execute(job);
+    } catch (error) {
+      terminalMessage = this.finishJob(job, error);
+    }
     this.activeJob = null;
     this.postQueuePositions();
+    const deliveryPort = this.port;
+    if (!safelyPost(deliveryPort, terminalMessage) && deliveryPort) {
+      this.handleDisconnect(deliveryPort);
+    }
     void this.pump();
   }
 
-  private async execute(job: PipelineJob): Promise<void> {
+  private async execute(job: PipelineJob): Promise<PipelineTerminalMessage> {
     if (!job.file || !job.config) {
-      this.failJob(job, createProtocolError('任务缺少图片或流水线配置'));
-      return;
+      return this.finishJob(job, createProtocolError('任务缺少图片或流水线配置'));
     }
 
     const aggregates = new Map<string, RuntimeAggregate>();
@@ -532,8 +545,6 @@ export class PipelineHost {
       delivered = delivered
         && (!debugChunks || this.postArtifactChunks(job.id, 'debug', debugChunks));
       throwIfJobCancelled();
-      delivered = delivered
-        && safelyPost(deliveryPort, { type: 'complete', jobId: job.id });
       if (!delivered) {
         if (deliveryPort) this.handleDisconnect(deliveryPort);
         throw createProtocolError('流水线宿主结果传输失败');
@@ -555,11 +566,12 @@ export class PipelineHost {
           runtimeInference: [...aggregates.values()],
         },
       });
+      return { type: 'complete', jobId: job.id };
     } catch (error) {
       const finalError = job.abortController.signal.aborted && !isAbortError(error)
         ? job.abortController.signal.reason ?? createCancelledError()
         : error;
-      this.failJob(job, finalError);
+      const terminalMessage = this.finishJob(job, finalError);
       await this.diagnostics.emitAsync({
         runId: job.diagnosticRunId,
         level: 'error',
@@ -573,6 +585,7 @@ export class PipelineHost {
         },
         error: serializePipelineError(finalError, isAbortError(finalError) ? 'TASK_CANCELLED' : 'PIPELINE_STAGE_FAILED'),
       });
+      return terminalMessage;
     } finally {
       stopCancellation();
       stopProgress();
@@ -660,18 +673,23 @@ export class PipelineHost {
   }
 
   private failJob(job: PipelineJob, error: unknown): void {
+    const terminalMessage = this.finishJob(job, error);
+    const port = this.port;
+    if (!safelyPost(port, terminalMessage) && port) {
+      this.handleDisconnect(port);
+    }
+  }
+
+  private finishJob(job: PipelineJob, error: unknown): PipelineTerminalMessage {
     job.state = 'finished';
     this.jobs.delete(job.id);
     const queueIndex = this.queue.indexOf(job);
     if (queueIndex >= 0) this.queue.splice(queueIndex, 1);
-    const port = this.port;
-    if (!safelyPost(port, {
+    return {
       type: 'error',
       jobId: job.id,
       error: serializePipelineError(error, isAbortError(error) ? 'TASK_CANCELLED' : 'PIPELINE_STAGE_FAILED'),
-    }) && port) {
-      this.handleDisconnect(port);
-    }
+    };
   }
 
   private handleDisconnect(port: ExtensionPort): void {

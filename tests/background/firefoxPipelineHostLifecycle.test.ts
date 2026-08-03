@@ -34,7 +34,7 @@ vi.mock('../../src/shared/blobCodec', () => ({
 
 import { FirefoxPipelineHostLifecycle } from '../../src/background/localPipeline/firefoxPipelineHostLifecycle';
 import { PipelineHostBroker } from '../../src/background/localPipeline/offscreenBroker';
-import type { ExtensionBrowserApi } from '../../src/shared/extensionRuntime';
+import type { ExtensionBrowserApi, ExtensionPort } from '../../src/shared/extensionRuntime';
 import { createLocalExtensionPortPair } from '../../src/shared/localExtensionPort';
 import { LOCAL_PIPELINE_CLIENT_PORT } from '../../src/shared/localPipelineProtocol';
 
@@ -61,6 +61,50 @@ function artifacts(): PipelineArtifacts {
     runtimeStages: [],
     stageTimings: [],
   };
+}
+
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+function transferImageJob(client: ExtensionPort, jobId: string): void {
+  client.postMessage({
+    type: 'start',
+    jobId,
+    file: {
+      name: `${jobId}.png`,
+      type: 'image/png',
+      size: 1,
+      lastModified: 1,
+    },
+    config: {
+      sourceLang: 'ja',
+      targetLang: 'zh-CN',
+      translator: 'llm',
+      llmProvider: 'deepseek',
+      llmAuthMode: 'api_key',
+      llmBaseUrl: 'https://api.deepseek.com/',
+      llmApiKey: '',
+      llmModel: 'deepseek-v4-flash',
+      typesetDebug: false,
+      eraseDebug: false,
+      collectDebugLog: true,
+      ocrEngine: 'paddleocr_v6_medium',
+      processMode: 'translate',
+    },
+    input: { chunkCount: 1, totalChars: 4 },
+  });
+  client.postMessage({
+    type: 'input-chunk',
+    jobId,
+    index: 0,
+    data: 'AQ==',
+  });
+  client.postMessage({ type: 'input-complete', jobId });
 }
 
 afterEach(() => {
@@ -218,5 +262,74 @@ describe('FirefoxPipelineHostLifecycle', () => {
 
     contentClient.disconnect();
     await lifecycle.closeHost();
+  });
+
+  it('waits for host cleanup before admitting the next image', async () => {
+    const api: ExtensionBrowserApi = {
+      runtime: {
+        getURL: (path) => `moz-extension://test/${path}`,
+        onConnect: { addListener: () => undefined },
+      },
+    };
+    vi.stubGlobal('chrome', api);
+    const finishLogStarted = deferred();
+    const releaseFinishLog = deferred();
+    const emitDiagnosticLogAsync = vi.fn(async (event: { message: string }) => {
+      if (event.message === '本地流水线宿主执行完成') {
+        finishLogStarted.resolve();
+        await releaseFinishLog.promise;
+      }
+      return true;
+    });
+    const lifecycle = new FirefoxPipelineHostLifecycle({
+      diagnostics: {
+        emit: vi.fn(),
+        emitAsync: emitDiagnosticLogAsync,
+      },
+    });
+    const broker = new PipelineHostBroker(api, lifecycle);
+    const [firstBrokerClient, firstContentClient] = createLocalExtensionPortPair(
+      LOCAL_PIPELINE_CLIENT_PORT,
+    );
+    const [secondBrokerClient, secondContentClient] = createLocalExtensionPortPair(
+      LOCAL_PIPELINE_CLIENT_PORT,
+    );
+    const firstResponses: unknown[] = [];
+    const secondResponses: unknown[] = [];
+    firstContentClient.onMessage.addListener((message) => firstResponses.push(message));
+    secondContentClient.onMessage.addListener((message) => secondResponses.push(message));
+    broker.handlePort(firstBrokerClient);
+    broker.handlePort(secondBrokerClient);
+    mocks.runPipeline.mockResolvedValue(artifacts());
+
+    try {
+      firstContentClient.postMessage({ type: 'prepare', jobId: 'first-image' });
+      secondContentClient.postMessage({ type: 'prepare', jobId: 'second-image' });
+      await vi.waitFor(() => {
+        expect(firstResponses).toContainEqual({ type: 'ready', jobId: 'first-image' });
+        expect(secondResponses).toContainEqual({ type: 'ready', jobId: 'second-image' });
+      });
+
+      transferImageJob(firstContentClient, 'first-image');
+      transferImageJob(secondContentClient, 'second-image');
+      await finishLogStarted.promise;
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      releaseFinishLog.resolve();
+
+      await vi.waitFor(() => {
+        expect(firstResponses).toContainEqual({ type: 'complete', jobId: 'first-image' });
+        expect(secondResponses).toContainEqual({ type: 'complete', jobId: 'second-image' });
+      });
+      expect(secondResponses).not.toContainEqual(expect.objectContaining({
+        type: 'error',
+        error: expect.objectContaining({ code: 'RUNTIME_BUSY' }),
+      }));
+      expect(mocks.runPipeline).toHaveBeenCalledTimes(2);
+    } finally {
+      releaseFinishLog.resolve();
+      firstContentClient.disconnect();
+      secondContentClient.disconnect();
+      await lifecycle.closeHost();
+    }
   });
 });

@@ -8,18 +8,6 @@ apps/extension/dist-firefox/
 docs/*
 !docs/agents/
 !docs/agents/*.md
-!docs/adr/
-!docs/adr/*.md
-!docs/continuous-translation-design.md
-!docs/archive/
-!docs/shinobu-readme-banner-soft.png
-!docs/popup-settings-deepseek-rounded.png
-!docs/popup-settings-nano-banana-rounded.png
-!docs/pill-dark-llm-progress.mov
-!docs/pill-dark-nano-banana-progress.mov
-!docs/pill-light-llm-progress.mov
-!docs/pill-light-nano-banana-progress.mov
-!docs/translated*.png
 
 # Python
 __pycache__/
@@ -93,3 +81,6 @@ benchmark/typeset/fixtures/
 .claude/worktrees/
 .playwright/
 .worktrees/
+
+# Google GitHub Actions short-lived credentials
+gha-creds-*.json

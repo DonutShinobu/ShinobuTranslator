@@ -74,8 +74,6 @@ LICENSE/NOTICE。
   `packages/model-manifest/publication-policy.json`；存在 `conditional` 或 `blocked`
   资产时会输出明确提示，但不再作为个人开源项目的自动部署阻塞。
 - 发布源码或构建产物时须保留本文件、适用的完整许可证文本、上游版权/NOTICE 和修改记录。
-- 详细证据、Cloudflare 隐私事实和残余风险见
-  `docs/web-public-beta-compliance-research.md`。
 
 ## 7) 应用图标（Donut icon）
 

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/shinobu-readme-banner-soft.png" alt="ShinobuTranslator - 浏览器中的漫画翻译扩展">
+  <img src="assets/readme/shinobu-readme-banner-soft.png" alt="ShinobuTranslator - 浏览器中的漫画翻译扩展">
 </p>
 
 <h1 align="center">ShinobuTranslator</h1>
@@ -53,8 +53,8 @@
   <a href="https://twitter.com/09ra_19ra/status/1647079591109103617/photo/1">Source @09ra_19ra</a>
 </td>
 <td align="center" width="50%">
-  <a href="docs/translated1.png">
-    <img src="docs/translated1.png">
+  <a href="assets/readme/translated1.png">
+    <img src="assets/readme/translated1.png">
   </a>
 </td>
 </tr>
@@ -67,8 +67,8 @@
   <a href="https://twitter.com/rikak/status/1642727617886556160/photo/1">Source @rikak</a>
 </td>
 <td align="center" width="50%">
-  <a href="docs/translated4.png">
-    <img src="docs/translated4.png">
+  <a href="assets/readme/translated4.png">
+    <img src="assets/readme/translated4.png">
   </a>
 </td>
 </tr>
@@ -112,12 +112,12 @@ Nano Banana 流程不走本地 OCR、去字和自动排版链路，而是把图�
 <table>
 <tr>
 <td align="center" width="50%">
-  <img src="docs/popup-settings-deepseek-rounded.png" alt="DeepSeek 设置">
+  <img src="assets/readme/popup-settings-deepseek-rounded.png" alt="DeepSeek 设置">
   <br>
   文本翻译设置
 </td>
 <td align="center" width="50%">
-  <img src="docs/popup-settings-nano-banana-rounded.png" alt="Nano Banana 设置">
+  <img src="assets/readme/popup-settings-nano-banana-rounded.png" alt="Nano Banana 设置">
   <br>
   Nano Banana 图像翻译设置
 </td>
@@ -216,6 +216,12 @@ AMO 提交构建使用固定模型 Release，并依次执行 Firefox 构建、li
 npm run build-for-amo
 ```
 
+### 商店自动发布
+
+正式、非预发布的 `v*` GitHub Release 会在质量检查通过后，复用同一份双端构建产物并行提交到 Chrome Web Store 与 Firefox AMO。工作流成功表示商店已接受审核；审核通过后更新会自动全量上线，工作流不会持续等待商店审核。
+
+Chrome 使用 Web Store API V2 与 GitHub OIDC/WIF 短期凭据，Firefox 使用 `web-ext` 与 AMO JWT。首次启用前需要创建 `browser-stores` GitHub Environment 并配置对应变量和 Secrets。
+
 ### 构建 Web 工作台
 
 ```bash
@@ -236,8 +242,7 @@ npm run check
 `npm run check:web-regression` 单独验证扩展设置迁移、截图翻译、站点 Adapter、共享核心和本地流水线。`npm run check` 会运行全部类型检查、测试、该代表性回归门禁、生产依赖许可漂移检查，以及扩展和 Web 的生产构建。
 `npm run check:web-production` 验证生产工作流、Worker 安全默认值、模型兼容清单和发布门禁之间没有漂移；正式发布还会运行 fail-closed 的 `npm run web:production:preflight -- --release`。
 Web 使用问题见 [WEB_TROUBLESHOOTING.md](WEB_TROUBLESHOOTING.md)，发布范围与限制见
-[WEB_PUBLIC_BETA_RELEASE_NOTES.md](WEB_PUBLIC_BETA_RELEASE_NOTES.md)，生产批准、发布、停机与回滚见
-[Web 生产手册](docs/web-production-runbook.md)；公开反馈前请先导出并人工检查设置页的脱敏诊断 JSON。
+[WEB_PUBLIC_BETA_RELEASE_NOTES.md](WEB_PUBLIC_BETA_RELEASE_NOTES.md)；公开反馈前请先导出并人工检查设置页的脱敏诊断 JSON。
 
 ### 模型资源
 
@@ -269,8 +274,10 @@ src/                增量迁移中的共享实现源码，由 extension workspa
 public/
   models/           浏览器端 ONNX 模型资源
   icons/            扩展与 Web 图标
+assets/
+  readme/           README 展示图、设置截图与演示视频
 docs/
-  *.png             README 展示图与设置截图
+  agents/           Agent 协作所需的领域、Issue 与分诊约定
 benchmark/
   perf/             性能与浏览器端 smoke 测试
   typeset/          排版基准测试

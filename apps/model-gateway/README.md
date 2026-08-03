@@ -31,6 +31,3 @@ Before production deployment:
 
 Use a scoped Cloudflare API token; never use the Global API Key. `wrangler
 deploy --dry-run` validates the bundle without changing remote state.
-The protected-environment rehearsal, production smoke checks, emergency
-shutdown, and exact Worker/Pages/model rollback commands are maintained in
-[`docs/web-production-runbook.md`](../../docs/web-production-runbook.md).

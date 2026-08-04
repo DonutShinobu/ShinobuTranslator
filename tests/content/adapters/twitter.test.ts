@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { twitterAdapter } from '../../../apps/extension/src/content/adapters/twitter';
 import { PhotoStateStore } from '../../../apps/extension/src/content/core/state/photoStateStore';
 import { ImageTranslationController } from '../../../apps/extension/src/content/core/translation/imageTranslationController';
-import { TranslationRunner } from '../../../apps/extension/src/content/core/translation/translationRunner';
+import { createImageTranslationExecutionModule } from '../../../apps/extension/src/content/core/translation/imageTranslationExecution';
+import { defaultExtensionSettings } from '../../../apps/extension/src/shared/config';
 
 describe('twitterAdapter.observe', () => {
   afterEach(() => {
@@ -245,7 +246,9 @@ describe('twitterAdapter.findImages', () => {
     secondState.status = 'translated';
     const controller = new ImageTranslationController(
       store,
-      new TranslationRunner(),
+      createImageTranslationExecutionModule({
+        loadSettings: async () => ({ ...defaultExtensionSettings }),
+      }),
       {
         resolveTarget: (key) => key === firstTarget.key ? firstTarget : secondTarget,
         applyImage: vi.fn(),

@@ -1,15 +1,15 @@
-import { usesNanoBananaImagePipeline } from '../../../shared/config';
-import { createDiagnosticRunId } from '../../../shared/diagnosticLogClient';
 import type { ReadingModeBarUi, SiteAdapter, UrlTarget } from '../types';
 import { createReadingModeBarUi } from '../ui';
-import { resolveImageReferrerPolicy, toErrorMessage } from '../utils';
+import { resolveImageReferrerPolicy } from '../utils';
 import { PhotoStateStore } from '../state/photoStateStore';
 import {
-  TranslationRunner,
-  clearTimingDisplay,
+  isRuntimeImageTranslationFailure,
+  type ImageTranslationExecutionModule,
+} from '../translation/imageTranslationExecution';
+import {
   createProgressJankMonitor,
-  finishProgressJankMonitor,
-} from '../translation/translationRunner';
+  startPhotoStateImageTranslation,
+} from '../translation/photoStateProjection';
 
 export class ReadingModeController {
   private readingBarUi: ReadingModeBarUi | null = null;
@@ -17,11 +17,12 @@ export class ReadingModeController {
   private translateCurrentRunning = false;
   private allPageUrls: UrlTarget[] = [];
   private globalTranslateMode: 'original' | 'translated' = 'original';
+  private readonly activeTasks = new Set<{ cancel(reason?: unknown): void }>();
 
   constructor(
     private readonly adapter: SiteAdapter,
     private readonly stateStore: PhotoStateStore,
-    private readonly translationRunner: TranslationRunner,
+    private readonly executionModule: ImageTranslationExecutionModule,
     private readonly scheduleCoreSync: () => void,
     private readonly cancelCoreSync: () => void,
     private readonly createBar: () => ReadingModeBarUi = createReadingModeBarUi,
@@ -160,6 +161,7 @@ export class ReadingModeController {
 
       const total = visiblePages.length;
       for (let i = 0; i < total; i++) {
+        if (!this.translateCurrentRunning) break;
         const page = visiblePages[i];
         const label = this.readingBarUi?.translateCurrentBtn.querySelector('.mt-x-label') as HTMLElement;
         if (label) label.textContent = `${i + 1}/${total} 准备中`;
@@ -167,9 +169,11 @@ export class ReadingModeController {
         await this.translatePageByUrl(page.key, page.originalUrl, (stageText) => {
           if (label) label.textContent = `${i + 1}/${total} ${stageText}`;
         });
+        if (!this.translateCurrentRunning) break;
         this.scheduleCoreSync();
       }
 
+      if (!this.translateCurrentRunning) return;
       this.translateCurrentRunning = false;
       this.globalTranslateMode = 'translated';
       this.renderReadingModeBar();
@@ -203,6 +207,7 @@ export class ReadingModeController {
 
       const total = urls.length;
       for (let i = 0; i < total; i++) {
+        if (!this.translateAllRunning) break;
         const u = urls[i];
         const label = this.readingBarUi?.translateAllBtn.querySelector('.mt-x-label') as HTMLElement;
         if (label) label.textContent = `${i + 1}/${total} 准备中`;
@@ -210,9 +215,11 @@ export class ReadingModeController {
         await this.translatePageByUrl(u.key, u.originalUrl, (stageText) => {
           if (label) label.textContent = `${i + 1}/${total} ${stageText}`;
         });
+        if (!this.translateAllRunning) break;
         this.scheduleCoreSync();
       }
 
+      if (!this.translateAllRunning) return;
       // Cancel the deferred scheduleSync from the last iteration — it would
       // call syncReadingMode which overwrites allPageUrls via findAllPageUrls().
       // If the DOM is in a transitional state, findAllPageUrls() may return empty
@@ -236,53 +243,34 @@ export class ReadingModeController {
       if (state.translatedUrl) return;
 
       const jankMonitor = createProgressJankMonitor('reading-mode');
-      this.translationRunner.resetStateForPipeline(state);
-
-      let downloadedBlob: Blob | null = null;
-
-      try {
-        const runSettings = await this.translationRunner.loadPipelineRunSettings(state);
-        if (usesNanoBananaImagePipeline(runSettings.settings)) {
-          throw new Error('阅读模式批量暂不支持 Nano Banana，请使用单张图片翻译或切回其他大模型供应商');
-        }
-        const diagnosticRunId = runSettings.enableDebugLog ? createDiagnosticRunId('run') : undefined;
-        const source = await this.translationRunner.downloadImageFile({
-          originalUrl,
-          referrerPolicy: resolveImageReferrerPolicy(),
-          diagnosticRunId,
-        });
-        downloadedBlob = source.blob;
-        await this.translationRunner.runPipelineFromFile({
-          state,
-          file: source.file,
-          runSettings,
-          runStartAt: performance.now(),
-          includeElapsedText: false,
-          onProgress: (stageText) => {
-            jankMonitor.measureUiRender(() => onProgress(stageText));
+      const task = startPhotoStateImageTranslation({
+        executionModule: this.executionModule,
+        request: {
+          source: {
+            kind: 'remote-image',
+            url: originalUrl,
+            referrerPolicy: resolveImageReferrerPolicy(),
           },
-          jankMonitor,
-          diagnosticRunId,
-        });
+          allowedKinds: ['local-pipeline'],
+        },
+        state,
+        includeElapsedText: false,
+        jankMonitor,
+        onChange: () => onProgress(state.stageText),
+      });
+      this.activeTasks.add(task);
+      try {
+        await task.result;
         if (state.translatedUrl) this.adapter.applyImageByKey?.(key, state.translatedUrl);
       } catch (error) {
-        finishProgressJankMonitor(jankMonitor);
-        const errorMsg = toErrorMessage(error);
-        if (downloadedBlob && (errorMsg.includes('未找到文本') || errorMsg.includes('未返回有效识别结果'))) {
-          state.translatedUrl = URL.createObjectURL(downloadedBlob);
-          state.stageText = '';
-          state.errorText = '';
-          state.errorDetailCard = undefined;
-          state.mode = 'translated';
-          state.status = 'translated';
-        } else {
-          state.status = 'error';
-          state.errorText = toErrorMessage(error);
-          state.stageText = '';
-          clearTimingDisplay(state);
-          state.debugLogData = undefined;
+        if (isRuntimeImageTranslationFailure(error)) {
+          this.translateAllRunning = false;
+          this.translateCurrentRunning = false;
+          this.renderReadingModeBar();
         }
-        // Don't throw — continue with next page in translate-all loop
+        // Image-local failures are skipped; runtime failures stop further admissions.
+      } finally {
+        this.activeTasks.delete(task);
       }
     }
 
@@ -290,9 +278,12 @@ export class ReadingModeController {
       if (this.readingBarUi?.host) {
         this.readingBarUi.host.remove();
       }
+      for (const task of this.activeTasks) {
+        task.cancel('阅读模式已关闭');
+      }
+      this.activeTasks.clear();
       this.readingBarUi = null;
-      // Do NOT reset translateAllRunning here — the async translate-all loop
-      // continues in the background even after the reading mode bar closes.
+      this.translateAllRunning = false;
       this.translateCurrentRunning = false;
       this.allPageUrls = [];
     }

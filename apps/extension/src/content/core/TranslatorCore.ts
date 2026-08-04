@@ -10,7 +10,7 @@ import {
 } from './ui';
 import type { UiElements } from './ui';
 import type { ScreenshotRect, ScreenshotSelection } from './screenshot';
-import { TranslationRunner } from './translation/translationRunner';
+import { createImageTranslationExecutionModule } from './translation/imageTranslationExecution';
 import { ImageTranslationController } from './translation/imageTranslationController';
 import { PhotoStateStore } from './state/photoStateStore';
 import { ReadingModeController } from './reading/readingModeController';
@@ -26,11 +26,11 @@ type MountedImage = {
 export class TranslatorCore {
   private adapter: SiteAdapter;
   private readonly stateStore = new PhotoStateStore();
-  private readonly translationRunner = new TranslationRunner();
+  private readonly imageTranslationExecution = createImageTranslationExecutionModule();
   private readonly cardStateController = new CardStateController();
   private readonly screenshotController = new ScreenshotController(
     this.stateStore,
-    this.translationRunner,
+    this.imageTranslationExecution,
     this.cardStateController,
   );
   private readonly imageTranslationController: ImageTranslationController;
@@ -43,7 +43,7 @@ export class TranslatorCore {
     this.adapter = adapter;
     this.imageTranslationController = new ImageTranslationController(
       this.stateStore,
-      this.translationRunner,
+      this.imageTranslationExecution,
       {
         resolveTarget: (key) => this.mounted.get(key)?.target,
         resolveTranslationContext: (target) => this.adapter.getTranslationContext?.(target) ?? {
@@ -56,7 +56,7 @@ export class TranslatorCore {
     this.readingModeController = new ReadingModeController(
       adapter,
       this.stateStore,
-      this.translationRunner,
+      this.imageTranslationExecution,
       () => this.scheduleSync(),
       () => this.cancelScheduledSync(),
     );
@@ -73,6 +73,7 @@ export class TranslatorCore {
     }
     this.readingModeController.teardown();
     this.screenshotController.dispose();
+    this.imageTranslationController.dispose();
     this.stateStore.dispose();
   }
 
@@ -130,6 +131,7 @@ export class TranslatorCore {
 
     for (const [key, mounted] of this.mounted) {
       if (!currentKeys.has(key)) {
+        this.imageTranslationController.cancel(key);
         mounted.ui.host.remove();
         this.mounted.delete(key);
       }

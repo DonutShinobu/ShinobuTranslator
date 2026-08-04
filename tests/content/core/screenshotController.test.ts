@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ScreenshotSelection } from '../../../apps/extension/src/content/core/screenshot';
 import { ScreenshotController } from '../../../apps/extension/src/content/core/screenshot/screenshotController';
 import { PhotoStateStore } from '../../../apps/extension/src/content/core/state/photoStateStore';
-import { TranslationRunner } from '../../../apps/extension/src/content/core/translation/translationRunner';
+import { createImageTranslationExecutionModule } from '../../../apps/extension/src/content/core/translation/imageTranslationExecution';
+import { defaultExtensionSettings } from '../../../apps/extension/src/shared/config';
 import { CardStateController } from '../../../apps/extension/src/content/core/ui/cardState';
 
 function deferred<T>() {
@@ -19,7 +20,9 @@ describe('ScreenshotController', () => {
     const requestSelection = vi.fn(() => selection.promise);
     const controller = new ScreenshotController(
       new PhotoStateStore(200, { revokeObjectURL: vi.fn() }),
-      new TranslationRunner(),
+      createImageTranslationExecutionModule({
+        loadSettings: async () => ({ ...defaultExtensionSettings }),
+      }),
       new CardStateController(),
       requestSelection,
     );
@@ -36,7 +39,9 @@ describe('ScreenshotController', () => {
     const selection = deferred<ScreenshotSelection | null>();
     const controller = new ScreenshotController(
       new PhotoStateStore(200, { revokeObjectURL: vi.fn() }),
-      new TranslationRunner(),
+      createImageTranslationExecutionModule({
+        loadSettings: async () => ({ ...defaultExtensionSettings }),
+      }),
       new CardStateController(),
       () => selection.promise,
     );

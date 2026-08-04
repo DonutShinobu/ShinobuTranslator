@@ -1,19 +1,17 @@
-import { createDiagnosticRunId } from '../../../shared/diagnosticLogClient';
-import { usesNanoBananaImagePipeline } from '../../../shared/config';
 import type {
   ImageTarget,
   ImageTranslationContextResolution,
   PhotoState,
 } from '../types';
 import type { ProgressJankMonitor } from '../progressJank';
-import { resolveImageReferrerPolicy, toErrorMessage } from '../utils';
+import { resolveImageReferrerPolicy } from '../utils';
 import { PhotoStateStore } from '../state/photoStateStore';
+import type { ImageTranslationExecutionModule } from './imageTranslationExecution';
 import {
-  TranslationRunner,
-  clearTimingDisplay,
   createProgressJankMonitor,
   finishProgressJankMonitor,
-} from './translationRunner';
+  startPhotoStateImageTranslation,
+} from './photoStateProjection';
 
 export type ImageTranslationCallbacks = {
   resolveTarget(key: string): ImageTarget | undefined;
@@ -24,27 +22,41 @@ export type ImageTranslationCallbacks = {
 
 export type ImageTranslationRuntime = {
   createJankMonitor(entry: 'image'): ProgressJankMonitor;
-  finishJankMonitor(monitor: ProgressJankMonitor): void;
-  createRunId(prefix: string): string;
-  now(): number;
+  finishJankMonitor(monitor: ProgressJankMonitor, diagnosticRunId?: string): void;
 };
 
 const defaultRuntime: ImageTranslationRuntime = {
   createJankMonitor: createProgressJankMonitor,
-  finishJankMonitor: (monitor) => {
-    finishProgressJankMonitor(monitor);
+  finishJankMonitor: (monitor, diagnosticRunId) => {
+    finishProgressJankMonitor(monitor, diagnosticRunId);
   },
-  createRunId: createDiagnosticRunId,
-  now: () => performance.now(),
+};
+
+type CancellableTask = {
+  cancel(reason?: unknown): void;
 };
 
 export class ImageTranslationController {
+  private readonly activeTasks = new Map<string, CancellableTask>();
+
   constructor(
     private readonly stateStore: PhotoStateStore,
-    private readonly translationRunner: TranslationRunner,
+    private readonly executionModule: ImageTranslationExecutionModule,
     private readonly callbacks: ImageTranslationCallbacks,
     private readonly runtime: ImageTranslationRuntime = defaultRuntime,
   ) {}
+
+  dispose(): void {
+    for (const task of this.activeTasks.values()) {
+      task.cancel('图片翻译控制器已停止');
+    }
+    this.activeTasks.clear();
+  }
+
+  cancel(key: string): void {
+    this.activeTasks.get(key)?.cancel('图片已离开页面');
+    this.activeTasks.delete(key);
+  }
 
   async handleTranslateClick(target: ImageTarget): Promise<void> {
     const { key } = target;
@@ -66,68 +78,51 @@ export class ImageTranslationController {
       return;
     }
 
+    const clickTarget = this.callbacks.resolveTarget(key) ?? target;
+    let contextResolution: ImageTranslationContextResolution | undefined;
+    try {
+      contextResolution = this.callbacks.resolveTranslationContext?.(clickTarget);
+    } catch {
+      contextResolution = { status: 'unavailable' };
+    }
+
     const jankMonitor = this.runtime.createJankMonitor('image');
-    this.translationRunner.resetStateForPipeline(state);
-    const runStartAt = this.runtime.now();
-    jankMonitor.measureUiRender(() => this.callbacks.render(key));
+    const task = startPhotoStateImageTranslation({
+      executionModule: this.executionModule,
+      request: {
+        source: {
+          kind: 'remote-image',
+          url: state.originalUrl,
+          referrerPolicy: resolveImageReferrerPolicy(clickTarget.element),
+        },
+        translationContext: contextResolution?.status === 'available'
+          ? contextResolution.context
+          : undefined,
+      },
+      state,
+      includeElapsedText: true,
+      jankMonitor,
+      finishJankMonitor: this.runtime.finishJankMonitor,
+      onChange: () => this.callbacks.render(key),
+    });
+    this.activeTasks.set(key, task);
 
     try {
-      const runSettingsPromise = this.translationRunner.loadPipelineRunSettings(state);
-      const clickTarget = this.callbacks.resolveTarget(key) ?? target;
-      let capturedContextResolution: ImageTranslationContextResolution | undefined;
-      try {
-        capturedContextResolution = this.callbacks.resolveTranslationContext?.(clickTarget);
-      } catch {
-        capturedContextResolution = { status: 'unavailable' };
-      }
-      const runSettings = await runSettingsPromise;
-      const translationContextResolution = (
-        runSettings.settings.translator === 'llm'
-        && !usesNanoBananaImagePipeline(runSettings.settings)
-      )
-        ? capturedContextResolution
-        : undefined;
-      const diagnosticRunId = runSettings.enableDebugLog ? this.runtime.createRunId('run') : undefined;
-      const source = await this.translationRunner.downloadImageFile({
-        originalUrl: state.originalUrl,
-        referrerPolicy: resolveImageReferrerPolicy(clickTarget.element),
-        diagnosticRunId,
-      });
-      const pipelineOutcome = await this.translationRunner.runPipelineFromFile({
-        state,
-        file: source.file,
-        runSettings,
-        runStartAt,
-        includeElapsedText: true,
-        onProgress: () => {
-          jankMonitor.measureUiRender(() => this.callbacks.render(key));
-        },
-        jankMonitor,
-        diagnosticRunId,
-        translationContext: translationContextResolution?.status === 'available'
-          ? translationContextResolution.context
-          : undefined,
-      });
-      if (pipelineOutcome.translationDebug?.tweetContextLengthFallback) {
+      const outcome = await task.result;
+      if (outcome.translationDebug?.tweetContextLengthFallback) {
         state.contextNoticeText = '推文上下文过长，已改为无上下文翻译';
-      } else if (
-        pipelineOutcome.translationDebug
-        && translationContextResolution?.status === 'unavailable'
-      ) {
+      } else if (outcome.translationDebug && contextResolution?.status === 'unavailable') {
         state.contextNoticeText = '未找到推文作为上下文';
       }
       const latestTarget = this.callbacks.resolveTarget(key) ?? target;
       this.callbacks.applyImage(latestTarget, state);
       this.callbacks.render(key);
-    } catch (error) {
-      this.runtime.finishJankMonitor(jankMonitor);
-      state.status = 'error';
-      state.errorText = toErrorMessage(error);
-      state.stageText = '';
-      clearTimingDisplay(state);
-      state.debugLogData = undefined;
-      state.contextNoticeText = undefined;
-      this.callbacks.render(key);
+    } catch {
+      // The PhotoState projection already exposes the actionable error.
+    } finally {
+      if (this.activeTasks.get(key) === task) {
+        this.activeTasks.delete(key);
+      }
     }
   }
 }

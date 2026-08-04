@@ -1,4 +1,3 @@
-import { createDiagnosticRunId } from '../../../shared/diagnosticLogClient';
 import { sendRuntimeMessage } from '../../../shared/messages';
 import {
   createScreenshotResultUi,
@@ -13,14 +12,16 @@ import {
 } from '../screenshot';
 import type { ScreenshotRect, ScreenshotSelection } from '../screenshot';
 import { ProgressJankMonitor } from '../progressJank';
-import { resolveImageReferrerPolicy, toErrorMessage } from '../utils';
+import { resolveImageReferrerPolicy } from '../utils';
 import { PhotoStateStore } from '../state/photoStateStore';
+import type { ImageTranslationExecutionModule } from '../translation/imageTranslationExecution';
 import {
-  TranslationRunner,
-  clearTimingDisplay,
+  applyImageTranslationFailure,
   createProgressJankMonitor,
   finishProgressJankMonitor,
-} from '../translation/translationRunner';
+  resetPhotoStateForImageTranslation,
+  startPhotoStateImageTranslation,
+} from '../translation/photoStateProjection';
 import { CardStateController } from '../ui/cardState';
 import {
   attachScreenshotResultDrag,
@@ -43,7 +44,7 @@ export class ScreenshotController {
 
   constructor(
     private readonly stateStore: PhotoStateStore,
-    private readonly translationRunner: TranslationRunner,
+    private readonly executionModule: ImageTranslationExecutionModule,
     private readonly cardStateController: CardStateController,
     private readonly requestSelection: () => Promise<ScreenshotSelection | null> = requestScreenshotSelection,
   ) {}
@@ -88,6 +89,7 @@ export class ScreenshotController {
       let sourceFile: File | null = null;
       let sourceOriginalUrl: string | null = null;
       let activeJankMonitor: ProgressJankMonitor | null = null;
+      let activeTask: { cancel(reason?: unknown): void } | null = null;
       let lastImageAnchorKey = '';
       const toAnchorRectKey = (rect: ScreenshotRect): string => [
         Math.round(rect.left * 10),
@@ -179,6 +181,8 @@ export class ScreenshotController {
       const cleanup = (): void => {
         if (disposed) return;
         disposed = true;
+        activeTask?.cancel('图片翻译浮层已关闭');
+        activeTask = null;
         this.activeCleanups.delete(cleanup);
         stopAnchorTracking();
         detachDrag?.();
@@ -220,64 +224,48 @@ export class ScreenshotController {
       syncActiveAnchor(true);
       scheduleAnchorSync();
 
-      const ensureSourceFile = async (diagnosticRunId?: string): Promise<File> => {
-        if (sourceFile) return sourceFile;
-        state.stageText = '下载原图中';
-        render();
-        await waitForNextPaint();
-        if (disposed) throw new Error('图片翻译已关闭');
-
-        const source = await this.translationRunner.downloadImageFile({
-          originalUrl,
-          referrerPolicy: resolveImageReferrerPolicy(imageElement),
-          diagnosticRunId,
-        });
-        if (disposed) throw new Error('图片翻译已关闭');
-
-        sourceFile = source.file;
-        if (sourceOriginalUrl) URL.revokeObjectURL(sourceOriginalUrl);
-        sourceOriginalUrl = URL.createObjectURL(source.blob);
-        state.originalUrl = sourceOriginalUrl;
-        render();
-        return sourceFile;
-      };
-
       const runImagePipeline = async (): Promise<void> => {
         activeJankMonitor = createProgressJankMonitor('context-image');
-        this.translationRunner.resetStateForPipeline(state);
-        state.stageText = sourceFile ? '准备中' : '下载原图中';
-        render();
-
+        const task = startPhotoStateImageTranslation({
+          executionModule: this.executionModule,
+          request: {
+            source: sourceFile
+              ? { kind: 'prepared-file', file: sourceFile }
+              : {
+                  kind: 'remote-image',
+                  url: originalUrl,
+                  referrerPolicy: resolveImageReferrerPolicy(imageElement),
+                },
+          },
+          state,
+          includeElapsedText: true,
+          jankMonitor: activeJankMonitor,
+          onSourceReady: (source) => {
+            if (disposed) return;
+            sourceFile = source.file;
+            if (!sourceOriginalUrl) {
+              sourceOriginalUrl = URL.createObjectURL(source.blob);
+            }
+            state.originalUrl = sourceOriginalUrl;
+          },
+          onChange: render,
+        });
+        activeTask = task;
         try {
-          const runSettings = await this.translationRunner.loadPipelineRunSettings(state);
-          const diagnosticRunId = runSettings.enableDebugLog ? createDiagnosticRunId('run') : undefined;
-          const file = await ensureSourceFile(diagnosticRunId);
-          if (disposed) return;
-          await this.translationRunner.runPipelineFromFile({
-            state,
-            file,
-            runSettings,
-            runStartAt: performance.now(),
-            includeElapsedText: true,
-            onProgress: render,
-            jankMonitor: activeJankMonitor,
-            diagnosticRunId,
-          });
+          const outcome = await task.result;
           if (disposed) {
             this.stateStore.delete(key);
             return;
           }
+          if (!sourceOriginalUrl) {
+            sourceOriginalUrl = URL.createObjectURL(outcome.execution.source.blob);
+            state.originalUrl = sourceOriginalUrl;
+          }
           render();
-        } catch (error) {
-          finishProgressJankMonitor(activeJankMonitor);
-          if (disposed) return;
-          state.status = 'error';
-          state.errorText = toErrorMessage(error);
-          state.stageText = '';
-          clearTimingDisplay(state);
-          state.debugLogData = undefined;
-          render();
+        } catch {
+          // The PhotoState projection already exposes the actionable error.
         } finally {
+          if (activeTask === task) activeTask = null;
           activeJankMonitor = null;
         }
       };
@@ -297,6 +285,7 @@ export class ScreenshotController {
       let screenshotFile: File | null = null;
       let screenshotOriginalUrl: string | null = null;
       let activeJankMonitor: ProgressJankMonitor | null = null;
+      let activeTask: { cancel(reason?: unknown): void } | null = null;
       const render = (): void => {
         if (disposed) return;
         if (activeJankMonitor) {
@@ -308,6 +297,8 @@ export class ScreenshotController {
       const cleanup = (): void => {
         if (disposed) return;
         disposed = true;
+        activeTask?.cancel('截图翻译浮层已关闭');
+        activeTask = null;
         this.activeCleanups.delete(cleanup);
         detachDrag?.();
         detachZoom?.();
@@ -379,7 +370,7 @@ export class ScreenshotController {
 
       const runScreenshotPipeline = async (): Promise<void> => {
         activeJankMonitor = createProgressJankMonitor('screenshot');
-        this.translationRunner.resetStateForPipeline(state);
+        resetPhotoStateForImageTranslation(state);
         state.stageText = screenshotFile ? '准备中' : '截图中';
         render();
 
@@ -387,17 +378,18 @@ export class ScreenshotController {
           const file = await ensureScreenshotFile();
           if (disposed) return;
 
-          const runSettings = await this.translationRunner.loadPipelineRunSettings(state);
-          if (disposed) return;
-          await this.translationRunner.runPipelineFromFile({
+          const task = startPhotoStateImageTranslation({
+            executionModule: this.executionModule,
+            request: {
+              source: { kind: 'prepared-file', file },
+            },
             state,
-            file,
-            runSettings,
-            runStartAt: performance.now(),
             includeElapsedText: true,
-            onProgress: render,
             jankMonitor: activeJankMonitor,
+            onChange: render,
           });
+          activeTask = task;
+          await task.result;
           if (disposed) {
             this.stateStore.delete(key);
             return;
@@ -405,16 +397,15 @@ export class ScreenshotController {
           ui.host.style.visibility = '';
           render();
         } catch (error) {
-          finishProgressJankMonitor(activeJankMonitor);
           if (disposed) return;
           ui.host.style.visibility = '';
-          state.status = 'error';
-          state.errorText = toErrorMessage(error);
-          state.stageText = '';
-          clearTimingDisplay(state);
-          state.debugLogData = undefined;
+          if (!activeTask) {
+            finishProgressJankMonitor(activeJankMonitor);
+            applyImageTranslationFailure(state, error);
+          }
           render();
         } finally {
+          activeTask = null;
           activeJankMonitor = null;
         }
       };

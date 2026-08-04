@@ -7,7 +7,7 @@ import type {
 } from '../../../apps/extension/src/content/core/types';
 import { ReadingModeController } from '../../../apps/extension/src/content/core/reading/readingModeController';
 import { PhotoStateStore } from '../../../apps/extension/src/content/core/state/photoStateStore';
-import { TranslationRunner } from '../../../apps/extension/src/content/core/translation/translationRunner';
+import { createImageTranslationExecutionModule } from '../../../apps/extension/src/content/core/translation/imageTranslationExecution';
 
 type FakeButton = {
   style: { display: string };
@@ -86,7 +86,9 @@ describe('ReadingModeController', () => {
     const controller = new ReadingModeController(
       adapter,
       store,
-      new TranslationRunner(),
+      createImageTranslationExecutionModule({
+        loadSettings: async () => ({ ...defaultExtensionSettings }),
+      }),
       vi.fn(),
       vi.fn(),
       () => bar.ui,
@@ -135,23 +137,18 @@ describe('ReadingModeController', () => {
       getVisiblePages: () => [target],
       applyImageByKey: vi.fn(),
     };
-    const runner = new TranslationRunner();
-    vi.spyOn(runner, 'loadPipelineRunSettings').mockResolvedValue({
-      settings: defaultExtensionSettings,
-      showElapsedTime: false,
-      showStageTimingDetails: false,
-      showRuntimeStages: false,
-      stageTimingCardExpanded: false,
-      showTypesetDebug: false,
-      enableDebugLog: false,
+    const downloadImage = vi.fn(async () => {
+      throw new Error('stop after request capture');
     });
-    const downloadImageFile = vi.spyOn(runner, 'downloadImageFile')
-      .mockRejectedValue(new Error('stop after request capture'));
+    const executionModule = createImageTranslationExecutionModule({
+      loadSettings: async () => ({ ...defaultExtensionSettings }),
+      downloadImage,
+    });
     const bar = createFakeBar();
     const controller = new ReadingModeController(
       adapter,
       new PhotoStateStore(200, { revokeObjectURL: vi.fn() }),
-      runner,
+      executionModule,
       vi.fn(),
       vi.fn(),
       () => bar.ui,
@@ -161,11 +158,72 @@ describe('ReadingModeController', () => {
     bar.current.click?.();
 
     await vi.waitFor(() => {
-      expect(downloadImageFile).toHaveBeenCalledWith({
-        originalUrl: target.originalUrl,
-        referrerPolicy: 'same-origin',
-        diagnosticRunId: undefined,
+      expect(downloadImage).toHaveBeenCalledWith(
+        {
+          kind: 'remote-image',
+          url: target.originalUrl,
+          referrerPolicy: 'same-origin',
+        },
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+    });
+  });
+
+  it('stops admitting pages after a runtime-scoped pipeline failure', async () => {
+    vi.stubGlobal('document', {
+      querySelector: vi.fn(() => null),
+      querySelectorAll: vi.fn(() => []),
+    });
+    vi.stubGlobal('window', {
+      requestAnimationFrame: vi.fn(() => 1),
+      cancelAnimationFrame: vi.fn(),
+    });
+    const pages = [
+      { key: 'page-1', originalUrl: 'https://cdn.example/page-1.jpg', pageIndex: 0 },
+      { key: 'page-2', originalUrl: 'https://cdn.example/page-2.jpg', pageIndex: 1 },
+    ];
+    const adapter: SiteAdapter = {
+      match: () => true,
+      findImages: () => [],
+      createUiAnchor: () => ({} as HTMLElement),
+      applyImage: () => {},
+      observe: () => () => {},
+      createBottomBarAnchor: () => ({ appendChild: vi.fn() } as unknown as HTMLElement),
+      findAllPageUrls: () => pages,
+      getVisiblePages: () => [],
+      applyImageByKey: vi.fn(),
+    };
+    const source = new Blob(['source'], { type: 'image/png' });
+    const downloadImage = vi.fn(async () => ({
+      blob: source,
+      file: new File([source], 'source.png', { type: source.type }),
+    }));
+    const runLocalPipeline = vi.fn(async () => {
+      throw Object.assign(new Error('pipeline host unavailable'), {
+        code: 'PIPELINE_HOST_UNAVAILABLE',
       });
     });
+    const bar = createFakeBar();
+    const controller = new ReadingModeController(
+      adapter,
+      new PhotoStateStore(200, { revokeObjectURL: vi.fn() }),
+      createImageTranslationExecutionModule({
+        loadSettings: async () => ({ ...defaultExtensionSettings }),
+        downloadImage,
+        runLocalPipeline,
+      }),
+      vi.fn(),
+      vi.fn(),
+      () => bar.ui,
+    );
+
+    controller.sync();
+    bar.all.click?.();
+
+    await vi.waitFor(() => expect(runLocalPipeline).toHaveBeenCalledOnce());
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(downloadImage).toHaveBeenCalledOnce();
+    expect(bar.all.disabled).toBe(false);
   });
 });

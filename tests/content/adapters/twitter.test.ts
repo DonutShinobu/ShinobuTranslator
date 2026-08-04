@@ -3,6 +3,7 @@ import { twitterAdapter } from '../../../apps/extension/src/content/adapters/twi
 import { PhotoStateStore } from '../../../apps/extension/src/content/core/state/photoStateStore';
 import { ImageTranslationController } from '../../../apps/extension/src/content/core/translation/imageTranslationController';
 import { createImageTranslationExecutionModule } from '../../../apps/extension/src/content/core/translation/imageTranslationExecution';
+import { createImageTranslationExecutionArbiter } from '../../../apps/extension/src/content/core/translation/imageTranslationExecutionArbiter';
 import { defaultExtensionSettings } from '../../../apps/extension/src/shared/config';
 
 describe('twitterAdapter.observe', () => {
@@ -246,9 +247,9 @@ describe('twitterAdapter.findImages', () => {
     secondState.status = 'translated';
     const controller = new ImageTranslationController(
       store,
-      createImageTranslationExecutionModule({
+      createImageTranslationExecutionArbiter(createImageTranslationExecutionModule({
         loadSettings: async () => ({ ...defaultExtensionSettings }),
-      }),
+      })),
       {
         resolveTarget: (key) => key === firstTarget.key ? firstTarget : secondTarget,
         applyImage: vi.fn(),

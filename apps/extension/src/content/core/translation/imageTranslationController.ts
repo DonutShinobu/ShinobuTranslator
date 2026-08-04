@@ -6,7 +6,10 @@ import type {
 import type { ProgressJankMonitor } from '../progressJank';
 import { resolveImageReferrerPolicy } from '../utils';
 import { PhotoStateStore } from '../state/photoStateStore';
-import type { ImageTranslationExecutionModule } from './imageTranslationExecution';
+import type {
+  ImageTranslationExecutionActivity,
+  ImageTranslationExecutionArbiter,
+} from './imageTranslationExecutionArbiter';
 import {
   createProgressJankMonitor,
   finishProgressJankMonitor,
@@ -32,30 +35,26 @@ const defaultRuntime: ImageTranslationRuntime = {
   },
 };
 
-type CancellableTask = {
-  cancel(reason?: unknown): void;
-};
-
 export class ImageTranslationController {
-  private readonly activeTasks = new Map<string, CancellableTask>();
+  private readonly activeActivities = new Map<string, ImageTranslationExecutionActivity>();
 
   constructor(
     private readonly stateStore: PhotoStateStore,
-    private readonly executionModule: ImageTranslationExecutionModule,
+    private readonly executionArbiter: ImageTranslationExecutionArbiter,
     private readonly callbacks: ImageTranslationCallbacks,
     private readonly runtime: ImageTranslationRuntime = defaultRuntime,
   ) {}
 
   dispose(): void {
-    for (const task of this.activeTasks.values()) {
-      task.cancel('图片翻译控制器已停止');
+    for (const activity of this.activeActivities.values()) {
+      activity.end('图片翻译控制器已停止');
     }
-    this.activeTasks.clear();
+    this.activeActivities.clear();
   }
 
   cancel(key: string): void {
-    this.activeTasks.get(key)?.cancel('图片已离开页面');
-    this.activeTasks.delete(key);
+    this.activeActivities.get(key)?.end('图片已离开页面');
+    this.activeActivities.delete(key);
   }
 
   async handleTranslateClick(target: ImageTarget): Promise<void> {
@@ -87,8 +86,14 @@ export class ImageTranslationController {
     }
 
     const jankMonitor = this.runtime.createJankMonitor('image');
+    const admission = this.executionArbiter.begin({
+      owner: 'inline-image',
+      origin: 'explicit',
+    });
+    if (admission.status !== 'active') return;
+    const activity = admission.activity;
     const task = startPhotoStateImageTranslation({
-      executionModule: this.executionModule,
+      executionModule: activity,
       request: {
         source: {
           kind: 'remote-image',
@@ -105,7 +110,7 @@ export class ImageTranslationController {
       finishJankMonitor: this.runtime.finishJankMonitor,
       onChange: () => this.callbacks.render(key),
     });
-    this.activeTasks.set(key, task);
+    this.activeActivities.set(key, activity);
 
     try {
       const outcome = await task.result;
@@ -120,9 +125,10 @@ export class ImageTranslationController {
     } catch {
       // The PhotoState projection already exposes the actionable error.
     } finally {
-      if (this.activeTasks.get(key) === task) {
-        this.activeTasks.delete(key);
+      if (this.activeActivities.get(key) === activity) {
+        this.activeActivities.delete(key);
       }
+      activity.end();
     }
   }
 }

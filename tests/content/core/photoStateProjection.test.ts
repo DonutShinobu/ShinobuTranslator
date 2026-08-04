@@ -10,6 +10,7 @@ import {
 import type { LocalPipelineImageTranslationResult } from '../../../apps/extension/src/content/core/translation/imageTranslationExecution';
 import { WholeImageTranslationError } from '../../../apps/extension/src/content/core/translation/imageTranslationExecution';
 import { createImageTranslationExecutionModule } from '../../../apps/extension/src/content/core/translation/imageTranslationExecution';
+import { createImageTranslationExecutionArbiter } from '../../../apps/extension/src/content/core/translation/imageTranslationExecutionArbiter';
 import { defaultExtensionSettings } from '../../../apps/extension/src/shared/config';
 import type { ProgressJankMonitor } from '../../../apps/extension/src/content/core/progressJank';
 
@@ -151,6 +152,49 @@ describe('photo state projection', () => {
       stageText: '',
       errorText: '',
     });
+  });
+
+  it('does not let a replaced activity cancel the newer projection for the same state', async () => {
+    const state = createInitialPhotoState('https://example.com/source.png');
+    const module = createImageTranslationExecutionModule({
+      loadSettings: async () => ({ ...defaultExtensionSettings }),
+      runLocalPipeline: () => new Promise(() => undefined),
+    });
+    const arbiter = createImageTranslationExecutionArbiter(module);
+    const firstAdmission = arbiter.begin({ owner: 'inline-image', origin: 'explicit' });
+    if (firstAdmission.status !== 'active') throw new Error('Expected active inline activity');
+    const first = startPhotoStateImageTranslation({
+      executionModule: firstAdmission.activity,
+      request: {
+        source: {
+          kind: 'prepared-file',
+          file: new File(['first'], 'first.png', { type: 'image/png' }),
+        },
+      },
+      state,
+      includeElapsedText: false,
+    });
+    await Promise.resolve();
+
+    const secondAdmission = arbiter.begin({ owner: 'reading-mode', origin: 'explicit' });
+    if (secondAdmission.status !== 'active') throw new Error('Expected active reading activity');
+    const second = startPhotoStateImageTranslation({
+      executionModule: secondAdmission.activity,
+      request: {
+        source: {
+          kind: 'prepared-file',
+          file: new File(['second'], 'second.png', { type: 'image/png' }),
+        },
+      },
+      state,
+      includeElapsedText: false,
+    });
+
+    await expect(first.result).rejects.toMatchObject({ code: 'TASK_CANCELLED' });
+    expect(state.status).toBe('running');
+
+    secondAdmission.activity.end('test cleanup');
+    await expect(second.result).rejects.toMatchObject({ code: 'TASK_CANCELLED' });
   });
 
   it('uses the execution diagnostic run id when a projected task fails', async () => {

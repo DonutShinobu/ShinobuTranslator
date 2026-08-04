@@ -11,6 +11,7 @@ import {
   createImageTranslationExecutionModule,
   type ImageTranslationExecutionDependencies,
 } from '../../../apps/extension/src/content/core/translation/imageTranslationExecution';
+import { createImageTranslationExecutionArbiter } from '../../../apps/extension/src/content/core/translation/imageTranslationExecutionArbiter';
 import {
   ImageTranslationController,
 } from '../../../apps/extension/src/content/core/translation/imageTranslationController';
@@ -61,6 +62,7 @@ function createHarness(options: {
     runLocalPipeline,
     ...options.dependencies,
   });
+  const executionArbiter = createImageTranslationExecutionArbiter(executionModule);
   const applyImage = vi.fn();
   const render = vi.fn();
   const monitor = {
@@ -71,7 +73,7 @@ function createHarness(options: {
   } as unknown as ProgressJankMonitor;
   const controller = new ImageTranslationController(
     store,
-    executionModule,
+    executionArbiter,
     {
       resolveTarget: () => undefined,
       resolveTranslationContext: options.resolveTranslationContext,
@@ -91,6 +93,7 @@ function createHarness(options: {
   return {
     store,
     executionModule,
+    executionArbiter,
     downloadImage,
     runLocalPipeline,
     applyImage,
@@ -161,7 +164,7 @@ describe('ImageTranslationController', () => {
     const click = harness.controller.handleTranslateClick(harness.target);
 
     expect(resolveTranslationContext).toHaveBeenCalledWith(harness.target);
-    await Promise.resolve();
+    await vi.waitFor(() => expect(rejectSettings).toBeTypeOf('function'));
     rejectSettings(new Error('stop after capture'));
     await click;
   });
@@ -205,6 +208,35 @@ describe('ImageTranslationController', () => {
       status: 'idle',
       errorText: '',
     });
+  });
+
+  it('returns to an idle state when another explicit owner replaces it', async () => {
+    let pipelineSignal: AbortSignal | undefined;
+    const harness = createHarness({
+      dependencies: {
+        runLocalPipeline: (_file, _config, _onProgress, options) => {
+          pipelineSignal = options?.signal;
+          return new Promise(() => undefined);
+        },
+      },
+    });
+    const click = harness.controller.handleTranslateClick(harness.target);
+    await vi.waitFor(() => expect(pipelineSignal).toBeDefined());
+
+    const replacement = harness.executionArbiter.begin({
+      owner: 'screenshot',
+      origin: 'explicit',
+    });
+    expect(replacement.status).toBe('active');
+    await click;
+
+    expect(pipelineSignal?.aborted).toBe(true);
+    expect(harness.store.get(harness.target.key)).toMatchObject({
+      status: 'idle',
+      mode: 'original',
+      errorText: '',
+    });
+    if (replacement.status === 'active') replacement.activity.end();
   });
 
   it('passes captured tweet context into the local LLM pipeline', async () => {

@@ -4,8 +4,11 @@ import { resolveImageReferrerPolicy } from '../utils';
 import { PhotoStateStore } from '../state/photoStateStore';
 import {
   isRuntimeImageTranslationFailure,
-  type ImageTranslationExecutionModule,
 } from '../translation/imageTranslationExecution';
+import type {
+  ImageTranslationExecutionActivity,
+  ImageTranslationExecutionArbiter,
+} from '../translation/imageTranslationExecutionArbiter';
 import {
   createProgressJankMonitor,
   startPhotoStateImageTranslation,
@@ -17,12 +20,12 @@ export class ReadingModeController {
   private translateCurrentRunning = false;
   private allPageUrls: UrlTarget[] = [];
   private globalTranslateMode: 'original' | 'translated' = 'original';
-  private readonly activeTasks = new Set<{ cancel(reason?: unknown): void }>();
+  private activeActivity: ImageTranslationExecutionActivity | null = null;
 
   constructor(
     private readonly adapter: SiteAdapter,
     private readonly stateStore: PhotoStateStore,
-    private readonly executionModule: ImageTranslationExecutionModule,
+    private readonly executionArbiter: ImageTranslationExecutionArbiter,
     private readonly scheduleCoreSync: () => void,
     private readonly cancelCoreSync: () => void,
     private readonly createBar: () => ReadingModeBarUi = createReadingModeBarUi,
@@ -156,27 +159,33 @@ export class ReadingModeController {
         return;
       }
 
+      const activity = this.beginActivity();
+      if (!activity) return;
       this.translateCurrentRunning = true;
       this.renderReadingModeBar();
 
-      const total = visiblePages.length;
-      for (let i = 0; i < total; i++) {
-        if (!this.translateCurrentRunning) break;
-        const page = visiblePages[i];
-        const label = this.readingBarUi?.translateCurrentBtn.querySelector('.mt-x-label') as HTMLElement;
-        if (label) label.textContent = `${i + 1}/${total} 准备中`;
+      try {
+        const total = visiblePages.length;
+        for (let i = 0; i < total; i++) {
+          if (!this.translateCurrentRunning) break;
+          const page = visiblePages[i];
+          const label = this.readingBarUi?.translateCurrentBtn.querySelector('.mt-x-label') as HTMLElement;
+          if (label) label.textContent = `${i + 1}/${total} 准备中`;
 
-        await this.translatePageByUrl(page.key, page.originalUrl, (stageText) => {
-          if (label) label.textContent = `${i + 1}/${total} ${stageText}`;
-        });
-        if (!this.translateCurrentRunning) break;
-        this.scheduleCoreSync();
+          await this.translatePageByUrl(activity, page.key, page.originalUrl, (stageText) => {
+            if (label) label.textContent = `${i + 1}/${total} ${stageText}`;
+          });
+          if (!this.translateCurrentRunning) break;
+          this.scheduleCoreSync();
+        }
+
+        if (!this.translateCurrentRunning) return;
+        this.translateCurrentRunning = false;
+        this.globalTranslateMode = 'translated';
+        this.renderReadingModeBar();
+      } finally {
+        this.finishActivity(activity);
       }
-
-      if (!this.translateCurrentRunning) return;
-      this.translateCurrentRunning = false;
-      this.globalTranslateMode = 'translated';
-      this.renderReadingModeBar();
     }
 
   private async handleTranslateAllClick(): Promise<void> {
@@ -202,37 +211,44 @@ export class ReadingModeController {
         return;
       }
 
+      const activity = this.beginActivity();
+      if (!activity) return;
       this.translateAllRunning = true;
       this.renderReadingModeBar();
 
-      const total = urls.length;
-      for (let i = 0; i < total; i++) {
-        if (!this.translateAllRunning) break;
-        const u = urls[i];
-        const label = this.readingBarUi?.translateAllBtn.querySelector('.mt-x-label') as HTMLElement;
-        if (label) label.textContent = `${i + 1}/${total} 准备中`;
+      try {
+        const total = urls.length;
+        for (let i = 0; i < total; i++) {
+          if (!this.translateAllRunning) break;
+          const u = urls[i];
+          const label = this.readingBarUi?.translateAllBtn.querySelector('.mt-x-label') as HTMLElement;
+          if (label) label.textContent = `${i + 1}/${total} 准备中`;
 
-        await this.translatePageByUrl(u.key, u.originalUrl, (stageText) => {
-          if (label) label.textContent = `${i + 1}/${total} ${stageText}`;
-        });
-        if (!this.translateAllRunning) break;
-        this.scheduleCoreSync();
+          await this.translatePageByUrl(activity, u.key, u.originalUrl, (stageText) => {
+            if (label) label.textContent = `${i + 1}/${total} ${stageText}`;
+          });
+          if (!this.translateAllRunning) break;
+          this.scheduleCoreSync();
+        }
+
+        if (!this.translateAllRunning) return;
+        // Cancel the deferred scheduleSync from the last iteration — it would
+        // call syncReadingMode which overwrites allPageUrls via findAllPageUrls().
+        // If the DOM is in a transitional state, findAllPageUrls() may return empty
+        // or inconsistent results, reverting the button to "翻译全部".
+        this.cancelCoreSync();
+        // Use the URLs we actually translated so allHaveTranslation check is consistent.
+        this.allPageUrls = urls;
+        this.translateAllRunning = false;
+        this.globalTranslateMode = 'translated';
+        this.renderReadingModeBar();
+      } finally {
+        this.finishActivity(activity);
       }
-
-      if (!this.translateAllRunning) return;
-      // Cancel the deferred scheduleSync from the last iteration — it would
-      // call syncReadingMode which overwrites allPageUrls via findAllPageUrls().
-      // If the DOM is in a transitional state, findAllPageUrls() may return empty
-      // or inconsistent results, reverting the button to "翻译全部".
-      this.cancelCoreSync();
-      // Use the URLs we actually translated so allHaveTranslation check is consistent.
-      this.allPageUrls = urls;
-      this.translateAllRunning = false;
-      this.globalTranslateMode = 'translated';
-      this.renderReadingModeBar();
     }
 
   private async translatePageByUrl(
+      activity: ImageTranslationExecutionActivity,
       key: string,
       originalUrl: string,
       onProgress: (stageText: string) => void,
@@ -244,7 +260,7 @@ export class ReadingModeController {
 
       const jankMonitor = createProgressJankMonitor('reading-mode');
       const task = startPhotoStateImageTranslation({
-        executionModule: this.executionModule,
+        executionModule: activity,
         request: {
           source: {
             kind: 'remote-image',
@@ -258,30 +274,40 @@ export class ReadingModeController {
         jankMonitor,
         onChange: () => onProgress(state.stageText),
       });
-      this.activeTasks.add(task);
       try {
         await task.result;
         if (state.translatedUrl) this.adapter.applyImageByKey?.(key, state.translatedUrl);
       } catch (error) {
-        if (isRuntimeImageTranslationFailure(error)) {
+        if (activity.signal.aborted || isRuntimeImageTranslationFailure(error)) {
           this.translateAllRunning = false;
           this.translateCurrentRunning = false;
           this.renderReadingModeBar();
         }
         // Image-local failures are skipped; runtime failures stop further admissions.
-      } finally {
-        this.activeTasks.delete(task);
       }
+    }
+
+  private beginActivity(): ImageTranslationExecutionActivity | null {
+      const admission = this.executionArbiter.begin({
+        owner: 'reading-mode',
+        origin: 'explicit',
+      });
+      if (admission.status !== 'active') return null;
+      this.activeActivity = admission.activity;
+      return admission.activity;
+    }
+
+  private finishActivity(activity: ImageTranslationExecutionActivity): void {
+      if (this.activeActivity === activity) this.activeActivity = null;
+      activity.end();
     }
 
   teardown(): void {
       if (this.readingBarUi?.host) {
         this.readingBarUi.host.remove();
       }
-      for (const task of this.activeTasks) {
-        task.cancel('阅读模式已关闭');
-      }
-      this.activeTasks.clear();
+      this.activeActivity?.end('阅读模式已关闭');
+      this.activeActivity = null;
       this.readingBarUi = null;
       this.translateAllRunning = false;
       this.translateCurrentRunning = false;

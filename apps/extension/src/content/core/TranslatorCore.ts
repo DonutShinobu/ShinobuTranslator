@@ -11,6 +11,7 @@ import {
 import type { UiElements } from './ui';
 import type { ScreenshotRect, ScreenshotSelection } from './screenshot';
 import { createImageTranslationExecutionModule } from './translation/imageTranslationExecution';
+import { createImageTranslationExecutionArbiter } from './translation/imageTranslationExecutionArbiter';
 import { ImageTranslationController } from './translation/imageTranslationController';
 import { PhotoStateStore } from './state/photoStateStore';
 import { ReadingModeController } from './reading/readingModeController';
@@ -27,10 +28,13 @@ export class TranslatorCore {
   private adapter: SiteAdapter;
   private readonly stateStore = new PhotoStateStore();
   private readonly imageTranslationExecution = createImageTranslationExecutionModule();
+  private readonly imageTranslationExecutionArbiter = createImageTranslationExecutionArbiter(
+    this.imageTranslationExecution,
+  );
   private readonly cardStateController = new CardStateController();
   private readonly screenshotController = new ScreenshotController(
     this.stateStore,
-    this.imageTranslationExecution,
+    this.imageTranslationExecutionArbiter,
     this.cardStateController,
   );
   private readonly imageTranslationController: ImageTranslationController;
@@ -43,7 +47,7 @@ export class TranslatorCore {
     this.adapter = adapter;
     this.imageTranslationController = new ImageTranslationController(
       this.stateStore,
-      this.imageTranslationExecution,
+      this.imageTranslationExecutionArbiter,
       {
         resolveTarget: (key) => this.mounted.get(key)?.target,
         resolveTranslationContext: (target) => this.adapter.getTranslationContext?.(target) ?? {
@@ -56,7 +60,7 @@ export class TranslatorCore {
     this.readingModeController = new ReadingModeController(
       adapter,
       this.stateStore,
-      this.imageTranslationExecution,
+      this.imageTranslationExecutionArbiter,
       () => this.scheduleSync(),
       () => this.cancelScheduledSync(),
     );
@@ -74,6 +78,7 @@ export class TranslatorCore {
     this.readingModeController.teardown();
     this.screenshotController.dispose();
     this.imageTranslationController.dispose();
+    this.imageTranslationExecutionArbiter.dispose('翻译核心已停止');
     this.stateStore.dispose();
   }
 

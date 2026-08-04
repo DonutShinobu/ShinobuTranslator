@@ -7,7 +7,11 @@ import type {
 } from '../../../apps/extension/src/content/core/types';
 import { ReadingModeController } from '../../../apps/extension/src/content/core/reading/readingModeController';
 import { PhotoStateStore } from '../../../apps/extension/src/content/core/state/photoStateStore';
-import { createImageTranslationExecutionModule } from '../../../apps/extension/src/content/core/translation/imageTranslationExecution';
+import {
+  createImageTranslationExecutionModule,
+  type ImageTranslationExecutionModule,
+} from '../../../apps/extension/src/content/core/translation/imageTranslationExecution';
+import { createImageTranslationExecutionArbiter } from '../../../apps/extension/src/content/core/translation/imageTranslationExecutionArbiter';
 
 type FakeButton = {
   style: { display: string };
@@ -52,6 +56,10 @@ function createFakeBar(): { ui: ReadingModeBarUi; current: FakeButton; all: Fake
   };
 }
 
+function arbitrate(execution: ImageTranslationExecutionModule) {
+  return createImageTranslationExecutionArbiter(execution);
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -86,9 +94,9 @@ describe('ReadingModeController', () => {
     const controller = new ReadingModeController(
       adapter,
       store,
-      createImageTranslationExecutionModule({
+      arbitrate(createImageTranslationExecutionModule({
         loadSettings: async () => ({ ...defaultExtensionSettings }),
-      }),
+      })),
       vi.fn(),
       vi.fn(),
       () => bar.ui,
@@ -148,7 +156,7 @@ describe('ReadingModeController', () => {
     const controller = new ReadingModeController(
       adapter,
       new PhotoStateStore(200, { revokeObjectURL: vi.fn() }),
-      executionModule,
+      arbitrate(executionModule),
       vi.fn(),
       vi.fn(),
       () => bar.ui,
@@ -207,11 +215,11 @@ describe('ReadingModeController', () => {
     const controller = new ReadingModeController(
       adapter,
       new PhotoStateStore(200, { revokeObjectURL: vi.fn() }),
-      createImageTranslationExecutionModule({
+      arbitrate(createImageTranslationExecutionModule({
         loadSettings: async () => ({ ...defaultExtensionSettings }),
         downloadImage,
         runLocalPipeline,
-      }),
+      })),
       vi.fn(),
       vi.fn(),
       () => bar.ui,
@@ -225,5 +233,70 @@ describe('ReadingModeController', () => {
     await Promise.resolve();
     expect(downloadImage).toHaveBeenCalledOnce();
     expect(bar.all.disabled).toBe(false);
+  });
+
+  it('stops the page loop when another explicit owner replaces the reading activity', async () => {
+    vi.stubGlobal('document', {
+      querySelector: vi.fn(() => null),
+      querySelectorAll: vi.fn(() => []),
+    });
+    vi.stubGlobal('window', {
+      requestAnimationFrame: vi.fn(() => 1),
+      cancelAnimationFrame: vi.fn(),
+    });
+    const pages = [
+      { key: 'page-1', originalUrl: 'https://cdn.example/page-1.jpg', pageIndex: 0 },
+      { key: 'page-2', originalUrl: 'https://cdn.example/page-2.jpg', pageIndex: 1 },
+    ];
+    const adapter: SiteAdapter = {
+      match: () => true,
+      findImages: () => [],
+      createUiAnchor: () => ({} as HTMLElement),
+      applyImage: () => {},
+      observe: () => () => {},
+      createBottomBarAnchor: () => ({ appendChild: vi.fn() } as unknown as HTMLElement),
+      findAllPageUrls: () => pages,
+      getVisiblePages: () => [],
+      applyImageByKey: vi.fn(),
+    };
+    const source = new Blob(['source'], { type: 'image/png' });
+    const downloadImage = vi.fn(async () => ({
+      blob: source,
+      file: new File([source], 'source.png', { type: source.type }),
+    }));
+    let pipelineSignal: AbortSignal | undefined;
+    const executionModule = createImageTranslationExecutionModule({
+      loadSettings: async () => ({ ...defaultExtensionSettings }),
+      downloadImage,
+      runLocalPipeline: (_file, _config, _onProgress, options) => {
+        pipelineSignal = options?.signal;
+        return new Promise(() => undefined);
+      },
+    });
+    const executionArbiter = arbitrate(executionModule);
+    const bar = createFakeBar();
+    const controller = new ReadingModeController(
+      adapter,
+      new PhotoStateStore(200, { revokeObjectURL: vi.fn() }),
+      executionArbiter,
+      vi.fn(),
+      vi.fn(),
+      () => bar.ui,
+    );
+
+    controller.sync();
+    bar.all.click?.();
+    await vi.waitFor(() => expect(pipelineSignal).toBeDefined());
+
+    const replacement = executionArbiter.begin({
+      owner: 'screenshot',
+      origin: 'explicit',
+    });
+    expect(replacement.status).toBe('active');
+    await vi.waitFor(() => expect(bar.all.disabled).toBe(false));
+
+    expect(pipelineSignal?.aborted).toBe(true);
+    expect(downloadImage).toHaveBeenCalledOnce();
+    if (replacement.status === 'active') replacement.activity.end();
   });
 });

@@ -25,6 +25,7 @@ import {
 } from './imageTranslationExecution';
 
 const loggedProgressJankReports = new Set<string>();
+const currentStateProjections = new WeakMap<PhotoState, object>();
 
 export type PhotoStateProjectionOptions = {
   jankMonitor?: ProgressJankMonitor | null;
@@ -231,11 +232,26 @@ export function applyImageTranslationFailure(state: PhotoState, error: unknown):
   state.contextNoticeText = undefined;
 }
 
+export function applyImageTranslationCancellation(state: PhotoState): void {
+  state.status = 'idle';
+  state.mode = 'original';
+  state.stageText = '';
+  state.errorText = '';
+  state.errorDetailCard = undefined;
+  clearPhotoStateTiming(state);
+  state.debugLogData = undefined;
+}
+
 export function startPhotoStateImageTranslation(
   options: StartPhotoStateImageTranslationOptions,
 ): TranslationTask<ImageTranslationExecutionProgress, PhotoStateImageTranslationOutcome> {
+  const projectionToken = {};
+  currentStateProjections.set(options.state, projectionToken);
+  const isCurrentProjection = (): boolean => (
+    currentStateProjections.get(options.state) === projectionToken
+  );
   const notify = (): void => {
-    if (!options.onChange) return;
+    if (!isCurrentProjection() || !options.onChange) return;
     if (options.jankMonitor) {
       options.jankMonitor.measureUiRender(options.onChange);
     } else {
@@ -247,6 +263,7 @@ export function startPhotoStateImageTranslation(
   notify();
   const executionTask = options.executionModule.start(options.request);
   const stopProgress = executionTask.progress((event) => {
+    if (!isCurrentProjection()) return;
     if (event.phase === 'preparing' && event.operation === 'source-ready') {
       options.onSourceReady?.(event.source);
     }
@@ -269,6 +286,14 @@ export function startPhotoStateImageTranslation(
   const result = executionTask.result
     .then((execution) => {
       finishJank(execution.diagnosticRunId);
+      if (!isCurrentProjection()) {
+        return {
+          execution,
+          translationDebug: execution.kind === 'local-pipeline'
+            ? execution.summary.translationDebug
+            : null,
+        };
+      }
       const projection = applyImageTranslationResult(options.state, execution, {
         includeElapsedText: options.includeElapsedText,
         urlApi: options.urlApi,
@@ -282,14 +307,9 @@ export function startPhotoStateImageTranslation(
           ? error.diagnosticRunId
           : undefined,
       );
+      if (!isCurrentProjection()) throw error;
       if (executionTask.signal.aborted) {
-        options.state.status = 'idle';
-        options.state.mode = 'original';
-        options.state.stageText = '';
-        options.state.errorText = '';
-        options.state.errorDetailCard = undefined;
-        clearPhotoStateTiming(options.state);
-        options.state.debugLogData = undefined;
+        applyImageTranslationCancellation(options.state);
         notify();
         throw error;
       }
@@ -297,7 +317,10 @@ export function startPhotoStateImageTranslation(
       notify();
       throw error;
     })
-    .finally(stopProgress);
+    .finally(() => {
+      stopProgress();
+      if (isCurrentProjection()) currentStateProjections.delete(options.state);
+    });
 
   return {
     result,

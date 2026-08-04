@@ -16,6 +16,7 @@ describe('ExtensionControl event port', () => {
     let acceptPort: ((port: ExtensionPort) => void) | undefined;
     let publishProjection: ((projection: ExtensionControlProjection) => void) | undefined;
     const unsubscribe = vi.fn();
+    const read = vi.fn(() => new Promise<ExtensionControlProjection>(() => undefined));
     const api: ExtensionBrowserApi = {
       runtime: {
         onConnect: {
@@ -26,7 +27,7 @@ describe('ExtensionControl event port', () => {
       },
     };
     const module = {
-      read: () => new Promise<ExtensionControlProjection>(() => undefined),
+      read,
       subscribe(listener: (projection: ExtensionControlProjection) => void) {
         publishProjection = listener;
         return unsubscribe;
@@ -37,6 +38,7 @@ describe('ExtensionControl event port', () => {
       extensionControlPortName,
     );
     acceptPort?.(backgroundPort);
+    expect(read).not.toHaveBeenCalled();
 
     popupPort.disconnect();
 

@@ -5,7 +5,10 @@ import {
 } from '../../apps/extension/src/popup/extensionControlClient';
 import { createExecutionPreparationClient } from '../../apps/extension/src/content/core/translation/executionPreparationClient';
 import { defaultExtensionSettings } from '../../apps/extension/src/shared/config';
-import { toExtensionSettingsProjection } from '../../apps/extension/src/shared/extensionControl';
+import {
+  resolveProviderAuthorizationTarget,
+  toExtensionSettingsProjection,
+} from '../../apps/extension/src/shared/extensionControl';
 import type { ExtensionControlProjection, ExtensionExecutionSnapshot } from '../../apps/extension/src/shared/extensionControl';
 import type { ExtensionPort, ExtensionRuntime } from '../../apps/extension/src/shared/extensionRuntime';
 
@@ -34,6 +37,38 @@ function fakePort(): ExtensionPort {
 }
 
 describe('ExtensionControlClient', () => {
+  it('selects only the authorization target used by the active translation path', () => {
+    const settings = toExtensionSettingsProjection(defaultExtensionSettings);
+    expect(resolveProviderAuthorizationTarget(settings)).toBeNull();
+    expect(resolveProviderAuthorizationTarget({
+      ...settings,
+      translator: 'llm',
+      llmProvider: 'openai',
+    })).toBe('openai-oauth');
+    expect(resolveProviderAuthorizationTarget({
+      ...settings,
+      translator: 'llm',
+      llmProvider: 'openai',
+      llmProfiles: {
+        ...settings.llmProfiles,
+        openai: {
+          ...settings.llmProfiles.openai,
+          authMode: 'api_key',
+        },
+      },
+    })).toBeNull();
+    expect(resolveProviderAuthorizationTarget({
+      ...settings,
+      translator: 'llm',
+      llmProvider: 'gemini',
+    })).toBe('gemini-app');
+    expect(resolveProviderAuthorizationTarget({
+      ...settings,
+      translator: 'llm',
+      llmProvider: 'deepseek',
+    })).toBeNull();
+  });
+
   it('hides runtime discriminants and carries the latest revision across serialized intents', async () => {
     let revision = 4;
     const sendMessage = vi.fn(async (message: unknown) => {

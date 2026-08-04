@@ -58,6 +58,20 @@ export type ExtensionExecutionSnapshot = {
 export type ProviderAuthorizationTarget = 'openai-oauth' | 'gemini-app';
 export type ProviderAuthorizationAction = 'refresh' | 'login' | 'logout';
 
+export function resolveProviderAuthorizationTarget(
+  settings: ExtensionSettingsProjection,
+): ProviderAuthorizationTarget | null {
+  if (settings.translator !== 'llm') return null;
+  const profile = settings.llmProfiles[settings.llmProvider];
+  if (settings.llmProvider === 'openai' && profile.authMode === 'openai_oauth') {
+    return 'openai-oauth';
+  }
+  if (settings.llmProvider === 'gemini' && profile.authMode === 'gemini_app') {
+    return 'gemini-app';
+  }
+  return null;
+}
+
 export type ProviderAuthorizationProjection = {
   state: 'ready' | 'authorizing' | 'action-required';
   availableActions: ProviderAuthorizationAction[];

@@ -32,6 +32,7 @@ import {
   exportDiagnosticLog,
 } from '../shared/diagnosticLogClient';
 import {
+  resolveProviderAuthorizationTarget,
   toExtensionSettingsProjection,
   type ExtensionControlProjection,
   type ExtensionSettingsProjection,
@@ -898,7 +899,8 @@ export function App() {
     : 0;
   const currentThinkingFillHidden = currentThinkingOptionIndex === 0
     && thinkingFillReturningToOffKey !== currentThinkingCapabilityKey;
-  const usesOpenAiOAuth = settings.llmProvider === 'openai' && currentProfile.authMode === 'openai_oauth';
+  const activeAuthorizationTarget = resolveProviderAuthorizationTarget(settings);
+  const usesOpenAiOAuth = activeAuthorizationTarget === 'openai-oauth';
   const showLocalPipelineOptions = !usesNanoBanana;
   const stageTimingDetailsLocked = usesNanoBanana;
   const stageTimingDetailsDisabled = loading || !settings.showElapsedTime || stageTimingDetailsLocked;
@@ -1027,6 +1029,15 @@ export function App() {
       });
     }
   }
+
+  useEffect(() => {
+    if (loading || !activeAuthorizationTarget) return;
+    if (activeAuthorizationTarget === 'openai-oauth') {
+      void refreshOpenAiOAuthStatus();
+      return;
+    }
+    void refreshGeminiAppAuthStatus();
+  }, [loading, activeAuthorizationTarget]);
 
   useEffect(() => {
     if (loading || currentProfile.authMode !== 'api_key') return;

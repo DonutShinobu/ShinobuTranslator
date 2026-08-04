@@ -3,6 +3,7 @@ import type {
   ExtensionControlProjection,
   ExtensionControlResult,
   ExtensionExecutionSnapshot,
+  ProviderAuthorizationTarget,
 } from '../../shared/extensionControl';
 import type { ProviderAccessModule } from './providerAccess';
 import type { TranslationConfigurationModule } from './translationConfiguration';
@@ -35,7 +36,9 @@ export type ExtensionControlModule = {
     command: ExtensionControlCommand,
     context?: ExtensionControlRequestContext,
   ): Promise<ExtensionControlResult>;
-  refreshProviderAccess(): Promise<ExtensionControlProjection>;
+  refreshProviderAccess(
+    target?: ProviderAuthorizationTarget,
+  ): Promise<ExtensionControlProjection>;
   subscribe(listener: (projection: ExtensionControlProjection) => void): () => void;
 };
 
@@ -46,12 +49,14 @@ export function createExtensionControlModule(
   const listeners = new Set<(projection: ExtensionControlProjection) => void>();
 
   async function compose(
-    refreshAccess = false,
+    refreshAccess: false | ProviderAuthorizationTarget | 'all' = false,
   ): Promise<ExtensionControlProjection> {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const [configurationProjection, accessProjection] = await Promise.all([
         configuration.read(),
-        refreshAccess ? access.refresh() : access.read(),
+        refreshAccess === false
+          ? access.read()
+          : access.refresh(refreshAccess === 'all' ? undefined : refreshAccess),
       ]);
       if (configurationProjection.revision === accessProjection.revision) {
         const { revision: _accessRevision, ...accessState } = accessProjection;
@@ -85,10 +90,17 @@ export function createExtensionControlModule(
     let snapshot: ExtensionExecutionSnapshot | undefined;
     let accessProjection: Awaited<ReturnType<ProviderAccessModule['read']>> | undefined;
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      [snapshot, accessProjection] = await Promise.all([
-        configuration.prepareExecution(),
-        access.read(),
-      ]);
+      snapshot = await configuration.prepareExecution();
+      const authorizationTarget = snapshot.diagnosticSettings.translator === 'llm'
+        ? snapshot.diagnosticSettings.llmAuthMode === 'openai_oauth'
+          ? 'openai-oauth'
+          : snapshot.diagnosticSettings.llmAuthMode === 'gemini_app'
+            ? 'gemini-app'
+            : undefined
+        : undefined;
+      accessProjection = authorizationTarget
+        ? await access.refresh(authorizationTarget)
+        : await access.read();
       if (snapshot.revision === accessProjection.revision) break;
       snapshot = undefined;
       accessProjection = undefined;
@@ -121,7 +133,7 @@ export function createExtensionControlModule(
   }
 
   const module: ExtensionControlModule = {
-    read: () => compose(true),
+    read: () => compose(),
     async handle(command, context) {
       if (command.kind === 'prepare-execution') {
         return { kind: 'execution-snapshot', snapshot: await prepareExecution() };
@@ -158,8 +170,8 @@ export function createExtensionControlModule(
       }
       return { kind: 'control-projection', projection };
     },
-    refreshProviderAccess() {
-      return publish(compose(true));
+    refreshProviderAccess(target) {
+      return publish(compose(target ?? 'all'));
     },
     subscribe(listener) {
       listeners.add(listener);

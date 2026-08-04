@@ -33,6 +33,5 @@ export function registerExtensionControlPort(
     };
     unsubscribe = module.subscribe(post);
     port.onDisconnect.addListener(disconnect);
-    void module.read().then(post).catch(() => undefined);
   });
 }

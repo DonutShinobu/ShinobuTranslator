@@ -35,6 +35,47 @@ function createModule(initialSettings: ExtensionSettings, authenticated = false)
 }
 
 describe('ExtensionControlModule', () => {
+  it('returns the initial configuration without waiting for provider status probes', async () => {
+    vi.useFakeTimers();
+    try {
+      const repository = createExtensionSettingsRepository({
+        readState: async () => ({ settings: defaultExtensionSettings, revision: 1 }),
+        writeState: async () => undefined,
+      });
+      const configuration = createTranslationConfigurationModule(repository);
+      const delayedStatus = vi.fn(() => new Promise<{ authenticated: boolean }>((resolve) => {
+        setTimeout(() => resolve({ authenticated: false }), 200);
+      }));
+      const access = createProviderAccessModule(repository, {
+        openAi: {
+          status: delayedStatus,
+          login: delayedStatus,
+          logout: delayedStatus,
+        },
+        gemini: {
+          status: delayedStatus,
+          login: delayedStatus,
+        },
+      });
+      const module = createExtensionControlModule(configuration, access);
+      let settled = false;
+      const initialRead = module.handle({ kind: 'read' }).then((result) => {
+        settled = true;
+        return result;
+      });
+
+      await vi.advanceTimersByTimeAsync(1);
+      const settledBeforeProviderStatus = settled;
+      await vi.advanceTimersByTimeAsync(199);
+      await initialRead;
+
+      expect(settledBeforeProviderStatus).toBe(true);
+      expect(delayedStatus).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('blocks a prepared execution when the selected authorization is unavailable', async () => {
     const settings: ExtensionSettings = {
       ...defaultExtensionSettings,
@@ -52,6 +93,46 @@ describe('ExtensionControlModule', () => {
 
     await expect(module.handle({ kind: 'prepare-execution' }))
       .rejects.toBeInstanceOf(ProviderAccessRequiredError);
+  });
+
+  it('refreshes only the authorization target required by an execution', async () => {
+    const settings: ExtensionSettings = {
+      ...defaultExtensionSettings,
+      translator: 'llm',
+      llmProvider: 'openai',
+      llmProfiles: {
+        ...defaultExtensionSettings.llmProfiles,
+        openai: {
+          ...defaultExtensionSettings.llmProfiles.openai,
+          authMode: 'openai_oauth',
+        },
+      },
+    };
+    const repository = createExtensionSettingsRepository({
+      readState: async () => ({ settings, revision: 1 }),
+      writeState: async () => undefined,
+    });
+    const configuration = createTranslationConfigurationModule(repository);
+    const openAiStatus = vi.fn(async () => ({ authenticated: true }));
+    const geminiStatus = vi.fn(async () => ({ authenticated: true }));
+    const access = createProviderAccessModule(repository, {
+      openAi: {
+        status: openAiStatus,
+        login: async () => ({ authenticated: false, pending: true }),
+        logout: async () => ({ authenticated: false }),
+      },
+      gemini: {
+        status: geminiStatus,
+        login: async () => ({ authenticated: false, pending: true }),
+      },
+    });
+    const module = createExtensionControlModule(configuration, access);
+
+    await expect(module.handle({ kind: 'prepare-execution' })).resolves.toMatchObject({
+      kind: 'execution-snapshot',
+    });
+    expect(openAiStatus).toHaveBeenCalledOnce();
+    expect(geminiStatus).not.toHaveBeenCalled();
   });
 
   it('returns an execution snapshot without credential material', async () => {

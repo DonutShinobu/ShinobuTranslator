@@ -28,7 +28,7 @@ export type ProviderAccessDependencies = {
 
 export type ProviderAccessModule = {
   read(): Promise<ProviderAccessProjection>;
-  refresh(): Promise<ProviderAccessProjection>;
+  refresh(target?: ProviderAuthorizationTarget): Promise<ProviderAccessProjection>;
   replaceApiKey(
     provider: LlmProvider,
     apiKey: string,
@@ -95,6 +95,15 @@ export function createProviderAccessModule(
   let cachedGemini: ProviderAuthorizationProjection | null = null;
   let openAiOperation = 0;
   let geminiOperation = 0;
+  let openAiRefreshInFlight: {
+    operation: number;
+    promise: Promise<void>;
+  } | null = null;
+  let geminiRefreshInFlight: {
+    operation: number;
+    authMode: ExtensionSettings['geminiAppAuthMode'];
+    promise: Promise<void>;
+  } | null = null;
 
   const defaultAuthorization = (): ProviderAuthorizationProjection => ({
     state: 'action-required',
@@ -117,44 +126,82 @@ export function createProviderAccessModule(
     };
   }
 
-  async function refreshOpenAi(): Promise<void> {
+  function refreshOpenAi(): Promise<void> {
+    if (
+      openAiRefreshInFlight
+      && openAiRefreshInFlight.operation === openAiOperation
+    ) {
+      return openAiRefreshInFlight.promise;
+    }
     const operation = ++openAiOperation;
-    const status = await dependencies.openAi.status();
-    if (operation === openAiOperation) {
-      cachedOpenAi = toAuthorizationProjection(status, true);
-    }
+    const inFlight = {
+      operation,
+      promise: Promise.resolve(),
+    };
+    inFlight.promise = Promise.resolve()
+      .then(() => dependencies.openAi.status())
+      .then((status) => {
+        if (operation === openAiOperation) {
+          cachedOpenAi = toAuthorizationProjection(status, true);
+        }
+      })
+      .finally(() => {
+        if (openAiRefreshInFlight === inFlight) {
+          openAiRefreshInFlight = null;
+        }
+      });
+    openAiRefreshInFlight = inFlight;
+    return inFlight.promise;
   }
 
-  async function refreshGemini(settings: ExtensionSettings): Promise<void> {
+  function refreshGemini(settings: ExtensionSettings): Promise<void> {
+    const authMode = settings.geminiAppAuthMode;
+    if (
+      geminiRefreshInFlight
+      && geminiRefreshInFlight.operation === geminiOperation
+      && geminiRefreshInFlight.authMode === authMode
+    ) {
+      return geminiRefreshInFlight.promise;
+    }
     const operation = ++geminiOperation;
-    const status = await dependencies.gemini.status(settings);
-    if (operation === geminiOperation) {
-      cachedGemini = toAuthorizationProjection(status, false);
+    const inFlight = {
+      operation,
+      authMode,
+      promise: Promise.resolve(),
+    };
+    inFlight.promise = Promise.resolve()
+      .then(() => dependencies.gemini.status(settings))
+      .then((status) => {
+        if (operation === geminiOperation) {
+          cachedGemini = toAuthorizationProjection(status, false);
+        }
+      })
+      .finally(() => {
+        if (geminiRefreshInFlight === inFlight) {
+          geminiRefreshInFlight = null;
+        }
+      });
+    geminiRefreshInFlight = inFlight;
+    return inFlight.promise;
+  }
+
+  async function refresh(
+    target?: ProviderAuthorizationTarget,
+  ): Promise<ProviderAccessProjection> {
+    if (target === 'openai-oauth') {
+      await refreshOpenAi();
+      return project();
     }
-  }
-
-  async function ensureAuthorization(): Promise<void> {
-    if (cachedOpenAi && cachedGemini) return;
     const state = await repository.read();
-    await Promise.all([
-      cachedOpenAi ? Promise.resolve() : refreshOpenAi(),
-      cachedGemini ? Promise.resolve() : refreshGemini(state.settings),
-    ]);
-  }
-
-  async function refresh(): Promise<ProviderAccessProjection> {
-    const state = await repository.read();
-    await Promise.all([
-      refreshOpenAi(),
-      refreshGemini(state.settings),
-    ]);
+    if (target === 'gemini-app') {
+      await refreshGemini(state.settings);
+      return project();
+    }
+    await Promise.all([refreshOpenAi(), refreshGemini(state.settings)]);
     return project();
   }
 
-  async function read(): Promise<ProviderAccessProjection> {
-    await ensureAuthorization();
-    return project();
-  }
+  const read = project;
 
   async function writeApiKey(
     provider: LlmProvider,
@@ -191,31 +238,33 @@ export function createProviderAccessModule(
       return apiKey;
     },
     async perform(target, action) {
-      const state = await repository.read();
       if (target === 'openai-oauth') {
+        if (action === 'refresh') {
+          await refreshOpenAi();
+          return project();
+        }
         const operation = ++openAiOperation;
-        const status = action === 'refresh'
-          ? await dependencies.openAi.status()
-          : action === 'login'
-            ? await dependencies.openAi.login()
-            : await dependencies.openAi.logout();
+        const status = action === 'login'
+          ? await dependencies.openAi.login()
+          : await dependencies.openAi.logout();
         if (operation === openAiOperation) {
           cachedOpenAi = toAuthorizationProjection(status, true);
         }
-        await ensureAuthorization();
         return project();
       }
       if (action === 'logout') {
         throw new ProviderAccessActionNotSupportedError(target, action);
       }
+      const state = await repository.read();
+      if (action === 'refresh') {
+        await refreshGemini(state.settings);
+        return project();
+      }
       const operation = ++geminiOperation;
-      const status = action === 'refresh'
-        ? await dependencies.gemini.status(state.settings)
-        : await dependencies.gemini.login(state.settings);
+      const status = await dependencies.gemini.login(state.settings);
       if (operation === geminiOperation) {
         cachedGemini = toAuthorizationProjection(status, false);
       }
-      await ensureAuthorization();
       return project();
     },
   };

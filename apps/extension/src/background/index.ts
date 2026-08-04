@@ -160,22 +160,26 @@ export function initializeBackground(lifecycle: PipelineHostLifecycle): void {
   chromeApi.tabs?.onUpdated?.addListener((tabId, changeInfo, tab) => {
     if (typeof changeInfo.url === 'string') {
       void handleOpenAiOAuthCallbackUrl(tabId, changeInfo.url)
-        .then((changed) => changed ? extensionControl.refreshProviderAccess() : undefined);
+        .then((changed) => changed
+          ? extensionControl.refreshProviderAccess('openai-oauth')
+          : undefined);
     }
     const tabUrl = changeInfo.url ?? tab.url ?? '';
     if (changeInfo.status === 'complete' && tabUrl.startsWith('https://gemini.google.com/')) {
-      void extensionControl.refreshProviderAccess();
+      void extensionControl.refreshProviderAccess('gemini-app');
     }
   });
 
   chromeApi.tabs?.onRemoved?.addListener((tabId) => {
     void handleOpenAiOAuthTabRemoved(tabId)
-      .then((changed) => changed ? extensionControl.refreshProviderAccess() : undefined);
+      .then((changed) => changed
+        ? extensionControl.refreshProviderAccess('openai-oauth')
+        : undefined);
   });
 
   chromeApi.cookies?.onChanged?.addListener(({ cookie }) => {
     if (cookie.domain.includes('google.com')) {
-      void extensionControl.refreshProviderAccess();
+      void extensionControl.refreshProviderAccess('gemini-app');
     }
   });
 

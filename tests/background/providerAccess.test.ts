@@ -47,7 +47,7 @@ function createHarness() {
 
 describe('ProviderAccessModule', () => {
   it('projects capability state without returning credential material', async () => {
-    const { module } = createHarness();
+    const { module, openAi, gemini } = createHarness();
 
     const projection = await module.read();
 
@@ -55,17 +55,56 @@ describe('ProviderAccessModule', () => {
     expect(projection.apiKeys.deepseek).toEqual({ configured: true });
     expect(projection.apiKeys.openai).toEqual({ configured: false });
     expect(projection.openAiOAuth).toMatchObject({
-      state: 'ready',
-      identity: { email: 'reader@example.com', planType: 'plus' },
-      availableActions: ['refresh', 'logout'],
+      state: 'action-required',
+      availableActions: ['refresh', 'login'],
     });
     expect(projection.geminiApp).toMatchObject({
       state: 'action-required',
       availableActions: ['refresh', 'login'],
     });
     expect(JSON.stringify(projection)).not.toContain('existing-secret');
+    expect(openAi.status).not.toHaveBeenCalled();
+    expect(gemini.status).not.toHaveBeenCalled();
     await expect(module.requireApiKey('deepseek')).resolves.toBe('existing-secret');
     await expect(module.revealApiKey('deepseek')).resolves.toBe('existing-secret');
+  });
+
+  it('refreshes only the requested authorization target', async () => {
+    const { module, openAi, gemini } = createHarness();
+
+    const projection = await module.refresh('openai-oauth');
+
+    expect(projection.openAiOAuth).toMatchObject({
+      state: 'ready',
+      identity: { email: 'reader@example.com', planType: 'plus' },
+    });
+    expect(openAi.status).toHaveBeenCalledOnce();
+    expect(gemini.status).not.toHaveBeenCalled();
+  });
+
+  it('coalesces concurrent refreshes for the same authorization target', async () => {
+    const { module, openAi, gemini } = createHarness();
+    let finishRefresh!: (status: {
+      authenticated: boolean;
+      email: string;
+      planType: string;
+    }) => void;
+    openAi.status.mockImplementationOnce(() => new Promise((resolve) => {
+      finishRefresh = resolve;
+    }));
+
+    const first = module.refresh('openai-oauth');
+    const second = module.refresh('openai-oauth');
+    await vi.waitFor(() => expect(openAi.status).toHaveBeenCalledOnce());
+    finishRefresh({
+      authenticated: true,
+      email: 'reader@example.com',
+      planType: 'plus',
+    });
+    await Promise.all([first, second]);
+
+    expect(openAi.status).toHaveBeenCalledOnce();
+    expect(gemini.status).not.toHaveBeenCalled();
   });
 
   it('replaces and clears an API key through intent methods', async () => {
@@ -89,6 +128,8 @@ describe('ProviderAccessModule', () => {
 
     expect(openAi.login).toHaveBeenCalledOnce();
     expect(gemini.login).toHaveBeenCalledOnce();
+    expect(openAi.status).not.toHaveBeenCalled();
+    expect(gemini.status).not.toHaveBeenCalled();
     await expect(module.perform('gemini-app', 'logout')).rejects.toBeInstanceOf(
       ProviderAccessActionNotSupportedError,
     );

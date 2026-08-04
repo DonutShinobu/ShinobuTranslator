@@ -102,6 +102,7 @@ export type ExtensionControlCommand =
     }
   | { kind: 'replace-api-key'; provider: LlmProvider; apiKey: string }
   | { kind: 'clear-api-key'; provider: LlmProvider }
+  | { kind: 'reveal-api-key'; provider: LlmProvider }
   | {
       kind: 'perform-access';
       target: ProviderAuthorizationTarget;
@@ -111,6 +112,7 @@ export type ExtensionControlCommand =
 
 export type ExtensionControlResult =
   | { kind: 'control-projection'; projection: ExtensionControlProjection }
+  | { kind: 'api-key-disclosure'; provider: LlmProvider; apiKey: string }
   | { kind: 'execution-snapshot'; snapshot: ExtensionExecutionSnapshot };
 
 export function toExtensionSettingsProjection(

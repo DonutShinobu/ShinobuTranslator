@@ -51,6 +51,10 @@ describe("isRuntimeMessage", () => {
       command: { kind: "replace-api-key", provider: "deepseek", apiKey: "secret" },
     })).toBe(true);
     expect(isRuntimeMessage({
+      type: "mt:extension-control",
+      command: { kind: "reveal-api-key", provider: "deepseek" },
+    })).toBe(true);
+    expect(isRuntimeMessage({
       type: "mt:llm-chat-completions",
       body: { model: "gpt-5.4-mini", messages: [] },
       proxyConfig: {
@@ -108,6 +112,10 @@ describe("isRuntimeMessage", () => {
     expect(isRuntimeMessage({
       type: "mt:extension-control",
       command: { kind: "replace-api-key", provider: "unknown", apiKey: "secret" },
+    })).toBe(false);
+    expect(isRuntimeMessage({
+      type: "mt:extension-control",
+      command: { kind: "reveal-api-key", provider: "unknown" },
     })).toBe(false);
   });
 

@@ -46,6 +46,7 @@ import { createTranslationConfigurationModule } from './extensionControl/transla
 import { createProviderAccessModule } from './extensionControl/providerAccess';
 import { createExtensionControlModule } from './extensionControl/extensionControl';
 import { registerExtensionControlPort } from './extensionControl/extensionControlPort';
+import { isTrustedPopupSender } from './extensionControl/credentialDisclosurePolicy';
 
 const imageDownloader = createImageDownloader();
 const settingsRepository = createExtensionSettingsRepository({
@@ -75,7 +76,14 @@ const services: BackgroundServices = {
   settings: {
     get: getSettings,
   },
-  extensionControl,
+  extensionControl: {
+    handle(command, sender) {
+      const popupUrl = getExtensionApi()?.runtime?.getURL?.('popup.html') ?? '';
+      return extensionControl.handle(command, {
+        canRevealApiKeys: isTrustedPopupSender(sender, popupUrl),
+      });
+    },
+  },
   diagnostics: {
     record: recordDiagnosticLogEvent,
     export: exportDiagnosticLog,

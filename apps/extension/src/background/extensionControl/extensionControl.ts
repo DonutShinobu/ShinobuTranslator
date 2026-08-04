@@ -16,9 +16,25 @@ export class ProviderAccessRequiredError extends Error {
   }
 }
 
+export class CredentialDisclosureDeniedError extends Error {
+  readonly code = 'CREDENTIAL_DISCLOSURE_DENIED';
+
+  constructor() {
+    super('当前调用方无权读取供应商凭据');
+    this.name = 'CredentialDisclosureDeniedError';
+  }
+}
+
+export type ExtensionControlRequestContext = {
+  canRevealApiKeys: boolean;
+};
+
 export type ExtensionControlModule = {
   read(): Promise<ExtensionControlProjection>;
-  handle(command: ExtensionControlCommand): Promise<ExtensionControlResult>;
+  handle(
+    command: ExtensionControlCommand,
+    context?: ExtensionControlRequestContext,
+  ): Promise<ExtensionControlResult>;
   refreshProviderAccess(): Promise<ExtensionControlProjection>;
   subscribe(listener: (projection: ExtensionControlProjection) => void): () => void;
 };
@@ -98,12 +114,22 @@ export function createExtensionControlModule(
 
   const module: ExtensionControlModule = {
     read: () => compose(true),
-    async handle(command) {
+    async handle(command, context) {
       if (command.kind === 'prepare-execution') {
         return { kind: 'execution-snapshot', snapshot: await prepareExecution() };
       }
       if (command.kind === 'read') {
         return { kind: 'control-projection', projection: await module.read() };
+      }
+      if (command.kind === 'reveal-api-key') {
+        if (!context?.canRevealApiKeys) {
+          throw new CredentialDisclosureDeniedError();
+        }
+        return {
+          kind: 'api-key-disclosure',
+          provider: command.provider,
+          apiKey: await access.revealApiKey(command.provider),
+        };
       }
       let projection: ExtensionControlProjection;
       if (command.kind === 'replace-settings') {

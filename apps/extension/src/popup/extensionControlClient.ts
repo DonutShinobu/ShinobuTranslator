@@ -26,6 +26,7 @@ export type ExtensionControlClient = {
   ): Promise<ExtensionControlProjection>;
   replaceApiKey(provider: LlmProvider, apiKey: string): Promise<ExtensionControlProjection>;
   clearApiKey(provider: LlmProvider): Promise<ExtensionControlProjection>;
+  revealApiKey(provider: LlmProvider): Promise<string>;
   performAccess(
     target: ProviderAuthorizationTarget,
     action: ProviderAuthorizationAction,
@@ -89,6 +90,17 @@ export function createExtensionControlClient(
     return remember(result.projection);
   }
 
+  async function revealApiKey(provider: LlmProvider): Promise<string> {
+    const result = await sendExtensionControlCommand({
+      kind: 'reveal-api-key',
+      provider,
+    }, runtime);
+    if (result.kind !== 'api-key-disclosure' || result.provider !== provider) {
+      throw new Error('扩展控制操作未返回所请求的 API Key');
+    }
+    return result.apiKey;
+  }
+
   function queueMutation(
     operation: () => Promise<ExtensionControlProjection>,
   ): Promise<ExtensionControlProjection> {
@@ -128,6 +140,7 @@ export function createExtensionControlClient(
         provider,
       }));
     },
+    revealApiKey,
     performAccess(target, action) {
       return queueMutation(() => expectProjection({
         kind: 'perform-access',

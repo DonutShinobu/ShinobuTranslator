@@ -15,7 +15,10 @@ export type BackgroundServices = {
     get(): Promise<import('../../shared/config').ExtensionSettings>;
   };
   extensionControl: {
-    handle(command: ExtensionControlCommand): Promise<ExtensionControlResult>;
+    handle(
+      command: ExtensionControlCommand,
+      sender: ExtensionMessageSender,
+    ): Promise<ExtensionControlResult>;
   };
   diagnostics: {
     record(event: MessageOf<'mt:diagnostic-log-event'>['event']): Promise<void>;
@@ -65,7 +68,7 @@ export async function routeBackgroundMessage(
     return {
       ok: true,
       type: 'mt:extension-control',
-      result: await services.extensionControl.handle(message.command),
+      result: await services.extensionControl.handle(message.command, sender),
     };
   }
   if (message.type === 'mt:download-image') {

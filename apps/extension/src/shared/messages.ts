@@ -329,6 +329,9 @@ function isExtensionControlRuntimeMessage(
   if (command.kind === 'clear-api-key') {
     return isLlmProvider(command.provider);
   }
+  if (command.kind === 'reveal-api-key') {
+    return isLlmProvider(command.provider);
+  }
   return command.kind === 'perform-access'
     && (command.target === 'openai-oauth' || command.target === 'gemini-app')
     && (

@@ -195,15 +195,11 @@ const defaultShortcutState: ShortcutState = {
 function ApiKeyField({
   value,
   onChange,
-  configured,
-  onClear,
   disabled,
   placeholder,
 }: {
   value: string;
   onChange: (value: string) => void;
-  configured: boolean;
-  onClear: () => void;
   disabled?: boolean;
   placeholder: string;
 }) {
@@ -235,18 +231,6 @@ function ApiKeyField({
         >
           {revealed ? <IconEye /> : <IconEyeOff />}
         </button>
-        {configured ? (
-          <button
-            className="api-key-visibility-button"
-            type="button"
-            onClick={onClear}
-            disabled={disabled}
-            title="清除已保存的 API Key"
-            aria-label="清除已保存的 API Key"
-          >
-            <IconTrash />
-          </button>
-        ) : null}
       </div>
     </div>
   );
@@ -598,12 +582,10 @@ export function App() {
   const nextSaveShowsStatusRef = useRef(false);
   const saveRequestIdRef = useRef(0);
   const controlClientRef = useRef<ExtensionControlClient | null>(null);
-  const [apiKeyConfigured, setApiKeyConfigured] = useState(
-    Object.fromEntries(
-      llmProviderOptions.map(({ value }) => [value, false]),
-    ) as Record<LlmProvider, boolean>,
-  );
-  const [apiKeyDrafts, setApiKeyDrafts] = useState<Partial<Record<LlmProvider, string>>>({});
+  const [apiKeyValues, setApiKeyValues] = useState<Partial<Record<LlmProvider, string>>>({});
+  const [apiKeyEditVersion, setApiKeyEditVersion] = useState(0);
+  const apiKeyValuesRef = useRef<Partial<Record<LlmProvider, string>>>({});
+  const apiKeyDirtyRef = useRef<Partial<Record<LlmProvider, boolean>>>({});
 
   function getControlClient(): ExtensionControlClient {
     controlClientRef.current ??= createExtensionControlClient();
@@ -625,12 +607,6 @@ export function App() {
   }
 
   function applyAccessProjection(projection: ExtensionControlProjection): void {
-    setApiKeyConfigured(Object.fromEntries(
-      Object.entries(projection.access.apiKeys).map(([provider, state]) => [
-        provider,
-        state.configured,
-      ]),
-    ) as Record<LlmProvider, boolean>);
     setOpenAiStatus(applyAuthorizationProjection(projection.access.openAiOAuth));
     setGeminiAppStatus(applyAuthorizationProjection(projection.access.geminiApp));
   }
@@ -753,26 +729,18 @@ export function App() {
   }
 
   function updateActiveApiKey(value: string): void {
-    setStatus({ kind: 'saving', message: '正在安全保存 API Key...' });
-    setApiKeyDrafts((current) => ({
-      ...current,
-      [settings.llmProvider]: value,
-    }));
-  }
-
-  async function clearActiveApiKey(): Promise<void> {
     const provider = settings.llmProvider;
-    try {
-      const projection = await getControlClient().clearApiKey(provider);
-      applyAccessProjection(projection);
-      setApiKeyDrafts((current) => ({ ...current, [provider]: undefined }));
-      setStatus({ kind: 'success', message: 'API Key 已清除' });
-    } catch (error) {
-      setStatus({
-        kind: 'error',
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
+    apiKeyDirtyRef.current[provider] = true;
+    apiKeyValuesRef.current = {
+      ...apiKeyValuesRef.current,
+      [provider]: value,
+    };
+    setStatus({ kind: 'saving', message: '正在自动保存...' });
+    setApiKeyValues((current) => ({
+      ...current,
+      [provider]: value,
+    }));
+    setApiKeyEditVersion((version) => version + 1);
   }
 
   function updateTranslator(translator: ExtensionSettingsProjection['translator']): void {
@@ -1061,6 +1029,31 @@ export function App() {
   }
 
   useEffect(() => {
+    if (loading || currentProfile.authMode !== 'api_key') return;
+    const provider = settings.llmProvider;
+    let active = true;
+    void getControlClient().revealApiKey(provider)
+      .then((apiKey) => {
+        if (!active || apiKeyDirtyRef.current[provider]) return;
+        apiKeyValuesRef.current = {
+          ...apiKeyValuesRef.current,
+          [provider]: apiKey,
+        };
+        setApiKeyValues((current) => ({ ...current, [provider]: apiKey }));
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setStatus({
+          kind: 'error',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      });
+    return () => {
+      active = false;
+    };
+  }, [loading, settings.llmProvider, currentProfile.authMode]);
+
+  useEffect(() => {
     if (loading) {
       return;
     }
@@ -1079,29 +1072,39 @@ export function App() {
   }, [loading, settings]);
 
   useEffect(() => {
-    const provider = settings.llmProvider;
-    const draft = apiKeyDrafts[provider];
-    if (draft === undefined || draft.trim().length === 0) return;
-    const timeoutId = window.setTimeout(() => {
-      void getControlClient().replaceApiKey(provider, draft)
-        .then((projection) => {
-          applyAccessProjection(projection);
-          setApiKeyDrafts((current) => (
-            current[provider] === draft
-              ? { ...current, [provider]: undefined }
-              : current
-          ));
-          setStatus({ kind: 'success', message: 'API Key 已安全保存' });
-        })
-        .catch((error: unknown) => {
-          setStatus({
-            kind: 'error',
-            message: error instanceof Error ? error.message : String(error),
+    const timeoutIds = llmProviderOptions.flatMap(({ value: provider }) => {
+      const apiKey = apiKeyValuesRef.current[provider];
+      if (!apiKeyDirtyRef.current[provider] || apiKey === undefined) return [];
+      return [window.setTimeout(() => {
+        const operation = apiKey.trim().length > 0
+          ? getControlClient().replaceApiKey(provider, apiKey)
+          : getControlClient().clearApiKey(provider);
+        void operation
+          .then((projection) => {
+            applyAccessProjection(projection);
+            if (apiKeyValuesRef.current[provider] === apiKey) {
+              apiKeyDirtyRef.current[provider] = false;
+              const hasPendingSave = Object.values(apiKeyDirtyRef.current).some(Boolean);
+              if (!hasPendingSave) {
+                setStatus({
+                  kind: 'success',
+                  message: '已自动保存',
+                });
+              }
+            }
+          })
+          .catch((error: unknown) => {
+            setStatus({
+              kind: 'error',
+              message: error instanceof Error ? error.message : String(error),
+            });
           });
-        });
-    }, 500);
-    return () => window.clearTimeout(timeoutId);
-  }, [settings.llmProvider, apiKeyDrafts]);
+      }, 500)];
+    });
+    return () => {
+      for (const timeoutId of timeoutIds) window.clearTimeout(timeoutId);
+    };
+  }, [apiKeyEditVersion]);
 
   return (
     <main className="popup">
@@ -1284,14 +1287,10 @@ export function App() {
                     {usesGeminiApi ? (
                       <ApiKeyField
                         key={`api-key-${settings.llmProvider}-${currentProfile.authMode}`}
-                        value={apiKeyDrafts[settings.llmProvider] ?? ''}
+                        value={apiKeyValues[settings.llmProvider] ?? ''}
                         onChange={updateActiveApiKey}
-                        configured={apiKeyConfigured[settings.llmProvider]}
-                        onClear={() => void clearActiveApiKey()}
-                        disabled={loading}
-                        placeholder={apiKeyConfigured[settings.llmProvider]
-                          ? '已配置；输入新 Key 替换'
-                          : 'AIza...'}
+                        disabled={loading || apiKeyValues[settings.llmProvider] === undefined}
+                        placeholder="AIza..."
                       />
                     ) : null}
                     <div className="field">
@@ -1346,14 +1345,10 @@ export function App() {
                     </label>
                     <ApiKeyField
                       key={`api-key-${settings.llmProvider}-${currentProfile.authMode}`}
-                      value={apiKeyDrafts[settings.llmProvider] ?? ''}
+                      value={apiKeyValues[settings.llmProvider] ?? ''}
                       onChange={updateActiveApiKey}
-                      configured={apiKeyConfigured[settings.llmProvider]}
-                      onClear={() => void clearActiveApiKey()}
-                      disabled={loading}
-                      placeholder={apiKeyConfigured[settings.llmProvider]
-                        ? '已配置；输入新 Key 替换'
-                        : 'sk-...'}
+                      disabled={loading || apiKeyValues[settings.llmProvider] === undefined}
+                      placeholder="sk-..."
                     />
                   </>
                 ) : (
@@ -1560,14 +1555,10 @@ export function App() {
                     {!usesOpenAiOAuth ? (
                       <ApiKeyField
                         key={`api-key-${settings.llmProvider}-${currentProfile.authMode}`}
-                        value={apiKeyDrafts[settings.llmProvider] ?? ''}
+                        value={apiKeyValues[settings.llmProvider] ?? ''}
                         onChange={updateActiveApiKey}
-                        configured={apiKeyConfigured[settings.llmProvider]}
-                        onClear={() => void clearActiveApiKey()}
-                        disabled={loading}
-                        placeholder={apiKeyConfigured[settings.llmProvider]
-                          ? '已配置；输入新 Key 替换'
-                          : 'sk-...'}
+                        disabled={loading || apiKeyValues[settings.llmProvider] === undefined}
+                        placeholder="sk-..."
                       />
                     ) : null}
                   </>

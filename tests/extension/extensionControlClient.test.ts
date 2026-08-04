@@ -142,6 +142,29 @@ describe('ExtensionControlClient', () => {
       code: 'extension_settings_conflict',
     });
   });
+
+  it('exposes API keys only through the dedicated disclosure intent', async () => {
+    const sendMessage = vi.fn(async () => ({
+      ok: true,
+      type: 'mt:extension-control',
+      result: {
+        kind: 'api-key-disclosure',
+        provider: 'deepseek',
+        apiKey: 'visible-secret',
+      },
+    }));
+    const runtime = {
+      sendMessage,
+      connect: () => fakePort(),
+    } as unknown as ExtensionRuntime;
+
+    await expect(createExtensionControlClient(runtime).revealApiKey('deepseek'))
+      .resolves.toBe('visible-secret');
+    expect(sendMessage).toHaveBeenCalledWith({
+      type: 'mt:extension-control',
+      command: { kind: 'reveal-api-key', provider: 'deepseek' },
+    });
+  });
 });
 
 describe('ExecutionPreparationClient', () => {

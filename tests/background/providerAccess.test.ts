@@ -65,6 +65,7 @@ describe('ProviderAccessModule', () => {
     });
     expect(JSON.stringify(projection)).not.toContain('existing-secret');
     await expect(module.requireApiKey('deepseek')).resolves.toBe('existing-secret');
+    await expect(module.revealApiKey('deepseek')).resolves.toBe('existing-secret');
   });
 
   it('replaces and clears an API key through intent methods', async () => {

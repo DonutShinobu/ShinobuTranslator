@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { createExtensionControlModule, ProviderAccessRequiredError } from '../../apps/extension/src/background/extensionControl/extensionControl';
+import {
+  createExtensionControlModule,
+  CredentialDisclosureDeniedError,
+  ProviderAccessRequiredError,
+} from '../../apps/extension/src/background/extensionControl/extensionControl';
 import { createProviderAccessModule } from '../../apps/extension/src/background/extensionControl/providerAccess';
 import { createExtensionSettingsRepository } from '../../apps/extension/src/background/extensionControl/settingsRepository';
 import { createTranslationConfigurationModule } from '../../apps/extension/src/background/extensionControl/translationConfiguration';
@@ -72,5 +76,28 @@ describe('ExtensionControlModule', () => {
       snapshot: { kind: 'local-pipeline', revision: 1 },
     });
     expect(JSON.stringify(result)).not.toContain('never-project-this-secret');
+  });
+
+  it('reveals an API key only through an explicitly authorized capability', async () => {
+    const settings: ExtensionSettings = {
+      ...defaultExtensionSettings,
+      llmProfiles: {
+        ...defaultExtensionSettings.llmProfiles,
+        deepseek: {
+          ...defaultExtensionSettings.llmProfiles.deepseek,
+          apiKey: 'popup-visible-secret',
+        },
+      },
+    };
+    const module = createModule(settings);
+    const command = { kind: 'reveal-api-key' as const, provider: 'deepseek' as const };
+
+    await expect(module.handle(command, { canRevealApiKeys: false }))
+      .rejects.toBeInstanceOf(CredentialDisclosureDeniedError);
+    await expect(module.handle(command, { canRevealApiKeys: true })).resolves.toEqual({
+      kind: 'api-key-disclosure',
+      provider: 'deepseek',
+      apiKey: 'popup-visible-secret',
+    });
   });
 });

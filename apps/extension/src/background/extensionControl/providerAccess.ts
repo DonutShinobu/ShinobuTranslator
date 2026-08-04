@@ -34,6 +34,7 @@ export type ProviderAccessModule = {
     apiKey: string,
   ): Promise<ProviderAccessProjection>;
   clearApiKey(provider: LlmProvider): Promise<ProviderAccessProjection>;
+  revealApiKey(provider: LlmProvider): Promise<string>;
   requireApiKey(provider: LlmProvider): Promise<string>;
   perform(
     target: ProviderAuthorizationTarget,
@@ -180,6 +181,9 @@ export function createProviderAccessModule(
     },
     clearApiKey(provider) {
       return writeApiKey(provider, '');
+    },
+    async revealApiKey(provider) {
+      return (await repository.read()).settings.llmProfiles[provider].apiKey.trim();
     },
     async requireApiKey(provider) {
       const apiKey = (await repository.read()).settings.llmProfiles[provider].apiKey.trim();

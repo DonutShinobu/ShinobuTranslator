@@ -111,7 +111,7 @@ describe('routeBackgroundMessage', () => {
       type: 'mt:extension-control',
       result: { kind: 'control-projection' },
     });
-    expect(services.extensionControl.handle).toHaveBeenCalledWith(command);
+    expect(services.extensionControl.handle).toHaveBeenCalledWith(command, sender);
   });
 
   it('keeps diagnostic writes best-effort and preserves export/clear responses', async () => {

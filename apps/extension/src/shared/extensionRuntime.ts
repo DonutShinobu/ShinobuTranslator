@@ -30,6 +30,7 @@ export type ExtensionMessageSender = {
   documentUrl?: string;
   frameId?: number;
   origin?: string;
+  url?: string;
   tab?: {
     id?: number;
     windowId?: number;

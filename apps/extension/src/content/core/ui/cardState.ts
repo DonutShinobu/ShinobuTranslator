@@ -1,8 +1,13 @@
-import { sendRuntimeMessage } from '../../../shared/messages';
 import type { PhotoState } from '../types';
+import {
+  updateInterfacePreferences,
+  type UpdateInterfacePreferences,
+} from './interfacePreferencesClient';
 
 export class CardStateController {
-  constructor(private readonly sendMessage: typeof sendRuntimeMessage = sendRuntimeMessage) {}
+  constructor(
+    private readonly updatePreferences: UpdateInterfacePreferences = updateInterfacePreferences,
+  ) {}
 
   toggleStageTimingCard(state: PhotoState, render: () => void): void {
     if (!state.stageTimingCard) return;
@@ -20,20 +25,9 @@ export class CardStateController {
 
   private async persistStageTimingCardExpanded(expanded: boolean): Promise<void> {
     try {
-      const settingsResponse = await this.sendMessage({ type: 'mt:get-settings' });
-      if (!settingsResponse.ok || settingsResponse.type !== 'mt:get-settings') {
-        throw new Error(settingsResponse.ok ? '读取配置失败' : settingsResponse.error);
-      }
-      const response = await this.sendMessage({
-        type: 'mt:set-settings',
-        settings: {
-          ...settingsResponse.settings,
-          stageTimingCardExpanded: expanded,
-        },
+      await this.updatePreferences({
+        stageTimingCardExpanded: expanded,
       });
-      if (!response.ok || response.type !== 'mt:set-settings') {
-        throw new Error(response.ok ? '保存阶段明细状态失败' : response.error);
-      }
     } catch (error) {
       console.warn('[shinobu] 保存阶段明细展开状态失败', error);
     }

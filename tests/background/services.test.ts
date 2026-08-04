@@ -1,9 +1,19 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  extensionControlStateStorageKey,
+  extensionInterfacePreferencesStorageKey,
+  extensionProviderCredentialsStorageKey,
+  extensionSettingsRevisionStorageKey,
+  extensionTranslationDefaultsStorageKey,
   defaultExtensionSettings,
   extensionSettingsStorageKey,
 } from '../../apps/extension/src/shared/config';
-import { getSettings, setSettings } from '../../apps/extension/src/background/settings/settingsStore';
+import {
+  getSettings,
+  getSettingsState,
+  setSettings,
+  setSettingsState,
+} from '../../apps/extension/src/background/settings/settingsStore';
 import {
   parseImageDataUrl,
 } from '../../apps/extension/src/background/images/imageService';
@@ -108,8 +118,21 @@ describe('background stable identifiers', () => {
 });
 
 describe('settings store', () => {
-  it('normalizes reads and persists writes under the stable settings key', async () => {
-    const storage: Record<string, unknown> = {};
+  it('migrates legacy settings into one atomic control record with separate sections', async () => {
+    const legacySettings = {
+      ...defaultExtensionSettings,
+      targetLang: 'zh-CHT' as const,
+      llmProfiles: {
+        ...defaultExtensionSettings.llmProfiles,
+        deepseek: {
+          ...defaultExtensionSettings.llmProfiles.deepseek,
+          apiKey: 'secret-key',
+        },
+      },
+    };
+    const storage: Record<string, unknown> = {
+      [extensionSettingsStorageKey]: legacySettings,
+    };
     vi.stubGlobal('chrome', {
       runtime: {},
       storage: {
@@ -121,14 +144,58 @@ describe('settings store', () => {
             Object.assign(storage, items);
             callback();
           },
+          remove(keys: string | string[], callback: () => void) {
+            for (const key of Array.isArray(keys) ? keys : [keys]) delete storage[key];
+            callback();
+          },
         },
       },
     });
 
-    await expect(getSettings()).resolves.toEqual(defaultExtensionSettings);
+    await expect(getSettings()).resolves.toEqual(legacySettings);
+    expect(storage[extensionSettingsStorageKey]).toBeUndefined();
+    const controlHead = storage[extensionControlStateStorageKey] as {
+      schemaVersion: number;
+      revision: number;
+      generation: string;
+    };
+    expect(controlHead).toMatchObject({ schemaVersion: 1, revision: 0 });
+    const translation = storage[`${extensionTranslationDefaultsStorageKey}.${controlHead.generation}`] as {
+      schemaVersion: number;
+      value: Record<string, unknown>;
+    };
+    const credentials = storage[`${extensionProviderCredentialsStorageKey}.${controlHead.generation}`] as {
+      schemaVersion: number;
+      value: Record<string, string>;
+    };
+    const preferences = storage[`${extensionInterfacePreferencesStorageKey}.${controlHead.generation}`] as {
+      schemaVersion: number;
+      value: Record<string, unknown>;
+    };
+    expect(translation.schemaVersion).toBe(1);
+    expect(JSON.stringify(translation.value)).not.toContain('secret-key');
+    expect(credentials).toEqual({ schemaVersion: 1, value: { deepseek: 'secret-key' } });
+    expect(preferences.value).toMatchObject({
+      showElapsedTime: false,
+      stageTimingCardExpanded: true,
+    });
+    expect(storage[extensionTranslationDefaultsStorageKey]).toBeUndefined();
+    expect(storage[extensionProviderCredentialsStorageKey]).toBeUndefined();
+    expect(storage[extensionInterfacePreferencesStorageKey]).toBeUndefined();
+    expect(storage[extensionSettingsRevisionStorageKey]).toBeUndefined();
+
     const nextSettings = { ...defaultExtensionSettings, targetLang: 'zh-CHT' as const };
     await expect(setSettings(nextSettings)).resolves.toEqual(nextSettings);
-    expect(storage[extensionSettingsStorageKey]).toEqual(nextSettings);
+    const nextHead = storage[extensionControlStateStorageKey] as typeof controlHead;
+    expect(nextHead).toMatchObject({ revision: 0 });
+    expect(storage[`${extensionTranslationDefaultsStorageKey}.${nextHead.generation}`]).toMatchObject({
+      schemaVersion: 1,
+      value: { targetLang: 'zh-CHT' },
+    });
+
+    await setSettingsState({ settings: nextSettings, revision: 9 });
+    await expect(getSettingsState()).resolves.toEqual({ settings: nextSettings, revision: 9 });
+    expect(storage[extensionControlStateStorageKey]).toMatchObject({ revision: 9 });
   });
 });
 

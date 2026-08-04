@@ -13,6 +13,7 @@ import { createImageTranslationExecutionModule } from '../../../apps/extension/s
 import { createImageTranslationExecutionArbiter } from '../../../apps/extension/src/content/core/translation/imageTranslationExecutionArbiter';
 import { defaultExtensionSettings } from '../../../apps/extension/src/shared/config';
 import type { ProgressJankMonitor } from '../../../apps/extension/src/content/core/progressJank';
+import { prepareExecutionFromSettings } from './executionPreparation';
 
 function localExecutionResult(): LocalPipelineImageTranslationResult {
   return {
@@ -128,7 +129,7 @@ describe('photo state projection', () => {
   it('returns a cancelled projection to an idle, retryable state', async () => {
     const state = createInitialPhotoState('https://example.com/source.png');
     const module = createImageTranslationExecutionModule({
-      loadSettings: async () => ({ ...defaultExtensionSettings }),
+      prepareExecution: prepareExecutionFromSettings(),
       runLocalPipeline: () => new Promise(() => undefined),
     });
     const task = startPhotoStateImageTranslation({
@@ -157,7 +158,7 @@ describe('photo state projection', () => {
   it('does not let a replaced activity cancel the newer projection for the same state', async () => {
     const state = createInitialPhotoState('https://example.com/source.png');
     const module = createImageTranslationExecutionModule({
-      loadSettings: async () => ({ ...defaultExtensionSettings }),
+      prepareExecution: prepareExecutionFromSettings(),
       runLocalPipeline: () => new Promise(() => undefined),
     });
     const arbiter = createImageTranslationExecutionArbiter(module);
@@ -202,7 +203,7 @@ describe('photo state projection', () => {
     const monitor = {} as ProgressJankMonitor;
     const finishJankMonitor = vi.fn();
     const module = createImageTranslationExecutionModule({
-      loadSettings: async () => ({
+      prepareExecution: prepareExecutionFromSettings({
         ...defaultExtensionSettings,
         enableDebugLog: true,
       }),

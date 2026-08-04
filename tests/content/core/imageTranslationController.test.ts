@@ -16,6 +16,7 @@ import {
   ImageTranslationController,
 } from '../../../apps/extension/src/content/core/translation/imageTranslationController';
 import type { ProgressJankMonitor } from '../../../apps/extension/src/content/core/progressJank';
+import { prepareExecutionFromSettings } from './executionPreparation';
 
 function localResult(translationDebug: LocalPipelineResult['summary']['translationDebug'] = null): LocalPipelineResult {
   return {
@@ -57,7 +58,7 @@ function createHarness(options: {
   }));
   const runLocalPipeline = vi.fn(async () => localResult());
   const executionModule = createImageTranslationExecutionModule({
-    loadSettings: async () => ({ ...defaultExtensionSettings }),
+    prepareExecution: prepareExecutionFromSettings(),
     downloadImage,
     runLocalPipeline,
     ...options.dependencies,
@@ -133,7 +134,7 @@ describe('ImageTranslationController', () => {
   it('projects a settings failure into an actionable error state', async () => {
     const harness = createHarness({
       dependencies: {
-        loadSettings: async () => {
+        prepareExecution: async () => {
           throw new Error('provider failed');
         },
       },
@@ -155,7 +156,7 @@ describe('ImageTranslationController', () => {
     const harness = createHarness({
       resolveTranslationContext,
       dependencies: {
-        loadSettings: () => new Promise((_resolve, reject) => {
+        prepareExecution: () => new Promise((_resolve, reject) => {
           rejectSettings = reject;
         }),
       },
@@ -249,7 +250,7 @@ describe('ImageTranslationController', () => {
     const harness = createHarness({
       resolveTranslationContext: () => ({ status: 'available', context }),
       dependencies: {
-        loadSettings: async () => ({
+        prepareExecution: prepareExecutionFromSettings({
           ...defaultExtensionSettings,
           translator: 'llm',
           llmProfiles: {
@@ -308,7 +309,7 @@ describe('ImageTranslationController', () => {
         return contextResolution;
       },
       dependencies: {
-        loadSettings: async () => ({
+        prepareExecution: prepareExecutionFromSettings({
           ...defaultExtensionSettings,
           translator: 'llm',
           llmProfiles: {

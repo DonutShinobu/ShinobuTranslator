@@ -1,5 +1,5 @@
-import type { ExtensionSettings } from '../../shared/config';
 import type { ExtensionMessageSender } from '../../shared/extensionRuntime';
+import type { ExtensionControlCommand, ExtensionControlResult } from '../../shared/extensionControl';
 import type {
   RuntimeMessage,
   RuntimeResponse,
@@ -12,8 +12,10 @@ type PayloadOf<T extends RuntimeResponse['type']> = Omit<SuccessOf<T>, 'ok' | 't
 
 export type BackgroundServices = {
   settings: {
-    get(): Promise<ExtensionSettings>;
-    set(settings: ExtensionSettings): Promise<ExtensionSettings>;
+    get(): Promise<import('../../shared/config').ExtensionSettings>;
+  };
+  extensionControl: {
+    handle(command: ExtensionControlCommand): Promise<ExtensionControlResult>;
   };
   diagnostics: {
     record(event: MessageOf<'mt:diagnostic-log-event'>['event']): Promise<void>;
@@ -26,15 +28,6 @@ export type BackgroundServices = {
       sender: ExtensionMessageSender,
     ): Promise<PayloadOf<'mt:download-image'>>;
     capture(sender: ExtensionMessageSender): Promise<PayloadOf<'mt:capture-visible-tab'>>;
-  };
-  openAi: {
-    status(): Promise<PayloadOf<'mt:openai-oauth-status'>['status']>;
-    login(): Promise<PayloadOf<'mt:openai-oauth-login'>['status']>;
-    logout(): Promise<PayloadOf<'mt:openai-oauth-logout'>['status']>;
-  };
-  geminiAuth: {
-    status(settings: ExtensionSettings): Promise<PayloadOf<'mt:gemini-app-auth-status'>['status']>;
-    login(settings: ExtensionSettings): Promise<PayloadOf<'mt:gemini-app-auth-login'>['status']>;
   };
   providers: {
     llm(message: MessageOf<'mt:llm-chat-completions'>): Promise<SuccessOf<'mt:llm-chat-completions'>>;
@@ -68,14 +61,11 @@ export async function routeBackgroundMessage(
     await services.diagnostics.clear();
     return { ok: true, type: 'mt:diagnostic-log-clear' };
   }
-  if (message.type === 'mt:get-settings') {
-    return { ok: true, type: 'mt:get-settings', settings: await services.settings.get() };
-  }
-  if (message.type === 'mt:set-settings') {
+  if (message.type === 'mt:extension-control') {
     return {
       ok: true,
-      type: 'mt:set-settings',
-      settings: await services.settings.set(message.settings),
+      type: 'mt:extension-control',
+      result: await services.extensionControl.handle(message.command),
     };
   }
   if (message.type === 'mt:download-image') {
@@ -93,31 +83,6 @@ export async function routeBackgroundMessage(
   }
   if (message.type === 'mt:capture-visible-tab') {
     return { ok: true, type: 'mt:capture-visible-tab', ...await services.images.capture(sender) };
-  }
-  if (message.type === 'mt:openai-oauth-status') {
-    return { ok: true, type: 'mt:openai-oauth-status', status: await services.openAi.status() };
-  }
-  if (message.type === 'mt:openai-oauth-login') {
-    return { ok: true, type: 'mt:openai-oauth-login', status: await services.openAi.login() };
-  }
-  if (message.type === 'mt:openai-oauth-logout') {
-    return { ok: true, type: 'mt:openai-oauth-logout', status: await services.openAi.logout() };
-  }
-  if (message.type === 'mt:gemini-app-auth-status') {
-    const settings = await services.settings.get();
-    return {
-      ok: true,
-      type: 'mt:gemini-app-auth-status',
-      status: await services.geminiAuth.status(settings),
-    };
-  }
-  if (message.type === 'mt:gemini-app-auth-login') {
-    const settings = await services.settings.get();
-    return {
-      ok: true,
-      type: 'mt:gemini-app-auth-login',
-      status: await services.geminiAuth.login(settings),
-    };
   }
   if (message.type === 'mt:llm-chat-completions') {
     return services.providers.llm(message);

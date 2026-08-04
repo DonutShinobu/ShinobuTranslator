@@ -34,13 +34,13 @@ export function storageSet(key: string, value: unknown): Promise<void> {
   });
 }
 
-export function storageRemove(key: string): Promise<void> {
+export function storageRemove(keys: string | string[]): Promise<void> {
   const chromeApi = getExtensionApi();
   if (!chromeApi?.storage?.local?.remove) {
     return Promise.resolve();
   }
   return new Promise((resolve, reject) => {
-    chromeApi.storage?.local?.remove?.([key], () => {
+    chromeApi.storage?.local?.remove?.(Array.isArray(keys) ? keys : [keys], () => {
       const lastError = chromeApi.runtime?.lastError;
       if (lastError?.message) {
         reject(new Error(lastError.message));

@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { defaultExtensionSettings } from '../../../apps/extension/src/shared/config';
 import type {
   ImageTarget,
   ReadingModeBarUi,
@@ -12,6 +11,7 @@ import {
   type ImageTranslationExecutionModule,
 } from '../../../apps/extension/src/content/core/translation/imageTranslationExecution';
 import { createImageTranslationExecutionArbiter } from '../../../apps/extension/src/content/core/translation/imageTranslationExecutionArbiter';
+import { prepareExecutionFromSettings } from './executionPreparation';
 
 type FakeButton = {
   style: { display: string };
@@ -95,7 +95,7 @@ describe('ReadingModeController', () => {
       adapter,
       store,
       arbitrate(createImageTranslationExecutionModule({
-        loadSettings: async () => ({ ...defaultExtensionSettings }),
+        prepareExecution: prepareExecutionFromSettings(),
       })),
       vi.fn(),
       vi.fn(),
@@ -149,7 +149,7 @@ describe('ReadingModeController', () => {
       throw new Error('stop after request capture');
     });
     const executionModule = createImageTranslationExecutionModule({
-      loadSettings: async () => ({ ...defaultExtensionSettings }),
+      prepareExecution: prepareExecutionFromSettings(),
       downloadImage,
     });
     const bar = createFakeBar();
@@ -216,7 +216,7 @@ describe('ReadingModeController', () => {
       adapter,
       new PhotoStateStore(200, { revokeObjectURL: vi.fn() }),
       arbitrate(createImageTranslationExecutionModule({
-        loadSettings: async () => ({ ...defaultExtensionSettings }),
+        prepareExecution: prepareExecutionFromSettings(),
         downloadImage,
         runLocalPipeline,
       })),
@@ -266,7 +266,7 @@ describe('ReadingModeController', () => {
     }));
     let pipelineSignal: AbortSignal | undefined;
     const executionModule = createImageTranslationExecutionModule({
-      loadSettings: async () => ({ ...defaultExtensionSettings }),
+      prepareExecution: prepareExecutionFromSettings(),
       downloadImage,
       runLocalPipeline: (_file, _config, _onProgress, options) => {
         pipelineSignal = options?.signal;

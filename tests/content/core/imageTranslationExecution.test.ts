@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { defaultExtensionSettings } from '../../../apps/extension/src/shared/config';
+import {
+  buildGeminiImagePrompt,
+  defaultExtensionSettings,
+  getGeminiAppModelLabel,
+  resolveGeminiApiImageModel,
+  resolveLlmBaseUrl,
+  toPipelineConfig,
+  usesGeminiApiImagePipeline,
+  usesNanoBananaImagePipeline,
+  type ExtensionSettings,
+} from '../../../apps/extension/src/shared/config';
 import { sendRuntimeMessage } from '../../../apps/extension/src/shared/messages';
+import { sanitizeExtensionSettings } from '../../../apps/extension/src/shared/diagnosticSettings';
+import type { ExtensionExecutionSnapshot } from '../../../apps/extension/src/shared/extensionControl';
 import {
   createImageTranslationExecutionModule,
   ImageTranslationExecutionKindNotAllowedError,
@@ -37,11 +49,60 @@ function completedLocalResult(image: Blob): LocalPipelineResult {
   };
 }
 
+function executionSnapshot(
+  settings: ExtensionSettings = defaultExtensionSettings,
+): ExtensionExecutionSnapshot {
+  const wholeImage = usesNanoBananaImagePipeline(settings);
+  const wholeImagePreparation: import('../../../apps/extension/src/shared/extensionControl').WholeImageExecutionPreparation | undefined = wholeImage
+    ? usesGeminiApiImagePipeline(settings)
+      ? {
+          provider: 'gemini-api',
+          model: resolveGeminiApiImageModel(settings.geminiAppModel),
+          modelLabel: `Nano Banana API / ${getGeminiAppModelLabel(settings.geminiAppModel)}`,
+          prompt: buildGeminiImagePrompt(settings),
+          baseUrl: resolveLlmBaseUrl(settings),
+        }
+      : {
+          provider: 'gemini-app',
+          model: settings.geminiAppModel,
+          modelLabel: getGeminiAppModelLabel(settings.geminiAppModel),
+          prompt: buildGeminiImagePrompt(settings),
+          authMode: settings.geminiAppAuthMode,
+        }
+    : undefined;
+  const showStageTimingDetails = settings.showElapsedTime && settings.showStageTimingDetails;
+  return {
+    revision: 1,
+    kind: wholeImage ? 'whole-image' : 'local-pipeline',
+    ...(wholeImage
+      ? {
+          wholeImage: wholeImagePreparation!,
+        }
+      : { pipelineConfig: toPipelineConfig(settings) }),
+    display: {
+      showElapsedTime: settings.showElapsedTime,
+      showStageTimingDetails,
+      showRuntimeStages: showStageTimingDetails,
+      stageTimingCardExpanded: settings.stageTimingCardExpanded,
+      showTypesetDebug: settings.showTypesetDebug,
+      showEraseDebug: settings.showEraseDebug,
+    },
+    diagnosticLogEnabled: settings.enableDebugLog,
+    diagnosticSettings: sanitizeExtensionSettings(settings),
+  };
+}
+
+function prepareExecution(
+  settings: ExtensionSettings = defaultExtensionSettings,
+): () => Promise<ExtensionExecutionSnapshot> {
+  return async () => executionSnapshot(settings);
+}
+
 describe('ImageTranslationExecutionModule', () => {
   it('executes a prepared file through the tagged local-pipeline branch', async () => {
     const translated = new Blob(['translated'], { type: 'image/png' });
     const module = createImageTranslationExecutionModule({
-      loadSettings: async () => ({ ...defaultExtensionSettings }),
+      prepareExecution: prepareExecution(),
       runLocalPipeline: async (_file, _config, onProgress) => {
         onProgress({
           stage: 'detect',
@@ -75,7 +136,7 @@ describe('ImageTranslationExecutionModule', () => {
       },
     });
     expect(progress).toEqual([
-      { phase: 'preparing', operation: 'load-settings' },
+      { phase: 'preparing', operation: 'prepare-execution' },
       { phase: 'preparing', operation: 'acquire-source' },
       {
         phase: 'preparing',
@@ -108,19 +169,23 @@ describe('ImageTranslationExecutionModule', () => {
       translator: 'llm' as const,
       llmProvider: 'gemini' as const,
     };
+    let receivedPreparation: unknown;
     const module = createImageTranslationExecutionModule({
-      loadSettings: async () => geminiSettings,
+      prepareExecution: prepareExecution(geminiSettings),
       downloadImage: async () => ({
         blob: sourceBlob,
         file: new File([sourceBlob], 'source.jpg', { type: sourceBlob.type }),
       }),
-      runWholeImageTranslation: async () => ({
-        image: translated,
-        metadata: {
-          modelLabel: 'Nano Banana Pro',
-          stageTimings: [],
-        },
-      }),
+      runWholeImageTranslation: async (_file, options) => {
+        receivedPreparation = options.preparation;
+        return {
+          image: translated,
+          metadata: {
+            modelLabel: 'Nano Banana Pro',
+            stageTimings: [],
+          },
+        };
+      },
       now: () => 10,
     });
     const progress: ImageTranslationExecutionProgress[] = [];
@@ -150,11 +215,12 @@ describe('ImageTranslationExecutionModule', () => {
         operation: 'generate',
       },
     });
+    expect(receivedPreparation).toEqual(executionSnapshot(geminiSettings).wholeImage);
   });
 
   it('rejects an execution kind excluded by the owner', async () => {
     const module = createImageTranslationExecutionModule({
-      loadSettings: async () => ({
+      prepareExecution: prepareExecution({
         ...defaultExtensionSettings,
         translator: 'llm',
         llmProvider: 'gemini',
@@ -179,7 +245,7 @@ describe('ImageTranslationExecutionModule', () => {
     let reportPipelineProgress!: (progress: PipelineProgress) => void;
     const translated = new Blob(['late'], { type: 'image/png' });
     const module = createImageTranslationExecutionModule({
-      loadSettings: async () => ({ ...defaultExtensionSettings }),
+      prepareExecution: prepareExecution(),
       runLocalPipeline: (_file, _config, onProgress) => {
         reportPipelineProgress = onProgress;
         return new Promise((resolve) => {
@@ -218,7 +284,7 @@ describe('ImageTranslationExecutionModule', () => {
     const noText = completedLocalResult(original);
     noText.status = 'no-translatable-text';
     const module = createImageTranslationExecutionModule({
-      loadSettings: async () => ({ ...defaultExtensionSettings }),
+      prepareExecution: prepareExecution(),
       runLocalPipeline: async () => noText,
     });
 
@@ -240,13 +306,6 @@ describe('ImageTranslationExecutionModule', () => {
     const messages: unknown[] = [];
     const sendMessage = (async (message: { type: string }) => {
       messages.push(message);
-      if (message.type === 'mt:get-settings') {
-        return {
-          ok: true as const,
-          type: 'mt:get-settings' as const,
-          settings: { ...defaultExtensionSettings },
-        };
-      }
       if (message.type === 'mt:download-image') {
         return {
           ok: true as const,
@@ -260,6 +319,7 @@ describe('ImageTranslationExecutionModule', () => {
     }) as typeof sendRuntimeMessage;
     const module = createImageTranslationExecutionModule({
       sendMessage,
+      prepareExecution: prepareExecution(),
       runLocalPipeline: async () => completedLocalResult(new Blob(['done'])),
     });
 
@@ -282,7 +342,7 @@ describe('ImageTranslationExecutionModule', () => {
 
   it('normalizes pipeline-host failures as runtime-scoped execution failures', async () => {
     const module = createImageTranslationExecutionModule({
-      loadSettings: async () => ({ ...defaultExtensionSettings }),
+      prepareExecution: prepareExecution(),
       runLocalPipeline: async () => {
         throw Object.assign(new Error('pipeline host disconnected'), {
           code: 'PIPELINE_HOST_DISCONNECTED',

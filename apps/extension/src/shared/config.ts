@@ -18,6 +18,11 @@ export type GeminiAppAuthMode = 'browser_session' | 'cookies_permission';
 export type GeminiAppModel = 'nano_banana_2' | 'nano_banana_pro';
 
 export const extensionSettingsStorageKey = 'mangaTranslate.settings';
+export const extensionControlStateStorageKey = 'mangaTranslate.extensionControlState';
+export const extensionTranslationDefaultsStorageKey = 'mangaTranslate.translationDefaults';
+export const extensionInterfacePreferencesStorageKey = 'mangaTranslate.interfacePreferences';
+export const extensionProviderCredentialsStorageKey = 'mangaTranslate.providerCredentials';
+export const extensionSettingsRevisionStorageKey = 'mangaTranslate.settingsRevision';
 
 export type LlmProvider = PipelineConfig['llmProvider'];
 export type LlmAuthMode = PipelineConfig['llmAuthMode'];
@@ -443,11 +448,18 @@ export function usesNanoBananaImagePipeline(settings: Pick<ExtensionSettings, 't
   return settings.translator === 'llm' && settings.llmProvider === 'gemini';
 }
 
-export function usesGeminiAppImagePipeline(settings: Pick<ExtensionSettings, 'translator' | 'llmProvider' | 'llmProfiles'>): boolean {
+type GeminiImagePipelineSelection = Pick<
+  ExtensionSettings,
+  'translator' | 'llmProvider'
+> & {
+  llmProfiles: { gemini: Pick<LlmProviderProfile, 'authMode'> };
+};
+
+export function usesGeminiAppImagePipeline(settings: GeminiImagePipelineSelection): boolean {
   return usesNanoBananaImagePipeline(settings) && settings.llmProfiles.gemini.authMode === 'gemini_app';
 }
 
-export function usesGeminiApiImagePipeline(settings: Pick<ExtensionSettings, 'translator' | 'llmProvider' | 'llmProfiles'>): boolean {
+export function usesGeminiApiImagePipeline(settings: GeminiImagePipelineSelection): boolean {
   return usesNanoBananaImagePipeline(settings) && settings.llmProfiles.gemini.authMode === 'api_key';
 }
 

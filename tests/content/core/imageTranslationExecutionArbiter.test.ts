@@ -83,7 +83,7 @@ function crossReportingCancellationExecutionModule(): {
           cancel() {
             if (index !== 0) return;
             for (const listener of listeners[1]) {
-              listener({ phase: 'preparing', operation: 'load-settings' });
+              listener({ phase: 'preparing', operation: 'prepare-execution' });
             }
           },
           progress(listener) {
@@ -239,7 +239,7 @@ describe('image translation execution arbiter', () => {
     await Promise.resolve();
 
     beginActive(arbiter, { owner: 'screenshot', origin: 'explicit' });
-    execution.report({ phase: 'preparing', operation: 'load-settings' });
+    execution.report({ phase: 'preparing', operation: 'prepare-execution' });
     execution.resolve({} as ImageTranslationExecutionResult);
     await expect(task.result).rejects.toMatchObject({
       name: 'TranslationCancelledError',
@@ -257,7 +257,7 @@ describe('image translation execution arbiter', () => {
     });
     const task = activity.start(request);
     await Promise.resolve();
-    execution.report({ phase: 'preparing', operation: 'load-settings' });
+    execution.report({ phase: 'preparing', operation: 'prepare-execution' });
     const replayedAfterAbort: ImageTranslationExecutionProgress[] = [];
     activity.signal.addEventListener('abort', () => {
       task.progress((event) => replayedAfterAbort.push(event));

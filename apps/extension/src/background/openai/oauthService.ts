@@ -263,6 +263,12 @@ export async function refreshOpenAiOAuthTokens(tokens: StoredOpenAiOAuthTokens):
 }
 
 export async function getOpenAiOAuthStatus(): Promise<OpenAiOAuthStatusInfo> {
+  if (!await createExtensionPermissions().contains(AUTHENTICATION_INFO_PERMISSION)) {
+    return {
+      authenticated: false,
+      error: 'OpenAI 登录所需的扩展安装权限已被撤销',
+    };
+  }
   const tokens = await getStoredOpenAiOAuthTokens();
   if (!tokens) {
     const pending = await getPendingOpenAiOAuthLogin();
@@ -334,15 +340,15 @@ export async function loginOpenAiOAuth(): Promise<OpenAiOAuthStatusInfo> {
   }
 }
 
-export async function handleOpenAiOAuthCallbackUrl(tabId: number, rawUrl: string): Promise<void> {
+export async function handleOpenAiOAuthCallbackUrl(tabId: number, rawUrl: string): Promise<boolean> {
   const callback = parseOpenAiOAuthCallbackUrl(rawUrl);
   if (!callback) {
-    return;
+    return false;
   }
 
   const pending = await getPendingOpenAiOAuthLogin();
   if (!pending) {
-    return;
+    return false;
   }
 
   try {
@@ -363,15 +369,17 @@ export async function handleOpenAiOAuthCallbackUrl(tabId: number, rawUrl: string
     await storageSet(openAiOAuthLastErrorStorageKey, toErrorMessage(error));
     await closeOpenAiAuthTab(tabId);
   }
+  return true;
 }
 
-export async function handleOpenAiOAuthTabRemoved(tabId: number): Promise<void> {
+export async function handleOpenAiOAuthTabRemoved(tabId: number): Promise<boolean> {
   const pending = await getPendingOpenAiOAuthLogin();
   if (pending?.tabId !== tabId) {
-    return;
+    return false;
   }
   await clearPendingOpenAiOAuthLogin();
   await storageSet(openAiOAuthLastErrorStorageKey, 'OpenAI 登录窗口已关闭，请重新登录');
+  return true;
 }
 
 async function revokeOpenAiOAuthRefreshToken(refreshToken: string): Promise<void> {

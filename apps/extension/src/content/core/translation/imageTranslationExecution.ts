@@ -16,13 +16,10 @@ import {
   toDiagnosticError,
 } from '@shinobu/diagnostics';
 import {
-  getGeminiAppModelLabel,
-  toPipelineConfig,
-  usesGeminiApiImagePipeline,
-  usesNanoBananaImagePipeline,
-  validateSettings,
-  type ExtensionSettings,
-} from '../../../shared/config';
+  type ExtensionExecutionSnapshot,
+  type ExecutionDisplayPreferences,
+  type WholeImageExecutionPreparation,
+} from '../../../shared/extensionControl';
 import type {
   CloudImageTranslateMetadata,
   RuntimeErrorDetail,
@@ -34,11 +31,14 @@ import {
   emitDiagnosticLogAsync,
 } from '../../../shared/diagnosticLogClient';
 import {
-  sanitizeExtensionSettings,
   sanitizePipelineConfig,
 } from '../../../shared/diagnosticSettings';
 import { getStageLabel, inferFileExtension, toErrorMessage } from '../utils';
 import { runLocalPipeline, type RunLocalPipeline } from './localPipelineClient';
+import {
+  createExecutionPreparationClient,
+  type PrepareImageTranslationExecution,
+} from './executionPreparationClient';
 
 export type ImageTranslationExecutionKind = 'local-pipeline' | 'whole-image';
 
@@ -60,12 +60,7 @@ export type ImageTranslationExecutionRequest = {
 };
 
 export type ImageTranslationDisplayPreferences = {
-  showElapsedTime: boolean;
-  showStageTimingDetails: boolean;
-  showRuntimeStages: boolean;
-  stageTimingCardExpanded: boolean;
-  showTypesetDebug: boolean;
-  showEraseDebug: boolean;
+  [K in keyof ExecutionDisplayPreferences]: ExecutionDisplayPreferences[K];
 };
 
 export type AcquiredImageTranslationSource = {
@@ -76,7 +71,7 @@ export type AcquiredImageTranslationSource = {
 export type ImageTranslationExecutionProgress =
   | {
       phase: 'preparing';
-      operation: 'load-settings' | 'acquire-source';
+      operation: 'prepare-execution' | 'acquire-source';
     }
   | {
       phase: 'preparing';
@@ -145,10 +140,9 @@ export type WholeImageTranslationPortResult = {
 
 export type RunWholeImageTranslation = (
   file: File,
-  settings: ExtensionSettings,
   options: {
     signal: AbortSignal;
-    provider: WholeImageTranslationProvider;
+    preparation: WholeImageExecutionPreparation;
     diagnosticRunId?: string;
   },
 ) => Promise<WholeImageTranslationPortResult>;
@@ -160,7 +154,7 @@ export type DownloadImageForTranslation = (
 
 export type ImageTranslationExecutionDependencies = {
   sendMessage?: typeof sendRuntimeMessage;
-  loadSettings?: (signal: AbortSignal) => Promise<ExtensionSettings>;
+  prepareExecution?: PrepareImageTranslationExecution;
   downloadImage?: DownloadImageForTranslation;
   runLocalPipeline?: RunLocalPipeline;
   runWholeImageTranslation?: RunWholeImageTranslation;
@@ -222,31 +216,6 @@ function throwIfAborted(signal: AbortSignal): void {
   if (signal.aborted) {
     throw signal.reason;
   }
-}
-
-function displayPreferences(settings: ExtensionSettings): ImageTranslationDisplayPreferences {
-  const showElapsedTime = settings.showElapsedTime === true;
-  const showStageTimingDetails = showElapsedTime && settings.showStageTimingDetails === true;
-  return {
-    showElapsedTime,
-    showStageTimingDetails,
-    showRuntimeStages: showStageTimingDetails,
-    stageTimingCardExpanded: settings.stageTimingCardExpanded === true,
-    showTypesetDebug: settings.showTypesetDebug === true,
-    showEraseDebug: settings.showEraseDebug === true,
-  };
-}
-
-function executionKind(settings: ExtensionSettings): ImageTranslationExecutionKind {
-  return usesNanoBananaImagePipeline(settings) ? 'whole-image' : 'local-pipeline';
-}
-
-function resultModelLabel(
-  settings: ExtensionSettings,
-  provider: WholeImageTranslationProvider,
-): string {
-  const modelLabel = getGeminiAppModelLabel(settings.geminiAppModel);
-  return provider === 'gemini-api' ? `Nano Banana API / ${modelLabel}` : modelLabel;
 }
 
 function assertKindAllowed(
@@ -368,20 +337,6 @@ function currentPageDiagnosticUrl(): string {
   return typeof window === 'undefined' ? '' : sanitizeDiagnosticUrl(window.location.href);
 }
 
-function createRuntimeSettingsLoader(
-  sendMessage: typeof sendRuntimeMessage,
-): (signal: AbortSignal) => Promise<ExtensionSettings> {
-  return async (signal) => {
-    throwIfAborted(signal);
-    const response = await sendMessage({ type: 'mt:get-settings' });
-    throwIfAborted(signal);
-    if (!response.ok || response.type !== 'mt:get-settings') {
-      throw new Error(response.ok ? '读取配置失败' : response.error);
-    }
-    return response.settings;
-  };
-}
-
 function createRuntimeImageDownloader(
   sendMessage: typeof sendRuntimeMessage,
 ): DownloadImageForTranslation {
@@ -463,7 +418,7 @@ function createRuntimeImageDownloader(
 function createRuntimeWholeImageTranslator(
   sendMessage: typeof sendRuntimeMessage,
 ): RunWholeImageTranslation {
-  return async (file, _settings, { signal, provider, diagnosticRunId }) => {
+  return async (file, { signal, preparation, diagnosticRunId }) => {
     throwIfAborted(signal);
     const image = {
       base64: await blobToBase64(file),
@@ -471,15 +426,17 @@ function createRuntimeWholeImageTranslator(
       filename: file.name || 'source.png',
     };
     throwIfAborted(signal);
-    const response = provider === 'gemini-api'
+    const response = preparation.provider === 'gemini-api'
       ? await sendMessage({
           type: 'mt:gemini-api-image-translate',
           image,
+          preparation,
           diagnosticRunId,
         })
       : await sendMessage({
           type: 'mt:gemini-app-image-translate',
           image,
+          preparation,
           diagnosticRunId,
         });
     throwIfAborted(signal);
@@ -503,7 +460,8 @@ export function createImageTranslationExecutionModule(
   dependencies: ImageTranslationExecutionDependencies = {},
 ): ImageTranslationExecutionModule {
   const sendMessage = dependencies.sendMessage ?? sendRuntimeMessage;
-  const loadSettings = dependencies.loadSettings ?? createRuntimeSettingsLoader(sendMessage);
+  const prepareExecution = dependencies.prepareExecution
+    ?? createExecutionPreparationClient();
   const downloadImage = dependencies.downloadImage ?? createRuntimeImageDownloader(sendMessage);
   const executeLocalPipeline = dependencies.runLocalPipeline ?? runLocalPipeline;
   const executeWholeImage = dependencies.runWholeImageTranslation
@@ -518,15 +476,13 @@ export function createImageTranslationExecutionModule(
     ImageTranslationExecutionResult
   >(async ({ input: request }, { signal, reportProgress }) => {
     const startedAt = now();
-    reportProgress({ phase: 'preparing', operation: 'load-settings' });
-    let settings: ExtensionSettings;
+    reportProgress({ phase: 'preparing', operation: 'prepare-execution' });
+    let preparation: ExtensionExecutionSnapshot;
     let kind: ImageTranslationExecutionKind;
     try {
-      settings = await loadSettings(signal);
+      preparation = await prepareExecution(signal);
       throwIfAborted(signal);
-      const validationError = validateSettings(settings);
-      if (validationError) throw new Error(validationError);
-      kind = executionKind(settings);
+      kind = preparation.kind;
       assertKindAllowed(kind, request.allowedKinds);
     } catch (error) {
       if (signal.aborted) throw signal.reason;
@@ -536,7 +492,7 @@ export function createImageTranslationExecutionModule(
         retryable: false,
       });
     }
-    const diagnosticRunId = settings.enableDebugLog
+    const diagnosticRunId = preparation.diagnosticLogEnabled
       ? createRunId('run')
       : undefined;
 
@@ -557,10 +513,10 @@ export function createImageTranslationExecutionModule(
     }
     reportProgress({ phase: 'preparing', operation: 'source-ready', source });
 
-    const config: PipelineConfig | undefined = kind === 'local-pipeline'
-      ? toPipelineConfig(settings)
+    const config: PipelineConfig | undefined = preparation.pipelineConfig
+      ? { ...preparation.pipelineConfig }
       : undefined;
-    if (config && settings.translator === 'llm' && request.translationContext) {
+    if (config && config.translator === 'llm' && request.translationContext) {
       config.translationContext = request.translationContext;
     }
     if (config && diagnosticRunId) config.diagnosticRunId = diagnosticRunId;
@@ -574,7 +530,7 @@ export function createImageTranslationExecutionModule(
         data: {
           runStatus: 'running',
           executionKind: kind,
-          settings: sanitizeExtensionSettings(settings),
+          settings: preparation.diagnosticSettings,
           pipelineConfig: config ? sanitizePipelineConfig(config) : undefined,
           pageUrl: currentPageDiagnosticUrl(),
           originalUrl: request.source.kind === 'remote-image'
@@ -587,21 +543,21 @@ export function createImageTranslationExecutionModule(
 
     try {
       if (kind === 'whole-image') {
-        const provider: WholeImageTranslationProvider = usesGeminiApiImagePipeline(settings)
-          ? 'gemini-api'
-          : 'gemini-app';
+        const wholeImage = preparation.wholeImage;
+        if (!wholeImage) throw new Error('整图翻译执行快照不完整');
+        const provider: WholeImageTranslationProvider = wholeImage.provider;
         reportProgress({
           phase: 'executing',
           execution: {
             kind,
             provider,
-            modelLabel: resultModelLabel(settings, provider),
+            modelLabel: wholeImage.modelLabel,
             operation: 'generate',
           },
         });
-        const result = await executeWholeImage(source.file, settings, {
+        const result = await executeWholeImage(source.file, {
           signal,
-          provider,
+          preparation: wholeImage,
           diagnosticRunId,
         });
         throwIfAborted(signal);
@@ -624,7 +580,7 @@ export function createImageTranslationExecutionModule(
           image: result.image,
           metadata: result.metadata,
           source,
-          display: displayPreferences(settings),
+          display: preparation.display,
           diagnosticRunId,
           elapsedMs: now() - startedAt,
         };
@@ -680,7 +636,7 @@ export function createImageTranslationExecutionModule(
         summary: result.summary,
         record: result.record,
         source,
-        display: displayPreferences(settings),
+        display: preparation.display,
         diagnosticRunId,
         elapsedMs: now() - startedAt,
       };

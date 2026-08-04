@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { defaultExtensionSettings } from '../../../apps/extension/src/shared/config';
 import { ScreenshotController } from '../../../apps/extension/src/content/core/screenshot/screenshotController';
 import { PhotoStateStore } from '../../../apps/extension/src/content/core/state/photoStateStore';
 import { CardStateController } from '../../../apps/extension/src/content/core/ui/cardState';
 import { createImageTranslationExecutionModule } from '../../../apps/extension/src/content/core/translation/imageTranslationExecution';
 import { createImageTranslationExecutionArbiter } from '../../../apps/extension/src/content/core/translation/imageTranslationExecutionArbiter';
+import { prepareExecutionFromSettings } from './executionPreparation';
 
 const mocks = vi.hoisted(() => ({
   cropScreenshotToFile: vi.fn(),
@@ -96,7 +96,7 @@ describe('ScreenshotController arbitration', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
     const store = new PhotoStateStore(200, { revokeObjectURL: vi.fn() });
     const executionModule = createImageTranslationExecutionModule({
-      loadSettings: async () => ({ ...defaultExtensionSettings }),
+      prepareExecution: prepareExecutionFromSettings(),
     });
     const startExecution = vi.spyOn(executionModule, 'start');
     const executionArbiter = createImageTranslationExecutionArbiter(executionModule);

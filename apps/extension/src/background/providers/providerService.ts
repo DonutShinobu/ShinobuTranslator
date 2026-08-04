@@ -1,10 +1,5 @@
 import {
-  getGeminiAppModelLabel,
-  resolveGeminiApiImageModel,
   resolveLlmBaseUrl,
-  usesGeminiApiImagePipeline,
-  usesGeminiAppImagePipeline,
-  validateSettings,
 } from "../../shared/config";
 import type { ExtensionSettings } from "../../shared/config";
 import {
@@ -161,19 +156,13 @@ export async function handleLlmChatCompletions(message: LlmChatMessage): Promise
 
 export async function handleGeminiAppImageTranslate(message: GeminiAppImageMessage): Promise<GeminiAppImageResponse> {
   const settings = await getSettings();
-  const validationError = usesGeminiAppImagePipeline(settings)
-    ? validateSettings(settings)
-    : '请先在扩展弹窗中选择“大模型”，将 LLM 提供商设为 Nano Banana，并选择 Gemini 登录认证';
-  if (validationError) {
-    throw new Error(validationError);
-  }
   await createExtensionPermissions().assertGranted(AUTHENTICATION_INFO_PERMISSION);
   const startedAt = Date.now();
   const baseLogData = {
     provider: 'gemini',
     authMode: 'gemini_app',
     endpoint: sanitizeDiagnosticUrl(geminiAppUrl),
-    modelLabel: getGeminiAppModelLabel(settings.geminiAppModel),
+    modelLabel: message.preparation.modelLabel,
     image: toImageTranslateDiagnosticData(message.image),
     backgroundDirectFetch: true,
     contentDirectFetch: false,
@@ -191,7 +180,7 @@ export async function handleGeminiAppImageTranslate(message: GeminiAppImageMessa
       imageBase64: message.image.base64,
       contentType: message.image.contentType,
       filename: message.image.filename,
-      settings,
+      preparation: message.preparation,
     });
     await recordBackgroundDiagnosticLog(settings, {
       runId: message.diagnosticRunId,
@@ -238,24 +227,21 @@ export async function handleGeminiAppImageTranslate(message: GeminiAppImageMessa
   }
 }
 
-export async function handleGeminiApiImageTranslate(message: GeminiApiImageMessage): Promise<GeminiApiImageResponse> {
+export async function handleGeminiApiImageTranslate(
+  message: GeminiApiImageMessage,
+  apiKey: string,
+): Promise<GeminiApiImageResponse> {
   const settings = await getSettings();
-  const validationError = usesGeminiApiImagePipeline(settings)
-    ? validateSettings(settings)
-    : '请先在扩展弹窗中选择“大模型”，将 LLM 提供商设为 Nano Banana，并选择 API Key 认证';
-  if (validationError) {
-    throw new Error(validationError);
-  }
   await createExtensionPermissions().assertGranted(AUTHENTICATION_INFO_PERMISSION);
   const startedAt = Date.now();
-  const model = resolveGeminiApiImageModel(settings.geminiAppModel);
-  const endpoint = `${resolveLlmBaseUrl(settings).replace(/\/+$/u, '')}/models/${encodeURIComponent(model)}:generateContent`;
+  const model = message.preparation.model;
+  const endpoint = `${message.preparation.baseUrl.replace(/\/+$/u, '')}/models/${encodeURIComponent(model)}:generateContent`;
   const baseLogData = {
     provider: 'gemini',
     authMode: 'api_key',
     endpoint: sanitizeDiagnosticUrl(endpoint),
     model,
-    modelLabel: getGeminiAppModelLabel(settings.geminiAppModel),
+    modelLabel: message.preparation.modelLabel,
     image: toImageTranslateDiagnosticData(message.image),
     backgroundDirectFetch: true,
     contentDirectFetch: false,
@@ -273,7 +259,8 @@ export async function handleGeminiApiImageTranslate(message: GeminiApiImageMessa
       imageBase64: message.image.base64,
       contentType: message.image.contentType,
       filename: message.image.filename,
-      settings,
+      preparation: message.preparation,
+      apiKey,
     });
     await recordBackgroundDiagnosticLog(settings, {
       runId: message.diagnosticRunId,

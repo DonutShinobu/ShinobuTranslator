@@ -130,6 +130,12 @@ export type ExtensionBrowserApi = {
       request: ExtensionPermissionRequest,
       callback?: (result: boolean) => void,
     ) => Promise<boolean> | void;
+    onAdded?: {
+      addListener: (listener: (permissions: ExtensionPermissionRequest) => void) => void;
+    };
+    onRemoved?: {
+      addListener: (listener: (permissions: ExtensionPermissionRequest) => void) => void;
+    };
   };
   storage?: {
     local?: {
@@ -156,7 +162,11 @@ export type ExtensionBrowserApi = {
     remove?: (tabId: number, callback?: () => void) => Promise<void> | void;
     onUpdated?: {
       addListener: (
-        listener: (tabId: number, changeInfo: { url?: string }, tab: unknown) => void,
+        listener: (
+          tabId: number,
+          changeInfo: { url?: string; status?: 'loading' | 'complete' },
+          tab: { url?: string },
+        ) => void,
       ) => void;
     };
     onRemoved?: {
@@ -207,6 +217,9 @@ export type ExtensionBrowserApi = {
       details: { url?: string; domain?: string; name?: string },
       callback?: (cookies: ExtensionCookie[]) => void,
     ) => Promise<ExtensionCookie[]> | void;
+    onChanged?: {
+      addListener: (listener: (changeInfo: { cookie: ExtensionCookie }) => void) => void;
+    };
   };
 };
 

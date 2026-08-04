@@ -1,7 +1,3 @@
-import {
-  defaultExtensionSettings,
-  extensionSettingsStorageKey,
-} from '../shared/config';
 import { getExtensionApi } from '../shared/extensionRuntime';
 import type { ExtensionMessageSender } from '../shared/extensionRuntime';
 import {
@@ -13,8 +9,11 @@ import {
 } from '../shared/messages';
 import { toErrorMessage } from '../shared/utils';
 import { getGeminiAppRawResponse } from './geminiAppClient';
-import { storageSet } from './storage/chromeStorage';
-import { getSettings, setSettings } from './settings/settingsStore';
+import {
+  getSettings,
+  getSettingsState,
+  setSettingsState,
+} from './settings/settingsStore';
 import {
   clearDiagnosticLog,
   exportDiagnosticLog,
@@ -42,14 +41,41 @@ import { routeBackgroundMessage } from './messages/router';
 import type { BackgroundServices } from './messages/router';
 import { registerPipelineHostBroker } from './localPipeline/offscreenBroker';
 import type { PipelineHostLifecycle } from './localPipeline/pipelineHostLifecycle';
+import { createExtensionSettingsRepository } from './extensionControl/settingsRepository';
+import { createTranslationConfigurationModule } from './extensionControl/translationConfiguration';
+import { createProviderAccessModule } from './extensionControl/providerAccess';
+import { createExtensionControlModule } from './extensionControl/extensionControl';
+import { registerExtensionControlPort } from './extensionControl/extensionControlPort';
 
 const imageDownloader = createImageDownloader();
+const settingsRepository = createExtensionSettingsRepository({
+  readState: getSettingsState,
+  writeState: async (state) => {
+    await setSettingsState(state);
+  },
+});
+const translationConfiguration = createTranslationConfigurationModule(settingsRepository);
+const providerAccess = createProviderAccessModule(settingsRepository, {
+  openAi: {
+    status: getOpenAiOAuthStatus,
+    login: loginOpenAiOAuth,
+    logout: logoutOpenAiOAuth,
+  },
+  gemini: {
+    status: readGeminiAppAuthStatus,
+    login: loginGeminiApp,
+  },
+});
+const extensionControl = createExtensionControlModule(
+  translationConfiguration,
+  providerAccess,
+);
 
 const services: BackgroundServices = {
   settings: {
     get: getSettings,
-    set: setSettings,
   },
+  extensionControl,
   diagnostics: {
     record: recordDiagnosticLogEvent,
     export: exportDiagnosticLog,
@@ -59,19 +85,13 @@ const services: BackgroundServices = {
     download: imageDownloader.download,
     capture: captureVisibleTab,
   },
-  openAi: {
-    status: getOpenAiOAuthStatus,
-    login: loginOpenAiOAuth,
-    logout: logoutOpenAiOAuth,
-  },
-  geminiAuth: {
-    status: readGeminiAppAuthStatus,
-    login: loginGeminiApp,
-  },
   providers: {
     llm: handleLlmChatCompletions,
     geminiAppImage: handleGeminiAppImageTranslate,
-    geminiApiImage: handleGeminiApiImageTranslate,
+    geminiApiImage: async (message) => handleGeminiApiImageTranslate(
+      message,
+      await providerAccess.requireApiKey('gemini'),
+    ),
   },
 };
 
@@ -115,6 +135,7 @@ export function initializeBackground(lifecycle: PipelineHostLifecycle): void {
   initialized = true;
 
   registerPipelineHostBroker(chromeApi, lifecycle);
+  registerExtensionControlPort(chromeApi, extensionControl);
 
   chromeApi.runtime.onMessage.addListener((message: unknown, sender: ExtensionMessageSender, sendResponse: (response: unknown) => void) => {
     if (!isRuntimeMessage(message)) {
@@ -128,19 +149,37 @@ export function initializeBackground(lifecycle: PipelineHostLifecycle): void {
     return true;
   });
 
-  chromeApi.tabs?.onUpdated?.addListener((tabId, changeInfo) => {
+  chromeApi.tabs?.onUpdated?.addListener((tabId, changeInfo, tab) => {
     if (typeof changeInfo.url === 'string') {
-      void handleOpenAiOAuthCallbackUrl(tabId, changeInfo.url);
+      void handleOpenAiOAuthCallbackUrl(tabId, changeInfo.url)
+        .then((changed) => changed ? extensionControl.refreshProviderAccess() : undefined);
+    }
+    const tabUrl = changeInfo.url ?? tab.url ?? '';
+    if (changeInfo.status === 'complete' && tabUrl.startsWith('https://gemini.google.com/')) {
+      void extensionControl.refreshProviderAccess();
     }
   });
 
   chromeApi.tabs?.onRemoved?.addListener((tabId) => {
-    void handleOpenAiOAuthTabRemoved(tabId);
+    void handleOpenAiOAuthTabRemoved(tabId)
+      .then((changed) => changed ? extensionControl.refreshProviderAccess() : undefined);
+  });
+
+  chromeApi.cookies?.onChanged?.addListener(({ cookie }) => {
+    if (cookie.domain.includes('google.com')) {
+      void extensionControl.refreshProviderAccess();
+    }
+  });
+
+  chromeApi.permissions?.onAdded?.addListener(() => {
+    void extensionControl.refreshProviderAccess();
+  });
+
+  chromeApi.permissions?.onRemoved?.addListener(() => {
+    void extensionControl.refreshProviderAccess();
   });
 
   void getSettings()
-    .catch(() => defaultExtensionSettings)
-    .then((settings) => storageSet(extensionSettingsStorageKey, settings))
     .catch(() => undefined);
 
   registerMenusAndCommands();

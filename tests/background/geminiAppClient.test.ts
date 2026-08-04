@@ -9,7 +9,6 @@ import {
   parseGeminiAccountStatus,
   runGeminiAppImageTranslate,
 } from "../../apps/extension/src/background/geminiAppClient";
-import { defaultExtensionSettings } from "../../apps/extension/src/shared/config";
 import type { GeminiAppModel } from "../../packages/image-pipeline/src/types";
 
 function createCandidateWithGeneratedImage(url: string): unknown[] {
@@ -102,10 +101,12 @@ async function captureGenerateRequest(model: GeminiAppModel): Promise<CapturedGe
     imageBase64: "AQID",
     contentType: "image/png",
     filename: "shinobu-protocol-test.png",
-    settings: {
-      ...defaultExtensionSettings,
-      geminiAppAuthMode: "browser_session",
-      geminiAppModel: model,
+    preparation: {
+      provider: 'gemini-app',
+      authMode: 'browser_session',
+      model,
+      modelLabel: getGeminiAppModelMetadataLabel(model),
+      prompt: 'translate',
     },
   });
   if (!captured) {
@@ -180,10 +181,12 @@ describe("Gemini App response parsing", () => {
         imageBase64: "AQID",
         contentType: "image/png",
         filename: "shinobu-quota-response-test.png",
-        settings: {
-          ...defaultExtensionSettings,
-          geminiAppAuthMode: "browser_session",
-          geminiAppModel: "nano_banana_2",
+        preparation: {
+          provider: 'gemini-app',
+          authMode: 'browser_session',
+          model: 'nano_banana_2',
+          modelLabel: getGeminiAppModelMetadataLabel('nano_banana_2'),
+          prompt: 'translate',
         },
       });
     } catch (error) {

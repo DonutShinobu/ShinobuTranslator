@@ -4,8 +4,8 @@ import { ScreenshotController } from '../../../apps/extension/src/content/core/s
 import { PhotoStateStore } from '../../../apps/extension/src/content/core/state/photoStateStore';
 import { createImageTranslationExecutionModule } from '../../../apps/extension/src/content/core/translation/imageTranslationExecution';
 import { createImageTranslationExecutionArbiter } from '../../../apps/extension/src/content/core/translation/imageTranslationExecutionArbiter';
-import { defaultExtensionSettings } from '../../../apps/extension/src/shared/config';
 import { CardStateController } from '../../../apps/extension/src/content/core/ui/cardState';
+import { prepareExecutionFromSettings } from './executionPreparation';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -22,7 +22,7 @@ describe('ScreenshotController', () => {
     const controller = new ScreenshotController(
       new PhotoStateStore(200, { revokeObjectURL: vi.fn() }),
       createImageTranslationExecutionArbiter(createImageTranslationExecutionModule({
-        loadSettings: async () => ({ ...defaultExtensionSettings }),
+        prepareExecution: prepareExecutionFromSettings(),
       })),
       new CardStateController(),
       requestSelection,
@@ -41,7 +41,7 @@ describe('ScreenshotController', () => {
     const controller = new ScreenshotController(
       new PhotoStateStore(200, { revokeObjectURL: vi.fn() }),
       createImageTranslationExecutionArbiter(createImageTranslationExecutionModule({
-        loadSettings: async () => ({ ...defaultExtensionSettings }),
+        prepareExecution: prepareExecutionFromSettings(),
       })),
       new CardStateController(),
       () => selection.promise,

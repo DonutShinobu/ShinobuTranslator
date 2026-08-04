@@ -5,6 +5,8 @@ import type { ExtensionMessageSender } from '../../apps/extension/src/shared/ext
 import { createDiagnosticEvent } from '../../packages/diagnostics/src/diagnosticLog';
 import type { DiagnosticLogEvent } from '../../packages/diagnostics/src/diagnosticLog';
 import type { RuntimeMessage } from '../../apps/extension/src/shared/messages';
+import { toExtensionSettingsProjection } from '../../apps/extension/src/shared/extensionControl';
+import type { ExtensionControlProjection } from '../../apps/extension/src/shared/extensionControl';
 import {
   routeBackgroundMessage,
   type BackgroundServices,
@@ -25,10 +27,32 @@ const diagnosticLog = {
 };
 
 function createServices(settings: ExtensionSettings = defaultExtensionSettings): BackgroundServices {
+  const controlProjection: ExtensionControlProjection = {
+    revision: 3,
+    settings: toExtensionSettingsProjection(settings),
+    access: {
+      apiKeys: Object.fromEntries(
+        Object.keys(settings.llmProfiles).map((provider) => [provider, { configured: false }]),
+      ) as Record<keyof typeof settings.llmProfiles, { configured: boolean }>,
+      openAiOAuth: {
+        state: 'action-required' as const,
+        availableActions: ['refresh', 'login'],
+      },
+      geminiApp: {
+        state: 'action-required' as const,
+        availableActions: ['refresh', 'login'],
+      },
+    },
+  };
   return {
     settings: {
       get: vi.fn(async () => settings),
-      set: vi.fn(async (nextSettings) => nextSettings),
+    },
+    extensionControl: {
+      handle: vi.fn(async () => ({
+        kind: 'control-projection' as const,
+        projection: controlProjection,
+      })),
     },
     diagnostics: {
       record: vi.fn(async (_event: DiagnosticLogEvent) => {}),
@@ -49,15 +73,6 @@ function createServices(settings: ExtensionSettings = defaultExtensionSettings):
         contentType: 'image/png',
         sourceUrl: 'https://example.com/page',
       })),
-    },
-    openAi: {
-      status: vi.fn(async () => ({ authenticated: true, email: 'user@example.com' })),
-      login: vi.fn(async () => ({ authenticated: false, pending: true })),
-      logout: vi.fn(async () => ({ authenticated: false })),
-    },
-    geminiAuth: {
-      status: vi.fn(async (_settings: ExtensionSettings) => ({ authenticated: true })),
-      login: vi.fn(async (_settings: ExtensionSettings) => ({ authenticated: false, pending: true })),
     },
     providers: {
       llm: vi.fn(async (_message: MessageOf<'mt:llm-chat-completions'>) => ({
@@ -84,24 +99,19 @@ function createServices(settings: ExtensionSettings = defaultExtensionSettings):
 }
 
 describe('routeBackgroundMessage', () => {
-  it('routes settings reads and normalized writes with the original response discriminants', async () => {
+  it('routes extension control commands through the domain transport adapter', async () => {
     const services = createServices();
-    const nextSettings = { ...defaultExtensionSettings, targetLang: 'zh-CHT' as const };
+    const command = { kind: 'read' as const };
 
-    await expect(routeBackgroundMessage({ type: 'mt:get-settings' }, sender, services)).resolves.toEqual({
-      ok: true,
-      type: 'mt:get-settings',
-      settings: defaultExtensionSettings,
-    });
     await expect(routeBackgroundMessage({
-      type: 'mt:set-settings',
-      settings: nextSettings,
-    }, sender, services)).resolves.toEqual({
+      type: 'mt:extension-control',
+      command,
+    }, sender, services)).resolves.toMatchObject({
       ok: true,
-      type: 'mt:set-settings',
-      settings: nextSettings,
+      type: 'mt:extension-control',
+      result: { kind: 'control-projection' },
     });
-    expect(services.settings.set).toHaveBeenCalledWith(nextSettings);
+    expect(services.extensionControl.handle).toHaveBeenCalledWith(command);
   });
 
   it('keeps diagnostic writes best-effort and preserves export/clear responses', async () => {
@@ -156,32 +166,6 @@ describe('routeBackgroundMessage', () => {
     expect(services.images.capture).toHaveBeenCalledWith(sender);
   });
 
-  it('routes OAuth and Gemini auth through injected services', async () => {
-    const services = createServices();
-    await expect(routeBackgroundMessage({ type: 'mt:openai-oauth-status' }, sender, services)).resolves.toMatchObject({
-      ok: true,
-      type: 'mt:openai-oauth-status',
-      status: { authenticated: true },
-    });
-    await expect(routeBackgroundMessage({ type: 'mt:openai-oauth-login' }, sender, services)).resolves.toMatchObject({
-      type: 'mt:openai-oauth-login',
-      status: { pending: true },
-    });
-    await expect(routeBackgroundMessage({ type: 'mt:openai-oauth-logout' }, sender, services)).resolves.toMatchObject({
-      type: 'mt:openai-oauth-logout',
-      status: { authenticated: false },
-    });
-    await expect(routeBackgroundMessage({ type: 'mt:gemini-app-auth-status' }, sender, services)).resolves.toMatchObject({
-      type: 'mt:gemini-app-auth-status',
-      status: { authenticated: true },
-    });
-    await expect(routeBackgroundMessage({ type: 'mt:gemini-app-auth-login' }, sender, services)).resolves.toMatchObject({
-      type: 'mt:gemini-app-auth-login',
-      status: { pending: true },
-    });
-    expect(services.geminiAuth.login).toHaveBeenCalledWith(defaultExtensionSettings);
-  });
-
   it('delegates provider messages and preserves external error identity', async () => {
     const services = createServices();
     const llmMessage: MessageOf<'mt:llm-chat-completions'> = {
@@ -195,6 +179,13 @@ describe('routeBackgroundMessage', () => {
     const appMessage: MessageOf<'mt:gemini-app-image-translate'> = {
       type: 'mt:gemini-app-image-translate',
       image: { base64: 'image', contentType: 'image/png', filename: 'image.png' },
+      preparation: {
+        provider: 'gemini-app',
+        model: 'nano_banana_pro',
+        modelLabel: 'Nano Banana Pro',
+        prompt: 'translate',
+        authMode: 'cookies_permission',
+      },
     };
     await routeBackgroundMessage(appMessage, sender, services);
     expect(services.providers.geminiAppImage).toHaveBeenCalledWith(appMessage);

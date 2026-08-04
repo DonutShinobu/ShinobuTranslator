@@ -4,7 +4,7 @@ import { PhotoStateStore } from '../../../apps/extension/src/content/core/state/
 import { ImageTranslationController } from '../../../apps/extension/src/content/core/translation/imageTranslationController';
 import { createImageTranslationExecutionModule } from '../../../apps/extension/src/content/core/translation/imageTranslationExecution';
 import { createImageTranslationExecutionArbiter } from '../../../apps/extension/src/content/core/translation/imageTranslationExecutionArbiter';
-import { defaultExtensionSettings } from '../../../apps/extension/src/shared/config';
+import { prepareExecutionFromSettings } from '../core/executionPreparation';
 
 describe('twitterAdapter.observe', () => {
   afterEach(() => {
@@ -248,7 +248,7 @@ describe('twitterAdapter.findImages', () => {
     const controller = new ImageTranslationController(
       store,
       createImageTranslationExecutionArbiter(createImageTranslationExecutionModule({
-        loadSettings: async () => ({ ...defaultExtensionSettings }),
+        prepareExecution: prepareExecutionFromSettings(),
       })),
       {
         resolveTarget: (key) => key === firstTarget.key ? firstTarget : secondTarget,

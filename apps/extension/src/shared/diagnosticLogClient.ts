@@ -7,6 +7,8 @@ import {
   type DiagnosticLogEventInput,
   type DiagnosticLogContext,
 } from '@shinobu/diagnostics';
+import type { DiagnosticLogTextExport } from '@shinobu/diagnostics';
+import { sendRuntimeMessage } from './messages';
 
 const sessionId = createDiagnosticId('session');
 
@@ -75,4 +77,19 @@ export function emitDiagnosticError(input: Omit<DiagnosticLogEventInput, 'level'
     level: 'error',
     error: toDiagnosticError(input.error),
   });
+}
+
+export async function exportDiagnosticLog(): Promise<DiagnosticLogTextExport> {
+  const response = await sendRuntimeMessage({ type: 'mt:diagnostic-log-export' });
+  if (!response.ok || response.type !== 'mt:diagnostic-log-export') {
+    throw new Error(response.ok ? '导出日志失败' : response.error);
+  }
+  return response.log;
+}
+
+export async function clearDiagnosticLog(): Promise<void> {
+  const response = await sendRuntimeMessage({ type: 'mt:diagnostic-log-clear' });
+  if (!response.ok || response.type !== 'mt:diagnostic-log-clear') {
+    throw new Error(response.ok ? '清空日志失败' : response.error);
+  }
 }

@@ -1,18 +1,23 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type Dispatch,
+  type KeyboardEvent,
+  type SetStateAction,
+} from 'react';
 import {
   defaultExtensionSettings,
   geminiAppModelOptions,
   llmBuiltInProviderDefinitions,
   llmProviderOptions,
-  normalizeSettings,
   optimizedGeminiAppPromptTemplate,
   usesGeminiApiImagePipeline,
   usesGeminiAppImagePipeline,
   usesNanoBananaImagePipeline,
   type LlmAuthMode,
-  type LlmProviderProfile,
   type LlmProvider,
-  type ExtensionSettings,
 } from '../shared/config';
 import { getExtensionRuntime } from '../shared/extensionRuntime';
 import {
@@ -21,8 +26,26 @@ import {
   resolveLlmThinkingLevel,
   type LlmThinkingLevel,
 } from '@shinobu/text-translation';
-import { sendRuntimeMessage } from '../shared/messages';
 import { downloadText } from '../shared/utils';
+import {
+  clearDiagnosticLog as clearStoredDiagnosticLog,
+  exportDiagnosticLog,
+} from '../shared/diagnosticLogClient';
+import {
+  toExtensionSettingsProjection,
+  type ExtensionControlProjection,
+  type ExtensionSettingsProjection,
+  type ProviderAuthorizationAction,
+  type ProviderAuthorizationProjection,
+  type ProviderAuthorizationTarget,
+  type PublicLlmProviderProfile,
+} from '../shared/extensionControl';
+import {
+  createExtensionControlClient,
+  isExtensionSettingsConflict,
+  rebaseExtensionSettingsProjection,
+  type ExtensionControlClient,
+} from './extensionControlClient';
 
 type SaveStatus = {
   kind: 'idle' | 'saving' | 'success' | 'error';
@@ -169,32 +192,18 @@ const defaultShortcutState: ShortcutState = {
   'translate-hover-target': '',
 };
 
-const geminiAppAuthCacheKey = 'shinobu.geminiApp.authenticated';
-
-function readGeminiAppAuthCache(): boolean {
-  try {
-    return window.localStorage.getItem(geminiAppAuthCacheKey) === 'true';
-  } catch {
-    return false;
-  }
-}
-
-function writeGeminiAppAuthCache(authenticated: boolean): void {
-  try {
-    window.localStorage.setItem(geminiAppAuthCacheKey, authenticated ? 'true' : 'false');
-  } catch {
-    // Cache is a UI hint only; failure should not block login or settings.
-  }
-}
-
 function ApiKeyField({
   value,
   onChange,
+  configured,
+  onClear,
   disabled,
   placeholder,
 }: {
   value: string;
   onChange: (value: string) => void;
+  configured: boolean;
+  onClear: () => void;
   disabled?: boolean;
   placeholder: string;
 }) {
@@ -226,6 +235,18 @@ function ApiKeyField({
         >
           {revealed ? <IconEye /> : <IconEyeOff />}
         </button>
+        {configured ? (
+          <button
+            className="api-key-visibility-button"
+            type="button"
+            onClick={onClear}
+            disabled={disabled}
+            title="清除已保存的 API Key"
+            aria-label="清除已保存的 API Key"
+          >
+            <IconTrash />
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -545,7 +566,9 @@ function SelectControl<T extends string>({
 }
 
 export function App() {
-  const [settings, setSettings] = useState<ExtensionSettings>(defaultExtensionSettings);
+  const [settings, setSettings] = useState<ExtensionSettingsProjection>(
+    toExtensionSettingsProjection(defaultExtensionSettings),
+  );
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<SaveStatus>({ kind: 'idle', message: '' });
   const [shortcutsLoading, setShortcutsLoading] = useState(true);
@@ -562,23 +585,77 @@ export function App() {
   const [geminiAppStatus, setGeminiAppStatus] = useState<OpenAiOAuthViewState>({
     loading: false,
     busy: false,
-    authenticated: readGeminiAppAuthCache(),
+    authenticated: false,
     pending: false,
     error: '',
   });
   const hasHydratedRef = useRef(false);
-  const geminiAppAutoCheckAttemptedRef = useRef(false);
+  const committedSettingsRef = useRef<ExtensionSettingsProjection>(
+    toExtensionSettingsProjection(defaultExtensionSettings),
+  );
+  const settingsDirtyRef = useRef(false);
+  const skipNextSettingsPersistenceRef = useRef(false);
   const nextSaveShowsStatusRef = useRef(false);
   const saveRequestIdRef = useRef(0);
+  const controlClientRef = useRef<ExtensionControlClient | null>(null);
+  const [apiKeyConfigured, setApiKeyConfigured] = useState(
+    Object.fromEntries(
+      llmProviderOptions.map(({ value }) => [value, false]),
+    ) as Record<LlmProvider, boolean>,
+  );
+  const [apiKeyDrafts, setApiKeyDrafts] = useState<Partial<Record<LlmProvider, string>>>({});
+
+  function getControlClient(): ExtensionControlClient {
+    controlClientRef.current ??= createExtensionControlClient();
+    return controlClientRef.current;
+  }
+
+  function applyAuthorizationProjection(
+    projection: ProviderAuthorizationProjection,
+  ): OpenAiOAuthViewState {
+    return {
+      loading: false,
+      busy: false,
+      authenticated: projection.state === 'ready',
+      pending: projection.state === 'authorizing',
+      email: projection.identity?.email,
+      planType: projection.identity?.planType,
+      error: projection.error ?? '',
+    };
+  }
+
+  function applyAccessProjection(projection: ExtensionControlProjection): void {
+    setApiKeyConfigured(Object.fromEntries(
+      Object.entries(projection.access.apiKeys).map(([provider, state]) => [
+        provider,
+        state.configured,
+      ]),
+    ) as Record<LlmProvider, boolean>);
+    setOpenAiStatus(applyAuthorizationProjection(projection.access.openAiOAuth));
+    setGeminiAppStatus(applyAuthorizationProjection(projection.access.geminiApp));
+  }
 
   useEffect(() => {
-    async function loadSettings(): Promise<void> {
-      try {
-        const response = await sendRuntimeMessage({ type: 'mt:get-settings' });
-        if (!response.ok || response.type !== 'mt:get-settings') {
-          throw new Error(response.ok ? '读取配置失败' : response.error);
+    const control = getControlClient();
+    const unsubscribe = control.subscribe((projection) => {
+      applyAccessProjection(projection);
+      if (!settingsDirtyRef.current) {
+        control.adoptProjection(projection);
+        committedSettingsRef.current = projection.settings;
+        if (hasHydratedRef.current) {
+          skipNextSettingsPersistenceRef.current = true;
         }
-        setSettings(normalizeSettings(response.settings));
+        setSettings(projection.settings);
+      }
+    });
+    async function loadControlProjection(): Promise<void> {
+      try {
+        const projection = await control.read();
+        settingsDirtyRef.current = false;
+        skipNextSettingsPersistenceRef.current = false;
+        committedSettingsRef.current = projection.settings;
+        setSettings(projection.settings);
+        applyAccessProjection(projection);
       } catch (error) {
         setStatus({
           kind: 'error',
@@ -588,7 +665,8 @@ export function App() {
         setLoading(false);
       }
     }
-    void loadSettings();
+    void loadControlProjection();
+    return unsubscribe;
   }, []);
 
   useEffect(() => {
@@ -619,10 +697,13 @@ export function App() {
   }, []);
 
   function queueSaveStatus(options: SettingsUpdateOptions = {}): void {
+    settingsDirtyRef.current = true;
     nextSaveShowsStatusRef.current = nextSaveShowsStatusRef.current || options.showSaveStatus === true;
   }
 
-  function applyNanoBananaDebugLocks(next: ExtensionSettings): ExtensionSettings {
+  function applyNanoBananaDebugLocks(
+    next: ExtensionSettingsProjection,
+  ): ExtensionSettingsProjection {
     if (!usesNanoBananaImagePipeline(next)) return next;
     return {
       ...next,
@@ -633,9 +714,9 @@ export function App() {
     };
   }
 
-  function updateField<K extends keyof ExtensionSettings>(
+  function updateField<K extends keyof ExtensionSettingsProjection>(
     key: K,
-    value: ExtensionSettings[K],
+    value: ExtensionSettingsProjection[K],
     options?: SettingsUpdateOptions,
   ): void {
     queueSaveStatus(options);
@@ -654,7 +735,10 @@ export function App() {
     }));
   }
 
-  function updateActiveLlmProfile(patch: Partial<LlmProviderProfile>, options?: SettingsUpdateOptions): void {
+  function updateActiveLlmProfile(
+    patch: Partial<PublicLlmProviderProfile>,
+    options?: SettingsUpdateOptions,
+  ): void {
     queueSaveStatus(options);
     setSettings((prev) => ({
       ...prev,
@@ -668,7 +752,30 @@ export function App() {
     }));
   }
 
-  function updateTranslator(translator: ExtensionSettings['translator']): void {
+  function updateActiveApiKey(value: string): void {
+    setStatus({ kind: 'saving', message: '正在安全保存 API Key...' });
+    setApiKeyDrafts((current) => ({
+      ...current,
+      [settings.llmProvider]: value,
+    }));
+  }
+
+  async function clearActiveApiKey(): Promise<void> {
+    const provider = settings.llmProvider;
+    try {
+      const projection = await getControlClient().clearApiKey(provider);
+      applyAccessProjection(projection);
+      setApiKeyDrafts((current) => ({ ...current, [provider]: undefined }));
+      setStatus({ kind: 'success', message: 'API Key 已清除' });
+    } catch (error) {
+      setStatus({
+        kind: 'error',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  function updateTranslator(translator: ExtensionSettingsProjection['translator']): void {
     queueSaveStatus();
     setSettings((prev) => applyNanoBananaDebugLocks({
       ...prev,
@@ -711,136 +818,78 @@ export function App() {
     updateField('geminiAppPromptTemplate', optimizedGeminiAppPromptTemplate, { showSaveStatus: true });
   }
 
-  function applyOpenAiStatus(next: {
-    authenticated: boolean;
-    pending?: boolean;
-    email?: string;
-    planType?: string;
-    error?: string;
-  }): void {
-    setOpenAiStatus({
-      loading: false,
-      busy: false,
-      authenticated: next.authenticated,
-      pending: next.pending ?? false,
-      email: next.email,
-      planType: next.planType,
-      error: next.error ?? '',
-    });
-  }
-
-  async function refreshOpenAiOAuthStatus(): Promise<void> {
-    setOpenAiStatus((prev) => ({ ...prev, loading: true, error: '' }));
+  async function runProviderAccessAction(
+    target: ProviderAuthorizationTarget,
+    action: ProviderAuthorizationAction,
+    setViewState: Dispatch<SetStateAction<OpenAiOAuthViewState>>,
+    busyField: 'loading' | 'busy',
+    onSuccess?: (projection: ExtensionControlProjection) => void,
+  ): Promise<void> {
+    setViewState((previous) => ({
+      ...previous,
+      [busyField]: true,
+      error: '',
+    }));
     try {
-      const response = await sendRuntimeMessage({ type: 'mt:openai-oauth-status' });
-      if (!response.ok || response.type !== 'mt:openai-oauth-status') {
-        throw new Error(response.ok ? '读取 OpenAI 登录状态失败' : response.error);
-      }
-      applyOpenAiStatus(response.status);
+      const projection = await getControlClient().performAccess(target, action);
+      applyAccessProjection(projection);
+      onSuccess?.(projection);
     } catch (error) {
-      setOpenAiStatus({
+      setViewState((previous) => ({
+        ...previous,
         loading: false,
         busy: false,
-        authenticated: false,
-        pending: false,
         error: error instanceof Error ? error.message : String(error),
-      });
+      }));
     }
   }
 
-  async function loginOpenAiOAuth(): Promise<void> {
-    setOpenAiStatus((prev) => ({ ...prev, busy: true, error: '' }));
-    try {
-      const response = await sendRuntimeMessage({ type: 'mt:openai-oauth-login' });
-      if (!response.ok || response.type !== 'mt:openai-oauth-login') {
-        throw new Error(response.ok ? 'OpenAI 登录失败' : response.error);
-      }
-      applyOpenAiStatus(response.status);
-      setStatus({
+  function refreshOpenAiOAuthStatus(): Promise<void> {
+    return runProviderAccessAction('openai-oauth', 'refresh', setOpenAiStatus, 'loading');
+  }
+
+  function loginOpenAiOAuth(): Promise<void> {
+    return runProviderAccessAction(
+      'openai-oauth',
+      'login',
+      setOpenAiStatus,
+      'busy',
+      (projection) => setStatus({
         kind: 'success',
-        message: response.status.authenticated ? 'OpenAI 已登录' : 'OpenAI 登录页已打开，请在新标签页完成授权',
-      });
-    } catch (error) {
-      setOpenAiStatus((prev) => ({
-        ...prev,
-        busy: false,
-        error: error instanceof Error ? error.message : String(error),
-      }));
-    }
+        message: projection.access.openAiOAuth.state === 'ready'
+          ? 'OpenAI 已登录'
+          : 'OpenAI 登录页已打开，请在新标签页完成授权',
+      }),
+    );
   }
 
-  async function logoutOpenAiOAuth(): Promise<void> {
-    setOpenAiStatus((prev) => ({ ...prev, busy: true, error: '' }));
-    try {
-      const response = await sendRuntimeMessage({ type: 'mt:openai-oauth-logout' });
-      if (!response.ok || response.type !== 'mt:openai-oauth-logout') {
-        throw new Error(response.ok ? 'OpenAI 退出登录失败' : response.error);
-      }
-      applyOpenAiStatus(response.status);
-      setStatus({ kind: 'success', message: 'OpenAI 已退出登录' });
-    } catch (error) {
-      setOpenAiStatus((prev) => ({
-        ...prev,
-        busy: false,
-        error: error instanceof Error ? error.message : String(error),
-      }));
-    }
+  function logoutOpenAiOAuth(): Promise<void> {
+    return runProviderAccessAction(
+      'openai-oauth',
+      'logout',
+      setOpenAiStatus,
+      'busy',
+      () => setStatus({ kind: 'success', message: 'OpenAI 已退出登录' }),
+    );
   }
 
-  function applyGeminiAppStatus(next: {
-    authenticated: boolean;
-    pending?: boolean;
-    error?: string;
-  }): void {
-    writeGeminiAppAuthCache(next.authenticated);
-    setGeminiAppStatus({
-      loading: false,
-      busy: false,
-      authenticated: next.authenticated,
-      pending: next.pending ?? false,
-      error: next.error ?? '',
-    });
+  function refreshGeminiAppAuthStatus(): Promise<void> {
+    return runProviderAccessAction('gemini-app', 'refresh', setGeminiAppStatus, 'loading');
   }
 
-  async function refreshGeminiAppAuthStatus(): Promise<void> {
-    geminiAppAutoCheckAttemptedRef.current = true;
-    setGeminiAppStatus((prev) => ({ ...prev, loading: true, error: '' }));
-    try {
-      const response = await sendRuntimeMessage({ type: 'mt:gemini-app-auth-status' });
-      if (!response.ok || response.type !== 'mt:gemini-app-auth-status') {
-        throw new Error(response.ok ? '读取 Gemini 登录状态失败' : response.error);
-      }
-      applyGeminiAppStatus(response.status);
-    } catch (error) {
-      setGeminiAppStatus({
-        loading: false,
-        busy: false,
-        authenticated: false,
-        pending: false,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  async function loginGeminiApp(): Promise<void> {
-    setGeminiAppStatus((prev) => ({ ...prev, busy: true, error: '' }));
-    try {
-      const response = await sendRuntimeMessage({ type: 'mt:gemini-app-auth-login' });
-      if (!response.ok || response.type !== 'mt:gemini-app-auth-login') {
-        throw new Error(response.ok ? 'Gemini 登录失败' : response.error);
-      }
-      applyGeminiAppStatus(response.status);
-      setStatus({
+  function loginGeminiApp(): Promise<void> {
+    return runProviderAccessAction(
+      'gemini-app',
+      'login',
+      setGeminiAppStatus,
+      'busy',
+      (projection) => setStatus({
         kind: 'success',
-        message: response.status.authenticated ? '登录状态已更新' : 'Gemini 登录页已打开，请在新标签页完成登录',
-      });
-    } catch (error) {
-      setGeminiAppStatus((prev) => ({
-        ...prev,
-        busy: false,
-        error: error instanceof Error ? error.message : String(error),
-      }));
-    }
+        message: projection.access.geminiApp.state === 'ready'
+          ? '登录状态已更新'
+          : 'Gemini 登录页已打开，请在新标签页完成登录',
+      }),
+    );
   }
 
   const currentProfile = settings.llmProfiles[settings.llmProvider];
@@ -921,7 +970,10 @@ export function App() {
     });
   }
 
-  async function persistSettings(nextSettings: ExtensionSettings, options: PersistSettingsOptions = {}): Promise<void> {
+  async function persistSettings(
+    nextSettings: ExtensionSettingsProjection,
+    options: PersistSettingsOptions = {},
+  ): Promise<void> {
     const requestId = saveRequestIdRef.current + 1;
     saveRequestIdRef.current = requestId;
     if (options.silent) {
@@ -930,17 +982,40 @@ export function App() {
       setStatus({ kind: 'saving', message: '正在自动保存...' });
     }
     try {
-      const response = await sendRuntimeMessage({
-        type: 'mt:set-settings',
-        settings: nextSettings,
-      });
-      if (!response.ok || response.type !== 'mt:set-settings') {
-        throw new Error(response.ok ? '自动保存失败' : response.error);
-      }
-      if (!options.silent && saveRequestIdRef.current === requestId) {
-        setStatus({ kind: 'success', message: '已自动保存' });
+      const projection = await getControlClient().replaceSettings(nextSettings);
+      applyAccessProjection(projection);
+      committedSettingsRef.current = projection.settings;
+      if (saveRequestIdRef.current === requestId) {
+        settingsDirtyRef.current = false;
+        skipNextSettingsPersistenceRef.current = true;
+        setSettings(projection.settings);
+        if (!options.silent) {
+          setStatus({ kind: 'success', message: '已自动保存' });
+        }
       }
     } catch (error) {
+      if (
+        saveRequestIdRef.current === requestId
+        && isExtensionSettingsConflict(error)
+      ) {
+        try {
+          const latest = await getControlClient().read();
+          const rebased = rebaseExtensionSettingsProjection(
+            committedSettingsRef.current,
+            nextSettings,
+            latest.settings,
+          );
+          committedSettingsRef.current = latest.settings;
+          applyAccessProjection(latest);
+          settingsDirtyRef.current = true;
+          nextSaveShowsStatusRef.current = true;
+          setStatus({ kind: 'saving', message: '检测到并发修改，正在合并并重试...' });
+          setSettings(rebased);
+          return;
+        } catch (refreshError) {
+          error = refreshError;
+        }
+      }
       if (saveRequestIdRef.current === requestId) {
         setStatus({
           kind: 'error',
@@ -953,15 +1028,12 @@ export function App() {
   async function downloadDiagnosticLog(): Promise<void> {
     setStatus({ kind: 'saving', message: '正在准备日志...' });
     try {
-      const response = await sendRuntimeMessage({ type: 'mt:diagnostic-log-export' });
-      if (!response.ok || response.type !== 'mt:diagnostic-log-export') {
-        throw new Error(response.ok ? '导出日志失败' : response.error);
-      }
-      if (response.log.eventCount === 0) {
+      const log = await exportDiagnosticLog();
+      if (log.eventCount === 0) {
         setStatus({ kind: 'error', message: '暂无可下载日志，请先开启日志记录并执行一次翻译' });
         return;
       }
-      downloadText(response.log.text, response.log.filenamePrefix);
+      downloadText(log.text, log.filenamePrefix);
       setStatus({ kind: 'success', message: '日志已下载' });
     } catch (error) {
       setStatus({
@@ -978,10 +1050,7 @@ export function App() {
 
     setStatus({ kind: 'saving', message: '正在清空日志...' });
     try {
-      const response = await sendRuntimeMessage({ type: 'mt:diagnostic-log-clear' });
-      if (!response.ok || response.type !== 'mt:diagnostic-log-clear') {
-        throw new Error(response.ok ? '清空日志失败' : response.error);
-      }
+      await clearStoredDiagnosticLog();
       setStatus({ kind: 'success', message: '日志已清空' });
     } catch (error) {
       setStatus({
@@ -999,6 +1068,10 @@ export function App() {
       hasHydratedRef.current = true;
       return;
     }
+    if (skipNextSettingsPersistenceRef.current) {
+      skipNextSettingsPersistenceRef.current = false;
+      return;
+    }
 
     const showSaveStatus = nextSaveShowsStatusRef.current;
     nextSaveShowsStatusRef.current = false;
@@ -1006,56 +1079,29 @@ export function App() {
   }, [loading, settings]);
 
   useEffect(() => {
-    if (!usesOpenAiOAuth || !openAiStatus.pending) {
-      return;
-    }
-    const intervalId = window.setInterval(() => {
-      if (!openAiStatus.loading && !openAiStatus.busy) {
-        void refreshOpenAiOAuthStatus();
-      }
-    }, 2_000);
-    return () => window.clearInterval(intervalId);
-  }, [usesOpenAiOAuth, openAiStatus.pending, openAiStatus.loading, openAiStatus.busy]);
-
-  useEffect(() => {
-    if (loading) {
-      return;
-    }
-    if (!usesGeminiApp) {
-      geminiAppAutoCheckAttemptedRef.current = false;
-      return;
-    }
-    if (
-      geminiAppStatus.authenticated ||
-      geminiAppStatus.loading ||
-      geminiAppStatus.busy ||
-      geminiAppStatus.pending ||
-      geminiAppAutoCheckAttemptedRef.current
-    ) {
-      return;
-    }
-    geminiAppAutoCheckAttemptedRef.current = true;
-    void refreshGeminiAppAuthStatus();
-  }, [
-    loading,
-    usesGeminiApp,
-    geminiAppStatus.authenticated,
-    geminiAppStatus.loading,
-    geminiAppStatus.busy,
-    geminiAppStatus.pending,
-  ]);
-
-  useEffect(() => {
-    if (!usesGeminiApp || !geminiAppStatus.pending) {
-      return;
-    }
-    const intervalId = window.setInterval(() => {
-      if (!geminiAppStatus.loading && !geminiAppStatus.busy) {
-        void refreshGeminiAppAuthStatus();
-      }
-    }, 2_000);
-    return () => window.clearInterval(intervalId);
-  }, [usesGeminiApp, geminiAppStatus.pending, geminiAppStatus.loading, geminiAppStatus.busy]);
+    const provider = settings.llmProvider;
+    const draft = apiKeyDrafts[provider];
+    if (draft === undefined || draft.trim().length === 0) return;
+    const timeoutId = window.setTimeout(() => {
+      void getControlClient().replaceApiKey(provider, draft)
+        .then((projection) => {
+          applyAccessProjection(projection);
+          setApiKeyDrafts((current) => (
+            current[provider] === draft
+              ? { ...current, [provider]: undefined }
+              : current
+          ));
+          setStatus({ kind: 'success', message: 'API Key 已安全保存' });
+        })
+        .catch((error: unknown) => {
+          setStatus({
+            kind: 'error',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        });
+    }, 500);
+    return () => window.clearTimeout(timeoutId);
+  }, [settings.llmProvider, apiKeyDrafts]);
 
   return (
     <main className="popup">
@@ -1126,7 +1172,7 @@ export function App() {
                       { value: 'llm', label: '大模型' },
                     ]}
                     value={settings.translator}
-                    onChange={(value) => updateTranslator(value as ExtensionSettings['translator'])}
+                    onChange={(value) => updateTranslator(value as ExtensionSettingsProjection['translator'])}
                     disabled={loading}
                   />
                 </div>
@@ -1158,7 +1204,7 @@ export function App() {
                     { value: 'erase', label: '去字' },
                   ]}
                   value={settings.processMode}
-                  onChange={(v) => updateField('processMode', v as ExtensionSettings['processMode'])}
+                  onChange={(v) => updateField('processMode', v as ExtensionSettingsProjection['processMode'])}
                   disabled={loading}
                 />
               </section>
@@ -1197,7 +1243,7 @@ export function App() {
                     </div>
                     <div className="auth-mode-field">
                       <span className="field-label">模型</span>
-                      <SegmentedControl<ExtensionSettings['geminiAppModel']>
+                      <SegmentedControl<ExtensionSettingsProjection['geminiAppModel']>
                         options={geminiAppModelOptions}
                         value={settings.geminiAppModel}
                         onChange={(value) => updateField('geminiAppModel', value)}
@@ -1238,12 +1284,14 @@ export function App() {
                     {usesGeminiApi ? (
                       <ApiKeyField
                         key={`api-key-${settings.llmProvider}-${currentProfile.authMode}`}
-                        value={currentProfile.apiKey}
-                        onChange={(value) =>
-                          updateActiveLlmProfile({ apiKey: value }, { showSaveStatus: true })
-                        }
+                        value={apiKeyDrafts[settings.llmProvider] ?? ''}
+                        onChange={updateActiveApiKey}
+                        configured={apiKeyConfigured[settings.llmProvider]}
+                        onClear={() => void clearActiveApiKey()}
                         disabled={loading}
-                        placeholder="AIza..."
+                        placeholder={apiKeyConfigured[settings.llmProvider]
+                          ? '已配置；输入新 Key 替换'
+                          : 'AIza...'}
                       />
                     ) : null}
                     <div className="field">
@@ -1298,12 +1346,14 @@ export function App() {
                     </label>
                     <ApiKeyField
                       key={`api-key-${settings.llmProvider}-${currentProfile.authMode}`}
-                      value={currentProfile.apiKey}
-                      onChange={(value) =>
-                        updateActiveLlmProfile({ apiKey: value }, { showSaveStatus: true })
-                      }
+                      value={apiKeyDrafts[settings.llmProvider] ?? ''}
+                      onChange={updateActiveApiKey}
+                      configured={apiKeyConfigured[settings.llmProvider]}
+                      onClear={() => void clearActiveApiKey()}
                       disabled={loading}
-                      placeholder="sk-..."
+                      placeholder={apiKeyConfigured[settings.llmProvider]
+                        ? '已配置；输入新 Key 替换'
+                        : 'sk-...'}
                     />
                   </>
                 ) : (
@@ -1510,12 +1560,14 @@ export function App() {
                     {!usesOpenAiOAuth ? (
                       <ApiKeyField
                         key={`api-key-${settings.llmProvider}-${currentProfile.authMode}`}
-                        value={currentProfile.apiKey}
-                        onChange={(value) =>
-                          updateActiveLlmProfile({ apiKey: value }, { showSaveStatus: true })
-                        }
+                        value={apiKeyDrafts[settings.llmProvider] ?? ''}
+                        onChange={updateActiveApiKey}
+                        configured={apiKeyConfigured[settings.llmProvider]}
+                        onClear={() => void clearActiveApiKey()}
                         disabled={loading}
-                        placeholder="sk-..."
+                        placeholder={apiKeyConfigured[settings.llmProvider]
+                          ? '已配置；输入新 Key 替换'
+                          : 'sk-...'}
                       />
                     ) : null}
                   </>

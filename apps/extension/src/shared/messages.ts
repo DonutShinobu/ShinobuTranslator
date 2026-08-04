@@ -1,6 +1,4 @@
-import type { ExtensionSettings } from './config';
 import type { DiagnosticLogEvent, DiagnosticLogTextExport } from '@shinobu/diagnostics';
-import type { OpenAiOAuthStatusInfo } from '@shinobu/text-translation/openai';
 import type { StageTiming } from '@shinobu/image-pipeline/benchmark';
 import type { LlmAuthMode, LlmProvider } from '@shinobu/text-translation';
 import { requireExtensionRuntime } from './extensionRuntime';
@@ -8,14 +6,15 @@ import { isLlmThinkingLevel } from '@shinobu/text-translation';
 import type { LlmThinkingLevel } from '@shinobu/text-translation';
 import { isReferrerPolicy } from './referrerPolicy';
 import { toErrorMessage } from './utils';
+import type {
+  ExtensionControlCommand,
+  ExtensionControlResult,
+  WholeImageExecutionPreparation,
+} from './extensionControl';
 
-export type GetSettingsMessage = {
-  type: 'mt:get-settings';
-};
-
-export type SetSettingsMessage = {
-  type: 'mt:set-settings';
-  settings: ExtensionSettings;
+export type ExtensionControlRuntimeMessage = {
+  type: 'mt:extension-control';
+  command: ExtensionControlCommand;
 };
 
 export type DownloadImageMessage = {
@@ -26,32 +25,6 @@ export type DownloadImageMessage = {
 
 export type CaptureVisibleTabMessage = {
   type: 'mt:capture-visible-tab';
-};
-
-export type OpenAiOAuthStatusMessage = {
-  type: 'mt:openai-oauth-status';
-};
-
-export type OpenAiOAuthLoginMessage = {
-  type: 'mt:openai-oauth-login';
-};
-
-export type OpenAiOAuthLogoutMessage = {
-  type: 'mt:openai-oauth-logout';
-};
-
-export type GeminiAppAuthStatusInfo = {
-  authenticated: boolean;
-  pending?: boolean;
-  error?: string;
-};
-
-export type GeminiAppAuthStatusMessage = {
-  type: 'mt:gemini-app-auth-status';
-};
-
-export type GeminiAppAuthLoginMessage = {
-  type: 'mt:gemini-app-auth-login';
 };
 
 export type LlmChatMessage = {
@@ -96,12 +69,14 @@ type ImageTranslateMessageImage = {
 export type GeminiAppImageTranslateMessage = {
   type: 'mt:gemini-app-image-translate';
   image: ImageTranslateMessageImage;
+  preparation: Extract<WholeImageExecutionPreparation, { provider: 'gemini-app' }>;
   diagnosticRunId?: string;
 };
 
 export type GeminiApiImageTranslateMessage = {
   type: 'mt:gemini-api-image-translate';
   image: ImageTranslateMessageImage;
+  preparation: Extract<WholeImageExecutionPreparation, { provider: 'gemini-api' }>;
   diagnosticRunId?: string;
 };
 
@@ -158,15 +133,9 @@ export type DiagnosticLogClearMessage = {
 };
 
 export type RuntimeMessage =
-  | GetSettingsMessage
-  | SetSettingsMessage
+  | ExtensionControlRuntimeMessage
   | DownloadImageMessage
   | CaptureVisibleTabMessage
-  | OpenAiOAuthStatusMessage
-  | OpenAiOAuthLoginMessage
-  | OpenAiOAuthLogoutMessage
-  | GeminiAppAuthStatusMessage
-  | GeminiAppAuthLoginMessage
   | LlmChatCompletionsMessage
   | GeminiAppImageTranslateMessage
   | GeminiApiImageTranslateMessage
@@ -180,13 +149,8 @@ export type RuntimeMessage =
 export type RuntimeSuccessResponse =
   | {
       ok: true;
-      type: 'mt:get-settings';
-      settings: ExtensionSettings;
-    }
-  | {
-      ok: true;
-      type: 'mt:set-settings';
-      settings: ExtensionSettings;
+      type: 'mt:extension-control';
+      result: ExtensionControlResult;
     }
   | {
       ok: true;
@@ -201,31 +165,6 @@ export type RuntimeSuccessResponse =
       base64: string;
       contentType: string;
       sourceUrl: string;
-    }
-  | {
-      ok: true;
-      type: 'mt:openai-oauth-status';
-      status: OpenAiOAuthStatusInfo;
-    }
-  | {
-      ok: true;
-      type: 'mt:openai-oauth-login';
-      status: OpenAiOAuthStatusInfo;
-    }
-  | {
-      ok: true;
-      type: 'mt:openai-oauth-logout';
-      status: OpenAiOAuthStatusInfo;
-    }
-  | {
-      ok: true;
-      type: 'mt:gemini-app-auth-status';
-      status: GeminiAppAuthStatusInfo;
-    }
-  | {
-      ok: true;
-      type: 'mt:gemini-app-auth-login';
-      status: GeminiAppAuthStatusInfo;
     }
   | {
       ok: true;
@@ -277,7 +216,7 @@ export type RuntimeErrorDetail = {
   content: string;
 };
 
-export type RuntimeErrorCode = 'llm_thinking_config';
+export type RuntimeErrorCode = 'llm_thinking_config' | 'extension_settings_conflict';
 
 export type RuntimeErrorResponse = {
   ok: false;
@@ -315,8 +254,14 @@ export function getRuntimeErrorCode(error: unknown): RuntimeErrorCode | undefine
   if (!isRecord(error)) {
     return undefined;
   }
-  return error.errorCode === 'llm_thinking_config'
-    ? error.errorCode
+  if (
+    error.errorCode === 'llm_thinking_config'
+    || error.errorCode === 'extension_settings_conflict'
+  ) {
+    return error.errorCode;
+  }
+  return error.code === 'TRANSLATION_CONFIGURATION_CONFLICT'
+    ? 'extension_settings_conflict'
     : undefined;
 }
 
@@ -364,6 +309,35 @@ function isLlmAuthMode(value: unknown): value is LlmAuthMode {
   return value === 'api_key' || value === 'openai_oauth' || value === 'gemini_app';
 }
 
+function isExtensionControlRuntimeMessage(
+  value: Record<string, unknown>,
+): value is ExtensionControlRuntimeMessage {
+  if (value.type !== 'mt:extension-control' || !isRecord(value.command)) {
+    return false;
+  }
+  const command = value.command;
+  if (command.kind === 'read' || command.kind === 'prepare-execution') return true;
+  if (command.kind === 'replace-settings') {
+    return isRecord(command.settings) && typeof command.expectedRevision === 'number';
+  }
+  if (command.kind === 'update-interface-preferences') {
+    return isRecord(command.preferences);
+  }
+  if (command.kind === 'replace-api-key') {
+    return isLlmProvider(command.provider) && typeof command.apiKey === 'string';
+  }
+  if (command.kind === 'clear-api-key') {
+    return isLlmProvider(command.provider);
+  }
+  return command.kind === 'perform-access'
+    && (command.target === 'openai-oauth' || command.target === 'gemini-app')
+    && (
+      command.action === 'refresh'
+      || command.action === 'login'
+      || command.action === 'logout'
+    );
+}
+
 function isLlmChatCompletionsMessage(value: Record<string, unknown>): value is LlmChatCompletionsMessage {
   if (value.type !== 'mt:llm-chat-completions' || !isRecord(value.body)) {
     return false;
@@ -388,25 +362,45 @@ function isLlmChatCompletionsMessage(value: Record<string, unknown>): value is L
 }
 
 function isGeminiAppImageTranslateMessage(value: Record<string, unknown>): value is GeminiAppImageTranslateMessage {
-  if (value.type !== 'mt:gemini-app-image-translate' || !isRecord(value.image)) {
+  if (
+    value.type !== 'mt:gemini-app-image-translate'
+    || !isRecord(value.image)
+    || !isRecord(value.preparation)
+  ) {
     return false;
   }
+  const preparation = value.preparation;
   return (
     typeof value.image.base64 === 'string' &&
     typeof value.image.contentType === 'string' &&
     typeof value.image.filename === 'string' &&
+    preparation.provider === 'gemini-app' &&
+    (preparation.model === 'nano_banana_2' || preparation.model === 'nano_banana_pro') &&
+    typeof preparation.modelLabel === 'string' &&
+    typeof preparation.prompt === 'string' &&
+    (preparation.authMode === 'browser_session' || preparation.authMode === 'cookies_permission') &&
     (value.diagnosticRunId === undefined || typeof value.diagnosticRunId === 'string')
   );
 }
 
 function isGeminiApiImageTranslateMessage(value: Record<string, unknown>): value is GeminiApiImageTranslateMessage {
-  if (value.type !== 'mt:gemini-api-image-translate' || !isRecord(value.image)) {
+  if (
+    value.type !== 'mt:gemini-api-image-translate'
+    || !isRecord(value.image)
+    || !isRecord(value.preparation)
+  ) {
     return false;
   }
+  const preparation = value.preparation;
   return (
     typeof value.image.base64 === 'string' &&
     typeof value.image.contentType === 'string' &&
     typeof value.image.filename === 'string' &&
+    preparation.provider === 'gemini-api' &&
+    typeof preparation.model === 'string' &&
+    typeof preparation.modelLabel === 'string' &&
+    typeof preparation.prompt === 'string' &&
+    typeof preparation.baseUrl === 'string' &&
     (value.diagnosticRunId === undefined || typeof value.diagnosticRunId === 'string')
   );
 }
@@ -434,15 +428,9 @@ export function isRuntimeMessage(value: unknown): value is RuntimeMessage {
   }
   const type = value.type;
   return (
-    type === 'mt:get-settings' ||
-    type === 'mt:set-settings' ||
+    isExtensionControlRuntimeMessage(value) ||
     isDownloadImageMessage(value) ||
     type === 'mt:capture-visible-tab' ||
-    type === 'mt:openai-oauth-status' ||
-    type === 'mt:openai-oauth-login' ||
-    type === 'mt:openai-oauth-logout' ||
-    type === 'mt:gemini-app-auth-status' ||
-    type === 'mt:gemini-app-auth-login' ||
     type === 'mt:diagnostic-log-export' ||
     type === 'mt:diagnostic-log-clear' ||
     type === 'mt:context-menu-translate' ||

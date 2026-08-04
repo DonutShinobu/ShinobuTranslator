@@ -1,11 +1,8 @@
 import {
-  buildGeminiImagePrompt,
   getGeminiAppModelLabel,
-  resolveGeminiApiImageModel,
-  resolveLlmBaseUrl,
 } from '../shared/config';
-import type { ExtensionSettings } from '../shared/config';
 import type { CloudImageTranslateSuccess } from '../shared/messages';
+import type { WholeImageExecutionPreparation } from '../shared/extensionControl';
 import type { StageTiming } from '@shinobu/image-pipeline/benchmark';
 import type { GeminiAppModel } from '../shared/config';
 import { toErrorMessage } from '../shared/utils';
@@ -14,7 +11,8 @@ type GeminiApiImageTranslateOptions = {
   imageBase64: string;
   contentType: string;
   filename: string;
-  settings: ExtensionSettings;
+  preparation: Extract<WholeImageExecutionPreparation, { provider: 'gemini-api' }>;
+  apiKey: string;
 };
 
 type GeminiApiGeneratedImage = {
@@ -126,8 +124,8 @@ export function toGeminiApiErrorMessage(data: unknown, httpStatus: number): stri
   return `Gemini API 请求失败: HTTP ${httpStatus}${message ? `: ${message}` : ''}`;
 }
 
-function buildGenerateContentUrl(settings: ExtensionSettings, model: string): string {
-  const baseUrl = resolveLlmBaseUrl(settings).replace(/\/+$/u, '');
+function buildGenerateContentUrl(baseUrl: string, model: string): string {
+  baseUrl = baseUrl.replace(/\/+$/u, '');
   return `${baseUrl}/models/${encodeURIComponent(model)}:generateContent`;
 }
 
@@ -187,15 +185,14 @@ async function generateImage(
   options: GeminiApiImageTranslateOptions,
   stageTimings: StageTiming[],
 ): Promise<CloudImageTranslateSuccess> {
-  const profile = options.settings.llmProfiles.gemini;
-  const apiKey = profile.apiKey.trim();
+  const apiKey = options.apiKey.trim();
   if (!apiKey) {
     throw new Error('Nano Banana API Key 不能为空');
   }
-  const model = resolveGeminiApiImageModel(options.settings.geminiAppModel);
+  const model = options.preparation.model;
 
-  const prompt = buildGeminiImagePrompt(options.settings);
-  const url = buildGenerateContentUrl(options.settings, model);
+  const prompt = options.preparation.prompt;
+  const url = buildGenerateContentUrl(options.preparation.baseUrl, model);
   const start = performance.now();
   let data: unknown;
   try {
@@ -232,7 +229,7 @@ async function generateImage(
   return {
     ...generated,
     metadata: {
-      modelLabel: getGeminiApiModelMetadataLabel(options.settings.geminiAppModel),
+      modelLabel: options.preparation.modelLabel,
       stageTimings,
     },
   };

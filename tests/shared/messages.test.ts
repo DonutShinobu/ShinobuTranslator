@@ -33,10 +33,23 @@ describe("isRuntimeMessage", () => {
     })).toBe(false);
   });
 
-  it("accepts OpenAI OAuth and LLM proxy runtime messages", () => {
-    expect(isRuntimeMessage({ type: "mt:openai-oauth-status" })).toBe(true);
-    expect(isRuntimeMessage({ type: "mt:openai-oauth-login" })).toBe(true);
-    expect(isRuntimeMessage({ type: "mt:openai-oauth-logout" })).toBe(true);
+  it("accepts extension-control and LLM proxy runtime messages", () => {
+    expect(isRuntimeMessage({
+      type: "mt:extension-control",
+      command: { kind: "read" },
+    })).toBe(true);
+    expect(isRuntimeMessage({
+      type: "mt:extension-control",
+      command: {
+        kind: "perform-access",
+        target: "openai-oauth",
+        action: "login",
+      },
+    })).toBe(true);
+    expect(isRuntimeMessage({
+      type: "mt:extension-control",
+      command: { kind: "replace-api-key", provider: "deepseek", apiKey: "secret" },
+    })).toBe(true);
     expect(isRuntimeMessage({
       type: "mt:llm-chat-completions",
       body: { model: "gpt-5.4-mini", messages: [] },
@@ -52,14 +65,19 @@ describe("isRuntimeMessage", () => {
   });
 
   it("accepts Gemini App image translation messages", () => {
-    expect(isRuntimeMessage({ type: "mt:gemini-app-auth-status" })).toBe(true);
-    expect(isRuntimeMessage({ type: "mt:gemini-app-auth-login" })).toBe(true);
     expect(isRuntimeMessage({
       type: "mt:gemini-app-image-translate",
       image: {
         base64: "abc",
         contentType: "image/png",
         filename: "source.png",
+      },
+      preparation: {
+        provider: 'gemini-app',
+        model: 'nano_banana_pro',
+        modelLabel: 'Nano Banana Pro',
+        prompt: 'translate',
+        authMode: 'cookies_permission',
       },
       diagnosticRunId: "run-1",
     })).toBe(true);
@@ -70,8 +88,27 @@ describe("isRuntimeMessage", () => {
         contentType: "image/png",
         filename: "source.png",
       },
+      preparation: {
+        provider: 'gemini-api',
+        model: 'nano_banana_pro',
+        modelLabel: 'Nano Banana API / Nano Banana Pro',
+        prompt: 'translate',
+        baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+      },
       diagnosticRunId: "run-1",
     })).toBe(true);
+  });
+
+  it("rejects malformed extension-control messages", () => {
+    expect(isRuntimeMessage({ type: "mt:extension-control" })).toBe(false);
+    expect(isRuntimeMessage({
+      type: "mt:extension-control",
+      command: { kind: "perform-access", target: "gemini-app", action: "logout-everywhere" },
+    })).toBe(false);
+    expect(isRuntimeMessage({
+      type: "mt:extension-control",
+      command: { kind: "replace-api-key", provider: "unknown", apiKey: "secret" },
+    })).toBe(false);
   });
 
   it("accepts diagnostic log messages", () => {
@@ -171,6 +208,12 @@ describe("getRuntimeErrorCode", () => {
   it("preserves the thinking-configuration error code across the runtime seam", () => {
     expect(getRuntimeErrorCode({ errorCode: "llm_thinking_config" })).toBe("llm_thinking_config");
     expect(getRuntimeErrorCode(new Error("ordinary failure"))).toBeUndefined();
+  });
+
+  it('maps settings revision conflicts onto the control transport code', () => {
+    expect(getRuntimeErrorCode({
+      code: 'TRANSLATION_CONFIGURATION_CONFLICT',
+    })).toBe('extension_settings_conflict');
   });
 });
 

@@ -1,6 +1,7 @@
-import { buildGeminiImagePrompt, getGeminiAppModelLabel } from '../shared/config';
+import { getGeminiAppModelLabel } from '../shared/config';
 import type { ExtensionSettings } from '../shared/config';
-import type { GeminiAppAuthStatusInfo, GeminiAppImageTranslateMetadata } from '../shared/messages';
+import type { WholeImageExecutionPreparation } from '../shared/extensionControl';
+import type { GeminiAppImageTranslateMetadata } from '../shared/messages';
 import type { StageTiming } from '@shinobu/image-pipeline/benchmark';
 import type { GeminiAppModel } from '../shared/config';
 import { getExtensionApi } from '../shared/extensionRuntime';
@@ -15,7 +16,7 @@ type GeminiAppImageTranslateOptions = {
   imageBase64: string;
   contentType: string;
   filename: string;
-  settings: ExtensionSettings;
+  preparation: Extract<WholeImageExecutionPreparation, { provider: 'gemini-app' }>;
 };
 
 export type GeminiAppImageTranslateResult = {
@@ -343,10 +344,6 @@ function base64ToBlob(base64: string, contentType: string): Blob {
   return new Blob([bytes], { type: contentType || 'image/png' });
 }
 
-function buildPrompt(settings: ExtensionSettings): string {
-  return buildGeminiImagePrompt(settings);
-}
-
 export function getGeminiAppModelMetadataLabel(model: GeminiAppModel): string {
   return `Gemini App / ${getGeminiAppModelLabel(model)}`;
 }
@@ -486,8 +483,10 @@ async function readGeminiCookieHeader(authMode: ExtensionSettings['geminiAppAuth
   return cookiePairs.size > 0 ? Array.from(cookiePairs.values()).join('; ') : null;
 }
 
-async function initializeGemini(settings: ExtensionSettings): Promise<GeminiInitContext> {
-  const cookieHeader = await readGeminiCookieHeader(settings.geminiAppAuthMode);
+async function initializeGemini(
+  authMode: ExtensionSettings['geminiAppAuthMode'],
+): Promise<GeminiInitContext> {
+  const cookieHeader = await readGeminiCookieHeader(authMode);
   const response = await fetchWithTimeout(geminiAppUrl, {
     method: 'GET',
     headers: geminiHeaders(cookieHeader),
@@ -711,14 +710,16 @@ async function executeGeminiAppImageTranslate(
     }
   };
 
-  const context = await timeStage('gemini_init', 'Gemini App 初始化', () => initializeGemini(options.settings));
+  const context = await timeStage('gemini_init', 'Gemini App 初始化', () =>
+    initializeGemini(options.preparation.authMode),
+  );
   await timeStage('gemini_status', 'Gemini App 状态检查', () => assertAccountAvailable(context));
   await sendBardActivity(context);
   const imageBlob = base64ToBlob(options.imageBase64, options.contentType);
   const fileUrl = await timeStage('gemini_upload', 'Gemini App 上传图片', () =>
     uploadImage(context, imageBlob, options.filename),
   );
-  const prompt = buildPrompt(options.settings);
+  const prompt = options.preparation.prompt;
   const responseText = await timeStage('gemini_generate', 'Gemini App 生成译图', () =>
     generateImage(
       context,
@@ -726,7 +727,7 @@ async function executeGeminiAppImageTranslate(
       fileUrl,
       options.filename,
       options.contentType,
-      options.settings.geminiAppModel,
+      options.preparation.model,
     ),
   );
   const generated = extractGeminiGeneratedImages(responseText);
@@ -744,7 +745,7 @@ async function executeGeminiAppImageTranslate(
   return {
     ...downloaded,
     metadata: {
-      modelLabel: getGeminiAppModelMetadataLabel(options.settings.geminiAppModel),
+      modelLabel: getGeminiAppModelMetadataLabel(options.preparation.model),
       imageUrl: firstImage.url,
       stageTimings,
     },
@@ -762,9 +763,15 @@ export function runGeminiAppImageTranslate(
   return queued;
 }
 
+export type GeminiAppAuthStatusInfo = {
+  authenticated: boolean;
+  pending?: boolean;
+  error?: string;
+};
+
 export async function getGeminiAppAuthStatus(settings: ExtensionSettings): Promise<GeminiAppAuthStatusInfo> {
   try {
-    const context = await initializeGemini(settings);
+    const context = await initializeGemini(settings.geminiAppAuthMode);
     await assertAccountAvailable(context);
     return { authenticated: true };
   } catch (error) {

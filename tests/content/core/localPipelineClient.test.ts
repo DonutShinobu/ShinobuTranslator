@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPipelineRecord } from '@shinobu/image-pipeline';
-import type { ExtensionBrowserApi, ExtensionPort } from '../../../src/shared/extensionRuntime';
+import type { ExtensionBrowserApi, ExtensionPort } from '../../../apps/extension/src/shared/extensionRuntime';
 import {
   LOCAL_PIPELINE_BACKGROUND_LEASE_PORT,
   LOCAL_PIPELINE_CLIENT_PORT,
@@ -86,7 +86,7 @@ const record = createPipelineRecord({
 }, { strategy: 'source-native' });
 
 async function completePipelineRun(
-  runLocalPipeline: typeof import('../../../src/content/core/translation/localPipelineClient').runLocalPipeline,
+  runLocalPipeline: typeof import('../../../apps/extension/src/content/core/translation/localPipelineClient').runLocalPipeline,
   client: FakePort,
   beforeReady?: () => void,
 ): Promise<void> {
@@ -151,7 +151,7 @@ describe('runLocalPipeline Firefox background lease', () => {
       },
     };
     vi.stubGlobal('chrome', api);
-    const { runLocalPipeline } = await import('../../../src/content/core/translation/localPipelineClient');
+    const { runLocalPipeline } = await import('../../../apps/extension/src/content/core/translation/localPipelineClient');
     const firstClient = clients[0]!;
     await completePipelineRun(runLocalPipeline, firstClient);
     const secondClient = clients[0]!;
@@ -181,7 +181,7 @@ describe('runLocalPipeline Firefox background lease', () => {
       },
     };
     vi.stubGlobal('chrome', api);
-    const { runLocalPipeline } = await import('../../../src/content/core/translation/localPipelineClient');
+    const { runLocalPipeline } = await import('../../../apps/extension/src/content/core/translation/localPipelineClient');
 
     await completePipelineRun(runLocalPipeline, client);
 
@@ -210,7 +210,7 @@ describe('runLocalPipeline Firefox background lease', () => {
       },
     };
     vi.stubGlobal('chrome', api);
-    const { runLocalPipeline } = await import('../../../src/content/core/translation/localPipelineClient');
+    const { runLocalPipeline } = await import('../../../apps/extension/src/content/core/translation/localPipelineClient');
     const firstLease = leases[0]!;
     const replacementLease = leases[1]!;
 

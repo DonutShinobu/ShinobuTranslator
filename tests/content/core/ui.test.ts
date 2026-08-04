@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getScreenshotResultOverlayPositionStyle } from "../../../src/content/core/ui";
+import { getScreenshotResultOverlayPositionStyle } from "../../../apps/extension/src/content/core/ui";
 
 describe("getScreenshotResultOverlayPositionStyle", () => {
   it("uses CSS right and 100% top for controls anchored to the image edge", () => {

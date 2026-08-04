@@ -2,13 +2,12 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
-const scanRoots = [resolve(root, 'src'), resolve(root, 'apps/extension')];
+const scanRoots = [resolve(root, 'apps/extension')];
 const sourceExtensions = /\.(?:ts|tsx|js|mjs|html)$/;
-const runtimeAdapter = 'src/shared/extensionRuntime.ts';
+const runtimeAdapter = 'apps/extension/src/shared/extensionRuntime.ts';
 const schemeAllowlist = new Set([
   runtimeAdapter,
-  'src/runtime/onnxWorkerBridge.ts',
-  'src/shared/diagnosticLogClient.ts',
+  'apps/extension/src/shared/diagnosticLogClient.ts',
 ]);
 const buildAdapterAllowlist = new Set([
   'apps/extension/manifest.ts',

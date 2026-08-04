@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createImageDownloader } from '../../src/background/images/imageDownloader';
+import { createImageDownloader } from '../../apps/extension/src/background/images/imageDownloader';
 import type {
   ExtensionDnrRuleUpdate,
   ExtensionWebRequestHeadersDetails,
-} from '../../src/shared/extensionRuntime';
+} from '../../apps/extension/src/shared/extensionRuntime';
 
 const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
 

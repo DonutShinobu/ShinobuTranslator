@@ -17,5 +17,5 @@
     "types": ["@webgpu/types", "node"],
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "files": []
 }

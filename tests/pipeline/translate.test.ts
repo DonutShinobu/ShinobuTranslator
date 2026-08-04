@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runTranslate as runTextTranslate } from '../../packages/text-translation/src/translator';
 import type { PipelineConfig, TextRegion } from '../../packages/image-pipeline/src/types';
-import { extensionTextTranslationTransport } from '../../src/shared/textTranslationTransport';
+import { extensionTextTranslationTransport } from '../../apps/extension/src/shared/textTranslationTransport';
 
 const runTranslate = (regions: TextRegion[], config: PipelineConfig) => (
   runTextTranslate(regions, config, {

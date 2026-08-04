@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   getExtensionRuntime,
   type ExtensionBrowserApi,
-} from '../../src/shared/extensionRuntime';
+} from '../../apps/extension/src/shared/extensionRuntime';
 
 afterEach(() => {
   vi.unstubAllGlobals();

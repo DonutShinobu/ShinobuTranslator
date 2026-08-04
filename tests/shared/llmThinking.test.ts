@@ -8,7 +8,7 @@ import {
   llmThinkingCapabilityRegistry,
   normalizeLlmThinkingByModel,
 } from '../../packages/text-translation/src/llmThinking';
-import { llmBuiltInProviderDefinitions } from '../../src/shared/config';
+import { llmBuiltInProviderDefinitions } from '../../apps/extension/src/shared/config';
 
 describe('built-in LLM thinking capabilities', () => {
   it('matches the official-verified capability matrix for every built-in text model', () => {

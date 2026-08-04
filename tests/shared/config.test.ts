@@ -15,7 +15,7 @@ import {
   usesGeminiAppImagePipeline,
   usesNanoBananaImagePipeline,
   validateSettings,
-} from "../../src/shared/config";
+} from "../../apps/extension/src/shared/config";
 
 describe("built-in LLM catalog", () => {
   it("matches the confirmed provider model matrix and new-profile defaults", () => {

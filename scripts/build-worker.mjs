@@ -3,6 +3,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const workerEntry = fileURLToPath(import.meta.resolve('@shinobu/model-runtime/worker'));
 const outDirFlagIndex = process.argv.indexOf('--out-dir');
 const requestedOutDir = outDirFlagIndex >= 0 ? process.argv[outDirFlagIndex + 1] : undefined;
 if (!requestedOutDir || requestedOutDir.startsWith('--')) {
@@ -31,7 +32,7 @@ await build({
     chunkSizeWarningLimit: 900,
     rollupOptions: {
       external: externalizeNodeOnlyAdapter,
-      input: resolve(__dirname, '../packages/model-runtime/src/workers/onnx-worker.ts'),
+      input: workerEntry,
       output: {
         entryFileNames: 'onnxWorker.js',
         format: 'es',

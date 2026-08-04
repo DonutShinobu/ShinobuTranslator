@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { defaultExtensionSettings } from '../../../src/shared/config';
+import { defaultExtensionSettings } from '../../../apps/extension/src/shared/config';
 import type {
   ImageTarget,
   ReadingModeBarUi,
   SiteAdapter,
-} from '../../../src/content/core/types';
-import { ReadingModeController } from '../../../src/content/core/reading/readingModeController';
-import { PhotoStateStore } from '../../../src/content/core/state/photoStateStore';
-import { TranslationRunner } from '../../../src/content/core/translation/translationRunner';
+} from '../../../apps/extension/src/content/core/types';
+import { ReadingModeController } from '../../../apps/extension/src/content/core/reading/readingModeController';
+import { PhotoStateStore } from '../../../apps/extension/src/content/core/state/photoStateStore';
+import { TranslationRunner } from '../../../apps/extension/src/content/core/translation/translationRunner';
 
 type FakeButton = {
   style: { display: string };

@@ -4,11 +4,11 @@ const mocks = vi.hoisted(() => ({
   dispatchBackgroundMessage: vi.fn(),
 }));
 
-vi.mock('../../src/background/index', () => ({
+vi.mock('../../apps/extension/src/background/index', () => ({
   dispatchBackgroundMessage: mocks.dispatchBackgroundMessage,
 }));
 
-import { createInProcessPipelineHostDependencies } from '../../src/background/localPipeline/inProcessPipelineHostDependencies';
+import { createInProcessPipelineHostDependencies } from '../../apps/extension/src/background/localPipeline/inProcessPipelineHostDependencies';
 
 const translationRequest = {
   body: {

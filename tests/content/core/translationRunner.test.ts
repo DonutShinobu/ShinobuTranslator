@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { defaultExtensionSettings } from '../../../src/shared/config';
-import { sendRuntimeMessage } from '../../../src/shared/messages';
-import { createInitialPhotoState } from '../../../src/content/core/state/photoStateStore';
-import { TranslationRunner } from '../../../src/content/core/translation/translationRunner';
+import { defaultExtensionSettings } from '../../../apps/extension/src/shared/config';
+import { sendRuntimeMessage } from '../../../apps/extension/src/shared/messages';
+import { createInitialPhotoState } from '../../../apps/extension/src/content/core/state/photoStateStore';
+import { TranslationRunner } from '../../../apps/extension/src/content/core/translation/translationRunner';
 
 type RuntimeSender = typeof sendRuntimeMessage;
 

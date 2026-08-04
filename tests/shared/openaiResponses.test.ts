@@ -4,7 +4,7 @@ import {
   extractOpenAiResponsesJsonText,
   extractOpenAiResponsesSseText,
 } from "../../packages/text-translation/src/openaiResponses";
-import type { LlmChatCompletionRequestBody } from "../../src/shared/messages";
+import type { LlmChatCompletionRequestBody } from "../../apps/extension/src/shared/messages";
 
 describe("buildOpenAiResponsesRequest", () => {
   it("converts a chat completion request to the Codex Responses shape", () => {

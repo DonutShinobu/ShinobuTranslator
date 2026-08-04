@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   exportDiagnosticLog,
   recordDiagnosticLogEvent,
-} from '../../src/background/diagnostics/logStore';
+} from '../../apps/extension/src/background/diagnostics/logStore';
 import type { DiagnosticLogEvent } from '../../packages/diagnostics/src/diagnosticLog';
 
 const diagnosticLogStorageKey = 'mangaTranslate.diagnosticLog';

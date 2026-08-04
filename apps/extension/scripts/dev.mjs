@@ -3,8 +3,8 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import chokidar from 'chokidar';
 
-const root = resolve(import.meta.dirname, '..');
-const extensionRoot = resolve(root, 'apps/extension');
+const extensionRoot = resolve(import.meta.dirname, '..');
+const repoRoot = resolve(extensionRoot, '../..');
 const targetFlagIndex = process.argv.indexOf('--target');
 const target = targetFlagIndex >= 0 ? process.argv[targetFlagIndex + 1] : undefined;
 if (target !== 'chromium' && target !== 'firefox') {
@@ -14,7 +14,7 @@ if (target !== 'chromium' && target !== 'firefox') {
 const distName = `dist-${target}`;
 const distDir = resolve(extensionRoot, distName);
 const npmCli = process.env.npm_execpath;
-const webExtCli = resolve(root, 'node_modules/web-ext/bin/web-ext.js');
+const webExtCli = resolve(repoRoot, 'node_modules/web-ext/bin/web-ext.js');
 if (!npmCli || !existsSync(npmCli)) throw new Error('Unable to locate the npm CLI');
 if (!existsSync(webExtCli)) throw new Error('web-ext is not installed; run npm install first');
 
@@ -63,12 +63,12 @@ if (!existsSync(resolve(distDir, 'manifest.json'))) {
 }
 
 const watchInputs = [
-  resolve(root, 'src'),
   resolve(extensionRoot, 'src'),
+  resolve(repoRoot, 'packages'),
   resolve(extensionRoot, 'manifest.ts'),
   resolve(extensionRoot, 'vite.config.ts'),
   resolve(extensionRoot, '*.html'),
-  resolve(root, 'public'),
+  resolve(repoRoot, 'public'),
 ];
 const watcher = chokidar.watch(watchInputs, {
   ignoreInitial: true,
@@ -99,7 +99,7 @@ webExtProcess = spawn(
     'onnxWorker.js',
     target === 'firefox' ? 'background-firefox.js' : 'background-chromium.js',
   ],
-  { cwd: root, stdio: 'inherit' },
+  { cwd: repoRoot, stdio: 'inherit' },
 );
 
 async function shutdown(exitCode = 0) {

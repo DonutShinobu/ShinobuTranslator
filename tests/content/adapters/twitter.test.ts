@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { twitterAdapter } from '../../../src/content/adapters/twitter';
-import { PhotoStateStore } from '../../../src/content/core/state/photoStateStore';
-import { ImageTranslationController } from '../../../src/content/core/translation/imageTranslationController';
-import { TranslationRunner } from '../../../src/content/core/translation/translationRunner';
+import { twitterAdapter } from '../../../apps/extension/src/content/adapters/twitter';
+import { PhotoStateStore } from '../../../apps/extension/src/content/core/state/photoStateStore';
+import { ImageTranslationController } from '../../../apps/extension/src/content/core/translation/imageTranslationController';
+import { TranslationRunner } from '../../../apps/extension/src/content/core/translation/translationRunner';
 
 describe('twitterAdapter.observe', () => {
   afterEach(() => {

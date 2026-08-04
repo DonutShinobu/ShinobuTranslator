@@ -6,7 +6,7 @@ import { fileURLToPath } from "url";
 import { execSync } from "child_process";
 import type { BakeInfo, Fixture } from "./types";
 import type { BakeDirection, BakeResult } from '@shinobu/image-pipeline/benchmark';
-import type { ShinobuBenchmarkWindow } from "../../../src/benchmark/browserEntry";
+import type { ShinobuBenchmarkWindow } from "../../../apps/extension/src/benchmark/browserEntry";
 import { parseBakeDirectionArgs } from "./bake-options";
 import { bakeResultRegionToFixtureRegion } from "./fixture-build";
 import { parseTypesetSuiteArgs } from "./suite-paths";

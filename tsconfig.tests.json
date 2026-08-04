@@ -3,5 +3,5 @@
   "compilerOptions": {
     "types": ["@webgpu/types", "node", "vite/client", "vitest/globals"]
   },
-  "include": ["src", "tests/**/*.ts"]
+  "include": ["apps/extension/src", "tests/**/*.ts"]
 }

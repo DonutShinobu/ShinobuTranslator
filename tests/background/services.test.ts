@@ -2,24 +2,24 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   defaultExtensionSettings,
   extensionSettingsStorageKey,
-} from '../../src/shared/config';
-import { getSettings, setSettings } from '../../src/background/settings/settingsStore';
+} from '../../apps/extension/src/shared/config';
+import { getSettings, setSettings } from '../../apps/extension/src/background/settings/settingsStore';
 import {
   parseImageDataUrl,
-} from '../../src/background/images/imageService';
+} from '../../apps/extension/src/background/images/imageService';
 import {
   openAiOAuthInstallationIdStorageKey,
   openAiOAuthLastErrorStorageKey,
   openAiOAuthPendingStorageKey,
   openAiOAuthStorageKey,
-} from '../../src/background/openai/oauthService';
+} from '../../apps/extension/src/background/openai/oauthService';
 import {
   registerMenusAndCommands,
   startScreenshotTranslateCommand,
   translateHoverTargetCommand,
   translateImageMenuId,
   translateScreenshotMenuId,
-} from '../../src/background/menus/registerMenus';
+} from '../../apps/extension/src/background/menus/registerMenus';
 
 afterEach(() => {
   vi.unstubAllGlobals();

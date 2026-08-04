@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ScreenshotSelection } from '../../../src/content/core/screenshot';
-import { ScreenshotController } from '../../../src/content/core/screenshot/screenshotController';
-import { PhotoStateStore } from '../../../src/content/core/state/photoStateStore';
-import { TranslationRunner } from '../../../src/content/core/translation/translationRunner';
-import { CardStateController } from '../../../src/content/core/ui/cardState';
+import type { ScreenshotSelection } from '../../../apps/extension/src/content/core/screenshot';
+import { ScreenshotController } from '../../../apps/extension/src/content/core/screenshot/screenshotController';
+import { PhotoStateStore } from '../../../apps/extension/src/content/core/state/photoStateStore';
+import { TranslationRunner } from '../../../apps/extension/src/content/core/translation/translationRunner';
+import { CardStateController } from '../../../apps/extension/src/content/core/ui/cardState';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;

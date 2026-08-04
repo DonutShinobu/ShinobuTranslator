@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { browserPipelinePlatform as browserPlatform } from '../../src/shared/browserPipelinePlatform';
+import { browserPipelinePlatform as browserPlatform } from '../../apps/extension/src/shared/browserPipelinePlatform';
 
 class LoadedFontFace {
   constructor(

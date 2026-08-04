@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-import { defaultExtensionSettings } from '../../src/shared/config';
-import type { ExtensionSettings } from '../../src/shared/config';
-import type { ExtensionMessageSender } from '../../src/shared/extensionRuntime';
+import { defaultExtensionSettings } from '../../apps/extension/src/shared/config';
+import type { ExtensionSettings } from '../../apps/extension/src/shared/config';
+import type { ExtensionMessageSender } from '../../apps/extension/src/shared/extensionRuntime';
 import { createDiagnosticEvent } from '../../packages/diagnostics/src/diagnosticLog';
 import type { DiagnosticLogEvent } from '../../packages/diagnostics/src/diagnosticLog';
-import type { RuntimeMessage } from '../../src/shared/messages';
+import type { RuntimeMessage } from '../../apps/extension/src/shared/messages';
 import {
   routeBackgroundMessage,
   type BackgroundServices,
-} from '../../src/background/messages/router';
+} from '../../apps/extension/src/background/messages/router';
 
 type MessageOf<T extends RuntimeMessage['type']> = Extract<RuntimeMessage, { type: T }>;
 

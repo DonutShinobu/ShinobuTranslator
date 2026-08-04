@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PipelineHostBroker } from '../../src/background/localPipeline/offscreenBroker';
-import type { ExtensionBrowserApi, ExtensionPort } from '../../src/shared/extensionRuntime';
+import { PipelineHostBroker } from '../../apps/extension/src/background/localPipeline/offscreenBroker';
+import type { ExtensionBrowserApi, ExtensionPort } from '../../apps/extension/src/shared/extensionRuntime';
 import {
   LOCAL_PIPELINE_BACKGROUND_LEASE_PORT,
   LOCAL_PIPELINE_CLIENT_PORT,

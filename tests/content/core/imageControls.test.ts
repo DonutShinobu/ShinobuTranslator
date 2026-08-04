@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createInitialPhotoState } from '../../../src/content/core/state/photoStateStore';
+import { createInitialPhotoState } from '../../../apps/extension/src/content/core/state/photoStateStore';
 import {
   createUiElements,
   renderUi,
-} from '../../../src/content/core/ui/imageControls';
+} from '../../../apps/extension/src/content/core/ui/imageControls';
 
 class FakeElement {
   className = '';

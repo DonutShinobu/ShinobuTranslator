@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { chromium } from "@playwright/test";
-import type { ShinobuBenchmarkWindow } from "../../../src/benchmark/browserEntry";
+import type { ShinobuBenchmarkWindow } from "../../../apps/extension/src/benchmark/browserEntry";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const DIST_DIR = join(ROOT, "apps", "extension", "dist-chromium");

@@ -1,18 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
-import { defaultExtensionSettings } from '../../../src/shared/config';
+import { defaultExtensionSettings } from '../../../apps/extension/src/shared/config';
 import type {
   ImageTarget,
   ImageTranslationContextResolution,
-} from '../../../src/content/core/types';
-import { ProgressJankMonitor } from '../../../src/content/core/progressJank';
-import { PhotoStateStore } from '../../../src/content/core/state/photoStateStore';
-import type { RunLocalPipeline } from '../../../src/content/core/translation/localPipelineClient';
-import { TranslationRunner } from '../../../src/content/core/translation/translationRunner';
-import { sendRuntimeMessage } from '../../../src/shared/messages';
+} from '../../../apps/extension/src/content/core/types';
+import { ProgressJankMonitor } from '../../../apps/extension/src/content/core/progressJank';
+import { PhotoStateStore } from '../../../apps/extension/src/content/core/state/photoStateStore';
+import type { RunLocalPipeline } from '../../../apps/extension/src/content/core/translation/localPipelineClient';
+import { TranslationRunner } from '../../../apps/extension/src/content/core/translation/translationRunner';
+import { sendRuntimeMessage } from '../../../apps/extension/src/shared/messages';
 import {
   ImageTranslationController,
   type ImageTranslationRuntime,
-} from '../../../src/content/core/translation/imageTranslationController';
+} from '../../../apps/extension/src/content/core/translation/imageTranslationController';
 
 function createHarness(
   resolveTranslationContext?: (target: ImageTarget) => ImageTranslationContextResolution,

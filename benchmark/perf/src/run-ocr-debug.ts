@@ -16,7 +16,7 @@ import {
 } from '@shinobu/image-pipeline/benchmark';
 import { nodePipelinePlatform as nodePlatform } from '../../nodePipelinePlatform';
 import { benchmarkModelRuntime } from '../../model-runtime';
-import type { OcrEngine } from "../../../src/shared/config";
+import type { OcrEngine } from "../../../apps/extension/src/shared/config";
 
 const ROOT = resolve(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "../../..");
 const DEFAULT_IMAGE = join(ROOT, "benchmark/color/fixtures/typeset-debug-log-2026-05-23T06-03-39-877Z.png");

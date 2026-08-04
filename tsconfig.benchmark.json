@@ -3,5 +3,5 @@
   "compilerOptions": {
     "types": ["@webgpu/types", "node"]
   },
-  "include": ["src", "benchmark/*/src/**/*.ts"]
+  "include": ["apps/extension/src", "benchmark/*/src/**/*.ts"]
 }

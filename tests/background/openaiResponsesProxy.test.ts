@@ -18,9 +18,9 @@ const oauthMocks = vi.hoisted(() => ({
   )),
 }));
 
-vi.mock('../../src/background/openai/oauthService', () => oauthMocks);
+vi.mock('../../apps/extension/src/background/openai/oauthService', () => oauthMocks);
 
-import { proxyOpenAiChatCompletions } from '../../src/background/openai/responsesProxy';
+import { proxyOpenAiChatCompletions } from '../../apps/extension/src/background/openai/responsesProxy';
 
 beforeEach(() => {
   oauthMocks.createOpenAiRequestId.mockReturnValue('request-1');

@@ -4,10 +4,10 @@ import {
   LlmChatCompletionHttpError,
   proxyApiKeyChatCompletions,
   resolveLlmChatCompletionsEndpoint,
-} from '../../src/background/llmProxy';
-import { defaultExtensionSettings } from '../../src/shared/config';
-import type { ExtensionSettings } from '../../src/shared/config';
-import type { LlmChatCompletionsProxyConfig } from '../../src/shared/messages';
+} from '../../apps/extension/src/background/llmProxy';
+import { defaultExtensionSettings } from '../../apps/extension/src/shared/config';
+import type { ExtensionSettings } from '../../apps/extension/src/shared/config';
+import type { LlmChatCompletionsProxyConfig } from '../../apps/extension/src/shared/messages';
 
 const deepSeekProxyConfig: LlmChatCompletionsProxyConfig = {
   provider: 'deepseek',

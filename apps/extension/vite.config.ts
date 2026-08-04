@@ -110,7 +110,7 @@ export default defineConfig(({ mode }): UserConfig => {
       rollupOptions: {
         input: {
           popup: resolve(extensionRoot, 'popup.html'),
-          'background-chromium': resolve(repoRoot, 'src/background/chromium.ts'),
+          'background-chromium': resolve(extensionRoot, 'src/background/chromium.ts'),
           'background-firefox': resolve(extensionRoot, 'background-firefox.html'),
           offscreen: resolve(extensionRoot, 'offscreen.html'),
         },
@@ -124,16 +124,16 @@ export default defineConfig(({ mode }): UserConfig => {
             if (normalized.endsWith('/packages/diagnostics/src/perfTrace.ts')) {
               return 'perfTrace';
             }
-            if (normalized.endsWith('/src/shared/messages.ts')) {
+            if (normalized.endsWith('/apps/extension/src/shared/messages.ts')) {
               return 'messages';
             }
             if (normalized.endsWith('/packages/model-runtime/src/runtime/onnxWorkerBridge.ts')) {
               return 'onnxWorkerBridge';
             }
-            if (normalized.endsWith('/src/shared/diagnosticLogClient.ts')) {
+            if (normalized.endsWith('/apps/extension/src/shared/diagnosticLogClient.ts')) {
               return 'diagnosticLogClient';
             }
-            if (normalized.endsWith('/src/offscreen/pipelineHost.ts')) {
+            if (normalized.endsWith('/apps/extension/src/offscreen/pipelineHost.ts')) {
               return 'pipelineHost';
             }
             return undefined;

@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { sendRuntimeMessage } from '../../src/shared/messages';
+import { sendRuntimeMessage } from '../../apps/extension/src/shared/messages';
 import {
   createDirectTextTranslationTransport,
   TextTranslationTransportError,
 } from '../../packages/text-translation/src/translators/transport';
-import { extensionTextTranslationTransport } from '../../src/shared/textTranslationTransport';
+import { extensionTextTranslationTransport } from '../../apps/extension/src/shared/textTranslationTransport';
 
-vi.mock('../../src/shared/messages', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/shared/messages')>();
+vi.mock('../../apps/extension/src/shared/messages', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../apps/extension/src/shared/messages')>();
   return {
     ...actual,
     sendRuntimeMessage: vi.fn(),

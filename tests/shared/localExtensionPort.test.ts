@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createLocalExtensionPortPair } from '../../src/shared/localExtensionPort';
+import { createLocalExtensionPortPair } from '../../apps/extension/src/shared/localExtensionPort';
 
 describe('Local ExtensionPort pair', () => {
   it('exchanges isolated messages in both directions and propagates disconnect', async () => {

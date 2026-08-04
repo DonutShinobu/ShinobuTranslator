@@ -3,7 +3,7 @@ import {
   getRuntimeErrorCode,
   getRuntimeTransportMetadata,
   isRuntimeMessage,
-} from "../../src/shared/messages";
+} from "../../apps/extension/src/shared/messages";
 
 describe("isRuntimeMessage", () => {
   it("accepts image and screenshot translation runtime messages", () => {

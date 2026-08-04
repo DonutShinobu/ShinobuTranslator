@@ -8,7 +8,7 @@ import {
   type CDPSession,
   type Page,
 } from '@playwright/test';
-import type { RuntimeResponse } from '../../../src/shared/messages';
+import type { RuntimeResponse } from '../../../apps/extension/src/shared/messages';
 
 const root = resolve(import.meta.dirname, '../../..');
 const distDir = join(root, 'apps', 'extension', 'dist-chromium');

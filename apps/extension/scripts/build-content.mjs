@@ -8,18 +8,18 @@ function readRequiredOption(name) {
   return value;
 }
 
-const root = resolve(import.meta.dirname, '..');
+const extensionRoot = resolve(import.meta.dirname, '..');
 const outputDir = resolve(process.cwd(), readRequiredOption('--out-dir'));
 
 await build({
   configFile: false,
-  root,
+  root: extensionRoot,
   publicDir: false,
   build: {
     outDir: outputDir,
     emptyOutDir: false,
     lib: {
-      entry: resolve(root, 'src/content/index.ts'),
+      entry: resolve(extensionRoot, 'src/content/index.ts'),
       formats: ['iife'],
       name: 'ShinobuTranslatorContent',
       fileName: () => 'content.js',

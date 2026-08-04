@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toErrorMessage } from "../../src/shared/utils";
+import { toErrorMessage } from "../../apps/extension/src/shared/utils";
 
 describe("toErrorMessage", () => {
   it("returns Error.message for Error instances", () => {

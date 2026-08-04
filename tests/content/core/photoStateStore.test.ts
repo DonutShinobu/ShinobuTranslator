@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PhotoStateStore } from '../../../src/content/core/state/photoStateStore';
+import { PhotoStateStore } from '../../../apps/extension/src/content/core/state/photoStateStore';
 
 describe('PhotoStateStore', () => {
   it('reuses state for the same key and keeps the original state identity', () => {

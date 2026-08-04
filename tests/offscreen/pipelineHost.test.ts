@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ExtensionPort } from '../../src/shared/extensionRuntime';
+import type { ExtensionPort } from '../../apps/extension/src/shared/extensionRuntime';
 import type { PipelineArtifacts } from '../../packages/image-pipeline/src/types';
 import type { PipelinePlatform } from '@shinobu/image-pipeline';
 import type { ModelRuntime } from '@shinobu/model-runtime';
@@ -33,7 +33,7 @@ vi.mock('../../packages/image-pipeline/src/protocol/blobCodec', () => ({
   canvasToPngBlob: vi.fn(async () => new Blob(['result'], { type: 'image/png' })),
 }));
 
-import { PipelineHost } from '../../src/offscreen/pipelineHost';
+import { PipelineHost } from '../../apps/extension/src/offscreen/pipelineHost';
 import { LOCAL_PIPELINE_HOST_PORT } from '../../packages/image-pipeline/src/protocol/index';
 
 class FakePort implements ExtensionPort {

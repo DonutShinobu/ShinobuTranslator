@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const popupStyles = readFileSync(resolve('src/popup/styles.css'), 'utf8');
+const popupStyles = readFileSync(resolve('apps/extension/src/popup/styles.css'), 'utf8');
 
 function declarationsFor(selector: string): string {
   const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');

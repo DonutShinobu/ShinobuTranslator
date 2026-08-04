@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { RuntimeStageStatus, StageTiming } from '../../../src/content/core/types';
+import type { RuntimeStageStatus, StageTiming } from '../../../apps/extension/src/content/core/types';
 import {
   buildStageTimingCardData,
   formatElapsedText,
   resolveImageReferrerPolicy,
-} from '../../../src/content/core/utils';
+} from '../../../apps/extension/src/content/core/utils';
 
 afterEach(() => {
   vi.unstubAllGlobals();

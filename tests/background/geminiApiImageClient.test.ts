@@ -3,8 +3,8 @@ import {
   extractGeminiApiGeneratedImage,
   getGeminiApiModelMetadataLabel,
   toGeminiApiErrorMessage,
-} from "../../src/background/geminiApiImageClient";
-import { resolveGeminiApiImageModel } from "../../src/shared/config";
+} from "../../apps/extension/src/background/geminiApiImageClient";
+import { resolveGeminiApiImageModel } from "../../apps/extension/src/shared/config";
 
 describe("Gemini API image response parsing", () => {
   it("extracts the first inline image from camelCase inlineData", () => {

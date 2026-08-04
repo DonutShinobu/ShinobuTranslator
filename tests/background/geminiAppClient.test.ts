@@ -8,8 +8,8 @@ import {
   getGeminiAppRawResponse,
   parseGeminiAccountStatus,
   runGeminiAppImageTranslate,
-} from "../../src/background/geminiAppClient";
-import { defaultExtensionSettings } from "../../src/shared/config";
+} from "../../apps/extension/src/background/geminiAppClient";
+import { defaultExtensionSettings } from "../../apps/extension/src/shared/config";
 import type { GeminiAppModel } from "../../packages/image-pipeline/src/types";
 
 function createCandidateWithGeneratedImage(url: string): unknown[] {

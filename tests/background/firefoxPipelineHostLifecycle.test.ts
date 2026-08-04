@@ -34,10 +34,10 @@ vi.mock('../../packages/image-pipeline/src/protocol/blobCodec', () => ({
   canvasToPngBlob: vi.fn(async () => new Blob(['result'], { type: 'image/png' })),
 }));
 
-import { FirefoxPipelineHostLifecycle } from '../../src/background/localPipeline/firefoxPipelineHostLifecycle';
-import { PipelineHostBroker } from '../../src/background/localPipeline/offscreenBroker';
-import type { ExtensionBrowserApi, ExtensionPort } from '../../src/shared/extensionRuntime';
-import { createLocalExtensionPortPair } from '../../src/shared/localExtensionPort';
+import { FirefoxPipelineHostLifecycle } from '../../apps/extension/src/background/localPipeline/firefoxPipelineHostLifecycle';
+import { PipelineHostBroker } from '../../apps/extension/src/background/localPipeline/offscreenBroker';
+import type { ExtensionBrowserApi, ExtensionPort } from '../../apps/extension/src/shared/extensionRuntime';
+import { createLocalExtensionPortPair } from '../../apps/extension/src/shared/localExtensionPort';
 import { LOCAL_PIPELINE_CLIENT_PORT } from '../../packages/image-pipeline/src/protocol/index';
 
 function artifacts(): PipelineArtifacts {

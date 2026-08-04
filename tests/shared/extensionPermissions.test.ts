@@ -4,11 +4,11 @@ import {
   createExtensionPermissions,
   ExtensionPermissionError,
   GEMINI_COOKIE_PERMISSION,
-} from '../../src/shared/extensionPermissions';
+} from '../../apps/extension/src/shared/extensionPermissions';
 import type {
   ExtensionBrowserApi,
   ExtensionPermissionRequest,
-} from '../../src/shared/extensionRuntime';
+} from '../../apps/extension/src/shared/extensionRuntime';
 
 afterEach(() => {
   vi.unstubAllGlobals();

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { handleLlmChatCompletions } from '../../src/background/providers/providerService';
-import { createInProcessPipelineHostDependencies } from '../../src/background/localPipeline/inProcessPipelineHostDependencies';
+import { handleLlmChatCompletions } from '../../apps/extension/src/background/providers/providerService';
+import { createInProcessPipelineHostDependencies } from '../../apps/extension/src/background/localPipeline/inProcessPipelineHostDependencies';
 
 afterEach(() => {
   vi.unstubAllGlobals();

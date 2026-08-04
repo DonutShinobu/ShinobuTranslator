@@ -3,7 +3,7 @@ import {
   isEhentaiImagePage,
   normalizeEhentaiImageKey,
   pickEhentaiMainImage,
-} from '../../../src/content/adapters/ehentai';
+} from '../../../apps/extension/src/content/adapters/ehentai';
 
 describe('ehentai adapter helpers', () => {
   it('matches image viewer pages on e-hentai and exhentai only', () => {

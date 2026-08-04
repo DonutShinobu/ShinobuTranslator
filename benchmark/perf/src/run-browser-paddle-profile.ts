@@ -5,7 +5,7 @@ import { dirname, extname, join, resolve, sep } from "path";
 import { fileURLToPath } from "url";
 import { chromium, firefox } from "@playwright/test";
 import type { BrowserContext } from "@playwright/test";
-import type { OcrEngine, ProcessMode } from "../../../src/shared/config";
+import type { OcrEngine, ProcessMode } from "../../../apps/extension/src/shared/config";
 import type { OcrRunDebugInfo, PaddleOcrRunDebug } from '@shinobu/image-pipeline/benchmark';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");

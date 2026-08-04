@@ -61,7 +61,7 @@ describe('monorepo application ownership', () => {
     });
   });
 
-  it('keeps the extension release shell inside apps/extension', () => {
+  it('keeps the extension implementation and entry tooling inside apps/extension', () => {
     for (const path of [
       'apps/extension/package.json',
       'apps/extension/tsconfig.json',
@@ -71,10 +71,15 @@ describe('monorepo application ownership', () => {
       'apps/extension/background-firefox.html',
       'apps/extension/benchmark.html',
       'apps/extension/manifest.ts',
-      'apps/extension/src/popup.tsx',
-      'apps/extension/src/offscreen.ts',
-      'apps/extension/src/background-firefox.ts',
-      'apps/extension/src/benchmark.ts',
+      'apps/extension/src/background/chromium.ts',
+      'apps/extension/src/background/firefox.ts',
+      'apps/extension/src/content/index.ts',
+      'apps/extension/src/popup/main.tsx',
+      'apps/extension/src/offscreen/index.ts',
+      'apps/extension/src/benchmark/browserEntry.ts',
+      'apps/extension/scripts/build-content.mjs',
+      'apps/extension/scripts/dev.mjs',
+      'apps/extension/scripts/clean-legacy-dist.mjs',
     ]) {
       expect(existsSync(pathFromRoot(path)), path).toBe(true);
     }
@@ -85,6 +90,10 @@ describe('monorepo application ownership', () => {
       'offscreen.html',
       'benchmark.html',
       'public/manifest.json',
+      'src',
+      'scripts/build-extension-content.mjs',
+      'scripts/dev-extension.mjs',
+      'scripts/clean-legacy-extension-dist.mjs',
     ]) {
       expect(existsSync(pathFromRoot(legacyRootPath)), legacyRootPath).toBe(false);
     }

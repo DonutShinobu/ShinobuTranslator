@@ -3,11 +3,11 @@ import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium, type Page } from "@playwright/test";
-import type { ShinobuBenchmarkWindow } from "../../../src/benchmark/browserEntry";
+import type { ShinobuBenchmarkWindow } from "../../../apps/extension/src/benchmark/browserEntry";
 import {
   defaultExtensionSettings,
   toPipelineConfig,
-} from "../../../src/shared/config";
+} from "../../../apps/extension/src/shared/config";
 import type {
   OcrRunDebugInfo,
   OcrPostFilterDebugInfo,

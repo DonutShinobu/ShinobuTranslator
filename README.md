@@ -206,21 +206,18 @@ npm run models:download  # 下载缺少的 ONNX 模型
 
 ```text
 apps/
-  extension/        Chrome/Edge 扩展 package、HTML 入口、MV3 manifest 与构建配置
+  extension/        Chromium/Firefox 扩展、入口、专属实现与构建配置
   web/              网页版、历史、PWA 与项目包
   model-gateway/    Cloudflare Workers 私有 R2 模型网关
 packages/
   translator-core/  扩展与网页版共用的任务核心
   browser-runtime/  Worker 宿主与浏览器运行时 Adapter
+  diagnostics/      扩展与网页版共用的诊断与性能记录
+  image-pipeline/   检测、OCR、翻译、去字与排版流水线
+  model-runtime/    模型加载、推理后端与共享 ONNX Worker
   shared-config/    网页版配置 Schema、默认值与迁移
+  text-translation/ 文本翻译供应商与传输协议
   model-manifest/   网页版与网关共用的内容哈希模型清单
-src/                增量迁移中的共享实现源码，由 extension workspace 与测试直接消费
-  background/       扩展后台、右键菜单、快捷键、第三方图像翻译调用
-  content/          页面注入逻辑、悬浮按钮、截图翻译、译图展示
-  pipeline/         检测、OCR、翻译、去字、排版流水线
-  popup/            扩展弹出页设置界面
-  runtime/          ONNX Runtime、模型加载、推理后端选择
-  shared/           配置、消息、浏览器 API 封装
 public/
   models/           浏览器端 ONNX 模型资源
   icons/            扩展与网页版图标
@@ -239,7 +236,7 @@ benchmark/
 - 用户填写的 API Key 保存在浏览器扩展存储中
 - 本地视觉流水线在浏览器端运行，不依赖个人服务器
 - 使用 Google Web、LLM 或 Nano Banana 时，请自行确认对应服务的隐私政策、费用和使用条款
-- 扩展权限以 `apps/extension/public/manifest.json` 为准
+- 扩展权限以 `apps/extension/manifest.ts` 生成的目标 manifest 为准
 - 网页版隐私边界、Cloudflare 元数据和本地存储规则见 [PRIVACY_POLICY.md](PRIVACY_POLICY.md)
 
 ## 致谢

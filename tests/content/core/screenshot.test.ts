@@ -9,7 +9,7 @@ import {
   toDocumentScreenshotRect,
   toScreenshotCropRect,
   toViewportScreenshotRect,
-} from "../../../src/content/core/screenshot";
+} from "../../../apps/extension/src/content/core/screenshot";
 
 describe("normalizeScreenshotRect", () => {
   it("normalizes reverse drag direction and clamps to the viewport", () => {

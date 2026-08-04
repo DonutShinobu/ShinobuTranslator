@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   createExtensionControlModule,
   CredentialDisclosureDeniedError,
@@ -99,5 +99,29 @@ describe('ExtensionControlModule', () => {
       provider: 'deepseek',
       apiKey: 'popup-visible-secret',
     });
+  });
+
+  it('does not let a failed projection observer invalidate a committed command', async () => {
+    const module = createModule(defaultExtensionSettings);
+    const failedObserver = vi.fn(() => {
+      throw new Error('disconnected projection port');
+    });
+    module.subscribe(failedObserver);
+
+    await expect(module.handle({
+      kind: 'update-interface-preferences',
+      preferences: { showElapsedTime: true },
+    })).resolves.toMatchObject({
+      kind: 'control-projection',
+      projection: {
+        settings: { showElapsedTime: true },
+      },
+    });
+
+    await module.handle({
+      kind: 'update-interface-preferences',
+      preferences: { showElapsedTime: false },
+    });
+    expect(failedObserver).toHaveBeenCalledOnce();
   });
 });

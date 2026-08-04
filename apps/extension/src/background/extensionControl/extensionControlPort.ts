@@ -13,18 +13,26 @@ export function registerExtensionControlPort(
   api.runtime?.onConnect?.addListener((port: ExtensionPort) => {
     if (port.name !== extensionControlPortName) return;
     let connected = true;
+    let unsubscribe: (() => void) | undefined;
+    const disconnect = () => {
+      if (!connected) return;
+      connected = false;
+      unsubscribe?.();
+    };
     const post = (projection: ExtensionControlChangedEvent['projection']) => {
       if (!connected) return;
-      port.postMessage({
-        type: extensionControlChangedEventType,
-        projection,
-      } satisfies ExtensionControlChangedEvent);
+      try {
+        port.postMessage({
+          type: extensionControlChangedEventType,
+          projection,
+        } satisfies ExtensionControlChangedEvent);
+      } catch {
+        // The physical port can close before onDisconnect is dispatched.
+        disconnect();
+      }
     };
-    const unsubscribe = module.subscribe(post);
-    port.onDisconnect.addListener(() => {
-      connected = false;
-      unsubscribe();
-    });
+    unsubscribe = module.subscribe(post);
+    port.onDisconnect.addListener(disconnect);
     void module.read().then(post).catch(() => undefined);
   });
 }

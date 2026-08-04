@@ -69,7 +69,15 @@ export function createExtensionControlModule(
     projectionPromise: Promise<ExtensionControlProjection>,
   ): Promise<ExtensionControlProjection> {
     const projection = await projectionPromise;
-    for (const listener of listeners) listener(projection);
+    for (const listener of [...listeners]) {
+      try {
+        listener(projection);
+      } catch {
+        // Projection delivery is best-effort and must not invalidate a command
+        // whose settings or credentials have already been committed.
+        listeners.delete(listener);
+      }
+    }
     return projection;
   }
 

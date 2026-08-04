@@ -33,6 +33,18 @@ export type ProcessingRuntimeCredential = {
   value: string;
 };
 
+export type ProcessingRuntimeCredentialStatus = {
+  providerId: TranslationProviderId;
+  target: string;
+  available: boolean;
+};
+
+export type ProcessingRuntimeAssessmentRequest = {
+  settings: WebSettings;
+  credential: ProcessingRuntimeCredentialStatus;
+  pendingOriginalBytes: number;
+};
+
 export type ProcessingRuntimeRequest = {
   settings: WebSettings;
   credential: ProcessingRuntimeCredential;
@@ -143,7 +155,7 @@ export interface ProcessingRuntimeLease {
 export interface ProcessingRuntime {
   snapshot(): ProcessingRuntimeSnapshot;
   subscribe(listener: (snapshot: ProcessingRuntimeSnapshot) => void): () => void;
-  assess(request: ProcessingRuntimeRequest): ProcessingRuntimeDecision;
+  assess(request: ProcessingRuntimeAssessmentRequest): ProcessingRuntimeDecision;
   prepare(request: ProcessingRuntimeRequest): Promise<ProcessingRuntimeLease>;
   dispatch(command: ProcessingRuntimeCommand): Promise<void>;
 }
@@ -273,7 +285,7 @@ class ProcessingRuntimeImplementation implements ProcessingRuntime {
     };
   }
 
-  assess(request: ProcessingRuntimeRequest): ProcessingRuntimeDecision {
+  assess(request: ProcessingRuntimeAssessmentRequest): ProcessingRuntimeDecision {
     const base = this.baseDecision();
     if (base) return base;
 
@@ -290,7 +302,7 @@ class ProcessingRuntimeImplementation implements ProcessingRuntime {
           detail: providerError,
         };
       }
-      if (!request.credential.value.trim()) {
+      if (!request.credential.available) {
         return {
           status: 'blocked',
           code: 'CREDENTIAL_MISSING',
@@ -361,7 +373,15 @@ class ProcessingRuntimeImplementation implements ProcessingRuntime {
     this.assertNotDisposed();
     this.storage = await this.inspectStorageSafely();
     this.emit();
-    const decision = this.assess(request);
+    const decision = this.assess({
+      settings: request.settings,
+      credential: {
+        providerId: request.credential.providerId,
+        target: request.credential.target,
+        available: Boolean(request.credential.value.trim()),
+      },
+      pendingOriginalBytes: request.pendingOriginalBytes,
+    });
     if (decision.status === 'blocked') {
       throw new ProcessingRuntimeBlockedError(decision);
     }

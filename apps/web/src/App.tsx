@@ -27,49 +27,35 @@ import { Icon, type IconName } from './icons';
 import { describeImportRejection, getCopy } from './i18n';
 import { HistoryView } from './features/history/HistoryView';
 import { createBrowserLocalHistoryEnvironment } from './features/history/browserLocalHistoryLifecycle';
-import { createHistoryWorkbenchAdapter } from './features/history/historyWorkbenchAdapter';
 import { SettingsView } from './features/settings/SettingsView';
-import {
-  ContinuousCamera,
-  type ContinuousCameraRoundState,
-} from './features/camera/ContinuousCamera';
-import type {
-  LocalHistoryBatch,
-} from './features/history/localHistory';
+import { ContinuousCamera } from './features/camera/ContinuousCamera';
 import type {
   HistoryIntent,
   HistoryOutcome,
   HistoryRejectionCode,
-  LocalHistoryWorkbenchAdapter,
 } from './features/history/localHistoryLifecycle';
 import {
   createRedactedDiagnostics,
   downloadRedactedDiagnostics,
 } from './features/diagnostics/redactedDiagnostics';
-import { useLocalHistoryLifecycle } from './features/history/useLocalHistoryLifecycle';
 import { decodeBrowserImage } from './features/import/browserImageDecoder';
 import {
   createImageImporter,
   imageImportLimitsForDevice,
-  type ImageImportRejection,
-  type ImportedImage,
 } from './features/import/imageImporter';
 import { useProviderSecrets } from './features/providers/useProviderSecrets';
 import {
   createProcessingBatchWorkspace,
-  type ProcessingBatch,
-  type ProcessingTaskSnapshot,
 } from './features/processing/processingBatch';
 import {
-  bindProcessingBatchHost,
-  type QueueJobState,
+  createWebWorkbench,
   type QueueJobStatus,
-} from './features/processing/processingBatchHost';
+} from './features/workbench/webWorkbench';
+import { useWebWorkbench } from './features/workbench/useWebWorkbench';
 import type { ProcessingRuntimeDecision } from './features/processing/processingRuntime';
-import { useProcessingRuntime } from './features/processing/useProcessingRuntime';
+import { createBrowserProcessingRuntime } from './features/processing/browserProcessingRuntime';
 import {
   IMAGE_IMPORT_STORAGE_HEADROOM_BYTES,
-  assessImageImportStorage,
   formatByteSize as formatBytes,
   type WebStorageSnapshot,
 } from './features/storage/storageBudget';
@@ -124,71 +110,158 @@ function historyRejectionMessage(
 }
 
 export function App() {
-  const [settings, setSettings] = useState<WebSettings>(readInitialSettings);
+  const initialSettingsRef = useRef<WebSettings>(readInitialSettings());
   const [activeView, setActiveView] = useState<ActiveView>('workbench');
-  const [queue, setQueue] = useState<ImportedImage[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [rejections, setRejections] = useState<ImageImportRejection[]>([]);
-  const [importing, setImporting] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [mobilePane, setMobilePane] = useState<MobilePane>('preview');
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewMode, setPreviewMode] = useState<PreviewMode>('original');
   const [previewScale, setPreviewScale] = useState<PreviewScale>('fit');
-  const [jobs, setJobs] = useState<Record<string, QueueJobState>>({});
-  const [batchRunning, setBatchRunning] = useState(false);
-  const [batchNotice, setBatchNotice] = useState('');
   const [historyActionError, setHistoryActionError] = useState<string>();
   const [diagnosticBusy, setDiagnosticBusy] = useState(false);
-  const [storageImportError, setStorageImportError] = useState<string>();
-  const [resumeHistoryBatchId, setResumeHistoryBatchId] = useState<string>();
-  const [draftProviderSelectionRequired, setDraftProviderSelectionRequired] = useState(false);
   const [providerDetailsOpen, setProviderDetailsOpen] = useState(false);
-  const [continuousCameraOpen, setContinuousCameraOpen] = useState(false);
-  const [continuousCameraRound, setContinuousCameraRound] =
-    useState<ContinuousCameraRoundState>({ status: 'ready' });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragDepthRef = useRef(0);
-  const queueRef = useRef(queue);
-  const jobsRef = useRef(jobs);
-  const batchRunningRef = useRef(batchRunning);
-  const activeProcessingBatchRef = useRef<ProcessingBatch | null>(null);
-  const processingBatchUnsubscribeRef = useRef<(() => void) | null>(null);
-  const resumeHistoryBatchRef = useRef<LocalHistoryBatch | null>(null);
-  const preRecoverySettingsRef = useRef<WebSettings | null>(null);
-  const historyWorkbenchAdapterRef = useRef<LocalHistoryWorkbenchAdapter | null>(null);
-  const activeImportPromiseRef = useRef<Promise<void> | null>(null);
-  const continuousCameraRoundIdRef = useRef(0);
-  const continuousCameraCaptureActiveRef = useRef(false);
-  const continuousCameraUrlsRef = useRef<Set<string>>(new Set());
-  const {
-    runtime: processingRuntime,
-    snapshot: processingRuntimeSnapshot,
-  } = useProcessingRuntime();
-  const providerSecrets = useProviderSecrets(settings.providerProfiles);
-  const historyWorkbench = useMemo<LocalHistoryWorkbenchAdapter>(() => ({
-    occupied: () => historyWorkbenchAdapterRef.current?.occupied() ?? true,
-    installRecovery: (preparation) => {
-      const adapter = historyWorkbenchAdapterRef.current;
-      if (!adapter) throw new Error('History workbench adapter is unavailable');
-      return adapter.installRecovery(preparation);
-    },
-    installDraft: (preparation) => {
-      const adapter = historyWorkbenchAdapterRef.current;
-      if (!adapter) throw new Error('History workbench adapter is unavailable');
-      return adapter.installDraft(preparation);
-    },
-    discardRecovery: (batchId) => {
-      historyWorkbenchAdapterRef.current?.discardRecovery(batchId);
-    },
-  }), []);
-  const localHistory = useMemo(
-    () => createBrowserLocalHistoryEnvironment(historyWorkbench),
-    [historyWorkbench],
-  );
-  const historySnapshot = useLocalHistoryLifecycle(localHistory.lifecycle);
   const pwa = usePwaLifecycle();
   const pwaInstall = usePwaInstall();
+  const deviceProfile = useMemo(() => detectWebDeviceProfile(), []);
+  const importerRef = useRef<ReturnType<typeof createImageImporter>>();
+  if (!importerRef.current) {
+    importerRef.current = createImageImporter({
+      decodeImage: decodeBrowserImage,
+      limits: imageImportLimitsForDevice(
+        deviceProfile.mobile,
+        deviceProfile.initialWorkPixelBudget,
+      ),
+    });
+  }
+  const settingsChangedRef = useRef<(next: WebSettings, previous: WebSettings) => void>(
+    () => undefined,
+  );
+  const processingCompletedRef = useRef<() => void>(() => undefined);
+
+  const workbench = useMemo(() => createWebWorkbench({
+    initialSettings: initialSettingsRef.current,
+    importer: () => importerRef.current!,
+    versions: LOCAL_HISTORY_VERSIONS,
+    createRuntime(adapter) {
+      const processingRuntime = createBrowserProcessingRuntime();
+      const history = createBrowserLocalHistoryEnvironment(adapter);
+      return {
+        lifecycle: history.lifecycle,
+        processingRuntime,
+        processing: createProcessingBatchWorkspace({
+          history: history.history,
+          coordinator: history.coordinator,
+          runtime: processingRuntime,
+          async readThumbnail(image) {
+            try {
+              const response = await fetch(image.thumbnailUrl);
+              return response.ok ? await response.blob() : undefined;
+            } catch {
+              return undefined;
+            }
+          },
+        }),
+        dispose: () => history.dispose(),
+      };
+    },
+    onSettingsChanged: (next, previous) => settingsChangedRef.current(next, previous),
+    onProcessingCompleted: () => processingCompletedRef.current(),
+  }), []);
+  const workbenchSnapshot = useWebWorkbench(workbench);
+  const {
+    settings,
+    images: queue,
+    selectedImageId: selectedId,
+    selectedPreviewUrl,
+    jobs,
+    importing,
+    rejections,
+    notice: batchNotice,
+    recoveryBatchId: resumeHistoryBatchId,
+    draftProviderSelectionRequired,
+    storageImportError,
+    runtimeDecisions,
+    camera: {
+      open: continuousCameraOpen,
+      round: continuousCameraRound,
+    },
+  } = workbenchSnapshot;
+  const processingRuntimeSnapshot = workbenchSnapshot.processingRuntime ?? {
+    status: 'checking' as const,
+    environment: {
+      online: navigator.onLine,
+      visibility: document.visibilityState === 'hidden' ? 'hidden' as const : 'visible' as const,
+    },
+    modelConsent: false,
+    modelPackage: {
+      status: 'checking' as const,
+      storedBytes: 0,
+      totalBytes: 0,
+    },
+    modelProbe: { status: 'pending' as const },
+    storage: { status: 'checking' as const },
+  };
+  const capability = processingRuntimeSnapshot.capability ?? null;
+  const modelPackageState = processingRuntimeSnapshot.modelPackage;
+  const modelRuntimeProbe = processingRuntimeSnapshot.modelProbe;
+  const modelConsent = processingRuntimeSnapshot.modelConsent;
+  const storageChecking = processingRuntimeSnapshot.storage.status === 'checking';
+  const storageSnapshot: WebStorageSnapshot | null =
+    processingRuntimeSnapshot.storage.status === 'checking'
+      ? null
+      : processingRuntimeSnapshot.storage;
+  const imageImportLimits = useMemo(
+    () => imageImportLimitsForDevice(
+      deviceProfile.mobile,
+      capability?.workPixelBudget ?? deviceProfile.initialWorkPixelBudget,
+    ),
+    [capability?.workPixelBudget, deviceProfile],
+  );
+  const importer = useMemo(
+    () => createImageImporter({
+      decodeImage: decodeBrowserImage,
+      limits: imageImportLimits,
+    }),
+    [imageImportLimits],
+  );
+  importerRef.current = importer;
+  const refreshStorage = useCallback(async (): Promise<WebStorageSnapshot> => {
+    await workbench.dispatch({
+      type: 'runtime-command',
+      command: { type: 'refresh-storage' },
+    });
+    const storage = workbench.snapshot().processingRuntime?.storage;
+    if (!storage || storage.status === 'checking') {
+      throw new Error('浏览器存储状态仍在检查');
+    }
+    return storage;
+  }, [workbench]);
+  const batchRunning = workbenchSnapshot.activeBatch?.status === 'running';
+  const historySnapshot = workbenchSnapshot.history ?? {
+    status: 'loading' as const,
+    entries: [],
+    busy: false,
+    faults: [],
+  };
+  const providerSecrets = useProviderSecrets(settings.providerProfiles);
+  settingsChangedRef.current = (nextSettings, previousSettings) => {
+    const providerId = nextSettings.translationProviderId;
+    let changed = true;
+    try {
+      changed = normalizeProviderTargetBinding(
+        nextSettings.providerProfiles[providerId].baseUrl,
+      ) !== normalizeProviderTargetBinding(
+        previousSettings.providerProfiles[providerId].baseUrl,
+      );
+    } catch {
+      // Invalid legacy targets must never retain a current provider secret.
+    }
+    if (changed) providerSecrets.invalidateTarget(providerId);
+  };
+  processingCompletedRef.current = () => {
+    pwaInstall.offerAfterSuccess();
+  };
 
   const copy = getCopy(settings.uiLocale);
   const historyCleanupFaultMessage = historySnapshot.faults.length > 0
@@ -204,133 +277,6 @@ export function App() {
           0,
         ))}`
     : undefined;
-  const capability = processingRuntimeSnapshot.capability ?? null;
-  const modelPackageState = processingRuntimeSnapshot.modelPackage;
-  const modelRuntimeProbe = processingRuntimeSnapshot.modelProbe;
-  const modelConsent = processingRuntimeSnapshot.modelConsent;
-  const storageChecking = processingRuntimeSnapshot.storage.status === 'checking';
-  const storageSnapshot: WebStorageSnapshot | null =
-    processingRuntimeSnapshot.storage.status === 'checking'
-    ? null
-    : processingRuntimeSnapshot.storage;
-  const deviceProfile = useMemo(() => detectWebDeviceProfile(), []);
-  const imageImportLimits = useMemo(
-    () => imageImportLimitsForDevice(
-      deviceProfile.mobile,
-      capability?.workPixelBudget ?? deviceProfile.initialWorkPixelBudget,
-    ),
-    [capability?.workPixelBudget, deviceProfile],
-  );
-  const importer = useMemo(
-    () => createImageImporter({
-      decodeImage: decodeBrowserImage,
-      limits: imageImportLimits,
-    }),
-    [imageImportLimits],
-  );
-
-  useEffect(() => () => localHistory.dispose(), [localHistory]);
-  const invalidateChangedLockedProvider = (nextSettings: WebSettings): void => {
-    const providerId = nextSettings.translationProviderId;
-    let changed = true;
-    try {
-      changed = normalizeProviderTargetBinding(
-        nextSettings.providerProfiles[providerId].baseUrl,
-      ) !== normalizeProviderTargetBinding(
-        settings.providerProfiles[providerId].baseUrl,
-      );
-    } catch {
-      // Invalid legacy targets must never retain a current provider secret.
-    }
-    if (changed) providerSecrets.invalidateTarget(providerId);
-  };
-  const clearWorkbenchFiles = (): void => {
-    queueRef.current.forEach((image) => URL.revokeObjectURL(image.thumbnailUrl));
-    Object.values(jobsRef.current).forEach((job) => {
-      if (job.resultUrl) URL.revokeObjectURL(job.resultUrl);
-    });
-  };
-  const replaceWorkbenchFiles = (
-    images: ImportedImage[],
-    nextJobs: Record<string, QueueJobState>,
-    nextSelectedId: string | null,
-  ): void => {
-    clearWorkbenchFiles();
-    queueRef.current = images;
-    jobsRef.current = nextJobs;
-    setQueue(images);
-    setJobs(nextJobs);
-    setSelectedId(nextSelectedId);
-    setPreviewMode('original');
-  };
-  historyWorkbenchAdapterRef.current = createHistoryWorkbenchAdapter({
-    importer,
-    copy,
-    host: {
-      occupied: () => Boolean(
-        activeProcessingBatchRef.current
-        || resumeHistoryBatchRef.current
-        || queueRef.current.length > 0
-      ),
-      currentSettings: () => settings,
-      installRecovery(installation) {
-        invalidateChangedLockedProvider(installation.settings);
-        preRecoverySettingsRef.current = structuredClone(settings);
-        replaceWorkbenchFiles(
-          installation.images,
-          installation.jobs,
-          installation.batch.items.find((item) => item.status !== 'done')?.id
-            ?? installation.batch.items[0]?.id
-            ?? null,
-        );
-        setSettings(installation.settings);
-        resumeHistoryBatchRef.current = installation.batch;
-        setResumeHistoryBatchId(installation.batch.id);
-        setDraftProviderSelectionRequired(false);
-        setRejections([]);
-        setBatchNotice(copy.historyResumeReady);
-        setHistoryActionError(undefined);
-        setActiveView('workbench');
-      },
-      installDraft(installation) {
-        if (!installation.providerSelectionRequired) {
-          invalidateChangedLockedProvider(installation.settings);
-        }
-        replaceWorkbenchFiles(
-          installation.images,
-          {},
-          installation.images[0]?.id ?? null,
-        );
-        setSettings(installation.settings);
-        preRecoverySettingsRef.current = null;
-        resumeHistoryBatchRef.current = null;
-        setResumeHistoryBatchId(undefined);
-        setDraftProviderSelectionRequired(installation.providerSelectionRequired);
-        setProviderDetailsOpen(installation.providerSelectionRequired);
-        setRejections([]);
-        setBatchNotice(
-          installation.providerSelectionRequired
-            ? copy.historyProviderSelectionRequired
-            : '',
-        );
-        setHistoryActionError(undefined);
-        setActiveView('workbench');
-      },
-      discardRecovery(batchId) {
-        if (resumeHistoryBatchRef.current?.id !== batchId) return;
-        replaceWorkbenchFiles([], {}, null);
-        if (preRecoverySettingsRef.current) {
-          setSettings(preRecoverySettingsRef.current);
-        }
-        preRecoverySettingsRef.current = null;
-        resumeHistoryBatchRef.current = null;
-        setResumeHistoryBatchId(undefined);
-        setDraftProviderSelectionRequired(false);
-        setRejections([]);
-        setBatchNotice('');
-      },
-    },
-  });
   const selectedImage = queue.find((image) => image.id === selectedId) ?? null;
   const selectedJob = selectedId ? jobs[selectedId] : undefined;
   const activeProviderProfile = settings.providerProfiles[settings.translationProviderId];
@@ -349,16 +295,38 @@ export function App() {
     target: activeProviderProfile.baseUrl,
     value: activeProviderKey,
   };
-  const queueRuntimeDecision = processingRuntime.assess({
+  const processingCredentialStatus = {
+    providerId: processingCredential.providerId,
+    target: processingCredential.target,
+    available: Boolean(processingCredential.value.trim()),
+  };
+  useEffect(() => {
+    void workbench.dispatch({
+      type: 'assess-runtime',
+      target: 'queue',
+      credential: processingCredentialStatus,
+      pendingOriginalBytes: totalBytes,
+    });
+    void workbench.dispatch({
+      type: 'assess-runtime',
+      target: 'camera',
+      credential: processingCredentialStatus,
+      pendingOriginalBytes: 0,
+    });
+  }, [
+    activeProviderKey,
+    activeProviderProfile.baseUrl,
+    processingRuntimeSnapshot,
     settings,
-    credential: processingCredential,
-    pendingOriginalBytes: totalBytes,
-  });
-  const cameraRuntimeDecision = processingRuntime.assess({
-    settings,
-    credential: processingCredential,
-    pendingOriginalBytes: 0,
-  });
+    totalBytes,
+    workbench,
+  ]);
+  const runtimeCheckingDecision: ProcessingRuntimeDecision = {
+    status: 'blocked',
+    code: 'CAPABILITY_CHECKING',
+  };
+  const queueRuntimeDecision = runtimeDecisions.queue ?? runtimeCheckingDecision;
+  const cameraRuntimeDecision = runtimeDecisions.camera ?? runtimeCheckingDecision;
   const runtimeBlockerMessage = (
     decision: ProcessingRuntimeDecision,
   ): string => {
@@ -411,69 +379,14 @@ export function App() {
   }, [selectedId]);
 
   useEffect(() => {
-    queueRef.current = queue;
-  }, [queue]);
-
-  useEffect(() => {
-    jobsRef.current = jobs;
-  }, [jobs]);
-
-  useEffect(() => {
-    batchRunningRef.current = batchRunning;
-  }, [batchRunning]);
-
-  const refreshStorage = useCallback(async (): Promise<WebStorageSnapshot> => {
-    await processingRuntime.dispatch({ type: 'refresh-storage' });
-    const snapshot = processingRuntime.snapshot().storage;
-    if (snapshot.status === 'checking') {
-      throw new Error('浏览器存储状态仍在检查');
-    }
-    return snapshot;
-  }, [processingRuntime]);
-  const processingWorkspace = useMemo(
-    () => createProcessingBatchWorkspace({
-      history: localHistory.history,
-      coordinator: localHistory.coordinator,
-      runtime: processingRuntime,
-      async readThumbnail(image) {
-        try {
-          const response = await fetch(image.thumbnailUrl);
-          return response.ok ? await response.blob() : undefined;
-        } catch {
-          return undefined;
-        }
-      },
-    }),
-    [localHistory.coordinator, localHistory.history, processingRuntime],
-  );
-
-  useEffect(() => {
     const handleVisibilityChange = (): void => {
       if (document.visibilityState === 'hidden') {
-        const activeBatch = activeProcessingBatchRef.current;
-        if (activeBatch?.snapshot().status === 'running') {
-          void activeBatch.dispatch({ type: 'stop' }).catch(() => undefined);
-        }
+        void workbench.dispatch({ type: 'visibility-hidden' }).catch(() => undefined);
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, []);
-
-  useEffect(() => () => {
-    continuousCameraRoundIdRef.current += 1;
-    queueRef.current.forEach((image) => URL.revokeObjectURL(image.thumbnailUrl));
-    Object.values(jobsRef.current).forEach((job) => {
-      if (job.resultUrl) URL.revokeObjectURL(job.resultUrl);
-    });
-    const activeBatch = activeProcessingBatchRef.current;
-    if (activeBatch?.snapshot().status === 'running') {
-      void activeBatch.dispatch({ type: 'stop' }).catch(() => undefined);
-    }
-    processingBatchUnsubscribeRef.current?.();
-    continuousCameraUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
-    continuousCameraUrlsRef.current.clear();
-  }, []);
+  }, [workbench]);
 
   useEffect(() => {
     document.documentElement.lang = settings.uiLocale;
@@ -485,164 +398,15 @@ export function App() {
   }, [settings]);
 
   useEffect(() => {
-    setPreviewUrl(null);
-    if (!selectedImage) return undefined;
-    const url = URL.createObjectURL(selectedImage.file);
-    setPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [selectedImage]);
-
-  useEffect(() => {
     if (previewMode === 'result' && selectedJob?.status !== 'done') {
       setPreviewMode('original');
     }
   }, [previewMode, selectedJob?.status]);
 
-  const attachProcessingBatch = (
-    batch: ProcessingBatch,
-    projectQueue: boolean,
-  ): void => {
-    processingBatchUnsubscribeRef.current?.();
-    activeProcessingBatchRef.current = batch;
-    setResumeHistoryBatchId(batch.snapshot().id);
-    const unsubscribe = bindProcessingBatchHost({
-      batch,
-      projectQueue,
-      historyStorageError: copy.historyStorageError,
-      getJobs: () => jobsRef.current,
-      replaceJobs(next) {
-        jobsRef.current = next;
-        setJobs(next);
-      },
-      setRunning(running) {
-        batchRunningRef.current = running;
-        setBatchRunning(running);
-      },
-      hasActiveImport: () => Boolean(activeImportPromiseRef.current),
-      setNotice: setBatchNotice,
-      onTerminal(snapshot) {
-        if (activeProcessingBatchRef.current === batch) {
-          activeProcessingBatchRef.current = null;
-          setResumeHistoryBatchId(undefined);
-        }
-        batchRunningRef.current = false;
-        setBatchRunning(false);
-        void localHistory.lifecycle.request({ type: 'refresh' });
-        void refreshStorage();
-        if (snapshot.tasks.some((task) => task.status === 'done')) {
-          pwaInstall.offerAfterSuccess();
-        }
-      },
-    });
-    processingBatchUnsubscribeRef.current = unsubscribe;
-  };
-
-  const importFiles = useCallback((files: readonly File[]): Promise<void> => {
-    if (files.length === 0 || activeImportPromiseRef.current) return Promise.resolve();
-    if (resumeHistoryBatchId && !batchRunningRef.current) {
-      setBatchNotice(copy.historyResumeReady);
-      return Promise.resolve();
-    }
-    setImporting(true);
-    const operation = (async (): Promise<void> => {
-      try {
-        const result = await importer.importFiles(files, queueRef.current);
-        const activeBatch = activeProcessingBatchRef.current;
-        let accepted = result.accepted;
-        if (accepted.length > 0) {
-          const snapshot = await refreshStorage();
-          const pendingOriginalBytes = (
-            (activeBatch
-              ? 0
-              : queueRef.current.reduce((sum, image) => sum + image.file.size, 0))
-            + accepted.reduce((sum, image) => sum + image.file.size, 0)
-          );
-          const storageAssessment = assessImageImportStorage(
-            snapshot,
-            pendingOriginalBytes,
-          );
-          if (!storageAssessment.allowed) {
-            accepted.forEach((image) => URL.revokeObjectURL(image.thumbnailUrl));
-            const message = storageAssessment.reason === 'unavailable'
-              ? copy.storageUnavailable
-              : copy.storageImportBlocked(
-                  formatBytes(storageAssessment.requiredBytes),
-                  formatBytes(storageAssessment.availableBytes ?? 0),
-                );
-            setStorageImportError(message);
-            setBatchNotice(message);
-            accepted = [];
-          } else {
-            setStorageImportError(undefined);
-            setBatchNotice('');
-          }
-        }
-        if (accepted.length > 0) {
-          if (activeBatch) {
-            try {
-              await activeBatch.dispatch({ type: 'append', images: accepted });
-            } catch (error) {
-              accepted.forEach((image) => URL.revokeObjectURL(image.thumbnailUrl));
-              setBatchNotice(
-                `${copy.historyStorageError}: ${error instanceof Error ? error.message : String(error)}`,
-              );
-              return;
-            }
-          }
-          const nextQueue = [...queueRef.current, ...accepted];
-          queueRef.current = nextQueue;
-          setQueue(nextQueue);
-          setSelectedId((current) => current ?? accepted[0].id);
-          if (activeBatch) {
-            setJobs((current) => {
-              const next = { ...current };
-              for (const image of accepted) {
-                next[image.id] = { status: 'queued' };
-              }
-              jobsRef.current = next;
-              return next;
-            });
-          }
-          setMobilePane('preview');
-          void refreshStorage();
-        }
-        if (result.rejected.length > 0) {
-          setRejections((current) => [...current, ...result.rejected]);
-        }
-      } finally {
-        setImporting(false);
-      }
-    })();
-    const tracked = operation.finally(() => {
-      if (activeImportPromiseRef.current === tracked) {
-        activeImportPromiseRef.current = null;
-        const activeBatch = activeProcessingBatchRef.current;
-        const snapshot = activeBatch?.snapshot();
-        if (
-          activeBatch
-          && snapshot?.kind === 'queue'
-          && snapshot.status === 'running'
-          && snapshot.input === 'open'
-          && !snapshot.tasks.some(
-            (task) => task.status === 'queued' || task.status === 'running',
-          )
-        ) {
-          void activeBatch.dispatch({ type: 'close-input' }).catch(() => undefined);
-        }
-      }
-    });
-    activeImportPromiseRef.current = tracked;
-    return tracked;
-  }, [
-    copy.historyResumeReady,
-    copy.historyStorageError,
-    copy.storageImportBlocked,
-    copy.storageUnavailable,
-    importer,
-    localHistory,
-    refreshStorage,
-    resumeHistoryBatchId,
-  ]);
+  const importFiles = useCallback(async (files: readonly File[]): Promise<void> => {
+    await workbench.dispatch({ type: 'import-files', files });
+    if (files.length > 0) setMobilePane('preview');
+  }, [workbench]);
 
   useEffect(() => {
     const handlePaste = (event: ClipboardEvent): void => {
@@ -670,26 +434,23 @@ export function App() {
   };
 
   const patchSettings = (patch: Partial<WebSettings>): void => {
-    if (batchRunningRef.current) return;
+    if (batchRunning) return;
     if (
       resumeHistoryBatchId
       && Object.keys(patch).some((key) => key !== 'uiLocale')
     ) {
       return;
     }
-    if (patch.translationProviderId !== undefined) {
-      setDraftProviderSelectionRequired(false);
-      setBatchNotice('');
-    }
-    setSettings((current) => ({ ...current, ...patch }));
+    void workbench.dispatch({
+      type: 'update-settings',
+      settings: { ...settings, ...patch },
+    });
   };
 
   const patchActiveProviderProfile = (
     patch: Partial<WebSettings['providerProfiles'][TranslationProviderId]>,
   ): void => {
-    if (batchRunningRef.current || resumeHistoryBatchId) return;
-    setDraftProviderSelectionRequired(false);
-    setBatchNotice('');
+    if (batchRunning || resumeHistoryBatchId) return;
     const providerId = settings.translationProviderId;
     if (patch.baseUrl !== undefined) {
       let targetChanged = patch.baseUrl !== activeProviderProfile.baseUrl;
@@ -703,16 +464,19 @@ export function App() {
         providerSecrets.invalidateTarget(providerId);
       }
     }
-    setSettings((current) => ({
-      ...current,
-      providerProfiles: {
-        ...current.providerProfiles,
-        [providerId]: {
-          ...current.providerProfiles[providerId],
-          ...patch,
+    void workbench.dispatch({
+      type: 'update-settings',
+      settings: {
+        ...settings,
+        providerProfiles: {
+          ...settings.providerProfiles,
+          [providerId]: {
+            ...settings.providerProfiles[providerId],
+            ...patch,
+          },
         },
       },
-    }));
+    });
   };
 
   const updateProviderKey = (value: string): void => {
@@ -720,16 +484,19 @@ export function App() {
   };
 
   const removeActiveProviderConfiguration = async (): Promise<void> => {
-    if (batchRunningRef.current || resumeHistoryBatchId) return;
+    if (batchRunning || resumeHistoryBatchId) return;
     const providerId = settings.translationProviderId;
     await providerSecrets.clear(providerId);
-    setSettings((current) => ({
-      ...current,
-      providerProfiles: {
-        ...current.providerProfiles,
-        [providerId]: structuredClone(defaultWebProviderProfiles[providerId]),
+    await workbench.dispatch({
+      type: 'update-settings',
+      settings: {
+        ...settings,
+        providerProfiles: {
+          ...settings.providerProfiles,
+          [providerId]: structuredClone(defaultWebProviderProfiles[providerId]),
+        },
       },
-    }));
+    });
   };
 
   const downloadBlob = (blob: Blob, fileName: string): void => {
@@ -742,7 +509,7 @@ export function App() {
   };
 
   const handleHistoryOutcome = async (intent: HistoryIntent): Promise<HistoryOutcome> => {
-    const outcome = await localHistory.lifecycle.request(intent);
+    const outcome = await workbench.dispatch({ type: 'history', intent }) as HistoryOutcome;
     if (outcome.status === 'rejected') {
       setHistoryActionError(historyRejectionMessage(outcome.code, settings.uiLocale));
       return outcome;
@@ -764,7 +531,13 @@ export function App() {
       }
       downloadBlob(outcome.artifact.blob, outcome.artifact.fileName);
     }
-    if (outcome.type === 'project-imported') void refreshStorage();
+    if (outcome.type === 'recovery-prepared' || outcome.type === 'draft-prepared') {
+      setActiveView('workbench');
+      setPreviewMode('original');
+      if (outcome.type === 'draft-prepared' && outcome.providerSelectionRequired) {
+        setProviderDetailsOpen(true);
+      }
+    }
     setHistoryActionError(undefined);
     return outcome;
   };
@@ -780,81 +553,11 @@ export function App() {
   };
 
   const removeImage = async (id: string): Promise<void> => {
-    if (importing || activeImportPromiseRef.current) return;
-    const job = jobsRef.current[id];
-    if (job?.status === 'running') return;
-    const currentQueue = queueRef.current;
-    const index = currentQueue.findIndex((image) => image.id === id);
-    if (index < 0) return;
-    const activeBatch = activeProcessingBatchRef.current;
-    if (resumeHistoryBatchId && !activeBatch) return;
-    if (activeBatch) {
-      if (job?.status !== 'queued') return;
-      try {
-        await activeBatch.dispatch({ type: 'remove-queued', taskId: id });
-      } catch (error) {
-        setBatchNotice(
-          `${copy.historyStorageError}: ${error instanceof Error ? error.message : String(error)}`,
-        );
-        return;
-      }
-    }
-    URL.revokeObjectURL(currentQueue[index].thumbnailUrl);
-    if (job?.resultUrl) URL.revokeObjectURL(job.resultUrl);
-    const next = currentQueue.filter((image) => image.id !== id);
-    queueRef.current = next;
-    setQueue(next);
-    setJobs((current) => {
-      const nextJobs = { ...current };
-      delete nextJobs[id];
-      jobsRef.current = nextJobs;
-      return nextJobs;
-    });
-    if (selectedId === id) {
-      setSelectedId(next[Math.min(index, next.length - 1)]?.id ?? null);
-    }
+    await workbench.dispatch({ type: 'remove-image', imageId: id });
   };
 
   const moveImage = async (id: string, direction: -1 | 1): Promise<void> => {
-    if (importing || activeImportPromiseRef.current) return;
-    const current = queueRef.current;
-    const index = current.findIndex((image) => image.id === id);
-    const target = index + direction;
-    if (index < 0 || target < 0 || target >= current.length) return;
-    if (
-      jobsRef.current[id]?.status === 'running'
-      || jobsRef.current[current[target].id]?.status === 'running'
-    ) {
-      return;
-    }
-    const activeBatch = activeProcessingBatchRef.current;
-    if (resumeHistoryBatchId && !activeBatch) return;
-    if (
-      activeBatch
-      && (
-        jobsRef.current[id]?.status !== 'queued'
-        || jobsRef.current[current[target].id]?.status !== 'queued'
-      )
-    ) {
-      return;
-    }
-    const next = [...current];
-    [next[index], next[target]] = [next[target], next[index]];
-    if (activeBatch) {
-      try {
-        await activeBatch.dispatch({
-          type: 'reorder-queued',
-          taskIds: next.map((image) => image.id),
-        });
-      } catch (error) {
-        setBatchNotice(
-          `${copy.historyStorageError}: ${error instanceof Error ? error.message : String(error)}`,
-        );
-        return;
-      }
-    }
-    queueRef.current = next;
-    setQueue(next);
+    await workbench.dispatch({ type: 'move-image', imageId: id, direction });
   };
 
   const handleDragEnter = (event: DragEvent): void => {
@@ -891,153 +594,59 @@ export function App() {
   };
 
   const acceptModelDownload = (): void => {
-    void processingRuntime.dispatch({ type: 'accept-model-download' })
+    void workbench.dispatch({
+      type: 'runtime-command',
+      command: { type: 'accept-model-download' },
+    })
       .catch((error) => {
-        setBatchNotice(error instanceof Error ? error.message : String(error));
+        void workbench.dispatch({ type: 'set-notice', notice: String(error) });
       });
   };
 
   const cancelCurrent = (): void => {
-    const activeBatch = activeProcessingBatchRef.current;
-    if (!activeBatch?.snapshot().currentTaskId) return;
-    void activeBatch.dispatch({ type: 'cancel-current' }).catch((error) => {
-      setBatchNotice(error instanceof Error ? error.message : String(error));
+    if (!workbenchSnapshot.activeBatch?.currentTaskId) return;
+    void workbench.dispatch({
+      type: 'batch-command',
+      command: { type: 'cancel-current' },
+    }).catch((error) => {
+      void workbench.dispatch({ type: 'set-notice', notice: String(error) });
     });
   };
 
   const stopBatch = (): void => {
-    const activeBatch = activeProcessingBatchRef.current;
-    if (activeBatch?.snapshot().status !== 'running') return;
-    void activeBatch.dispatch({ type: 'stop' })
-      .then(() => setBatchNotice(copy.batchStopped))
+    if (workbenchSnapshot.activeBatch?.status !== 'running') return;
+    void workbench.dispatch({ type: 'batch-command', command: { type: 'stop' } })
+      .then(() => workbench.dispatch({ type: 'set-notice', notice: copy.batchStopped }))
       .catch((error) => {
-        setBatchNotice(error instanceof Error ? error.message : String(error));
+        void workbench.dispatch({ type: 'set-notice', notice: String(error) });
       });
   };
 
   const retryTask = (taskId: string): void => {
-    const activeBatch = activeProcessingBatchRef.current;
-    if (!activeBatch) return;
-    void activeBatch.dispatch({ type: 'retry', taskId })
-      .then(() => setBatchNotice(''))
+    if (!workbenchSnapshot.activeBatch) return;
+    void workbench.dispatch({
+      type: 'batch-command',
+      command: { type: 'retry', taskId },
+    })
+      .then(() => workbench.dispatch({ type: 'clear-notice' }))
       .catch((error) => {
-        setBatchNotice(error instanceof Error ? error.message : String(error));
+        void workbench.dispatch({ type: 'set-notice', notice: String(error) });
       });
   };
 
   const exitHistoryResume = (): void => {
-    if (batchRunningRef.current) return;
-    const activeBatch = activeProcessingBatchRef.current;
-    if (activeBatch?.snapshot().status === 'paused') {
-      void activeBatch.dispatch({ type: 'detach' })
-        .then(() => {
-          if (activeProcessingBatchRef.current === activeBatch) {
-            activeProcessingBatchRef.current = null;
-          }
-          resumeHistoryBatchRef.current = null;
-          setResumeHistoryBatchId(undefined);
-          setBatchNotice('');
-        })
-        .catch((error) => {
-          setBatchNotice(error instanceof Error ? error.message : String(error));
-        });
-      return;
-    }
-    if (resumeHistoryBatchId) {
-      void handleHistoryOutcome({
-        type: 'discard-recovery',
-        batchId: resumeHistoryBatchId,
-      });
-    }
+    if (batchRunning) return;
+    void workbench.dispatch({ type: 'exit-recovery' }).catch((error) => {
+      void workbench.dispatch({ type: 'set-notice', notice: String(error) });
+    });
   };
 
   const startBatch = async (): Promise<void> => {
-    const existingBatch = activeProcessingBatchRef.current;
-    if (existingBatch) {
-      const snapshot = existingBatch.snapshot();
-      if (snapshot.status === 'paused' && snapshot.persistence.status === 'healthy') {
-        try {
-          await existingBatch.dispatch({ type: 'resume' });
-          setBatchNotice('');
-        } catch (error) {
-          setBatchNotice(error instanceof Error ? error.message : String(error));
-        }
-      } else if (snapshot.persistence.status === 'faulted') {
-        setBatchNotice(
-          `${copy.historyStorageError}: ${snapshot.persistence.error}`,
-        );
-      }
-      return;
-    }
-    if (
-      activeImportPromiseRef.current
-      || queueRef.current.length === 0
-      || queueRuntimeDecision.status !== 'ready'
-    ) {
-      return;
-    }
-
-    setBatchNotice('');
-    const resumedBatchId = resumeHistoryBatchId;
-
-    const nextJobs: Record<string, QueueJobState> = {};
-    for (const image of queueRef.current) {
-      const previous = jobsRef.current[image.id];
-      if (
-        resumedBatchId
-        && previous
-        && (
-          previous.status === 'done'
-          || previous.status === 'failed'
-          || previous.status === 'cancelled'
-        )
-      ) {
-        nextJobs[image.id] = previous;
-      } else {
-        if (previous?.resultUrl) URL.revokeObjectURL(previous.resultUrl);
-        nextJobs[image.id] = { status: 'queued' };
-      }
-    }
-    jobsRef.current = nextJobs;
-    setJobs(nextJobs);
-
-    try {
-      let processingBatch: ProcessingBatch;
-      if (resumedBatchId) {
-        const source = resumeHistoryBatchRef.current;
-        if (!source || source.id !== resumedBatchId) {
-          throw new Error('恢复处理批次的本地历史上下文已失效');
-        }
-        processingBatch = await processingWorkspace.resume({
-          batch: source,
-          images: queueRef.current,
-          settings,
-          inputLifetime: 'until-closed',
-          credential: processingCredential,
-        });
-        await localHistory.lifecycle.request({
-          type: 'handoff-recovery',
-          batchId: resumedBatchId,
-        });
-        resumeHistoryBatchRef.current = null;
-        preRecoverySettingsRef.current = null;
-      } else {
-        processingBatch = await processingWorkspace.open({
-          kind: 'queue',
-          inputLifetime: 'until-closed',
-          initialImages: queueRef.current,
-          settings,
-          versions: LOCAL_HISTORY_VERSIONS,
-          credential: processingCredential,
-        });
-        setDraftProviderSelectionRequired(false);
-      }
-      attachProcessingBatch(processingBatch, true);
-    } catch (error) {
-      batchRunningRef.current = false;
-      setBatchRunning(false);
-      setBatchNotice(error instanceof Error ? error.message : String(error));
-    }
+    if (queueRuntimeDecision.status !== 'ready') return;
+    await workbench.dispatch({
+      type: 'start-processing',
+      credential: processingCredential,
+    }).catch(() => undefined);
   };
 
   const exportRedactedDiagnostics = async (): Promise<void> => {
@@ -1082,37 +691,24 @@ export function App() {
     && queueRuntimeDecision.status === 'ready'
   );
   const continuousCameraAllowed = (
-    !batchRunning
+    queue.length === 0
+    && !batchRunning
     && !importing
-    && !activeImportPromiseRef.current
     && cameraRuntimeDecision.status === 'ready'
     && !resumeHistoryBatchId
   );
   const continuousCameraBlocker = storageImportIssue
     ?? runtimeBlockerMessage(cameraRuntimeDecision);
 
-  const releaseContinuousCameraUrls = (): void => {
-    continuousCameraUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
-    continuousCameraUrlsRef.current.clear();
-  };
-
   const openContinuousCamera = async (): Promise<void> => {
     if (!continuousCameraAllowed) return;
     try {
-      const batch = await processingWorkspace.open({
-        kind: 'continuous-camera',
-        initialImages: [],
-        settings,
-        versions: LOCAL_HISTORY_VERSIONS,
+      await workbench.dispatch({
+        type: 'open-camera',
         credential: processingCredential,
       });
-      attachProcessingBatch(batch, false);
-      continuousCameraRoundIdRef.current += 1;
-      releaseContinuousCameraUrls();
-      setContinuousCameraRound({ status: 'ready' });
-      setContinuousCameraOpen(true);
     } catch (error) {
-      setBatchNotice(error instanceof Error ? error.message : String(error));
+      void workbench.dispatch({ type: 'set-notice', notice: String(error) });
     }
   };
 
@@ -1131,140 +727,17 @@ export function App() {
   };
 
   const continueContinuousCamera = (): void => {
-    continuousCameraRoundIdRef.current += 1;
-    releaseContinuousCameraUrls();
-    setContinuousCameraRound({ status: 'ready' });
+    void workbench.dispatch({ type: 'next-camera' });
   };
 
   const closeContinuousCamera = (): void => {
-    continuousCameraRoundIdRef.current += 1;
-    const activeBatch = activeProcessingBatchRef.current;
-    if (
-      activeBatch?.snapshot().kind === 'continuous-camera'
-      && activeBatch.snapshot().input === 'open'
-    ) {
-      void activeBatch.dispatch({ type: 'close-input' })
-        .then(async () => {
-          if (activeBatch.snapshot().status === 'paused') {
-            await activeBatch.dispatch({ type: 'detach' });
-            if (activeProcessingBatchRef.current === activeBatch) {
-              activeProcessingBatchRef.current = null;
-              setResumeHistoryBatchId(undefined);
-            }
-          }
-        })
-        .catch((error) => {
-          setBatchNotice(error instanceof Error ? error.message : String(error));
-        });
-    }
-    releaseContinuousCameraUrls();
-    setContinuousCameraRound({ status: 'ready' });
-    setContinuousCameraOpen(false);
+    void workbench.dispatch({ type: 'close-camera' }).catch((error) => {
+      void workbench.dispatch({ type: 'set-notice', notice: String(error) });
+    });
   };
 
   const translateContinuousCameraCapture = async (file: File): Promise<void> => {
-    if (
-      !continuousCameraOpen
-      || continuousCameraCaptureActiveRef.current
-    ) {
-      return;
-    }
-    const processingBatch = activeProcessingBatchRef.current;
-    if (processingBatch?.snapshot().kind !== 'continuous-camera') return;
-
-    const roundId = continuousCameraRoundIdRef.current + 1;
-    continuousCameraRoundIdRef.current = roundId;
-    continuousCameraCaptureActiveRef.current = true;
-    releaseContinuousCameraUrls();
-    const originalUrl = URL.createObjectURL(file);
-    continuousCameraUrlsRef.current.add(originalUrl);
-    setContinuousCameraRound({
-      status: 'preparing',
-      originalUrl,
-      detail: copy.importing,
-    });
-
-    try {
-      const imported = await importer.importFiles([file], []);
-      if (continuousCameraRoundIdRef.current !== roundId) {
-        imported.accepted.forEach((image) => URL.revokeObjectURL(image.thumbnailUrl));
-        return;
-      }
-      const image = imported.accepted[0];
-      if (!image) {
-        const rejection = imported.rejected[0];
-        throw new Error(rejection
-          ? describeImportRejection(settings.uiLocale, rejection.code)
-          : copy.cameraCaptureFailed);
-      }
-      continuousCameraUrlsRef.current.add(image.thumbnailUrl);
-      if (continuousCameraRoundIdRef.current !== roundId) {
-        throw new DOMException('连续拍摄已关闭', 'AbortError');
-      }
-      setContinuousCameraRound({
-        status: 'translating',
-        originalUrl,
-        detail: copy.cameraTranslating,
-      });
-      await processingBatch.dispatch({
-        type: 'append',
-        images: [image],
-      });
-      const completedTask = await new Promise<ProcessingTaskSnapshot>((resolve) => {
-        let unsubscribe = (): void => undefined;
-        unsubscribe = processingBatch.subscribe((snapshot) => {
-          const task = snapshot.tasks.find((candidate) => candidate.id === image.id);
-          if (!task) return;
-          if (
-            continuousCameraRoundIdRef.current === roundId
-            && task.status === 'running'
-          ) {
-            setContinuousCameraRound({
-              status: 'translating',
-              originalUrl,
-              detail: task.progress?.detail ?? copy.cameraTranslating,
-            });
-          }
-          if (
-            task.status === 'done'
-            || task.status === 'failed'
-            || task.status === 'cancelled'
-          ) {
-            queueMicrotask(() => unsubscribe());
-            resolve(task);
-          }
-        });
-      });
-
-      if (completedTask.status !== 'done' || !completedTask.result) {
-        throw new Error(completedTask.error ?? copy.cameraTranslationFailed);
-      }
-      const resultUrl = URL.createObjectURL(completedTask.result.image);
-      if (continuousCameraRoundIdRef.current !== roundId) {
-        URL.revokeObjectURL(resultUrl);
-        return;
-      }
-      continuousCameraUrlsRef.current.add(resultUrl);
-
-      setContinuousCameraRound({
-        status: 'done',
-        originalUrl,
-        resultUrl,
-      });
-      pwaInstall.offerAfterSuccess();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (continuousCameraRoundIdRef.current === roundId) {
-        setContinuousCameraRound({
-          status: 'error',
-          originalUrl,
-          error: message,
-        });
-      }
-    } finally {
-      continuousCameraCaptureActiveRef.current = false;
-      void refreshStorage();
-    }
+    await workbench.dispatch({ type: 'capture-camera', file });
   };
 
   useEffect(() => {
@@ -1461,8 +934,9 @@ export function App() {
       return;
     }
     if (modelProbeRetryAvailable) {
-      void processingRuntime.dispatch({ type: 'retry' }).catch((error) => {
-        setBatchNotice(error instanceof Error ? error.message : String(error));
+      void workbench.dispatch({ type: 'runtime-command', command: { type: 'retry' } })
+        .catch((error) => {
+        void workbench.dispatch({ type: 'set-notice', notice: String(error) });
       });
       return;
     }
@@ -1474,7 +948,7 @@ export function App() {
   const visiblePreviewUrl = (
     previewMode === 'result' && selectedJob?.resultUrl
       ? selectedJob.resultUrl
-      : previewUrl
+      : selectedPreviewUrl
   );
   const previewScaleLabel = previewScale === 'fit'
     ? copy.previewFit
@@ -1550,7 +1024,7 @@ export function App() {
             onClick={() => {
               setActiveView('history');
               setHistoryActionError(undefined);
-              void localHistory.lifecycle.request({ type: 'refresh' });
+              void workbench.dispatch({ type: 'history', intent: { type: 'refresh' } });
             }}
           >
             <Icon name="clock" />
@@ -1580,7 +1054,7 @@ export function App() {
               onClick={() => {
                 setActiveView('history');
                 setHistoryActionError(undefined);
-                void localHistory.lifecycle.request({ type: 'refresh' });
+                void workbench.dispatch({ type: 'history', intent: { type: 'refresh' } });
               }}
             >
               <Icon name="clock" />
@@ -1783,7 +1257,7 @@ export function App() {
                       type="button"
                       aria-current={selected ? 'true' : undefined}
                       onClick={() => {
-                        setSelectedId(image.id);
+                        void workbench.dispatch({ type: 'select-image', imageId: image.id });
                         setMobilePane('preview');
                       }}
                     >
@@ -1813,7 +1287,7 @@ export function App() {
                           type="button"
                           aria-label={copy.retryTask}
                           title={copy.retryTask}
-                          disabled={!activeProcessingBatchRef.current}
+                          disabled={!workbenchSnapshot.activeBatch}
                           onClick={() => retryTask(image.id)}
                         >
                           <Icon name="refresh" />
@@ -1886,7 +1360,12 @@ export function App() {
             <section className="import-issues" aria-live="polite">
               <div className="issues-header">
                 <h2><Icon name="warning" />{copy.issues} ({rejections.length})</h2>
-                <button type="button" onClick={() => setRejections([])}>{copy.clearIssues}</button>
+                <button
+                  type="button"
+                  onClick={() => void workbench.dispatch({ type: 'clear-rejections' })}
+                >
+                  {copy.clearIssues}
+                </button>
               </div>
               <ul>
                 {rejections.map((rejection, index) => (
@@ -2262,7 +1741,10 @@ export function App() {
                         className="inline-action"
                         type="button"
                         onClick={() => {
-                          void processingRuntime.dispatch({ type: 'retry' });
+                          void workbench.dispatch({
+                            type: 'runtime-command',
+                            command: { type: 'retry' },
+                          });
                         }}
                       >
                         {copy.modelProbeRetry}
@@ -2298,7 +1780,10 @@ export function App() {
                           className="inline-action"
                           type="button"
                           onClick={() => {
-                            void processingRuntime.dispatch({ type: 'cancel-model-download' });
+                            void workbench.dispatch({
+                              type: 'runtime-command',
+                              command: { type: 'cancel-model-download' },
+                            });
                           }}
                         >
                           {copy.modelCancel}
@@ -2327,7 +1812,7 @@ export function App() {
                     className="button button-secondary button-compact"
                     type="button"
                     onClick={cancelCurrent}
-                    disabled={!activeProcessingBatchRef.current?.snapshot().currentTaskId}
+                    disabled={!workbenchSnapshot.activeBatch?.currentTaskId}
                   >
                     {copy.cancelCurrent}
                   </button>
@@ -2476,7 +1961,7 @@ export function App() {
           onManageHistory={() => {
             setActiveView('history');
             setHistoryActionError(undefined);
-            void localHistory.lifecycle.request({ type: 'refresh' });
+            void workbench.dispatch({ type: 'history', intent: { type: 'refresh' } });
           }}
           onExportDiagnostics={() => {
             void exportRedactedDiagnostics();

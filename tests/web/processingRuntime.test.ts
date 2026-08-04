@@ -118,7 +118,14 @@ describe('processing runtime module', () => {
       pendingOriginalBytes: 1024,
     } as const;
 
-    expect(runtime.assess(request)).toMatchObject({
+    expect(runtime.assess({
+      ...request,
+      credential: {
+        providerId: request.credential.providerId,
+        target: request.credential.target,
+        available: true,
+      },
+    })).toMatchObject({
       status: 'ready',
       backend: 'webgpu',
       workPixelBudget: 8_000_000,
@@ -169,7 +176,7 @@ describe('processing runtime module', () => {
       credential: {
         providerId: settings.translationProviderId,
         target: provider.baseUrl,
-        value: 'runtime-only',
+        available: true,
       },
       pendingOriginalBytes: 0,
     };
@@ -326,7 +333,7 @@ describe('processing runtime module', () => {
       credential: {
         providerId: settings.translationProviderId,
         target: provider.baseUrl,
-        value: 'runtime-only',
+        available: true,
       },
       pendingOriginalBytes: 0,
     })).toMatchObject({
@@ -368,7 +375,7 @@ describe('processing runtime module', () => {
       credential: {
         providerId: settings.translationProviderId,
         target: settings.providerProfiles[settings.translationProviderId].baseUrl,
-        value: 'runtime-only',
+        available: true,
       },
       pendingOriginalBytes: 0,
     })).toMatchObject({
@@ -494,7 +501,7 @@ describe('processing runtime module', () => {
       credential: {
         providerId: settings.translationProviderId,
         target: 'https://stale.example/v1',
-        value: 'runtime-only',
+        available: true,
       },
       pendingOriginalBytes: 0,
     })).toMatchObject({

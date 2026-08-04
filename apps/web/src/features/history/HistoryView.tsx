@@ -1,15 +1,12 @@
 import { useRef, type ChangeEvent } from 'react';
 import type { AppCopy } from '../../i18n';
 import { Icon } from '../../icons';
-import type {
-  LocalHistoryItemStatus,
-} from './localHistory';
-import type { LocalHistoryEntryProjection } from './localHistoryLifecycle';
+import type { WebWorkbenchHistoryEntry } from '../workbench/webWorkbench';
 
 type HistoryViewProps = {
   copy: AppCopy;
   locale: 'zh-CN' | 'zh-TW';
-  entries: readonly LocalHistoryEntryProjection[];
+  entries: readonly WebWorkbenchHistoryEntry[];
   loading: boolean;
   busy: boolean;
   error?: string;
@@ -24,7 +21,10 @@ type HistoryViewProps = {
   onDelete(batchId: string): void;
 };
 
-function itemStatus(copy: AppCopy, status: LocalHistoryItemStatus): string {
+function itemStatus(
+  copy: AppCopy,
+  status: WebWorkbenchHistoryEntry['items'][number]['status'],
+): string {
   if (status === 'queued') return copy.statusQueued;
   if (status === 'running') return copy.statusRunning;
   if (status === 'done') return copy.statusDone;
@@ -108,29 +108,35 @@ export function HistoryView({
         <div className="history-list">
           {entries.map((entry) => {
             const {
-              batch,
+              id,
+              updatedAt,
+              status,
+              rerunnable,
+              itemCount,
               completedCount,
-              eligibility,
+              processing,
+              items,
+              actions,
               integrity,
             } = entry;
-            const canResume = eligibility.resume.allowed;
+            const canResume = actions.resume.status === 'available';
             return (
-              <details className="history-batch" key={batch.id}>
+              <details className="history-batch" key={id}>
                 <summary>
                   <div>
-                    <strong>{copy.historyBatchImages(batch.items.length)}</strong>
+                    <strong>{copy.historyBatchImages(itemCount)}</strong>
                     <span>
                       {new Intl.DateTimeFormat(locale, {
                         dateStyle: 'medium',
                         timeStyle: 'short',
-                      }).format(new Date(batch.updatedAt))}
+                      }).format(new Date(updatedAt))}
                     </span>
                   </div>
                   <div className="history-badges">
-                    <span data-history-status={batch.status}>
-                      {copy.historyBatchStatus(batch.status)}
+                    <span data-history-status={status}>
+                      {copy.historyBatchStatus(status)}
                     </span>
-                    <span>{completedCount} / {batch.items.length}</span>
+                    <span>{completedCount} / {itemCount}</span>
                     {integrity === 'partial' && (
                       <span data-history-integrity="partial">{copy.historyPartial}</span>
                     )}
@@ -140,27 +146,27 @@ export function HistoryView({
 
                 <div className="history-batch-body">
                   <div className="history-config">
-                    <span>{copy.processMode}: <strong>{batch.lockedConfig.processMode}</strong></span>
-                    <span>{copy.targetLanguage}: <strong>{batch.lockedConfig.targetLanguage}</strong></span>
-                    <span>{copy.provider}: <strong>{batch.lockedConfig.provider.id}</strong></span>
-                    <span>{copy.historyModelVersion}: <strong>{batch.versions.model}</strong></span>
+                    <span>{copy.processMode}: <strong>{processing.processMode}</strong></span>
+                    <span>{copy.targetLanguage}: <strong>{processing.targetLanguage}</strong></span>
+                    <span>{copy.provider}: <strong>{processing.providerId}</strong></span>
+                    <span>{copy.historyModelVersion}: <strong>{processing.modelVersion}</strong></span>
                   </div>
 
                   <div className="history-items">
-                    {batch.items.map((item) => (
+                    {items.map((item) => (
                       <div className="history-item" key={item.id}>
                         <div>
-                          <strong>{item.original?.fileName ?? `#${item.order + 1}`}</strong>
+                          <strong>{item.fileName ?? `#${item.order + 1}`}</strong>
                           <span>
                             {item.width} × {item.height} · {itemStatus(copy, item.status)}
                           </span>
                           {item.error && <small role="alert">{item.error}</small>}
                         </div>
-                        {item.result ? (
+                        {item.hasResult ? (
                           <button
                             className="button button-secondary button-compact"
                             type="button"
-                            onClick={() => onDownload(batch.id, item.id)}
+                            onClick={() => onDownload(id, item.id)}
                           >
                             <Icon name="download" />
                             {copy.historyDownloadResult}
@@ -177,8 +183,8 @@ export function HistoryView({
                       <button
                         className="button button-primary"
                         type="button"
-                        disabled={busy || !eligibility.resume.allowed}
-                        onClick={() => onResume(batch.id)}
+                        disabled={busy || actions.resume.status === 'blocked'}
+                        onClick={() => onResume(id)}
                       >
                         <Icon name="play" weight="bold" />
                         {copy.historyResume}
@@ -189,9 +195,9 @@ export function HistoryView({
                       type="button"
                       disabled={
                         busy
-                        || !eligibility.clone.allowed
+                        || actions.clone.status === 'blocked'
                       }
-                      onClick={() => onClone(batch.id)}
+                      onClick={() => onClone(id)}
                     >
                       <Icon name="copy" />
                       {copy.historyClone}
@@ -199,8 +205,8 @@ export function HistoryView({
                     <button
                       className="button button-secondary"
                       type="button"
-                      disabled={busy || !eligibility.exportResults.allowed}
-                      onClick={() => onExportResults(batch.id)}
+                      disabled={busy || actions.exportResults.status === 'blocked'}
+                      onClick={() => onExportResults(id)}
                     >
                       <Icon name="download" />
                       {copy.historyExportResults}
@@ -208,18 +214,18 @@ export function HistoryView({
                     <button
                       className="button button-secondary"
                       type="button"
-                      disabled={busy || !eligibility.exportProject.allowed}
-                      onClick={() => onExportProject(batch.id)}
+                      disabled={busy || actions.exportProject.status === 'blocked'}
+                      onClick={() => onExportProject(id)}
                     >
                       <Icon name="archive" />
                       {copy.historyExportProject}
                     </button>
-                    {batch.rerunnable && completedCount > 0 && (
+                    {rerunnable && completedCount > 0 && (
                       <button
                         className="button button-secondary"
                         type="button"
-                        disabled={busy || !eligibility.keepResultsOnly.allowed}
-                        onClick={() => onKeepResults(batch.id)}
+                        disabled={busy || actions.keepResultsOnly.status === 'blocked'}
+                        onClick={() => onKeepResults(id)}
                       >
                         <Icon name="archive" />
                         {copy.historyKeepResults}
@@ -228,13 +234,13 @@ export function HistoryView({
                     <button
                       className="delete-config"
                       type="button"
-                      disabled={busy || !eligibility.delete.allowed}
-                      onClick={() => onDelete(batch.id)}
+                      disabled={busy || actions.delete.status === 'blocked'}
+                      onClick={() => onDelete(id)}
                     >
                       <Icon name="trash" />
                       {copy.historyDelete}
                     </button>
-                    {!batch.rerunnable && <span>{copy.historyResultsOnly}</span>}
+                    {!rerunnable && <span>{copy.historyResultsOnly}</span>}
                   </div>
                 </div>
               </details>

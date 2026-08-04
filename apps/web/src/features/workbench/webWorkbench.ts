@@ -10,9 +10,7 @@ import type { ContinuousCameraRoundState } from '../camera/cameraRound';
 import type { LocalHistoryBatch, LocalHistoryVersions } from '../history/localHistory';
 import type {
   HistoryIntent,
-  HistoryOutcome,
   LocalHistoryLifecycle,
-  LocalHistorySnapshot,
   LocalHistoryWorkbenchAdapter,
 } from '../history/localHistoryLifecycle';
 import type {
@@ -23,7 +21,6 @@ import type {
 import type {
   ProcessingBatch,
   ProcessingBatchCommand,
-  ProcessingBatchCommandResult,
   ProcessingBatchCredential,
   ProcessingBatchSnapshot,
   ProcessingBatchWorkspace,
@@ -40,6 +37,10 @@ import {
   assessImageImportStorage,
   formatByteSize,
 } from '../storage/storageBudget';
+import {
+  projectWebWorkbench,
+  projectWebWorkbenchHistory,
+} from './webWorkbenchProjection';
 
 export type WebWorkbenchPhase = 'empty' | 'draft' | 'recovery' | 'processing';
 
@@ -49,6 +50,204 @@ type WebWorkbenchRuntimeCommand = Exclude<
 >;
 
 export type QueueJobStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
+
+export type WebWorkbenchAvailability =
+  | { status: 'available' }
+  | {
+      status: 'blocked';
+      reason: string;
+      detail?: string;
+      requiredBytes?: number;
+      availableBytes?: number;
+    };
+
+export type WebWorkbenchPrimaryAction = {
+  kind:
+    | 'pick-images'
+    | 'start-processing'
+    | 'stop-processing'
+    | 'open-storage-settings'
+    | 'install-models'
+    | 'retry-runtime'
+    | 'open-provider-settings';
+  availability: WebWorkbenchAvailability;
+};
+
+export type WebWorkbenchCameraEntryAction = {
+  kind:
+    | 'open-camera'
+    | 'open-storage-settings'
+    | 'open-provider-settings'
+    | 'unavailable';
+  availability: WebWorkbenchAvailability;
+};
+
+export type WebWorkbenchProviderView = {
+  configuration: WebWorkbenchAvailability;
+};
+
+export type WebWorkbenchProcessingView = {
+  status: 'idle' | ProcessingBatchSnapshot['status'];
+  canStop: boolean;
+  canCancelCurrent: boolean;
+  canRetryTasks: boolean;
+};
+
+export type WebWorkbenchRuntimeView = {
+  status: ProcessingRuntimeSnapshot['status'];
+  environment: ProcessingRuntimeSnapshot['environment'];
+  capability?: ProcessingRuntimeSnapshot['capability'];
+  modelConsent: boolean;
+  modelPackage: ProcessingRuntimeSnapshot['modelPackage'];
+  modelProbe: ProcessingRuntimeSnapshot['modelProbe'];
+  storage: ProcessingRuntimeSnapshot['storage'];
+  queue: WebWorkbenchAvailability;
+  camera: WebWorkbenchAvailability;
+};
+
+export type WebWorkbenchControls = {
+  importImages: WebWorkbenchAvailability;
+  editProcessingSettings: WebWorkbenchAvailability;
+  openCamera: WebWorkbenchAvailability;
+  exitRecovery: WebWorkbenchAvailability;
+};
+
+export type WebWorkbenchItemActions = {
+  remove: WebWorkbenchAvailability;
+  moveUp: WebWorkbenchAvailability;
+  moveDown: WebWorkbenchAvailability;
+  retry: WebWorkbenchAvailability;
+};
+
+export type WebWorkbenchDiagnosticSource = {
+  settings: WebSettings;
+  runtime: Pick<WebWorkbenchRuntimeView, 'capability' | 'modelPackage'>;
+  jobs: readonly {
+    status: QueueJobStatus;
+    progress?: Pick<PipelineProgress, 'stage'>;
+    errorCode?: string;
+  }[];
+  providerConfigurationValid: boolean;
+};
+
+export type WebWorkbenchHistoryArtifact =
+  | { kind: 'project' | 'result'; blob: Blob; fileName: string }
+  | {
+      kind: 'results';
+      blob: Blob;
+      fileName: string;
+      exportedCount: number;
+      omissions: readonly {
+        itemId: string;
+        fileName: string;
+        reason: 'missing-or-corrupt';
+      }[];
+    };
+
+export type WebWorkbenchEffect =
+  | {
+      status: 'effect';
+      effect: 'pick-images' | 'open-storage-settings' | 'open-provider-settings';
+    }
+  | {
+      status: 'effect';
+      effect: 'download-history-artifact';
+      artifact: WebWorkbenchHistoryArtifact;
+    }
+  | {
+      status: 'effect';
+      effect: 'open-workbench';
+      providerSelectionRequired: boolean;
+    };
+
+export type WebWorkbenchDiagnosticsAdapter = {
+  export(source: WebWorkbenchDiagnosticSource): Promise<void>;
+};
+
+export type WebWorkbenchHistoryAction =
+  | { type: 'refresh-history' }
+  | { type: 'resume-history'; batchId: string }
+  | { type: 'clone-history'; batchId: string }
+  | { type: 'stage-history-delete'; batchId: string }
+  | { type: 'keep-history-results'; batchId: string }
+  | { type: 'export-history-project'; batchId: string }
+  | { type: 'import-history-project'; file: File }
+  | { type: 'download-history-result'; batchId: string; itemId: string }
+  | { type: 'export-history-results'; batchId: string }
+  | { type: 'retry-history-cleanup' }
+  | { type: 'undo-history-action' };
+
+export type WebWorkbenchHistoryRejectionCode =
+  | 'workbench-occupied'
+  | 'batch-occupied'
+  | 'partial-history'
+  | 'results-only'
+  | 'no-results'
+  | 'nothing-to-resume'
+  | 'provider-unavailable'
+  | 'result-unavailable'
+  | 'recovery-not-prepared'
+  | 'pending-operation'
+  | 'coordination-unavailable'
+  | 'batch-not-found';
+export type WebWorkbenchHistoryActionState =
+  | {
+      status: 'rejected';
+      code: WebWorkbenchHistoryRejectionCode;
+      batchId?: string;
+    }
+  | { status: 'failed'; operation: string; cause: string };
+
+export type WebWorkbenchHistoryAvailability =
+  | { status: 'available' }
+  | { status: 'blocked'; reason: WebWorkbenchHistoryRejectionCode };
+
+export type WebWorkbenchHistoryEntry = {
+  id: string;
+  updatedAt: string;
+  status: 'running' | 'paused' | 'completed' | 'partially-completed' | 'failed';
+  rerunnable: boolean;
+  itemCount: number;
+  completedCount: number;
+  integrity: 'complete' | 'partial';
+  processing: {
+    processMode: WebSettings['processMode'];
+    targetLanguage: WebSettings['targetLanguage'];
+    providerId: string;
+    modelVersion: string;
+  };
+  items: readonly {
+    id: string;
+    order: number;
+    width: number;
+    height: number;
+    status: QueueJobStatus;
+    fileName?: string;
+    error?: string;
+    hasResult: boolean;
+  }[];
+  actions: {
+    resume: WebWorkbenchHistoryAvailability;
+    clone: WebWorkbenchHistoryAvailability;
+    exportResults: WebWorkbenchHistoryAvailability;
+    exportProject: WebWorkbenchHistoryAvailability;
+    keepResultsOnly: WebWorkbenchHistoryAvailability;
+    delete: WebWorkbenchHistoryAvailability;
+  };
+};
+
+export type WebWorkbenchHistoryView = {
+  status: 'loading' | 'ready';
+  entries: readonly WebWorkbenchHistoryEntry[];
+  busy: boolean;
+  cleanup: { faultCount: number; unreleasedBytes: number };
+  pending?: {
+    type: 'delete' | 'keep-results-only';
+    batchId: string;
+    expiresAt: string;
+  };
+  failure?: { operation: string; cause: string };
+};
 
 export type QueueJobState = {
   status: QueueJobStatus;
@@ -61,28 +260,35 @@ export type QueueJobState = {
 
 export type WebWorkbenchSnapshot = {
   phase: WebWorkbenchPhase;
+  primaryAction: WebWorkbenchPrimaryAction;
+  processing: WebWorkbenchProcessingView;
+  runtime: WebWorkbenchRuntimeView;
+  provider: WebWorkbenchProviderView;
+  controls: WebWorkbenchControls;
   settings: WebSettings;
   images: readonly ImportedImage[];
   selectedImageId: string | null;
   selectedPreviewUrl?: string;
   jobs: Readonly<Record<string, QueueJobState>>;
+  itemActions: Readonly<Record<string, WebWorkbenchItemActions>>;
   importing: boolean;
   rejections: readonly ImageImportRejection[];
-  activeBatch?: ProcessingBatchSnapshot;
-  recoveryBatchId?: string;
   draftProviderSelectionRequired: boolean;
   notice: string;
   storageImportError?: string;
-  history?: LocalHistorySnapshot;
-  processingRuntime?: ProcessingRuntimeSnapshot;
-  runtimeDecisions: Partial<Record<'queue' | 'camera', ProcessingRuntimeDecision>>;
+  history: WebWorkbenchHistoryView;
+  historyAction?: WebWorkbenchHistoryActionState;
+  diagnostics: { exporting: boolean };
   camera: {
     open: boolean;
     round: ContinuousCameraRoundState;
+    entry: WebWorkbenchCameraEntryAction;
   };
 };
 
 export type WebWorkbenchIntent =
+  | WebWorkbenchHistoryAction
+  | { type: 'activate-primary' }
   | {
       type: 'import-files';
       files: readonly File[];
@@ -106,45 +312,28 @@ export type WebWorkbenchIntent =
     }
   | {
       type: 'start-processing';
-      credential: ProcessingBatchCredential;
     }
-  | {
-      type: 'assess-runtime';
-      target: 'queue' | 'camera';
-      credential: ProcessingRuntimeCredentialStatus;
-      pendingOriginalBytes: number;
-    }
-  | {
-      type: 'runtime-command';
-      command: WebWorkbenchRuntimeCommand;
-    }
-  | {
-      type: 'batch-command';
-      command: ProcessingBatchCommand;
-    }
-  | {
-      type: 'open-camera';
-      credential: ProcessingBatchCredential;
-    }
+  | { type: 'stop-processing' }
+  | { type: 'resume-processing' }
+  | { type: 'detach-processing' }
+  | { type: 'cancel-current' }
+  | { type: 'retry-task'; taskId: string }
+  | { type: 'refresh-runtime' }
+  | { type: 'refresh-storage' }
+  | { type: 'install-models' }
+  | { type: 'cancel-model-install' }
+  | { type: 'retry-runtime' }
+  | { type: 'export-diagnostics' }
+  | { type: 'activate-camera-entry' }
   | { type: 'capture-camera'; file: File }
   | { type: 'next-camera' }
   | { type: 'close-camera' }
-  | {
-      type: 'history';
-      intent: HistoryIntent;
-    }
   | { type: 'exit-recovery' }
   | { type: 'visibility-hidden' }
-  | { type: 'clear-notice' }
-  | { type: 'clear-rejections' }
-  | {
-      type: 'set-notice';
-      notice: string;
-    };
+  | { type: 'clear-rejections' };
 
 export type WebWorkbenchDispatchResult =
-  | HistoryOutcome
-  | ProcessingBatchCommandResult
+  | WebWorkbenchEffect
   | undefined;
 
 export type WebWorkbench = {
@@ -163,9 +352,17 @@ export type WebWorkbenchRuntime = {
   dispose(): void;
 };
 
+export type WebWorkbenchCredentialAdapter = {
+  status(settings: WebSettings): ProcessingRuntimeCredentialStatus;
+  resolve(settings: WebSettings): ProcessingBatchCredential | null;
+  subscribe(listener: () => void): () => void;
+};
+
 type CreateWebWorkbenchOptions = {
   initialSettings: WebSettings;
   importer: () => ImageImporter;
+  credentials?: WebWorkbenchCredentialAdapter;
+  diagnostics?: WebWorkbenchDiagnosticsAdapter;
   createRuntime: (adapter: LocalHistoryWorkbenchAdapter) => WebWorkbenchRuntime;
   versions: LocalHistoryVersions;
   onSettingsChanged?: (next: WebSettings, previous: WebSettings) => void;
@@ -193,9 +390,63 @@ function processingSettingsChanged(left: WebSettings, right: WebSettings): boole
       !== JSON.stringify(right.providerProfiles[providerId]);
 }
 
+function historyIntentFor(action: WebWorkbenchHistoryAction): HistoryIntent {
+  switch (action.type) {
+    case 'refresh-history':
+      return { type: 'refresh' };
+    case 'resume-history':
+      return { type: 'prepare-resume', batchId: action.batchId };
+    case 'clone-history':
+      return { type: 'prepare-clone', batchId: action.batchId };
+    case 'stage-history-delete':
+      return { type: 'stage-delete', batchId: action.batchId };
+    case 'keep-history-results':
+      return { type: 'stage-keep-results-only', batchId: action.batchId };
+    case 'export-history-project':
+      return { type: 'export-project', batchId: action.batchId };
+    case 'import-history-project':
+      return { type: 'import-project', file: action.file };
+    case 'download-history-result':
+      return { type: 'download-result', batchId: action.batchId, itemId: action.itemId };
+    case 'export-history-results':
+      return { type: 'export-results', batchId: action.batchId };
+    case 'retry-history-cleanup':
+      return { type: 'retry-cleanup' };
+    case 'undo-history-action':
+      return { type: 'undo-pending' };
+  }
+}
+
+function isHistoryAction(intent: WebWorkbenchIntent): intent is WebWorkbenchHistoryAction {
+  return intent.type === 'refresh-history'
+    || intent.type === 'resume-history'
+    || intent.type === 'clone-history'
+    || intent.type === 'stage-history-delete'
+    || intent.type === 'keep-history-results'
+    || intent.type === 'export-history-project'
+    || intent.type === 'import-history-project'
+    || intent.type === 'download-history-result'
+    || intent.type === 'export-history-results'
+    || intent.type === 'retry-history-cleanup'
+    || intent.type === 'undo-history-action';
+}
+
 export function createWebWorkbench({
   initialSettings,
   importer,
+  credentials = {
+    status: (settings) => {
+      const providerId = settings.translationProviderId;
+      return {
+        providerId,
+        target: settings.providerProfiles[providerId].baseUrl,
+        available: false,
+      };
+    },
+    resolve: () => null,
+    subscribe: () => () => undefined,
+  },
+  diagnostics,
   createRuntime,
   versions,
   onSettingsChanged,
@@ -211,32 +462,105 @@ export function createWebWorkbench({
   let unsubscribeBatch: (() => void) | undefined;
   let unsubscribeHistory: (() => void) | undefined;
   let unsubscribeProcessingRuntime: (() => void) | undefined;
+  let unsubscribeCredentials: (() => void) | undefined;
   let recoveryBatch: LocalHistoryBatch | undefined;
   let preRecoverySettings: WebSettings | undefined;
   let cameraRoundToken = 0;
   let runtime: WebWorkbenchRuntime | undefined;
   let runtimeInitialized = false;
   let processingWorkspace: ProcessingBatchWorkspace | undefined;
+  let runtimeDecisions: Partial<Record<'queue' | 'camera', ProcessingRuntimeDecision>> = {};
   let current: WebWorkbenchSnapshot = {
     phase: 'empty',
+    primaryAction: {
+      kind: 'pick-images',
+      availability: { status: 'available' },
+    },
+    processing: {
+      status: 'idle',
+      canStop: false,
+      canCancelCurrent: false,
+      canRetryTasks: false,
+    },
+    runtime: {
+      status: 'checking',
+      environment: { online: true, visibility: 'visible' },
+      modelConsent: false,
+      modelPackage: { status: 'checking', storedBytes: 0, totalBytes: 0 },
+      modelProbe: { status: 'pending' },
+      storage: { status: 'checking' },
+      queue: { status: 'blocked', reason: 'CAPABILITY_CHECKING' },
+      camera: { status: 'blocked', reason: 'CAPABILITY_CHECKING' },
+    },
+    provider: {
+      configuration: { status: 'blocked', reason: 'CREDENTIAL_MISSING' },
+    },
+    controls: {
+      importImages: { status: 'available' },
+      editProcessingSettings: { status: 'available' },
+      openCamera: { status: 'blocked', reason: 'CAPABILITY_CHECKING' },
+      exitRecovery: { status: 'blocked', reason: 'NO_RECOVERY' },
+    },
     settings: structuredClone(initialSettings),
     images: [],
     selectedImageId: null,
     jobs: {},
+    itemActions: {},
     importing: false,
     rejections: [],
     draftProviderSelectionRequired: false,
     notice: '',
-    runtimeDecisions: {},
+    history: {
+      status: 'loading',
+      entries: [],
+      busy: false,
+      cleanup: { faultCount: 0, unreleasedBytes: 0 },
+    },
+    diagnostics: { exporting: false },
     camera: {
       open: false,
       round: { status: 'ready' },
+      entry: {
+        kind: 'unavailable',
+        availability: { status: 'blocked', reason: 'CAPABILITY_CHECKING' },
+      },
     },
+  };
+
+  const projectRuntimeDecisions = (
+    snapshot: WebWorkbenchSnapshot,
+    credential: ProcessingRuntimeCredentialStatus,
+  ): Partial<Record<'queue' | 'camera', ProcessingRuntimeDecision>> => {
+    if (!runtime) return runtimeDecisions;
+    return {
+      queue: runtime.processingRuntime.assess({
+        settings: snapshot.settings,
+        credential,
+        pendingOriginalBytes: snapshot.images.reduce(
+          (sum, image) => sum + image.file.size,
+          0,
+        ),
+      }),
+      camera: runtime.processingRuntime.assess({
+        settings: snapshot.settings,
+        credential,
+        pendingOriginalBytes: 0,
+      }),
+    };
   };
 
   const publish = (patch: Partial<WebWorkbenchSnapshot>): void => {
     if (disposed) return;
-    current = { ...current, ...patch };
+    const next = { ...current, ...patch };
+    const credential = credentials.status(next.settings);
+    runtimeDecisions = projectRuntimeDecisions(next, credential);
+    current = projectWebWorkbench({
+      snapshot: next,
+      runtime: runtime?.processingRuntime.snapshot(),
+      decisions: runtimeDecisions,
+      batch: activeBatch?.snapshot(),
+      credential,
+    });
     for (const listener of listeners) listener();
   };
 
@@ -290,7 +614,6 @@ export function createWebWorkbench({
     images: readonly ImportedImage[];
     jobs: Readonly<Record<string, QueueJobState>>;
     selectedImageId: string | null;
-    recoveryBatchId?: string;
     draftProviderSelectionRequired: boolean;
     notice: string;
   }): void => {
@@ -304,7 +627,6 @@ export function createWebWorkbench({
       jobs: { ...input.jobs },
       selectedImageId: input.selectedImageId,
       selectedPreviewUrl: selected ? urls.createObjectURL(selected.file) : undefined,
-      recoveryBatchId: input.recoveryBatchId,
       draftProviderSelectionRequired: input.draftProviderSelectionRequired,
       rejections: [],
       notice: input.notice,
@@ -350,7 +672,7 @@ export function createWebWorkbench({
     } else if (snapshot.execution.status === 'faulted') {
       notice = snapshot.execution.error;
     }
-    publish({ activeBatch: snapshot, jobs, notice });
+    publish({ jobs, notice });
 
     if (
       snapshot.kind === 'queue'
@@ -373,8 +695,6 @@ export function createWebWorkbench({
       activeBatchToken += 1;
       publish({
         phase: current.images.length > 0 ? 'draft' : 'empty',
-        activeBatch: undefined,
-        recoveryBatchId: undefined,
       });
       void runtime?.lifecycle.request({ type: 'refresh' });
       void runtime?.processingRuntime.dispatch({ type: 'refresh-storage' }).catch((error) => {
@@ -392,8 +712,6 @@ export function createWebWorkbench({
     const token = ++activeBatchToken;
     publish({
       phase: 'processing',
-      activeBatch: batch.snapshot(),
-      recoveryBatchId: batch.snapshot().id,
     });
     const unsubscribe = batch.subscribe((snapshot) => {
       handleBatchSnapshot(batch, token, snapshot);
@@ -455,7 +773,6 @@ export function createWebWorkbench({
         selectedImageId: preparation.batch.items.find((item) => item.status !== 'done')?.id
           ?? preparation.batch.items[0]?.id
           ?? null,
-        recoveryBatchId: preparation.batch.id,
         draftProviderSelectionRequired: false,
         notice: copy.historyResumeReady,
       });
@@ -480,7 +797,6 @@ export function createWebWorkbench({
         images: imported.accepted,
         jobs: {},
         selectedImageId: imported.accepted[0]?.id ?? null,
-        recoveryBatchId: undefined,
         draftProviderSelectionRequired: draft.providerSelectionRequired,
         notice: draft.providerSelectionRequired
           ? copy.historyProviderSelectionRequired
@@ -501,7 +817,6 @@ export function createWebWorkbench({
         jobs: {},
         selectedImageId: null,
         selectedPreviewUrl: undefined,
-        recoveryBatchId: undefined,
         draftProviderSelectionRequired: false,
         rejections: [],
         notice: '',
@@ -515,17 +830,15 @@ export function createWebWorkbench({
     runtimeInitialized = true;
     runtime = createRuntime(historyAdapter);
     processingWorkspace = runtime.processing;
-    current = {
-      ...current,
-      history: runtime.lifecycle.snapshot(),
-      processingRuntime: runtime.processingRuntime.snapshot(),
-    };
+    publish({ history: projectWebWorkbenchHistory(runtime.lifecycle.snapshot()) });
     unsubscribeHistory = runtime.lifecycle.subscribe(() => {
-      publish({ history: runtime?.lifecycle.snapshot() });
+      const history = runtime?.lifecycle.snapshot();
+      if (history) publish({ history: projectWebWorkbenchHistory(history) });
     });
     unsubscribeProcessingRuntime = runtime.processingRuntime.subscribe(() => {
-      publish({ processingRuntime: runtime?.processingRuntime.snapshot() });
+      publish({});
     });
+    unsubscribeCredentials = credentials.subscribe(() => publish({}));
     void runtime.processingRuntime.dispatch({ type: 'refresh' }).catch((error) => {
       publish({ notice: messageFor(error) });
     });
@@ -617,7 +930,6 @@ export function createWebWorkbench({
   };
 
   const startProcessing = async (
-    credential: ProcessingBatchCredential,
     kind: 'queue' | 'continuous-camera' = 'queue',
   ): Promise<void> => {
     if (activeBatch) {
@@ -635,6 +947,10 @@ export function createWebWorkbench({
     }
     if (!processingWorkspace) throw new Error('Processing workspace is unavailable');
     if (kind === 'queue' && (current.images.length === 0 || current.importing)) return;
+    const credential = credentials.resolve(current.settings);
+    if (!credential) {
+      throw new Error('Provider credential is unavailable');
+    }
     const jobs = { ...current.jobs };
     if (kind === 'queue') {
       for (const image of current.images) {
@@ -655,7 +971,7 @@ export function createWebWorkbench({
     try {
       let batch: ProcessingBatch;
       if (current.phase === 'recovery') {
-        if (!recoveryBatch || recoveryBatch.id !== current.recoveryBatchId) {
+        if (!recoveryBatch) {
           throw new Error('恢复处理批次的本地历史上下文已失效');
         }
         batch = await processingWorkspace.resume({
@@ -730,14 +1046,108 @@ export function createWebWorkbench({
           }
         }
       }
-      publish({ notice: messageFor(error), activeBatch: undefined });
+      publish({ notice: messageFor(error) });
       throw error;
     }
   };
 
+  const runBatchCommand = async (command: ProcessingBatchCommand): Promise<void> => {
+    if (!activeBatch) return;
+    await activeBatch.dispatch(command);
+    if (command.type !== 'detach') return;
+    unsubscribeBatch?.();
+    unsubscribeBatch = undefined;
+    activeBatch = undefined;
+    activeBatchToken += 1;
+    recoveryBatch = undefined;
+    publish({
+      phase: current.images.length > 0 ? 'draft' : 'empty',
+      notice: '',
+    });
+  };
+
   const applyIntent = async (
     intent: WebWorkbenchIntent,
+    expectedPrimaryAction?: WebWorkbenchPrimaryAction,
+    expectedCameraEntry?: WebWorkbenchCameraEntryAction,
   ): Promise<WebWorkbenchDispatchResult> => {
+    if (isHistoryAction(intent)) {
+      const outcome = await runtime!.lifecycle.request(historyIntentFor(intent));
+      publish({
+        historyAction: outcome.status === 'rejected' || outcome.status === 'failed'
+          ? outcome
+          : undefined,
+      });
+      if (outcome.status === 'succeeded' && outcome.type === 'project-imported') {
+        void runtime!.processingRuntime.dispatch({ type: 'refresh-storage' }).catch((error) => {
+          publish({ notice: messageFor(error) });
+        });
+      }
+      if (outcome.status !== 'succeeded') return undefined;
+      if (outcome.type === 'artifact-ready') {
+        return {
+          status: 'effect',
+          effect: 'download-history-artifact',
+          artifact: outcome.artifact,
+        };
+      }
+      if (outcome.type === 'recovery-prepared' || outcome.type === 'draft-prepared') {
+        return {
+          status: 'effect',
+          effect: 'open-workbench',
+          providerSelectionRequired: outcome.type === 'draft-prepared'
+            && outcome.providerSelectionRequired,
+        };
+      }
+      return undefined;
+    }
+    if (intent.type === 'activate-primary') {
+      if (
+        !expectedPrimaryAction
+        || expectedPrimaryAction.availability.status === 'blocked'
+        || current.primaryAction !== expectedPrimaryAction
+      ) return undefined;
+      switch (expectedPrimaryAction.kind) {
+        case 'pick-images':
+          return { status: 'effect', effect: 'pick-images' };
+        case 'open-storage-settings':
+          return { status: 'effect', effect: 'open-storage-settings' };
+        case 'open-provider-settings':
+          return { status: 'effect', effect: 'open-provider-settings' };
+        case 'start-processing':
+          await startProcessing();
+          return undefined;
+        case 'stop-processing':
+          await runBatchCommand({ type: 'stop' });
+          publish({ notice: getCopy(current.settings.uiLocale).batchStopped });
+          return undefined;
+        case 'install-models':
+          await runtime!.processingRuntime.dispatch({ type: 'accept-model-download' });
+          return undefined;
+        case 'retry-runtime':
+          await runtime!.processingRuntime.dispatch({ type: 'retry' });
+          return undefined;
+      }
+    }
+    if (intent.type === 'activate-camera-entry') {
+      if (
+        !expectedCameraEntry
+        || expectedCameraEntry.availability.status === 'blocked'
+        || current.camera.entry !== expectedCameraEntry
+      ) return undefined;
+      if (expectedCameraEntry.kind === 'open-storage-settings') {
+        return { status: 'effect', effect: 'open-storage-settings' };
+      }
+      if (expectedCameraEntry.kind === 'open-provider-settings') {
+        return { status: 'effect', effect: 'open-provider-settings' };
+      }
+      if (expectedCameraEntry.kind !== 'open-camera') return undefined;
+      if (current.phase !== 'empty') return undefined;
+      await startProcessing('continuous-camera');
+      resetCameraRound();
+      publish({ camera: { ...current.camera, open: true, round: { status: 'ready' } } });
+      return undefined;
+    }
     if (intent.type === 'import-files') {
       await importFiles(intent.files);
       return undefined;
@@ -834,54 +1244,83 @@ export function createWebWorkbench({
       return undefined;
     }
     if (intent.type === 'start-processing') {
-      await startProcessing(intent.credential);
+      await startProcessing();
       return undefined;
     }
-    if (intent.type === 'assess-runtime') {
-      if (!runtime) throw new Error('Processing runtime is unavailable');
-      const decision = runtime.processingRuntime.assess({
-        settings: current.settings,
-        credential: intent.credential,
-        pendingOriginalBytes: intent.pendingOriginalBytes,
-      });
-      publish({
-        runtimeDecisions: {
-          ...current.runtimeDecisions,
-          [intent.target]: decision,
-        },
-      });
+    if (intent.type === 'stop-processing') {
+      if (!activeBatch || activeBatch.snapshot().status !== 'running') return undefined;
+      await runBatchCommand({ type: 'stop' });
+      publish({ notice: getCopy(current.settings.uiLocale).batchStopped });
       return undefined;
     }
-    if (intent.type === 'runtime-command') {
-      if (!runtime) throw new Error('Processing runtime is unavailable');
-      await runtime.processingRuntime.dispatch(intent.command);
+    if (intent.type === 'resume-processing') {
+      await runBatchCommand({ type: 'resume' });
+      publish({ notice: '' });
       return undefined;
     }
-    if (intent.type === 'batch-command') {
+    if (intent.type === 'detach-processing') {
+      await runBatchCommand({ type: 'detach' });
+      return undefined;
+    }
+    if (intent.type === 'cancel-current') {
+      if (!activeBatch?.snapshot().currentTaskId) return undefined;
+      await runBatchCommand({ type: 'cancel-current' });
+      return undefined;
+    }
+    if (intent.type === 'retry-task') {
       if (!activeBatch) return undefined;
-      const result = await activeBatch.dispatch(intent.command);
-      if (intent.command.type === 'detach') {
-        unsubscribeBatch?.();
-        unsubscribeBatch = undefined;
-        activeBatch = undefined;
-        activeBatchToken += 1;
-        recoveryBatch = undefined;
-        publish({
-          phase: current.images.length > 0 ? 'draft' : 'empty',
-          activeBatch: undefined,
-          recoveryBatchId: undefined,
-          notice: '',
-        });
-      }
-      return result;
+      await runBatchCommand({ type: 'retry', taskId: intent.taskId });
+      publish({ notice: '' });
+      return undefined;
     }
-    if (intent.type === 'open-camera') {
-      if (current.phase !== 'empty') {
-        throw new Error('Continuous camera requires an empty workbench');
+    if (
+      intent.type === 'refresh-runtime'
+      || intent.type === 'refresh-storage'
+      || intent.type === 'install-models'
+      || intent.type === 'cancel-model-install'
+      || intent.type === 'retry-runtime'
+    ) {
+      if (!runtime) throw new Error('Processing runtime is unavailable');
+      const command: WebWorkbenchRuntimeCommand = intent.type === 'refresh-runtime'
+        ? { type: 'refresh' }
+        : intent.type === 'refresh-storage'
+          ? { type: 'refresh-storage' }
+          : intent.type === 'install-models'
+            ? { type: 'accept-model-download' }
+            : intent.type === 'cancel-model-install'
+              ? { type: 'cancel-model-download' }
+              : { type: 'retry' };
+      await runtime.processingRuntime.dispatch(command);
+      return undefined;
+    }
+    if (intent.type === 'export-diagnostics') {
+      if (!diagnostics) throw new Error('Diagnostic export is unavailable');
+      const credential = credentials.status(current.settings);
+      const providerBlocked = current.runtime.queue.status === 'blocked'
+        && (
+          current.runtime.queue.reason === 'PROVIDER_INVALID'
+          || current.runtime.queue.reason === 'CREDENTIAL_MISSING'
+          || current.runtime.queue.reason === 'CREDENTIAL_TARGET_MISMATCH'
+        );
+      publish({ diagnostics: { exporting: true } });
+      try {
+        await diagnostics.export({
+          settings: structuredClone(current.settings),
+          runtime: {
+            capability: current.runtime.capability,
+            modelPackage: current.runtime.modelPackage,
+          },
+          jobs: Object.values(current.jobs).map((job) => ({
+            status: job.status,
+            progress: job.progress ? { stage: job.progress.stage } : undefined,
+            errorCode: job.errorCode,
+          })),
+          providerConfigurationValid: current.settings.processMode !== 'translate'
+            || (credential.available && !providerBlocked),
+        });
+      } finally {
+        publish({ diagnostics: { exporting: false } });
       }
-      await startProcessing(intent.credential, 'continuous-camera');
-      resetCameraRound();
-      publish({ camera: { open: true, round: { status: 'ready' } } });
       return undefined;
     }
     if (intent.type === 'capture-camera') {
@@ -895,6 +1334,7 @@ export function createWebWorkbench({
       const copy = getCopy(current.settings.uiLocale);
       publish({
         camera: {
+          ...current.camera,
           open: true,
           round: { status: 'preparing', originalUrl, detail: copy.importing },
         },
@@ -916,6 +1356,7 @@ export function createWebWorkbench({
           }
           publish({
             camera: {
+              ...current.camera,
               open: true,
               round: { status: 'translating', originalUrl, detail: copy.cameraTranslating },
             },
@@ -936,6 +1377,7 @@ export function createWebWorkbench({
                 if (candidate.status === 'running' && cameraRoundToken === token) {
                   publish({
                     camera: {
+                      ...current.camera,
                       open: true,
                       round: {
                         status: 'translating',
@@ -968,6 +1410,7 @@ export function createWebWorkbench({
           }
           publish({
             camera: {
+              ...current.camera,
               open: true,
               round: { status: 'done', originalUrl, resultUrl },
             },
@@ -980,6 +1423,7 @@ export function createWebWorkbench({
           if (cameraRoundToken === token) {
             publish({
               camera: {
+                ...current.camera,
                 open: true,
                 round: { status: 'error', originalUrl, error: messageFor(error) },
               },
@@ -996,53 +1440,47 @@ export function createWebWorkbench({
     if (intent.type === 'close-camera') {
       const batch = activeBatch;
       resetCameraRound();
-      publish({ camera: { open: false, round: { status: 'ready' } } });
+      publish({
+        camera: { ...current.camera, open: false, round: { status: 'ready' } },
+      });
       if (batch?.snapshot().kind === 'continuous-camera') {
         if (batch.snapshot().input === 'open') {
           await batch.dispatch({ type: 'close-input' });
         }
         if (activeBatch === batch && batch.snapshot().status === 'paused') {
-          return applyIntent({ type: 'batch-command', command: { type: 'detach' } });
+          await runBatchCommand({ type: 'detach' });
         }
       }
       return undefined;
     }
-    if (intent.type === 'history') {
-      const outcome = await runtime!.lifecycle.request(intent.intent);
-      if (outcome.status === 'succeeded' && outcome.type === 'project-imported') {
-        void runtime!.processingRuntime.dispatch({ type: 'refresh-storage' }).catch((error) => {
-          publish({ notice: messageFor(error) });
-        });
-      }
-      return outcome;
-    }
     if (intent.type === 'exit-recovery') {
       if (activeBatch?.snapshot().status === 'paused') {
-        return applyIntent({ type: 'batch-command', command: { type: 'detach' } });
+        await runBatchCommand({ type: 'detach' });
+        return undefined;
       }
-      if (current.recoveryBatchId) {
-        return runtime?.lifecycle.request({
+      if (recoveryBatch) {
+        const outcome = await runtime?.lifecycle.request({
           type: 'discard-recovery',
-          batchId: current.recoveryBatchId,
+          batchId: recoveryBatch.id,
+        });
+        publish({
+          historyAction: outcome?.status === 'rejected' || outcome?.status === 'failed'
+            ? outcome
+            : undefined,
         });
       }
       return undefined;
     }
     if (intent.type === 'visibility-hidden') {
       if (activeBatch?.snapshot().status === 'running') {
-        return activeBatch.dispatch({ type: 'stop' });
+        await runBatchCommand({ type: 'stop' });
       }
-      return undefined;
-    }
-    if (intent.type === 'clear-notice') {
-      publish({ notice: '' });
       return undefined;
     }
     if (intent.type === 'clear-rejections') {
       publish({ rejections: [] });
       return undefined;
     }
-    publish({ notice: intent.notice });
     return undefined;
   };
 
@@ -1058,13 +1496,26 @@ export function createWebWorkbench({
         return Promise.reject(new Error('Web workbench has been disposed.'));
       }
       initializeRuntime();
-      if (
-        intent.type === 'runtime-command'
-        && intent.command.type === 'cancel-model-download'
-      ) {
-        return runtime!.processingRuntime.dispatch(intent.command).then(() => undefined);
+      if (intent.type === 'cancel-model-install') {
+        return runtime!.processingRuntime.dispatch({ type: 'cancel-model-download' })
+          .then(() => undefined)
+          .catch((error) => {
+            publish({ notice: messageFor(error) });
+            throw error;
+          });
       }
-      const operation = commandTail.then(() => applyIntent(intent));
+      const expectedPrimaryAction = intent.type === 'activate-primary'
+        ? current.primaryAction
+        : undefined;
+      const expectedCameraEntry = intent.type === 'activate-camera-entry'
+        ? current.camera.entry
+        : undefined;
+      const operation = commandTail
+        .then(() => applyIntent(intent, expectedPrimaryAction, expectedCameraEntry))
+        .catch((error) => {
+          publish({ notice: messageFor(error) });
+          throw error;
+        });
       commandTail = operation.then(() => undefined, () => undefined);
       return operation;
     },
@@ -1082,6 +1533,7 @@ export function createWebWorkbench({
       unsubscribeBatch?.();
       unsubscribeHistory?.();
       unsubscribeProcessingRuntime?.();
+      unsubscribeCredentials?.();
       runtime?.dispose();
       releaseCameraRound();
       releaseContent();

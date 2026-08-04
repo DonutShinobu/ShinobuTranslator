@@ -14,7 +14,6 @@ import {
   encodeWebSettings,
   normalizeProviderTargetBinding,
   translationProviderOptions,
-  validateProviderBaseUrl,
   type ProcessMode,
   type TargetLanguage,
   type TranslationProviderId,
@@ -26,18 +25,8 @@ import brandWordmarkUrl from '../../../public/brand/shinobu-wordmark.svg';
 import { Icon, type IconName } from './icons';
 import { describeImportRejection, getCopy } from './i18n';
 import { HistoryView } from './features/history/HistoryView';
-import { createBrowserLocalHistoryEnvironment } from './features/history/browserLocalHistoryLifecycle';
 import { SettingsView } from './features/settings/SettingsView';
 import { ContinuousCamera } from './features/camera/ContinuousCamera';
-import type {
-  HistoryIntent,
-  HistoryOutcome,
-  HistoryRejectionCode,
-} from './features/history/localHistoryLifecycle';
-import {
-  createRedactedDiagnostics,
-  downloadRedactedDiagnostics,
-} from './features/diagnostics/redactedDiagnostics';
 import { decodeBrowserImage } from './features/import/browserImageDecoder';
 import {
   createImageImporter,
@@ -45,17 +34,14 @@ import {
 } from './features/import/imageImporter';
 import { useProviderSecrets } from './features/providers/useProviderSecrets';
 import {
-  createProcessingBatchWorkspace,
-} from './features/processing/processingBatch';
-import {
-  createWebWorkbench,
   type QueueJobStatus,
+  type WebWorkbenchHistoryAction,
+  type WebWorkbenchHistoryRejectionCode,
 } from './features/workbench/webWorkbench';
+import { createBrowserWorkbenchDiagnostics } from './features/workbench/browserWorkbenchDiagnostics';
+import { createBrowserWebWorkbench } from './features/workbench/browserWebWorkbench';
 import { useWebWorkbench } from './features/workbench/useWebWorkbench';
-import type { ProcessingRuntimeDecision } from './features/processing/processingRuntime';
-import { createBrowserProcessingRuntime } from './features/processing/browserProcessingRuntime';
 import {
-  IMAGE_IMPORT_STORAGE_HEADROOM_BYTES,
   formatByteSize as formatBytes,
   type WebStorageSnapshot,
 } from './features/storage/storageBudget';
@@ -88,11 +74,11 @@ function readInitialSettings(): WebSettings {
 }
 
 function historyRejectionMessage(
-  code: HistoryRejectionCode,
+  code: WebWorkbenchHistoryRejectionCode,
   locale: UiLocale,
 ): string {
   const traditional = locale === 'zh-TW';
-  const messages: Record<HistoryRejectionCode, [string, string]> = {
+  const messages: Record<WebWorkbenchHistoryRejectionCode, [string, string]> = {
     'workbench-occupied': ['当前工作台已有草稿或活动批次', '目前工作台已有草稿或活動批次'],
     'batch-occupied': ['此处理批次正在另一个工作台中使用', '此處理批次正在另一個工作台中使用'],
     'partial-history': ['此本地历史部分损坏，无法执行该操作', '此本機歷史部分損壞，無法執行該操作'],
@@ -116,14 +102,29 @@ export function App() {
   const [mobilePane, setMobilePane] = useState<MobilePane>('preview');
   const [previewMode, setPreviewMode] = useState<PreviewMode>('original');
   const [previewScale, setPreviewScale] = useState<PreviewScale>('fit');
-  const [historyActionError, setHistoryActionError] = useState<string>();
-  const [diagnosticBusy, setDiagnosticBusy] = useState(false);
   const [providerDetailsOpen, setProviderDetailsOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragDepthRef = useRef(0);
   const pwa = usePwaLifecycle();
   const pwaInstall = usePwaInstall();
   const deviceProfile = useMemo(() => detectWebDeviceProfile(), []);
+  const diagnosticLifecycleRef = useRef({
+    online: pwa.online,
+    offlineReady: pwa.offlineReady,
+    updateReady: pwa.updateReady,
+    visibilityState: document.visibilityState,
+  });
+  diagnosticLifecycleRef.current = {
+    online: pwa.online,
+    offlineReady: pwa.offlineReady,
+    updateReady: pwa.updateReady,
+    visibilityState: document.visibilityState,
+  };
+  const diagnostics = useMemo(() => createBrowserWorkbenchDiagnostics({
+    versions: LOCAL_HISTORY_VERSIONS,
+    device: deviceProfile,
+    lifecycle: () => diagnosticLifecycleRef.current,
+  }), [deviceProfile]);
   const importerRef = useRef<ReturnType<typeof createImageImporter>>();
   if (!importerRef.current) {
     importerRef.current = createImageImporter({
@@ -138,36 +139,40 @@ export function App() {
     () => undefined,
   );
   const processingCompletedRef = useRef<() => void>(() => undefined);
-
-  const workbench = useMemo(() => createWebWorkbench({
-    initialSettings: initialSettingsRef.current,
-    importer: () => importerRef.current!,
-    versions: LOCAL_HISTORY_VERSIONS,
-    createRuntime(adapter) {
-      const processingRuntime = createBrowserProcessingRuntime();
-      const history = createBrowserLocalHistoryEnvironment(adapter);
+  const credentialValuesRef = useRef<Partial<Record<TranslationProviderId, string>>>({});
+  const credentialListenersRef = useRef(new Set<() => void>());
+  const credentials = useMemo(() => ({
+    status(settings: WebSettings) {
+      const providerId = settings.translationProviderId;
       return {
-        lifecycle: history.lifecycle,
-        processingRuntime,
-        processing: createProcessingBatchWorkspace({
-          history: history.history,
-          coordinator: history.coordinator,
-          runtime: processingRuntime,
-          async readThumbnail(image) {
-            try {
-              const response = await fetch(image.thumbnailUrl);
-              return response.ok ? await response.blob() : undefined;
-            } catch {
-              return undefined;
-            }
-          },
-        }),
-        dispose: () => history.dispose(),
+        providerId,
+        target: settings.providerProfiles[providerId].baseUrl,
+        available: Boolean(credentialValuesRef.current[providerId]?.trim()),
       };
     },
+    resolve(settings: WebSettings) {
+      const providerId = settings.translationProviderId;
+      return {
+        providerId,
+        target: settings.providerProfiles[providerId].baseUrl,
+        value: credentialValuesRef.current[providerId] ?? '',
+      };
+    },
+    subscribe(listener: () => void) {
+      credentialListenersRef.current.add(listener);
+      return () => credentialListenersRef.current.delete(listener);
+    },
+  }), []);
+
+  const workbench = useMemo(() => createBrowserWebWorkbench({
+    initialSettings: initialSettingsRef.current,
+    importer: () => importerRef.current!,
+    credentials,
+    diagnostics,
+    versions: LOCAL_HISTORY_VERSIONS,
     onSettingsChanged: (next, previous) => settingsChangedRef.current(next, previous),
     onProcessingCompleted: () => processingCompletedRef.current(),
-  }), []);
+  }), [credentials, diagnostics]);
   const workbenchSnapshot = useWebWorkbench(workbench);
   const {
     settings,
@@ -175,42 +180,33 @@ export function App() {
     selectedImageId: selectedId,
     selectedPreviewUrl,
     jobs,
+    itemActions,
     importing,
     rejections,
     notice: batchNotice,
-    recoveryBatchId: resumeHistoryBatchId,
-    draftProviderSelectionRequired,
     storageImportError,
-    runtimeDecisions,
+    processing,
+    runtime: runtimeView,
+    provider: providerView,
+    controls,
+    primaryAction,
+    diagnostics: diagnosticState,
+    historyAction,
     camera: {
       open: continuousCameraOpen,
       round: continuousCameraRound,
+      entry: cameraEntry,
     },
   } = workbenchSnapshot;
-  const processingRuntimeSnapshot = workbenchSnapshot.processingRuntime ?? {
-    status: 'checking' as const,
-    environment: {
-      online: navigator.onLine,
-      visibility: document.visibilityState === 'hidden' ? 'hidden' as const : 'visible' as const,
-    },
-    modelConsent: false,
-    modelPackage: {
-      status: 'checking' as const,
-      storedBytes: 0,
-      totalBytes: 0,
-    },
-    modelProbe: { status: 'pending' as const },
-    storage: { status: 'checking' as const },
-  };
-  const capability = processingRuntimeSnapshot.capability ?? null;
-  const modelPackageState = processingRuntimeSnapshot.modelPackage;
-  const modelRuntimeProbe = processingRuntimeSnapshot.modelProbe;
-  const modelConsent = processingRuntimeSnapshot.modelConsent;
-  const storageChecking = processingRuntimeSnapshot.storage.status === 'checking';
+  const capability = runtimeView.capability ?? null;
+  const modelPackageState = runtimeView.modelPackage;
+  const modelRuntimeProbe = runtimeView.modelProbe;
+  const modelConsent = runtimeView.modelConsent;
+  const storageChecking = runtimeView.storage.status === 'checking';
   const storageSnapshot: WebStorageSnapshot | null =
-    processingRuntimeSnapshot.storage.status === 'checking'
+    runtimeView.storage.status === 'checking'
       ? null
-      : processingRuntimeSnapshot.storage;
+      : runtimeView.storage;
   const imageImportLimits = useMemo(
     () => imageImportLimitsForDevice(
       deviceProfile.mobile,
@@ -227,24 +223,24 @@ export function App() {
   );
   importerRef.current = importer;
   const refreshStorage = useCallback(async (): Promise<WebStorageSnapshot> => {
-    await workbench.dispatch({
-      type: 'runtime-command',
-      command: { type: 'refresh-storage' },
-    });
-    const storage = workbench.snapshot().processingRuntime?.storage;
-    if (!storage || storage.status === 'checking') {
+    await workbench.dispatch({ type: 'refresh-storage' });
+    const storage = workbench.snapshot().runtime.storage;
+    if (storage.status === 'checking') {
       throw new Error('浏览器存储状态仍在检查');
     }
     return storage;
   }, [workbench]);
-  const batchRunning = workbenchSnapshot.activeBatch?.status === 'running';
-  const historySnapshot = workbenchSnapshot.history ?? {
-    status: 'loading' as const,
-    entries: [],
-    busy: false,
-    faults: [],
-  };
+  const batchRunning = processing.status === 'running';
+  const recoveryActive = workbenchSnapshot.phase === 'recovery';
+  const processingSettingsEditable = controls.editProcessingSettings.status === 'available';
+  const historySnapshot = workbenchSnapshot.history;
   const providerSecrets = useProviderSecrets(settings.providerProfiles);
+  for (const provider of translationProviderOptions) {
+    credentialValuesRef.current[provider.id] = providerSecrets.entries[provider.id].value;
+  }
+  useEffect(() => {
+    for (const listener of credentialListenersRef.current) listener();
+  }, [providerSecrets.entries]);
   settingsChangedRef.current = (nextSettings, previousSettings) => {
     const providerId = nextSettings.translationProviderId;
     let changed = true;
@@ -257,81 +253,44 @@ export function App() {
     } catch {
       // Invalid legacy targets must never retain a current provider secret.
     }
-    if (changed) providerSecrets.invalidateTarget(providerId);
+    if (changed) {
+      credentialValuesRef.current[providerId] = '';
+      providerSecrets.invalidateTarget(providerId);
+    }
   };
   processingCompletedRef.current = () => {
     pwaInstall.offerAfterSuccess();
   };
 
   const copy = getCopy(settings.uiLocale);
-  const historyCleanupFaultMessage = historySnapshot.faults.length > 0
+  const historyCleanupFaultMessage = historySnapshot.cleanup.faultCount > 0
     ? settings.uiLocale === 'zh-TW'
-      ? `${historySnapshot.faults.length} 項本機資源仍待清理，尚未釋放 `
-        + `${formatBytes(historySnapshot.faults.reduce(
-          (total, fault) => total + fault.unreleasedBytes,
-          0,
-        ))}`
-      : `${historySnapshot.faults.length} 项本地资源仍待清理，尚未释放 `
-        + `${formatBytes(historySnapshot.faults.reduce(
-          (total, fault) => total + fault.unreleasedBytes,
-          0,
-        ))}`
+      ? `${historySnapshot.cleanup.faultCount} 項本機資源仍待清理，尚未釋放 `
+        + `${formatBytes(historySnapshot.cleanup.unreleasedBytes)}`
+      : `${historySnapshot.cleanup.faultCount} 项本地资源仍待清理，尚未释放 `
+        + `${formatBytes(historySnapshot.cleanup.unreleasedBytes)}`
     : undefined;
   const selectedImage = queue.find((image) => image.id === selectedId) ?? null;
   const selectedJob = selectedId ? jobs[selectedId] : undefined;
   const activeProviderProfile = settings.providerProfiles[settings.translationProviderId];
   const activeProviderSecret = providerSecrets.entries[settings.translationProviderId];
-  const activeProviderKey = activeProviderSecret.value;
-  const providerConfigurationError = validateProviderBaseUrl(activeProviderProfile.baseUrl)
-    || (!activeProviderProfile.model.trim() ? `${copy.model}不能为空` : null)
-    || (!activeProviderKey.trim() ? `${copy.apiKey}不能为空` : null);
-  const providerValidationError = settings.processMode === 'translate'
-    ? providerConfigurationError
+  const providerConfigurationError = providerView.configuration.status === 'blocked'
+    ? providerView.configuration.reason === 'MODEL_MISSING'
+      ? `${copy.model}不能为空`
+      : providerView.configuration.reason === 'CREDENTIAL_MISSING'
+        ? `${copy.apiKey}不能为空`
+        : providerView.configuration.reason === 'CREDENTIAL_TARGET_MISMATCH'
+          ? copy.startUnavailable
+          : providerView.configuration.detail ?? copy.startUnavailable
     : null;
-  const providerReady = providerValidationError === null;
+  const providerReady = providerView.configuration.status === 'available';
   const totalBytes = queue.reduce((sum, image) => sum + image.file.size, 0);
-  const processingCredential = {
-    providerId: settings.translationProviderId,
-    target: activeProviderProfile.baseUrl,
-    value: activeProviderKey,
-  };
-  const processingCredentialStatus = {
-    providerId: processingCredential.providerId,
-    target: processingCredential.target,
-    available: Boolean(processingCredential.value.trim()),
-  };
-  useEffect(() => {
-    void workbench.dispatch({
-      type: 'assess-runtime',
-      target: 'queue',
-      credential: processingCredentialStatus,
-      pendingOriginalBytes: totalBytes,
-    });
-    void workbench.dispatch({
-      type: 'assess-runtime',
-      target: 'camera',
-      credential: processingCredentialStatus,
-      pendingOriginalBytes: 0,
-    });
-  }, [
-    activeProviderKey,
-    activeProviderProfile.baseUrl,
-    processingRuntimeSnapshot,
-    settings,
-    totalBytes,
-    workbench,
-  ]);
-  const runtimeCheckingDecision: ProcessingRuntimeDecision = {
-    status: 'blocked',
-    code: 'CAPABILITY_CHECKING',
-  };
-  const queueRuntimeDecision = runtimeDecisions.queue ?? runtimeCheckingDecision;
-  const cameraRuntimeDecision = runtimeDecisions.camera ?? runtimeCheckingDecision;
+  const queueRuntimeDecision = runtimeView.queue;
   const runtimeBlockerMessage = (
-    decision: ProcessingRuntimeDecision,
+    decision: typeof queueRuntimeDecision,
   ): string => {
-    if (decision.status === 'ready') return '';
-    switch (decision.code) {
+    if (decision.status === 'available') return '';
+    switch (decision.reason) {
       case 'OFFLINE':
         return copy.offlineHistoryOnly;
       case 'CAPABILITY_CHECKING':
@@ -355,24 +314,20 @@ export function App() {
         return decision.detail ?? copy.startUnavailable;
     }
   };
-  const storageHardBlocked = storageSnapshot?.status === 'unavailable'
-    || (
-      storageSnapshot?.status === 'ready'
-      && storageSnapshot.availableBytes < IMAGE_IMPORT_STORAGE_HEADROOM_BYTES
-    );
   const storageImportIssue = storageImportError
-    ?? (storageSnapshot?.status === 'unavailable'
+    ?? (controls.importImages.status === 'blocked'
+      && controls.importImages.reason === 'STORAGE_UNAVAILABLE'
       ? copy.storageUnavailable
-      : storageSnapshot?.status === 'ready'
-        && storageSnapshot.availableBytes < IMAGE_IMPORT_STORAGE_HEADROOM_BYTES
-        ? copy.storageLow(formatBytes(storageSnapshot.availableBytes))
+      : controls.importImages.status === 'blocked'
+        && controls.importImages.reason === 'INSUFFICIENT_STORAGE'
+        ? copy.storageLow(formatBytes(controls.importImages.availableBytes ?? 0))
         : undefined);
 
   useEffect(() => {
     if (settings.processMode === 'translate') {
       setProviderDetailsOpen(providerConfigurationError !== null);
     }
-  }, [settings.processMode, settings.translationProviderId]);
+  }, [providerConfigurationError, settings.processMode, settings.translationProviderId]);
 
   useEffect(() => {
     setPreviewScale('fit');
@@ -434,9 +389,8 @@ export function App() {
   };
 
   const patchSettings = (patch: Partial<WebSettings>): void => {
-    if (batchRunning) return;
     if (
-      resumeHistoryBatchId
+      !processingSettingsEditable
       && Object.keys(patch).some((key) => key !== 'uiLocale')
     ) {
       return;
@@ -450,7 +404,7 @@ export function App() {
   const patchActiveProviderProfile = (
     patch: Partial<WebSettings['providerProfiles'][TranslationProviderId]>,
   ): void => {
-    if (batchRunning || resumeHistoryBatchId) return;
+    if (!processingSettingsEditable) return;
     const providerId = settings.translationProviderId;
     if (patch.baseUrl !== undefined) {
       let targetChanged = patch.baseUrl !== activeProviderProfile.baseUrl;
@@ -461,6 +415,7 @@ export function App() {
         // An invalid intermediate edit is a different target and must drop the key.
       }
       if (targetChanged) {
+        credentialValuesRef.current[providerId] = '';
         providerSecrets.invalidateTarget(providerId);
       }
     }
@@ -480,12 +435,14 @@ export function App() {
   };
 
   const updateProviderKey = (value: string): void => {
+    credentialValuesRef.current[settings.translationProviderId] = value;
     providerSecrets.update(settings.translationProviderId, value);
   };
 
   const removeActiveProviderConfiguration = async (): Promise<void> => {
-    if (batchRunning || resumeHistoryBatchId) return;
+    if (!processingSettingsEditable) return;
     const providerId = settings.translationProviderId;
+    credentialValuesRef.current[providerId] = '';
     await providerSecrets.clear(providerId);
     await workbench.dispatch({
       type: 'update-settings',
@@ -508,17 +465,12 @@ export function App() {
     setTimeout(() => URL.revokeObjectURL(url), 0);
   };
 
-  const handleHistoryOutcome = async (intent: HistoryIntent): Promise<HistoryOutcome> => {
-    const outcome = await workbench.dispatch({ type: 'history', intent }) as HistoryOutcome;
-    if (outcome.status === 'rejected') {
-      setHistoryActionError(historyRejectionMessage(outcome.code, settings.uiLocale));
-      return outcome;
-    }
-    if (outcome.status === 'failed') {
-      setHistoryActionError(`${outcome.operation}: ${outcome.cause}`);
-      return outcome;
-    }
-    if (outcome.type === 'artifact-ready') {
+  const handleHistoryOutcome = async (
+    intent: WebWorkbenchHistoryAction,
+  ): Promise<void> => {
+    const outcome = await workbench.dispatch(intent);
+    if (outcome?.status !== 'effect') return;
+    if (outcome.effect === 'download-history-artifact') {
       if (
         outcome.artifact.kind === 'results'
         && outcome.artifact.omissions.length > 0
@@ -527,29 +479,27 @@ export function App() {
           + `${outcome.artifact.exportedCount} 个结果。是否继续？`,
         )
       ) {
-        return outcome;
+        return;
       }
       downloadBlob(outcome.artifact.blob, outcome.artifact.fileName);
     }
-    if (outcome.type === 'recovery-prepared' || outcome.type === 'draft-prepared') {
+    if (outcome.effect === 'open-workbench') {
       setActiveView('workbench');
       setPreviewMode('original');
-      if (outcome.type === 'draft-prepared' && outcome.providerSelectionRequired) {
+      if (outcome.providerSelectionRequired) {
         setProviderDetailsOpen(true);
       }
     }
-    setHistoryActionError(undefined);
-    return outcome;
   };
 
   const exportHistoryProject = async (batchId: string): Promise<void> => {
     if (!window.confirm(copy.historyExportWarning)) return;
-    await handleHistoryOutcome({ type: 'export-project', batchId });
+    await handleHistoryOutcome({ type: 'export-history-project', batchId });
   };
 
   const keepHistoryResultsOnly = async (batchId: string): Promise<void> => {
     if (!window.confirm(copy.historyKeepResultsWarning)) return;
-    await handleHistoryOutcome({ type: 'stage-keep-results-only', batchId });
+    await handleHistoryOutcome({ type: 'keep-history-results', batchId });
   };
 
   const removeImage = async (id: string): Promise<void> => {
@@ -594,136 +544,55 @@ export function App() {
   };
 
   const acceptModelDownload = (): void => {
-    void workbench.dispatch({
-      type: 'runtime-command',
-      command: { type: 'accept-model-download' },
-    })
-      .catch((error) => {
-        void workbench.dispatch({ type: 'set-notice', notice: String(error) });
-      });
+    void workbench.dispatch({ type: 'install-models' }).catch(() => undefined);
   };
 
   const cancelCurrent = (): void => {
-    if (!workbenchSnapshot.activeBatch?.currentTaskId) return;
-    void workbench.dispatch({
-      type: 'batch-command',
-      command: { type: 'cancel-current' },
-    }).catch((error) => {
-      void workbench.dispatch({ type: 'set-notice', notice: String(error) });
-    });
+    if (!processing.canCancelCurrent) return;
+    void workbench.dispatch({ type: 'cancel-current' }).catch(() => undefined);
   };
 
   const stopBatch = (): void => {
-    if (workbenchSnapshot.activeBatch?.status !== 'running') return;
-    void workbench.dispatch({ type: 'batch-command', command: { type: 'stop' } })
-      .then(() => workbench.dispatch({ type: 'set-notice', notice: copy.batchStopped }))
-      .catch((error) => {
-        void workbench.dispatch({ type: 'set-notice', notice: String(error) });
-      });
+    if (!processing.canStop) return;
+    void workbench.dispatch({ type: 'stop-processing' }).catch(() => undefined);
   };
 
   const retryTask = (taskId: string): void => {
-    if (!workbenchSnapshot.activeBatch) return;
-    void workbench.dispatch({
-      type: 'batch-command',
-      command: { type: 'retry', taskId },
-    })
-      .then(() => workbench.dispatch({ type: 'clear-notice' }))
-      .catch((error) => {
-        void workbench.dispatch({ type: 'set-notice', notice: String(error) });
-      });
+    if (!processing.canRetryTasks) return;
+    void workbench.dispatch({ type: 'retry-task', taskId }).catch(() => undefined);
   };
 
   const exitHistoryResume = (): void => {
     if (batchRunning) return;
-    void workbench.dispatch({ type: 'exit-recovery' }).catch((error) => {
-      void workbench.dispatch({ type: 'set-notice', notice: String(error) });
-    });
+    void workbench.dispatch({ type: 'exit-recovery' }).catch(() => undefined);
   };
 
   const startBatch = async (): Promise<void> => {
-    if (queueRuntimeDecision.status !== 'ready') return;
-    await workbench.dispatch({
-      type: 'start-processing',
-      credential: processingCredential,
-    }).catch(() => undefined);
-  };
-
-  const exportRedactedDiagnostics = async (): Promise<void> => {
-    if (diagnosticBusy) return;
-    setDiagnosticBusy(true);
-    try {
-      const storage = await navigator.storage?.estimate?.().catch(() => undefined);
-      const diagnostics = createRedactedDiagnostics({
-        locale: settings.uiLocale,
-        userAgent: navigator.userAgent,
-        versions: LOCAL_HISTORY_VERSIONS,
-        device: deviceProfile,
-        capability,
-        modelPackage: modelPackageState,
-        jobs: Object.values(jobs),
-        provider: {
-          id: settings.translationProviderId,
-          baseUrl: activeProviderProfile.baseUrl,
-          configurationValid: providerConfigurationError === null,
-        },
-        lifecycle: {
-          online: pwa.online,
-          offlineReady: pwa.offlineReady,
-          updateReady: pwa.updateReady,
-          visibilityState: document.visibilityState,
-        },
-        storage,
-      });
-      downloadRedactedDiagnostics(
-        diagnostics,
-        `shinobu-diagnostics-${new Date().toISOString().slice(0, 10)}.json`,
-      );
-    } finally {
-      setDiagnosticBusy(false);
-    }
+    if (queueRuntimeDecision.status !== 'available') return;
+    await workbench.dispatch({ type: 'start-processing' }).catch(() => undefined);
   };
 
   const startAllowed = (
-    queue.length > 0
-    && !importing
-    && !draftProviderSelectionRequired
-    && queueRuntimeDecision.status === 'ready'
+    primaryAction.kind === 'start-processing'
+    && primaryAction.availability.status === 'available'
   );
-  const continuousCameraAllowed = (
-    queue.length === 0
-    && !batchRunning
-    && !importing
-    && cameraRuntimeDecision.status === 'ready'
-    && !resumeHistoryBatchId
-  );
-  const continuousCameraBlocker = storageImportIssue
-    ?? runtimeBlockerMessage(cameraRuntimeDecision);
-
-  const openContinuousCamera = async (): Promise<void> => {
-    if (!continuousCameraAllowed) return;
-    try {
-      await workbench.dispatch({
-        type: 'open-camera',
-        credential: processingCredential,
-      });
-    } catch (error) {
-      void workbench.dispatch({ type: 'set-notice', notice: String(error) });
-    }
-  };
+  const continuousCameraAllowed = cameraEntry.kind === 'open-camera'
+    && cameraEntry.availability.status === 'available';
+  const continuousCameraBlocker = cameraEntry.kind === 'open-provider-settings'
+    ? providerConfigurationError ?? copy.startUnavailable
+    : storageImportIssue ?? runtimeBlockerMessage(cameraEntry.availability);
 
   const handleContinuousCameraEntry = (): void => {
-    if (continuousCameraAllowed) {
-      void openContinuousCamera();
-      return;
-    }
-    if (storageImportIssue) {
-      setActiveView('settings');
-      void refreshStorage();
-      return;
-    }
-    if (providerValidationError) setProviderDetailsOpen(true);
-    setMobilePane('settings');
+    void workbench.dispatch({ type: 'activate-camera-entry' }).then((outcome) => {
+      if (outcome?.status !== 'effect') return;
+      if (outcome.effect === 'open-storage-settings') {
+        setActiveView('settings');
+        void refreshStorage();
+      } else if (outcome.effect === 'open-provider-settings') {
+        setProviderDetailsOpen(true);
+        setMobilePane('settings');
+      }
+    }).catch(() => undefined);
   };
 
   const continueContinuousCamera = (): void => {
@@ -731,9 +600,7 @@ export function App() {
   };
 
   const closeContinuousCamera = (): void => {
-    void workbench.dispatch({ type: 'close-camera' }).catch((error) => {
-      void workbench.dispatch({ type: 'set-notice', notice: String(error) });
-    });
+    void workbench.dispatch({ type: 'close-camera' }).catch(() => undefined);
   };
 
   const translateContinuousCameraCapture = async (file: File): Promise<void> => {
@@ -759,8 +626,7 @@ export function App() {
         if (
           activeView === 'workbench'
           && !importing
-          && !storageHardBlocked
-          && !(resumeHistoryBatchId && !batchRunning)
+          && controls.importImages.status === 'available'
         ) {
           event.preventDefault();
           fileInputRef.current?.click();
@@ -797,9 +663,8 @@ export function App() {
     activeView,
     batchRunning,
     importing,
-    resumeHistoryBatchId,
+    controls.importImages.status,
     startAllowed,
-    storageHardBlocked,
     startBatch,
     stopBatch,
   ]);
@@ -812,7 +677,7 @@ export function App() {
   );
   const capabilityFailureDetail = (
     queueRuntimeDecision.status === 'blocked'
-    && queueRuntimeDecision.code === 'CAPABILITY_FAILED'
+    && queueRuntimeDecision.reason === 'CAPABILITY_FAILED'
   )
     ? runtimeBlockerMessage(queueRuntimeDecision)
     : undefined;
@@ -856,94 +721,55 @@ export function App() {
     : storageImportIssue
       ?? runtimeBlockerMessage(queueRuntimeDecision);
   const queueRuntimeBlockerCode = queueRuntimeDecision.status === 'blocked'
-    ? queueRuntimeDecision.code
+    ? queueRuntimeDecision.reason
     : undefined;
-  const modelInstallActionAvailable = (
-    queueRuntimeBlockerCode === 'MODEL_CONSENT_REQUIRED'
-    || queueRuntimeBlockerCode === 'MODEL_PACKAGE_MISSING'
-    || queueRuntimeBlockerCode === 'MODEL_INSTALL_PAUSED'
-    || queueRuntimeBlockerCode === 'MODEL_INSTALL_FAILED'
-  );
   const modelProbeRetryAvailable = (
     queueRuntimeBlockerCode === 'MODEL_PROBE_FAILED'
     || queueRuntimeBlockerCode === 'CAPABILITY_FAILED'
   );
-  const primaryActionLabel = batchRunning
+  const primaryActionLabel = primaryAction.kind === 'stop-processing'
     ? copy.stopBatch
-    : startAllowed
-      ? copy.start
-      : storageImportIssue
-          ? copy.settings
-          : queue.length === 0
-            ? copy.addImages
-          : modelInstallActionAvailable
-            ? !modelConsent
-              ? copy.modelConsent
-              : modelPackageState.status === 'paused'
-                ? copy.modelResume
-                : copy.modelRetry
-            : modelProbeRetryAvailable
-              ? copy.modelProbeRetry
-              : providerValidationError
-                ? copy.openProviderSettings
-                : copy.start;
-  const primaryActionIconName: IconName = batchRunning
+    : primaryAction.kind === 'pick-images'
+      ? copy.addImages
+      : primaryAction.kind === 'open-storage-settings'
+        ? copy.settings
+        : primaryAction.kind === 'install-models'
+          ? !modelConsent
+            ? copy.modelConsent
+            : modelPackageState.status === 'paused'
+              ? copy.modelResume
+              : copy.modelRetry
+          : primaryAction.kind === 'retry-runtime'
+            ? copy.modelProbeRetry
+            : primaryAction.kind === 'open-provider-settings'
+              ? copy.openProviderSettings
+              : copy.start;
+  const primaryActionIconName: IconName = primaryAction.kind === 'stop-processing'
     ? 'stop'
-    : startAllowed
-      ? 'play'
-      : storageImportIssue
+    : primaryAction.kind === 'pick-images'
+      ? 'add'
+      : primaryAction.kind === 'open-storage-settings'
+        || primaryAction.kind === 'open-provider-settings'
         ? 'gear'
-        : queue.length === 0
-          ? 'add'
-          : modelInstallActionAvailable
-            ? 'download'
-            : modelProbeRetryAvailable
-              ? 'refresh'
-              : providerValidationError
-                ? 'gear'
-                : 'play';
-  const primaryActionDisabled = (
-    !batchRunning
-    && !startAllowed
-    && queue.length > 0
-    && !storageImportIssue
-    && !modelInstallActionAvailable
-    && !modelProbeRetryAvailable
-    && !providerValidationError
-  );
+        : primaryAction.kind === 'install-models'
+          ? 'download'
+          : primaryAction.kind === 'retry-runtime'
+            ? 'refresh'
+            : 'play';
+  const primaryActionDisabled = primaryAction.availability.status === 'blocked';
   const handlePrimaryAction = (): void => {
-    if (batchRunning) {
-      stopBatch();
-      return;
-    }
-    if (startAllowed) {
-      void startBatch();
-      return;
-    }
-    if (storageImportIssue) {
-      setActiveView('settings');
-      void refreshStorage();
-      return;
-    }
-    if (queue.length === 0) {
-      fileInputRef.current?.click();
-      return;
-    }
-    if (modelInstallActionAvailable) {
-      acceptModelDownload();
-      return;
-    }
-    if (modelProbeRetryAvailable) {
-      void workbench.dispatch({ type: 'runtime-command', command: { type: 'retry' } })
-        .catch((error) => {
-        void workbench.dispatch({ type: 'set-notice', notice: String(error) });
-      });
-      return;
-    }
-    if (providerValidationError) {
-      setProviderDetailsOpen(true);
-      setMobilePane('settings');
-    }
+    void workbench.dispatch({ type: 'activate-primary' }).then((outcome) => {
+      if (outcome?.status !== 'effect') return;
+      if (outcome.effect === 'pick-images') {
+        fileInputRef.current?.click();
+      } else if (outcome.effect === 'open-storage-settings') {
+        setActiveView('settings');
+        void refreshStorage();
+      } else {
+        setProviderDetailsOpen(true);
+        setMobilePane('settings');
+      }
+    }).catch(() => undefined);
   };
   const visiblePreviewUrl = (
     previewMode === 'result' && selectedJob?.resultUrl
@@ -1023,8 +849,7 @@ export function App() {
             aria-current={activeView === 'history' ? 'page' : undefined}
             onClick={() => {
               setActiveView('history');
-              setHistoryActionError(undefined);
-              void workbench.dispatch({ type: 'history', intent: { type: 'refresh' } });
+              void workbench.dispatch({ type: 'refresh-history' });
             }}
           >
             <Icon name="clock" />
@@ -1053,8 +878,7 @@ export function App() {
               aria-current={activeView === 'history' ? 'page' : undefined}
               onClick={() => {
                 setActiveView('history');
-                setHistoryActionError(undefined);
-                void workbench.dispatch({ type: 'history', intent: { type: 'refresh' } });
+                void workbench.dispatch({ type: 'refresh-history' });
               }}
             >
               <Icon name="clock" />
@@ -1158,7 +982,7 @@ export function App() {
               tabIndex={-1}
               accept=".png,.jpg,.jpeg,.webp,.avif,image/png,image/jpeg,image/webp,image/avif"
               multiple
-              disabled={storageHardBlocked}
+              disabled={controls.importImages.status === 'blocked'}
               onChange={handleFileInput}
             />
             <div className="import-actions">
@@ -1168,11 +992,7 @@ export function App() {
                 title={continuousCameraAllowed
                   ? copy.continuousCamera
                   : continuousCameraBlocker}
-                disabled={
-                  batchRunning
-                  || importing
-                  || Boolean(resumeHistoryBatchId)
-                }
+                disabled={cameraEntry.availability.status === 'blocked'}
                 onClick={handleContinuousCameraEntry}
               >
                 <Icon name="camera" />
@@ -1183,11 +1003,7 @@ export function App() {
                 type="button"
                 aria-keyshortcuts="Control+O Meta+O"
                 title={`${copy.addImages} (Ctrl/⌘+O)`}
-                disabled={
-                  importing
-                  || storageHardBlocked
-                  || Boolean(resumeHistoryBatchId && !batchRunning)
-                }
+                disabled={controls.importImages.status === 'blocked'}
                 onClick={() => fileInputRef.current?.click()}
               >
                 <Icon name="add" />
@@ -1225,11 +1041,7 @@ export function App() {
                 type="button"
                 aria-keyshortcuts="Control+O Meta+O"
                 title={`${copy.addImages} (Ctrl/⌘+O)`}
-                disabled={
-                  importing
-                  || storageHardBlocked
-                  || Boolean(resumeHistoryBatchId && !batchRunning)
-                }
+                disabled={controls.importImages.status === 'blocked'}
                 onClick={() => fileInputRef.current?.click()}
               >
                 <Icon name="add" />
@@ -1241,10 +1053,7 @@ export function App() {
               {queue.map((image, index) => {
                 const selected = selectedId === image.id;
                 const job = jobs[image.id];
-                const previousJob = index > 0 ? jobs[queue[index - 1].id] : undefined;
-                const nextJob = index < queue.length - 1
-                  ? jobs[queue[index + 1].id]
-                  : undefined;
+                const actions = itemActions[image.id];
                 return (
                   <li
                     className="queue-item"
@@ -1287,7 +1096,7 @@ export function App() {
                           type="button"
                           aria-label={copy.retryTask}
                           title={copy.retryTask}
-                          disabled={!workbenchSnapshot.activeBatch}
+                          disabled={actions?.retry.status === 'blocked'}
                           onClick={() => retryTask(image.id)}
                         >
                           <Icon name="refresh" />
@@ -1295,18 +1104,7 @@ export function App() {
                       )}
                       <button
                         type="button"
-                        disabled={
-                          importing
-                          || job?.status === 'running'
-                          || index === 0
-                          || (
-                            Boolean(resumeHistoryBatchId || batchRunning)
-                            && (
-                              job?.status !== 'queued'
-                              || previousJob?.status !== 'queued'
-                            )
-                          )
-                        }
+                        disabled={actions?.moveUp.status === 'blocked'}
                         aria-label={copy.moveUp}
                         title={copy.moveUp}
                         onClick={() => void moveImage(image.id, -1)}
@@ -1315,18 +1113,7 @@ export function App() {
                       </button>
                       <button
                         type="button"
-                        disabled={
-                          importing
-                          || job?.status === 'running'
-                          || index === queue.length - 1
-                          || (
-                            Boolean(resumeHistoryBatchId || batchRunning)
-                            && (
-                              job?.status !== 'queued'
-                              || nextJob?.status !== 'queued'
-                            )
-                          )
-                        }
+                        disabled={actions?.moveDown.status === 'blocked'}
                         aria-label={copy.moveDown}
                         title={copy.moveDown}
                         onClick={() => void moveImage(image.id, 1)}
@@ -1335,14 +1122,7 @@ export function App() {
                       </button>
                       <button
                         type="button"
-                        disabled={
-                          importing
-                          || job?.status === 'running'
-                          || (
-                            Boolean(resumeHistoryBatchId || batchRunning)
-                            && job?.status !== 'queued'
-                          )
-                        }
+                        disabled={actions?.remove.status === 'blocked'}
                         aria-label={copy.remove}
                         title={copy.remove}
                         onClick={() => void removeImage(image.id)}
@@ -1511,11 +1291,7 @@ export function App() {
                   title={continuousCameraAllowed
                     ? copy.continuousCamera
                     : continuousCameraBlocker}
-                  disabled={
-                    batchRunning
-                    || importing
-                    || Boolean(resumeHistoryBatchId)
-                  }
+                  disabled={cameraEntry.availability.status === 'blocked'}
                   onClick={handleContinuousCameraEntry}
                 >
                   <Icon name="camera" />
@@ -1550,7 +1326,7 @@ export function App() {
                     role="radio"
                     aria-checked={settings.processMode === mode}
                     data-active={settings.processMode === mode}
-                    disabled={batchRunning || Boolean(resumeHistoryBatchId)}
+                    disabled={!processingSettingsEditable}
                     onClick={() => patchSettings({ processMode: mode })}
                   >
                     {modeLabel(mode)}
@@ -1564,7 +1340,7 @@ export function App() {
                   id="batch-target-language"
                   name="target-language"
                   value={settings.targetLanguage}
-                  disabled={batchRunning || Boolean(resumeHistoryBatchId)}
+                  disabled={!processingSettingsEditable}
                   onChange={(event) =>
                     patchSettings({ targetLanguage: event.target.value as TargetLanguage })}
                 >
@@ -1580,8 +1356,7 @@ export function App() {
                   name="translation-provider"
                   value={settings.translationProviderId}
                   disabled={
-                    batchRunning
-                    || Boolean(resumeHistoryBatchId)
+                    !processingSettingsEditable
                     || settings.processMode !== 'translate'
                   }
                   onChange={(event) =>
@@ -1620,7 +1395,7 @@ export function App() {
                           name="provider-base-url"
                           type="url"
                           value={activeProviderProfile.baseUrl}
-                          disabled={batchRunning || Boolean(resumeHistoryBatchId)}
+                          disabled={!processingSettingsEditable}
                           spellCheck={false}
                           onChange={(event) =>
                             patchActiveProviderProfile({ baseUrl: event.target.value })}
@@ -1633,7 +1408,7 @@ export function App() {
                           name="provider-model"
                           type="text"
                           value={activeProviderProfile.model}
-                          disabled={batchRunning || Boolean(resumeHistoryBatchId)}
+                          disabled={!processingSettingsEditable}
                           spellCheck={false}
                           onChange={(event) =>
                             patchActiveProviderProfile({ model: event.target.value })}
@@ -1648,8 +1423,7 @@ export function App() {
                         type="password"
                         value={activeProviderSecret.value}
                         disabled={
-                          batchRunning
-                          || Boolean(resumeHistoryBatchId)
+                          !processingSettingsEditable
                           || activeProviderSecret.busy
                         }
                         autoComplete="off"
@@ -1683,8 +1457,7 @@ export function App() {
                           type="checkbox"
                           checked={activeProviderSecret.persistence === 'device'}
                           disabled={
-                            batchRunning
-                            || Boolean(resumeHistoryBatchId)
+                            !processingSettingsEditable
                             || activeProviderSecret.busy
                             || !activeProviderSecret.value.trim()
                           }
@@ -1700,7 +1473,7 @@ export function App() {
                       <button
                         className="delete-config"
                         type="button"
-                        disabled={batchRunning || Boolean(resumeHistoryBatchId)}
+                        disabled={!processingSettingsEditable}
                         onClick={() => void removeActiveProviderConfiguration()}
                       >
                         {copy.deleteProviderConfig}
@@ -1741,10 +1514,7 @@ export function App() {
                         className="inline-action"
                         type="button"
                         onClick={() => {
-                          void workbench.dispatch({
-                            type: 'runtime-command',
-                            command: { type: 'retry' },
-                          });
+                          void workbench.dispatch({ type: 'retry-runtime' });
                         }}
                       >
                         {copy.modelProbeRetry}
@@ -1780,10 +1550,7 @@ export function App() {
                           className="inline-action"
                           type="button"
                           onClick={() => {
-                            void workbench.dispatch({
-                              type: 'runtime-command',
-                              command: { type: 'cancel-model-download' },
-                            });
+                            void workbench.dispatch({ type: 'cancel-model-install' });
                           }}
                         >
                           {copy.modelCancel}
@@ -1812,7 +1579,7 @@ export function App() {
                     className="button button-secondary button-compact"
                     type="button"
                     onClick={cancelCurrent}
-                    disabled={!workbenchSnapshot.activeBatch?.currentTaskId}
+                    disabled={!processing.canCancelCurrent}
                   >
                     {copy.cancelCurrent}
                   </button>
@@ -1839,7 +1606,7 @@ export function App() {
               <Icon name={primaryActionIconName} weight="bold" />
               {primaryActionLabel}
             </button>
-            {resumeHistoryBatchId && !batchRunning && (
+            {recoveryActive && !batchRunning && (
               <button
                 className="button button-secondary button-compact"
                 type="button"
@@ -1911,38 +1678,42 @@ export function App() {
           loading={historySnapshot.status === 'loading'}
           busy={historySnapshot.busy}
           error={
-            historyActionError
+            (historyAction?.status === 'rejected'
+              ? historyRejectionMessage(historyAction.code, settings.uiLocale)
+              : historyAction?.status === 'failed'
+                ? `${historyAction.operation}: ${historyAction.cause}`
+                : undefined)
             ?? historyCleanupFaultMessage
             ?? (historySnapshot.failure
               ? `${historySnapshot.failure.operation}: ${historySnapshot.failure.cause}`
               : undefined)
           }
-          onRefresh={() => void handleHistoryOutcome({ type: 'refresh' })}
+          onRefresh={() => void handleHistoryOutcome({ type: 'refresh-history' })}
           onResume={(batchId) => void handleHistoryOutcome({
-            type: 'prepare-resume',
+            type: 'resume-history',
             batchId,
           })}
           onClone={(batchId) => void handleHistoryOutcome({
-            type: 'prepare-clone',
+            type: 'clone-history',
             batchId,
           })}
           onDownload={(batchId, itemId) => void handleHistoryOutcome({
-            type: 'download-result',
+            type: 'download-history-result',
             batchId,
             itemId,
           })}
           onExportResults={(batchId) => void handleHistoryOutcome({
-            type: 'export-results',
+            type: 'export-history-results',
             batchId,
           })}
           onExportProject={(batchId) => void exportHistoryProject(batchId)}
           onImportProject={(file) => void handleHistoryOutcome({
-            type: 'import-project',
+            type: 'import-history-project',
             file,
           })}
           onKeepResults={(batchId) => void keepHistoryResultsOnly(batchId)}
           onDelete={(batchId) => void handleHistoryOutcome({
-            type: 'stage-delete',
+            type: 'stage-history-delete',
             batchId,
           })}
         />
@@ -1950,21 +1721,20 @@ export function App() {
         <SettingsView
           copy={copy}
           settings={settings}
-          historyLocked={Boolean(resumeHistoryBatchId)}
+          historyLocked={recoveryActive}
           storageSnapshot={storageSnapshot}
           storageChecking={storageChecking}
-          diagnosticBusy={diagnosticBusy}
+          diagnosticBusy={diagnosticState.exporting}
           onLocaleChange={(locale) => patchSettings({ uiLocale: locale })}
           onRefreshStorage={() => {
             void refreshStorage();
           }}
           onManageHistory={() => {
             setActiveView('history');
-            setHistoryActionError(undefined);
-            void workbench.dispatch({ type: 'history', intent: { type: 'refresh' } });
+            void workbench.dispatch({ type: 'refresh-history' });
           }}
           onExportDiagnostics={() => {
-            void exportRedactedDiagnostics();
+            void workbench.dispatch({ type: 'export-diagnostics' }).catch(() => undefined);
           }}
         />
       )}
@@ -1988,7 +1758,7 @@ export function App() {
           </span>
           <button
             type="button"
-            onClick={() => void handleHistoryOutcome({ type: 'undo-pending' })}
+            onClick={() => void handleHistoryOutcome({ type: 'undo-history-action' })}
           >
             {copy.historyUndoDelete}
           </button>

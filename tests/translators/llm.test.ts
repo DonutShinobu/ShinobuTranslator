@@ -504,6 +504,8 @@ describe('llmTranslateRegions', () => {
     expect(userContent).toContain('自然流畅的完整中文译文');
     expect(userContent).toContain('允许跨 column/line 重组语义');
     expect(userContent).toContain('先写完整中文译文，再按 targetColumns 拆成 columns');
+    expect(userContent).toContain('columns 数量不得超过 targetColumns');
+    expect(userContent).toContain('数量不得超过 targetLines');
     expect(userContent).toContain('标点、语气停顿或短语边界');
 
     const payload = parsePromptPayload(userContent);
@@ -577,8 +579,8 @@ describe('llmTranslateRegions', () => {
       '1. regions 數組必須覆蓋所有輸入 id。',
       '2. translation 必須是自然流暢的完整中文譯文，優先符合中文語序和中文漫畫台詞習慣。',
       '3. 翻譯時必須允許跨 column/line 重組語義；不要把每個 column/line 當成必須逐字對應的獨立句子。',
-      '4. direction=v 時，先寫完整中文譯文，再按 targetColumns 拆成 columns；columns 按最終豎排顯示的閱讀順序返回。',
-      '5. direction=h 時，columns 表示最終橫排行分段，優先接近 targetLines。',
+      '4. direction=v 時，先寫完整中文譯文，再按 targetColumns 拆成 columns；columns 數量不得超過 targetColumns，並按最終豎排顯示的閱讀順序返回。',
+      '5. direction=h 時，columns 表示最終橫排行分段，數量不得超過 targetLines。',
       '6. columns 每段都應是自然中文片段，盡量在標點、語氣停頓或短語邊界斷開。',
       '7. 除 JSON 外不要輸出任何內容。',
       `輸入數據：${JSON.stringify([

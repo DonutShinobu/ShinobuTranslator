@@ -182,11 +182,11 @@ export function SettingsView({
               <strong>{copy.modelSources}</strong>
               <nav aria-label={copy.modelSources}>
                 <a
-                  href="https://github.com/DonutShinobu/ShinobuTranslator/releases/tag/models-v0.7.0"
+                  href="https://github.com/DonutShinobu/ShinobuTranslator/releases/tag/models-v0.8.0"
                   target="_blank"
                   rel="noreferrer"
                 >
-                  Shinobu models-v0.7.0 · GitHub Release
+                  Shinobu models-v0.8.0 · GitHub Release
                 </a>
                 <a
                   href="https://github.com/zyddnys/manga-image-translator/releases/tag/beta-0.3"

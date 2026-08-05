@@ -10,6 +10,7 @@ export type ManifestModel = {
   name: string;
   task: string;
   url: string;
+  format?: 'onnx' | 'ort';
   input: number[];
   runtime?: RuntimeProvider[];
   dictUrl?: string;
@@ -62,6 +63,11 @@ export type ModelRegistryOptions = {
   resolveAsset?: (asset: string) => Promise<string> | string;
   observer?: DiagnosticLogObserver;
   performanceObserver?: ModelRuntimePerformanceObserver;
+};
+
+const BROWSER_DETECTOR_SESSION_OPTIONS: Readonly<OnnxSessionOptions> = {
+  graphOptimizationLevel: 'extended',
+  useOrtModelBytesForInitializers: true,
 };
 
 /** Creates an isolated manifest/session cache for one ModelRuntime instance. */
@@ -148,7 +154,14 @@ export function createModelRegistry(options: ModelRegistryOptions): ModelRegistr
     const runtime = preferred?.length
       ? preferred
       : model.runtime ?? (options.environment === 'node' ? ['cuda', 'cpu'] : ['wasm']);
-    const sessionOptionsKey = serializeOnnxSessionOptions(sessionOptions);
+    const effectiveSessionOptions = (
+      options.environment === 'browser'
+      && name === 'detector'
+      && model.format === 'ort'
+    )
+      ? { ...BROWSER_DETECTOR_SESSION_OPTIONS, ...sessionOptions }
+      : sessionOptions;
+    const sessionOptionsKey = serializeOnnxSessionOptions(effectiveSessionOptions);
     const cacheKey = `${name}:${runtime.join(',')}:${sessionOptionsKey}`;
     const cached = sessions.get(cacheKey);
     if (cached) {
@@ -181,7 +194,7 @@ export function createModelRegistry(options: ModelRegistryOptions): ModelRegistr
       name,
       model.url,
       runtime,
-      sessionOptions,
+      effectiveSessionOptions,
     ).then((handle) => {
       sessions.set(cacheKey, handle);
       emit({

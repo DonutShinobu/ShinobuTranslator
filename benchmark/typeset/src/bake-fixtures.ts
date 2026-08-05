@@ -78,7 +78,7 @@ async function main(): Promise<void> {
 
   const bakeInfo: BakeInfo = {
     gitCommit: gitCommit(),
-    detectorModel: "detector.onnx",
+    detectorModel: "detector.ort",
     ocrModel: "PP-OCRv6_medium_rec.onnx",
     direction: options.direction,
   };

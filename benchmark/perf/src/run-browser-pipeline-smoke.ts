@@ -28,6 +28,11 @@ type PipelineSmokeResult = {
   sourceCharCount: number;
   sampleTexts: string[];
   firstBox: BakeRegion["box"] | null;
+  detectorSession: {
+    provider: string;
+    inputNames: string[];
+    outputNames: string[];
+  };
   apiSmoke?: {
     render: boolean;
     renderDebug: boolean;
@@ -105,6 +110,17 @@ async function main(): Promise<void> {
       }) => {
         const api = (window as ShinobuBenchmarkWindow).__shinobuBenchmark__;
         if (!api) throw new Error("Benchmark API is unavailable");
+        const detectorSession = await api.inspectDetectorSession();
+        if (detectorSession.provider !== 'webgpu') {
+          throw new Error(`Detector did not use WebGPU: ${detectorSession.provider}`);
+        }
+        if (detectorSession.inputNames.join(',') !== 'images') {
+          throw new Error(`Unexpected detector inputs: ${detectorSession.inputNames.join(',')}`);
+        }
+        const outputNames = [...detectorSession.outputNames].sort();
+        if (outputNames.join(',') !== 'blk,det,seg') {
+          throw new Error(`Unexpected detector outputs: ${outputNames.join(',')}`);
+        }
         const bakeResult = await api.bake(pageDataUrl);
         const regions: BakeRegion[] = bakeResult.regions;
         let apiSmoke: PipelineSmokeResult["apiSmoke"];
@@ -136,6 +152,7 @@ async function main(): Promise<void> {
           sourceCharCount: regions.reduce((sum, region) => sum + region.sourceText.length, 0),
           sampleTexts,
           firstBox: regions[0]?.box ?? null,
+          detectorSession,
           apiSmoke,
         };
       },

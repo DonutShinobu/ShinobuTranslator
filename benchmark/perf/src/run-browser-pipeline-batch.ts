@@ -483,7 +483,7 @@ async function main(): Promise<void> {
     "benchmark.js",
     "onnxWorker.js",
     "models/models.json",
-    "models/detector.onnx",
+    "models/detector.ort",
     "models/bubble.onnx",
     "models/PP-OCRv6_medium_rec.onnx",
     "models/paddleocr_v6_dict.txt",

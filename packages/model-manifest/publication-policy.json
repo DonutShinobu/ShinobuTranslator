@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "manifestVersion": "2026-07-28-runtime-v1",
+  "manifestVersion": "2026-08-06-runtime-v2",
   "assets": {
     "detector": {
-      "path": "detector.onnx",
-      "sha256": "1a86ace74961413cbd650002e7bb4dcec4980ffa21b2f19b86933372071d718f",
+      "path": "detector.ort",
+      "sha256": "0e9c3979e73092a56404c835e63d9894e7d94b50b356ee29e84ee6a32d65f7d9",
       "status": "conditional",
-      "reason": "The exact asset is GPL-3.0. Public distribution requires the reviewed GPL source offer/access path, attribution, license text, and modification record."
+      "reason": "This portable Runtime ORT derivative was generated from the reviewed GPL-3.0 detector.onnx with ONNX Runtime 1.24.1 --optimization_style Runtime. Public distribution still requires the reviewed GPL source offer/access path, attribution, license text, and this conversion record."
     },
     "inpaint": {
       "path": "aot_inpaint_512.onnx",

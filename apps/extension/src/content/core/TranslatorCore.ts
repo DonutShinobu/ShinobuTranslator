@@ -40,6 +40,7 @@ export class TranslatorCore {
   private readonly imageTranslationController: ImageTranslationController;
   private readonly readingModeController: ReadingModeController;
   private mounted = new Map<string, MountedImage>();
+  private retainedTargets = new Map<string, ImageTarget>();
   private disposeObserver: (() => void) | null = null;
   private syncTimer: number | null = null;
 
@@ -53,7 +54,7 @@ export class TranslatorCore {
         resolveTranslationContext: (target) => this.adapter.getTranslationContext?.(target) ?? {
           status: 'empty',
         },
-        applyImage: (target, state) => this.applyStateImage(target, state),
+        applyImage: (target, state) => this.applyMountedStateImage(target.key, state),
         render: (key) => this.renderForKey(key),
       },
     );
@@ -78,6 +79,7 @@ export class TranslatorCore {
     this.readingModeController.teardown();
     this.screenshotController.dispose();
     this.imageTranslationController.dispose();
+    this.retainedTargets.clear();
     this.imageTranslationExecutionArbiter.dispose('翻译核心已停止');
     this.stateStore.dispose();
   }
@@ -134,9 +136,24 @@ export class TranslatorCore {
     const targets = this.adapter.findImages();
     const currentKeys = new Set(targets.map((t) => t.key));
 
+    for (const [key, target] of this.retainedTargets) {
+      if (currentKeys.has(key)) {
+        this.retainedTargets.delete(key);
+        continue;
+      }
+      if (!this.shouldKeepTranslationActivity(target, targets)) {
+        this.imageTranslationController.cancel(key);
+        this.retainedTargets.delete(key);
+      }
+    }
+
     for (const [key, mounted] of this.mounted) {
       if (!currentKeys.has(key)) {
-        this.imageTranslationController.cancel(key);
+        if (this.shouldKeepTranslationActivity(mounted.target, targets)) {
+          this.retainedTargets.set(key, mounted.target);
+        } else {
+          this.imageTranslationController.cancel(key);
+        }
         mounted.ui.host.remove();
         this.mounted.delete(key);
       }
@@ -181,9 +198,25 @@ export class TranslatorCore {
 
   private renderForKey(key: string): void {
     const mounted = this.mounted.get(key);
-    if (!mounted) return;
+    if (!mounted?.ui.host.isConnected) return;
     const state = this.stateStore.get(key) ?? null;
     renderUi(mounted.ui, state);
+  }
+
+  private shouldKeepTranslationActivity(
+    target: ImageTarget,
+    currentTargets: readonly ImageTarget[],
+  ): boolean {
+    return this.adapter.keepTranslationActivityOnUnmount?.(
+      target,
+      currentTargets,
+    ) ?? false;
+  }
+
+  private applyMountedStateImage(key: string, state: PhotoState): void {
+    const mounted = this.mounted.get(key);
+    if (!mounted?.ui.host.isConnected) return;
+    this.applyStateImage(mounted.target, state);
   }
 
   private applyStateImage(target: ImageTarget, state: PhotoState): void {

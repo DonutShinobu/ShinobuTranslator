@@ -376,22 +376,97 @@ function isExtensionSourceMutation(mutation: MutationRecord): boolean {
   return mutation.target.src === pendingSource;
 }
 
-const referenceButtonSelector =
-  '#layers > div:nth-child(2) > div > div > div > div > div > div.css-175oi2r.r-1ny4l3l.r-18u37iz.r-1pi2tsx.r-1777fci.r-1xcajam.r-ipm5af.r-g6jmlv.r-1awozwy > div.css-175oi2r.r-1wbh5a2.r-htvplk.r-1udh08x.r-17gur6a.r-1pi2tsx.r-13qz1uu > div.css-175oi2r.r-18u37iz.r-1pi2tsx.r-11yh6sk.r-buy8e9.r-bnwqim.r-13qz1uu > div.css-175oi2r.r-16y2uox.r-1wbh5a2 > div.css-175oi2r.r-1awozwy.r-1loqt21.r-1777fci.r-xyw6el.r-u8s1d.r-ipm5af.r-zchlnj';
 const anchoredVerticalGapPx = 8;
 const fallbackHostInsetPx = 16;
+const topControlBandHeightPx = 96;
+const maxReferenceControlSizePx = 72;
 
-function repositionAnchor(anchor: HTMLElement, dialog: HTMLElement | null): void {
-  if (!dialog) return;
-  const refButton = document.querySelector(referenceButtonSelector) as HTMLElement | null;
-  if (!refButton || !isVisibleElement(refButton) || !dialog.contains(refButton)) {
-    anchor.style.left = 'auto';
-    anchor.style.right = `${fallbackHostInsetPx}px`;
-    anchor.style.top = `${fallbackHostInsetPx}px`;
-    return;
+function applyFallbackAnchorPosition(anchor: HTMLElement): void {
+  anchor.style.left = 'auto';
+  anchor.style.right = `${fallbackHostInsetPx}px`;
+  anchor.style.top = `${fallbackHostInsetPx}px`;
+  anchor.dataset.positionSource = 'fallback';
+}
+
+function isReferenceControlCandidate(
+  control: HTMLButtonElement,
+  dialog: HTMLElement,
+  image: HTMLImageElement,
+  anchor: HTMLElement,
+): boolean {
+  if (
+    !control.isConnected
+    || !dialog.contains(control)
+    || anchor.contains(control)
+    || !isVisibleElement(control)
+  ) {
+    return false;
   }
-  const refTarget = refButton.querySelector(':scope > button > div') ?? refButton;
-  const refRect = refTarget.getBoundingClientRect();
+
+  const controlRect = control.getBoundingClientRect();
+  const dialogRect = dialog.getBoundingClientRect();
+  const imageRect = image.getBoundingClientRect();
+  const topBandBottom = Math.min(dialogRect.bottom, dialogRect.top + topControlBandHeightPx);
+  const controlCenterX = controlRect.left + controlRect.width / 2;
+  const imageCenterX = imageRect.left + imageRect.width / 2;
+
+  return controlRect.width <= maxReferenceControlSizePx
+    && controlRect.height <= maxReferenceControlSizePx
+    && controlRect.top >= dialogRect.top - 1
+    && controlRect.bottom <= topBandBottom
+    && controlRect.left >= dialogRect.left - 1
+    && controlRect.right <= dialogRect.right + 1
+    && controlCenterX >= imageCenterX;
+}
+
+function findReferenceControl(
+  dialog: HTMLElement,
+  image: HTMLImageElement,
+  anchor: HTMLElement,
+): HTMLButtonElement | null {
+  const imageRect = image.getBoundingClientRect();
+  let best: HTMLButtonElement | null = null;
+  let bestHorizontalDistance = Number.POSITIVE_INFINITY;
+  let bestRight = Number.NEGATIVE_INFINITY;
+
+  for (const control of dialog.querySelectorAll<HTMLButtonElement>('button')) {
+    if (!isReferenceControlCandidate(control, dialog, image, anchor)) continue;
+    const controlRect = control.getBoundingClientRect();
+    const horizontalDistance = Math.abs(controlRect.right - imageRect.right);
+    if (
+      horizontalDistance < bestHorizontalDistance
+      || (horizontalDistance === bestHorizontalDistance && controlRect.right > bestRight)
+    ) {
+      best = control;
+      bestHorizontalDistance = horizontalDistance;
+      bestRight = controlRect.right;
+    }
+  }
+
+  return best;
+}
+
+function repositionAnchor(
+  anchor: HTMLElement,
+  dialog: HTMLElement | null,
+  image: HTMLImageElement,
+  currentReference: HTMLButtonElement | null,
+): HTMLButtonElement | null {
+  if (!dialog) return null;
+  const reference = currentReference && isReferenceControlCandidate(
+    currentReference,
+    dialog,
+    image,
+    anchor,
+  )
+    ? currentReference
+    : findReferenceControl(dialog, image, anchor);
+  if (!reference) {
+    applyFallbackAnchorPosition(anchor);
+    return null;
+  }
+
+  const refRect = reference.getBoundingClientRect();
   const dialogRect = dialog.getBoundingClientRect();
 
   const right = Math.max(0, Math.round(dialogRect.right - refRect.right));
@@ -400,6 +475,8 @@ function repositionAnchor(anchor: HTMLElement, dialog: HTMLElement | null): void
   anchor.style.left = 'auto';
   anchor.style.right = `${right}px`;
   anchor.style.top = `${top}px`;
+  anchor.dataset.positionSource = 'native-control';
+  return reference;
 }
 
 export const twitterAdapter: SiteAdapter = {
@@ -445,20 +522,35 @@ export const twitterAdapter: SiteAdapter = {
       : liveResolution;
   },
 
+  keepTranslationActivityOnUnmount(target, currentTargets) {
+    const tweetIdentity = readTweetIdentityFromImageKey(target.key);
+    return tweetIdentity !== null && currentTargets.some(
+      current => readTweetIdentityFromImageKey(current.key) === tweetIdentity,
+    );
+  },
+
   createUiAnchor(target) {
     const dialog = target.element.closest(imageDialogSelector) as HTMLElement | null;
     const anchor = document.createElement('div');
     anchor.dataset.theme = 'dark';
+    anchor.dataset.positionSource = 'fallback';
     anchor.style.cssText = `position:absolute; right:${fallbackHostInsetPx}px; top:${fallbackHostInsetPx}px; z-index:1000;`;
 
     if (dialog) {
       dialog.appendChild(anchor);
 
-      let rafId = 0;
+      let referenceControl: HTMLButtonElement | null = null;
+      let scheduledRafId: number | null = null;
+      let trackingRafId: number | null = null;
+      let cleanedUp = false;
 
       const cleanup = () => {
-        cancelAnimationFrame(rafId);
+        if (cleanedUp) return;
+        cleanedUp = true;
+        if (scheduledRafId !== null) cancelAnimationFrame(scheduledRafId);
+        if (trackingRafId !== null) cancelAnimationFrame(trackingRafId);
         resizeObserver.disconnect();
+        mutationObserver.disconnect();
         dialog.removeEventListener('transitionend', onTransitionEnd);
         dialog.removeEventListener('transitionstart', onTransitionStart);
       };
@@ -468,41 +560,63 @@ export const twitterAdapter: SiteAdapter = {
           cleanup();
           return;
         }
-        repositionAnchor(anchor, dialog);
+        referenceControl = repositionAnchor(
+          anchor,
+          dialog,
+          target.element,
+          referenceControl,
+        );
+      };
+
+      const scheduleReposition = () => {
+        if (scheduledRafId !== null || cleanedUp) return;
+        scheduledRafId = requestAnimationFrame(() => {
+          scheduledRafId = null;
+          reposition();
+        });
       };
 
       const startRafTracking = () => {
-        cancelAnimationFrame(rafId);
+        if (scheduledRafId !== null) {
+          cancelAnimationFrame(scheduledRafId);
+          scheduledRafId = null;
+        }
+        if (trackingRafId !== null) cancelAnimationFrame(trackingRafId);
         const tick = () => {
           if (!anchor.isConnected) { cleanup(); return; }
-          repositionAnchor(anchor, dialog);
-          rafId = requestAnimationFrame(tick);
+          reposition();
+          trackingRafId = requestAnimationFrame(tick);
         };
-        rafId = requestAnimationFrame(tick);
+        trackingRafId = requestAnimationFrame(tick);
       };
 
-      const resizeObserver = new ResizeObserver(reposition);
+      const resizeObserver = new ResizeObserver(scheduleReposition);
       resizeObserver.observe(dialog);
+      const mutationObserver = new MutationObserver((mutations) => {
+        if (mutations.some(mutation => !anchor.contains(mutation.target))) {
+          scheduleReposition();
+        }
+      });
+      mutationObserver.observe(dialog, { childList: true, subtree: true });
 
       const onTransitionStart = (e: TransitionEvent) => {
         if (e.target instanceof HTMLElement && dialog.contains(e.target)) startRafTracking();
       };
       const onTransitionEnd = (e: TransitionEvent) => {
         if (e.target instanceof HTMLElement && dialog.contains(e.target)) {
-          cancelAnimationFrame(rafId);
-          reposition();
+          if (trackingRafId !== null) {
+            cancelAnimationFrame(trackingRafId);
+            trackingRafId = null;
+          }
+          scheduleReposition();
         }
       };
       dialog.addEventListener('transitionstart', onTransitionStart, { passive: true });
       dialog.addEventListener('transitionend', onTransitionEnd, { passive: true });
+      scheduleReposition();
     } else {
       document.body.appendChild(anchor);
     }
-
-    // Reposition after host is mounted and has layout dimensions
-    requestAnimationFrame(() => {
-      repositionAnchor(anchor, dialog);
-    });
 
     return anchor;
   },

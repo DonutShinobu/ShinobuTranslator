@@ -6,6 +6,355 @@ import { createImageTranslationExecutionModule } from '../../../apps/extension/s
 import { createImageTranslationExecutionArbiter } from '../../../apps/extension/src/content/core/translation/imageTranslationExecutionArbiter';
 import { prepareExecutionFromSettings } from '../core/executionPreparation';
 
+describe('twitterAdapter.createUiAnchor', () => {
+  type Rect = {
+    left: number;
+    right: number;
+    top: number;
+    bottom: number;
+    width: number;
+    height: number;
+  };
+
+  type ControlSpec = {
+    label: string;
+    className?: string;
+    owned?: boolean;
+    rect: Rect;
+  };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function createHarness(controlSpecs: ControlSpec[]) {
+    let nextFrameId = 1;
+    const frames = new Map<number, FrameRequestCallback>();
+    let resizeCallback: ResizeObserverCallback | null = null;
+    let mutationCallback: MutationCallback | null = null;
+    const resizeDisconnect = vi.fn();
+    const mutationDisconnect = vi.fn();
+
+    class FakeElement {
+      readonly children: FakeElement[] = [];
+      readonly dataset: Record<string, string> = {};
+      readonly style = {
+        cssText: '',
+        left: '',
+        right: '',
+        top: '',
+      };
+      className = '';
+      isConnected = true;
+      parentElement: FakeElement | null = null;
+
+      appendChild<T extends FakeElement>(child: T): T {
+        child.parentElement = this;
+        child.isConnected = this.isConnected;
+        this.children.push(child);
+        return child;
+      }
+
+      contains(node: unknown): boolean {
+        return node === this || this.children.some(child => child.contains(node));
+      }
+
+      addEventListener() {}
+
+      removeEventListener() {}
+
+      getBoundingClientRect(): Rect {
+        return {
+          left: 0,
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: 0,
+          height: 0,
+        };
+      }
+    }
+
+    class FakeButton extends FakeElement {
+      constructor(
+        readonly label: string,
+        private rect: Rect,
+        className = '',
+      ) {
+        super();
+        this.className = className;
+      }
+
+      override getBoundingClientRect(): Rect {
+        return this.rect;
+      }
+
+      setRect(rect: Rect): void {
+        this.rect = rect;
+      }
+    }
+
+    class FakeImageElement extends FakeElement {
+      readonly closest = vi.fn();
+
+      constructor(private readonly rect: Rect) {
+        super();
+      }
+
+      override getBoundingClientRect(): Rect {
+        return this.rect;
+      }
+    }
+
+    class FakeDialog extends FakeElement {
+      readonly controls: FakeButton[] = [];
+
+      override getBoundingClientRect(): Rect {
+        return {
+          left: 0,
+          right: 1920,
+          top: 0,
+          bottom: 911,
+          width: 1920,
+          height: 911,
+        };
+      }
+
+      querySelectorAll(selector: string): FakeButton[] {
+        return selector === 'button' ? this.controls : [];
+      }
+    }
+
+    class FakeResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback;
+      }
+
+      observe() {}
+
+      disconnect = resizeDisconnect;
+    }
+
+    class FakeMutationObserver {
+      constructor(callback: MutationCallback) {
+        mutationCallback = callback;
+      }
+
+      observe() {}
+
+      disconnect = mutationDisconnect;
+    }
+
+    const dialog = new FakeDialog();
+    const image = new FakeImageElement({
+      left: 244,
+      right: 1676,
+      top: 0,
+      bottom: 863,
+      width: 1432,
+      height: 863,
+    });
+    dialog.appendChild(image);
+    image.closest.mockReturnValue(dialog);
+
+    const controls = controlSpecs.map(spec => new FakeButton(
+      spec.label,
+      spec.rect,
+      spec.className,
+    ));
+    for (let index = 0; index < controls.length; index += 1) {
+      if (!controlSpecs[index].owned) dialog.appendChild(controls[index]);
+      dialog.controls.push(controls[index]);
+    }
+
+    const body = new FakeElement();
+    vi.stubGlobal('HTMLElement', FakeElement);
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+    vi.stubGlobal('MutationObserver', FakeMutationObserver);
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      const id = nextFrameId++;
+      frames.set(id, callback);
+      return id;
+    });
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => {
+      frames.delete(id);
+    });
+    vi.stubGlobal('window', {
+      getComputedStyle: vi.fn(() => ({
+        display: 'block',
+        visibility: 'visible',
+      })),
+    });
+    vi.stubGlobal('document', {
+      body,
+      createElement: vi.fn(() => new FakeElement()),
+    });
+
+    const anchor = twitterAdapter.createUiAnchor({
+      element: image as unknown as HTMLImageElement,
+      key: 'status:123::image',
+      originalUrl: 'https://pbs.twimg.com/media/example?format=jpg',
+    }) as unknown as FakeElement;
+    for (let index = 0; index < controls.length; index += 1) {
+      if (controlSpecs[index].owned) anchor.appendChild(controls[index]);
+    }
+
+    const flushNextFrame = () => {
+      const entry = frames.entries().next().value as [number, FrameRequestCallback] | undefined;
+      if (!entry) throw new Error('expected a scheduled animation frame');
+      frames.delete(entry[0]);
+      entry[1](0);
+    };
+
+    const addNativeControl = (spec: ControlSpec): FakeButton => {
+      const control = new FakeButton(spec.label, spec.rect, spec.className);
+      dialog.appendChild(control);
+      dialog.controls.push(control);
+      return control;
+    };
+
+    return {
+      anchor,
+      controls,
+      addNativeControl,
+      flushNextFrame,
+      triggerMutation() {
+        mutationCallback?.(
+          [{ target: dialog } as unknown as MutationRecord],
+          {} as MutationObserver,
+        );
+      },
+      triggerResize() {
+        resizeCallback?.([], {} as ResizeObserver);
+      },
+      resizeDisconnect,
+      mutationDisconnect,
+    };
+  }
+
+  const closeControl: ControlSpec = {
+    label: '关闭',
+    className: 'css-generated-close',
+    rect: {
+      left: 12,
+      right: 48,
+      top: 12,
+      bottom: 48,
+      width: 36,
+      height: 36,
+    },
+  };
+
+  const viewPostControl: ControlSpec = {
+    label: '投稿を表示',
+    className: 'css-g5y9jx generated-class-may-change',
+    rect: {
+      left: 1872,
+      right: 1908,
+      top: 12,
+      bottom: 48,
+      width: 36,
+      height: 36,
+    },
+  };
+
+  it('positions below the native top control without depending on X class names or labels', () => {
+    const harness = createHarness([
+      closeControl,
+      viewPostControl,
+      {
+        label: '翻译',
+        owned: true,
+        rect: {
+          left: 1833,
+          right: 1904,
+          top: 16,
+          bottom: 52,
+          width: 71,
+          height: 36,
+        },
+      },
+    ]);
+
+    harness.flushNextFrame();
+
+    expect(harness.anchor.style).toMatchObject({
+      left: 'auto',
+      right: '12px',
+      top: '56px',
+    });
+    expect(harness.anchor.dataset.positionSource).toBe('native-control');
+  });
+
+  it('keeps following the same native control while the photo panel moves', () => {
+    const harness = createHarness([closeControl, viewPostControl]);
+    harness.flushNextFrame();
+
+    harness.controls[1].setRect({
+      left: 1172,
+      right: 1208,
+      top: 12,
+      bottom: 48,
+      width: 36,
+      height: 36,
+    });
+    harness.addNativeControl({
+      label: '详情面板操作',
+      rect: {
+        left: 1364,
+        right: 1400,
+        top: 12,
+        bottom: 48,
+        width: 36,
+        height: 36,
+      },
+    });
+    harness.triggerResize();
+    harness.flushNextFrame();
+
+    expect(harness.anchor.style.right).toBe('712px');
+    expect(harness.anchor.style.top).toBe('56px');
+    expect(harness.anchor.dataset.positionSource).toBe('native-control');
+  });
+
+  it('rediscovers the native control after X replaces its DOM node', () => {
+    const harness = createHarness([closeControl, viewPostControl]);
+    harness.flushNextFrame();
+
+    harness.controls[1].isConnected = false;
+    harness.addNativeControl({
+      label: 'View post',
+      className: 'css-another-generated-name',
+      rect: {
+        left: 1572,
+        right: 1608,
+        top: 12,
+        bottom: 48,
+        width: 36,
+        height: 36,
+      },
+    });
+    harness.triggerMutation();
+    harness.flushNextFrame();
+
+    expect(harness.anchor.style.right).toBe('312px');
+    expect(harness.anchor.dataset.positionSource).toBe('native-control');
+  });
+
+  it('falls back to the dialog corner when no credible native control exists', () => {
+    const harness = createHarness([closeControl]);
+
+    harness.flushNextFrame();
+
+    expect(harness.anchor.style).toMatchObject({
+      left: 'auto',
+      right: '16px',
+      top: '16px',
+    });
+    expect(harness.anchor.dataset.positionSource).toBe('fallback');
+  });
+});
+
 describe('twitterAdapter.observe', () => {
   afterEach(() => {
     vi.unstubAllGlobals();

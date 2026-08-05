@@ -24,7 +24,7 @@
       "count": 2,
       "dependency": "react-dom",
       "dependencyVersion": "18.3.1",
-      "sha256": "c44ebf86f5c4632c9ea6b899652b1e9d9d4b71f28df5daeb2cc89f02a6640e92"
+      "sha256": "7337fd7bbc257422d44e8bc1f3d5ecc095969ed7988aa9b89a4b41401abf89f8"
     },
     {
       "code": "DANGEROUS_EVAL",
@@ -32,7 +32,7 @@
       "count": 1,
       "dependency": "onnxruntime-web",
       "dependencyVersion": "1.24.1",
-      "sha256": "7910457b5b6efa033cdeffd0f85432282862158ecc8ecb44d1359100671f7096"
+      "sha256": "da3f232e5129f019b34cd1854562e582e772569b71b2807686eb69afd4d9dda0"
     },
     {
       "code": "UNSAFE_VAR_ASSIGNMENT",
@@ -40,7 +40,7 @@
       "count": 1,
       "dependency": "onnxruntime-web",
       "dependencyVersion": "1.24.1",
-      "sha256": "7910457b5b6efa033cdeffd0f85432282862158ecc8ecb44d1359100671f7096"
+      "sha256": "da3f232e5129f019b34cd1854562e582e772569b71b2807686eb69afd4d9dda0"
     }
   ]
 }

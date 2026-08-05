@@ -7,6 +7,7 @@ import type {
 import type { PipelineConfig, PipelineProgress, TextRegion } from '../../packages/image-pipeline/src/types';
 import type { ModelRuntime } from '@shinobu/model-runtime';
 import type { TextTranslator } from '@shinobu/text-translation';
+import { createImagePipeline } from '../../packages/image-pipeline/src';
 
 const pipelineMocks = vi.hoisted(() => ({
   fileToImage: vi.fn(),
@@ -86,6 +87,7 @@ function createCanvas(width = 100, height = 200): PipelineCanvas {
     height,
     getContext: () => null,
     toDataURL: () => 'data:image/png;base64,test',
+    convertToBlob: async () => new Blob(['png'], { type: 'image/png' }),
   };
 }
 
@@ -343,9 +345,9 @@ describe('runPipeline', () => {
     });
     (
       globalThis as typeof globalThis & {
-        __shinobuInpaintRuntimeProbeSchedule?: 'detect-start';
+        __shinobuInpaintRuntimeProbeSchedule?: 'after-detect';
       }
-    ).__shinobuInpaintRuntimeProbeSchedule = 'detect-start';
+    ).__shinobuInpaintRuntimeProbeSchedule = 'after-detect';
 
     const artifacts = await runPipeline(
       createFile(),
@@ -399,6 +401,83 @@ describe('runPipeline', () => {
     expect(artifacts.stageRegions.ordered[0].bubbleMask).toBeUndefined();
     artifacts.stageRegions.merged[0].box.x = 999;
     expect(artifacts.stageRegions.ordered[0].box.x).not.toBe(999);
+  });
+
+  it('completes a no-text detection with original artifacts and no later stages', async () => {
+    const progress: PipelineProgress[] = [];
+    const runtimeFlags = globalThis as typeof globalThis & {
+      __shinobuPaddleOcrRuntimeProbeSchedule?: 'after-detect';
+      __shinobuInpaintRuntimeProbeSchedule?: 'after-detect';
+      __shinobuBubbleRuntimeProbeSchedule?: 'after-detect';
+    };
+    runtimeFlags.__shinobuPaddleOcrRuntimeProbeSchedule = 'after-detect';
+    runtimeFlags.__shinobuInpaintRuntimeProbeSchedule = 'after-detect';
+    runtimeFlags.__shinobuBubbleRuntimeProbeSchedule = 'after-detect';
+    pipelineMocks.detectTextRegionsWithMask.mockResolvedValueOnce({
+      regions: [],
+      rawMaskCanvas: null,
+      engine: 'onnx',
+      actualProvider: 'wasm',
+    });
+
+    const artifacts = await runPipeline(
+      createFile(),
+      baseConfig,
+      (item) => progress.push(item),
+      runtimeOptions,
+    );
+
+    expect(uniqueConsecutiveStages(progress)).toEqual([
+      'load',
+      'preload',
+      'detect',
+      'done',
+    ]);
+    expect(artifacts.stageRegions).toEqual({
+      detected: [],
+      ocr: [],
+      merged: [],
+      ordered: [],
+    });
+    expect(artifacts.cleanedCanvas).toBe(originalCanvas);
+    expect(artifacts.resultCanvas).toBe(originalCanvas);
+    expect(pipelineMocks.preparePaddleOcrRuntime).not.toHaveBeenCalled();
+    expect(pipelineMocks.getModelSession.mock.calls.map(([model]) => model)).toEqual(['detector']);
+    expect(pipelineMocks.detectBubbles).not.toHaveBeenCalled();
+    expect(pipelineMocks.runOcr).not.toHaveBeenCalled();
+    expect(pipelineMocks.runTranslate).not.toHaveBeenCalled();
+    expect(pipelineMocks.runInpaint).not.toHaveBeenCalled();
+    expect(pipelineMocks.drawTypeset).not.toHaveBeenCalled();
+  });
+
+  it('publishes a no-text detection as a successful no-translatable-text result', async () => {
+    pipelineMocks.detectTextRegionsWithMask.mockResolvedValueOnce({
+      regions: [],
+      rawMaskCanvas: null,
+      engine: 'onnx',
+      actualProvider: 'wasm',
+    });
+    const pipeline = createImagePipeline({
+      platform: pipelineMocks.browserPlatform as PlatformProvider,
+      modelRuntime,
+      detectionFallbackStrategy: { kind: 'heuristic-only' },
+    });
+
+    const result = await pipeline.run({
+      source: createFile(),
+      config: baseConfig,
+      workingCopy: { strategy: 'source-native' },
+    }, { textTranslator }).result;
+
+    expect(result).toMatchObject({
+      status: 'no-translatable-text',
+      record: {
+        ocr: [],
+        translations: [],
+      },
+    });
+    expect(result.image).toBeInstanceOf(Blob);
+    await pipeline.dispose();
   });
 
   it('attaches completed intermediate artifacts to stage errors', async () => {

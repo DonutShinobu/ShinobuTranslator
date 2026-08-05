@@ -8,6 +8,7 @@ import { ReadingModeController } from '../../../apps/extension/src/content/core/
 import { PhotoStateStore } from '../../../apps/extension/src/content/core/state/photoStateStore';
 import {
   createImageTranslationExecutionModule,
+  type ImageTranslationExecutionDependencies,
   type ImageTranslationExecutionModule,
 } from '../../../apps/extension/src/content/core/translation/imageTranslationExecution';
 import { createImageTranslationExecutionArbiter } from '../../../apps/extension/src/content/core/translation/imageTranslationExecutionArbiter';
@@ -96,6 +97,55 @@ function createFakeBar(): {
 
 function arbitrate(execution: ImageTranslationExecutionModule) {
   return createImageTranslationExecutionArbiter(execution);
+}
+
+function createThreePageBatchScenario(
+  runLocalPipeline: NonNullable<ImageTranslationExecutionDependencies['runLocalPipeline']>,
+) {
+  vi.stubGlobal('document', {
+    querySelector: vi.fn(() => null),
+    querySelectorAll: vi.fn(() => []),
+  });
+  vi.stubGlobal('window', {
+    requestAnimationFrame: vi.fn(() => 1),
+    cancelAnimationFrame: vi.fn(),
+  });
+  const pages = [
+    { key: 'page-1', originalUrl: 'https://cdn.example/page-1.jpg', pageIndex: 0 },
+    { key: 'page-2', originalUrl: 'https://cdn.example/page-2.jpg', pageIndex: 1 },
+    { key: 'page-3', originalUrl: 'https://cdn.example/page-3.jpg', pageIndex: 2 },
+  ];
+  const adapter: SiteAdapter = {
+    match: () => true,
+    findImages: () => [],
+    createUiAnchor: () => ({} as HTMLElement),
+    applyImage: () => {},
+    observe: () => () => {},
+    createBottomBarAnchor: () => ({ appendChild: vi.fn() } as unknown as HTMLElement),
+    discoverReadingPages: async () => ({ status: 'complete', pages }),
+    getVisiblePages: () => [],
+    applyImageByKey: vi.fn(),
+  };
+  const source = new Blob(['source'], { type: 'image/png' });
+  const downloadImage = vi.fn(async () => ({
+    blob: source,
+    file: new File([source], 'source.png', { type: source.type }),
+  }));
+  const bar = createFakeBar();
+  const controller = new ReadingModeController(
+    adapter,
+    new PhotoStateStore(200, { revokeObjectURL: vi.fn() }),
+    arbitrate(createImageTranslationExecutionModule({
+      prepareExecution: prepareExecutionFromSettings(),
+      downloadImage,
+      runLocalPipeline,
+    })),
+    vi.fn(),
+    vi.fn(),
+    () => bar.ui,
+  );
+
+  return { bar, controller, downloadImage };
 }
 
 afterEach(() => {
@@ -360,54 +410,13 @@ describe('ReadingModeController', () => {
   });
 
   it('stops admitting pages after a runtime-scoped pipeline failure', async () => {
-    vi.stubGlobal('document', {
-      querySelector: vi.fn(() => null),
-      querySelectorAll: vi.fn(() => []),
-    });
-    vi.stubGlobal('window', {
-      requestAnimationFrame: vi.fn(() => 1),
-      cancelAnimationFrame: vi.fn(),
-    });
-    const pages = [
-      { key: 'page-1', originalUrl: 'https://cdn.example/page-1.jpg', pageIndex: 0 },
-      { key: 'page-2', originalUrl: 'https://cdn.example/page-2.jpg', pageIndex: 1 },
-      { key: 'page-3', originalUrl: 'https://cdn.example/page-3.jpg', pageIndex: 2 },
-    ];
-    const adapter: SiteAdapter = {
-      match: () => true,
-      findImages: () => [],
-      createUiAnchor: () => ({} as HTMLElement),
-      applyImage: () => {},
-      observe: () => () => {},
-      createBottomBarAnchor: () => ({ appendChild: vi.fn() } as unknown as HTMLElement),
-      discoverReadingPages: async () => ({ status: 'complete', pages }),
-      getVisiblePages: () => [],
-      applyImageByKey: vi.fn(),
-    };
-    const source = new Blob(['source'], { type: 'image/png' });
-    const downloadImage = vi.fn(async () => ({
-      blob: source,
-      file: new File([source], 'source.png', { type: source.type }),
-    }));
     const runLocalPipeline = vi.fn(async () => {
       if (runLocalPipeline.mock.calls.length === 1) return localResult();
       throw Object.assign(new Error('pipeline host unavailable'), {
         code: 'PIPELINE_HOST_UNAVAILABLE',
       });
     });
-    const bar = createFakeBar();
-    const controller = new ReadingModeController(
-      adapter,
-      new PhotoStateStore(200, { revokeObjectURL: vi.fn() }),
-      arbitrate(createImageTranslationExecutionModule({
-        prepareExecution: prepareExecutionFromSettings(),
-        downloadImage,
-        runLocalPipeline,
-      })),
-      vi.fn(),
-      vi.fn(),
-      () => bar.ui,
-    );
+    const { bar, controller, downloadImage } = createThreePageBatchScenario(runLocalPipeline);
 
     controller.sync();
     bar.all.click?.();
@@ -419,36 +428,29 @@ describe('ReadingModeController', () => {
     expect(bar.error.dataset.variant).toBe('error');
   });
 
-  it('continues after an image-local failure and retries only the unfinished page', async () => {
-    vi.stubGlobal('document', {
-      querySelector: vi.fn(() => null),
-      querySelectorAll: vi.fn(() => []),
-    });
-    vi.stubGlobal('window', {
-      requestAnimationFrame: vi.fn(() => 1),
-      cancelAnimationFrame: vi.fn(),
-    });
-    const pages = [
-      { key: 'page-1', originalUrl: 'https://cdn.example/page-1.jpg', pageIndex: 0 },
-      { key: 'page-2', originalUrl: 'https://cdn.example/page-2.jpg', pageIndex: 1 },
-      { key: 'page-3', originalUrl: 'https://cdn.example/page-3.jpg', pageIndex: 2 },
-    ];
-    const adapter: SiteAdapter = {
-      match: () => true,
-      findImages: () => [],
-      createUiAnchor: () => ({} as HTMLElement),
-      applyImage: () => {},
-      observe: () => () => {},
-      createBottomBarAnchor: () => ({ appendChild: vi.fn() } as unknown as HTMLElement),
-      discoverReadingPages: async () => ({ status: 'complete', pages }),
-      getVisiblePages: () => [],
-      applyImageByKey: vi.fn(),
-    };
+  it('continues admitting pages after a no-translatable-text result', async () => {
     const source = new Blob(['source'], { type: 'image/png' });
-    const downloadImage = vi.fn(async () => ({
-      blob: source,
-      file: new File([source], 'source.png', { type: source.type }),
-    }));
+    const runLocalPipeline = vi.fn(async () => {
+      const result = localResult();
+      if (runLocalPipeline.mock.calls.length === 2) {
+        result.status = 'no-translatable-text';
+        result.result = source;
+      }
+      return result;
+    });
+    const { bar, controller, downloadImage } = createThreePageBatchScenario(runLocalPipeline);
+
+    controller.sync();
+    bar.all.click?.();
+
+    await vi.waitFor(() => expect(bar.all.label.textContent).toBe('显示原图'));
+    expect(runLocalPipeline).toHaveBeenCalledTimes(3);
+    expect(downloadImage).toHaveBeenCalledTimes(3);
+    expect(bar.error.textContent).toBe('');
+    expect(bar.error.dataset.variant).toBeUndefined();
+  });
+
+  it('continues after an image-local failure and retries only the unfinished page', async () => {
     let failedOnce = false;
     const runLocalPipeline = vi.fn(async () => {
       if (!failedOnce && runLocalPipeline.mock.calls.length === 2) {
@@ -457,19 +459,7 @@ describe('ReadingModeController', () => {
       }
       return localResult();
     });
-    const bar = createFakeBar();
-    const controller = new ReadingModeController(
-      adapter,
-      new PhotoStateStore(200, { revokeObjectURL: vi.fn() }),
-      arbitrate(createImageTranslationExecutionModule({
-        prepareExecution: prepareExecutionFromSettings(),
-        downloadImage,
-        runLocalPipeline,
-      })),
-      vi.fn(),
-      vi.fn(),
-      () => bar.ui,
-    );
+    const { bar, controller, downloadImage } = createThreePageBatchScenario(runLocalPipeline);
 
     controller.sync();
     bar.all.click?.();

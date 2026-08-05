@@ -21,9 +21,9 @@ type PaddleProviderCliMode = "default" | "webgpu" | "webnn" | "wasm";
 type PaddleColdFirstCliMode = "default" | "on" | "off";
 type PaddleModelCliMode = "medium";
 type PaddleRuntimeProbeCliMode = "legacy" | "prepare" | "warmup";
-type PaddleRuntimeProbeScheduleCliMode = "detect-start" | "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
-type InpaintRuntimeProbeScheduleCliMode = "current" | "detect-start" | "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
-type BubbleRuntimeProbeScheduleCliMode = "current" | "detect-start" | "after-detect";
+type PaddleRuntimeProbeScheduleCliMode = "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
+type InpaintRuntimeProbeScheduleCliMode = "current" | "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
+type BubbleRuntimeProbeScheduleCliMode = "current" | "after-detect";
 
 type StageTiming = {
   stage: string;
@@ -320,8 +320,8 @@ function pickPaddleRuntimeProbeMode(): PaddleRuntimeProbeCliMode {
 
 function pickPaddleRuntimeProbeSchedule(): PaddleRuntimeProbeScheduleCliMode {
   const raw = argValue("paddle-probe-schedule") ?? argValue("paddle-prepare-schedule");
-  if (!raw) return "detect-start";
-  if (raw === "detect-start" || raw === "after-detect" || raw === "bubble-start" || raw === "after-bubble" || raw === "ocr-start") {
+  if (!raw) return "after-detect";
+  if (raw === "after-detect" || raw === "bubble-start" || raw === "after-bubble" || raw === "ocr-start") {
     return raw;
   }
   throw new Error(`Invalid --paddle-probe-schedule value: ${raw}`);
@@ -330,7 +330,7 @@ function pickPaddleRuntimeProbeSchedule(): PaddleRuntimeProbeScheduleCliMode {
 function pickInpaintRuntimeProbeSchedule(): InpaintRuntimeProbeScheduleCliMode {
   const raw = argValue("inpaint-probe-schedule");
   if (!raw) return "current";
-  if (raw === "current" || raw === "detect-start" || raw === "after-detect" || raw === "bubble-start" || raw === "after-bubble" || raw === "ocr-start") {
+  if (raw === "current" || raw === "after-detect" || raw === "bubble-start" || raw === "after-bubble" || raw === "ocr-start") {
     return raw;
   }
   throw new Error(`Invalid --inpaint-probe-schedule value: ${raw}`);
@@ -339,7 +339,7 @@ function pickInpaintRuntimeProbeSchedule(): InpaintRuntimeProbeScheduleCliMode {
 function pickBubbleRuntimeProbeSchedule(): BubbleRuntimeProbeScheduleCliMode {
   const raw = argValue("bubble-probe-schedule");
   if (!raw) return "current";
-  if (raw === "current" || raw === "detect-start" || raw === "after-detect") {
+  if (raw === "current" || raw === "after-detect") {
     return raw;
   }
   throw new Error(`Invalid --bubble-probe-schedule value: ${raw}`);
@@ -795,9 +795,9 @@ async function runPaddleProfile(
             __shinobuPaddleOcrColdFirstSerial?: boolean;
             __shinobuPaddleOcrModelName?: "paddleocr_v6_medium_rec";
             __shinobuPaddleOcrRuntimeProbe?: "legacy" | "prepare" | "warmup";
-            __shinobuPaddleOcrRuntimeProbeSchedule?: "detect-start" | "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
-            __shinobuInpaintRuntimeProbeSchedule?: "current" | "detect-start" | "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
-            __shinobuBubbleRuntimeProbeSchedule?: "current" | "detect-start" | "after-detect";
+            __shinobuPaddleOcrRuntimeProbeSchedule?: "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
+            __shinobuInpaintRuntimeProbeSchedule?: "current" | "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
+            __shinobuBubbleRuntimeProbeSchedule?: "current" | "after-detect";
             __shinobuPaddleOcrFixedInputWidth?: number;
             __shinobuPaddleOcrSessionOptions?: {
               enableGraphCapture?: boolean;

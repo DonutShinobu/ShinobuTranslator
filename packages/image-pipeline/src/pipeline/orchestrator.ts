@@ -55,9 +55,9 @@ export type PipelineRunOptions = {
 };
 
 type PaddleOcrRuntimeProbeMode = "legacy" | "prepare" | "warmup";
-type PaddleOcrRuntimeProbeSchedule = "detect-start" | "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
-type InpaintRuntimeProbeSchedule = "current" | "detect-start" | "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
-type BubbleRuntimeProbeSchedule = "current" | "detect-start" | "after-detect";
+type PaddleOcrRuntimeProbeSchedule = "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
+type InpaintRuntimeProbeSchedule = "current" | "after-detect" | "bubble-start" | "after-bubble" | "ocr-start";
+type BubbleRuntimeProbeSchedule = "current" | "after-detect";
 
 type PipelineRuntimeFlags = typeof globalThis & {
   __shinobuPaddleOcrRuntimeProbe?: PaddleOcrRuntimeProbeMode;
@@ -73,7 +73,7 @@ function getPaddleOcrRuntimeProbeMode(): PaddleOcrRuntimeProbeMode {
 }
 
 function getPaddleOcrRuntimeProbeSchedule(): PaddleOcrRuntimeProbeSchedule {
-  return (globalThis as PipelineRuntimeFlags).__shinobuPaddleOcrRuntimeProbeSchedule ?? "detect-start";
+  return (globalThis as PipelineRuntimeFlags).__shinobuPaddleOcrRuntimeProbeSchedule ?? "after-detect";
 }
 
 function getInpaintRuntimeProbeSchedule(): InpaintRuntimeProbeSchedule {
@@ -508,15 +508,6 @@ export async function runPipeline(
   throwIfCancelled(signal);
   report(onProgress, "detect", "文本检测");
   try {
-    if (ocrRuntimeProbeSchedule === "detect-start") {
-      startOcrRuntimeProbe();
-    }
-    if (!stopAfterOrder && inpaintRuntimeProbeSchedule === "detect-start") {
-      startInpaintRuntimeProbe();
-    }
-    if (bubbleRuntimeProbeSchedule === "detect-start") {
-      startBubbleRuntimeProbe();
-    }
     const t0 = performance.now();
     const detected = await detectTextRegionsWithMask(
       image,
@@ -566,6 +557,12 @@ export async function runPipeline(
       regionCount: detected.regions.length,
       durationMs,
     });
+    if (detected.regions.length === 0) {
+      cleanedCanvas = originalCanvas;
+      resultCanvas = originalCanvas;
+      report(onProgress, "done", "完成");
+      return buildArtifacts();
+    }
     if (ocrRuntimeProbeSchedule === "after-detect") {
       startOcrRuntimeProbe();
     }

@@ -62,10 +62,15 @@ describe('extension detector composition', () => {
     });
   });
 
-  it('reports no text when both local detectors fail', async () => {
+  it('returns no text when ONNX fails and the local heuristic finds no regions', async () => {
     vi.mocked(detectByOnnx).mockRejectedValue(new Error('model failed'));
     vi.mocked(detectByHeuristic).mockResolvedValue([]);
 
-    await expect(detectTextRegionsWithMask(image, platform, modelRuntime, { kind: 'heuristic-only' })).rejects.toThrow('未找到文本');
+    await expect(detectTextRegionsWithMask(image, platform, modelRuntime, { kind: 'heuristic-only' })).resolves.toMatchObject({
+      regions: [],
+      rawMaskCanvas: null,
+      engine: 'heuristic',
+      fallbackReason: 'onnx: model failed',
+    });
   });
 });

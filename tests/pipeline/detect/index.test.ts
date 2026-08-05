@@ -79,13 +79,16 @@ describe('detectTextRegionsWithMask engine reporting', () => {
     expect(result.fallbackReason).toContain('tesseract: tesseract unavailable');
   });
 
-  it('keeps the strict no-text result instead of silently changing engines', async () => {
+  it('returns a strict no-text result without silently changing engines', async () => {
     mocks.detectByOnnx.mockResolvedValue({ regions: [], rawMaskCanvas: null });
 
     await expect(detectTextRegionsWithMask(image, platform, modelRuntime, {
       kind: 'tesseract-then-heuristic',
       detectWithTesseract: mocks.detectByTesseract,
-    })).rejects.toThrow('未找到文本');
+    })).resolves.toMatchObject({
+      regions: [],
+      engine: 'onnx',
+    });
     expect(mocks.detectByTesseract).not.toHaveBeenCalled();
   });
 });

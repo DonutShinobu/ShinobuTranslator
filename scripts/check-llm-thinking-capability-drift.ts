@@ -54,6 +54,14 @@ function expectedRemoteOptions(
   capability: LlmThinkingCapability,
 ): ModelsDevReasoningOption[] {
   if (localProvider === 'deepseek') {
+    if (model === 'deepseek-v4-flash') {
+      // Known models.dev discrepancy: official DeepSeek docs expose High/Max as
+      // distinct efforts and map Low/Medium compatibility values to High.
+      return normalizeRemoteOptions([
+        { type: 'toggle' },
+        { type: 'effort', values: ['low', 'high', 'max'] },
+      ]);
+    }
     return normalizeRemoteOptions([
       { type: 'toggle' },
       { type: 'effort', values: capability.levels.filter((level) => level !== 'off') },

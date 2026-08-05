@@ -14,6 +14,7 @@ export {
   base64ToBlob,
   blobToBase64,
   canvasToPngBlob,
+  canvasToPngBlobSync,
 } from './blobCodec';
 import {
   isCurrentPipelineRecord,

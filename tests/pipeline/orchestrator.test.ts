@@ -33,6 +33,7 @@ const pipelineMocks = vi.hoisted(() => ({
     createImageData: vi.fn(),
     registerFont: vi.fn(),
     waitForFonts: vi.fn(),
+    encodeCanvasToPng: vi.fn(),
   },
 }));
 
@@ -170,6 +171,9 @@ function uniqueConsecutiveStages(progress: PipelineProgress[]): string[] {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  pipelineMocks.browserPlatform.encodeCanvasToPng.mockResolvedValue(
+    new Blob(['platform-png'], { type: 'image/png' }),
+  );
   const sessionHandle = { provider: 'wasm' as const };
   pipelineMocks.fileToImage.mockResolvedValue(image);
   pipelineMocks.imageToCanvas.mockReturnValue(originalCanvas);
@@ -477,6 +481,10 @@ describe('runPipeline', () => {
       },
     });
     expect(result.image).toBeInstanceOf(Blob);
+    expect(await result.image.text()).toBe('platform-png');
+    expect(pipelineMocks.browserPlatform.encodeCanvasToPng).toHaveBeenCalledWith(
+      originalCanvas,
+    );
     await pipeline.dispose();
   });
 

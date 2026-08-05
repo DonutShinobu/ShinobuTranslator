@@ -1,4 +1,84 @@
-import type { ImageTarget, SiteAdapter, UrlTarget } from '../core/types';
+import type {
+  ImageTarget,
+  ReadingPageDiscovery,
+  SiteAdapter,
+  UrlTarget,
+} from '../core/types';
+
+type LoadArtworkPages = (
+  artworkId: string,
+  signal: AbortSignal,
+) => Promise<unknown>;
+
+export type PixivAdapterDependencies = {
+  loadArtworkPages?: LoadArtworkPages;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function getArtworkId(): string | null {
+  const match = location.pathname.match(/^\/artworks\/(\d+)(?:\/|$)/);
+  return match?.[1] ?? null;
+}
+
+function parseArtworkPageUrl(value: string, artworkId: string): UrlTarget | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return null;
+  }
+  const pageMatch = parsed.pathname.match(/\/(\d+)_p(\d+)\.[^/]+$/);
+  if (
+    parsed.protocol !== 'https:'
+    || parsed.hostname !== 'i.pximg.net'
+    || pageMatch?.[1] !== artworkId
+  ) {
+    return null;
+  }
+  const pageIndex = Number(pageMatch[2]);
+  if (!Number.isSafeInteger(pageIndex) || pageIndex < 0) return null;
+  return {
+    key: `${artworkId}_p${pageIndex}`,
+    originalUrl: parsed.href,
+    pageIndex,
+  };
+}
+
+function parseArtworkPagesResponse(
+  value: unknown,
+  artworkId: string,
+): readonly UrlTarget[] | null {
+  if (!isRecord(value) || value.error !== false || !Array.isArray(value.body) || value.body.length === 0) {
+    return null;
+  }
+
+  const pages: UrlTarget[] = [];
+  for (let pageIndex = 0; pageIndex < value.body.length; pageIndex++) {
+    const page = value.body[pageIndex];
+    if (!isRecord(page) || !isRecord(page.urls) || typeof page.urls.original !== 'string') {
+      return null;
+    }
+    const target = parseArtworkPageUrl(page.urls.original, artworkId);
+    if (!target || target.pageIndex !== pageIndex) return null;
+    pages.push(target);
+  }
+  return pages;
+}
+
+async function loadArtworkPages(
+  artworkId: string,
+  signal: AbortSignal,
+): Promise<unknown> {
+  const response = await fetch(`/ajax/illust/${artworkId}/pages`, {
+    credentials: 'same-origin',
+    signal,
+  });
+  if (!response.ok) throw new Error(`Pixiv page discovery failed with HTTP ${response.status}`);
+  return response.json();
+}
 
 function extractPixivImageKey(url: string): string {
   const match = url.match(/(\d+_p\d+)/);
@@ -14,69 +94,58 @@ function isReadingMode(): boolean {
   return !!document.querySelector('.gtm-manga-viewer-close-icon');
 }
 
-/** Extract base URL pattern from a Pixiv original image link.
- *  e.g. https://i.pximg.net/img-original/img/2024/01/15/00/00/00/123456_p0.jpg
- *  Returns { base: "https://i.pximg.net/img-original/img/2024/01/15/00/00/00/123456", ext: ".jpg" }
- */
-function extractBaseUrlPattern(url: string): { base: string; ext: string } | null {
-  // Match up to _p0 (or any _pN) and capture the extension.
-  const match = url.match(/^(https:\/\/i\.pximg\.net\/img-original\/img\/\d{4}\/\d{2}\/\d{2}\/\d{2}\/\d{2}\/\d{2}\/\d+)_p\d+(\.\w+)$/);
-  if (!match) return null;
-  return { base: match[1], ext: match[2] };
+function readEmbeddedArtworkPages(artworkId: string): readonly UrlTarget[] | null {
+  const preload = document.querySelector<HTMLMetaElement>(
+    'meta#meta-preload-data, meta[name="preload-data"]',
+  );
+  if (!preload?.content) return null;
+  let data: unknown;
+  try {
+    data = JSON.parse(preload.content);
+  } catch {
+    return null;
+  }
+  if (!isRecord(data) || !isRecord(data.illust)) return null;
+  const artwork = data.illust[artworkId];
+  if (
+    !isRecord(artwork)
+    || typeof artwork.pageCount !== 'number'
+    || !isRecord(artwork.urls)
+    || typeof artwork.urls.original !== 'string'
+  ) {
+    return null;
+  }
+  if (
+    !Number.isSafeInteger(artwork.pageCount)
+    || artwork.pageCount <= 0
+    || artwork.pageCount > 10_000
+  ) {
+    return null;
+  }
+
+  const pagesByIndex = new Map<number, UrlTarget>();
+  const metadataPage = parseArtworkPageUrl(artwork.urls.original, artworkId);
+  if (metadataPage) pagesByIndex.set(metadataPage.pageIndex, metadataPage);
+  const links = typeof document.querySelectorAll === 'function'
+    ? document.querySelectorAll<HTMLAnchorElement>('.gtm-expand-full-size-illust')
+    : [];
+  for (const link of links) {
+    const page = parseArtworkPageUrl(link.href, artworkId);
+    if (page && page.pageIndex < artwork.pageCount) pagesByIndex.set(page.pageIndex, page);
+  }
+  if (pagesByIndex.size !== artwork.pageCount) return null;
+  const pages: UrlTarget[] = [];
+  for (let pageIndex = 0; pageIndex < artwork.pageCount; pageIndex++) {
+    const page = pagesByIndex.get(pageIndex);
+    if (!page) return null;
+    pages.push(page);
+  }
+  return pages;
 }
 
 
 // Track the bottom bar UI anchor so we reuse it across sync cycles.
 let bottomBarAnchor: HTMLElement | null = null;
-
-function getTotalPageCount(): number {
-  // Primary: counter text near close icon. Reliable across single/double-page
-  // modes and regardless of card-0 presence.
-  const counterEl = document.querySelector('.gtm-manga-viewer-close-icon + div');
-  if (counterEl) {
-    const text = counterEl.textContent?.trim();
-    const match = text?.match(/^\d+/);
-    if (match) return parseInt(match[0], 10);
-  }
-  // Fallback: manga viewer slider. Only accurate in single-page mode without
-  // card-0. Double-page spreads and card-0 both offset max from the true count.
-  const slider = document.querySelector<HTMLInputElement>('.gtm-manga-viewer-change-page');
-  if (slider) {
-    const min = parseInt(slider.min, 10);
-    const max = parseInt(slider.max, 10);
-    if (max > 0) return min === 0 ? max - 1 : max;
-  }
-  // Last resort: count GTM links currently in the DOM.
-  const links = document.querySelectorAll('.gtm-expand-full-size-illust');
-  return links.length || 0;
-}
-
-function findAllPageUrls(): UrlTarget[] {
-  // Strategy: find any .gtm-expand-full-size-illust link to get the base URL pattern,
-  // then generate all page URLs from p0 to p{totalPages-1}.
-  const links = document.querySelectorAll<HTMLAnchorElement>('.gtm-expand-full-size-illust');
-  if (links.length === 0) return [];
-
-  // Try to extract base pattern from any link that has an i.pximg.net href.
-  let pattern: { base: string; ext: string } | null = null;
-  for (const link of links) {
-    if (link.href.includes('i.pximg.net')) {
-      pattern = extractBaseUrlPattern(link.href);
-      if (pattern) break;
-    }
-  }
-
-  const totalPages = getTotalPageCount();
-  if (totalPages === 0 || !pattern) return [];
-
-  const targets: UrlTarget[] = [];
-  for (let i = 0; i < totalPages; i++) {
-    const originalUrl = `${pattern.base}_p${i}${pattern.ext}`;
-    const key = extractPixivImageKey(originalUrl);
-    targets.push({ key, originalUrl, pageIndex: i });
-  }
-  return targets;
-}
 
 function getVisiblePages(): ImageTarget[] {
   // Use the page slider to determine which pages are currently being viewed.
@@ -171,7 +240,29 @@ function findNormalModeImages(): ImageTarget[] {
 
 // --- Adapter ------------------------------------------------------------------
 
-export const pixivAdapter: SiteAdapter = {
+export function createPixivAdapter(
+  dependencies: PixivAdapterDependencies = {},
+): SiteAdapter {
+  const requestArtworkPages = dependencies.loadArtworkPages ?? loadArtworkPages;
+  let activeArtworkId: string | null = null;
+  let cachedDiscovery: { artworkId: string; result: ReadingPageDiscovery } | null = null;
+  let inFlightDiscovery: {
+    artworkId: string;
+    abortController: AbortController;
+    promise: Promise<ReadingPageDiscovery>;
+  } | null = null;
+
+  const syncArtworkContext = (): string | null => {
+    const artworkId = getArtworkId();
+    if (activeArtworkId === artworkId) return artworkId;
+    activeArtworkId = artworkId;
+    cachedDiscovery = null;
+    inFlightDiscovery?.abortController.abort();
+    inFlightDiscovery = null;
+    return artworkId;
+  };
+
+  return {
   match() {
     return location.hostname === 'www.pixiv.net'
       && location.pathname.startsWith('/artworks/');
@@ -243,16 +334,63 @@ export const pixivAdapter: SiteAdapter = {
     return isReadingMode();
   },
 
-  findAllPageUrls() {
-    return findAllPageUrls();
+  getReadingContextKey() {
+    return syncArtworkContext();
+  },
+
+  discoverReadingPages(signal) {
+    const artworkId = syncArtworkContext();
+    if (!artworkId) {
+      return Promise.resolve({
+        status: 'incomplete',
+        reason: 'metadata-unavailable',
+      });
+    }
+    if (cachedDiscovery?.artworkId === artworkId) {
+      return Promise.resolve(cachedDiscovery.result);
+    }
+    if (inFlightDiscovery?.artworkId === artworkId) {
+      return inFlightDiscovery.promise;
+    }
+    const abortController = new AbortController();
+    const abortDiscovery = () => abortController.abort(signal?.reason);
+    signal?.addEventListener('abort', abortDiscovery, { once: true });
+    if (signal?.aborted) abortDiscovery();
+    const promise = requestArtworkPages(artworkId, abortController.signal)
+      .then((response): ReadingPageDiscovery => {
+        if (abortController.signal.aborted || activeArtworkId !== artworkId) {
+          return { status: 'incomplete', reason: 'request-failed' };
+        }
+        const pages = parseArtworkPagesResponse(response, artworkId)
+          ?? readEmbeddedArtworkPages(artworkId);
+        const result: ReadingPageDiscovery = pages
+          ? { status: 'complete', pages }
+          : { status: 'incomplete', reason: 'invalid-response' };
+        if (result.status === 'complete') {
+          cachedDiscovery = { artworkId, result };
+        }
+        return result;
+      })
+      .catch((): ReadingPageDiscovery => {
+        if (abortController.signal.aborted || activeArtworkId !== artworkId) {
+          return { status: 'incomplete', reason: 'request-failed' };
+        }
+        const pages = readEmbeddedArtworkPages(artworkId);
+        if (!pages) return { status: 'incomplete', reason: 'request-failed' };
+        const result: ReadingPageDiscovery = { status: 'complete', pages };
+        cachedDiscovery = { artworkId, result };
+        return result;
+      })
+      .finally(() => {
+        signal?.removeEventListener('abort', abortDiscovery);
+        if (inFlightDiscovery?.promise === promise) inFlightDiscovery = null;
+      });
+    inFlightDiscovery = { artworkId, abortController, promise };
+    return promise;
   },
 
   getVisiblePages() {
     return getVisiblePages();
-  },
-
-  getTotalPageCount() {
-    return getTotalPageCount();
   },
 
   createBottomBarAnchor() {
@@ -262,14 +400,15 @@ export const pixivAdapter: SiteAdapter = {
   applyImageByKey(key, url) {
     applyImageByKey(key, url);
   },
-};
+  };
+}
+
+export const pixivAdapter = createPixivAdapter();
 
 // Export helpers for TranslatorCore to use directly.
 export {
   isReadingMode,
-  findAllPageUrls,
   getVisiblePages,
-  getTotalPageCount,
   createBottomBarAnchor,
   applyImageByKey,
 };

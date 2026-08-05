@@ -32,10 +32,21 @@ export interface UrlTarget {
   pageIndex: number; // 0-indexed page number
 }
 
+export type ReadingPageDiscovery =
+  | {
+      status: 'complete';
+      pages: readonly UrlTarget[];
+    }
+  | {
+      status: 'incomplete';
+      reason: 'request-failed' | 'invalid-response' | 'metadata-unavailable';
+    };
+
 export interface ReadingModeBarUi {
   host: HTMLElement;
   translateCurrentBtn: HTMLButtonElement;
   translateAllBtn: HTMLButtonElement;
+  errorLine: HTMLElement;
 }
 
 export interface SiteAdapter {
@@ -47,12 +58,12 @@ export interface SiteAdapter {
   observe(onChange: () => void): () => void;
   /** Whether the site is currently in a multi-page reading mode (e.g. Pixiv manga viewer). */
   isReadingMode?(): boolean;
-  /** Discover all page URLs in reading mode. Returns empty array if not in reading mode. */
-  findAllPageUrls?(): UrlTarget[];
+  /** Stable key for the current reading work; hash-only page changes keep the same key. */
+  getReadingContextKey?(): string | null;
+  /** Discover the complete reading-mode page list from authoritative site data. */
+  discoverReadingPages?(signal?: AbortSignal): Promise<ReadingPageDiscovery>;
   /** Get currently visible page targets in reading mode spread. */
   getVisiblePages?(): ImageTarget[];
-  /** Total page count in reading mode. Returns 0 if not applicable. */
-  getTotalPageCount?(): number;
   /** Create or return the bottom bar button anchor in reading mode. */
   createBottomBarAnchor?(): HTMLElement | null;
   /** Apply translated image to a page by key (works for both DOM img and virtual-rendered pages). */

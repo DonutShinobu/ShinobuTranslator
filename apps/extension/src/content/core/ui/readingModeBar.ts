@@ -6,6 +6,9 @@ export function createReadingModeBarUi(): ReadingModeBarUi {
   host.className = 'mt-x-reading-bar';
   host.dataset.theme = 'light';
 
+  const actions = document.createElement('div');
+  actions.className = 'mt-x-reading-actions';
+
   const translateCurrentBtn = document.createElement('button');
   translateCurrentBtn.className = 'mt-x-control';
   translateCurrentBtn.type = 'button';
@@ -22,7 +25,7 @@ export function createReadingModeBarUi(): ReadingModeBarUi {
   translateCurrentBtn.appendChild(currentIcon);
   translateCurrentBtn.appendChild(currentSpinner);
   translateCurrentBtn.appendChild(currentLabel);
-  host.appendChild(translateCurrentBtn);
+  actions.appendChild(translateCurrentBtn);
 
   const translateAllBtn = document.createElement('button');
   translateAllBtn.className = 'mt-x-control';
@@ -40,7 +43,14 @@ export function createReadingModeBarUi(): ReadingModeBarUi {
   translateAllBtn.appendChild(allIcon);
   translateAllBtn.appendChild(allSpinner);
   translateAllBtn.appendChild(allLabel);
-  host.appendChild(translateAllBtn);
+  actions.appendChild(translateAllBtn);
 
-  return { host, translateCurrentBtn, translateAllBtn };
+  const errorLine = document.createElement('div');
+  errorLine.className = 'mt-x-detail';
+  errorLine.setAttribute('aria-live', 'polite');
+
+  host.appendChild(actions);
+  host.appendChild(errorLine);
+
+  return { host, translateCurrentBtn, translateAllBtn, errorLine };
 }

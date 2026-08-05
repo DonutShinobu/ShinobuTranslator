@@ -657,8 +657,19 @@ export function injectStyles(): void {
     /* Reading mode bottom bar */
     .mt-x-reading-bar {
       display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+    }
+
+    .mt-x-reading-actions {
+      display: flex;
       align-items: center;
       gap: 8px;
+    }
+
+    .mt-x-reading-bar > .mt-x-detail:empty {
+      display: none;
     }
 
     .mt-x-pill-close {

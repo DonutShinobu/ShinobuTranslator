@@ -32,7 +32,7 @@
       "count": 1,
       "dependency": "onnxruntime-web",
       "dependencyVersion": "1.24.1",
-      "sha256": "da3f232e5129f019b34cd1854562e582e772569b71b2807686eb69afd4d9dda0"
+      "sha256": "e2be18cde54961da23789bb5f87f1797d1adbfd589c7e4e76863995c1dd45408"
     },
     {
       "code": "UNSAFE_VAR_ASSIGNMENT",
@@ -40,7 +40,7 @@
       "count": 1,
       "dependency": "onnxruntime-web",
       "dependencyVersion": "1.24.1",
-      "sha256": "da3f232e5129f019b34cd1854562e582e772569b71b2807686eb69afd4d9dda0"
+      "sha256": "e2be18cde54961da23789bb5f87f1797d1adbfd589c7e4e76863995c1dd45408"
     }
   ]
 }

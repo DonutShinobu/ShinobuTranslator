@@ -23,6 +23,15 @@ if (target !== 'chromium' && target !== 'firefox') {
 }
 const distDir = resolve(process.cwd(), readRequiredOption('--dist'));
 const benchmarkBuild = process.argv.includes('--benchmark');
+const benchmarkArtifacts = ['benchmark.html', 'benchmark.js', 'benchmark-chunks', 'benchmark-assets'];
+
+function isBenchmarkOnlyArtifact(file) {
+  if (!benchmarkBuild) return false;
+  const path = relative(distDir, file).replaceAll('\\', '/');
+  return path === 'benchmark.js'
+    || path.startsWith('benchmark-chunks/')
+    || path.startsWith('benchmark-assets/');
+}
 
 function collectFiles(directory) {
   const files = [];
@@ -81,13 +90,15 @@ if (target === 'firefox') {
 const files = collectFiles(distDir);
 for (const file of files.filter((path) => path.endsWith('.js'))) {
   const source = readFileSync(file, 'utf8');
-  for (const token of ['__shinobu_bake', '__shinobu_render', '__shinobu_bridge']) {
-    if (source.includes(token)) {
-      throw new Error(`Release artifact contains forbidden benchmark token ${token}: ${file}`);
+  if (!isBenchmarkOnlyArtifact(file)) {
+    for (const token of ['__shinobu_bake', '__shinobu_render', '__shinobu_bridge']) {
+      if (source.includes(token)) {
+        throw new Error(`Release artifact contains forbidden benchmark token ${token}: ${file}`);
+      }
     }
-  }
-  if (/tesseract\.js|tessedit_pageseg_mode|cdn\.jsdelivr\.net|unpkg\.com/i.test(source)) {
-    throw new Error(`Extension artifact contains Tesseract or remote executable code: ${file}`);
+    if (/tesseract\.js|tessedit_pageseg_mode|cdn\.jsdelivr\.net|unpkg\.com/i.test(source)) {
+      throw new Error(`Extension artifact contains Tesseract or remote executable code: ${file}`);
+    }
   }
   try {
     execFileSync(process.execPath, ['--check', file], { stdio: 'pipe' });
@@ -179,6 +190,7 @@ for (const resource of contentRuntimeResources) {
 }
 
 const modelManifest = JSON.parse(readFileSync(join(distDir, 'models', 'models.json'), 'utf8'));
+const declaredModelArtifacts = new Set(['models/models.json', 'models/models.sha256']);
 for (const model of Object.values(modelManifest.models ?? {})) {
   for (const [urlKey, sizeKey, hashKey] of [
     ['url', 'size', 'sha256'],
@@ -189,6 +201,7 @@ for (const model of Object.values(modelManifest.models ?? {})) {
       throw new Error(`Remote model URL is forbidden in extension output: ${model[urlKey]}`);
     }
     const modelPath = join(distDir, String(model[urlKey]).replace(/^\//, ''));
+    declaredModelArtifacts.add(relative(distDir, modelPath).replaceAll('\\', '/'));
     if (!existsSync(modelPath)) throw new Error(`Missing model asset: ${modelPath}`);
     if (statSync(modelPath).size !== model[sizeKey]) {
       throw new Error(`Model size mismatch: ${relative(distDir, modelPath)}`);
@@ -196,6 +209,12 @@ for (const model of Object.values(modelManifest.models ?? {})) {
     if (sha256(modelPath) !== model[hashKey]) {
       throw new Error(`Model SHA-256 mismatch: ${relative(distDir, modelPath)}`);
     }
+  }
+}
+for (const file of files) {
+  const path = relative(distDir, file).replaceAll('\\', '/');
+  if (path.startsWith('models/') && !declaredModelArtifacts.has(path)) {
+    throw new Error(`Release build contains an undeclared model asset: ${path}`);
   }
 }
 
@@ -239,7 +258,6 @@ for (const artifact of [
   }
 }
 
-const benchmarkArtifacts = ['benchmark.html', 'benchmark.js', 'benchmark-chunks', 'benchmark-assets'];
 if (benchmarkBuild) {
   for (const artifact of benchmarkArtifacts.slice(0, 2)) {
     if (!existsSync(join(distDir, artifact))) throw new Error(`Missing benchmark artifact: ${artifact}`);

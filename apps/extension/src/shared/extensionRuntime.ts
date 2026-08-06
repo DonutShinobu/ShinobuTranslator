@@ -332,6 +332,11 @@ export function getExtensionRuntime(): ExtensionRuntime | null {
   return api ? createExtensionRuntime(api) : null;
 }
 
+export function getExtensionAssetRuntime(): ExtensionRuntime | null {
+  const runtime = getExtensionRuntime();
+  return typeof runtime?.api.runtime?.getURL === 'function' ? runtime : null;
+}
+
 export function requireExtensionRuntime(): ExtensionRuntime {
   const runtime = getExtensionRuntime();
   if (!runtime) throw new Error('当前环境不支持浏览器扩展 API');

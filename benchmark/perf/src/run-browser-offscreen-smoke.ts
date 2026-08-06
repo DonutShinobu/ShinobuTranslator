@@ -3,15 +3,11 @@ import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
+import { applyExtensionControlPatch } from './extension-control-driver';
+import { ensureExtensionDistReady } from './dist-contract';
 
 declare const chrome: {
-  storage: {
-    local: {
-      get(key: string): Promise<Record<string, unknown>>;
-      set(values: Record<string, unknown>): Promise<void>;
-      remove(key: string): Promise<void>;
-    };
-  };
+  storage: { local: { get(key: string): Promise<Record<string, unknown>> } };
   tabs: {
     query(queryInfo: Record<string, unknown>): Promise<Array<{ id?: number; url?: string }>>;
     sendMessage(tabId: number, message: unknown): Promise<unknown>;
@@ -104,22 +100,7 @@ function getRuntimeModels(events: DiagnosticEvent[]): string[] {
 }
 
 async function main(): Promise<void> {
-  for (const artifact of [
-    'manifest.json',
-    'background-chromium.js',
-    'content.js',
-    'offscreen.html',
-    'offscreen.js',
-    'onnxWorker.js',
-    'models/models.json',
-    'models/detector.onnx',
-    'models/bubble.onnx',
-    'models/aot_inpaint_512.onnx',
-    'models/PP-OCRv6_medium_rec.onnx',
-    'models/paddleocr_v6_dict.txt',
-  ]) {
-    requireFile(join(DIST_DIR, artifact));
-  }
+  ensureExtensionDistReady(DIST_DIR);
   mkdirSync(USER_DATA_DIR, { recursive: true });
   const imagePath = pickImagePath();
   const { server, url } = await startStrictCspServer(imagePath);
@@ -150,30 +131,17 @@ async function main(): Promise<void> {
     const extensionId = serviceWorker.url().match(/^chrome-extension:\/\/([^/]+)/)?.[1];
     if (!extensionId) throw new Error(`Unable to parse extension id: ${serviceWorker.url()}`);
 
-    await serviceWorker.evaluate(async () => {
-      const settingsKey = 'mangaTranslate.settings';
-      for (let attempt = 0; attempt < 50; attempt += 1) {
-        const saved = await chrome.storage.local.get(settingsKey);
-        const settings = saved[settingsKey];
-        if (settings && typeof settings === 'object') {
-          await chrome.storage.local.set({
-            [settingsKey]: {
-              ...settings,
-              imageEngine: 'local',
-              processMode: 'original',
-              enableDebugLog: true,
-              showElapsedTime: true,
-              showStageTimingDetails: true,
-              showTypesetDebug: false,
-              showEraseDebug: false,
-            },
-          });
-          await chrome.storage.local.remove('mangaTranslate.diagnosticLog');
-          return;
-        }
-        await new Promise((resolveWait) => setTimeout(resolveWait, 100));
-      }
-      throw new Error('Extension settings did not initialize');
+    await applyExtensionControlPatch(context, extensionId, {
+      patch: {
+        imageEngine: 'local',
+        processMode: 'original',
+        enableDebugLog: true,
+        showElapsedTime: true,
+        showStageTimingDetails: true,
+        showTypesetDebug: false,
+        showEraseDebug: false,
+      },
+      clearDiagnosticLog: true,
     });
 
     const image = page.locator('#source');
@@ -220,12 +188,29 @@ async function main(): Promise<void> {
         : undefined;
       return Array.isArray(eventsValue) ? eventsValue : [];
     }) as DiagnosticEvent[];
-    const serializedLog = JSON.stringify(events);
-    if (!events.some((event) => event.message === 'ONNX Worker 启动成功: direct-extension')) {
-      throw new Error('Diagnostic log is missing the direct extension Worker success event');
+    const directWorkerSuccess = events.some((event) => {
+      const attempt = event.data?.attempt;
+      return event.category === 'model.runtime'
+        && event.data?.kind === 'worker-bootstrap-complete'
+        && attempt !== null
+        && typeof attempt === 'object'
+        && !Array.isArray(attempt)
+        && (attempt as Record<string, unknown>).mode === 'direct'
+        && (attempt as Record<string, unknown>).status === 'success';
+    });
+    if (!directWorkerSuccess) {
+      throw new Error('Diagnostic log is missing the structured direct Worker success event');
     }
-    if (/blob Worker failed to load/i.test(serializedLog)) {
-      throw new Error('Diagnostic log still contains the legacy Blob Worker failure');
+    const blobAttempt = events.find((event) => {
+      const attempt = event.data?.attempt;
+      return event.category === 'model.runtime'
+        && attempt !== null
+        && typeof attempt === 'object'
+        && !Array.isArray(attempt)
+        && (attempt as Record<string, unknown>).mode === 'blob';
+    });
+    if (blobAttempt) {
+      throw new Error(`Extension runtime unexpectedly attempted a Blob Worker: ${JSON.stringify(blobAttempt)}`);
     }
     const runtimeModels = getRuntimeModels(events);
     for (const expectedModel of ['detector', 'bubble', 'ocr', 'inpaint']) {
@@ -235,8 +220,8 @@ async function main(): Promise<void> {
     }
     const pipelineCategories = ['pipeline.detect', 'pipeline.bubble', 'pipeline.ocr', 'pipeline.inpaint'];
     for (const category of pipelineCategories) {
-      if (!events.some((event) => event.category === category && event.source?.context === 'offscreen')) {
-        throw new Error(`Diagnostic log is missing offscreen category ${category}`);
+      if (!events.some((event) => event.category === category && event.source?.context === 'pipeline-host')) {
+        throw new Error(`Diagnostic log is missing pipeline-host category ${category}`);
       }
     }
     const heartbeat = events

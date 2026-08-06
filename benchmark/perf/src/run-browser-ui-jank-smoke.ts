@@ -6,9 +6,10 @@ import { fileURLToPath } from "url";
 import { chromium } from "@playwright/test";
 import type { ConsoleMessage, Page } from "@playwright/test";
 import type { Worker as PlaywrightWorker } from "@playwright/test";
-import { defaultExtensionSettings, extensionSettingsStorageKey } from "../../../apps/extension/src/shared/config";
-import type { ExtensionSettings, ProcessMode } from "../../../apps/extension/src/shared/config";
+import type { ProcessMode } from "../../../apps/extension/src/shared/config";
 import type { ProgressJankReport } from "../../../apps/extension/src/content/core/types";
+import { applyExtensionControlPatch } from './extension-control-driver';
+import { ensureExtensionDistReady } from './dist-contract';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const DIST_DIR = join(ROOT, "apps", "extension", "dist-chromium");
@@ -63,28 +64,8 @@ function pickProcessMode(): ProcessMode {
   return "erase";
 }
 
-function requireDistAsset(relativePath: string): void {
-  const fullPath = join(DIST_DIR, relativePath);
-  if (!existsSync(fullPath)) {
-    throw new Error(`Missing dist asset: ${fullPath}. Run npm run build first.`);
-  }
-}
-
 function ensureDistReady(): void {
-  [
-    "manifest.json",
-    "content.js",
-    "chunks/orchestrator.js",
-    "onnxWorker.js",
-    "models/models.json",
-    "models/detector.onnx",
-    "models/bubble.onnx",
-    "models/aot_inpaint_512.onnx",
-    "models/PP-OCRv6_medium_rec.onnx",
-    "models/paddleocr_v6_dict.txt",
-    "ort/ort-wasm-simd-threaded.jsep.mjs",
-    "ort/ort-wasm-simd-threaded.jsep.wasm",
-  ].forEach(requireDistAsset);
+  ensureExtensionDistReady(DIST_DIR);
 }
 
 function contentTypeFromPath(path: string): string {
@@ -107,18 +88,6 @@ function isProgressJankReport(value: unknown): value is ProgressJankReport {
     && Array.isArray(value.stages)
     && Array.isArray(value.longFrames)
     && Array.isArray(value.longTasks);
-}
-
-function createSmokeSettings(processMode: ProcessMode): ExtensionSettings {
-  const settings = JSON.parse(JSON.stringify(defaultExtensionSettings)) as ExtensionSettings;
-  settings.processMode = processMode;
-  settings.translator = "google_web";
-  settings.enableDebugLog = false;
-  settings.showTypesetDebug = false;
-  settings.showEraseDebug = false;
-  settings.showElapsedTime = true;
-  settings.showStageTimingDetails = true;
-  return settings;
 }
 
 async function startProbeServer(imagePath: string): Promise<{ url: string; close(): Promise<void> }> {
@@ -158,26 +127,6 @@ async function startProbeServer(imagePath: string): Promise<{ url: string; close
       });
     }),
   };
-}
-
-async function configureSettings(worker: PlaywrightWorker, settings: ExtensionSettings): Promise<void> {
-  await worker.evaluate(
-    async ({ key, value }: { key: string; value: ExtensionSettings }) => {
-      type ChromeApi = {
-        storage?: {
-          local?: {
-            set?: (items: Record<string, unknown>) => Promise<void>;
-          };
-        };
-      };
-      const chromeApi = (globalThis as typeof globalThis & { chrome?: ChromeApi }).chrome;
-      if (!chromeApi?.storage?.local?.set) {
-        throw new Error("chrome.storage.local.set is unavailable");
-      }
-      await chromeApi.storage.local.set({ [key]: value });
-    },
-    { key: extensionSettingsStorageKey, value: settings },
-  );
 }
 
 async function sendHoverShortcut(worker: PlaywrightWorker, pageUrl: string): Promise<RuntimeResponse> {
@@ -329,7 +278,17 @@ async function main(): Promise<void> {
     if (!extensionId) {
       throw new Error(`Unable to parse extension id from service worker URL: ${worker.url()}`);
     }
-    await configureSettings(worker, createSmokeSettings(processMode));
+    await applyExtensionControlPatch(context, extensionId, {
+      patch: {
+        processMode,
+        translator: 'google_web',
+        enableDebugLog: false,
+        showTypesetDebug: false,
+        showEraseDebug: false,
+        showElapsedTime: true,
+        showStageTimingDetails: true,
+      },
+    });
 
     const page = await context.newPage();
     page.setDefaultTimeout(900000);

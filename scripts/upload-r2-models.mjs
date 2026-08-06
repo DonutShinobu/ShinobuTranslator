@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validateModelPublicationPolicy } from './model-publication-policy.mjs';
+import { assertModelPublicationApproved } from './model-publication-policy.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MANIFEST_PATH = join(ROOT, 'packages', 'model-manifest', 'manifest.json');
@@ -52,13 +52,7 @@ async function main() {
   const dryRun = options.get('dry-run') === true;
   const manifest = JSON.parse(await readFile(MANIFEST_PATH, 'utf8'));
   const publicationPolicy = JSON.parse(await readFile(PUBLICATION_POLICY_PATH, 'utf8'));
-  const publicationNotices = validateModelPublicationPolicy(manifest, publicationPolicy);
-  if (publicationNotices.length > 0) {
-    console.warn(
-      `Model source disclosure has ${publicationNotices.length} unresolved notice(s); `
-      + 'continuing because these are documented advisories for this open-source release.',
-    );
-  }
+  assertModelPublicationApproved(manifest, publicationPolicy);
 
   for (const asset of manifest.assets) {
     const path = join(modelDir, asset.path);

@@ -167,7 +167,7 @@ ShinobuTranslator 使用 `onnxruntime-web` 在浏览器端运行视觉模型。�
 
 | 模型 | 用途 |
 | --- | --- |
-| `detector` | 文本检测（`detector.onnx`） |
+| `detector` | 文本检测（`detector.ort`） |
 | `bubble` | YOLO11n 气泡实例分割（`bubble.onnx`） |
 | `paddleocr_v6_medium_rec` | PP-OCRv6 medium OCR 识别（`PP-OCRv6_medium_rec.onnx` + `paddleocr_v6_dict.txt`） |
 | `inpaint` | AOT 去字修复（`aot_inpaint_512.onnx`） |

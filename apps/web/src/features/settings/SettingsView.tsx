@@ -182,18 +182,18 @@ export function SettingsView({
               <strong>{copy.modelSources}</strong>
               <nav aria-label={copy.modelSources}>
                 <a
-                  href="https://github.com/DonutShinobu/ShinobuTranslator/releases/tag/models-v0.8.0"
+                  href="https://github.com/DonutShinobu/ShinobuTranslator/releases/tag/models-v0.8.3"
                   target="_blank"
                   rel="noreferrer"
                 >
-                  Shinobu models-v0.8.0 · GitHub Release
+                  Shinobu models-v0.8.3 · GitHub Release
                 </a>
                 <a
                   href="https://github.com/zyddnys/manga-image-translator/releases/tag/beta-0.3"
                   target="_blank"
                   rel="noreferrer"
                 >
-                  detector.onnx / aot_inpaint_512.onnx · manga-image-translator
+                  detector.ort source / aot_inpaint_512.onnx · manga-image-translator
                 </a>
                 <a
                   href="https://huggingface.co/huyvux3005/manga109-segmentation-bubble/tree/f9a4108c4955136a810e5e92207972f3fb3a65fd"

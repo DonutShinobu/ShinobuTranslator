@@ -190,7 +190,7 @@ for (const resource of contentRuntimeResources) {
 }
 
 const modelManifest = JSON.parse(readFileSync(join(distDir, 'models', 'models.json'), 'utf8'));
-const declaredModelArtifacts = new Set(['models/models.json', 'models/models.sha256']);
+const declaredModelArtifacts = new Set(['models/models.json']);
 for (const model of Object.values(modelManifest.models ?? {})) {
   for (const [urlKey, sizeKey, hashKey] of [
     ['url', 'size', 'sha256'],

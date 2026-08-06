@@ -12,14 +12,14 @@ const extensionPackage = JSON.parse(
   readFileSync(resolve(extensionRoot, 'package.json'), 'utf8'),
 ) as { version: string };
 
-function removeUndeclaredDistModelAssets(extensionDist: string): void {
+export function removeUndeclaredDistModelAssets(extensionDist: string): void {
   const modelsDir = resolve(extensionDist, 'models');
   const manifest = JSON.parse(
     readFileSync(resolve(modelsDir, 'models.json'), 'utf8'),
   ) as {
     models?: Record<string, { url?: string; dictUrl?: string }>;
   };
-  const declared = new Set(['models.json', 'models.sha256']);
+  const declared = new Set(['models.json']);
   for (const model of Object.values(manifest.models ?? {})) {
     for (const asset of [model.url, model.dictUrl]) {
       const normalized = asset?.replace(/^\/+/, '');

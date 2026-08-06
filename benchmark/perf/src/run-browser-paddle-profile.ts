@@ -7,6 +7,7 @@ import { chromium, firefox } from "@playwright/test";
 import type { BrowserContext } from "@playwright/test";
 import type { OcrEngine, ProcessMode } from "../../../apps/extension/src/shared/config";
 import type { OcrRunDebugInfo, PaddleOcrRunDebug } from '@shinobu/image-pipeline/benchmark';
+import { ensureExtensionDistReady } from './dist-contract';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const DIST_DIR = join(ROOT, "apps", "extension", "dist-chromium");
@@ -375,31 +376,8 @@ function pickOcrCompactActiveBatch(): boolean | undefined {
   throw new Error(`Invalid --ocr-compact-active-batch value: ${raw}`);
 }
 
-function requireDistAsset(relativePath: string): void {
-  const fullPath = join(DIST_DIR, relativePath);
-  if (!existsSync(fullPath)) {
-    throw new Error(`Missing dist asset: ${fullPath}. Run npm run build first.`);
-  }
-}
-
 function ensureDistReady(): void {
-  const required = [
-    "manifest.json",
-    "content.js",
-    "benchmark-chunks/orchestrator.js",
-    "onnxWorker.js",
-    "models/models.json",
-    "models/detector.onnx",
-    "models/aot_inpaint_512.onnx",
-    "models/bubble.onnx",
-    "models/PP-OCRv6_medium_rec.onnx",
-    "models/paddleocr_v6_dict.txt",
-    "ort/ort-wasm-simd-threaded.jsep.mjs",
-    "ort/ort-wasm-simd-threaded.jsep.wasm",
-  ];
-  for (const item of required) {
-    requireDistAsset(item);
-  }
+  ensureExtensionDistReady(DIST_DIR, { benchmark: true });
 }
 
 function toOrigTwitterImageUrl(input: string): string {
@@ -736,17 +714,6 @@ async function runPaddleProfile(
       console.log(`[${label}:pageerror] ${error.message}`);
     });
     await page.goto(new URL('/benchmark.html', pageUrl).toString(), { waitUntil: "load" });
-    await page.evaluate(() => {
-      (window as typeof window & {
-        chrome?: { runtime: { getURL(path: string): string } };
-      }).chrome = {
-        runtime: {
-          getURL(path: string) {
-            return new URL(path.replace(/^\/+/, ""), `${location.origin}/`).toString();
-          },
-        },
-      };
-    });
     await page.waitForFunction(() => Boolean((window as any).__shinobuBenchmark__), undefined, { timeout: 30000 });
     await page.evaluate("var __name = (target) => target;");
     const results: PipelineRun[] = [];

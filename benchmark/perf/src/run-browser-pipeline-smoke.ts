@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { chromium } from "@playwright/test";
 import type { ShinobuBenchmarkWindow } from "../../../apps/extension/src/benchmark/browserEntry";
+import { ensureExtensionDistReady } from './dist-contract';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const DIST_DIR = join(ROOT, "apps", "extension", "dist-chromium");
@@ -34,13 +35,6 @@ type PipelineSmokeResult = {
   };
 };
 
-function requireFile(relativePath: string): void {
-  const fullPath = join(DIST_DIR, relativePath);
-  if (!existsSync(fullPath)) {
-    throw new Error(`Missing dist asset: ${fullPath}. Run npm run build:benchmark first.`);
-  }
-}
-
 function pickImagePath(): string {
   const arg = process.argv.find((value) => value.startsWith("--image="));
   const imagePath = arg ? resolve(arg.slice("--image=".length)) : DEFAULT_IMAGE;
@@ -57,17 +51,7 @@ function imageToDataUrl(path: string): string {
 }
 
 async function main(): Promise<void> {
-  requireFile("manifest.json");
-  requireFile("content.js");
-  requireFile("benchmark.html");
-  requireFile("benchmark.js");
-  requireFile("onnxWorker.js");
-  requireFile("models/models.json");
-  requireFile("models/detector.onnx");
-  requireFile("models/bubble.onnx");
-  requireFile("models/aot_inpaint_512.onnx");
-  requireFile("models/PP-OCRv6_medium_rec.onnx");
-  requireFile("models/paddleocr_v6_dict.txt");
+  ensureExtensionDistReady(DIST_DIR, { benchmark: true });
   mkdirSync(USER_DATA_DIR, { recursive: true });
 
   const imagePath = pickImagePath();

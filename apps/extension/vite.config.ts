@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import type { Plugin, UserConfig } from 'vite';
@@ -11,6 +11,27 @@ const repoRoot = resolve(extensionRoot, '../..');
 const extensionPackage = JSON.parse(
   readFileSync(resolve(extensionRoot, 'package.json'), 'utf8'),
 ) as { version: string };
+
+export function removeUndeclaredDistModelAssets(extensionDist: string): void {
+  const modelsDir = resolve(extensionDist, 'models');
+  const manifest = JSON.parse(
+    readFileSync(resolve(modelsDir, 'models.json'), 'utf8'),
+  ) as {
+    models?: Record<string, { url?: string; dictUrl?: string }>;
+  };
+  const declared = new Set(['models.json']);
+  for (const model of Object.values(manifest.models ?? {})) {
+    for (const asset of [model.url, model.dictUrl]) {
+      const normalized = asset?.replace(/^\/+/, '');
+      if (normalized?.startsWith('models/')) declared.add(normalized.slice('models/'.length));
+    }
+  }
+  for (const entry of readdirSync(modelsDir, { withFileTypes: true })) {
+    if (entry.isFile() && !declared.has(entry.name)) {
+      rmSync(resolve(modelsDir, entry.name), { force: true });
+    }
+  }
+}
 
 function extensionReleaseAssetsPlugin(
   target: ExtensionTarget,
@@ -41,6 +62,7 @@ function extensionReleaseAssetsPlugin(
       ]) {
         rmSync(resolve(extensionDist, unusedOrtVariant), { force: true });
       }
+      removeUndeclaredDistModelAssets(extensionDist);
     },
   };
 }

@@ -67,7 +67,7 @@ export type SerializedPipelineError = {
 };
 
 export type WorkerBootstrapAttempt = {
-  mode: 'direct-extension' | 'direct-http' | 'blob-http';
+  mode: 'direct' | 'blob';
   scriptUrl: string;
   startedAt: string;
   durationMs: number;

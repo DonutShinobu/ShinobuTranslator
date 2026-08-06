@@ -5,9 +5,9 @@ import {
   shinobuRenderFixtureDebug,
 } from '@shinobu/image-pipeline/benchmark';
 import { browserPipelinePlatform } from '../shared/browserPipelinePlatform';
-import { createExtensionModelRuntime } from '../shared/extensionModelRuntime';
+import { createBenchmarkModelRuntime } from './modelRuntime';
 
-const modelRuntime = createExtensionModelRuntime();
+const modelRuntime = createBenchmarkModelRuntime();
 import type {
   BakeResult,
   ShinobuBakeOptions,
@@ -57,6 +57,7 @@ const benchmarkApi: ShinobuBenchmarkApi = {
     const { runPipeline } = await import('@shinobu/image-pipeline/benchmark');
     return runPipeline(file, config, onProgress, {
       ...options,
+      platform: browserPipelinePlatform,
       modelRuntime,
       detectionFallbackStrategy: { kind: 'heuristic-only' },
     });

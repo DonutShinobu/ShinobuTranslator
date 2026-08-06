@@ -13,7 +13,7 @@ import type {
 } from '@shinobu/text-translation';
 import type { ModelRuntime } from '@shinobu/model-runtime';
 import type { DiagnosticLogObserver } from '@shinobu/diagnostics';
-import type { PlatformProvider } from './runtime/platform';
+import type { PipelineCanvas, PlatformProvider } from './runtime/platform';
 import { runPipeline, PipelineStageError } from './pipeline/orchestrator';
 import { disposePipelineArtifacts } from './pipeline/resources';
 import { registerTypesetFonts } from './pipeline/typeset/fontRuntime';
@@ -32,6 +32,8 @@ export type PipelinePlatform = PlatformProvider & {
     source: Blob,
     workingCopy: Readonly<WorkingCopySpec>,
   ): Promise<Blob>;
+  /** Override PNG export when the host has a safer/faster platform-specific path. */
+  encodeCanvasToPng?(canvas: PipelineCanvas): Blob | Promise<Blob>;
 };
 
 export type {
@@ -1358,10 +1360,14 @@ export function createImagePipeline(
     },
     async finalize(output, request) {
       const finalizeStartedAt = performance.now();
-      const image = await canvasToPngBlob(output.artifacts.resultCanvas);
+      const encodeCanvasToPng = (canvas: PipelineCanvas): Blob | Promise<Blob> => (
+        dependencies.platform.encodeCanvasToPng?.(canvas)
+          ?? canvasToPngBlob(canvas)
+      );
+      const image = await encodeCanvasToPng(output.artifacts.resultCanvas);
       const debug = request.config.typesetDebug
         && output.artifacts.debugOriginalCanvas
-        ? await canvasToPngBlob(output.artifacts.debugOriginalCanvas)
+        ? await encodeCanvasToPng(output.artifacts.debugOriginalCanvas)
         : undefined;
       output.artifacts.stageTimings.push({
         stage: 'finalize',

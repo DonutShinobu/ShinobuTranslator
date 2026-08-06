@@ -2,6 +2,8 @@ export type OnnxValueDataLocation = "cpu" | "cpu-pinned" | "gpu-buffer" | "ml-te
 
 export type OnnxSessionOptions = {
   enableGraphCapture?: boolean;
+  graphOptimizationLevel?: "disabled" | "basic" | "extended" | "all";
+  useOrtModelBytesForInitializers?: boolean;
   preferredOutputLocation?: OnnxValueDataLocation | Record<string, OnnxValueDataLocation>;
   freeDimensionOverrides?: Record<string, number>;
 };
@@ -18,6 +20,12 @@ export function serializeOnnxSessionOptions(options?: OnnxSessionOptions): strin
   const normalized: OnnxSessionOptions = {};
   if (typeof options.enableGraphCapture === "boolean") {
     normalized.enableGraphCapture = options.enableGraphCapture;
+  }
+  if (options.graphOptimizationLevel) {
+    normalized.graphOptimizationLevel = options.graphOptimizationLevel;
+  }
+  if (typeof options.useOrtModelBytesForInitializers === "boolean") {
+    normalized.useOrtModelBytesForInitializers = options.useOrtModelBytesForInitializers;
   }
   if (typeof options.preferredOutputLocation === "string") {
     normalized.preferredOutputLocation = options.preferredOutputLocation;

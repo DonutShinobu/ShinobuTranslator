@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "version": "2026-07-28-runtime-v1",
+  "version": "2026-08-06-runtime-v2",
   "assets": [
     {
       "id": "detector",
-      "path": "detector.onnx",
-      "size": 94669756,
-      "sha256": "1a86ace74961413cbd650002e7bb4dcec4980ffa21b2f19b86933372071d718f",
+      "path": "detector.ort",
+      "size": 94863096,
+      "sha256": "0e9c3979e73092a56404c835e63d9894e7d94b50b356ee29e84ee6a32d65f7d9",
       "mediaType": "application/octet-stream"
     },
     {

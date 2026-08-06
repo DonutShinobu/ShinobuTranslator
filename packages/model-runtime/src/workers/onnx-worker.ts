@@ -226,8 +226,15 @@ async function createSession(
           try {
             const sessionOptions: Parameters<typeof ortAll.InferenceSession.create>[1] = {
               executionProviders: [ep],
-              graphOptimizationLevel: "all",
+              graphOptimizationLevel: experimentalSessionOptions?.graphOptimizationLevel ?? "all",
             };
+            if (experimentalSessionOptions?.useOrtModelBytesForInitializers) {
+              sessionOptions.extra = {
+                session: {
+                  use_ort_model_bytes_for_initializers: "1",
+                },
+              };
+            }
             if (provider === "webgpu" && experimentalSessionOptions) {
               if (typeof experimentalSessionOptions.enableGraphCapture === "boolean") {
                 sessionOptions.enableGraphCapture = experimentalSessionOptions.enableGraphCapture;

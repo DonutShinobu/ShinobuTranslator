@@ -28,7 +28,12 @@ describe('Web model package manifest', () => {
       schemaVersion: 1,
       version: expect.stringMatching(/^\d{4}-\d{2}-\d{2}-runtime-v\d+$/u),
       assets: [
-        { id: 'detector', path: 'detector.onnx' },
+        {
+          id: 'detector',
+          path: 'detector.ort',
+          size: 94863096,
+          sha256: '0e9c3979e73092a56404c835e63d9894e7d94b50b356ee29e84ee6a32d65f7d9',
+        },
         { id: 'inpaint', path: 'aot_inpaint_512.onnx' },
         { id: 'bubble', path: 'bubble.onnx' },
         { id: 'paddleocr-v6-medium', path: 'PP-OCRv6_medium_rec.onnx' },

@@ -62,7 +62,7 @@ describe('PWA release assets', () => {
     )).toBe(false);
     expect(isCacheable(
       request(''),
-      new URL('https://shinobu.example/models/detector.onnx'),
+      new URL('https://shinobu.example/models/detector.ort'),
     )).toBe(false);
   });
 

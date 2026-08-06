@@ -118,6 +118,11 @@ describe('ONNX Worker production contract', () => {
       'inpaint',
       'paddleocr_v6_medium_rec',
     ]);
+    expect(manifest.models.detector).toEqual(expect.objectContaining({
+      url: '/models/detector.ort',
+      size: 94863096,
+      sha256: '0e9c3979e73092a56404c835e63d9894e7d94b50b356ee29e84ee6a32d65f7d9',
+    }));
 
     const releaseGuard = read('scripts/check-release-boundaries.mjs');
     for (const legacyModel of [

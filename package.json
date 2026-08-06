@@ -63,8 +63,6 @@
     "bench:browser-paddle-profile": "npm run build:benchmark && tsx benchmark/perf/src/run-browser-paddle-profile.ts --ocr-engine=paddleocr_v6_medium --process-mode=erase",
     "bench:paddle-graph-capture-probe": "tsx benchmark/perf/src/run-paddle-graph-capture-probe.ts",
     "bench:compare-reports": "tsx benchmark/perf/src/compare-pipeline-reports.ts",
-    "models:prepare-runtime-ort:chromium": "node scripts/prepare-runtime-ort-models.mjs --dist apps/extension/dist-chromium",
-    "models:prepare-runtime-ort:firefox": "node scripts/prepare-runtime-ort-models.mjs --dist apps/extension/dist-firefox",
     "models:check-paddle-ocr": "node scripts/check-paddle-ocr-model.mjs",
     "models:download": "node scripts/download-models.mjs",
     "models:upload": "node scripts/upload-models.mjs",

@@ -4,15 +4,20 @@
 `packages/model-manifest/manifest.json`、来源记录
 `packages/model-manifest/publication-policy.json` 必须一致。
 
-## 1) `detector.onnx`（文字检测）
+## 1) `detector.ort`（文字检测）
 
-- 精确对象：`manga-image-translator` `beta-0.3` Release 的
-  `comictextdetector.pt.onnx`；本地文件与该对象逐字节相同。
+- 上游精确对象：`manga-image-translator` `beta-0.3` Release 的
+  `comictextdetector.pt.onnx`，SHA-256 为
+  `1a86ace74961413cbd650002e7bb4dcec4980ffa21b2f19b86933372071d718f`。
+- 派生记录：使用 ONNX Runtime `1.24.1` 执行
+  `python -m onnxruntime.tools.convert_onnx_models_to_ort detector.onnx
+  --optimization_style Runtime`，生成浏览器使用的 portable Runtime ORT 文件。
 - 原始来源：`https://github.com/dmMaze/comic-text-detector`
 - 发行来源：`https://github.com/zyddnys/manga-image-translator/releases/tag/beta-0.3`
-- SHA-256：`1a86ace74961413cbd650002e7bb4dcec4980ffa21b2f19b86933372071d718f`
+- 派生文件大小：`94,863,096` 字节
+- 派生文件 SHA-256：`0e9c3979e73092a56404c835e63d9894e7d94b50b356ee29e84ee6a32d65f7d9`
 - 许可证：`GPL-3.0`。同哈希 Hugging Face 镜像的 Apache-2.0 标签没有提供改变原始
-  GPL 发行条款的授权证据，不能作为本资产的发布依据。
+  GPL 发行条款的授权证据，转换后的派生文件也不改变该许可依据。
 - 发布状态：**有条件放行，当前尚未批准上传**。公开分发前必须归档 GPL-3.0 许可证文本、
   对应源码/获取路径、版权归属和修改记录；上游关于训练数据与字体权利的提示仍需保留。
 
@@ -72,7 +77,7 @@ LICENSE/NOTICE。
 - 本仓库根目录 `LICENSE` 为 `GPL-3.0`。
 - `scripts/upload-r2-models.mjs` 会在任何 R2 写入前校验
   `packages/model-manifest/publication-policy.json`；存在 `conditional` 或 `blocked`
-  资产时会输出明确提示，但不再作为个人开源项目的自动部署阻塞。
+  资产时会阻止上传。
 - 发布源码或构建产物时须保留本文件、适用的完整许可证文本、上游版权/NOTICE 和修改记录。
 
 ## 7) 应用图标（Donut icon）

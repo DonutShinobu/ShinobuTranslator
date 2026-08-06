@@ -22,6 +22,15 @@ export function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
+export function canvasToPngBlobSync(canvas: PipelineCanvas): Blob {
+  const prefix = 'data:image/png;base64,';
+  const dataUrl = canvas.toDataURL('image/png');
+  if (!dataUrl.startsWith(prefix)) {
+    throw new Error('导出译图失败');
+  }
+  return base64ToBlob(dataUrl.slice(prefix.length), 'image/png');
+}
+
 export function canvasToPngBlob(canvas: PipelineCanvas): Promise<Blob> {
   if (canvas.convertToBlob) {
     return canvas.convertToBlob({ type: 'image/png' });

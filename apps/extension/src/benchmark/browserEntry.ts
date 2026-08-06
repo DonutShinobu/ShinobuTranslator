@@ -22,6 +22,11 @@ import type {
 } from '@shinobu/image-pipeline/benchmark';
 
 export type ShinobuBenchmarkApi = {
+  inspectDetectorSession(): Promise<{
+    provider: string;
+    inputNames: string[];
+    outputNames: string[];
+  }>;
   bake(dataUrl: string, options?: ShinobuBakeOptions): Promise<BakeResult>;
   render(dataUrl: string): Promise<string>;
   renderDebug(dataUrl: string): Promise<RenderDebugResult>;
@@ -47,6 +52,14 @@ export type ShinobuBenchmarkWindow = typeof window & {
 };
 
 const benchmarkApi: ShinobuBenchmarkApi = {
+  inspectDetectorSession: async () => {
+    const handle = await modelRuntime.getSession('detector');
+    return {
+      provider: handle.provider,
+      inputNames: [...handle.inputNames],
+      outputNames: [...handle.outputNames],
+    };
+  },
   bake: (dataUrl, options) => shinobuBake(dataUrl, browserPipelinePlatform, modelRuntime, options),
   render: (dataUrl) => shinobuRender(dataUrl, browserPipelinePlatform, modelRuntime),
   renderDebug: (dataUrl) => shinobuRenderDebug(dataUrl, browserPipelinePlatform, modelRuntime),

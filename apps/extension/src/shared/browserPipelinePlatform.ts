@@ -13,6 +13,7 @@ import type {
   PipelineImageData,
   PipelinePlatform,
 } from '@shinobu/image-pipeline';
+import { canvasToPngBlobSync } from '@shinobu/image-pipeline/protocol';
 
 const pendingFonts = new Map<string, Promise<void>>();
 
@@ -67,6 +68,12 @@ export const browserPipelinePlatform: PipelinePlatform = {
 
   createImageData(width: number, height: number): PipelineImageData {
     return new ImageData(width, height);
+  },
+
+  encodeCanvasToPng(canvas: PipelineCanvas): Blob {
+    // Chromium's async Blob export can wait 1s for an idle task in an
+    // offscreen document. This host has no visible UI, so encode synchronously.
+    return canvasToPngBlobSync(canvas);
   },
 
   registerFont,

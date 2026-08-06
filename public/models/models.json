@@ -1,15 +1,16 @@
 {
   "schemaVersion": 1,
-  "version": "2026-07-28-runtime-v1",
+  "version": "2026-08-06-runtime-v2",
   "source": "https://github.com/zyddnys/manga-image-translator",
-  "note": "请放入可在浏览器端运行的 ONNX 模型文件，文本检测/OCR/去字优先支持 WebNN",
+  "note": "浏览器 detector 使用 ORT 1.24.1 Runtime 风格资产；文本检测/OCR/去字优先支持 WebGPU/WebNN",
   "models": {
     "detector": {
       "name": "detector",
       "task": "text-detection",
-      "url": "/models/detector.onnx",
-      "size": 94669756,
-      "sha256": "1a86ace74961413cbd650002e7bb4dcec4980ffa21b2f19b86933372071d718f",
+      "format": "ort",
+      "url": "/models/detector.ort",
+      "size": 94863096,
+      "sha256": "0e9c3979e73092a56404c835e63d9894e7d94b50b356ee29e84ee6a32d65f7d9",
       "input": [1024, 1024],
       "runtime": ["webgpu", "webnn", "wasm"]
     },

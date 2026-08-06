@@ -32,7 +32,7 @@ function installStorage(initialDiagnosticStore: unknown): Record<string, unknown
   };
   vi.stubGlobal('chrome', {
     runtime: {
-      getManifest: () => ({ version: 'test' }),
+      getManifest: () => ({ version: 'test', manifest_version: 2 }),
     },
     storage: {
       local: {
@@ -74,6 +74,7 @@ describe('diagnostic log store export', () => {
     const exported = await exportDiagnosticLog();
 
     expect(exported.eventCount).toBe(eventCount);
+    expect(exported.text).toContain('"manifestVersion":2');
     expect(exported.text).toContain('event-0');
     expect(exported.text).toContain(`event-${eventCount - 1}`);
     expect(exported.text).not.toContain('[TRUNCATED_ARRAY:');

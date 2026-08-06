@@ -102,3 +102,5 @@ jobs:
           path: apps/extension
       - name: Load Firefox extension
         run: xvfb-run --auto-servernum node scripts/smoke-firefox-load.mjs --dist apps/extension/dist-firefox --firefox "${{ steps.firefox.outputs.firefox-path }}"
+      - name: Verify Firefox persistent-host lifecycle
+        run: xvfb-run --auto-servernum node scripts/smoke-firefox-lifecycle.mjs --firefox "${{ steps.firefox.outputs.firefox-path }}" --idle-timeout-ms 1000

@@ -202,7 +202,7 @@ export async function exportDiagnosticLog(): Promise<DiagnosticLogTextExport> {
   const exportedAt = new Date().toISOString();
   const extension = {
     version: manifest?.version,
-    manifestVersion: 3,
+    manifestVersion: manifest?.manifest_version,
   };
   const environment = {
     userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,

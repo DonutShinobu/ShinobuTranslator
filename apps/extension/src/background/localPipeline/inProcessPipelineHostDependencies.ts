@@ -10,6 +10,10 @@ import { dispatchBackgroundMessage } from '../index';
 import { createExtensionModelRuntime } from '../../shared/extensionModelRuntime';
 import { browserPipelinePlatform } from '../../shared/browserPipelinePlatform';
 import { requireExtensionRuntime } from '../../shared/extensionRuntime';
+import {
+  getPipelineLifecycleTestIdleTimeoutMs,
+  isPipelineLifecycleTestBuild,
+} from '../../shared/buildFlags';
 
 const pipelineHostSender: ExtensionMessageSender = {};
 
@@ -20,6 +24,9 @@ export function createInProcessPipelineHostDependencies(): PipelineHostDependenc
   return {
     modelRuntime: createExtensionModelRuntime(),
     platform: browserPipelinePlatform,
+    idleTimeoutMs: isPipelineLifecycleTestBuild()
+      ? getPipelineLifecycleTestIdleTimeoutMs()
+      : undefined,
     fontSource: requireExtensionRuntime().getURL.bind(requireExtensionRuntime()),
     translationTransport: createMessageTextTranslationTransport(sendMessage),
     diagnostics: createDiagnosticLogEmitter(async (event) => {

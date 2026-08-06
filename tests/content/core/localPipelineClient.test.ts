@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPipelineRecord } from '@shinobu/image-pipeline';
 import type { ExtensionBrowserApi, ExtensionPort } from '../../../apps/extension/src/shared/extensionRuntime';
 import {
-  LOCAL_PIPELINE_BACKGROUND_LEASE_PORT,
   LOCAL_PIPELINE_CLIENT_PORT,
 } from '../../../packages/image-pipeline/src/protocol/index';
 import type { PipelineConfig } from '../../../packages/image-pipeline/src/types';
@@ -121,7 +120,7 @@ async function completePipelineRun(
   await resultPromise;
 }
 
-describe('runLocalPipeline Firefox background lease', () => {
+describe('runLocalPipeline', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.stubGlobal('FileReader', FakeFileReader);
@@ -131,8 +130,7 @@ describe('runLocalPipeline Firefox background lease', () => {
     vi.unstubAllGlobals();
   });
 
-  it('reuses one live background lease across completed pipeline jobs', async () => {
-    const lease = new FakePort(LOCAL_PIPELINE_BACKGROUND_LEASE_PORT);
+  it('opens one client Port per completed pipeline job', async () => {
     const clients = [
       new FakePort(LOCAL_PIPELINE_CLIENT_PORT),
       new FakePort(LOCAL_PIPELINE_CLIENT_PORT),
@@ -143,7 +141,6 @@ describe('runLocalPipeline Firefox background lease', () => {
         getURL: (path) => `moz-extension://test/${path}`,
         connect: ({ name } = {}) => {
           connectionNames.push(name ?? '');
-          if (name === LOCAL_PIPELINE_BACKGROUND_LEASE_PORT) return lease;
           const client = clients.shift();
           if (!client) throw new Error('unexpected client connection');
           return client;
@@ -158,69 +155,10 @@ describe('runLocalPipeline Firefox background lease', () => {
     await completePipelineRun(runLocalPipeline, secondClient);
 
     expect(connectionNames).toEqual([
-      LOCAL_PIPELINE_BACKGROUND_LEASE_PORT,
       LOCAL_PIPELINE_CLIENT_PORT,
       LOCAL_PIPELINE_CLIENT_PORT,
     ]);
     expect(firstClient.disconnected).toBe(true);
     expect(secondClient.disconnected).toBe(true);
-    expect(lease.disconnected).toBe(false);
-  });
-
-  it('continues the pipeline when a Firefox background lease cannot be opened', async () => {
-    const client = new FakePort(LOCAL_PIPELINE_CLIENT_PORT);
-    const api: ExtensionBrowserApi = {
-      runtime: {
-        getURL: (path) => `moz-extension://test/${path}`,
-        connect: ({ name } = {}) => {
-          if (name === LOCAL_PIPELINE_BACKGROUND_LEASE_PORT) {
-            throw new Error('lease unavailable');
-          }
-          return client;
-        },
-      },
-    };
-    vi.stubGlobal('chrome', api);
-    const { runLocalPipeline } = await import('../../../apps/extension/src/content/core/translation/localPipelineClient');
-
-    await completePipelineRun(runLocalPipeline, client);
-
-    expect(client.disconnected).toBe(true);
-  });
-
-  it('reacquires the background lease when the previous idle host closes before ready', async () => {
-    const leases = [
-      new FakePort(LOCAL_PIPELINE_BACKGROUND_LEASE_PORT),
-      new FakePort(LOCAL_PIPELINE_BACKGROUND_LEASE_PORT),
-    ];
-    const client = new FakePort(LOCAL_PIPELINE_CLIENT_PORT);
-    const connectionNames: string[] = [];
-    const api: ExtensionBrowserApi = {
-      runtime: {
-        getURL: (path) => `moz-extension://test/${path}`,
-        connect: ({ name } = {}) => {
-          connectionNames.push(name ?? '');
-          if (name === LOCAL_PIPELINE_BACKGROUND_LEASE_PORT) {
-            const lease = leases.shift();
-            if (!lease) throw new Error('unexpected lease connection');
-            return lease;
-          }
-          return client;
-        },
-      },
-    };
-    vi.stubGlobal('chrome', api);
-    const { runLocalPipeline } = await import('../../../apps/extension/src/content/core/translation/localPipelineClient');
-    const firstLease = leases[0]!;
-    const replacementLease = leases[1]!;
-
-    await completePipelineRun(runLocalPipeline, client, () => firstLease.disconnect());
-
-    expect(connectionNames).toEqual([
-      LOCAL_PIPELINE_BACKGROUND_LEASE_PORT,
-      LOCAL_PIPELINE_CLIENT_PORT,
-      LOCAL_PIPELINE_BACKGROUND_LEASE_PORT,
-    ]);
-    expect(replacementLease.disconnected).toBe(false);
   });
 });

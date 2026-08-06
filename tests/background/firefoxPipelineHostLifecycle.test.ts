@@ -163,6 +163,55 @@ describe('FirefoxPipelineHostLifecycle', () => {
     await lifecycle.closeHost();
   });
 
+  it('closes and recreates the in-page host with a new lifecycle instance id', async () => {
+    const api: ExtensionBrowserApi = {
+      runtime: {
+        getURL: (path) => `moz-extension://test/${path}`,
+        onConnect: { addListener: () => undefined },
+      },
+    };
+    vi.stubGlobal('chrome', api);
+    const lifecycle = new FirefoxPipelineHostLifecycle({
+      ...createRuntimeDependencies(),
+      idleTimeoutMs: 100,
+    });
+    const broker = new PipelineHostBroker(api, lifecycle);
+    const [firstBrokerClient, firstContentClient] = createLocalExtensionPortPair(
+      LOCAL_PIPELINE_CLIENT_PORT,
+    );
+    broker.handlePort(firstBrokerClient);
+    firstContentClient.postMessage({ type: 'prepare', jobId: 'first-generation' });
+
+    await vi.waitFor(() => {
+      expect(broker.getLifecycleSnapshot().hostReady).toBe(true);
+    });
+    const firstHostInstanceId = broker.getLifecycleSnapshot().hostInstanceId;
+    expect(firstHostInstanceId).toMatch(/^pipeline-host-/);
+    firstContentClient.disconnect();
+
+    await vi.waitFor(() => {
+      expect(broker.getLifecycleSnapshot()).toEqual(expect.objectContaining({
+        hostInstanceId: null,
+        lastClosedHostInstanceId: firstHostInstanceId,
+        hostReady: false,
+      }));
+    }, { timeout: 1_000 });
+
+    const [secondBrokerClient, secondContentClient] = createLocalExtensionPortPair(
+      LOCAL_PIPELINE_CLIENT_PORT,
+    );
+    broker.handlePort(secondBrokerClient);
+    secondContentClient.postMessage({ type: 'prepare', jobId: 'second-generation' });
+
+    await vi.waitFor(() => {
+      expect(broker.getLifecycleSnapshot().hostReady).toBe(true);
+    });
+    expect(broker.getLifecycleSnapshot().hostInstanceId).not.toBe(firstHostInstanceId);
+
+    secondContentClient.disconnect();
+    await lifecycle.closeHost();
+  });
+
   it('uses an in-process translation transport instead of messaging its own background frame', async () => {
     const runtimeSendMessage = vi.fn(() => {
       throw new Error('Firefox excludes the sending frame from runtime.onMessage');

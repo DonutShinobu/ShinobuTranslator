@@ -33,7 +33,10 @@ vi.mock('../../packages/image-pipeline/src/protocol/blobCodec', () => ({
   canvasToPngBlob: vi.fn(async () => new Blob(['result'], { type: 'image/png' })),
 }));
 
-import { PipelineHost } from '../../apps/extension/src/offscreen/pipelineHost';
+import {
+  PipelineHost,
+  type PipelineHostDependencies,
+} from '../../apps/extension/src/offscreen/pipelineHost';
 import { LOCAL_PIPELINE_HOST_PORT } from '../../packages/image-pipeline/src/protocol/index';
 
 class FakePort implements ExtensionPort {
@@ -157,7 +160,7 @@ describe('PipelineHost single-task admission', () => {
     port.disconnect();
   });
 
-  function createHost(): PipelineHost {
+  function createHost(overrides: Partial<PipelineHostDependencies> = {}): PipelineHost {
     const modelRuntime: ModelRuntime = {
       readModel: vi.fn(),
       getSession: vi.fn(),
@@ -168,7 +171,12 @@ describe('PipelineHost single-task admission', () => {
       dispose: mocks.disposeAllModelSessions,
     };
     const platform = {} as PipelinePlatform;
-    const host = new PipelineHost(undefined, { modelRuntime, platform });
+    const host = new PipelineHost(undefined, {
+      modelRuntime,
+      platform,
+      hostInstanceId: 'pipeline-host-test',
+      ...overrides,
+    });
     hosts.push(host);
     return host;
   }
@@ -293,7 +301,75 @@ describe('PipelineHost single-task admission', () => {
       await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
 
       expect(mocks.disposeAllModelSessions).toHaveBeenCalledTimes(1);
-      expect(port.sent).toContainEqual({ type: 'idle-close' });
+      expect(port.sent).toContainEqual({
+        type: 'idle-close',
+        hostInstanceId: 'pipeline-host-test',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('uses an injected idle timeout and emits structured host lifecycle events', async () => {
+    vi.useFakeTimers();
+    try {
+      const lifecycleEvents: Array<Record<string, unknown> | undefined> = [];
+      const diagnostics = {
+        emit: vi.fn((event: { data?: Record<string, unknown> }) => {
+          lifecycleEvents.push(event.data);
+        }),
+        emitAsync: vi.fn(async (event: { data?: Record<string, unknown> }) => {
+          lifecycleEvents.push(event.data);
+          return true;
+        }),
+      };
+      const host = createHost({ idleTimeoutMs: 1_000, diagnostics });
+      host.connect();
+
+      await vi.advanceTimersByTimeAsync(999);
+      expect(mocks.disposeAllModelSessions).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(mocks.disposeAllModelSessions).toHaveBeenCalledOnce();
+      expect(lifecycleEvents).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          lifecycleEvent: 'host-created',
+          hostInstanceId: 'pipeline-host-test',
+        }),
+        expect.objectContaining({
+          lifecycleEvent: 'idle-dispose-complete',
+          hostInstanceId: 'pipeline-host-test',
+          idleTimeoutMs: 1_000,
+        }),
+        expect.objectContaining({
+          lifecycleEvent: 'idle-close-requested',
+          hostInstanceId: 'pipeline-host-test',
+        }),
+      ]));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not let diagnostic persistence block an idle close request', async () => {
+    vi.useFakeTimers();
+    try {
+      const persisted = deferred<boolean>();
+      const diagnostics = {
+        emit: vi.fn(),
+        emitAsync: vi.fn(() => persisted.promise),
+      };
+      const host = createHost({ idleTimeoutMs: 1_000, diagnostics });
+      host.connect();
+
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(port.sent).toContainEqual({
+        type: 'idle-close',
+        hostInstanceId: 'pipeline-host-test',
+      });
+      persisted.resolve(true);
     } finally {
       vi.useRealTimers();
     }
@@ -310,7 +386,10 @@ describe('PipelineHost single-task admission', () => {
       firstPort.disconnect();
       await vi.advanceTimersByTimeAsync(250);
 
-      expect(port.sent).toContainEqual({ type: 'host-ready' });
+      expect(port.sent).toContainEqual({
+        type: 'host-ready',
+        hostInstanceId: 'pipeline-host-test',
+      });
     } finally {
       vi.useRealTimers();
     }

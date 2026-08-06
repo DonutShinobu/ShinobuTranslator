@@ -45,25 +45,39 @@ function assertEqual(label, left, right) {
 const chromiumManifest = JSON.parse(readFileSync(join(chromiumDir, 'manifest.json'), 'utf8'));
 const firefoxManifest = JSON.parse(readFileSync(join(firefoxDir, 'manifest.json'), 'utf8'));
 for (const field of [
-  'manifest_version',
   'name',
   'version',
   'description',
-  'action',
   'icons',
   'optional_permissions',
-  'host_permissions',
   'commands',
   'content_scripts',
-  'web_accessible_resources',
-  'content_security_policy',
 ]) {
   assertEqual(`manifest.${field}`, chromiumManifest[field], firefoxManifest[field]);
 }
+if (chromiumManifest.manifest_version !== 3 || firefoxManifest.manifest_version !== 2) {
+  throw new Error('Extension parity requires Chromium MV3 and Firefox MV2.');
+}
+assertEqual('manifest toolbar action intent', chromiumManifest.action, firefoxManifest.browser_action);
+assertEqual(
+  'manifest host permission intent',
+  [...(chromiumManifest.host_permissions ?? [])].sort(),
+  firefoxManifest.permissions.filter((permission) => permission === '<all_urls>').sort(),
+);
 assertEqual(
   'manifest common permission intent',
   chromiumManifest.permissions.filter((permission) => permission !== 'offscreen').sort(),
-  [...firefoxManifest.permissions].sort(),
+  firefoxManifest.permissions.filter((permission) => permission !== '<all_urls>').sort(),
+);
+const chromiumResources = (chromiumManifest.web_accessible_resources ?? [])
+  .flatMap((entry) => Array.isArray(entry.resources) ? entry.resources : []);
+const firefoxResources = (firefoxManifest.web_accessible_resources ?? [])
+  .flatMap((entry) => typeof entry === 'string' ? [entry] : []);
+assertEqual('manifest web-accessible resource intent', chromiumResources, firefoxResources);
+assertEqual(
+  'manifest extension-page CSP intent',
+  chromiumManifest.content_security_policy?.extension_pages,
+  firefoxManifest.content_security_policy,
 );
 
 function collectFiles(directory) {

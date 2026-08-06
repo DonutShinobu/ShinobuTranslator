@@ -24,7 +24,6 @@ import {
 } from '@shinobu/image-pipeline';
 
 export const LOCAL_PIPELINE_CLIENT_PORT = 'mt:local-pipeline-client';
-export const LOCAL_PIPELINE_BACKGROUND_LEASE_PORT = 'mt:pipeline-background-lease';
 export const LOCAL_PIPELINE_HOST_PORT = 'mt:pipeline-host';
 export const LOCAL_PIPELINE_CHUNK_SIZE = 4 * 1024 * 1024;
 export const LOCAL_PIPELINE_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
@@ -122,8 +121,8 @@ export type LocalPipelineClientMessage =
     };
 
 export type LocalPipelineHostMessage =
-  | { type: 'host-ready' }
-  | { type: 'idle-close' }
+  | { type: 'host-ready'; hostInstanceId: string }
+  | { type: 'idle-close'; hostInstanceId: string }
   | {
       type: 'ready';
       jobId: string;
@@ -226,7 +225,7 @@ export function isLocalPipelineHostMessage(value: unknown): value is LocalPipeli
     return false;
   }
   if (value.type === 'host-ready' || value.type === 'idle-close') {
-    return true;
+    return typeof value.hostInstanceId === 'string' && value.hostInstanceId.length > 0;
   }
   if (!isJobMessage(value)) {
     return false;

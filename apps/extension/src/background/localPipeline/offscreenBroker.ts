@@ -1,10 +1,12 @@
 import type { ExtensionBrowserApi, ExtensionPort } from '../../shared/extensionRuntime';
 import {
+  type DiagnosticLogEmitter,
+} from '../../shared/diagnosticLogClient';
+import {
   ImagePipelineCancelledError,
   type PipelineCancellationReason,
 } from '@shinobu/image-pipeline';
 import {
-  LOCAL_PIPELINE_BACKGROUND_LEASE_PORT,
   LOCAL_PIPELINE_CLIENT_PORT,
   LOCAL_PIPELINE_CHUNK_SIZE,
   LOCAL_PIPELINE_HOST_PORT,
@@ -23,6 +25,24 @@ import {
 } from './pipelineHostLifecycle';
 
 const PIPELINE_HOST_CONNECT_TIMEOUT_MS = 10_000;
+
+const noopPipelineHostBrokerDiagnostics: DiagnosticLogEmitter = {
+  emit: () => undefined,
+  emitAsync: async () => false,
+};
+
+export type PipelineHostLifecycleSnapshot = {
+  hostInstanceId: string | null;
+  lastClosedHostInstanceId: string | null;
+  hostReady: boolean;
+  clientCount: number;
+  ownerCount: number;
+  activeJobId: string | null;
+  queuedJobCount: number;
+  jobCount: number;
+  closing: boolean;
+  pendingIdleClose: boolean;
+};
 
 type ClientConnection = {
   port: ExtensionPort;
@@ -71,12 +91,13 @@ function safelyPost(port: ExtensionPort, message: unknown): boolean {
 }
 
 export class PipelineHostBroker {
-  private readonly backgroundLeases = new Set<ExtensionPort>();
   private readonly clients = new Set<ClientConnection>();
   private readonly owners = new Map<string, ClientConnection>();
   private readonly jobs = new Map<string, BufferedJob>();
   private hostPort: ExtensionPort | null = null;
   private hostReady = false;
+  private hostInstanceId: string | null = null;
+  private lastClosedHostInstanceId: string | null = null;
   private hostWaiters = new Set<HostWaiter>();
   private creationPromise: Promise<ExtensionPort> | null = null;
   private expectedHostClose = false;
@@ -88,17 +109,44 @@ export class PipelineHostBroker {
   constructor(
     private readonly api: ExtensionBrowserApi,
     private readonly lifecycle: PipelineHostLifecycle = new ChromiumPipelineHostLifecycle(api),
+    private readonly diagnostics: DiagnosticLogEmitter = noopPipelineHostBrokerDiagnostics,
   ) {}
+
+  getLifecycleSnapshot(): PipelineHostLifecycleSnapshot {
+    return {
+      hostInstanceId: this.hostInstanceId,
+      lastClosedHostInstanceId: this.lastClosedHostInstanceId,
+      hostReady: this.hostReady,
+      clientCount: this.clients.size,
+      ownerCount: this.owners.size,
+      activeJobId: this.activeJobId,
+      queuedJobCount: this.admissionQueue.length,
+      jobCount: this.jobs.size,
+      closing: this.closingPromise !== null,
+      pendingIdleClose: this.pendingIdleClose,
+    };
+  }
+
+  private emitLifecycleEvent(
+    lifecycleEvent: 'broker-host-ready' | 'host-closed',
+    hostInstanceId: string,
+  ): Promise<boolean> {
+    return this.diagnostics.emitAsync({
+      level: 'info',
+      category: 'runtime.message',
+      source: { context: 'background', module: 'offscreenBroker.ts' },
+      message: lifecycleEvent === 'host-closed'
+        ? '流水线 broker 已关闭宿主'
+        : '流水线 broker 已连接宿主',
+      data: { lifecycleEvent, hostInstanceId },
+    });
+  }
 
   register(): void {
     this.api.runtime?.onConnect?.addListener((port) => this.handlePort(port));
   }
 
   handlePort(port: ExtensionPort): void {
-    if (port.name === LOCAL_PIPELINE_BACKGROUND_LEASE_PORT) {
-      this.attachBackgroundLease(port);
-      return;
-    }
     if (port.name === LOCAL_PIPELINE_HOST_PORT) {
       this.attachHost(port);
       return;
@@ -108,20 +156,6 @@ export class PipelineHostBroker {
       return;
     }
     port.disconnect();
-  }
-
-  private attachBackgroundLease(port: ExtensionPort): void {
-    this.backgroundLeases.add(port);
-    port.onDisconnect.addListener(() => {
-      this.backgroundLeases.delete(port);
-    });
-  }
-
-  private releaseBackgroundLeases(): void {
-    for (const port of [...this.backgroundLeases]) {
-      this.backgroundLeases.delete(port);
-      port.disconnect();
-    }
   }
 
   private attachClient(port: ExtensionPort): void {
@@ -310,6 +344,7 @@ export class PipelineHostBroker {
     }
     this.hostPort = port;
     this.hostReady = false;
+    this.hostInstanceId = null;
     this.expectedHostClose = false;
     this.pendingIdleClose = false;
     port.onMessage.addListener((message) => {
@@ -331,11 +366,20 @@ export class PipelineHostBroker {
       return;
     }
     if (value.type === 'host-ready') {
+      this.hostInstanceId = value.hostInstanceId;
       this.hostReady = true;
+      void this.emitLifecycleEvent('broker-host-ready', value.hostInstanceId);
       this.resolveHostWaiters(port);
       return;
     }
     if (value.type === 'idle-close') {
+      if (value.hostInstanceId !== this.hostInstanceId) {
+        this.handleHostPostFailure(codedError(
+          'TRANSFER_PROTOCOL_ERROR',
+          '流水线宿主实例标识不匹配',
+        ));
+        return;
+      }
       if (this.owners.size === 0) {
         await this.closeIdleHost();
       } else {
@@ -399,6 +443,7 @@ export class PipelineHostBroker {
     if (port !== this.hostPort) return;
     this.hostPort = null;
     this.hostReady = false;
+    this.hostInstanceId = null;
     const error = codedError('PIPELINE_HOST_DISCONNECTED', '流水线宿主连接已断开');
     this.rejectHostWaiters(error);
     if (!this.expectedHostClose) {
@@ -498,6 +543,7 @@ export class PipelineHostBroker {
     const port = this.hostPort;
     this.hostPort = null;
     this.hostReady = false;
+    this.hostInstanceId = null;
     this.activeJobId = null;
     this.failAllJobs(error);
     this.admissionQueue.length = 0;
@@ -574,6 +620,7 @@ export class PipelineHostBroker {
         }
         this.hostPort = null;
         this.hostReady = false;
+        this.hostInstanceId = null;
         this.expectedHostClose = false;
         const retryAttachment = await this.lifecycle.ensureHost();
         if (retryAttachment) {
@@ -631,15 +678,20 @@ export class PipelineHostBroker {
   private async closeIdleHost(): Promise<void> {
     if (this.closingPromise) return this.closingPromise;
     const closingHost = this.hostPort;
+    const closingHostInstanceId = this.hostInstanceId;
     this.expectedHostClose = true;
     this.pendingIdleClose = false;
     const closing = this.lifecycle.closeHost()
-      .then(() => {
+      .then(async () => {
         if (this.hostPort === closingHost) {
           this.hostPort = null;
           this.hostReady = false;
+          this.hostInstanceId = null;
         }
-        this.releaseBackgroundLeases();
+        if (closingHostInstanceId) {
+          this.lastClosedHostInstanceId = closingHostInstanceId;
+          await this.emitLifecycleEvent('host-closed', closingHostInstanceId);
+        }
       })
       .catch(() => {
         // A rejected close leaves the existing ready Port usable. The next idle
@@ -657,8 +709,9 @@ export class PipelineHostBroker {
 export function registerPipelineHostBroker(
   api: ExtensionBrowserApi,
   lifecycle: PipelineHostLifecycle,
+  diagnostics?: DiagnosticLogEmitter,
 ): PipelineHostBroker {
-  const broker = new PipelineHostBroker(api, lifecycle);
+  const broker = new PipelineHostBroker(api, lifecycle, diagnostics);
   broker.register();
   return broker;
 }

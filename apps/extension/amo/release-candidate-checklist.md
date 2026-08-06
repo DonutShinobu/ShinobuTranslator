@@ -14,10 +14,10 @@ Use the Chromium and Firefox packages produced from the same commit, tag, extens
 ## Lifecycle and failure recovery
 
 - Run consecutive local translations and confirm one-at-a-time global admission.
-- Leave the local pipeline idle for at least five minutes; confirm the host Port closes and the next task recreates it.
+- Leave the local pipeline idle for at least five minutes; confirm the model sessions and Worker are released, the broker records the old host instance as closed, and the next task creates a new host instance.
 - Restart each browser and confirm settings persist while inactive host state does not.
 - Disconnect the network before an external translation request; confirm explicit failure and successful recovery after reconnecting.
-- Interrupt the Firefox background page during a task; confirm that task fails and the next invocation starts a fresh host.
+- Reload the extension or restart Firefox during a task; confirm that task fails explicitly and the next invocation starts a fresh host.
 
 ## Providers and consent
 

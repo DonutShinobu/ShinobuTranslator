@@ -1,0 +1,31 @@
+name: Firefox five-minute lifecycle
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 19 * * 3'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firefox-five-minute-lifecycle
+  cancel-in-progress: false
+
+jobs:
+  lifecycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - id: firefox
+        uses: browser-actions/setup-firefox@v1
+        with:
+          firefox-version: latest
+      - run: npm ci
+      - name: Verify the real five-minute persistent-host TTL
+        run: xvfb-run --auto-servernum node scripts/smoke-firefox-lifecycle.mjs --firefox "${{ steps.firefox.outputs.firefox-path }}" --idle-timeout-ms 300000

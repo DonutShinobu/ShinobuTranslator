@@ -40,7 +40,10 @@ import {
 import { routeBackgroundMessage } from './messages/router';
 import type { BackgroundServices } from './messages/router';
 import { registerPipelineHostBroker } from './localPipeline/offscreenBroker';
+import type { PipelineHostBroker } from './localPipeline/offscreenBroker';
 import type { PipelineHostLifecycle } from './localPipeline/pipelineHostLifecycle';
+import { isPipelineLifecycleTestBuild } from '../shared/buildFlags';
+import { createDiagnosticLogEmitter } from '../shared/diagnosticLogClient';
 import { createExtensionSettingsRepository } from './extensionControl/settingsRepository';
 import { createTranslationConfigurationModule } from './extensionControl/translationConfiguration';
 import { createProviderAccessModule } from './extensionControl/providerAccess';
@@ -105,6 +108,17 @@ const services: BackgroundServices = {
 
 
 let initialized = false;
+let pipelineHostBroker: PipelineHostBroker | null = null;
+
+const pipelineHostBrokerDiagnostics = createDiagnosticLogEmitter(async (event) => {
+  try {
+    const settings = await getSettings();
+    if (settings.enableDebugLog) await recordDiagnosticLogEvent(event);
+    return true;
+  } catch {
+    return false;
+  }
+});
 
 export async function dispatchBackgroundMessage(
   message: RuntimeMessage,
@@ -142,8 +156,36 @@ export function initializeBackground(lifecycle: PipelineHostLifecycle): void {
   }
   initialized = true;
 
-  registerPipelineHostBroker(chromeApi, lifecycle);
+  pipelineHostBroker = registerPipelineHostBroker(
+    chromeApi,
+    lifecycle,
+    pipelineHostBrokerDiagnostics,
+  );
   registerExtensionControlPort(chromeApi, extensionControl);
+
+  if (isPipelineLifecycleTestBuild()) {
+    chromeApi.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+      if (
+        !message
+        || typeof message !== 'object'
+        || (message as { type?: unknown }).type !== 'mt:pipeline-host-test-snapshot'
+      ) {
+        return false;
+      }
+      sendResponse({
+        ok: true,
+        type: 'mt:pipeline-host-test-snapshot',
+        snapshot: pipelineHostBroker?.getLifecycleSnapshot() ?? null,
+      });
+      return false;
+    });
+    void import('./localPipeline/lifecycleSelfTest')
+      .then(({ runPipelineHostLifecycleSelfTest }) => (
+        pipelineHostBroker
+          ? runPipelineHostLifecycleSelfTest(pipelineHostBroker)
+          : undefined
+      ));
+  }
 
   chromeApi.runtime.onMessage.addListener((message: unknown, sender: ExtensionMessageSender, sendResponse: (response: unknown) => void) => {
     if (!isRuntimeMessage(message)) {

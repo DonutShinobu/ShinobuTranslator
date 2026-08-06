@@ -90,15 +90,25 @@ if (target === 'firefox') {
 const files = collectFiles(distDir);
 for (const file of files.filter((path) => path.endsWith('.js'))) {
   const source = readFileSync(file, 'utf8');
-  if (!isBenchmarkOnlyArtifact(file)) {
-    for (const token of ['__shinobu_bake', '__shinobu_render', '__shinobu_bridge']) {
-      if (source.includes(token)) {
-        throw new Error(`Release artifact contains forbidden benchmark token ${token}: ${file}`);
-      }
+  const forbiddenTokens = [
+    'mt:pipeline-host-test-snapshot',
+    'pipeline-lifecycle-test-report',
+    ...(!isBenchmarkOnlyArtifact(file) ? [
+      '__shinobu_bake',
+      '__shinobu_render',
+      '__shinobu_bridge',
+    ] : []),
+  ];
+  for (const token of forbiddenTokens) {
+    if (source.includes(token)) {
+      throw new Error(`Release artifact contains forbidden release token ${token}: ${file}`);
     }
-    if (/tesseract\.js|tessedit_pageseg_mode|cdn\.jsdelivr\.net|unpkg\.com/i.test(source)) {
-      throw new Error(`Extension artifact contains Tesseract or remote executable code: ${file}`);
-    }
+  }
+  if (
+    !isBenchmarkOnlyArtifact(file)
+    && /tesseract\.js|tessedit_pageseg_mode|cdn\.jsdelivr\.net|unpkg\.com/i.test(source)
+  ) {
+    throw new Error(`Extension artifact contains Tesseract or remote executable code: ${file}`);
   }
   try {
     execFileSync(process.execPath, ['--check', file], { stdio: 'pipe' });
@@ -138,11 +148,17 @@ if (manifest.permissions?.includes('tabs')) {
 if (!manifest.permissions?.includes('cookies') || manifest.optional_permissions?.includes('cookies')) {
   throw new Error('cookies must be granted at install time in both extension targets.');
 }
-if (!String(manifest.content_security_policy?.extension_pages ?? '').includes("worker-src 'self'")) {
+const extensionPageCsp = typeof manifest.content_security_policy === 'string'
+  ? manifest.content_security_policy
+  : manifest.content_security_policy?.extension_pages ?? '';
+if (!String(extensionPageCsp).includes("worker-src 'self'")) {
   throw new Error("Extension CSP must explicitly restrict worker-src to 'self'.");
 }
 
 if (target === 'chromium') {
+  if (manifest.manifest_version !== 3 || !manifest.action || manifest.browser_action !== undefined) {
+    throw new Error('Chromium must use the Manifest V3 action shape.');
+  }
   if (manifest.minimum_chrome_version !== '109') {
     throw new Error('Chromium manifest must require version 109.');
   }
@@ -152,13 +168,22 @@ if (target === 'chromium') {
   if (manifest.background?.service_worker !== 'background-chromium.js') {
     throw new Error('Chromium must use the module service worker background.');
   }
+  if (!manifest.host_permissions?.includes('<all_urls>') || manifest.permissions?.includes('<all_urls>')) {
+    throw new Error('Chromium host access must be declared through host_permissions.');
+  }
 } else {
   const gecko = manifest.browser_specific_settings?.gecko;
   if (manifest.minimum_chrome_version !== undefined || manifest.permissions?.includes('offscreen')) {
     throw new Error('Firefox manifest contains Chromium-only fields or permissions.');
   }
-  if (manifest.background?.page !== 'background-firefox.html' || manifest.background?.persistent === true) {
-    throw new Error('Firefox must use the non-persistent background page.');
+  if (manifest.manifest_version !== 2 || !manifest.browser_action || manifest.action !== undefined) {
+    throw new Error('Firefox must use the Manifest V2 browser_action shape.');
+  }
+  if (manifest.host_permissions !== undefined || !manifest.permissions?.includes('<all_urls>')) {
+    throw new Error('Firefox host access must be included in Manifest V2 permissions.');
+  }
+  if (manifest.background?.page !== 'background-firefox.html' || manifest.background?.persistent !== true) {
+    throw new Error('Firefox must use the persistent Manifest V2 background page.');
   }
   if (gecko?.id !== 'shinobu-translator@donutshinobu' || gecko?.strict_min_version !== '140.0') {
     throw new Error('Firefox Gecko identity or minimum version is incorrect.');
@@ -175,7 +200,9 @@ if (target === 'chromium') {
 }
 
 const exposedResources = (manifest.web_accessible_resources ?? [])
-  .flatMap((entry) => Array.isArray(entry.resources) ? entry.resources : []);
+  .flatMap((entry) => typeof entry === 'string'
+    ? [entry]
+    : Array.isArray(entry.resources) ? entry.resources : []);
 const contentSource = readFileSync(join(distDir, 'content.js'), 'utf8');
 const contentRuntimeResources = new Set(
   [...contentSource.matchAll(/runtime\.getURL\("([^"]+)"\)/g)].map((match) => match[1]),

@@ -2,10 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { PipelineHostBroker } from '../../apps/extension/src/background/localPipeline/offscreenBroker';
 import type { ExtensionBrowserApi, ExtensionPort } from '../../apps/extension/src/shared/extensionRuntime';
 import {
-  LOCAL_PIPELINE_BACKGROUND_LEASE_PORT,
   LOCAL_PIPELINE_CLIENT_PORT,
   LOCAL_PIPELINE_HOST_PORT,
 } from '../../packages/image-pipeline/src/protocol/index';
+import type { DiagnosticLogEmitter } from '../../apps/extension/src/shared/diagnosticLogClient';
+
+const HOST_INSTANCE_ID = 'pipeline-host-test';
 
 class FakePort implements ExtensionPort {
   readonly sent: unknown[] = [];
@@ -88,7 +90,7 @@ function transferJob(client: FakePort, jobId: string, data = 'YQ=='): void {
   client.emitMessage({ type: 'input-complete', jobId });
 }
 
-function createHarness(): {
+function createHarness(diagnostics?: DiagnosticLogEmitter): {
   broker: PipelineHostBroker;
   host: FakePort;
   createDocument: ReturnType<typeof vi.fn>;
@@ -99,7 +101,7 @@ function createHarness(): {
   let broker: PipelineHostBroker;
   const createDocument = vi.fn(async () => {
     broker.handlePort(host);
-    host.emitMessage({ type: 'host-ready' });
+    host.emitMessage({ type: 'host-ready', hostInstanceId: HOST_INSTANCE_ID });
   });
   const closeDocument = vi.fn(async () => undefined);
   const chromeApi: ExtensionBrowserApi = {
@@ -113,7 +115,7 @@ function createHarness(): {
       closeDocument,
     },
   };
-  broker = new PipelineHostBroker(chromeApi);
+  broker = new PipelineHostBroker(chromeApi, undefined, diagnostics);
   return { broker, host, createDocument, closeDocument };
 }
 
@@ -475,30 +477,43 @@ describe('PipelineHostBroker', () => {
     }));
   });
 
-  it('holds a background lease until the idle host has closed', async () => {
-    const { broker, host, closeDocument } = createHarness();
-    const lease = new FakePort(LOCAL_PIPELINE_BACKGROUND_LEASE_PORT);
-    broker.handlePort(lease);
-    broker.handlePort(host);
-    host.emitMessage({ type: 'host-ready' });
-
-    expect(lease.disconnected).toBe(false);
-
-    host.emitMessage({ type: 'idle-close' });
-
-    await vi.waitFor(() => {
-      expect(closeDocument).toHaveBeenCalledOnce();
-      expect(lease.disconnected).toBe(true);
-    });
-  });
-
   it('closes the document only after the host reports idle with no jobs', async () => {
     const { broker, host, closeDocument } = createHarness();
     broker.handlePort(host);
-    host.emitMessage({ type: 'host-ready' });
-    host.emitMessage({ type: 'idle-close' });
+    host.emitMessage({ type: 'host-ready', hostInstanceId: HOST_INSTANCE_ID });
+    host.emitMessage({ type: 'idle-close', hostInstanceId: HOST_INSTANCE_ID });
 
     await vi.waitFor(() => expect(closeDocument).toHaveBeenCalledTimes(1));
+  });
+
+  it('tracks the active and last-closed host instance for lifecycle tests', async () => {
+    const diagnostics = {
+      emit: vi.fn(),
+      emitAsync: vi.fn(async () => true),
+    };
+    const { broker, host } = createHarness(diagnostics);
+    broker.handlePort(host);
+    host.emitMessage({ type: 'host-ready', hostInstanceId: HOST_INSTANCE_ID });
+
+    expect(broker.getLifecycleSnapshot()).toEqual(expect.objectContaining({
+      hostInstanceId: HOST_INSTANCE_ID,
+      lastClosedHostInstanceId: null,
+      hostReady: true,
+    }));
+
+    host.emitMessage({ type: 'idle-close', hostInstanceId: HOST_INSTANCE_ID });
+
+    await vi.waitFor(() => expect(broker.getLifecycleSnapshot()).toEqual(expect.objectContaining({
+      hostInstanceId: null,
+      lastClosedHostInstanceId: HOST_INSTANCE_ID,
+      hostReady: false,
+    })));
+    expect(diagnostics.emitAsync).toHaveBeenCalledWith(expect.objectContaining({
+      data: {
+        lifecycleEvent: 'host-closed',
+        hostInstanceId: HOST_INSTANCE_ID,
+      },
+    }));
   });
 
   it('closes after a pending idle request once the last background-only transfer expires', async () => {
@@ -511,7 +526,7 @@ describe('PipelineHostBroker', () => {
       await Promise.resolve();
       await Promise.resolve();
 
-      host.emitMessage({ type: 'idle-close' });
+      host.emitMessage({ type: 'idle-close', hostInstanceId: HOST_INSTANCE_ID });
       expect(closeDocument).not.toHaveBeenCalled();
 
       await vi.advanceTimersByTimeAsync(60_000);
@@ -539,7 +554,7 @@ describe('PipelineHostBroker', () => {
     const createDocument = vi.fn(async () => {
       documentExists = true;
       broker.handlePort(secondHost);
-      secondHost.emitMessage({ type: 'host-ready' });
+      secondHost.emitMessage({ type: 'host-ready', hostInstanceId: 'pipeline-host-second' });
     });
     const closeDocument = vi.fn(async () => {
       await close.promise;
@@ -556,8 +571,8 @@ describe('PipelineHostBroker', () => {
       offscreen: { createDocument, closeDocument },
     });
     broker.handlePort(firstHost);
-    firstHost.emitMessage({ type: 'host-ready' });
-    firstHost.emitMessage({ type: 'idle-close' });
+    firstHost.emitMessage({ type: 'host-ready', hostInstanceId: HOST_INSTANCE_ID });
+    firstHost.emitMessage({ type: 'idle-close', hostInstanceId: HOST_INSTANCE_ID });
     const client = new FakePort(LOCAL_PIPELINE_CLIENT_PORT);
     broker.handlePort(client);
 
@@ -580,9 +595,9 @@ describe('PipelineHostBroker', () => {
     const { broker, host, createDocument, closeDocument } = createHarness();
     closeDocument.mockRejectedValueOnce(new Error('close failed'));
     broker.handlePort(host);
-    host.emitMessage({ type: 'host-ready' });
+    host.emitMessage({ type: 'host-ready', hostInstanceId: HOST_INSTANCE_ID });
 
-    host.emitMessage({ type: 'idle-close' });
+    host.emitMessage({ type: 'idle-close', hostInstanceId: HOST_INSTANCE_ID });
     await vi.waitFor(() => expect(closeDocument).toHaveBeenCalledOnce());
     await Promise.resolve();
 
@@ -608,7 +623,7 @@ describe('PipelineHostBroker', () => {
       const createDocument = vi.fn(async () => {
         documentExists = true;
         broker.handlePort(host);
-        host.emitMessage({ type: 'host-ready' });
+        host.emitMessage({ type: 'host-ready', hostInstanceId: HOST_INSTANCE_ID });
       });
       const closeDocument = vi.fn(async () => {
         documentExists = false;

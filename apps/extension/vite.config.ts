@@ -69,13 +69,25 @@ function extensionReleaseAssetsPlugin(
 
 function resolveExtensionTarget(mode: string): ExtensionTarget {
   if (mode === 'chromium' || mode === 'benchmark') return 'chromium';
-  if (mode === 'firefox') return 'firefox';
+  if (mode === 'firefox' || mode === 'firefox-lifecycle-test') return 'firefox';
   throw new Error('Extension target is required: use Vite mode "chromium" or "firefox".');
 }
 
 export default defineConfig(({ mode }): UserConfig => {
   const target = resolveExtensionTarget(mode);
-  const extensionDist = resolve(extensionRoot, `dist-${target}`);
+  const lifecycleTest = mode === 'firefox-lifecycle-test';
+  const configuredLifecycleTestIdleTimeoutMs = Number(
+    process.env.SHINOBU_LIFECYCLE_TEST_IDLE_TIMEOUT_MS ?? 1_000,
+  );
+  if (
+    lifecycleTest
+    && (!Number.isFinite(configuredLifecycleTestIdleTimeoutMs)
+      || configuredLifecycleTestIdleTimeoutMs < 0)
+  ) {
+    throw new Error('SHINOBU_LIFECYCLE_TEST_IDLE_TIMEOUT_MS must be a non-negative number.');
+  }
+  const extensionDistName = lifecycleTest ? 'dist-firefox-lifecycle-test' : `dist-${target}`;
+  const extensionDist = resolve(extensionRoot, extensionDistName);
 
   if (mode === 'benchmark') {
     return {
@@ -121,6 +133,15 @@ export default defineConfig(({ mode }): UserConfig => {
       react(),
       extensionReleaseAssetsPlugin(target, extensionDist),
     ],
+    define: {
+      __SHINOBU_LIFECYCLE_TEST__: JSON.stringify(lifecycleTest),
+      __SHINOBU_LIFECYCLE_TEST_IDLE_TIMEOUT_MS__: JSON.stringify(
+        configuredLifecycleTestIdleTimeoutMs,
+      ),
+      __SHINOBU_LIFECYCLE_TEST_REPORT_URL__: JSON.stringify(
+        process.env.SHINOBU_LIFECYCLE_TEST_REPORT_URL ?? '',
+      ),
+    },
     worker: {
       format: 'es',
       plugins: () => [
@@ -128,7 +149,7 @@ export default defineConfig(({ mode }): UserConfig => {
       ],
     },
     build: {
-      outDir: `dist-${target}`,
+      outDir: extensionDistName,
       rollupOptions: {
         input: {
           popup: resolve(extensionRoot, 'popup.html'),

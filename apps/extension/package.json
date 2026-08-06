@@ -11,6 +11,7 @@
     "clean:legacy-dist": "node scripts/clean-legacy-dist.mjs",
     "build:chromium:bundle": "vite build --mode chromium && node scripts/build-content.mjs --out-dir dist-chromium && node ../../scripts/build-worker.mjs --out-dir dist-chromium && node ../../scripts/check-release-boundaries.mjs --target chromium --dist dist-chromium",
     "build:firefox:bundle": "vite build --mode firefox && node scripts/build-content.mjs --out-dir dist-firefox && node ../../scripts/build-worker.mjs --out-dir dist-firefox && node ../../scripts/check-release-boundaries.mjs --target firefox --dist dist-firefox",
+    "build:firefox:lifecycle-test": "npm run typecheck && vite build --mode firefox-lifecycle-test && node scripts/build-content.mjs --out-dir dist-firefox-lifecycle-test && node ../../scripts/build-worker.mjs --out-dir dist-firefox-lifecycle-test",
     "build:chromium": "npm run typecheck && npm run clean:legacy-dist && npm run build:chromium:bundle",
     "build:firefox": "npm run typecheck && npm run clean:legacy-dist && npm run build:firefox:bundle",
     "build": "npm run typecheck && npm run clean:legacy-dist && npm run build:chromium:bundle && npm run build:firefox:bundle && node ../../scripts/check-extension-parity.mjs --chromium dist-chromium --firefox dist-firefox",

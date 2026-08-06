@@ -8,25 +8,34 @@ const extensionPackage = JSON.parse(
 ) as { version: string };
 
 describe('dual-target extension manifests', () => {
-  it('keeps shared capability intent and version aligned', () => {
+  it('keeps shared capability intent and version aligned across manifest versions', () => {
     const chromium = createExtensionManifest('chromium', extensionPackage.version);
     const firefox = createExtensionManifest('firefox', extensionPackage.version);
 
     for (const key of [
-      'manifest_version',
       'name',
       'version',
-      'action',
       'icons',
       'optional_permissions',
-      'host_permissions',
       'commands',
       'content_scripts',
-      'web_accessible_resources',
-      'content_security_policy',
     ]) {
       expect(firefox[key], key).toEqual(chromium[key]);
     }
+    expect(firefox.browser_action).toEqual(chromium.action);
+    expect(chromium.host_permissions).toEqual(['<all_urls>']);
+    expect(firefox.host_permissions).toBeUndefined();
+    expect(firefox.permissions).toContain('<all_urls>');
+    expect(firefox.web_accessible_resources).toEqual(['fonts/*']);
+    expect(chromium.web_accessible_resources).toEqual([
+      { resources: ['fonts/*'], matches: ['<all_urls>'] },
+    ]);
+    expect(chromium.content_security_policy).toEqual({
+      extension_pages: "script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; object-src 'self';",
+    });
+    expect(firefox.content_security_policy).toBe(
+      "script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; object-src 'self';",
+    );
     expect(chromium.version).toBe(extensionPackage.version);
     expect(firefox.version).toBe(extensionPackage.version);
     expect(chromium.optional_permissions).toBeUndefined();
@@ -38,6 +47,7 @@ describe('dual-target extension manifests', () => {
 
   it('uses only the Chromium service-worker overlay', () => {
     const manifest = createExtensionManifest('chromium', extensionPackage.version);
+    expect(manifest.manifest_version).toBe(3);
     expect(manifest.minimum_chrome_version).toBe('109');
     expect(manifest.permissions).toContain('offscreen');
     expect(manifest.background).toEqual({
@@ -47,12 +57,15 @@ describe('dual-target extension manifests', () => {
     expect(manifest.browser_specific_settings).toBeUndefined();
   });
 
-  it('uses only the Firefox event-page overlay and permanent Gecko id', () => {
+  it('uses only the Firefox MV2 persistent-page overlay and permanent Gecko id', () => {
     const manifest = createExtensionManifest('firefox', extensionPackage.version);
+    expect(manifest.manifest_version).toBe(2);
     expect(manifest.minimum_chrome_version).toBeUndefined();
     expect(manifest.permissions).not.toContain('offscreen');
+    expect(manifest.action).toBeUndefined();
     expect(manifest.background).toEqual({
       page: 'background-firefox.html',
+      persistent: true,
     });
     expect(manifest.browser_specific_settings).toEqual({
       gecko: {

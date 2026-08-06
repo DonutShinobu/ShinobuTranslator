@@ -2,11 +2,9 @@ import { base64ToBlob, blobToBase64 } from '@shinobu/image-pipeline/protocol';
 import {
   getExtensionRuntime,
   type ExtensionPort,
-  type ExtensionRuntime,
 } from '../../../shared/extensionRuntime';
 import {
   Base64ChunkAssembler,
-  LOCAL_PIPELINE_BACKGROUND_LEASE_PORT,
   LOCAL_PIPELINE_CLIENT_PORT,
   LocalPipelineRemoteError,
   createProtocolError,
@@ -29,23 +27,6 @@ export type RunLocalPipeline = (
   onProgress: (progress: PipelineProgress) => void,
   options?: { signal?: AbortSignal },
 ) => Promise<LocalPipelineResult>;
-
-let firefoxBackgroundLease: ExtensionPort | null = null;
-
-function ensureFirefoxBackgroundLease(runtime: ExtensionRuntime): void {
-  if (firefoxBackgroundLease) return;
-  try {
-    if (!runtime.keepsBackgroundAliveWithPort()) return;
-    const lease = runtime.connect(LOCAL_PIPELINE_BACKGROUND_LEASE_PORT);
-    firefoxBackgroundLease = lease;
-    lease.onDisconnect.addListener(() => {
-      if (firefoxBackgroundLease === lease) firefoxBackgroundLease = null;
-    });
-  } catch {
-    // The lease only preserves warm state; pipeline execution must remain available.
-    firefoxBackgroundLease = null;
-  }
-}
 
 function createJobId(): string {
   return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -93,7 +74,6 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
   }
 
   const jobId = createJobId();
-  ensureFirefoxBackgroundLease(runtime);
   const port = runtime.connect(LOCAL_PIPELINE_CLIENT_PORT);
   return new Promise<LocalPipelineResult>((resolve, reject) => {
     let settled = false;
@@ -202,7 +182,6 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
       if (value.type === 'host-ready' || value.type === 'idle-close') return;
       switch (value.type) {
         case 'ready':
-          ensureFirefoxBackgroundLease(runtime);
           void sendInput();
           break;
         case 'queued':

@@ -121,7 +121,7 @@ describe('monorepo application ownership', () => {
     );
     expect(rootPackage.scripts?.build).toBe('npm run build:extension');
     expect(chromiumManifest.manifest_version).toBe(3);
-    expect(firefoxManifest.manifest_version).toBe(3);
+    expect(firefoxManifest.manifest_version).toBe(2);
     expect(chromiumManifest.version).toBe(extensionPackage.version);
     expect(firefoxManifest.version).toBe(extensionPackage.version);
   });

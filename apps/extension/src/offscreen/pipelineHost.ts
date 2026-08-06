@@ -59,6 +59,8 @@ export type PipelineHostDependencies = {
   modelRuntime: ModelRuntime;
   platform: PipelinePlatform;
   fontSource?: (path: string) => string;
+  hostInstanceId?: string;
+  idleTimeoutMs?: number;
 };
 
 const extensionPipelineHostDiagnostics: DiagnosticLogEmitter = {
@@ -112,6 +114,12 @@ function getMessageJobId(value: unknown): string | null {
   return typeof jobId === 'string' && jobId.length > 0 ? jobId : null;
 }
 
+function createHostInstanceId(): string {
+  return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? `pipeline-host-${crypto.randomUUID()}`
+    : `pipeline-host-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export class PipelineHost {
   private port: ExtensionPort | null = null;
   private readonly jobs = new Map<string, PipelineJob>();
@@ -126,6 +134,8 @@ export class PipelineHost {
   private readonly modelRuntime: ModelRuntime;
   private readonly translationTransport: TextTranslationTransport;
   private readonly diagnostics: DiagnosticLogEmitter;
+  private readonly hostInstanceId: string;
+  private readonly idleTimeoutMs: number;
 
   constructor(
     private readonly transport: PipelineHostTransport = new RuntimePipelineHostTransport(),
@@ -136,12 +146,34 @@ export class PipelineHost {
     this.diagnostics = dependencies.diagnostics
       ?? extensionPipelineHostDiagnostics;
     this.modelRuntime = dependencies.modelRuntime;
+    this.hostInstanceId = dependencies.hostInstanceId ?? createHostInstanceId();
+    this.idleTimeoutMs = dependencies.idleTimeoutMs ?? LOCAL_PIPELINE_IDLE_TIMEOUT_MS;
+    if (!Number.isFinite(this.idleTimeoutMs) || this.idleTimeoutMs < 0) {
+      throw new RangeError('PipelineHost idleTimeoutMs 必须是非负有限数值');
+    }
     this.imageRuntime = createImagePipeline({
       platform: dependencies.platform,
       modelRuntime: this.modelRuntime,
       detectionFallbackStrategy: { kind: 'heuristic-only' },
       fontSource: dependencies.fontSource,
       observer: this.diagnostics,
+    });
+    this.emitLifecycleEvent('host-created', '流水线宿主已创建');
+  }
+
+  private emitLifecycleEvent(
+    lifecycleEvent: 'host-created' | 'host-ready' | 'idle-close-requested' | 'host-disposed',
+    message: string,
+  ): void {
+    this.diagnostics.emit({
+      level: 'info',
+      category: 'runtime.message',
+      source: { context: 'pipeline-host', module: 'pipelineHost.ts' },
+      message,
+      data: {
+        lifecycleEvent,
+        hostInstanceId: this.hostInstanceId,
+      },
     });
   }
 
@@ -159,13 +191,15 @@ export class PipelineHost {
     port.onDisconnect.addListener(() => {
       this.handleDisconnect(port);
     });
-    safelyPost(port, { type: 'host-ready' });
+    safelyPost(port, { type: 'host-ready', hostInstanceId: this.hostInstanceId });
+    this.emitLifecycleEvent('host-ready', '流水线宿主已连接');
     this.scheduleIdleClose();
   }
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.emitLifecycleEvent('host-disposed', '流水线宿主已关闭');
     this.clearIdleClose();
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
@@ -645,7 +679,7 @@ export class PipelineHost {
     const generation = this.idleGeneration;
     this.idleTimer = setTimeout(() => {
       void this.releaseIdleResources(generation);
-    }, LOCAL_PIPELINE_IDLE_TIMEOUT_MS);
+    }, this.idleTimeoutMs);
   }
 
   private async releaseIdleResources(generation: number): Promise<void> {
@@ -654,12 +688,17 @@ export class PipelineHost {
     this.idleReleasePromise = releasePromise;
     try {
       await releasePromise;
-      await this.diagnostics.emitAsync({
+      void this.diagnostics.emitAsync({
         level: 'info',
         category: 'model.runtime',
         source: { context: 'pipeline-host', module: 'pipelineHost.ts' },
-        message: '流水线宿主空闲 5 分钟，已释放模型 Session 与 Worker',
-      });
+        message: '流水线宿主空闲 TTL 到期，已释放模型 Session 与 Worker',
+        data: {
+          lifecycleEvent: 'idle-dispose-complete',
+          hostInstanceId: this.hostInstanceId,
+          idleTimeoutMs: this.idleTimeoutMs,
+        },
+      }).catch(() => false);
     } catch (error) {
       this.diagnostics.emit({
         level: 'warn',
@@ -674,7 +713,11 @@ export class PipelineHost {
       }
     }
     if (generation === this.idleGeneration && !this.activeJob && this.jobs.size === 0) {
-      safelyPost(this.port, { type: 'idle-close' });
+      this.emitLifecycleEvent('idle-close-requested', '流水线宿主请求关闭空闲宿主');
+      safelyPost(this.port, {
+        type: 'idle-close',
+        hostInstanceId: this.hostInstanceId,
+      });
     }
   }
 }

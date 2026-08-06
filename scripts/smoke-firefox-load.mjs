@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
@@ -7,6 +7,37 @@ function readRequiredOption(name) {
   const value = index >= 0 ? process.argv[index + 1] : undefined;
   if (!value || value.startsWith('--')) throw new Error(`${name} is required`);
   return value;
+}
+
+function listTemporaryWebExtFirefoxPids() {
+  if (process.platform !== 'win32') return [];
+  const command = String.raw`
+$ids = @(Get-CimInstance Win32_Process -Filter "Name = 'firefox.exe'" |
+  Where-Object { $_.CommandLine -like '*-start-debugger-server*' -and $_.CommandLine -like '*AppData\Local\Temp\firefox-profile*' } |
+  ForEach-Object { [int]$_.ProcessId })
+ConvertTo-Json -InputObject $ids -Compress
+`;
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  });
+  if (result.status !== 0 || !result.stdout.trim()) return [];
+  const parsed = JSON.parse(result.stdout);
+  return Array.isArray(parsed) ? parsed : [parsed];
+}
+
+function stopProcessTree(child, preexistingFirefoxPids) {
+  if (!child.pid) return;
+  if (process.platform === 'win32') {
+    spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    for (const pid of listTemporaryWebExtFirefoxPids()) {
+      if (!preexistingFirefoxPids.has(pid)) {
+        spawnSync('taskkill.exe', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' });
+      }
+    }
+    return;
+  }
+  process.kill(-child.pid, 'SIGTERM');
 }
 
 const root = resolve(import.meta.dirname, '..');
@@ -27,7 +58,18 @@ const manifest = JSON.parse(readFileSync(join(dist, 'manifest.json'), 'utf8'));
 if (manifest.browser_specific_settings?.gecko?.strict_min_version !== '140.0') {
   throw new Error('Firefox smoke requires a manifest with strict_min_version 140.0');
 }
+if (
+  manifest.manifest_version !== 2
+  || manifest.background?.page !== 'background-firefox.html'
+  || manifest.background?.persistent !== true
+) {
+  throw new Error('Firefox smoke requires the persistent Manifest V2 background page');
+}
+if (!manifest.browser_action || manifest.action !== undefined) {
+  throw new Error('Firefox smoke requires the Manifest V2 browser_action shape');
+}
 
+const preexistingFirefoxPids = new Set(listTemporaryWebExtFirefoxPids());
 const child = spawn(
   process.execPath,
   [
@@ -63,8 +105,9 @@ const earlyExit = new Promise((_, reject) => {
   });
 });
 const healthy = new Promise((resolveHealthy) => setTimeout(resolveHealthy, 20_000));
-await Promise.race([earlyExit, healthy]);
-
-if (process.platform === 'win32') child.kill();
-else if (child.pid) process.kill(-child.pid, 'SIGTERM');
-console.log('Firefox loaded the extension and kept its event page healthy for 20 seconds.');
+try {
+  await Promise.race([earlyExit, healthy]);
+} finally {
+  stopProcessTree(child, preexistingFirefoxPids);
+}
+console.log('Firefox loaded the persistent MV2 extension successfully for 20 seconds.');

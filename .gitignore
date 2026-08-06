@@ -5,6 +5,7 @@ node_modules/
 dist/
 apps/extension/dist-chromium/
 apps/extension/dist-firefox/
+apps/extension/dist-firefox-lifecycle-test/
 docs/*
 !docs/agents/
 !docs/agents/*.md

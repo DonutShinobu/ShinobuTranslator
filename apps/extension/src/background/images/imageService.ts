@@ -15,17 +15,36 @@ export function parseImageDataUrl(dataUrl: string): {
   };
 }
 
-export function captureVisibleTab(sender: ExtensionMessageSender): Promise<{
+export async function captureVisibleTab(sender: ExtensionMessageSender): Promise<{
   base64: string;
   contentType: string;
   sourceUrl: string;
 }> {
   const chromeApi = getExtensionApi();
   if (!chromeApi?.tabs?.captureVisibleTab) {
-    return Promise.reject(new Error('当前浏览器不支持标签页截图'));
+    throw new Error('当前浏览器不支持标签页截图');
   }
 
+  const senderTabId = sender.tab?.id;
   const windowId = typeof sender.tab?.windowId === 'number' ? sender.tab.windowId : undefined;
+  const query = chromeApi.tabs.query;
+  if (!Number.isSafeInteger(senderTabId) || !query) {
+    throw new Error('无法确认截图请求所属的活动标签页');
+  }
+  await new Promise<void>((resolve, reject) => {
+    query({ active: true, ...(windowId !== undefined ? { windowId } : {}) }, (tabs) => {
+      const lastError = chromeApi.runtime?.lastError;
+      if (lastError?.message) {
+        reject(new Error(lastError.message));
+        return;
+      }
+      if (!tabs.some((tab) => tab.id === senderTabId)) {
+        reject(new Error('截图请求所属标签页已不再活动'));
+        return;
+      }
+      resolve();
+    });
+  });
   return new Promise((resolve, reject) => {
     chromeApi.tabs?.captureVisibleTab?.(windowId, { format: 'png' }, (dataUrl?: string) => {
       const lastError = chromeApi.runtime?.lastError;

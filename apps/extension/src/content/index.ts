@@ -3,8 +3,14 @@ import { pixivAdapter } from './adapters/pixiv';
 import { ehentaiAdapter } from './adapters/ehentai';
 import type { SiteAdapter } from './core/types';
 import { TranslatorCore } from './core/TranslatorCore';
-import { getExtensionApi } from '../shared/extensionRuntime';
+import { getExtensionApi, type ExtensionPort } from '../shared/extensionRuntime';
 import { toErrorMessage } from '../shared/utils';
+import {
+  createContentSessionId,
+  setActiveContentSessionId,
+  toContentSessionPortName,
+} from '../shared/contentSession';
+import { bindContentLifecycle } from './core/contentLifecycle';
 import {
   buildScreenshotElementCandidates,
   toDocumentScreenshotRect,
@@ -28,9 +34,20 @@ function createNullAdapter(): SiteAdapter {
 }
 
 const adapters = [twitterAdapter, pixivAdapter, ehentaiAdapter];
+const contentSessionId = createContentSessionId();
+setActiveContentSessionId(contentSessionId);
+let contentSessionPort: ExtensionPort | null = null;
+try {
+  contentSessionPort = getExtensionApi()?.runtime?.connect?.({
+    name: toContentSessionPortName(contentSessionId),
+  }) ?? null;
+} catch {
+  // Page lifecycle still stops the content core when Port creation is unavailable.
+}
 const adapter = adapters.find(a => a.match()) || createNullAdapter();
-const core = new TranslatorCore(adapter);
+const core = new TranslatorCore(adapter, contentSessionId);
 core.start();
+bindContentLifecycle(core, contentSessionPort);
 
 // --- Context menu support ---
 

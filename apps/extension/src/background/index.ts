@@ -50,6 +50,13 @@ import { createProviderAccessModule } from './extensionControl/providerAccess';
 import { createExtensionControlModule } from './extensionControl/extensionControl';
 import { registerExtensionControlPort } from './extensionControl/extensionControlPort';
 import { isTrustedPopupSender } from './extensionControl/credentialDisclosurePolicy';
+import { registerContentSessionLifecycle } from './contentSessionLifecycle';
+import { OpfsPageArtifactStore } from './continuous/pageArtifactStore';
+import {
+  PageArtifactService,
+  StorageSessionPageArtifactSessionIndex,
+} from './continuous/pageArtifactService';
+import { ContinuousTabStateService } from './continuous/continuousTabStateService';
 
 const imageDownloader = createImageDownloader();
 const settingsRepository = createExtensionSettingsRepository({
@@ -74,8 +81,18 @@ const extensionControl = createExtensionControlModule(
   translationConfiguration,
   providerAccess,
 );
+const extensionApi = getExtensionApi() ?? {};
+const pageArtifactService = new PageArtifactService(
+  new OpfsPageArtifactStore(),
+  new StorageSessionPageArtifactSessionIndex(extensionApi),
+);
+const continuousTabStateService = new ContinuousTabStateService(extensionApi);
 
 const services: BackgroundServices = {
+  continuous: {
+    artifacts: pageArtifactService,
+    tabState: continuousTabStateService,
+  },
   settings: {
     get: getSettings,
   },
@@ -156,12 +173,17 @@ export function initializeBackground(lifecycle: PipelineHostLifecycle): void {
   }
   initialized = true;
 
+  void pageArtifactService.initialize().catch(() => undefined);
+
   pipelineHostBroker = registerPipelineHostBroker(
     chromeApi,
     lifecycle,
     pipelineHostBrokerDiagnostics,
   );
   registerExtensionControlPort(chromeApi, extensionControl);
+  registerContentSessionLifecycle(chromeApi, (contentSessionId, tabId) => {
+    void pageArtifactService.closeContentSession(contentSessionId, tabId);
+  });
 
   if (isPipelineLifecycleTestBuild()) {
     chromeApi.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
@@ -201,6 +223,7 @@ export function initializeBackground(lifecycle: PipelineHostLifecycle): void {
 
   chromeApi.tabs?.onUpdated?.addListener((tabId, changeInfo, tab) => {
     if (typeof changeInfo.url === 'string') {
+      void continuousTabStateService.handleNavigation(tabId, changeInfo.url);
       void handleOpenAiOAuthCallbackUrl(tabId, changeInfo.url)
         .then((changed) => changed
           ? extensionControl.refreshProviderAccess('openai-oauth')
@@ -213,6 +236,8 @@ export function initializeBackground(lifecycle: PipelineHostLifecycle): void {
   });
 
   chromeApi.tabs?.onRemoved?.addListener((tabId) => {
+    void pageArtifactService.closeTab(tabId);
+    void continuousTabStateService.clearTab(tabId);
     void handleOpenAiOAuthTabRemoved(tabId)
       .then((changed) => changed
         ? extensionControl.refreshProviderAccess('openai-oauth')

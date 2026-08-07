@@ -21,6 +21,8 @@ export type ImageTranslationExecutionActivityOrigin = 'explicit' | 'automatic';
 export type ImageTranslationExecutionActivityRequest = {
   owner: ImageTranslationExecutionOwner;
   origin: ImageTranslationExecutionActivityOrigin;
+  /** Automatic activities that should yield to explicit user work. */
+  yieldToExplicit?: boolean;
 };
 
 export interface ImageTranslationExecutionActivity extends ImageTranslationExecutionModule {

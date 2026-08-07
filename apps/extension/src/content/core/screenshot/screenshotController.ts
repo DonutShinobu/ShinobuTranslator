@@ -1,4 +1,7 @@
-import { sendRuntimeMessage } from '../../../shared/messages';
+import {
+  RuntimeVisibleTabCapturePort,
+  type VisibleTabCapturePort,
+} from '../continuous/visibleTabCapturePort';
 import {
   createScreenshotResultUi,
   repositionScreenshotResultOverlay,
@@ -56,6 +59,7 @@ export class ScreenshotController {
     private readonly executionArbiter: ImageTranslationExecutionArbiter,
     private readonly cardStateController: CardStateController,
     private readonly requestSelection: () => Promise<ScreenshotSelection | null> = requestScreenshotSelection,
+    private readonly visibleTabCapture: VisibleTabCapturePort = new RuntimeVisibleTabCapturePort(),
   ) {}
 
   async startScreenshotTranslate(): Promise<void> {
@@ -365,21 +369,18 @@ export class ScreenshotController {
         ui.host.style.visibility = 'hidden';
         await waitForNextPaint();
         throwIfActivityAborted(activitySignal);
-        const captureResponse = await sendRuntimeMessage({ type: 'mt:capture-visible-tab' });
-        if (!captureResponse.ok || captureResponse.type !== 'mt:capture-visible-tab') {
-          throw new Error(captureResponse.ok ? '截图失败' : captureResponse.error);
-        }
+        const capture = await this.visibleTabCapture.capture();
         if (disposed) throw new Error('截图翻译已关闭');
         throwIfActivityAborted(activitySignal);
 
         ui.host.style.visibility = '';
         state.stageText = '裁剪截图中';
         render();
-        const screenshotDataUrl = `data:${captureResponse.contentType};base64,${captureResponse.base64}`;
-        const capturedFile = await cropScreenshotToFile(screenshotDataUrl, selection.viewportRect, {
-          width: window.innerWidth,
-          height: window.innerHeight,
-        });
+        const capturedFile = await cropScreenshotToFile(
+          capture.dataUrl,
+          selection.viewportRect,
+          capture.viewport,
+        );
         throwIfActivityAborted(activitySignal);
         screenshotFile = capturedFile;
         if (screenshotOriginalUrl) URL.revokeObjectURL(screenshotOriginalUrl);

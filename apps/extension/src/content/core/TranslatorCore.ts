@@ -17,6 +17,8 @@ import { PhotoStateStore } from './state/photoStateStore';
 import { ReadingModeController } from './reading/readingModeController';
 import { CardStateController } from './ui/cardState';
 import { ScreenshotController } from './screenshot/screenshotController';
+import type { ContinuousTranslationModule } from './continuous/contracts';
+import { createDefaultContinuousTranslationModule } from './continuous/defaultContinuousTranslationModule';
 
 type MountedImage = {
   key: string;
@@ -39,12 +41,13 @@ export class TranslatorCore {
   );
   private readonly imageTranslationController: ImageTranslationController;
   private readonly readingModeController: ReadingModeController;
+  private readonly continuousTranslationModule: ContinuousTranslationModule | null;
   private mounted = new Map<string, MountedImage>();
   private retainedTargets = new Map<string, ImageTarget>();
   private disposeObserver: (() => void) | null = null;
   private syncTimer: number | null = null;
 
-  constructor(adapter: SiteAdapter) {
+  constructor(adapter: SiteAdapter, contentSessionId?: string) {
     this.adapter = adapter;
     this.imageTranslationController = new ImageTranslationController(
       this.stateStore,
@@ -65,6 +68,12 @@ export class TranslatorCore {
       () => this.scheduleSync(),
       () => this.cancelScheduledSync(),
     );
+    this.continuousTranslationModule = contentSessionId
+      ? createDefaultContinuousTranslationModule(
+          contentSessionId,
+          this.imageTranslationExecutionArbiter,
+        )
+      : null;
   }
 
   stop(): void {
@@ -77,6 +86,7 @@ export class TranslatorCore {
       this.syncTimer = null;
     }
     this.readingModeController.teardown();
+    this.continuousTranslationModule?.dispose();
     this.screenshotController.dispose();
     this.imageTranslationController.dispose();
     this.retainedTargets.clear();
@@ -86,6 +96,7 @@ export class TranslatorCore {
 
   start(): void {
     injectStyles();
+    this.continuousTranslationModule?.start();
     this.disposeObserver = this.adapter.observe(() => this.scheduleSync());
     this.sync();
   }

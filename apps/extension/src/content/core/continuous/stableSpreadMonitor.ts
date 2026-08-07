@@ -72,8 +72,10 @@ export class StableSpreadMonitor {
     private readonly onStable: (spread: ReaderVisibleSpread) => void,
     dependencies: StableSpreadMonitorDependencies = {},
   ) {
-    this.requestFrame = dependencies.requestAnimationFrame ?? globalThis.requestAnimationFrame;
-    this.cancelFrame = dependencies.cancelAnimationFrame ?? globalThis.cancelAnimationFrame;
+    this.requestFrame = dependencies.requestAnimationFrame
+      ?? ((callback) => globalThis.requestAnimationFrame(callback));
+    this.cancelFrame = dependencies.cancelAnimationFrame
+      ?? ((handle) => globalThis.cancelAnimationFrame(handle));
   }
 
   start(): void {

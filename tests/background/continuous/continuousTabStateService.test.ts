@@ -5,17 +5,35 @@ import type { ExtensionBrowserApi } from '../../../apps/extension/src/shared/ext
 describe('ContinuousTabStateService', () => {
   it('continues on same-origin documents and clears state after a cross-origin navigation', async () => {
     const values = new Map<string, unknown>();
+    const storageSession = {
+      async get(key: string | string[] | Record<string, unknown>) {
+        if (this !== storageSession) {
+          throw new TypeError(
+            'Illegal invocation: Function must be called on an object of type StorageArea',
+          );
+        }
+        return { [key as string]: values.get(key as string) };
+      },
+      async set(items: Record<string, unknown>) {
+        if (this !== storageSession) {
+          throw new TypeError(
+            'Illegal invocation: Function must be called on an object of type StorageArea',
+          );
+        }
+        for (const [key, value] of Object.entries(items)) values.set(key, value);
+      },
+      async remove(key: string | string[]) {
+        if (this !== storageSession) {
+          throw new TypeError(
+            'Illegal invocation: Function must be called on an object of type StorageArea',
+          );
+        }
+        for (const item of Array.isArray(key) ? key : [key]) values.delete(item);
+      },
+    };
     const api: ExtensionBrowserApi = {
       storage: {
-        session: {
-          get: async (key) => ({ [key as string]: values.get(key as string) }),
-          set: async (items) => {
-            for (const [key, value] of Object.entries(items)) values.set(key, value);
-          },
-          remove: async (key) => {
-            for (const item of Array.isArray(key) ? key : [key]) values.delete(item);
-          },
-        },
+        session: storageSession,
       },
     };
     const service = new ContinuousTabStateService(api);

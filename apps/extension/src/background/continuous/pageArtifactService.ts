@@ -50,9 +50,9 @@ export class StorageSessionPageArtifactSessionIndex implements PageArtifactSessi
   constructor(private readonly api: ExtensionBrowserApi) {}
 
   async read(): Promise<readonly ActiveContentSession[]> {
-    const get = this.api.storage?.session?.get;
-    if (!get) throw new Error('浏览器不支持页面产物会话索引');
-    const value = (await get(sessionIndexKey))[sessionIndexKey];
+    const storageSession = this.api.storage?.session;
+    if (!storageSession?.get) throw new Error('浏览器不支持页面产物会话索引');
+    const value = (await storageSession.get(sessionIndexKey))[sessionIndexKey];
     if (value === undefined) return [];
     if (!Array.isArray(value) || !value.every(isActiveContentSession)) {
       throw new Error('页面产物会话索引已损坏');
@@ -61,9 +61,9 @@ export class StorageSessionPageArtifactSessionIndex implements PageArtifactSessi
   }
 
   async write(sessions: readonly ActiveContentSession[]): Promise<void> {
-    const set = this.api.storage?.session?.set;
-    if (!set) throw new Error('浏览器不支持页面产物会话索引');
-    await set({ [sessionIndexKey]: sessions });
+    const storageSession = this.api.storage?.session;
+    if (!storageSession?.set) throw new Error('浏览器不支持页面产物会话索引');
+    await storageSession.set({ [sessionIndexKey]: sessions });
   }
 }
 

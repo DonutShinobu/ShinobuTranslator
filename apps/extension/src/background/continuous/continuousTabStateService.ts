@@ -68,9 +68,9 @@ export class ContinuousTabStateService {
   }
 
   async clearTab(tabId: number): Promise<void> {
-    const remove = this.api.storage?.session?.remove;
-    if (!remove) throw new Error('浏览器不支持连续翻译标签页状态');
-    await remove(stateKey(tabId));
+    const storageSession = this.api.storage?.session;
+    if (!storageSession?.remove) throw new Error('浏览器不支持连续翻译标签页状态');
+    await storageSession.remove(stateKey(tabId));
   }
 
   async handleNavigation(tabId: number, url: string): Promise<void> {
@@ -86,16 +86,16 @@ export class ContinuousTabStateService {
   }
 
   private async get(tabId: number): Promise<StoredContinuousTabState | null> {
-    const get = this.api.storage?.session?.get;
-    if (!get) throw new Error('浏览器不支持连续翻译标签页状态');
+    const storageSession = this.api.storage?.session;
+    if (!storageSession?.get) throw new Error('浏览器不支持连续翻译标签页状态');
     const key = stateKey(tabId);
-    const value = (await get(key))[key];
+    const value = (await storageSession.get(key))[key];
     return isStoredState(value) ? value : null;
   }
 
   private async set(tabId: number, state: StoredContinuousTabState): Promise<void> {
-    const set = this.api.storage?.session?.set;
-    if (!set) throw new Error('浏览器不支持连续翻译标签页状态');
-    await set({ [stateKey(tabId)]: state });
+    const storageSession = this.api.storage?.session;
+    if (!storageSession?.set) throw new Error('浏览器不支持连续翻译标签页状态');
+    await storageSession.set({ [stateKey(tabId)]: state });
   }
 }

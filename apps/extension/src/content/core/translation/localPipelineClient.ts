@@ -186,8 +186,8 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
           break;
         case 'queued':
           onProgress({
-            stage: 'queued',
-            operation: 'queue',
+            stage: value.position === 0 ? 'runtime-prepare' : 'queued',
+            operation: value.position === 0 ? 'start' : 'queue',
             detail: value.position === 0 ? '本地流水线任务开始执行' : `本地流水线排队中（前方 ${value.position} 个任务）`,
           });
           break;

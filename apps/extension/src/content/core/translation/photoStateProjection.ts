@@ -127,7 +127,13 @@ export function applyImageTranslationProgress(
 
   const progress = event.execution.progress;
   const detail = progress.detail ?? progress.operation;
-  if (progress.stage === 'runtime-prepare' || progress.stage === 'finalize') {
+  if (progress.stage === 'runtime-prepare') {
+    state.stageText = '准备中';
+    options.jankMonitor?.setStage(progress.stage, detail, state.stageText);
+    options.onProgress?.();
+    return;
+  }
+  if (progress.stage === 'finalize') {
     options.jankMonitor?.setStage(progress.stage, detail, state.stageText);
     return;
   }

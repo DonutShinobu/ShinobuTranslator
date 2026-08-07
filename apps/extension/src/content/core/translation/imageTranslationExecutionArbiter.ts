@@ -21,7 +21,7 @@ export type ImageTranslationExecutionActivityOrigin = 'explicit' | 'automatic';
 export type ImageTranslationExecutionActivityRequest = {
   owner: ImageTranslationExecutionOwner;
   origin: ImageTranslationExecutionActivityOrigin;
-  /** Automatic activities that should yield to explicit user work. */
+  /** Automatic activities that must pause while explicit user work is active. */
   yieldToExplicit?: boolean;
 };
 
@@ -52,7 +52,6 @@ type ExecutionTask = TranslationTask<
 >;
 
 const defaultEndReason = '图片翻译执行活动已结束';
-const replacedReason = '图片翻译执行活动已被其他拥有者替代';
 const disposedReason = '图片翻译执行仲裁器已停止';
 
 function toCancellationError(reason: unknown): unknown {
@@ -91,6 +90,7 @@ implements ImageTranslationExecutionActivity {
 
   constructor(
     private readonly executionModule: ImageTranslationExecutionModule,
+    readonly request: ImageTranslationExecutionActivityRequest,
     private readonly onEnd: (
       activity: ImageTranslationExecutionActivityImplementation,
       reason?: unknown,
@@ -174,10 +174,8 @@ implements ImageTranslationExecutionActivity {
 
 class ImageTranslationExecutionArbiterImplementation
 implements ImageTranslationExecutionArbiter {
-  private currentOwner: ImageTranslationExecutionOwner | undefined;
   private readonly activities = new Set<ImageTranslationExecutionActivityImplementation>();
   private disposed = false;
-  private replacementInProgress = false;
 
   constructor(private readonly executionModule: ImageTranslationExecutionModule) {}
 
@@ -185,21 +183,19 @@ implements ImageTranslationExecutionArbiter {
     request: ImageTranslationExecutionActivityRequest,
   ): BeginImageTranslationExecutionActivityResult {
     if (this.disposed) throw new Error(disposedReason);
-    if (this.replacementInProgress) return { status: 'deferred' };
-    if (this.currentOwner && this.currentOwner !== request.owner) {
-      if (request.origin === 'automatic') return { status: 'deferred' };
-      this.replacementInProgress = true;
-      try {
-        this.revokeAll(replacedReason);
-      } finally {
-        this.replacementInProgress = false;
-      }
-      if (this.disposed) return { status: 'deferred' };
+    if (
+      request.origin === 'automatic'
+      && request.yieldToExplicit
+      && [...this.activities].some((activity) => activity.request.origin === 'explicit')
+    ) {
+      return { status: 'deferred' };
     }
-
-    this.currentOwner = request.owner;
+    if (request.origin === 'explicit') {
+      this.revokeYieldingAutomaticActivities('连续翻译活动已让位于显式操作');
+    }
     const activity = new ImageTranslationExecutionActivityImplementation(
       this.executionModule,
+      request,
       (endedActivity, reason) => this.endActivity(endedActivity, reason),
     );
     this.activities.add(activity);
@@ -218,17 +214,26 @@ implements ImageTranslationExecutionArbiter {
   ): void {
     if (!this.activities.delete(activity)) return;
     activity.revoke(reason);
-    if (this.activities.size === 0) this.currentOwner = undefined;
   }
 
   private revokeAll(reason: unknown): void {
     const activities = [...this.activities];
     this.activities.clear();
-    this.currentOwner = undefined;
     for (const activity of activities) activity.blockDelivery(reason);
     for (const activity of activities) activity.cancelTasks(reason);
     for (const activity of activities) activity.broadcastRevocation(reason);
   }
+
+  private revokeYieldingAutomaticActivities(reason: unknown): void {
+    const activities = [...this.activities].filter((activity) => (
+      activity.request.origin === 'automatic' && activity.request.yieldToExplicit
+    ));
+    for (const activity of activities) this.activities.delete(activity);
+    for (const activity of activities) activity.blockDelivery(reason);
+    for (const activity of activities) activity.cancelTasks(reason);
+    for (const activity of activities) activity.broadcastRevocation(reason);
+  }
+
 }
 
 export function createImageTranslationExecutionArbiter(

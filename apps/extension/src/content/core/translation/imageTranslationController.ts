@@ -57,11 +57,11 @@ export class ImageTranslationController {
     this.activeActivities.delete(key);
   }
 
-  async handleTranslateClick(target: ImageTarget): Promise<void> {
+  handleTranslateClick(target: ImageTarget): Promise<void> {
     const { key } = target;
     const state = this.stateStore.ensure(key, target.originalUrl);
 
-    if (state.status === 'running') return;
+    if (state.status === 'running') return Promise.resolve();
 
     if (state.translatedUrl) {
       if (state.mode === 'translated') {
@@ -74,7 +74,7 @@ export class ImageTranslationController {
       const currentTarget = this.callbacks.resolveTarget(key) ?? target;
       this.callbacks.applyImage(currentTarget, state);
       this.callbacks.render(key);
-      return;
+      return Promise.resolve();
     }
 
     const clickTarget = this.callbacks.resolveTarget(key) ?? target;
@@ -90,8 +90,9 @@ export class ImageTranslationController {
       owner: 'inline-image',
       origin: 'explicit',
     });
-    if (admission.status !== 'active') return;
+    if (admission.status !== 'active') return Promise.resolve();
     const activity = admission.activity;
+    const releaseState = this.stateStore.protect(key);
     const task = startPhotoStateImageTranslation({
       executionModule: activity,
       request: {
@@ -112,6 +113,24 @@ export class ImageTranslationController {
     });
     this.activeActivities.set(key, activity);
 
+    return this.observeTranslation(
+      key,
+      state,
+      activity,
+      task,
+      contextResolution,
+      releaseState,
+    );
+  }
+
+  private async observeTranslation(
+    key: string,
+    state: PhotoState,
+    activity: ImageTranslationExecutionActivity,
+    task: ReturnType<typeof startPhotoStateImageTranslation>,
+    contextResolution: ImageTranslationContextResolution | undefined,
+    releaseState: () => void,
+  ): Promise<void> {
     try {
       const outcome = await task.result;
       if (outcome.translationDebug?.tweetContextLengthFallback) {
@@ -119,8 +138,8 @@ export class ImageTranslationController {
       } else if (outcome.translationDebug && contextResolution?.status === 'unavailable') {
         state.contextNoticeText = '未找到推文作为上下文';
       }
-      const latestTarget = this.callbacks.resolveTarget(key) ?? target;
-      this.callbacks.applyImage(latestTarget, state);
+      const latestTarget = this.callbacks.resolveTarget(key);
+      if (latestTarget) this.callbacks.applyImage(latestTarget, state);
       this.callbacks.render(key);
     } catch {
       // The PhotoState projection already exposes the actionable error.
@@ -129,6 +148,7 @@ export class ImageTranslationController {
         this.activeActivities.delete(key);
       }
       activity.end();
+      releaseState();
     }
   }
 }

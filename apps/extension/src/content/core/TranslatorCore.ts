@@ -43,9 +43,9 @@ export class TranslatorCore {
   private readonly readingModeController: ReadingModeController;
   private readonly continuousTranslationModule: ContinuousTranslationModule | null;
   private mounted = new Map<string, MountedImage>();
-  private retainedTargets = new Map<string, ImageTarget>();
   private disposeObserver: (() => void) | null = null;
   private syncTimer: number | null = null;
+  private stopped = false;
 
   constructor(adapter: SiteAdapter, contentSessionId?: string) {
     this.adapter = adapter;
@@ -77,6 +77,8 @@ export class TranslatorCore {
   }
 
   stop(): void {
+    if (this.stopped) return;
+    this.stopped = true;
     if (this.disposeObserver) {
       this.disposeObserver();
       this.disposeObserver = null;
@@ -89,12 +91,12 @@ export class TranslatorCore {
     this.continuousTranslationModule?.dispose();
     this.screenshotController.dispose();
     this.imageTranslationController.dispose();
-    this.retainedTargets.clear();
     this.imageTranslationExecutionArbiter.dispose('翻译核心已停止');
     this.stateStore.dispose();
   }
 
   start(): void {
+    if (this.stopped) return;
     injectStyles();
     this.continuousTranslationModule?.start();
     this.disposeObserver = this.adapter.observe(() => this.scheduleSync());
@@ -141,30 +143,15 @@ export class TranslatorCore {
       return;
     }
 
-    // Not in reading mode — clean up reading bar if it was previously shown.
-    this.readingModeController.teardown();
+    // Reading DOM can disappear during SPA transitions. Detach its UI without
+    // cancelling already-submitted work; stop() owns final cancellation.
+    this.readingModeController.suspend();
 
     const targets = this.adapter.findImages();
     const currentKeys = new Set(targets.map((t) => t.key));
 
-    for (const [key, target] of this.retainedTargets) {
-      if (currentKeys.has(key)) {
-        this.retainedTargets.delete(key);
-        continue;
-      }
-      if (!this.shouldKeepTranslationActivity(target, targets)) {
-        this.imageTranslationController.cancel(key);
-        this.retainedTargets.delete(key);
-      }
-    }
-
     for (const [key, mounted] of this.mounted) {
       if (!currentKeys.has(key)) {
-        if (this.shouldKeepTranslationActivity(mounted.target, targets)) {
-          this.retainedTargets.set(key, mounted.target);
-        } else {
-          this.imageTranslationController.cancel(key);
-        }
         mounted.ui.host.remove();
         this.mounted.delete(key);
       }
@@ -212,16 +199,6 @@ export class TranslatorCore {
     if (!mounted?.ui.host.isConnected) return;
     const state = this.stateStore.get(key) ?? null;
     renderUi(mounted.ui, state);
-  }
-
-  private shouldKeepTranslationActivity(
-    target: ImageTarget,
-    currentTargets: readonly ImageTarget[],
-  ): boolean {
-    return this.adapter.keepTranslationActivityOnUnmount?.(
-      target,
-      currentTargets,
-    ) ?? false;
   }
 
   private applyMountedStateImage(key: string, state: PhotoState): void {

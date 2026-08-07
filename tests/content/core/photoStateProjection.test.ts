@@ -155,7 +155,7 @@ describe('photo state projection', () => {
     });
   });
 
-  it('does not let a replaced activity cancel the newer projection for the same state', async () => {
+  it('does not let ending one owner cancel another projection for the same state', async () => {
     const state = createInitialPhotoState('https://example.com/source.png');
     const module = createImageTranslationExecutionModule({
       prepareExecution: prepareExecutionFromSettings(),
@@ -191,6 +191,8 @@ describe('photo state projection', () => {
       includeElapsedText: false,
     });
 
+    expect(first.signal.aborted).toBe(false);
+    firstAdmission.activity.end('first owner cleanup');
     await expect(first.result).rejects.toMatchObject({ code: 'TASK_CANCELLED' });
     expect(state.status).toBe('running');
 

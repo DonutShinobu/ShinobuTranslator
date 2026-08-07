@@ -108,7 +108,7 @@ describe('TranslatorCore x.com carousel lifecycle', () => {
   it.each([
     { name: 'the photo viewer closes', targets: [] },
     { name: 'a different tweet opens', targets: ['otherTweet'] as const },
-  ])('cancels A when $name', ({ targets }) => {
+  ])('keeps A active when $name', ({ targets }) => {
     const harness = createHarness();
     const cancel = vi.spyOn(harness.controller, 'cancel');
     harness.core.start();
@@ -118,7 +118,7 @@ describe('TranslatorCore x.com carousel lifecycle', () => {
     );
     harness.sync();
 
-    expect(cancel).toHaveBeenCalledWith(harness.first.key);
+    expect(cancel).not.toHaveBeenCalledWith(harness.first.key);
   });
 
   it('does not apply A completion to B and restores it when A remounts', () => {

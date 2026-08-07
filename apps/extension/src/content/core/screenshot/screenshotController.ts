@@ -245,6 +245,7 @@ export class ScreenshotController {
         if (admission.status !== 'active') return;
         const activity = admission.activity;
         activeActivity = activity;
+        const releaseState = this.stateStore.protect(key);
         activeJankMonitor = createProgressJankMonitor('context-image');
         const task = startPhotoStateImageTranslation({
           executionModule: activity,
@@ -287,6 +288,7 @@ export class ScreenshotController {
           if (activeActivity === activity) activeActivity = null;
           activity.end();
           activeJankMonitor = null;
+          releaseState();
         }
       };
 
@@ -398,6 +400,7 @@ export class ScreenshotController {
         if (admission.status !== 'active') return;
         const activity = admission.activity;
         activeActivity = activity;
+        const releaseState = this.stateStore.protect(key);
         let executionTaskStarted = false;
         activeJankMonitor = createProgressJankMonitor('screenshot');
         resetPhotoStateForImageTranslation(state);
@@ -442,6 +445,7 @@ export class ScreenshotController {
           if (activeActivity === activity) activeActivity = null;
           activity.end();
           activeJankMonitor = null;
+          releaseState();
         }
       };
 

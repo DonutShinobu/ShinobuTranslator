@@ -33,6 +33,8 @@ export class ReadingModeController {
   private activeActivity: ImageTranslationExecutionActivity | null = null;
   private errorText = '';
   private readingContextKey: string | null = null;
+  private suspended = false;
+  private readonly resumeWaiters = new Set<() => void>();
 
   constructor(
     private readonly adapter: SiteAdapter,
@@ -46,8 +48,10 @@ export class ReadingModeController {
   sync(): void {
       const nextContextKey = this.adapter.getReadingContextKey?.() ?? null;
       if (this.readingContextKey !== null && nextContextKey !== this.readingContextKey) {
-        this.activeActivity?.end('阅读作品已切换');
-        this.activeActivity = null;
+        if (this.activeActivity) {
+          this.suspend();
+          return;
+        }
         this.operation = { kind: 'idle' };
         this.allPageUrls = [];
         this.globalTranslateMode = 'original';
@@ -58,10 +62,12 @@ export class ReadingModeController {
       // Create or re-acquire bottom bar anchor
       const anchor = this.adapter.createBottomBarAnchor?.();
       if (!anchor) {
-        // Bottom bar not yet available — tear down and wait for next sync.
-        this.teardown();
+        // The reading DOM is transient. Detach the bar but keep submitted work.
+        this.suspend();
         return;
       }
+
+      this.resume();
 
       // Create bar UI if not yet mounted
       if (!this.readingBarUi || !this.readingBarUi.host.isConnected) {
@@ -200,6 +206,7 @@ export class ReadingModeController {
         const total = visiblePages.length;
         for (let i = 0; i < total; i++) {
           if (this.operation.kind !== 'translating-current') break;
+          if (!await this.waitUntilResumed(activity)) return;
           const page = visiblePages[i];
           const label = this.readingBarUi?.translateCurrentBtn.querySelector('.mt-x-label') as HTMLElement;
           if (label) label.textContent = `${i + 1}/${total} 准备中`;
@@ -253,6 +260,10 @@ export class ReadingModeController {
       }
       const urls = [...discovery.pages];
       this.allPageUrls = urls;
+      if (!await this.waitUntilResumed(activity)) {
+        this.finishActivity(activity);
+        return;
+      }
 
       // If all pages already translated, toggle mode
       const allHaveTranslation = urls.every((page) => {
@@ -284,6 +295,7 @@ export class ReadingModeController {
         const imageFailures: Array<{ pageIndex: number }> = [];
         for (const page of pendingUrls) {
           if (this.operation.kind !== 'translating-all') break;
+          if (!await this.waitUntilResumed(activity)) return;
           this.operation = { kind: 'translating-all', total, pageIndex: page.pageIndex };
           const label = this.readingBarUi?.translateAllBtn.querySelector('.mt-x-label') as HTMLElement;
           if (label) label.textContent = `${page.pageIndex + 1}/${total} 准备中`;
@@ -347,6 +359,8 @@ export class ReadingModeController {
       // Skip if already translated
       if (state.translatedUrl) return { status: 'skipped' };
 
+      const releaseState = this.stateStore.protect(key);
+
       const jankMonitor = createProgressJankMonitor('reading-mode');
       const task = startPhotoStateImageTranslation({
         executionModule: activity,
@@ -372,6 +386,8 @@ export class ReadingModeController {
         return {
           status: isRuntimeImageTranslationFailure(error) ? 'runtime-failed' : 'image-failed',
         };
+      } finally {
+        releaseState();
       }
     }
 
@@ -394,7 +410,44 @@ export class ReadingModeController {
   private finishActivity(activity: ImageTranslationExecutionActivity): void {
       if (this.activeActivity === activity) this.activeActivity = null;
       activity.end();
+      if (this.suspended) this.scheduleCoreSync();
     }
+
+  suspend(): void {
+      if (this.readingBarUi?.host) this.readingBarUi.host.remove();
+      this.readingBarUi = null;
+      this.suspended = true;
+    }
+
+  private resume(): void {
+      if (!this.suspended) return;
+      this.suspended = false;
+      for (const resume of [...this.resumeWaiters]) resume();
+      this.resumeWaiters.clear();
+    }
+
+  private waitUntilResumed(
+    activity: ImageTranslationExecutionActivity,
+  ): Promise<boolean> {
+    if (!this.suspended) return Promise.resolve(!activity.signal.aborted);
+    if (activity.signal.aborted) return Promise.resolve(false);
+    return new Promise<boolean>((resolve) => {
+      const finish = (): void => {
+        this.resumeWaiters.delete(onResume);
+        activity.signal.removeEventListener('abort', onAbort);
+      };
+      const onResume = (): void => {
+        finish();
+        resolve(true);
+      };
+      const onAbort = (): void => {
+        finish();
+        resolve(false);
+      };
+      this.resumeWaiters.add(onResume);
+      activity.signal.addEventListener('abort', onAbort, { once: true });
+    });
+  }
 
   teardown(): void {
       if (this.readingBarUi?.host) {
@@ -407,5 +460,8 @@ export class ReadingModeController {
       this.allPageUrls = [];
       this.errorText = '';
       this.readingContextKey = null;
+      this.suspended = false;
+      for (const resume of [...this.resumeWaiters]) resume();
+      this.resumeWaiters.clear();
     }
 }

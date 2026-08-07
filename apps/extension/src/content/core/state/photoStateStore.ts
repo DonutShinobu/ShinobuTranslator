@@ -25,6 +25,7 @@ export function createInitialPhotoState(originalUrl: string): PhotoState {
 
 export class PhotoStateStore {
   private readonly states = new Map<string, PhotoState>();
+  private readonly protectedKeys = new Map<string, number>();
 
   constructor(
     private readonly cacheLimit = defaultPhotoStateCacheLimit,
@@ -45,11 +46,25 @@ export class PhotoStateStore {
     return state;
   }
 
+  protect(key: string): () => void {
+    this.protectedKeys.set(key, (this.protectedKeys.get(key) ?? 0) + 1);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const count = this.protectedKeys.get(key) ?? 0;
+      if (count <= 1) this.protectedKeys.delete(key);
+      else this.protectedKeys.set(key, count - 1);
+      this.trim();
+    };
+  }
+
   delete(key: string): void {
     const state = this.states.get(key);
     if (!state) return;
     this.releaseStateUrls(state);
     this.states.delete(key);
+    this.protectedKeys.delete(key);
   }
 
   dispose(): void {
@@ -57,13 +72,19 @@ export class PhotoStateStore {
       this.releaseStateUrls(state);
     }
     this.states.clear();
+    this.protectedKeys.clear();
   }
 
-  private trim(protectedKey: string): void {
+  private trim(recentKey?: string): void {
     while (this.states.size > this.cacheLimit) {
-      const oldestKey = this.states.keys().next().value as string | undefined;
-      if (!oldestKey || oldestKey === protectedKey) break;
-      this.delete(oldestKey);
+      let evictableKey: string | undefined;
+      for (const key of this.states.keys()) {
+        if (key === recentKey || this.protectedKeys.has(key)) continue;
+        evictableKey = key;
+        break;
+      }
+      if (!evictableKey) break;
+      this.delete(evictableKey);
     }
   }
 

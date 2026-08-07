@@ -691,6 +691,7 @@ describe('twitterAdapter.findImages', () => {
         selector === 'img' ? [image] : statusLinks
       )),
     };
+    let activeDialog = dialog;
     const locationState = {
       hostname: 'x.com',
       pathname: '/alice/status/111/photo/1',
@@ -702,7 +703,7 @@ describe('twitterAdapter.findImages', () => {
     vi.stubGlobal('document', {
       elementFromPoint: vi.fn(() => image),
       querySelectorAll: vi.fn((selector: string) => (
-        selector === '[aria-labelledby="modal-header"][role="dialog"]' ? [dialog] : []
+        selector === '[aria-labelledby="modal-header"][role="dialog"]' ? [activeDialog] : []
       )),
     });
     vi.stubGlobal('window', {
@@ -730,7 +731,19 @@ describe('twitterAdapter.findImages', () => {
     }];
     const quoteOnlyKey = twitterAdapter.findImages()[0].key;
     expect(quoteOnlyKey).not.toContain('status:999');
-    expect(quoteOnlyKey).toContain('dialog:');
+    expect(quoteOnlyKey).toContain('fallback:');
+
+    activeDialog = {
+      ...dialog,
+      querySelector: vi.fn((selector: string) => (
+        selector === 'a[href*="/status/"]' ? statusLinks[0] ?? null : null
+      )),
+      querySelectorAll: vi.fn((selector: string) => (
+        selector === 'img' ? [image] : statusLinks
+      )),
+    };
+    const reopenedFallbackKey = twitterAdapter.findImages()[0].key;
+    expect(reopenedFallbackKey).toBe(quoteOnlyKey);
 
     statusLinks = [
       ...statusLinks,
@@ -891,7 +904,7 @@ describe('twitterAdapter.getTranslationContext', () => {
     const result = twitterAdapter.getTranslationContext?.({
       element: image,
       key: 'tweet:123:image',
-      originalUrl: 'https://pbs.twimg.com/media/example?format=jpg',
+      originalUrl: 'https://pbs.twimg.com/media/partial-context?format=jpg',
     });
 
     expect(result).toEqual({ status: 'unavailable' });

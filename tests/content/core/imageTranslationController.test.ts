@@ -66,6 +66,11 @@ function createHarness(options: {
   const executionArbiter = createImageTranslationExecutionArbiter(executionModule);
   const applyImage = vi.fn();
   const render = vi.fn();
+  const target: ImageTarget = {
+    element: {} as HTMLImageElement,
+    key: 'image-1',
+    originalUrl: 'https://example.com/image.jpg',
+  };
   const monitor = {
     measureUiRender(callback: () => void) {
       callback();
@@ -76,7 +81,7 @@ function createHarness(options: {
     store,
     executionArbiter,
     {
-      resolveTarget: () => undefined,
+      resolveTarget: () => target,
       resolveTranslationContext: options.resolveTranslationContext,
       applyImage,
       render,
@@ -86,11 +91,6 @@ function createHarness(options: {
       finishJankMonitor: vi.fn(),
     },
   );
-  const target: ImageTarget = {
-    element: {} as HTMLImageElement,
-    key: 'image-1',
-    originalUrl: 'https://example.com/image.jpg',
-  };
   return {
     store,
     executionModule,
@@ -211,13 +211,16 @@ describe('ImageTranslationController', () => {
     });
   });
 
-  it('returns to an idle state when another explicit owner replaces it', async () => {
+  it('keeps running when another explicit owner starts', async () => {
     let pipelineSignal: AbortSignal | undefined;
+    let completePipeline!: (value: ReturnType<typeof localResult>) => void;
     const harness = createHarness({
       dependencies: {
         runLocalPipeline: (_file, _config, _onProgress, options) => {
           pipelineSignal = options?.signal;
-          return new Promise(() => undefined);
+          return new Promise((resolve) => {
+            completePipeline = resolve;
+          });
         },
       },
     });
@@ -229,12 +232,15 @@ describe('ImageTranslationController', () => {
       origin: 'explicit',
     });
     expect(replacement.status).toBe('active');
+    expect(pipelineSignal?.aborted).toBe(false);
+
+    completePipeline(localResult());
     await click;
 
-    expect(pipelineSignal?.aborted).toBe(true);
+    expect(pipelineSignal?.aborted).toBe(false);
     expect(harness.store.get(harness.target.key)).toMatchObject({
-      status: 'idle',
-      mode: 'original',
+      status: 'translated',
+      mode: 'translated',
       errorText: '',
     });
     if (replacement.status === 'active') replacement.activity.end();

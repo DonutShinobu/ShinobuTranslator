@@ -46,4 +46,25 @@ describe('PhotoStateStore', () => {
     ]);
     expect(store.get('image-2')).toBeUndefined();
   });
+
+  it('does not evict protected active states until they are released', () => {
+    const revokeObjectURL = vi.fn();
+    const store = new PhotoStateStore(2, { revokeObjectURL });
+    const active = store.ensure('active', 'https://example.com/active.jpg');
+    active.translatedUrl = 'blob:active';
+    const release = store.protect('active');
+    store.ensure('image-2', 'https://example.com/two.jpg');
+
+    store.ensure('image-3', 'https://example.com/three.jpg');
+
+    expect(store.get('active')).toBe(active);
+    expect(store.get('image-2')).toBeUndefined();
+    expect(revokeObjectURL).not.toHaveBeenCalledWith('blob:active');
+
+    release();
+    store.ensure('image-4', 'https://example.com/four.jpg');
+
+    expect(store.get('active')).toBeUndefined();
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:active');
+  });
 });

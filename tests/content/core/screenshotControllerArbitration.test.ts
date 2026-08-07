@@ -72,7 +72,7 @@ afterEach(() => {
 });
 
 describe('ScreenshotController arbitration', () => {
-  it('projects preemption during capture as cancellation without cropping or translating', async () => {
+  it('continues capture and translation when another explicit owner starts', async () => {
     const capture = deferred<{
       ok: true;
       type: 'mt:capture-visible-tab';
@@ -95,8 +95,15 @@ describe('ScreenshotController arbitration', () => {
     vi.spyOn(Date, 'now').mockReturnValue(123);
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
     const store = new PhotoStateStore(200, { revokeObjectURL: vi.fn() });
+    const cropped = new File(['cropped'], 'crop.png', { type: 'image/png' });
+    mocks.cropScreenshotToFile.mockResolvedValue(cropped);
+    let pipelineSignal: AbortSignal | undefined;
     const executionModule = createImageTranslationExecutionModule({
       prepareExecution: prepareExecutionFromSettings(),
+      runLocalPipeline: (_file, _config, _onProgress, options) => {
+        pipelineSignal = options?.signal;
+        return new Promise(() => undefined);
+      },
     });
     const startExecution = vi.spyOn(executionModule, 'start');
     const executionArbiter = createImageTranslationExecutionArbiter(executionModule);
@@ -122,15 +129,14 @@ describe('ScreenshotController arbitration', () => {
       base64: 'captured',
       contentType: 'image/png',
     });
-    await pending;
+    await vi.waitFor(() => expect(startExecution).toHaveBeenCalledOnce());
 
-    expect(mocks.cropScreenshotToFile).not.toHaveBeenCalled();
-    expect(startExecution).not.toHaveBeenCalled();
-    expect(store.get('screenshot-123-i')).toMatchObject({
-      status: 'idle',
-      mode: 'original',
-      errorText: '',
-    });
+    expect(mocks.cropScreenshotToFile).toHaveBeenCalledOnce();
+    expect(pipelineSignal?.aborted).toBe(false);
+    expect(replacement.status).toBe('active');
+
+    controller.dispose();
+    await pending;
     if (replacement.status === 'active') replacement.activity.end();
   });
 });

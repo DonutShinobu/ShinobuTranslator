@@ -108,26 +108,21 @@ function beginActive(
 }
 
 describe('image translation execution arbiter', () => {
-  it('revokes the previous owner before activating a new explicit owner', async () => {
+  it('keeps explicit activities from different owners active together', () => {
     const arbiter = createImageTranslationExecutionArbiter(
       neverSettlingExecutionModule(),
     );
-    const previous = beginActive(arbiter, {
+    const inline = beginActive(arbiter, {
       owner: 'inline-image',
       origin: 'explicit',
     });
-    const previousTask = previous.start(request);
-
-    const next = beginActive(arbiter, {
+    const screenshot = beginActive(arbiter, {
       owner: 'screenshot',
       origin: 'explicit',
     });
 
-    expect(previous.signal.aborted).toBe(true);
-    await expect(previousTask.result).rejects.toMatchObject({
-      name: 'TranslationCancelledError',
-    });
-    expect(next.signal.aborted).toBe(false);
+    expect(inline.signal.aborted).toBe(false);
+    expect(screenshot.signal.aborted).toBe(false);
   });
 
   it('keeps activities from the same owner active together', () => {
@@ -148,26 +143,7 @@ describe('image translation execution arbiter', () => {
     expect(second.signal.aborted).toBe(false);
   });
 
-  it('revokes every activity owned by the replaced owner', () => {
-    const arbiter = createImageTranslationExecutionArbiter(
-      neverSettlingExecutionModule(),
-    );
-    const first = beginActive(arbiter, {
-      owner: 'inline-image',
-      origin: 'explicit',
-    });
-    const second = beginActive(arbiter, {
-      owner: 'inline-image',
-      origin: 'explicit',
-    });
-
-    beginActive(arbiter, { owner: 'screenshot', origin: 'explicit' });
-
-    expect(first.signal.aborted).toBe(true);
-    expect(second.signal.aborted).toBe(true);
-  });
-
-  it('defers an automatic activity owned by someone else', () => {
+  it('admits an automatic activity without replacing an explicit owner', () => {
     const arbiter = createImageTranslationExecutionArbiter(
       neverSettlingExecutionModule(),
     );
@@ -176,57 +152,43 @@ describe('image translation execution arbiter', () => {
       origin: 'explicit',
     });
 
-    const automatic = arbiter.begin({
+    const automatic = beginActive(arbiter, {
       owner: 'continuous',
       origin: 'automatic',
     });
 
-    expect(automatic).toEqual({ status: 'deferred' });
+    expect(automatic.signal.aborted).toBe(false);
     expect(explicit.signal.aborted).toBe(false);
   });
 
-  it('admits an automatic activity after the current owner ends', () => {
+  it('ending one activity cancels only that activity tasks', async () => {
     const arbiter = createImageTranslationExecutionArbiter(
       neverSettlingExecutionModule(),
     );
-    const explicit = beginActive(arbiter, {
-      owner: 'screenshot',
-      origin: 'explicit',
-    });
-    explicit.end();
-
-    const automatic = arbiter.begin({
-      owner: 'continuous',
-      origin: 'automatic',
-    });
-
-    expect(automatic.status).toBe('active');
-  });
-
-  it('does not let an obsolete activity release the current owner', () => {
-    const arbiter = createImageTranslationExecutionArbiter(
-      neverSettlingExecutionModule(),
-    );
-    const obsolete = beginActive(arbiter, {
+    const inline = beginActive(arbiter, {
       owner: 'inline-image',
       origin: 'explicit',
     });
-    const current = beginActive(arbiter, {
+    const screenshot = beginActive(arbiter, {
       owner: 'screenshot',
       origin: 'explicit',
     });
+    const inlineTask = inline.start(request);
+    const screenshotTask = screenshot.start(request);
 
-    obsolete.end();
-    const automatic = arbiter.begin({
-      owner: 'continuous',
-      origin: 'automatic',
+    inline.end('单图活动已结束');
+
+    await expect(inlineTask.result).rejects.toMatchObject({
+      name: 'TranslationCancelledError',
     });
-
-    expect(automatic).toEqual({ status: 'deferred' });
-    expect(current.signal.aborted).toBe(false);
+    expect(screenshot.signal.aborted).toBe(false);
+    screenshot.end();
+    await expect(screenshotTask.result).rejects.toMatchObject({
+      name: 'TranslationCancelledError',
+    });
   });
 
-  it('does not deliver progress after an activity is replaced', async () => {
+  it('does not deliver progress after an activity ends', async () => {
     const execution = controllableExecutionModule();
     const arbiter = createImageTranslationExecutionArbiter(execution.module);
     const activity = beginActive(arbiter, {
@@ -238,7 +200,7 @@ describe('image translation execution arbiter', () => {
     task.progress((event) => progress.push(event));
     await Promise.resolve();
 
-    beginActive(arbiter, { owner: 'screenshot', origin: 'explicit' });
+    activity.end();
     execution.report({ phase: 'preparing', operation: 'prepare-execution' });
     execution.resolve({} as ImageTranslationExecutionResult);
     await expect(task.result).rejects.toMatchObject({
@@ -263,7 +225,7 @@ describe('image translation execution arbiter', () => {
       task.progress((event) => replayedAfterAbort.push(event));
     });
 
-    beginActive(arbiter, { owner: 'screenshot', origin: 'explicit' });
+    activity.end();
     await expect(task.result).rejects.toMatchObject({
       name: 'TranslationCancelledError',
     });
@@ -271,7 +233,7 @@ describe('image translation execution arbiter', () => {
     expect(replayedAfterAbort).toEqual([]);
   });
 
-  it('blocks every old activity before cancelling any underlying execution', async () => {
+  it('blocks every activity before cancelling any underlying execution on dispose', async () => {
     const execution = crossReportingCancellationExecutionModule();
     const arbiter = createImageTranslationExecutionArbiter(execution.module);
     const firstActivity = beginActive(arbiter, {
@@ -289,61 +251,37 @@ describe('image translation execution arbiter', () => {
     await Promise.resolve();
     expect(execution.started()).toBe(2);
 
-    beginActive(arbiter, { owner: 'screenshot', origin: 'explicit' });
+    arbiter.dispose();
     await expect(firstTask.result).rejects.toMatchObject({ code: 'TASK_CANCELLED' });
     await expect(secondTask.result).rejects.toMatchObject({ code: 'TASK_CANCELLED' });
 
     expect(secondProgress).toEqual([]);
   });
 
-  it('defers begin calls that synchronously reenter an owner replacement', () => {
+  it('rejects begin calls that synchronously reenter disposal', () => {
     const arbiter = createImageTranslationExecutionArbiter(
       neverSettlingExecutionModule(),
     );
-    const previous = beginActive(arbiter, {
+    const active = beginActive(arbiter, {
       owner: 'inline-image',
       origin: 'explicit',
     });
-    let reentrantResult: ReturnType<typeof arbiter.begin> | undefined;
-    previous.signal.addEventListener('abort', () => {
-      reentrantResult = arbiter.begin({
-        owner: 'reading-mode',
-        origin: 'explicit',
-      });
+    let reentrantError: unknown;
+    active.signal.addEventListener('abort', () => {
+      try {
+        arbiter.begin({ owner: 'reading-mode', origin: 'explicit' });
+      } catch (error) {
+        reentrantError = error;
+      }
     });
 
-    const replacement = beginActive(arbiter, {
-      owner: 'screenshot',
-      origin: 'explicit',
-    });
-    const automatic = arbiter.begin({
-      owner: 'continuous',
-      origin: 'automatic',
-    });
+    arbiter.dispose();
 
-    expect(reentrantResult).toEqual({ status: 'deferred' });
-    expect(automatic).toEqual({ status: 'deferred' });
-    expect(replacement.signal.aborted).toBe(false);
-  });
-
-  it('does not activate a replacement when disposal reenters revocation', () => {
-    const arbiter = createImageTranslationExecutionArbiter(
-      neverSettlingExecutionModule(),
-    );
-    const previous = beginActive(arbiter, {
-      owner: 'inline-image',
-      origin: 'explicit',
+    expect(reentrantError).toMatchObject({
+      message: '图片翻译执行仲裁器已停止',
     });
-    previous.signal.addEventListener('abort', () => arbiter.dispose());
-
-    const replacement = arbiter.begin({
-      owner: 'screenshot',
-      origin: 'explicit',
-    });
-
-    expect(replacement).toEqual({ status: 'deferred' });
     expect(() => arbiter.begin({
-      owner: 'reading-mode',
+      owner: 'screenshot',
       origin: 'explicit',
     })).toThrow('图片翻译执行仲裁器已停止');
   });

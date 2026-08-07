@@ -479,7 +479,7 @@ describe('ReadingModeController', () => {
     expect(bar.all.disabled).toBe(false);
   });
 
-  it('stops the page loop when another explicit owner replaces the reading activity', async () => {
+  it('keeps the page loop running when another explicit owner starts', async () => {
     vi.stubGlobal('document', {
       querySelector: vi.fn(() => null),
       querySelectorAll: vi.fn(() => []),
@@ -492,6 +492,7 @@ describe('ReadingModeController', () => {
       { key: 'page-1', originalUrl: 'https://cdn.example/page-1.jpg', pageIndex: 0 },
       { key: 'page-2', originalUrl: 'https://cdn.example/page-2.jpg', pageIndex: 1 },
     ];
+    let readingContextKey = 'artwork-1';
     const adapter: SiteAdapter = {
       match: () => true,
       findImages: () => [],
@@ -499,6 +500,7 @@ describe('ReadingModeController', () => {
       applyImage: () => {},
       observe: () => () => {},
       createBottomBarAnchor: () => ({ appendChild: vi.fn() } as unknown as HTMLElement),
+      getReadingContextKey: () => readingContextKey,
       discoverReadingPages: async () => ({ status: 'complete', pages }),
       getVisiblePages: () => [],
       applyImageByKey: vi.fn(),
@@ -509,12 +511,18 @@ describe('ReadingModeController', () => {
       file: new File([source], 'source.png', { type: source.type }),
     }));
     let pipelineSignal: AbortSignal | undefined;
+    let resolveFirst!: (result: LocalPipelineResult) => void;
     const executionModule = createImageTranslationExecutionModule({
       prepareExecution: prepareExecutionFromSettings(),
       downloadImage,
       runLocalPipeline: (_file, _config, _onProgress, options) => {
         pipelineSignal = options?.signal;
-        return new Promise(() => undefined);
+        if (!resolveFirst) {
+          return new Promise<LocalPipelineResult>((resolve) => {
+            resolveFirst = resolve;
+          });
+        }
+        return Promise.resolve(localResult());
       },
     });
     const executionArbiter = arbitrate(executionModule);
@@ -537,10 +545,21 @@ describe('ReadingModeController', () => {
       origin: 'explicit',
     });
     expect(replacement.status).toBe('active');
+    expect(pipelineSignal?.aborted).toBe(false);
+
+    readingContextKey = 'artwork-2';
+    controller.sync();
+    resolveFirst(localResult());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(downloadImage).toHaveBeenCalledOnce();
+    expect(pipelineSignal?.aborted).toBe(false);
+
+    readingContextKey = 'artwork-1';
+    controller.sync();
+    await vi.waitFor(() => expect(downloadImage).toHaveBeenCalledTimes(2));
     await vi.waitFor(() => expect(bar.all.disabled).toBe(false));
 
-    expect(pipelineSignal?.aborted).toBe(true);
-    expect(downloadImage).toHaveBeenCalledOnce();
+    expect(pipelineSignal?.aborted).toBe(false);
     if (replacement.status === 'active') replacement.activity.end();
   });
 });

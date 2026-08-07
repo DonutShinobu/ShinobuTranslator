@@ -54,10 +54,6 @@ export interface SiteAdapter {
   findImages(): ImageTarget[];
   getTranslationContext?(target: ImageTarget): ImageTranslationContextResolution;
   /** Keep an inline translation alive while its image is temporarily outside the mounted target set. */
-  keepTranslationActivityOnUnmount?(
-    target: ImageTarget,
-    currentTargets: readonly ImageTarget[],
-  ): boolean;
   createUiAnchor(target: ImageTarget): HTMLElement;
   applyImage(target: ImageTarget, url: string): void;
   observe(onChange: () => void): () => void;

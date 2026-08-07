@@ -8,9 +8,7 @@ const quotedTweetMediaSelector = '[data-testid="tweetPhoto"], [data-testid="vide
 const originalSrcAttr = 'data-mt-original-src';
 const maxTweetContextCacheEntries = 50;
 const pendingAppliedSources = new WeakMap<HTMLImageElement, string>();
-const fallbackTweetIdentities = new WeakMap<HTMLElement, string>();
 const tweetContextCache = new Map<string, ImageTranslationContextResolution>();
-let nextFallbackTweetIdentity = 1;
 
 function isVisibleElement(element: HTMLElement): boolean {
   const rect = element.getBoundingClientRect();
@@ -79,11 +77,10 @@ function getTweetIdentity(dialog: HTMLElement, originalUrl = ''): string {
     return `status:${timelineStatusId}`;
   }
 
-  const existing = fallbackTweetIdentities.get(dialog);
-  if (existing) return existing;
-  const identity = `dialog:${nextFallbackTweetIdentity++}`;
-  fallbackTweetIdentities.set(dialog, identity);
-  return identity;
+  const mediaIdentity = getTwitterMediaIdentity(originalUrl)
+    ?? normalizeImageKey(originalUrl);
+  const locationIdentity = typeof location === 'undefined' ? '' : location.pathname;
+  return `fallback:${encodeURIComponent(locationIdentity)}:${encodeURIComponent(mediaIdentity)}`;
 }
 
 function normalizeTweetBody(text: string): string {
@@ -520,13 +517,6 @@ export const twitterAdapter: SiteAdapter = {
     return tweetIdentity
       ? readCachedTweetContext(tweetIdentity) ?? liveResolution
       : liveResolution;
-  },
-
-  keepTranslationActivityOnUnmount(target, currentTargets) {
-    const tweetIdentity = readTweetIdentityFromImageKey(target.key);
-    return tweetIdentity !== null && currentTargets.some(
-      current => readTweetIdentityFromImageKey(current.key) === tweetIdentity,
-    );
   },
 
   createUiAnchor(target) {

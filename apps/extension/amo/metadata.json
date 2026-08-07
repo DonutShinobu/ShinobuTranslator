@@ -28,6 +28,6 @@
   "requires_payment": false,
   "version": {
     "license": "GPL-3.0-only",
-    "approval_notes": "Build with Node.js 22: npm ci && npm run build-for-amo. The command verifies pinned model size/SHA-256, builds dist-firefox, enforces 0 Firefox lint errors, and packages source. Detailed reviewer steps are in apps/extension/amo/reviewer-notes.md. Test popup persistence, page image controls, Alt+Q/Alt+W, context menus, local pipeline host idle/recovery, install-time authentication/Cookie consent, and direct Gemini Cookie login without a second permission prompt."
+    "approval_notes": "Build with Node.js 24: npm ci && npm run build-for-amo. The command verifies pinned model size/SHA-256, builds dist-firefox, enforces 0 Firefox lint errors, and packages source. Detailed reviewer steps are in apps/extension/amo/reviewer-notes.md. Test popup persistence, page image controls, Alt+Q/Alt+W, context menus, local pipeline host idle/recovery, install-time authentication/Cookie consent, and direct Gemini Cookie login without a second permission prompt."
   }
 }

@@ -3,6 +3,9 @@
   "version": "0.8.2",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "^24.0.0"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -76,7 +79,7 @@
     "@shinobu/image-pipeline": "0.1.0",
     "@shinobu/translator-core": "0.1.0",
     "comlink": "^4.4.2",
-    "onnxruntime-web": "^1.24.1",
+    "onnxruntime-web": "^1.27.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tesseract.js": "^5.1.1"
@@ -98,7 +101,7 @@
     "wawoff2": "^2.0.1"
   },
   "optionalDependencies": {
-    "onnxruntime-node": "^1.26.0"
+    "onnxruntime-node": "^1.27.0"
   },
   "overrides": {
     "onnxruntime-node": {

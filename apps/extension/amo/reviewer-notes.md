@@ -1,6 +1,6 @@
 # AMO reviewer test steps
 
-ShinobuTranslator is a Firefox Desktop 140+ Manifest V2 extension with an explicitly persistent background page. The submitted source archive builds the reviewed package with Node.js 22 and `web-ext@10.3.0`.
+ShinobuTranslator is a Firefox Desktop 140+ Manifest V2 extension with an explicitly persistent background page. The submitted source archive builds the reviewed package with Node.js 24 and `web-ext@10.3.0`.
 
 The persistent page is required because the local ONNX/Wasm image pipeline can run longer than an event page idle window and the product keeps one browser-wide model runtime warm for five minutes after the last job. The page itself stays lightweight: model sessions and the Worker are created lazily, then explicitly disposed after the five-minute idle TTL.
 

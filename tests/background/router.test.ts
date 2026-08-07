@@ -151,6 +151,7 @@ describe('routeBackgroundMessage', () => {
       type: 'mt:download-image',
       imageUrl: 'https://example.com/image.png',
       referrerPolicy: 'strict-origin-when-cross-origin',
+      contentSessionId: 'session-1',
     }, sender, services)).resolves.toEqual({
       ok: true,
       type: 'mt:download-image',
@@ -161,7 +162,7 @@ describe('routeBackgroundMessage', () => {
     expect(services.images.download).toHaveBeenCalledWith({
       imageUrl: 'https://example.com/image.png',
       referrerPolicy: 'strict-origin-when-cross-origin',
-    }, sender);
+    }, sender, 'session-1');
     await routeBackgroundMessage({ type: 'mt:capture-visible-tab' }, sender, services);
     expect(services.images.capture).toHaveBeenCalledWith(sender);
   });

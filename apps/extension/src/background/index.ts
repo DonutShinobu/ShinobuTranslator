@@ -8,7 +8,11 @@ import {
   type RuntimeResponse,
 } from '../shared/messages';
 import { toErrorMessage } from '../shared/utils';
-import { getGeminiAppRawResponse } from './geminiAppClient';
+import {
+  cancelQueuedGeminiAppImageTranslations,
+  getGeminiAppRawResponse,
+} from './geminiAppClient';
+import { cancelQueuedGeminiApiImageTranslations } from './geminiApiImageClient';
 import {
   getSettings,
   getSettingsState,
@@ -182,6 +186,9 @@ export function initializeBackground(lifecycle: PipelineHostLifecycle): void {
   );
   registerExtensionControlPort(chromeApi, extensionControl);
   registerContentSessionLifecycle(chromeApi, (contentSessionId, tabId) => {
+    imageDownloader.cancelPendingForSession(contentSessionId);
+    cancelQueuedGeminiAppImageTranslations(contentSessionId);
+    cancelQueuedGeminiApiImageTranslations(contentSessionId);
     void pageArtifactService.closeContentSession(contentSessionId, tabId);
   });
 

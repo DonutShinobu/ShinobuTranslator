@@ -24,6 +24,7 @@ import type {
   CloudImageTranslateMetadata,
   RuntimeErrorDetail,
 } from '../../../shared/messages';
+import { getActiveContentSessionId } from '../../../shared/contentSession';
 import { sendRuntimeMessage } from '../../../shared/messages';
 import {
   createDiagnosticRunId,
@@ -357,9 +358,11 @@ function createRuntimeImageDownloader(
       });
     }
     try {
+      const contentSessionId = getActiveContentSessionId();
       const response = await sendMessage({
         type: 'mt:download-image',
         imageUrl: source.url,
+        ...(contentSessionId ? { contentSessionId } : {}),
         ...(source.referrerPolicy !== undefined
           ? { referrerPolicy: source.referrerPolicy }
           : {}),
@@ -426,18 +429,21 @@ function createRuntimeWholeImageTranslator(
       filename: file.name || 'source.png',
     };
     throwIfAborted(signal);
+    const contentSessionId = getActiveContentSessionId();
     const response = preparation.provider === 'gemini-api'
       ? await sendMessage({
           type: 'mt:gemini-api-image-translate',
           image,
           preparation,
           diagnosticRunId,
+          ...(contentSessionId ? { contentSessionId } : {}),
         })
       : await sendMessage({
           type: 'mt:gemini-app-image-translate',
           image,
           preparation,
           diagnosticRunId,
+          ...(contentSessionId ? { contentSessionId } : {}),
         });
     throwIfAborted(signal);
     if (!response.ok) {

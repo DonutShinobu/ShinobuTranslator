@@ -12,6 +12,7 @@ describe("isRuntimeMessage", () => {
       type: "mt:download-image",
       imageUrl: "https://example.com/a.png",
       referrerPolicy: "strict-origin-when-cross-origin",
+      contentSessionId: "session-1",
     })).toBe(true);
     expect(isRuntimeMessage({ type: "mt:capture-visible-tab" })).toBe(true);
     expect(isRuntimeMessage({ type: "mt:context-menu-translate" })).toBe(true);
@@ -22,6 +23,11 @@ describe("isRuntimeMessage", () => {
   it("rejects malformed image download messages", () => {
     expect(isRuntimeMessage({ type: "mt:download-image" })).toBe(false);
     expect(isRuntimeMessage({ type: "mt:download-image", imageUrl: 42 })).toBe(false);
+    expect(isRuntimeMessage({
+      type: "mt:download-image",
+      imageUrl: "https://example.com/a.png",
+      contentSessionId: "invalid session",
+    })).toBe(false);
     expect(isRuntimeMessage({
       type: "mt:download-image",
       imageUrl: "data:image/png;base64,aW1hZ2U=",

@@ -32,6 +32,7 @@ export type DownloadImageMessage = {
   type: 'mt:download-image';
   imageUrl: string;
   referrerPolicy?: ReferrerPolicy;
+  contentSessionId?: string;
 };
 
 export type CaptureVisibleTabMessage = {
@@ -82,6 +83,7 @@ export type GeminiAppImageTranslateMessage = {
   image: ImageTranslateMessageImage;
   preparation: Extract<WholeImageExecutionPreparation, { provider: 'gemini-app' }>;
   diagnosticRunId?: string;
+  contentSessionId?: string;
 };
 
 export type GeminiApiImageTranslateMessage = {
@@ -89,6 +91,7 @@ export type GeminiApiImageTranslateMessage = {
   image: ImageTranslateMessageImage;
   preparation: Extract<WholeImageExecutionPreparation, { provider: 'gemini-api' }>;
   diagnosticRunId?: string;
+  contentSessionId?: string;
 };
 
 export type CloudImageTranslateMetadata = {
@@ -283,7 +286,8 @@ function isDownloadImageMessage(value: Record<string, unknown>): value is Downlo
   } catch {
     return false;
   }
-  return value.referrerPolicy === undefined || isReferrerPolicy(value.referrerPolicy);
+  return (value.referrerPolicy === undefined || isReferrerPolicy(value.referrerPolicy))
+    && (value.contentSessionId === undefined || isContentSessionId(value.contentSessionId));
 }
 
 export function getRuntimeErrorCode(error: unknown): RuntimeErrorCode | undefined {
@@ -419,7 +423,8 @@ function isGeminiAppImageTranslateMessage(value: Record<string, unknown>): value
     typeof preparation.modelLabel === 'string' &&
     typeof preparation.prompt === 'string' &&
     (preparation.authMode === 'browser_session' || preparation.authMode === 'cookies_permission') &&
-    (value.diagnosticRunId === undefined || typeof value.diagnosticRunId === 'string')
+    (value.diagnosticRunId === undefined || typeof value.diagnosticRunId === 'string') &&
+    (value.contentSessionId === undefined || isContentSessionId(value.contentSessionId))
   );
 }
 
@@ -441,7 +446,8 @@ function isGeminiApiImageTranslateMessage(value: Record<string, unknown>): value
     typeof preparation.modelLabel === 'string' &&
     typeof preparation.prompt === 'string' &&
     typeof preparation.baseUrl === 'string' &&
-    (value.diagnosticRunId === undefined || typeof value.diagnosticRunId === 'string')
+    (value.diagnosticRunId === undefined || typeof value.diagnosticRunId === 'string') &&
+    (value.contentSessionId === undefined || isContentSessionId(value.contentSessionId))
   );
 }
 

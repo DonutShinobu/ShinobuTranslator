@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   buildGeminiImagePrompt,
   defaultExtensionSettings,
@@ -11,6 +11,7 @@ import {
   type ExtensionSettings,
 } from '../../../apps/extension/src/shared/config';
 import { sendRuntimeMessage } from '../../../apps/extension/src/shared/messages';
+import { setActiveContentSessionId } from '../../../apps/extension/src/shared/contentSession';
 import { sanitizeExtensionSettings } from '../../../apps/extension/src/shared/diagnosticSettings';
 import type { ExtensionExecutionSnapshot } from '../../../apps/extension/src/shared/extensionControl';
 import {
@@ -48,6 +49,8 @@ function completedLocalResult(image: Blob): LocalPipelineResult {
     },
   };
 }
+
+afterEach(() => setActiveContentSessionId(undefined));
 
 function executionSnapshot(
   settings: ExtensionSettings = defaultExtensionSettings,
@@ -303,6 +306,7 @@ describe('ImageTranslationExecutionModule', () => {
   });
 
   it('provides production settings and remote-image adapters over runtime messages', async () => {
+    setActiveContentSessionId('session-1');
     const messages: unknown[] = [];
     const sendMessage = (async (message: { type: string }) => {
       messages.push(message);
@@ -337,6 +341,7 @@ describe('ImageTranslationExecutionModule', () => {
       type: 'mt:download-image',
       imageUrl: 'https://example.com/image',
       referrerPolicy: 'same-origin',
+      contentSessionId: 'session-1',
     });
   });
 

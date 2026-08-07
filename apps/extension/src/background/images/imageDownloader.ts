@@ -7,6 +7,7 @@ import {
 } from '../../shared/extensionRuntime';
 import { isReferrerPolicy } from '../../shared/referrerPolicy';
 import { arrayBufferToBase64, toErrorMessage } from '../../shared/utils';
+import { SerialTaskQueue } from '../serialTaskQueue';
 
 const legacyPximgRefererRuleId = 1;
 const imageRefererSessionRuleId = 2;
@@ -30,7 +31,9 @@ export type ImageDownloader = {
   download(
     request: ImageDownloadRequest,
     sender: ExtensionMessageSender,
+    contentSessionId?: string,
   ): Promise<DownloadedImage>;
+  cancelPendingForSession(contentSessionId: string): number;
 };
 
 type ImageDownloaderDependencies = {
@@ -466,7 +469,7 @@ export function createImageDownloader(
   const documentPolicyTracker = createDocumentPolicyTracker(chromeApi);
   const fetchImage = dependencies.fetchImage ?? globalThis.fetch.bind(globalThis);
   const timeoutMs = dependencies.timeoutMs ?? defaultDownloadTimeoutMs;
-  let queueTail: Promise<void> = Promise.resolve();
+  const queue = new SerialTaskQueue<DownloadedImage>();
 
   const initialization = Promise.all([
     removeRule(dnr?.updateDynamicRules, legacyPximgRefererRuleId),
@@ -624,16 +627,14 @@ export function createImageDownloader(
   }
 
   return {
-    download(request, sender) {
-      const operation = queueTail.then(
+    download(request, sender, contentSessionId) {
+      return queue.enqueue(
         () => downloadSerialized(request, sender),
-        () => downloadSerialized(request, sender),
+        contentSessionId,
       );
-      queueTail = operation.then(
-        () => undefined,
-        () => undefined,
-      );
-      return operation;
+    },
+    cancelPendingForSession(contentSessionId) {
+      return queue.cancelPendingForSession(contentSessionId);
     },
   };
 }

@@ -181,6 +181,7 @@ export async function handleGeminiAppImageTranslate(message: GeminiAppImageMessa
       contentType: message.image.contentType,
       filename: message.image.filename,
       preparation: message.preparation,
+      contentSessionId: message.contentSessionId,
     });
     await recordBackgroundDiagnosticLog(settings, {
       runId: message.diagnosticRunId,
@@ -261,6 +262,7 @@ export async function handleGeminiApiImageTranslate(
       filename: message.image.filename,
       preparation: message.preparation,
       apiKey,
+      contentSessionId: message.contentSessionId,
     });
     await recordBackgroundDiagnosticLog(settings, {
       runId: message.diagnosticRunId,

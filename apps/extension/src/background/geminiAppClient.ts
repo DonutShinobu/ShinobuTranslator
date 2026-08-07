@@ -11,12 +11,14 @@ import {
   GEMINI_COOKIE_PERMISSION,
 } from '../shared/extensionPermissions';
 import { arrayBufferToBase64, toErrorMessage } from '../shared/utils';
+import { SerialTaskQueue } from './serialTaskQueue';
 
 type GeminiAppImageTranslateOptions = {
   imageBase64: string;
   contentType: string;
   filename: string;
   preparation: Extract<WholeImageExecutionPreparation, { provider: 'gemini-app' }>;
+  contentSessionId?: string;
 };
 
 export type GeminiAppImageTranslateResult = {
@@ -92,7 +94,7 @@ const cookieNames = new Set([
   '__Secure-3PSIDCC',
 ]);
 
-let geminiAppQueue: Promise<void> = Promise.resolve();
+const geminiAppQueue = new SerialTaskQueue<GeminiAppImageTranslateResult>();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -755,12 +757,14 @@ async function executeGeminiAppImageTranslate(
 export function runGeminiAppImageTranslate(
   options: GeminiAppImageTranslateOptions,
 ): Promise<GeminiAppImageTranslateResult> {
-  const queued = geminiAppQueue.then(() => executeGeminiAppImageTranslate(options));
-  geminiAppQueue = queued.then(
-    () => undefined,
-    () => undefined,
+  return geminiAppQueue.enqueue(
+    () => executeGeminiAppImageTranslate(options),
+    options.contentSessionId,
   );
-  return queued;
+}
+
+export function cancelQueuedGeminiAppImageTranslations(contentSessionId: string): number {
+  return geminiAppQueue.cancelPendingForSession(contentSessionId);
 }
 
 export type GeminiAppAuthStatusInfo = {

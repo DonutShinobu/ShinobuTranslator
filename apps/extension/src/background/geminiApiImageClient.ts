@@ -6,6 +6,7 @@ import type { WholeImageExecutionPreparation } from '../shared/extensionControl'
 import type { StageTiming } from '@shinobu/image-pipeline/benchmark';
 import type { GeminiAppModel } from '../shared/config';
 import { toErrorMessage } from '../shared/utils';
+import { SerialTaskQueue } from './serialTaskQueue';
 
 type GeminiApiImageTranslateOptions = {
   imageBase64: string;
@@ -13,6 +14,7 @@ type GeminiApiImageTranslateOptions = {
   filename: string;
   preparation: Extract<WholeImageExecutionPreparation, { provider: 'gemini-api' }>;
   apiKey: string;
+  contentSessionId?: string;
 };
 
 type GeminiApiGeneratedImage = {
@@ -27,7 +29,7 @@ type GeminiApiErrorInfo = {
 };
 
 const requestTimeoutMs = 420_000;
-let geminiApiQueue: Promise<void> = Promise.resolve();
+const geminiApiQueue = new SerialTaskQueue<CloudImageTranslateSuccess>();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -249,10 +251,12 @@ async function executeGeminiApiImageTranslate(
 export function runGeminiApiImageTranslate(
   options: GeminiApiImageTranslateOptions,
 ): Promise<CloudImageTranslateSuccess> {
-  const queued = geminiApiQueue.then(() => executeGeminiApiImageTranslate(options));
-  geminiApiQueue = queued.then(
-    () => undefined,
-    () => undefined,
+  return geminiApiQueue.enqueue(
+    () => executeGeminiApiImageTranslate(options),
+    options.contentSessionId,
   );
-  return queued;
+}
+
+export function cancelQueuedGeminiApiImageTranslations(contentSessionId: string): number {
+  return geminiApiQueue.cancelPendingForSession(contentSessionId);
 }

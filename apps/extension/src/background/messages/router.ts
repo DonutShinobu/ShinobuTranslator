@@ -43,6 +43,7 @@ export type BackgroundServices = {
     download(
       request: ImageDownloadRequest,
       sender: ExtensionMessageSender,
+      contentSessionId?: string,
     ): Promise<PayloadOf<'mt:download-image'>>;
     capture(sender: ExtensionMessageSender): Promise<PayloadOf<'mt:capture-visible-tab'>>;
   };
@@ -111,7 +112,7 @@ export async function routeBackgroundMessage(
     return {
       ok: true,
       type: 'mt:download-image',
-      ...await services.images.download(request, sender),
+      ...await services.images.download(request, sender, message.contentSessionId),
     };
   }
   if (message.type === 'mt:capture-visible-tab') {

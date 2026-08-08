@@ -5,6 +5,7 @@ import type {
   SiteAdapter,
 } from '../../../apps/extension/src/content/core/types';
 import { ReadingModeController } from '../../../apps/extension/src/content/core/reading/readingModeController';
+import { createSiteReadingModeAdapter } from '../../../apps/extension/src/content/core/reading/siteReadingModeAdapter';
 import { PhotoStateStore } from '../../../apps/extension/src/content/core/state/photoStateStore';
 import {
   createImageTranslationExecutionModule,
@@ -133,7 +134,7 @@ function createThreePageBatchScenario(
   }));
   const bar = createFakeBar();
   const controller = new ReadingModeController(
-    adapter,
+    createSiteReadingModeAdapter(adapter),
     new PhotoStateStore(200, { revokeObjectURL: vi.fn() }),
     arbitrate(createImageTranslationExecutionModule({
       prepareExecution: prepareExecutionFromSettings(),
@@ -173,7 +174,7 @@ describe('ReadingModeController', () => {
     const runLocalPipeline = vi.fn(async () => localResult());
     const bar = createFakeBar();
     const controller = new ReadingModeController(
-      adapter,
+      createSiteReadingModeAdapter(adapter),
       new PhotoStateStore(200, { revokeObjectURL: vi.fn() }),
       arbitrate(createImageTranslationExecutionModule({
         prepareExecution: prepareExecutionFromSettings(),
@@ -214,7 +215,7 @@ describe('ReadingModeController', () => {
     };
     const bar = createFakeBar();
     const controller = new ReadingModeController(
-      adapter,
+      createSiteReadingModeAdapter(adapter),
       new PhotoStateStore(200, { revokeObjectURL: vi.fn() }),
       arbitrate(createImageTranslationExecutionModule({
         prepareExecution: prepareExecutionFromSettings(),
@@ -272,7 +273,7 @@ describe('ReadingModeController', () => {
     const runLocalPipeline = vi.fn(async () => localResult());
     const bar = createFakeBar();
     const controller = new ReadingModeController(
-      adapter,
+      createSiteReadingModeAdapter(adapter),
       new PhotoStateStore(200, { revokeObjectURL: vi.fn() }),
       arbitrate(createImageTranslationExecutionModule({
         prepareExecution: prepareExecutionFromSettings(),
@@ -321,7 +322,7 @@ describe('ReadingModeController', () => {
     state.mode = 'translated';
     const bar = createFakeBar();
     const controller = new ReadingModeController(
-      adapter,
+      createSiteReadingModeAdapter(adapter),
       store,
       arbitrate(createImageTranslationExecutionModule({
         prepareExecution: prepareExecutionFromSettings(),
@@ -386,7 +387,7 @@ describe('ReadingModeController', () => {
     });
     const bar = createFakeBar();
     const controller = new ReadingModeController(
-      adapter,
+      createSiteReadingModeAdapter(adapter),
       new PhotoStateStore(200, { revokeObjectURL: vi.fn() }),
       arbitrate(executionModule),
       vi.fn(),
@@ -479,6 +480,71 @@ describe('ReadingModeController', () => {
     expect(bar.all.disabled).toBe(false);
   });
 
+  it('uses an engine-prepared page source while keeping the Pixiv batch controls', async () => {
+    vi.stubGlobal('document', {
+      querySelector: vi.fn(() => null),
+      querySelectorAll: vi.fn(() => []),
+    });
+    vi.stubGlobal('window', {
+      requestAnimationFrame: vi.fn(() => 1),
+      cancelAnimationFrame: vi.fn(),
+    });
+    const pages = [0, 1].map((pageIndex) => ({
+      key: `engine-page-${pageIndex}`,
+      originalUrl: `engine-source:${pageIndex}`,
+      pageIndex,
+    }));
+    const prepareReadingPage = vi.fn(async (page: typeof pages[number]) => ({
+      source: {
+        kind: 'prepared-file' as const,
+        file: new File([String(page.pageIndex)], `page-${page.pageIndex}.png`, {
+          type: 'image/png',
+        }),
+      },
+    }));
+    const applyImageByKey = vi.fn();
+    const adapter: SiteAdapter = {
+      match: () => true,
+      findImages: () => [],
+      createUiAnchor: () => ({} as HTMLElement),
+      applyImage: () => {},
+      observe: () => () => {},
+      createBottomBarAnchor: () => ({ appendChild: vi.fn() } as unknown as HTMLElement),
+      discoverReadingPages: async () => ({ status: 'complete', pages }),
+      getVisiblePages: () => [pages[0]],
+      prepareReadingPage,
+      applyImageByKey,
+    };
+    const translatedInputs: string[] = [];
+    const runLocalPipeline = vi.fn(async (file: File) => {
+      translatedInputs.push(await file.text());
+      return localResult();
+    });
+    const bar = createFakeBar();
+    const controller = new ReadingModeController(
+      createSiteReadingModeAdapter(adapter),
+      new PhotoStateStore(200, { revokeObjectURL: vi.fn() }),
+      arbitrate(createImageTranslationExecutionModule({
+        prepareExecution: prepareExecutionFromSettings(),
+        runLocalPipeline,
+      })),
+      vi.fn(),
+      vi.fn(),
+      () => bar.ui,
+    );
+
+    controller.sync();
+    bar.all.click?.();
+
+    await vi.waitFor(() => expect(bar.all.label.textContent).toBe('显示原图'));
+    expect(prepareReadingPage).toHaveBeenCalledTimes(2);
+    expect(translatedInputs).toEqual(['0', '1']);
+    expect(applyImageByKey).toHaveBeenCalledWith(
+      'engine-page-1',
+      expect.stringMatching(/^blob:/),
+    );
+  });
+
   it('keeps the page loop running when another explicit owner starts', async () => {
     vi.stubGlobal('document', {
       querySelector: vi.fn(() => null),
@@ -528,7 +594,7 @@ describe('ReadingModeController', () => {
     const executionArbiter = arbitrate(executionModule);
     const bar = createFakeBar();
     const controller = new ReadingModeController(
-      adapter,
+      createSiteReadingModeAdapter(adapter),
       new PhotoStateStore(200, { revokeObjectURL: vi.fn() }),
       executionArbiter,
       vi.fn(),

@@ -9,6 +9,7 @@ import type {
   TranslationReferenceContext,
   TranslationDebugInfo,
 } from '@shinobu/image-pipeline/benchmark';
+import type { ImageTranslationExecutionRequest } from './translation/imageTranslationExecution';
 
 export interface ImageTarget {
   element: HTMLImageElement;
@@ -25,17 +26,25 @@ export type ImageTranslationContextResolution =
       status: 'empty' | 'unavailable';
     };
 
-/** URL-only target for pages that lack a DOM img (virtual-rendered in Pixiv reading mode). */
-export interface UrlTarget {
+/** Stable reading-page reference. The source may be a URL or an engine-owned opaque reference. */
+export interface ReadingPageReference {
   key: string;
   originalUrl: string;
+  pageIndex?: number;
+}
+
+/** Authoritative chapter page returned by complete-page discovery. */
+export interface ReadingPageTarget extends ReadingPageReference {
   pageIndex: number; // 0-indexed page number
 }
+
+/** @deprecated Use ReadingPageTarget. Kept as a source-compatible alias. */
+export type UrlTarget = ReadingPageTarget;
 
 export type ReadingPageDiscovery =
   | {
       status: 'complete';
-      pages: readonly UrlTarget[];
+      pages: readonly ReadingPageTarget[];
     }
   | {
       status: 'incomplete';
@@ -47,6 +56,23 @@ export interface ReadingModeBarUi {
   translateCurrentBtn: HTMLButtonElement;
   translateAllBtn: HTMLButtonElement;
   errorLine: HTMLElement;
+}
+
+/**
+ * Small common surface consumed by the Pixiv-style reading controller.
+ * Site adapters can implement it with direct image URLs; reader engines can
+ * hide signed manifests, decoding and Canvas projection behind the same seam.
+ */
+export interface ReadingModeAdapter {
+  getReadingContextKey(): string | null;
+  discoverReadingPages(signal?: AbortSignal): Promise<ReadingPageDiscovery>;
+  getVisiblePages(): readonly ReadingPageReference[];
+  createBottomBarAnchor(): HTMLElement | null;
+  applyImageByKey(key: string, url: string): void;
+  prepareReadingPage?(
+    page: ReadingPageReference,
+    signal: AbortSignal,
+  ): Promise<ImageTranslationExecutionRequest>;
 }
 
 export interface SiteAdapter {
@@ -64,11 +90,16 @@ export interface SiteAdapter {
   /** Discover the complete reading-mode page list from authoritative site data. */
   discoverReadingPages?(signal?: AbortSignal): Promise<ReadingPageDiscovery>;
   /** Get currently visible page targets in reading mode spread. */
-  getVisiblePages?(): ImageTarget[];
+  getVisiblePages?(): readonly ReadingPageReference[];
   /** Create or return the bottom bar button anchor in reading mode. */
   createBottomBarAnchor?(): HTMLElement | null;
   /** Apply translated image to a page by key (works for both DOM img and virtual-rendered pages). */
   applyImageByKey?(key: string, url: string): void;
+  /** Optionally hide site-specific source acquisition behind the reading seam. */
+  prepareReadingPage?(
+    page: ReadingPageReference,
+    signal: AbortSignal,
+  ): Promise<ImageTranslationExecutionRequest>;
 }
 
 export type PhotoViewStatus = 'idle' | 'running' | 'translated' | 'showingOriginal' | 'error';

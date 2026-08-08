@@ -1,10 +1,23 @@
 import type {
   ReaderEngineAdapter,
   ReaderEngineDetection,
+  ReaderEngineReadingModeSession,
   ReaderEngineSession,
   ReaderSessionSignal,
   ReaderVisibleSpread,
 } from '../core/continuous/contracts';
+import type { ReadingPageReference } from '../core/types';
+import {
+  createRuntimeImageDownloader,
+  type DownloadImageForTranslation,
+} from '../core/translation/imageTranslationExecution';
+import { sendRuntimeMessage } from '../../shared/messages';
+import {
+  acquireComiciPageFile,
+  createComiciManifestClient,
+  restoreComiciPageImage,
+  type ComiciManifestClient,
+} from './comiciManifest';
 
 const rootSelector = '#comici-viewer[data-comici-viewer-id].-cv';
 const pagesSelector = '#xCVPages.-cv-pages';
@@ -49,32 +62,73 @@ function mutationOnlyTouchesExtensionNodes(record: MutationRecord): boolean {
 export type ComiciReaderEngineDependencies = {
   document: Document;
   location: Pick<Location, 'origin' | 'pathname'>;
+  fetch?: typeof fetch;
+  downloadImage?: DownloadImageForTranslation;
+  restoreImage?: typeof restoreComiciPageImage;
+  now?: () => number;
 };
 
-class ComiciReaderEngineSession implements ReaderEngineSession {
+class ComiciReaderEngineSession implements ReaderEngineReadingModeSession {
   readonly engineId = 'comici';
   readonly contextKey: string;
   private readonly observers = new Set<() => void>();
+  private readonly manifestClient: ComiciManifestClient;
+  private readonly downloadImage: DownloadImageForTranslation;
+  private readonly restoreImage: typeof restoreComiciPageImage;
+  private readonly now: () => number;
+  private bottomBarAnchor: HTMLElement | null = null;
   private disposed = false;
 
   constructor(
     private readonly root: HTMLElement,
     private readonly document: Document,
     location: Pick<Location, 'origin' | 'pathname'>,
+    dependencies: Pick<
+      ComiciReaderEngineDependencies,
+      'fetch' | 'downloadImage' | 'restoreImage' | 'now'
+    >,
   ) {
     const viewerId = root.getAttribute('data-comici-viewer-id') ?? '';
     this.contextKey = `comici:${viewerId}:${location.origin}${location.pathname}`;
+    this.manifestClient = createComiciManifestClient({
+      root,
+      location,
+      fetch: dependencies.fetch ?? globalThis.fetch.bind(globalThis),
+    });
+    this.downloadImage = dependencies.downloadImage
+      ?? createRuntimeImageDownloader(sendRuntimeMessage);
+    this.restoreImage = dependencies.restoreImage ?? restoreComiciPageImage;
+    this.now = dependencies.now ?? Date.now;
+  }
+
+  getReadingContextKey(): string {
+    return this.contextKey;
+  }
+
+  private pageKey(pageIndex: number): string {
+    return `${this.contextKey}:page:${pageIndex}`;
+  }
+
+  private pageReference(pageIndex: number): string {
+    return `engine-source:${this.pageKey(pageIndex)}`;
+  }
+
+  private readBodySlots(): Array<{ slot: HTMLElement; pageIndex: number }> {
+    const pages = this.document.querySelector<HTMLElement>(pagesSelector);
+    if (!pages) return [];
+    return [...pages.querySelectorAll<HTMLElement>(directPageSelector)]
+      .filter((slot) => !excludedPageClasses.some((name) => slot.classList.contains(name)))
+      .map((slot, pageIndex) => ({ slot, pageIndex }));
   }
 
   readVisibleSpread(): ReaderVisibleSpread {
     const pages = this.document.querySelector<HTMLElement>(pagesSelector);
     if (!pages || !this.root.isConnected) return { pages: [] };
     const rootRect = this.root.getBoundingClientRect();
-    const surfaces = [...pages.querySelectorAll<HTMLElement>(directPageSelector)]
-      .map((slot, pageIndex) => {
+    const surfaces = this.readBodySlots()
+      .map(({ slot, pageIndex }) => {
         if (
           !slot.classList.contains('mode-rendered')
-          || excludedPageClasses.some((name) => slot.classList.contains(name))
         ) {
           return null;
         }
@@ -102,6 +156,97 @@ class ComiciReaderEngineSession implements ReaderEngineSession {
       })
       .filter((surface): surface is NonNullable<typeof surface> => surface !== null);
     return { pages: surfaces };
+  }
+
+  getVisiblePages(): readonly ReadingPageReference[] {
+    return this.readVisibleSpread().pages.map(({ identity }) => ({
+      key: this.pageKey(identity.pageIndex),
+      originalUrl: this.pageReference(identity.pageIndex),
+      pageIndex: identity.pageIndex,
+    }));
+  }
+
+  async discoverReadingPages(signal?: AbortSignal) {
+    const controller = signal ? null : new AbortController();
+    try {
+      const manifest = await this.manifestClient.loadComplete(signal ?? controller!.signal);
+      return {
+        status: 'complete' as const,
+        pages: manifest.pages.map(({ pageIndex }) => ({
+          key: this.pageKey(pageIndex),
+          originalUrl: this.pageReference(pageIndex),
+          pageIndex,
+        })),
+      };
+    } catch {
+      return { status: 'incomplete' as const, reason: 'request-failed' as const };
+    }
+  }
+
+  async prepareReadingPage(page: ReadingPageReference, signal: AbortSignal) {
+    if (!Number.isInteger(page.pageIndex) || Number(page.pageIndex) < 0) {
+      throw new Error('Comici reading page has no logical page index');
+    }
+    const file = await acquireComiciPageFile(
+      Number(page.pageIndex),
+      this.manifestClient,
+      this.downloadImage,
+      this.restoreImage,
+      signal,
+      this.now,
+    );
+    return { source: { kind: 'prepared-file' as const, file } };
+  }
+
+  createBottomBarAnchor(): HTMLElement | null {
+    if (!this.root.isConnected) return null;
+    const fullscreen = this.document.fullscreenElement;
+    const parent = fullscreen && fullscreen.contains(this.root)
+      ? fullscreen
+      : this.document.body ?? this.root;
+    if (this.bottomBarAnchor?.isConnected && this.bottomBarAnchor.parentElement === parent) {
+      return this.bottomBarAnchor;
+    }
+    this.bottomBarAnchor?.remove();
+    const anchor = this.document.createElement('div');
+    anchor.dataset.mtReaderEngineUi = 'comici';
+    anchor.style.position = 'fixed';
+    anchor.style.right = '16px';
+    anchor.style.bottom = '16px';
+    anchor.style.zIndex = '2147483646';
+    anchor.style.pointerEvents = 'auto';
+    parent.appendChild(anchor);
+    this.bottomBarAnchor = anchor;
+    return anchor;
+  }
+
+  applyImageByKey(key: string, url: string): void {
+    const target = this.readBodySlots().find(({ pageIndex }) => this.pageKey(pageIndex) === key);
+    if (!target) return;
+    const projections = [...target.slot.querySelectorAll<HTMLImageElement>('[data-mt-reading-projection]')];
+    if (url === this.pageReference(target.pageIndex)) {
+      for (const projection of projections) projection.remove();
+      return;
+    }
+    const canvas = target.slot.querySelector<HTMLCanvasElement>('.-cv-page-canvas > canvas');
+    const projectionAnchor = target.slot.querySelector<HTMLElement>('.-cv-page-content');
+    if (!canvas?.isConnected || !projectionAnchor) return;
+    const image = projections[0] ?? this.document.createElement('img');
+    for (const duplicate of projections.slice(1)) duplicate.remove();
+    image.dataset.mtReadingProjection = '';
+    image.alt = '';
+    image.src = url;
+    image.style.position = 'absolute';
+    image.style.pointerEvents = 'none';
+    image.style.zIndex = '2';
+    image.style.objectFit = 'fill';
+    if (image.parentElement !== projectionAnchor) projectionAnchor.appendChild(image);
+    const anchorRect = projectionAnchor.getBoundingClientRect();
+    const canvasRect = canvas.getBoundingClientRect();
+    image.style.left = `${canvasRect.left - anchorRect.left}px`;
+    image.style.top = `${canvasRect.top - anchorRect.top}px`;
+    image.style.width = `${canvasRect.width}px`;
+    image.style.height = `${canvasRect.height}px`;
   }
 
   observe(onSignal: (signal: ReaderSessionSignal) => void): () => void {
@@ -183,6 +328,11 @@ class ComiciReaderEngineSession implements ReaderEngineSession {
     if (this.disposed) return;
     this.disposed = true;
     for (const stop of [...this.observers]) stop();
+    this.bottomBarAnchor?.remove();
+    this.bottomBarAnchor = null;
+    for (const projection of this.root.querySelectorAll('[data-mt-reading-projection]')) {
+      projection.remove();
+    }
   }
 }
 
@@ -212,6 +362,16 @@ class ComiciReaderEngineAdapter implements ReaderEngineAdapter {
       detection.root,
       this.dependencies.document,
       this.dependencies.location,
+      this.dependencies,
+    );
+  }
+
+  createReadingModeSession(detection: ReaderEngineDetection): ReaderEngineReadingModeSession {
+    return new ComiciReaderEngineSession(
+      detection.root,
+      this.dependencies.document,
+      this.dependencies.location,
+      this.dependencies,
     );
   }
 }

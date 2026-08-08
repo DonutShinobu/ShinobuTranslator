@@ -1,4 +1,5 @@
 import type { ScreenshotRect } from '../screenshot';
+import type { ReadingModeAdapter } from '../types';
 
 export type ReaderEngineDetection = {
   confidence: 'strong';
@@ -45,10 +46,17 @@ export interface ReaderEngineSession {
   dispose(): void;
 }
 
+/** A structurally detected reader session that can drive the shared reading-mode UI. */
+export interface ReaderEngineReadingModeSession
+  extends ReaderEngineSession, ReadingModeAdapter {}
+
 export interface ReaderEngineAdapter {
   readonly engineId: string;
   detect(): ReaderEngineDetection | null;
   createSession(detection: ReaderEngineDetection): ReaderEngineSession;
+  createReadingModeSession?(
+    detection: ReaderEngineDetection,
+  ): ReaderEngineReadingModeSession;
 }
 
 export interface ContinuousTranslationModule {

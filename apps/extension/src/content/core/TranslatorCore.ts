@@ -17,8 +17,9 @@ import { PhotoStateStore } from './state/photoStateStore';
 import { ReadingModeController } from './reading/readingModeController';
 import { CardStateController } from './ui/cardState';
 import { ScreenshotController } from './screenshot/screenshotController';
-import type { ContinuousTranslationModule } from './continuous/contracts';
-import { createDefaultContinuousTranslationModule } from './continuous/defaultContinuousTranslationModule';
+import { createDefaultReaderEngineReadingModeModule } from './reading/defaultReaderEngineReadingModeModule';
+import type { ReaderEngineReadingModeModulePort } from './reading/readerEngineReadingModeModule';
+import { createSiteReadingModeAdapter } from './reading/siteReadingModeAdapter';
 
 type MountedImage = {
   key: string;
@@ -41,7 +42,7 @@ export class TranslatorCore {
   );
   private readonly imageTranslationController: ImageTranslationController;
   private readonly readingModeController: ReadingModeController;
-  private readonly continuousTranslationModule: ContinuousTranslationModule | null;
+  private readonly readerEngineReadingModeModule: ReaderEngineReadingModeModulePort | null;
   private mounted = new Map<string, MountedImage>();
   private disposeObserver: (() => void) | null = null;
   private syncTimer: number | null = null;
@@ -62,15 +63,15 @@ export class TranslatorCore {
       },
     );
     this.readingModeController = new ReadingModeController(
-      adapter,
+      createSiteReadingModeAdapter(adapter),
       this.stateStore,
       this.imageTranslationExecutionArbiter,
       () => this.scheduleSync(),
       () => this.cancelScheduledSync(),
     );
-    this.continuousTranslationModule = contentSessionId
-      ? createDefaultContinuousTranslationModule(
-          contentSessionId,
+    this.readerEngineReadingModeModule = contentSessionId
+      ? createDefaultReaderEngineReadingModeModule(
+          this.stateStore,
           this.imageTranslationExecutionArbiter,
         )
       : null;
@@ -88,7 +89,7 @@ export class TranslatorCore {
       this.syncTimer = null;
     }
     this.readingModeController.teardown();
-    this.continuousTranslationModule?.dispose();
+    this.readerEngineReadingModeModule?.dispose();
     this.screenshotController.dispose();
     this.imageTranslationController.dispose();
     this.imageTranslationExecutionArbiter.dispose('翻译核心已停止');
@@ -98,7 +99,7 @@ export class TranslatorCore {
   start(): void {
     if (this.stopped) return;
     injectStyles();
-    this.continuousTranslationModule?.start();
+    this.readerEngineReadingModeModule?.start();
     this.disposeObserver = this.adapter.observe(() => this.scheduleSync());
     this.sync();
   }

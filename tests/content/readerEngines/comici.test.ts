@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createComiciReaderEngineAdapter } from '../../../apps/extension/src/content/readerEngines/comici';
+import {
+  createComiciTileMoves,
+  parseComiciContentsInfo,
+  restoreComiciPageImage,
+} from '../../../apps/extension/src/content/readerEngines/comiciManifest';
 
 function element(overrides: Partial<HTMLElement> = {}): HTMLElement {
   return {
@@ -93,7 +98,7 @@ describe('Comici reader engine', () => {
     expect(adapter.detect()).toBeNull();
   });
 
-  it('enumerates visible rendered body pages by stable DOM ordinal', () => {
+  it('enumerates visible rendered body pages by logical body-page ordinal', () => {
     const bodyPage = pageSlot(['-cv-page', 'mode-rendered'], rect(10, 5, 40, 80));
     const promotionalPage = pageSlot(
       ['-cv-page', 'mode-rendered', 'mode-pr'],
@@ -145,7 +150,7 @@ describe('Comici reader engine', () => {
           identity: {
             engineId: 'comici',
             contextKey: session.contextKey,
-            pageIndex: 2,
+            pageIndex: 1,
           },
           slot: secondBodyPage.slot,
           source: { kind: 'canvas', element: secondBodyPage.canvas },
@@ -298,5 +303,162 @@ describe('Comici reader engine', () => {
     expect(unobserve).toHaveBeenCalledWith(first.canvas);
     expect(observe).toHaveBeenCalledWith(second.slot);
     expect(observe).toHaveBeenCalledWith(second.canvas);
+  });
+
+  it('discovers the complete chapter and prepares an unseen page without turning to it', async () => {
+    const bodyPage = pageSlot(['-cv-page', 'mode-rendered'], rect(0, 0, 100, 100));
+    const pages = element({
+      querySelector: () => bodyPage.slot,
+      querySelectorAll: () => [bodyPage.slot] as unknown as NodeListOf<Element>,
+    });
+    const attributes = new Map([
+      ['data-comici-viewer-id', 'viewer-42'],
+      ['data-api-domain', '/api'],
+    ]);
+    const root = element({
+      getAttribute: (name) => attributes.get(name) ?? null,
+      getBoundingClientRect: () => rect(0, 0, 100, 100),
+    });
+    const document = {
+      querySelector: (selector: string) => {
+        if (selector === '#comici-viewer[data-comici-viewer-id].-cv') return root;
+        if (selector === '#xCVPages.-cv-pages') return pages;
+        return null;
+      },
+    } as unknown as Document;
+    const descriptor = (sort: number) => ({
+      sort,
+      width: 850,
+      height: 1200,
+      expiresOn: Date.now() + 60_000,
+      scramble: JSON.stringify([13, 0, 7, 10, 1, 8, 12, 5, 15, 14, 2, 9, 11, 4, 6, 3]),
+      imageUrl: `https://viewer.reader.example/book/viewer-42/page-${sort}.jpg?Expires=1`,
+    });
+    const fetch = vi.fn(async (input: URL | RequestInfo) => {
+      const url = new URL(String(input));
+      const full = url.searchParams.get('page-to') === '2';
+      return new Response(JSON.stringify({
+        totalPages: 3,
+        result: full ? [descriptor(0), descriptor(1), descriptor(2)] : [descriptor(0)],
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    const raw = new Blob(['scrambled'], { type: 'image/jpeg' });
+    const downloadImage = vi.fn(async () => ({
+      blob: raw,
+      file: new File([raw], 'raw.jpg', { type: raw.type }),
+    }));
+    const restored = new File(['restored'], 'page-2.png', { type: 'image/png' });
+    const restoreImage = vi.fn(async () => restored);
+    const adapter = createComiciReaderEngineAdapter({
+      document,
+      location: { origin: 'https://reader.example', pathname: '/episodes/one' },
+      fetch: fetch as typeof globalThis.fetch,
+      downloadImage,
+      restoreImage,
+    });
+    const session = adapter.createReadingModeSession!(adapter.detect()!);
+
+    const discovery = await session.discoverReadingPages?.();
+    expect(discovery).toEqual({
+      status: 'complete',
+      pages: [0, 1, 2].map((pageIndex) => ({
+        key: `${session.contextKey}:page:${pageIndex}`,
+        originalUrl: `engine-source:${session.contextKey}:page:${pageIndex}`,
+        pageIndex,
+      })),
+    });
+    const page = discovery?.status === 'complete' ? discovery.pages[1] : null;
+    expect(page).not.toBeNull();
+    const request = await session.prepareReadingPage!(page!, new AbortController().signal);
+
+    expect(request).toEqual({ source: { kind: 'prepared-file', file: restored } });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(String(fetch.mock.calls[1][0])).toContain('page-from=0');
+    expect(String(fetch.mock.calls[1][0])).toContain('page-to=2');
+    expect(downloadImage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'remote-image',
+        url: expect.stringContaining('/book/viewer-42/page-1.jpg'),
+      }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(restoreImage).toHaveBeenCalledWith(
+      raw,
+      expect.objectContaining({ pageIndex: 1 }),
+      expect.any(AbortSignal),
+    );
+  });
+
+  it('rejects malformed manifests and exposes the official 4x4 tile mapping', () => {
+    const context = {
+      viewerId: 'viewer-42',
+      pageOrigin: 'https://reader.example',
+      requireComplete: true,
+    };
+    const base = {
+      width: 850,
+      height: 1200,
+      expiresOn: Date.now() + 60_000,
+      scramble: JSON.stringify([13, 0, 7, 10, 1, 8, 12, 5, 15, 14, 2, 9, 11, 4, 6, 3]),
+      imageUrl: 'https://viewer.reader.example/book/viewer-42/page.jpg?Expires=1',
+    };
+
+    expect(parseComiciContentsInfo({
+      totalPages: 2,
+      result: [{ ...base, sort: 0 }, { ...base, sort: 0 }],
+    }, context)).toBeNull();
+    expect(createComiciTileMoves(JSON.parse(base.scramble)).slice(0, 2)).toEqual([
+      {
+        sourceColumn: 3,
+        sourceRow: 1,
+        destinationColumn: 0,
+        destinationRow: 0,
+      },
+      {
+        sourceColumn: 0,
+        sourceRow: 0,
+        destinationColumn: 0,
+        destinationRow: 1,
+      },
+    ]);
+  });
+
+  it('restores pixels with Comici column-major destination traversal', async () => {
+    const drawImage = vi.fn();
+    const close = vi.fn();
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({
+      width: 40,
+      height: 40,
+      close,
+    })));
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: () => ({ drawImage }),
+      toBlob: (callback: BlobCallback) => callback(new Blob(['restored'], { type: 'image/png' })),
+    } as unknown as HTMLCanvasElement;
+    const document = {
+      createElement: (name: string) => name === 'canvas' ? canvas : null,
+    } as unknown as Document;
+    const scramble = [13, 0, 7, 10, 1, 8, 12, 5, 15, 14, 2, 9, 11, 4, 6, 3];
+
+    await restoreComiciPageImage(
+      new Blob(['scrambled'], { type: 'image/jpeg' }),
+      {
+        pageIndex: 0,
+        imageUrl: 'https://viewer.reader.example/book/viewer-42/page.jpg',
+        scramble,
+        width: 40,
+        height: 40,
+        expiresOn: Date.now() + 60_000,
+      },
+      new AbortController().signal,
+      document,
+    );
+
+    expect(drawImage.mock.calls[0].slice(1)).toEqual([30, 10, 10, 10, 0, 0, 10, 10]);
+    expect(drawImage.mock.calls[1].slice(1)).toEqual([0, 0, 10, 10, 0, 10, 10, 10]);
+    expect(drawImage).toHaveBeenCalledTimes(16);
+    expect(close).toHaveBeenCalledOnce();
   });
 });

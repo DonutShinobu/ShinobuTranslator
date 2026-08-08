@@ -8,5 +8,3 @@ export * from './visibleTabCapturePort';
 export * from './pageSourceResolver';
 export * from './continuousTranslationController';
 export * from './pageProjectionController';
-export * from './continuousTranslationBar';
-export * from './defaultContinuousTranslationModule';

@@ -1,4 +1,9 @@
-import type { ReadingModeBarUi, SiteAdapter, UrlTarget } from '../types';
+import type {
+  ReadingModeAdapter,
+  ReadingModeBarUi,
+  ReadingPageReference,
+  ReadingPageTarget,
+} from '../types';
 import { createReadingModeBarUi } from '../ui';
 import { resolveImageReferrerPolicy } from '../utils';
 import { PhotoStateStore } from '../state/photoStateStore';
@@ -28,7 +33,7 @@ type PageTranslationOutcome =
 export class ReadingModeController {
   private readingBarUi: ReadingModeBarUi | null = null;
   private operation: ReadingOperation = { kind: 'idle' };
-  private allPageUrls: UrlTarget[] = [];
+  private allPageUrls: ReadingPageTarget[] = [];
   private globalTranslateMode: 'original' | 'translated' = 'original';
   private activeActivity: ImageTranslationExecutionActivity | null = null;
   private errorText = '';
@@ -37,7 +42,7 @@ export class ReadingModeController {
   private readonly resumeWaiters = new Set<() => void>();
 
   constructor(
-    private readonly adapter: SiteAdapter,
+    private readonly adapter: ReadingModeAdapter,
     private readonly stateStore: PhotoStateStore,
     private readonly executionArbiter: ImageTranslationExecutionArbiter,
     private readonly scheduleCoreSync: () => void,
@@ -46,7 +51,7 @@ export class ReadingModeController {
   ) {}
 
   sync(): void {
-      const nextContextKey = this.adapter.getReadingContextKey?.() ?? null;
+      const nextContextKey = this.adapter.getReadingContextKey();
       if (this.readingContextKey !== null && nextContextKey !== this.readingContextKey) {
         if (this.activeActivity) {
           this.suspend();
@@ -60,7 +65,7 @@ export class ReadingModeController {
       this.readingContextKey = nextContextKey;
 
       // Create or re-acquire bottom bar anchor
-      const anchor = this.adapter.createBottomBarAnchor?.();
+      const anchor = this.adapter.createBottomBarAnchor();
       if (!anchor) {
         // The reading DOM is transient. Detach the bar but keep submitted work.
         this.suspend();
@@ -83,7 +88,7 @@ export class ReadingModeController {
 
       // Apply stored translated images to any newly-visible pages.
       // During translation loops, always show translated; otherwise respect toggle mode.
-      const visiblePages = this.adapter.getVisiblePages?.() ?? [];
+      const visiblePages = this.adapter.getVisiblePages();
       for (const page of visiblePages) {
         const state = this.stateStore.get(page.key);
         if (state?.translatedUrl) {
@@ -93,7 +98,7 @@ export class ReadingModeController {
             : this.globalTranslateMode === 'translated'
               ? state.translatedUrl
               : page.originalUrl;
-          this.adapter.applyImageByKey?.(page.key, url);
+          this.adapter.applyImageByKey(page.key, url);
         }
       }
 
@@ -128,7 +133,7 @@ export class ReadingModeController {
         bar.translateCurrentBtn.disabled = false;
 
         // After individual translation, button becomes toggle
-        const visiblePages = this.adapter.getVisiblePages?.() ?? [];
+        const visiblePages = this.adapter.getVisiblePages();
         const allTranslated = visiblePages.length > 0 && visiblePages.every((p) => {
           const s = this.stateStore.get(p.key);
           return s?.translatedUrl;
@@ -177,7 +182,7 @@ export class ReadingModeController {
   private async handleTranslateCurrentClick(): Promise<void> {
       if (this.operation.kind !== 'idle') return;
 
-      const visiblePages = this.adapter.getVisiblePages?.() ?? [];
+      const visiblePages = this.adapter.getVisiblePages();
       if (visiblePages.length === 0) return;
 
       // If all visible pages already translated, toggle mode
@@ -191,7 +196,7 @@ export class ReadingModeController {
           const state = this.stateStore.get(page.key);
           if (!state) continue;
           const url = this.globalTranslateMode === 'translated' ? state.translatedUrl! : state.originalUrl;
-          this.adapter.applyImageByKey?.(page.key, url);
+          this.adapter.applyImageByKey(page.key, url);
         }
         this.renderReadingModeBar();
         return;
@@ -211,7 +216,7 @@ export class ReadingModeController {
           const label = this.readingBarUi?.translateCurrentBtn.querySelector('.mt-x-label') as HTMLElement;
           if (label) label.textContent = `${i + 1}/${total} 准备中`;
 
-          const outcome = await this.translatePageByUrl(activity, page.key, page.originalUrl, (stageText) => {
+          const outcome = await this.translatePage(activity, page, (stageText) => {
             if (label) label.textContent = `${i + 1}/${total} ${stageText}`;
           });
           if (outcome.status === 'cancelled' || outcome.status === 'runtime-failed') {
@@ -243,7 +248,7 @@ export class ReadingModeController {
 
       let discovery;
       try {
-        discovery = await this.adapter.discoverReadingPages?.(activity.signal);
+        discovery = await this.adapter.discoverReadingPages(activity.signal);
       } catch {
         discovery = undefined;
       }
@@ -279,7 +284,7 @@ export class ReadingModeController {
           const url = this.globalTranslateMode === 'translated'
             ? state.translatedUrl!
             : page.originalUrl;
-          this.adapter.applyImageByKey?.(page.key, url);
+          this.adapter.applyImageByKey(page.key, url);
         }
         this.renderReadingModeBar();
         this.finishActivity(activity);
@@ -300,7 +305,7 @@ export class ReadingModeController {
           const label = this.readingBarUi?.translateAllBtn.querySelector('.mt-x-label') as HTMLElement;
           if (label) label.textContent = `${page.pageIndex + 1}/${total} 准备中`;
 
-          const outcome = await this.translatePageByUrl(activity, page.key, page.originalUrl, (stageText) => {
+          const outcome = await this.translatePage(activity, page, (stageText) => {
             if (label) label.textContent = `${page.pageIndex + 1}/${total} ${stageText}`;
           });
           if (outcome.status === 'cancelled') {
@@ -348,12 +353,12 @@ export class ReadingModeController {
       }
     }
 
-  private async translatePageByUrl(
+  private async translatePage(
       activity: ImageTranslationExecutionActivity,
-      key: string,
-      originalUrl: string,
+      page: ReadingPageReference,
       onProgress: (stageText: string) => void,
     ): Promise<PageTranslationOutcome> {
+      const { key, originalUrl } = page;
       const state = this.stateStore.ensure(key, originalUrl);
 
       // Skip if already translated
@@ -361,15 +366,28 @@ export class ReadingModeController {
 
       const releaseState = this.stateStore.protect(key);
 
+      let request;
+      try {
+        request = this.adapter.prepareReadingPage
+          ? await this.adapter.prepareReadingPage(page, activity.signal)
+          : {
+              source: {
+                kind: 'remote-image' as const,
+                url: originalUrl,
+                referrerPolicy: resolveImageReferrerPolicy(),
+              },
+            };
+      } catch {
+        releaseState();
+        return activity.signal.aborted
+          ? { status: 'cancelled' }
+          : { status: 'image-failed' };
+      }
       const jankMonitor = createProgressJankMonitor('reading-mode');
       const task = startPhotoStateImageTranslation({
         executionModule: activity,
         request: {
-          source: {
-            kind: 'remote-image',
-            url: originalUrl,
-            referrerPolicy: resolveImageReferrerPolicy(),
-          },
+          ...request,
           allowedKinds: ['local-pipeline'],
         },
         state,
@@ -379,7 +397,7 @@ export class ReadingModeController {
       });
       try {
         await task.result;
-        if (state.translatedUrl) this.adapter.applyImageByKey?.(key, state.translatedUrl);
+        if (state.translatedUrl) this.adapter.applyImageByKey(key, state.translatedUrl);
         return { status: 'translated' };
       } catch (error) {
         if (activity.signal.aborted) return { status: 'cancelled' };
@@ -391,7 +409,7 @@ export class ReadingModeController {
       }
     }
 
-  private countCompletedPages(pages: readonly UrlTarget[]): number {
+  private countCompletedPages(pages: readonly ReadingPageTarget[]): number {
       return pages.reduce((count, page) => (
         this.stateStore.get(page.key)?.translatedUrl ? count + 1 : count
       ), 0);

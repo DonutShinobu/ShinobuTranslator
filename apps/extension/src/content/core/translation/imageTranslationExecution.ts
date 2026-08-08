@@ -338,7 +338,7 @@ function currentPageDiagnosticUrl(): string {
   return typeof window === 'undefined' ? '' : sanitizeDiagnosticUrl(window.location.href);
 }
 
-function createRuntimeImageDownloader(
+export function createRuntimeImageDownloader(
   sendMessage: typeof sendRuntimeMessage,
 ): DownloadImageForTranslation {
   return async (source, { signal, diagnosticRunId }) => {

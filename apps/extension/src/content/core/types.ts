@@ -49,6 +49,17 @@ export type ReadingPageDiscovery =
   | {
       status: 'incomplete';
       reason: 'request-failed' | 'invalid-response' | 'metadata-unavailable';
+    }
+  | {
+      status: 'incomplete';
+      reason: 'page-limit-exceeded';
+      pageCount: number;
+      maxPages: number;
+    }
+  | {
+      status: 'incomplete';
+      reason: 'unsupported-format';
+      detail: string;
     };
 
 export interface ReadingModeBarUi {

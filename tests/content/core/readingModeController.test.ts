@@ -196,6 +196,43 @@ describe('ReadingModeController', () => {
     expect(bar.error.dataset.variant).toBe('error');
   });
 
+  it('explains when translate-all exceeds the reader page limit', async () => {
+    const adapter: SiteAdapter = {
+      match: () => true,
+      findImages: () => [],
+      createUiAnchor: () => ({} as HTMLElement),
+      applyImage: () => {},
+      observe: () => () => {},
+      createBottomBarAnchor: () => ({ appendChild: vi.fn() } as unknown as HTMLElement),
+      discoverReadingPages: async () => ({
+        status: 'incomplete',
+        reason: 'page-limit-exceeded',
+        pageCount: 241,
+        maxPages: 200,
+      }),
+      getVisiblePages: () => [],
+      applyImageByKey: vi.fn(),
+    };
+    const bar = createFakeBar();
+    const controller = new ReadingModeController(
+      createSiteReadingModeAdapter(adapter),
+      new PhotoStateStore(200, { revokeObjectURL: vi.fn() }),
+      arbitrate(createImageTranslationExecutionModule({
+        prepareExecution: prepareExecutionFromSettings(),
+      })),
+      vi.fn(),
+      vi.fn(),
+      () => bar.ui,
+    );
+
+    controller.sync();
+    bar.all.click?.();
+
+    await vi.waitFor(() => expect(bar.all.disabled).toBe(false));
+    expect(bar.error.textContent).toBe('正文共 241 页，翻译全部最多支持 200 页');
+    expect(bar.error.dataset.variant).toBe('error');
+  });
+
   it('clears a persistent error when navigation switches reading context', async () => {
     let readingContextKey = 'artwork-1';
     const adapter: SiteAdapter = {

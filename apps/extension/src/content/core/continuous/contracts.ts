@@ -6,6 +6,8 @@ export type ReaderEngineDetection = {
   root: HTMLElement;
   /** Adapter-owned node whose replacement requires rebinding the reader session. */
   sessionAnchor?: Element;
+  /** Adapter-owned identity whose change requires rebinding even when DOM nodes are reused. */
+  contextKey?: string;
   evidence: readonly string[];
 };
 

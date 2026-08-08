@@ -20,12 +20,15 @@ import { registerTypesetFonts } from './pipeline/typeset/fontRuntime';
 import { canvasToPngBlob, summarizePipelineArtifacts } from './protocol';
 import type { PipelineArtifacts } from './types';
 import type { DetectionFallbackStrategy } from './pipeline/detect';
+import { hasTranslatableText } from './translatableText';
 
 export type {
   LlmProvider,
   LlmThinkingLevel,
   TranslationReferenceContext,
 } from '@shinobu/text-translation';
+
+export { hasTranslatableText };
 
 export type PipelinePlatform = PlatformProvider & {
   prepareSource?(
@@ -195,12 +198,6 @@ export type PipelineRecordSource = {
   ocr: readonly PipelineRecordRegion[];
   ordered: readonly PipelineRecordRegion[];
 };
-
-export function hasTranslatableText(
-  source: Pick<PipelineRecordSource, 'ordered'>,
-): boolean {
-  return source.ordered.some((region) => region.sourceText.trim().length > 0);
-}
 
 export type PipelineOcrRecord = {
   id: string;

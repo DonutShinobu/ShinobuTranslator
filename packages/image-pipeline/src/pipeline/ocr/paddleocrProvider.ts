@@ -441,8 +441,12 @@ function createPaddleOcrProvider(name: string, modelName: PaddleOcrModelName): O
       paddleDebug.webnnDeviceType = sessionHandle.webnnDeviceType;
 
       const imageInputName = sessionHandle.inputNames[0];
+      const logitsOutputName = sessionHandle.outputNames[0];
       if (!imageInputName) {
-        return { results: [], provider: sessionHandle.provider, webnnDeviceType: sessionHandle.webnnDeviceType, debug: debugInfo };
+        throw new Error('PaddleOCR 模型缺少输入名称');
+      }
+      if (!logitsOutputName) {
+        throw new Error('PaddleOCR 模型缺少输出名称');
       }
 
       const preparedRegions: PreparedPaddleRegion[] = [];
@@ -558,7 +562,7 @@ function createPaddleOcrProvider(name: string, modelName: PaddleOcrModelName): O
           throw new Error(inferenceResult.error);
         }
 
-        const logitsOutput = inferenceResult.outputs[sessionHandle.outputNames[0]];
+        const logitsOutput = inferenceResult.outputs[logitsOutputName];
         if (!logitsOutput) {
           paddleDebug.missingOutputCount += group.length;
           runDebug.error = '模型未返回 logits 输出';
@@ -568,8 +572,9 @@ function createPaddleOcrProvider(name: string, modelName: PaddleOcrModelName): O
             for (const item of group) {
               await runPreparedGroup([item], item.inputData.resizedWidth, false);
             }
+            return;
           }
-          return;
+          throw new Error(runDebug.error);
         }
 
         const logitsDims = logitsOutput.dims;
@@ -590,8 +595,9 @@ function createPaddleOcrProvider(name: string, modelName: PaddleOcrModelName): O
             for (const item of group) {
               await runPreparedGroup([item], item.inputData.resizedWidth, false);
             }
+            return;
           }
-          return;
+          throw new Error(runDebug.error);
         }
 
         let acceptedCount = 0;

@@ -151,13 +151,10 @@ export async function runOcr(
     colorFillMs
   );
   const regions = mapResultsToRegions(filled, detectedRegions);
-  if (regions.length > 0) {
-    return {
-      regions,
-      actualProvider: output.provider,
-      actualWebnnDeviceType: output.webnnDeviceType,
-      debug,
-    };
-  }
-  throw new Error("OCR 未返回有效识别结果");
+  return {
+    regions,
+    actualProvider: output.provider,
+    actualWebnnDeviceType: output.webnnDeviceType,
+    debug,
+  };
 }

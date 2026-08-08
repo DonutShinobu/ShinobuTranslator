@@ -1,6 +1,7 @@
 import type {
   ReadingModeAdapter,
   ReadingModeBarUi,
+  ReadingPageDiscovery,
   ReadingPageReference,
   ReadingPageTarget,
 } from '../types';
@@ -29,6 +30,17 @@ type PageTranslationOutcome =
   | { status: 'translated' | 'skipped' }
   | { status: 'image-failed' | 'runtime-failed' }
   | { status: 'cancelled' };
+
+function discoveryErrorText(discovery: ReadingPageDiscovery | undefined): string {
+  if (discovery?.status !== 'incomplete') return '无法获取完整页数，请重试';
+  if (discovery.reason === 'page-limit-exceeded') {
+    return `正文共 ${discovery.pageCount} 页，翻译全部最多支持 ${discovery.maxPages} 页`;
+  }
+  if (discovery.reason === 'unsupported-format') {
+    return `阅读器格式暂不支持：${discovery.detail}`;
+  }
+  return '无法获取完整页数，请重试';
+}
 
 export class ReadingModeController {
   private readingBarUi: ReadingModeBarUi | null = null;
@@ -258,7 +270,7 @@ export class ReadingModeController {
       }
       if (!discovery || discovery.status !== 'complete') {
         this.operation = { kind: 'idle' };
-        this.errorText = '无法获取完整页数，请重试';
+        this.errorText = discoveryErrorText(discovery);
         this.renderReadingModeBar();
         this.finishActivity(activity);
         return;

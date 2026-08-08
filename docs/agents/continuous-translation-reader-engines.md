@@ -1,4 +1,4 @@
-# 连续翻译模式：阅读器引擎框架与 ComiciViewer 适配设计
+# 连续翻译模式：阅读器引擎框架与已适配引擎
 
 - 状态：已确认，可进入实现拆分
 - 确认日期：2026-08-07
@@ -21,7 +21,9 @@
 → 翻页后继续
 ```
 
-框架必须能承载后续 GigaViewer、PUBLUS、CLIP STUDIO READER 和 BinB 适配器；首版不实现这些引擎。
+框架必须能承载不同阅读器引擎。ComiciViewer 是首个适配器；GigaViewer 已按当前“翻译当前页 / 翻译全部”阅读模式标准接入。PUBLUS、CLIP STUDIO READER 和 BinB 尚未实现。
+
+> 2026-08-08 实现补记：GigaViewer 使用清单直接准备尚未显示的正文页，因此其“翻译全部”不依赖预先翻页或导出惰性 Canvas。引擎专用约束见 [`continuous-translation-giga-viewer.md`](./continuous-translation-giga-viewer.md)。
 
 ### 完成标准
 
@@ -405,7 +407,7 @@ arbiter.begin({ owner: 'continuous', origin: 'automatic' });
 
 ## 13. 引擎专用规范
 
-实现 ComiciViewer 的检测、页面枚举、observer、结构夹具或真实页面回归时，必须继续阅读 [`continuous-translation-comici.md`](./continuous-translation-comici.md)。该文件是 Comici 结构事实的单一来源；通用层不得反向依赖其中的 selector 或 class。
+实现 ComiciViewer 的检测、页面枚举、observer、结构夹具或真实页面回归时，必须继续阅读 [`continuous-translation-comici.md`](./continuous-translation-comici.md)。实现 GigaViewer 时必须继续阅读 [`continuous-translation-giga-viewer.md`](./continuous-translation-giga-viewer.md)。引擎规范是各自结构事实的单一来源；通用层不得反向依赖其中的 selector、class 或清单字段。
 
 ## 14. 生命周期与清理
 

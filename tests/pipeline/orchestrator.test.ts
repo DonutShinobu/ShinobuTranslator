@@ -66,7 +66,8 @@ vi.mock('../../packages/image-pipeline/src/pipeline/visualize', () => ({
 vi.mock('../../packages/image-pipeline/src/pipeline/textlineMerge', () => ({
   mergeTextLines: pipelineMocks.mergeTextLines,
 }));
-vi.mock('../../packages/image-pipeline/src/pipeline/maskRefinement', () => ({
+vi.mock('../../packages/image-pipeline/src/pipeline/maskRefinement', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../packages/image-pipeline/src/pipeline/maskRefinement')>(),
   refineTextMask: pipelineMocks.refineTextMask,
 }));
 vi.mock('../../packages/image-pipeline/src/pipeline/readingOrder', () => ({
@@ -81,6 +82,7 @@ vi.mock('../../packages/model-runtime/src/runtime/modelRegistry', () => ({
 }));
 
 import { PipelineStageError, runPipeline } from '../../packages/image-pipeline/src/pipeline/orchestrator';
+import { MaskRefinementImageError } from '../../packages/image-pipeline/src/pipeline/maskRefinement';
 
 function createCanvas(width = 100, height = 200): PipelineCanvas {
   return {
@@ -486,6 +488,135 @@ describe('runPipeline', () => {
       originalCanvas,
     );
     await pipeline.dispose();
+  });
+
+  it('completes with the original image when OCR rejects every detected region', async () => {
+    const progress: PipelineProgress[] = [];
+    pipelineMocks.runOcr.mockResolvedValueOnce({
+      regions: [],
+      debug: null,
+      actualProvider: 'webgpu',
+    });
+
+    const artifacts = await runPipeline(
+      createFile(),
+      baseConfig,
+      (item) => progress.push(item),
+      runtimeOptions,
+    );
+
+    expect(uniqueConsecutiveStages(progress)).toEqual([
+      'load',
+      'preload',
+      'detect',
+      'bubble',
+      'ocr',
+      'done',
+    ]);
+    expect(artifacts.stageRegions).toEqual({
+      detected: [detectedRegion],
+      ocr: [],
+      merged: [],
+      ordered: [],
+    });
+    expect(artifacts.detectedRegions).toEqual([]);
+    expect(artifacts.cleanedCanvas).toBe(originalCanvas);
+    expect(artifacts.resultCanvas).toBe(originalCanvas);
+    expect(pipelineMocks.runTranslate).not.toHaveBeenCalled();
+    expect(pipelineMocks.runInpaint).not.toHaveBeenCalled();
+    expect(pipelineMocks.drawTypeset).not.toHaveBeenCalled();
+  });
+
+  it('publishes an all-rejected OCR result as successful no-translatable-text', async () => {
+    pipelineMocks.runOcr.mockResolvedValueOnce({
+      regions: [],
+      debug: null,
+      actualProvider: 'webgpu',
+    });
+    const pipeline = createImagePipeline({
+      platform: pipelineMocks.browserPlatform as PlatformProvider,
+      modelRuntime,
+      detectionFallbackStrategy: { kind: 'heuristic-only' },
+    });
+
+    const result = await pipeline.run({
+      source: createFile(),
+      config: baseConfig,
+      workingCopy: { strategy: 'source-native' },
+    }, { textTranslator }).result;
+
+    expect(result).toMatchObject({
+      status: 'no-translatable-text',
+      record: {
+        ocr: [],
+        translations: [],
+      },
+    });
+    expect(await result.image.text()).toBe('platform-png');
+    expect(pipelineMocks.browserPlatform.encodeCanvasToPng).toHaveBeenCalledWith(
+      originalCanvas,
+    );
+    await pipeline.dispose();
+  });
+
+  it('treats punctuation-only OCR as no-translatable-text before mask refinement', async () => {
+    const progress: PipelineProgress[] = [];
+    pipelineMocks.runOcr.mockResolvedValueOnce({
+      regions: [{
+        ...ocrRegion,
+        sourceText: ' • • • ●',
+      }],
+      debug: null,
+      actualProvider: 'webgpu',
+    });
+
+    const artifacts = await runPipeline(
+      createFile(),
+      baseConfig,
+      (item) => progress.push(item),
+      runtimeOptions,
+    );
+
+    expect(uniqueConsecutiveStages(progress)).toEqual([
+      'load',
+      'preload',
+      'detect',
+      'bubble',
+      'ocr',
+      'merge',
+      'order',
+      'done',
+    ]);
+    expect(artifacts.stageRegions.ordered).toEqual([]);
+    expect(artifacts.detectedRegions).toEqual([]);
+    expect(artifacts.resultCanvas).toBe(originalCanvas);
+    expect(pipelineMocks.runTranslate).not.toHaveBeenCalled();
+    expect(pipelineMocks.refineTextMask).not.toHaveBeenCalled();
+    expect(pipelineMocks.runInpaint).not.toHaveBeenCalled();
+  });
+
+  it('classifies an unrefinable image mask as an image-local failure', async () => {
+    pipelineMocks.refineTextMask.mockImplementationOnce(() => {
+      throw new MaskRefinementImageError(
+        'Mask refinement 未分配到有效连通域，已禁用文本框遮罩回退',
+      );
+    });
+
+    const error = await runPipeline(
+      createFile(),
+      { ...baseConfig, processMode: 'erase' },
+      () => {},
+      runtimeOptions,
+    ).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(PipelineStageError);
+    expect(error).toMatchObject({
+      stage: 'mask_refine',
+      failure: {
+        stage: 'mask_refine',
+        scope: 'image',
+      },
+    });
   });
 
   it('attaches completed intermediate artifacts to stage errors', async () => {

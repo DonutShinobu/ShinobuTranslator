@@ -25,7 +25,7 @@ const source: PipelineRecordSource = {
 };
 
 describe('pipeline processing record', () => {
-  it('treats only non-blank ordered text as translatable', () => {
+  it('requires ordered text to contain a Unicode letter or number', () => {
     expect(hasTranslatableText({
       ordered: [{
         id: 'blank',
@@ -34,6 +34,22 @@ describe('pipeline processing record', () => {
         translatedText: '',
       }],
     })).toBe(false);
+    expect(hasTranslatableText({
+      ordered: [{
+        id: 'symbols-only',
+        box: { x: 0, y: 0, width: 1, height: 1 },
+        sourceText: ' • • • ●！？… ',
+        translatedText: '',
+      }],
+    })).toBe(false);
+    expect(hasTranslatableText({
+      ordered: [{
+        id: 'number',
+        box: { x: 0, y: 0, width: 1, height: 1 },
+        sourceText: '2026',
+        translatedText: '',
+      }],
+    })).toBe(true);
     expect(hasTranslatableText(source)).toBe(true);
   });
 

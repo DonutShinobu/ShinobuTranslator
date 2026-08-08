@@ -44,7 +44,7 @@ export class ReaderEngineReadingModeModule implements ReaderEngineReadingModeMod
         subtree: true,
         childList: true,
         attributes: true,
-        attributeFilter: ['id', 'class', 'data-comici-viewer-id'],
+        attributeFilter: ['id', 'class', 'data-comici-viewer-id', 'data-value'],
       });
     }
     this.sync();
@@ -80,6 +80,7 @@ export class ReaderEngineReadingModeModule implements ReaderEngineReadingModeMod
       && current.adapter === next.adapter
       && current.detection.root === next.detection.root
       && current.detection.sessionAnchor === next.detection.sessionAnchor
+      && current.detection.contextKey === next.detection.contextKey
       && next.detection.root.isConnected
       && (!next.detection.sessionAnchor || next.detection.sessionAnchor.isConnected),
     );

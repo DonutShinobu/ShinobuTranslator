@@ -23,7 +23,7 @@ import {
   filterOcrRegions,
 } from "./ocrPostFilter";
 import { OCR_POST_FILTER_RULE_ID } from "./ocrPostFilter/rule";
-import { refineTextMask } from "./maskRefinement";
+import { MaskRefinementImageError, refineTextMask } from "./maskRefinement";
 import { sortRegionsForRender } from "./readingOrder";
 import { detectBubbles, matchRegionsToBubbles, type BubbleDetection } from "./bubbleDetect";
 import {
@@ -37,6 +37,7 @@ import {
 } from "@shinobu/diagnostics";
 import { createCancelledError } from "../protocol";
 import type { TextTranslator } from '@shinobu/text-translation';
+import { hasTranslatableText } from '../translatableText';
 import {
   isPipelineFailureEnvelope,
   type PipelineFailureEnvelope,
@@ -649,7 +650,9 @@ export async function runPipeline(
     latestRegions = ocrResult.regions;
     stageRegions.ocr = cloneTextRegions(latestRegions);
     ocrDebug = ocrResult.debug;
-    ocrCanvas = drawRegions(originalCanvas, ocrResult.regions, "OCR 识别", (region) => region.sourceText, platform);
+    ocrCanvas = ocrResult.regions.length === 0
+      ? originalCanvas
+      : drawRegions(originalCanvas, ocrResult.regions, "OCR 识别", (region) => region.sourceText, platform);
     cleanedCanvas = ocrCanvas;
     resultCanvas = cleanedCanvas;
     const ocrRuntime = getRuntimeStage("ocr");
@@ -675,6 +678,12 @@ export async function runPipeline(
       durationMs: ocrDurationMs,
       debug: ocrResult.debug,
     });
+    if (ocrResult.regions.length === 0) {
+      cleanedCanvas = originalCanvas;
+      resultCanvas = originalCanvas;
+      report(onProgress, "done", "完成");
+      return buildArtifacts();
+    }
     if (!stopAfterOrder) {
       const inpaintPreloadT0 = performance.now();
       setRuntimeStage(await startInpaintRuntimeProbe());
@@ -803,7 +812,7 @@ export async function runPipeline(
   }
 
   const orderedRegions = latestRegions;
-  if (!orderedRegions.some((region) => region.sourceText.trim().length > 0)) {
+  if (!hasTranslatableText({ ordered: orderedRegions })) {
     latestRegions = [];
     stageRegions.ocr = [];
     stageRegions.merged = [];
@@ -928,7 +937,14 @@ export async function runPipeline(
       }
       maskRefineTiming = { stage: "mask_refine", label: "\u7ec6\u5316\u53bb\u5b57\u906e\u7f69", durationMs: performance.now() - t0 };
     } catch (error) {
-      throw new PipelineStageError("mask_refine", "\u906e\u7f69\u7ec6\u5316", toErrorDetail(error), buildArtifacts(), "runtime", error);
+      throw new PipelineStageError(
+        "mask_refine",
+        "\u906e\u7f69\u7ec6\u5316",
+        toErrorDetail(error),
+        buildArtifacts(),
+        error instanceof MaskRefinementImageError ? "image" : "runtime",
+        error,
+      );
     }
 
     parallelEraseStatus = "inpaint";

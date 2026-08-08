@@ -25,6 +25,13 @@ import {
 
 export type { MaskRefinementOptions } from "./algorithms";
 
+export class MaskRefinementImageError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MaskRefinementImageError';
+  }
+}
+
 export function refineTextMask(
   originalCanvas: PipelineCanvas,
   regions: TextRegion[],
@@ -131,7 +138,7 @@ export function refineTextMask(
   }
 
   if (!valid) {
-    throw new Error("Mask refinement 未分配到有效连通域，已禁用文本框遮罩回退");
+    throw new MaskRefinementImageError("Mask refinement 未分配到有效连通域，已禁用文本框遮罩回退");
   }
 
   const finalMask = new Uint8Array(scaledWidth * scaledHeight);

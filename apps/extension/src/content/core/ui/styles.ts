@@ -130,6 +130,7 @@ export function injectStyles(): void {
       backdrop-filter: blur(16px) saturate(1.4);
       -webkit-backdrop-filter: blur(16px) saturate(1.4);
       color: var(--mt-text, oklch(0.94 0.01 250));
+      font-family: "MTX-SourceHanSans-CN", "MTX-SourceHanSans-TW", system-ui, sans-serif;
       font-size: 13px;
       font-weight: 500;
       line-height: 1;

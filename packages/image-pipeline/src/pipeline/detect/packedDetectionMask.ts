@@ -1,4 +1,11 @@
-const edgeThickness = 2;
+export const DETECTION_MASK_EDGE_SEARCH_ROWS = 16;
+
+export type PackedDetectionMaskEdges = {
+  topTouches: boolean;
+  bottomTouches: boolean;
+  topStrength: number;
+  bottomStrength: number;
+};
 
 function validateDimensions(width: number, height: number): number {
   if (!Number.isSafeInteger(width) || width <= 0 || !Number.isSafeInteger(height) || height <= 0) {
@@ -49,18 +56,38 @@ function hasPackedPixel(
   return false;
 }
 
+function inspectEdgeStrength(
+  packedMask: Uint8Array,
+  width: number,
+  height: number,
+  edge: 'top' | 'bottom',
+): number {
+  const rows = Math.min(DETECTION_MASK_EDGE_SEARCH_ROWS, height);
+  for (let distance = 0; distance < rows; distance += 1) {
+    const row = edge === 'top' ? distance : height - distance - 1;
+    const start = row * width;
+    if (hasPackedPixel(packedMask, start, start + width)) {
+      return DETECTION_MASK_EDGE_SEARCH_ROWS - distance;
+    }
+  }
+  return 0;
+}
+
 export function inspectPackedDetectionMaskEdges(
   packedMask: Uint8Array,
   width: number,
   height: number,
-): { topTouches: boolean; bottomTouches: boolean } {
+): PackedDetectionMaskEdges {
   const pixelCount = validateDimensions(width, height);
   if (packedMask.length !== Math.ceil(pixelCount / 8)) {
     throw new Error('检测 mask bitset 长度无效');
   }
-  const rows = Math.min(edgeThickness, height);
+  const topStrength = inspectEdgeStrength(packedMask, width, height, 'top');
+  const bottomStrength = inspectEdgeStrength(packedMask, width, height, 'bottom');
   return {
-    topTouches: hasPackedPixel(packedMask, 0, width * rows),
-    bottomTouches: hasPackedPixel(packedMask, width * (height - rows), pixelCount),
+    topTouches: topStrength > 0,
+    bottomTouches: bottomStrength > 0,
+    topStrength,
+    bottomStrength,
   };
 }

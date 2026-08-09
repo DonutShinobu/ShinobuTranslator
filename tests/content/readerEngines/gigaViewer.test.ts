@@ -343,11 +343,11 @@ describe('GigaViewer reader engine', () => {
       type: 'image/png',
     }));
     const contacts = [
-      { topTouches: false, bottomTouches: true },
-      { topTouches: true, bottomTouches: true },
-      { topTouches: false, bottomTouches: true },
-      { topTouches: true, bottomTouches: false },
-      { topTouches: false, bottomTouches: false },
+      { topTouches: false, bottomTouches: true, topStrength: 0, bottomStrength: 16 },
+      { topTouches: true, bottomTouches: false, topStrength: 16, bottomStrength: 0 },
+      { topTouches: false, bottomTouches: true, topStrength: 0, bottomStrength: 16 },
+      { topTouches: true, bottomTouches: false, topStrength: 16, bottomStrength: 0 },
+      { topTouches: false, bottomTouches: false, topStrength: 0, bottomStrength: 0 },
     ];
     const detections = contacts.map((contact, pageIndex) => ({
       detection: {

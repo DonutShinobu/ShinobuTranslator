@@ -236,6 +236,8 @@ describe('PipelineHostBroker', () => {
       detectorSignature: 'detector-v1',
       topTouches: true,
       bottomTouches: true,
+      topStrength: 16,
+      bottomStrength: 15,
     });
     host.emitMessage({ type: 'complete', jobId: 'probe-1' });
 

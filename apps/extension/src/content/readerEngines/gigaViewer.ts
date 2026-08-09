@@ -312,7 +312,7 @@ class GigaViewerReaderEngineSession implements ReaderEngineReadingModeSession {
     const probeDetectorSignature = probeResults[0].detectorSignature;
     const cacheKey = JSON.stringify([
       this.contextKey,
-      'ttb-edge-mask-v1',
+      'ttb-edge-mask-v2',
       requestedDetectorSignature,
       probeDetectorSignature,
     ]);
@@ -324,6 +324,8 @@ class GigaViewerReaderEngineSession implements ReaderEngineReadingModeSession {
         height: probeResults[pageIndex].detection.height,
         topTouches: probeResults[pageIndex].topTouches,
         bottomTouches: probeResults[pageIndex].bottomTouches,
+        topStrength: probeResults[pageIndex].topStrength,
+        bottomStrength: probeResults[pageIndex].bottomStrength,
       })),
     );
     const sourceByIndex = new Map(pages.map((page) => [page.pageIndex, page]));

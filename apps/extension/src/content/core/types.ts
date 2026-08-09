@@ -42,6 +42,8 @@ export interface ReadingLogicalPageTarget extends ReadingPageTarget {
   members: readonly ReadingPageTarget[];
 }
 
+export const readingLogicalPageMemberLimit = 5;
+
 export type ReadingLogicalPagePlan = {
   pages: readonly ReadingLogicalPageTarget[];
 };

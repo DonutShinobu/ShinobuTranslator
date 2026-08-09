@@ -253,6 +253,8 @@ describe('PipelineHost single-task admission', () => {
       detectorSignature: 'detector-v1',
       topTouches: true,
       bottomTouches: true,
+      topStrength: 16,
+      bottomStrength: 15,
     });
     const host = createHost();
     host.connect();
@@ -291,6 +293,8 @@ describe('PipelineHost single-task admission', () => {
       detectorSignature: 'detector-v1',
       topTouches: true,
       bottomTouches: true,
+      topStrength: 16,
+      bottomStrength: 15,
     });
     expect(mocks.runPipeline).not.toHaveBeenCalled();
   });

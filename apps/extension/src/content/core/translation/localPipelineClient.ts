@@ -192,6 +192,8 @@ export const runLocalDetectionProbe: RunLocalDetectionProbe = (file, options = {
             detectorSignature: value.detectorSignature,
             topTouches: value.topTouches,
             bottomTouches: value.bottomTouches,
+            topStrength: value.topStrength,
+            bottomStrength: value.bottomStrength,
           };
           break;
         case 'complete':

@@ -591,14 +591,14 @@ describe('ReadingModeController', () => {
       requestAnimationFrame: vi.fn(() => 1),
       cancelAnimationFrame: vi.fn(),
     });
-    const pages = [0, 1].map((pageIndex) => ({
+    const pages = [0, 1, 2, 3, 4].map((pageIndex) => ({
       key: `engine-page-${pageIndex}`,
       originalUrl: `engine-source:${pageIndex}`,
       pageIndex,
     }));
     const logicalPage = {
-      key: 'logical-0-1',
-      originalUrl: 'engine-source:logical-0-1',
+      key: 'logical-0-4',
+      originalUrl: 'engine-source:logical-0-4',
       pageIndex: 0,
       members: pages,
     };
@@ -609,10 +609,10 @@ describe('ReadingModeController', () => {
         file: new File(['combined'], 'combined.png', { type: 'image/png' }),
       },
     }));
-    const splitReadingLogicalPageResult = vi.fn(async () => [
-      { page: pages[0], image: new Blob(['slice-0'], { type: 'image/png' }) },
-      { page: pages[1], image: new Blob(['slice-1'], { type: 'image/png' }) },
-    ]);
+    const splitReadingLogicalPageResult = vi.fn(async () => pages.map((page, index) => ({
+      page,
+      image: new Blob([`slice-${index}`], { type: 'image/png' }),
+    })));
     const applyImageByKey = vi.fn();
     const adapter: SiteAdapter = {
       match: () => true,
@@ -655,10 +655,10 @@ describe('ReadingModeController', () => {
     expect(prepareReadingPage).toHaveBeenCalledOnce();
     expect(runLocalPipeline).toHaveBeenCalledOnce();
     expect(splitReadingLogicalPageResult).toHaveBeenCalledOnce();
-    expect(store.get(pages[0].key)?.translatedUrl).toMatch(/^blob:/);
-    expect(store.get(pages[1].key)?.translatedUrl).toMatch(/^blob:/);
-    expect(applyImageByKey).toHaveBeenCalledWith(pages[0].key, expect.stringMatching(/^blob:/));
-    expect(applyImageByKey).toHaveBeenCalledWith(pages[1].key, expect.stringMatching(/^blob:/));
+    for (const page of pages) {
+      expect(store.get(page.key)?.translatedUrl).toMatch(/^blob:/);
+      expect(applyImageByKey).toHaveBeenCalledWith(page.key, expect.stringMatching(/^blob:/));
+    }
   });
 
   it('keeps the page loop running when another explicit owner starts', async () => {

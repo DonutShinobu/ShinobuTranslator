@@ -1,11 +1,12 @@
-import type {
-  ReadingModeAdapter,
-  ReadingModeBarUi,
-  ReadingLogicalPagePlan,
-  ReadingLogicalPageTarget,
-  ReadingPageDiscovery,
-  ReadingPageReference,
-  ReadingPageTarget,
+import {
+  readingLogicalPageMemberLimit,
+  type ReadingModeAdapter,
+  type ReadingModeBarUi,
+  type ReadingLogicalPagePlan,
+  type ReadingLogicalPageTarget,
+  type ReadingPageDiscovery,
+  type ReadingPageReference,
+  type ReadingPageTarget,
 } from '../types';
 import { createReadingModeBarUi } from '../ui';
 import { resolveImageReferrerPolicy } from '../utils';
@@ -495,7 +496,9 @@ export class ReadingModeController {
     if (
       plannedMembers.length !== sourcePages.length
       || plannedMembers.some((page, index) => page.key !== sourcePages[index].key)
-      || plan.pages.some((page) => page.members.length < 1 || page.members.length > 3)
+      || plan.pages.some((page) => (
+        page.members.length < 1 || page.members.length > readingLogicalPageMemberLimit
+      ))
     ) {
       throw new Error('阅读器返回了无效的逻辑分页计划');
     }

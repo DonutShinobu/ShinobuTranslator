@@ -1,3 +1,5 @@
+import { readingLogicalPageMemberLimit } from '../core/types';
+
 function throwIfAborted(signal: AbortSignal): void {
   if (signal.aborted) throw signal.reason;
 }
@@ -17,8 +19,8 @@ export async function composeGigaViewerTtbFiles(
   signal: AbortSignal,
   document: Document = globalThis.document,
 ): Promise<File> {
-  if (files.length < 2 || files.length > 3) {
-    throw new Error('GigaViewer TTB 逻辑页必须包含 2 到 3 个切片');
+  if (files.length < 2 || files.length > readingLogicalPageMemberLimit) {
+    throw new Error(`GigaViewer TTB 逻辑页必须包含 2 到 ${readingLogicalPageMemberLimit} 个切片`);
   }
   const bitmaps: ImageBitmap[] = [];
   try {
@@ -56,7 +58,7 @@ export async function splitGigaViewerTtbBlob(
 ): Promise<Blob[]> {
   if (
     memberHeights.length < 2
-    || memberHeights.length > 3
+    || memberHeights.length > readingLogicalPageMemberLimit
     || memberHeights.some((height) => !Number.isInteger(height) || height <= 0)
   ) {
     throw new Error('GigaViewer TTB 逻辑页裁切高度无效');

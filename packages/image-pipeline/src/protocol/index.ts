@@ -23,6 +23,7 @@ import {
   type PipelineFailureEnvelope,
   type PipelineRecord,
 } from '@shinobu/image-pipeline';
+import { DETECTION_MASK_EDGE_SEARCH_ROWS } from '../pipeline/detect/packedDetectionMask';
 
 export const LOCAL_PIPELINE_CLIENT_PORT = 'mt:local-pipeline-client';
 export const LOCAL_PIPELINE_HOST_PORT = 'mt:pipeline-host';
@@ -159,6 +160,8 @@ export type LocalPipelineHostMessage =
       detectorSignature: string;
       topTouches: boolean;
       bottomTouches: boolean;
+      topStrength: number;
+      bottomStrength: number;
     }
   | {
       type: 'result-meta';
@@ -277,7 +280,15 @@ export function isLocalPipelineHostMessage(value: unknown): value is LocalPipeli
         && typeof value.detectorSignature === 'string'
         && value.detectorSignature.length > 0
         && typeof value.topTouches === 'boolean'
-        && typeof value.bottomTouches === 'boolean';
+        && typeof value.bottomTouches === 'boolean'
+        && Number.isInteger(value.topStrength)
+        && (value.topStrength as number) >= 0
+        && (value.topStrength as number) <= DETECTION_MASK_EDGE_SEARCH_ROWS
+        && Number.isInteger(value.bottomStrength)
+        && (value.bottomStrength as number) >= 0
+        && (value.bottomStrength as number) <= DETECTION_MASK_EDGE_SEARCH_ROWS
+        && value.topTouches === ((value.topStrength as number) > 0)
+        && value.bottomTouches === ((value.bottomStrength as number) > 0);
     case 'result-meta':
       return (value.status === 'completed' || value.status === 'no-translatable-text')
         && isValidArtifactMeta(value.result)

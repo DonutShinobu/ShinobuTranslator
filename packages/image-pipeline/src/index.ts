@@ -27,6 +27,7 @@ export {
   type TextDetectionProbeOptions,
   type TextDetectionProbeResult,
 } from './pipeline/detect/probe';
+export { DETECTION_MASK_EDGE_SEARCH_ROWS } from './pipeline/detect/packedDetectionMask';
 
 export type {
   LlmProvider,

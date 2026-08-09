@@ -13,6 +13,8 @@ export type TextDetectionProbeResult = {
   detectorSignature: string;
   topTouches: boolean;
   bottomTouches: boolean;
+  topStrength: number;
+  bottomStrength: number;
 };
 
 export type TextDetectionProbeOptions = {

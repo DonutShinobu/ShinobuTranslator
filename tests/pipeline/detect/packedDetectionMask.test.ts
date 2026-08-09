@@ -20,28 +20,38 @@ describe('packed detection mask', () => {
     expect(unpackDetectionMask(packed, 5, 3)).toEqual(binary);
   });
 
-  it('treats any mask pixel in the first or last two rows as an edge contact', () => {
-    const binary = new Uint8Array(6 * 6);
-    binary[1 * 6 + 4] = 1;
-    binary[3 * 6 + 2] = 1;
-    binary[5 * 6] = 1;
+  it('reports distance-weighted contact strength across the first and last 16 rows', () => {
+    const binary = new Uint8Array(6 * 40);
+    binary[15 * 6 + 4] = 1;
+    binary[24 * 6 + 2] = 1;
 
     expect(inspectPackedDetectionMaskEdges(
-      packDetectionMask(binary, 6, 6),
+      packDetectionMask(binary, 6, 40),
       6,
-      6,
-    )).toEqual({ topTouches: true, bottomTouches: true });
+      40,
+    )).toEqual({
+      topTouches: true,
+      bottomTouches: true,
+      topStrength: 1,
+      bottomStrength: 1,
+    });
   });
 
-  it('does not treat mask outside the two-pixel bands as a contact', () => {
-    const binary = new Uint8Array(4 * 5);
-    binary[2 * 4 + 1] = 1;
+  it('does not treat mask beyond the 16-row edge bands as a contact', () => {
+    const binary = new Uint8Array(4 * 40);
+    binary[16 * 4 + 1] = 1;
+    binary[23 * 4 + 2] = 1;
 
     expect(inspectPackedDetectionMaskEdges(
-      packDetectionMask(binary, 4, 5),
+      packDetectionMask(binary, 4, 40),
       4,
-      5,
-    )).toEqual({ topTouches: false, bottomTouches: false });
+      40,
+    )).toEqual({
+      topTouches: false,
+      bottomTouches: false,
+      topStrength: 0,
+      bottomStrength: 0,
+    });
   });
 
   it('rejects malformed dimensions and packed lengths', () => {

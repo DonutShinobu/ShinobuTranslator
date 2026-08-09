@@ -599,6 +599,8 @@ export class PipelineHost {
         detectorSignature: result.detectorSignature,
         topTouches: result.topTouches,
         bottomTouches: result.bottomTouches,
+        topStrength: result.topStrength,
+        bottomStrength: result.bottomStrength,
       })) {
         throw createProtocolError('检测预检结果传输失败');
       }

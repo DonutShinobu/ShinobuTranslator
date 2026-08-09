@@ -212,6 +212,8 @@ describe('runLocalPipeline', () => {
       detectorSignature: 'detector-v1',
       topTouches: true,
       bottomTouches: true,
+      topStrength: 16,
+      bottomStrength: 15,
     });
     client.emitMessage({ type: 'complete', jobId: prepare.jobId });
 
@@ -219,6 +221,8 @@ describe('runLocalPipeline', () => {
     expect(result.detectorSignature).toBe('detector-v1');
     expect(result.topTouches).toBe(true);
     expect(result.bottomTouches).toBe(true);
+    expect(result.topStrength).toBe(16);
+    expect(result.bottomStrength).toBe(15);
     expect(result.detection.regions).toHaveLength(1);
     expect(new Uint8Array(await result.detection.packedMask.arrayBuffer())).toEqual(
       Uint8Array.of(1),

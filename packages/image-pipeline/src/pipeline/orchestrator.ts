@@ -13,6 +13,10 @@ import type {
 import type { PlatformProvider, PipelineCanvas } from "../runtime/platform";
 import { fileToImage, imageToCanvas } from "./image";
 import { detectTextRegionsWithMask, type DetectionFallbackStrategy } from './detect';
+import {
+  materializePrecomputedDetection,
+  type PrecomputedTextDetection,
+} from './detect/precomputedDetection';
 import { runOcr } from "./ocr";
 import { preparePaddleOcrRuntime, warmupPaddleOcrRuntime } from "./ocr/paddleocrProvider";
 import { runInpaint } from "./inpaint";
@@ -53,6 +57,7 @@ export type PipelineRunOptions = {
   detectionFallbackStrategy: DetectionFallbackStrategy;
   textTranslator?: TextTranslator;
   observer?: DiagnosticLogObserver;
+  precomputedDetection?: PrecomputedTextDetection;
 };
 
 type PaddleOcrRuntimeProbeMode = "legacy" | "prepare" | "warmup";
@@ -474,7 +479,16 @@ export async function runPipeline(
   throwIfCancelled(signal);
   report(onProgress, "preload", "加载检测模型");
   const preloadT0 = performance.now();
-  setRuntimeStage(await probeRuntime(modelRuntime, "detector"));
+  if (options.precomputedDetection) {
+    setRuntimeStage({
+      model: 'detector',
+      enabled: true,
+      engine: 'onnx',
+      detail: 'detector 使用阅读会话预检测结果',
+    });
+  } else {
+    setRuntimeStage(await probeRuntime(modelRuntime, "detector"));
+  }
   throwIfCancelled(signal);
   stageTimings.push({ stage: "preload", label: "加载检测模型", durationMs: performance.now() - preloadT0 });
 
@@ -510,12 +524,14 @@ export async function runPipeline(
   report(onProgress, "detect", "文本检测");
   try {
     const t0 = performance.now();
-    const detected = await detectTextRegionsWithMask(
-      image,
-      platform,
-      modelRuntime,
-      options.detectionFallbackStrategy,
-    );
+    const detected = options.precomputedDetection
+      ? await materializePrecomputedDetection(options.precomputedDetection, image, platform)
+      : await detectTextRegionsWithMask(
+          image,
+          platform,
+          modelRuntime,
+          options.detectionFallbackStrategy,
+        );
     throwIfCancelled(signal);
     latestRegions = detected.regions;
     stageRegions.detected = cloneTextRegions(latestRegions);

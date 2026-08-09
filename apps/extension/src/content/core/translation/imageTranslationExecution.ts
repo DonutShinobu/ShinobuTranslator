@@ -1,4 +1,8 @@
-import type { PipelineConfig, PipelineProgress } from '@shinobu/image-pipeline';
+import type {
+  PipelineConfig,
+  PipelineProgress,
+  PrecomputedTextDetection,
+} from '@shinobu/image-pipeline';
 import type {
   LocalPipelineArtifactSummary,
   LocalPipelineResult,
@@ -58,6 +62,7 @@ export type ImageTranslationExecutionRequest = {
   source: ImageTranslationSource;
   translationContext?: TranslationReferenceContext;
   allowedKinds?: readonly ImageTranslationExecutionKind[];
+  precomputedDetection?: PrecomputedTextDetection;
 };
 
 export type ImageTranslationDisplayPreferences = {
@@ -611,7 +616,7 @@ export function createImageTranslationExecutionModule(
             execution: { kind, progress },
           });
         },
-        { signal },
+        { signal, precomputedDetection: request.precomputedDetection },
       );
       throwIfAborted(signal);
       reportProgress({ phase: 'finalizing', operation: 'collect-artifacts' });

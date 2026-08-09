@@ -8,6 +8,7 @@ import type {
   RuntimeStageStatus,
   StageTiming,
   TranslationDebugInfo,
+  TextRegion,
 } from '../types';
 
 export {
@@ -91,6 +92,13 @@ export type LocalPipelineArtifactMeta = LocalPipelineChunkMeta & {
   contentType: string;
 };
 
+export type LocalPipelineDetectionArtifact = {
+  width: number;
+  height: number;
+  packedMaskBase64: string;
+  regions: readonly TextRegion[];
+};
+
 export type LocalPipelineClientMessage =
   | {
       type: 'prepare';
@@ -102,6 +110,13 @@ export type LocalPipelineClientMessage =
       jobId: string;
       file: LocalPipelineFileMeta;
       config: PipelineConfig;
+      input: LocalPipelineChunkMeta;
+      detection?: LocalPipelineDetectionArtifact;
+    }
+  | {
+      type: 'start-detection-probe';
+      jobId: string;
+      file: LocalPipelineFileMeta;
       input: LocalPipelineChunkMeta;
     }
   | {
@@ -136,6 +151,14 @@ export type LocalPipelineHostMessage =
       type: 'progress';
       jobId: string;
       progress: PipelineProgress;
+    }
+  | {
+      type: 'detection-result';
+      jobId: string;
+      detection: LocalPipelineDetectionArtifact;
+      detectorSignature: string;
+      topTouches: boolean;
+      bottomTouches: boolean;
     }
   | {
       type: 'result-meta';
@@ -204,7 +227,12 @@ export function isLocalPipelineClientMessage(value: unknown): value is LocalPipe
     case 'prepare':
       return value.diagnosticRunId === undefined || typeof value.diagnosticRunId === 'string';
     case 'start':
-      return isValidFileMeta(value.file) && isValidPipelineConfig(value.config) && isValidChunkMeta(value.input);
+      return isValidFileMeta(value.file)
+        && isValidPipelineConfig(value.config)
+        && isValidChunkMeta(value.input)
+        && (value.detection === undefined || isValidDetectionArtifact(value.detection));
+    case 'start-detection-probe':
+      return isValidFileMeta(value.file) && isValidChunkMeta(value.input);
     case 'input-chunk':
       return Number.isInteger(value.index) && (value.index as number) >= 0
         && typeof value.data === 'string'
@@ -244,6 +272,12 @@ export function isLocalPipelineHostMessage(value: unknown): value is LocalPipeli
           value.progress.operation === undefined
           || typeof value.progress.operation === 'string'
         );
+    case 'detection-result':
+      return isValidDetectionArtifact(value.detection)
+        && typeof value.detectorSignature === 'string'
+        && value.detectorSignature.length > 0
+        && typeof value.topTouches === 'boolean'
+        && typeof value.bottomTouches === 'boolean';
     case 'result-meta':
       return (value.status === 'completed' || value.status === 'no-translatable-text')
         && isValidArtifactMeta(value.result)
@@ -273,6 +307,44 @@ export function isLocalPipelineHostMessage(value: unknown): value is LocalPipeli
     default:
       return false;
   }
+}
+
+function isValidDetectionArtifact(value: unknown): value is LocalPipelineDetectionArtifact {
+  if (!isRecord(value)) return false;
+  const width = value.width;
+  const height = value.height;
+  if (
+    !Number.isSafeInteger(width)
+    || (width as number) <= 0
+    || !Number.isSafeInteger(height)
+    || (height as number) <= 0
+    || typeof value.packedMaskBase64 !== 'string'
+    || !Array.isArray(value.regions)
+    || value.regions.length > 96
+  ) {
+    return false;
+  }
+  const byteLength = Math.ceil(((width as number) * (height as number)) / 8);
+  const expectedChars = 4 * Math.ceil(byteLength / 3);
+  if (
+    value.packedMaskBase64.length !== expectedChars
+    || !/^[A-Za-z0-9+/]*={0,2}$/.test(value.packedMaskBase64)
+  ) {
+    return false;
+  }
+  return value.regions.every((region) => {
+    if (!isRecord(region) || !isRecord(region.box)) return false;
+    const box = region.box;
+    return typeof region.id === 'string'
+      && region.id.length > 0
+      && ['x', 'y', 'width', 'height'].every((key) => (
+        typeof box[key] === 'number' && Number.isFinite(box[key])
+      ))
+      && typeof region.sourceText === 'string'
+      && typeof region.translatedText === 'string'
+      && (region.direction === undefined || region.direction === 'h' || region.direction === 'v')
+      && (region.prob === undefined || (typeof region.prob === 'number' && Number.isFinite(region.prob)));
+  });
 }
 
 function isValidFileMeta(value: unknown): value is LocalPipelineFileMeta {

@@ -1,10 +1,12 @@
 import {
   ImagePipelineCancelledError,
   createImagePipeline,
+  probeTextDetection,
   type ImagePipeline,
   type PipelineConfig,
   type PipelineCancellationReason,
   type PipelinePlatform,
+  type PrecomputedTextDetection,
 } from '@shinobu/image-pipeline';
 import type { ExtensionPort } from '../shared/extensionRuntime';
 import { base64ToBlob, blobToBase64 } from '@shinobu/image-pipeline/protocol';
@@ -73,6 +75,8 @@ type PipelineJob = {
   diagnosticRunId?: string;
   fileMeta?: LocalPipelineFileMeta;
   config?: PipelineConfig;
+  operation?: 'pipeline' | 'detection-probe';
+  precomputedDetection?: PrecomputedTextDetection;
   input?: Base64ChunkAssembler;
   file?: File;
   abortController: AbortController;
@@ -131,6 +135,7 @@ export class PipelineHost {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
   private readonly imageRuntime: ImagePipeline;
+  private readonly platform: PipelinePlatform;
   private readonly modelRuntime: ModelRuntime;
   private readonly translationTransport: TextTranslationTransport;
   private readonly diagnostics: DiagnosticLogEmitter;
@@ -146,6 +151,7 @@ export class PipelineHost {
     this.diagnostics = dependencies.diagnostics
       ?? extensionPipelineHostDiagnostics;
     this.modelRuntime = dependencies.modelRuntime;
+    this.platform = dependencies.platform;
     this.hostInstanceId = dependencies.hostInstanceId ?? createHostInstanceId();
     this.idleTimeoutMs = dependencies.idleTimeoutMs ?? LOCAL_PIPELINE_IDLE_TIMEOUT_MS;
     if (!Number.isFinite(this.idleTimeoutMs) || this.idleTimeoutMs < 0) {
@@ -242,6 +248,7 @@ export class PipelineHost {
           this.prepare(value);
           break;
         case 'start':
+        case 'start-detection-probe':
           this.startTransfer(value);
           break;
         case 'input-chunk':
@@ -280,10 +287,27 @@ export class PipelineHost {
     safelyPost(this.port, { type: 'ready', jobId: message.jobId });
   }
 
-  private startTransfer(message: Extract<LocalPipelineClientMessage, { type: 'start' }>): void {
+  private startTransfer(message: Extract<
+    LocalPipelineClientMessage,
+    { type: 'start' | 'start-detection-probe' }
+  >): void {
     const job = this.requireJob(message.jobId, 'prepared');
     job.fileMeta = message.file;
-    job.config = message.config;
+    job.operation = message.type === 'start' ? 'pipeline' : 'detection-probe';
+    if (message.type === 'start') {
+      job.config = message.config;
+      if (message.detection) {
+        job.precomputedDetection = {
+          width: message.detection.width,
+          height: message.detection.height,
+          packedMask: base64ToBlob(
+            message.detection.packedMaskBase64,
+            'application/octet-stream',
+          ),
+          regions: message.detection.regions,
+        };
+      }
+    }
     job.input = new Base64ChunkAssembler(message.input);
     job.state = 'receiving';
   }
@@ -295,7 +319,12 @@ export class PipelineHost {
 
   private completeTransfer(message: Extract<LocalPipelineClientMessage, { type: 'input-complete' }>): void {
     const job = this.requireJob(message.jobId, 'receiving');
-    if (!job.input || !job.fileMeta || !job.config) {
+    if (
+      !job.input
+      || !job.fileMeta
+      || !job.operation
+      || (job.operation === 'pipeline' && !job.config)
+    ) {
       throw createProtocolError('输入传输尚未初始化');
     }
     const base64 = job.input.complete();
@@ -381,9 +410,15 @@ export class PipelineHost {
   }
 
   private async execute(job: PipelineJob): Promise<PipelineTerminalMessage> {
-    if (!job.file || !job.config) {
+    if (!job.file || !job.operation || (job.operation === 'pipeline' && !job.config)) {
       return this.finishJob(job, createProtocolError('任务缺少图片或流水线配置'));
     }
+
+    if (job.operation === 'detection-probe') {
+      return this.executeDetectionProbe(job);
+    }
+    const config = job.config;
+    if (!config) return this.finishJob(job, createProtocolError('任务缺少流水线配置'));
 
     const aggregates = new Map<string, RuntimeAggregate>();
     const removePerfSink = setPerfTraceSink({
@@ -413,8 +448,9 @@ export class PipelineHost {
     try {
       const task = this.imageRuntime.run({
         source: job.file,
-        config: job.config,
+        config,
         workingCopy: { strategy: 'source-native' },
+        precomputedDetection: job.precomputedDetection,
       }, {
         textTranslator: createTextTranslator({
           transport: this.translationTransport,
@@ -536,6 +572,41 @@ export class PipelineHost {
       stopProgress();
       await this.imageRuntime.whenIdle();
       removePerfSink();
+    }
+  }
+
+  private async executeDetectionProbe(job: PipelineJob): Promise<PipelineTerminalMessage> {
+    if (!job.file) return this.finishJob(job, createProtocolError('检测任务缺少图片'));
+    try {
+      const result = await probeTextDetection(job.file, {
+        platform: this.platform,
+        modelRuntime: this.modelRuntime,
+        detectionFallbackStrategy: { kind: 'heuristic-only' },
+        signal: job.abortController.signal,
+      });
+      if (job.abortController.signal.aborted) throw job.abortController.signal.reason;
+      const packedMaskBase64 = await blobToBase64(result.detection.packedMask);
+      if (job.abortController.signal.aborted) throw job.abortController.signal.reason;
+      if (!safelyPost(this.port, {
+        type: 'detection-result',
+        jobId: job.id,
+        detection: {
+          width: result.detection.width,
+          height: result.detection.height,
+          packedMaskBase64,
+          regions: result.detection.regions,
+        },
+        detectorSignature: result.detectorSignature,
+        topTouches: result.topTouches,
+        bottomTouches: result.bottomTouches,
+      })) {
+        throw createProtocolError('检测预检结果传输失败');
+      }
+      job.state = 'finished';
+      this.jobs.delete(job.id);
+      return { type: 'complete', jobId: job.id };
+    } catch (error) {
+      return this.finishJob(job, error);
     }
   }
 

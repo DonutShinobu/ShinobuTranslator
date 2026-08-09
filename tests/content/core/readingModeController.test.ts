@@ -582,6 +582,85 @@ describe('ReadingModeController', () => {
     );
   });
 
+  it('translates one planned logical page and commits its cropped member results', async () => {
+    vi.stubGlobal('document', {
+      querySelector: vi.fn(() => null),
+      querySelectorAll: vi.fn(() => []),
+    });
+    vi.stubGlobal('window', {
+      requestAnimationFrame: vi.fn(() => 1),
+      cancelAnimationFrame: vi.fn(),
+    });
+    const pages = [0, 1].map((pageIndex) => ({
+      key: `engine-page-${pageIndex}`,
+      originalUrl: `engine-source:${pageIndex}`,
+      pageIndex,
+    }));
+    const logicalPage = {
+      key: 'logical-0-1',
+      originalUrl: 'engine-source:logical-0-1',
+      pageIndex: 0,
+      members: pages,
+    };
+    const planReadingLogicalPages = vi.fn(async () => ({ pages: [logicalPage] }));
+    const prepareReadingPage = vi.fn(async () => ({
+      source: {
+        kind: 'prepared-file' as const,
+        file: new File(['combined'], 'combined.png', { type: 'image/png' }),
+      },
+    }));
+    const splitReadingLogicalPageResult = vi.fn(async () => [
+      { page: pages[0], image: new Blob(['slice-0'], { type: 'image/png' }) },
+      { page: pages[1], image: new Blob(['slice-1'], { type: 'image/png' }) },
+    ]);
+    const applyImageByKey = vi.fn();
+    const adapter: SiteAdapter = {
+      match: () => true,
+      findImages: () => [],
+      createUiAnchor: () => ({} as HTMLElement),
+      applyImage: () => {},
+      observe: () => () => {},
+      createBottomBarAnchor: () => ({ appendChild: vi.fn() } as unknown as HTMLElement),
+      discoverReadingPages: async () => ({ status: 'complete', pages }),
+      getVisiblePages: () => [],
+      planReadingLogicalPages,
+      prepareReadingPage,
+      splitReadingLogicalPageResult,
+      applyImageByKey,
+    };
+    const runLocalPipeline = vi.fn(async () => {
+      const result = localResult();
+      result.result = new Blob(['combined-result'], { type: 'image/png' });
+      return result;
+    });
+    const store = new PhotoStateStore(200, { revokeObjectURL: vi.fn() });
+    const bar = createFakeBar();
+    const controller = new ReadingModeController(
+      createSiteReadingModeAdapter(adapter),
+      store,
+      arbitrate(createImageTranslationExecutionModule({
+        prepareExecution: prepareExecutionFromSettings(),
+        runLocalPipeline,
+      })),
+      vi.fn(),
+      vi.fn(),
+      () => bar.ui,
+    );
+
+    controller.sync();
+    bar.all.click?.();
+
+    await vi.waitFor(() => expect(bar.all.label.textContent).toBe('显示原图'));
+    expect(planReadingLogicalPages).toHaveBeenCalledOnce();
+    expect(prepareReadingPage).toHaveBeenCalledOnce();
+    expect(runLocalPipeline).toHaveBeenCalledOnce();
+    expect(splitReadingLogicalPageResult).toHaveBeenCalledOnce();
+    expect(store.get(pages[0].key)?.translatedUrl).toMatch(/^blob:/);
+    expect(store.get(pages[1].key)?.translatedUrl).toMatch(/^blob:/);
+    expect(applyImageByKey).toHaveBeenCalledWith(pages[0].key, expect.stringMatching(/^blob:/));
+    expect(applyImageByKey).toHaveBeenCalledWith(pages[1].key, expect.stringMatching(/^blob:/));
+  });
+
   it('keeps the page loop running when another explicit owner starts', async () => {
     vi.stubGlobal('document', {
       querySelector: vi.fn(() => null),

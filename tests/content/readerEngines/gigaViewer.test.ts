@@ -318,6 +318,119 @@ describe('GigaViewer reader engine', () => {
     );
   });
 
+  it('freezes one TTB logical-page plan and reuses singleton detections', async () => {
+    const value = manifestValue({
+      direction: 'ttb',
+      pages: Array.from({ length: 5 }, (_, index) => ({
+        type: 'main',
+        src: `https://cdn-img.reader.example/public/page/${index}`,
+        width: 720,
+        height: 703,
+      })),
+    });
+    const { document } = readerDom(
+      value,
+      Array.from({ length: 5 }, () => slot('main').slot),
+    );
+    const downloadImage = vi.fn(async () => {
+      const raw = new Blob(['raw'], { type: 'image/jpeg' });
+      return { blob: raw, file: new File([raw], 'raw.jpg', { type: raw.type }) };
+    });
+    const restoreImage = vi.fn(async (
+      _raw: Blob,
+      page: GigaViewerPageDescriptor,
+    ) => new File([String(page.pageIndex)], `page-${page.pageIndex}.png`, {
+      type: 'image/png',
+    }));
+    const contacts = [
+      { topTouches: false, bottomTouches: true },
+      { topTouches: true, bottomTouches: true },
+      { topTouches: false, bottomTouches: true },
+      { topTouches: true, bottomTouches: false },
+      { topTouches: false, bottomTouches: false },
+    ];
+    const detections = contacts.map((contact, pageIndex) => ({
+      detection: {
+        width: 720,
+        height: 703,
+        packedMask: new Blob([new Uint8Array(Math.ceil((720 * 703) / 8))]),
+        regions: [{
+          id: `region-${pageIndex}`,
+          box: { x: 1, y: 1, width: 2, height: 2 },
+          sourceText: '',
+          translatedText: '',
+        }],
+      },
+      detectorSignature: 'detector-v1',
+      ...contact,
+    }));
+    let currentDetectorSignature = 'package-v1';
+    const probeDetection = vi.fn(async (file: File) => {
+      const pageIndex = Number(file.name.match(/page-(\d+)/)?.[1]);
+      return detections[pageIndex];
+    });
+    const combined = new File(['combined'], 'combined.png', { type: 'image/png' });
+    const composeVerticalFiles = vi.fn(async () => combined);
+    const adapter = createGigaViewerReaderEngineAdapter({
+      document,
+      location: { origin: 'https://reader.example', pathname: '/episode/episode-1' },
+      downloadImage,
+      restoreImage,
+      probeDetection,
+      readDetectorSignature: () => currentDetectorSignature,
+      composeVerticalFiles,
+    });
+    const session = adapter.createReadingModeSession!(adapter.detect()!);
+    const discovery = await session.discoverReadingPages();
+    if (discovery.status !== 'complete') throw new Error('expected complete discovery');
+
+    const firstPlan = await session.planReadingLogicalPages!(
+      discovery.pages,
+      new AbortController().signal,
+    );
+    const secondPlan = await session.planReadingLogicalPages!(
+      discovery.pages,
+      new AbortController().signal,
+    );
+
+    expect(firstPlan).toBe(secondPlan);
+    expect(probeDetection).toHaveBeenCalledTimes(5);
+    expect(firstPlan.pages.map((page) => page.members.map((member) => member.pageIndex))).toEqual([
+      [0, 1],
+      [2, 3],
+      [4],
+    ]);
+    currentDetectorSignature = 'package-v2';
+    const refreshedPlan = await session.planReadingLogicalPages!(
+      discovery.pages,
+      new AbortController().signal,
+    );
+    expect(refreshedPlan).not.toBe(firstPlan);
+    expect(probeDetection).toHaveBeenCalledTimes(10);
+
+    const mergedRequest = await session.prepareReadingPage!(
+      firstPlan.pages[0],
+      new AbortController().signal,
+    );
+    expect(mergedRequest).toEqual({
+      source: { kind: 'prepared-file', file: combined },
+    });
+    expect(composeVerticalFiles).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.any(File), expect.any(File)]),
+      expect.any(AbortSignal),
+      document,
+    );
+
+    const singletonRequest = await session.prepareReadingPage!(
+      firstPlan.pages[2],
+      new AbortController().signal,
+    );
+    expect(singletonRequest).toEqual({
+      source: { kind: 'prepared-file', file: expect.any(File) },
+      precomputedDetection: detections[4].detection,
+    });
+  });
+
   it('reports unsupported variants and the explicit translate-all page limit', async () => {
     const tooManyPages = Array.from({ length: 201 }, (_, index) => ({
       type: 'main',

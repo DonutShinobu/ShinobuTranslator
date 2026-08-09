@@ -59,7 +59,7 @@ type HostWaiter = {
 type BufferedJob = {
   diagnosticRunId?: string;
   state: 'prepared' | 'receiving' | 'queued' | 'active';
-  start?: Extract<LocalPipelineClientMessage, { type: 'start' }>;
+  start?: Extract<LocalPipelineClientMessage, { type: 'start' | 'start-detection-probe' }>;
   chunks: Map<number, Extract<LocalPipelineClientMessage, { type: 'input-chunk' }>>;
   receivedChars: number;
   receiveTimer: ReturnType<typeof setTimeout>;
@@ -195,6 +195,7 @@ export class PipelineHostBroker {
     }
     switch (value.type) {
       case 'start':
+      case 'start-detection-probe':
         if (job.state !== 'prepared') {
           this.rejectJobMessage(
             value.jobId,

@@ -13,6 +13,7 @@ const pipelineMocks = vi.hoisted(() => ({
   fileToImage: vi.fn(),
   imageToCanvas: vi.fn(),
   detectTextRegionsWithMask: vi.fn(),
+  materializePrecomputedDetection: vi.fn(),
   runOcr: vi.fn(),
   preparePaddleOcrRuntime: vi.fn(),
   warmupPaddleOcrRuntime: vi.fn(),
@@ -43,6 +44,9 @@ vi.mock('../../packages/image-pipeline/src/pipeline/image', () => ({
 }));
 vi.mock('../../packages/image-pipeline/src/pipeline/detect', () => ({
   detectTextRegionsWithMask: pipelineMocks.detectTextRegionsWithMask,
+}));
+vi.mock('../../packages/image-pipeline/src/pipeline/detect/precomputedDetection', () => ({
+  materializePrecomputedDetection: pipelineMocks.materializePrecomputedDetection,
 }));
 vi.mock('../../packages/image-pipeline/src/pipeline/ocr', () => ({
   runOcr: pipelineMocks.runOcr,
@@ -184,6 +188,11 @@ beforeEach(() => {
     rawMaskCanvas: detectionMaskCanvas,
     actualProvider: 'wasm',
   });
+  pipelineMocks.materializePrecomputedDetection.mockResolvedValue({
+    regions: [detectedRegion],
+    rawMaskCanvas: detectionMaskCanvas,
+    engine: 'onnx',
+  });
   pipelineMocks.runOcr.mockResolvedValue({
     regions: [ocrRegion],
     debug: null,
@@ -237,6 +246,29 @@ beforeEach(() => {
 });
 
 describe('runPipeline', () => {
+  it('reuses a precomputed detection instead of invoking the detector again', async () => {
+    const precomputedDetection = {
+      width: 100,
+      height: 200,
+      packedMask: new Blob([new Uint8Array(2_500)], { type: 'application/octet-stream' }),
+      regions: [detectedRegion],
+    };
+
+    await runPipeline(
+      createFile(),
+      baseConfig,
+      () => {},
+      { ...runtimeOptions, precomputedDetection },
+    );
+
+    expect(pipelineMocks.materializePrecomputedDetection).toHaveBeenCalledWith(
+      precomputedDetection,
+      image,
+      pipelineMocks.browserPlatform,
+    );
+    expect(pipelineMocks.detectTextRegionsWithMask).not.toHaveBeenCalled();
+  });
+
   it('preserves the full translate-stage order and returns typeset output', async () => {
     const progress: PipelineProgress[] = [];
 

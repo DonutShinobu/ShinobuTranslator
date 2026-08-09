@@ -1,6 +1,8 @@
 import type {
   ReadingModeAdapter,
   ReadingModeBarUi,
+  ReadingLogicalPagePlan,
+  ReadingLogicalPageTarget,
   ReadingPageDiscovery,
   ReadingPageReference,
   ReadingPageTarget,
@@ -8,6 +10,7 @@ import type {
 import { createReadingModeBarUi } from '../ui';
 import { resolveImageReferrerPolicy } from '../utils';
 import { PhotoStateStore } from '../state/photoStateStore';
+import { createInitialPhotoState } from '../state/photoStateStore';
 import {
   isRuntimeImageTranslationFailure,
 } from '../translation/imageTranslationExecution';
@@ -17,6 +20,7 @@ import type {
 } from '../translation/imageTranslationExecutionArbiter';
 import {
   createProgressJankMonitor,
+  applyImageTranslationResult,
   startPhotoStateImageTranslation,
 } from '../translation/photoStateProjection';
 
@@ -303,12 +307,36 @@ export class ReadingModeController {
         return;
       }
 
+      let logicalPagePlan: ReadingLogicalPagePlan = {
+        pages: urls.map((page) => ({ ...page, members: [page] })),
+      };
+      if (this.adapter.planReadingLogicalPages) {
+        try {
+          const label = this.readingBarUi?.translateAllBtn.querySelector('.mt-x-label') as HTMLElement;
+          if (label) label.textContent = '正在检测分页…';
+          logicalPagePlan = await this.adapter.planReadingLogicalPages(urls, activity.signal);
+          this.assertLogicalPagePlan(urls, logicalPagePlan);
+        } catch (error) {
+          if (activity.signal.aborted) {
+            this.finishActivity(activity);
+            return;
+          }
+          this.operation = { kind: 'idle' };
+          this.errorText = error instanceof Error ? error.message : String(error);
+          this.renderReadingModeBar();
+          this.finishActivity(activity);
+          return;
+        }
+      }
+
       this.operation = { kind: 'translating-all', total: urls.length, pageIndex: 0 };
       this.renderReadingModeBar();
 
       try {
         const total = urls.length;
-        const pendingUrls = urls.filter((page) => !this.stateStore.get(page.key)?.translatedUrl);
+        const pendingUrls = logicalPagePlan.pages.filter((page) => page.members.some(
+          (member) => !this.stateStore.get(member.key)?.translatedUrl,
+        ));
         const imageFailures: Array<{ pageIndex: number }> = [];
         for (const page of pendingUrls) {
           if (this.operation.kind !== 'translating-all') break;
@@ -367,16 +395,19 @@ export class ReadingModeController {
 
   private async translatePage(
       activity: ImageTranslationExecutionActivity,
-      page: ReadingPageReference,
+      page: ReadingPageReference | ReadingLogicalPageTarget,
       onProgress: (stageText: string) => void,
     ): Promise<PageTranslationOutcome> {
-      const { key, originalUrl } = page;
-      const state = this.stateStore.ensure(key, originalUrl);
+      const members = 'members' in page ? page.members : [page];
+      const primary = members[0];
+      const state = this.stateStore.ensure(primary.key, primary.originalUrl);
 
       // Skip if already translated
-      if (state.translatedUrl) return { status: 'skipped' };
+      if (members.every((member) => this.stateStore.get(member.key)?.translatedUrl)) {
+        return { status: 'skipped' };
+      }
 
-      const releaseState = this.stateStore.protect(key);
+      const releaseStates = members.map((member) => this.stateStore.protect(member.key));
 
       let request;
       try {
@@ -385,16 +416,20 @@ export class ReadingModeController {
           : {
               source: {
                 kind: 'remote-image' as const,
-                url: originalUrl,
+                url: primary.originalUrl,
                 referrerPolicy: resolveImageReferrerPolicy(),
               },
             };
       } catch {
-        releaseState();
+        for (const release of releaseStates) release();
         return activity.signal.aborted
           ? { status: 'cancelled' }
           : { status: 'image-failed' };
       }
+      const grouped = members.length > 1;
+      const projectionState = grouped
+        ? createInitialPhotoState(page.originalUrl)
+        : state;
       const jankMonitor = createProgressJankMonitor('reading-mode');
       const task = startPhotoStateImageTranslation({
         executionModule: activity,
@@ -402,14 +437,41 @@ export class ReadingModeController {
           ...request,
           allowedKinds: ['local-pipeline'],
         },
-        state,
+        state: projectionState,
         includeElapsedText: false,
         jankMonitor,
-        onChange: () => onProgress(state.stageText),
+        onChange: () => onProgress(projectionState.stageText),
       });
       try {
-        await task.result;
-        if (state.translatedUrl) this.adapter.applyImageByKey(key, state.translatedUrl);
+        const outcome = await task.result;
+        if (grouped) {
+          if (!this.adapter.splitReadingLogicalPageResult) {
+            throw new Error('阅读器未提供逻辑页结果裁切能力');
+          }
+          const slices = await this.adapter.splitReadingLogicalPageResult(
+            page as ReadingLogicalPageTarget,
+            outcome.execution.image,
+            outcome.execution.kind === 'local-pipeline' ? outcome.execution.debug : undefined,
+            activity.signal,
+          );
+          this.assertLogicalPageSlices(page as ReadingLogicalPageTarget, slices);
+          if (outcome.execution.kind !== 'local-pipeline') {
+            throw new Error('逻辑页结果必须来自本地图片流水线');
+          }
+          for (const slice of slices) {
+            const memberState = this.stateStore.ensure(slice.page.key, slice.page.originalUrl);
+            applyImageTranslationResult(memberState, {
+              ...outcome.execution,
+              image: slice.image,
+              debug: slice.debug,
+            }, { includeElapsedText: false });
+            if (memberState.translatedUrl) {
+              this.adapter.applyImageByKey(slice.page.key, memberState.translatedUrl);
+            }
+          }
+        } else if (state.translatedUrl) {
+          this.adapter.applyImageByKey(primary.key, state.translatedUrl);
+        }
         return { status: 'translated' };
       } catch (error) {
         if (activity.signal.aborted) return { status: 'cancelled' };
@@ -417,9 +479,39 @@ export class ReadingModeController {
           status: isRuntimeImageTranslationFailure(error) ? 'runtime-failed' : 'image-failed',
         };
       } finally {
-        releaseState();
+        if (grouped) {
+          if (projectionState.translatedUrl) URL.revokeObjectURL(projectionState.translatedUrl);
+          if (projectionState.debugOriginalUrl) URL.revokeObjectURL(projectionState.debugOriginalUrl);
+        }
+        for (const release of releaseStates) release();
       }
     }
+
+  private assertLogicalPagePlan(
+    sourcePages: readonly ReadingPageTarget[],
+    plan: ReadingLogicalPagePlan,
+  ): void {
+    const plannedMembers = plan.pages.flatMap((page) => page.members);
+    if (
+      plannedMembers.length !== sourcePages.length
+      || plannedMembers.some((page, index) => page.key !== sourcePages[index].key)
+      || plan.pages.some((page) => page.members.length < 1 || page.members.length > 3)
+    ) {
+      throw new Error('阅读器返回了无效的逻辑分页计划');
+    }
+  }
+
+  private assertLogicalPageSlices(
+    page: ReadingLogicalPageTarget,
+    slices: readonly { page: ReadingPageTarget }[],
+  ): void {
+    if (
+      slices.length !== page.members.length
+      || slices.some((slice, index) => slice.page.key !== page.members[index].key)
+    ) {
+      throw new Error('阅读器返回了无效的逻辑页裁切结果');
+    }
+  }
 
   private countCompletedPages(pages: readonly ReadingPageTarget[]): number {
       return pages.reduce((count, page) => (

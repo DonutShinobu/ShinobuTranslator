@@ -202,6 +202,50 @@ describe('PipelineHostBroker', () => {
     ]);
   });
 
+  it('forwards detection-only jobs and their reusable artifacts', async () => {
+    const { broker, host } = createHarness();
+    const client = new FakePort(LOCAL_PIPELINE_CLIENT_PORT);
+    broker.handlePort(client);
+    client.emitMessage({ type: 'prepare', jobId: 'probe-1' });
+    await vi.waitFor(() => expect(client.sent).toContainEqual({
+      type: 'ready',
+      jobId: 'probe-1',
+    }));
+    client.emitMessage({
+      type: 'start-detection-probe',
+      jobId: 'probe-1',
+      file: { name: 'probe.png', type: 'image/png', size: 1, lastModified: 0 },
+      input: { chunkCount: 1, totalChars: 4 },
+    });
+    client.emitMessage({ type: 'input-chunk', jobId: 'probe-1', index: 0, data: 'AQ==' });
+    client.emitMessage({ type: 'input-complete', jobId: 'probe-1' });
+
+    expect(host.sent).toContainEqual(expect.objectContaining({
+      type: 'start-detection-probe',
+      jobId: 'probe-1',
+    }));
+    host.emitMessage({
+      type: 'detection-result',
+      jobId: 'probe-1',
+      detection: {
+        width: 1,
+        height: 2,
+        packedMaskBase64: 'AQ==',
+        regions: [],
+      },
+      detectorSignature: 'detector-v1',
+      topTouches: true,
+      bottomTouches: true,
+    });
+    host.emitMessage({ type: 'complete', jobId: 'probe-1' });
+
+    expect(client.sent).toContainEqual(expect.objectContaining({
+      type: 'detection-result',
+      jobId: 'probe-1',
+    }));
+    expect(client.sent).toContainEqual({ type: 'complete', jobId: 'probe-1' });
+  });
+
   it('does not let a later small transfer overtake an earlier prepared job', async () => {
     const { broker, host } = createHarness();
     const first = new FakePort(LOCAL_PIPELINE_CLIENT_PORT);

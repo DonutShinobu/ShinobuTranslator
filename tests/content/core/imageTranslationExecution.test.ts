@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildGeminiImagePrompt,
   defaultExtensionSettings,
@@ -102,6 +102,38 @@ function prepareExecution(
 }
 
 describe('ImageTranslationExecutionModule', () => {
+  it('forwards a reusable precomputed detection only to the local pipeline', async () => {
+    const runLocalPipeline = vi.fn(async () => completedLocalResult(
+      new Blob(['translated'], { type: 'image/png' }),
+    ));
+    const module = createImageTranslationExecutionModule({
+      prepareExecution: prepareExecution(),
+      runLocalPipeline,
+    });
+    const precomputedDetection = {
+      width: 1,
+      height: 2,
+      packedMask: new Blob([Uint8Array.of(1)], { type: 'application/octet-stream' }),
+      regions: [],
+    };
+
+    await module.start({
+      source: {
+        kind: 'prepared-file',
+        file: new File(['source'], 'source.png', { type: 'image/png' }),
+      },
+      precomputedDetection,
+      allowedKinds: ['local-pipeline'],
+    }).result;
+
+    expect(runLocalPipeline).toHaveBeenCalledWith(
+      expect.any(File),
+      expect.any(Object),
+      expect.any(Function),
+      expect.objectContaining({ precomputedDetection }),
+    );
+  });
+
   it('executes a prepared file through the tagged local-pipeline branch', async () => {
     const translated = new Blob(['translated'], { type: 'image/png' });
     const module = createImageTranslationExecutionModule({

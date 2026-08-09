@@ -88,11 +88,14 @@ async function completePipelineRun(
   runLocalPipeline: typeof import('../../../apps/extension/src/content/core/translation/localPipelineClient').runLocalPipeline,
   client: FakePort,
   beforeReady?: () => void,
+  options?: Parameters<typeof runLocalPipeline>[3],
+  afterTransfer?: (jobId: string) => void,
 ): Promise<void> {
   const resultPromise = runLocalPipeline(
     new File([Uint8Array.of(1)], 'source.png', { type: 'image/png', lastModified: 1 }),
     pipelineConfig,
     () => undefined,
+    options,
   );
   const prepare = client.sent.find((message) => (
     (message as { type?: string }).type === 'prepare'
@@ -102,6 +105,7 @@ async function completePipelineRun(
   beforeReady?.();
   client.emitMessage({ type: 'ready', jobId });
   await vi.waitFor(() => expect(client.sent).toContainEqual({ type: 'input-complete', jobId }));
+  afterTransfer?.(jobId);
   client.emitMessage({
     type: 'result-meta',
     jobId,
@@ -160,5 +164,111 @@ describe('runLocalPipeline', () => {
     ]);
     expect(firstClient.disconnected).toBe(true);
     expect(secondClient.disconnected).toBe(true);
+  });
+
+  it('runs a detection-only probe and reconstructs its packed mask blob', async () => {
+    const client = new FakePort(LOCAL_PIPELINE_CLIENT_PORT);
+    const api: ExtensionBrowserApi = {
+      runtime: {
+        getURL: (path) => `moz-extension://test/${path}`,
+        connect: () => client,
+      },
+    };
+    vi.stubGlobal('chrome', api);
+    const { runLocalDetectionProbe } = await import(
+      '../../../apps/extension/src/content/core/translation/localPipelineClient'
+    );
+    const resultPromise = runLocalDetectionProbe(
+      new File([Uint8Array.of(1)], 'source.png', { type: 'image/png', lastModified: 1 }),
+    );
+    const prepare = client.sent.find((message) => (
+      (message as { type?: string }).type === 'prepare'
+    )) as { jobId: string };
+    client.emitMessage({ type: 'ready', jobId: prepare.jobId });
+    await vi.waitFor(() => expect(client.sent).toContainEqual({
+      type: 'input-complete',
+      jobId: prepare.jobId,
+    }));
+    expect(client.sent).toContainEqual(expect.objectContaining({
+      type: 'start-detection-probe',
+      jobId: prepare.jobId,
+    }));
+    client.emitMessage({
+      type: 'detection-result',
+      jobId: prepare.jobId,
+      detection: {
+        width: 1,
+        height: 2,
+        packedMaskBase64: 'AQ==',
+        regions: [{
+          id: 'region-1',
+          box: { x: 0, y: 0, width: 1, height: 2 },
+          direction: 'v',
+          prob: 0.9,
+          sourceText: '',
+          translatedText: '',
+        }],
+      },
+      detectorSignature: 'detector-v1',
+      topTouches: true,
+      bottomTouches: true,
+    });
+    client.emitMessage({ type: 'complete', jobId: prepare.jobId });
+
+    const result = await resultPromise;
+    expect(result.detectorSignature).toBe('detector-v1');
+    expect(result.topTouches).toBe(true);
+    expect(result.bottomTouches).toBe(true);
+    expect(result.detection.regions).toHaveLength(1);
+    expect(new Uint8Array(await result.detection.packedMask.arrayBuffer())).toEqual(
+      Uint8Array.of(1),
+    );
+    expect(client.disconnected).toBe(true);
+  });
+
+  it('sends a precomputed detection with a normal pipeline request', async () => {
+    const client = new FakePort(LOCAL_PIPELINE_CLIENT_PORT);
+    const api: ExtensionBrowserApi = {
+      runtime: {
+        getURL: (path) => `moz-extension://test/${path}`,
+        connect: () => client,
+      },
+    };
+    vi.stubGlobal('chrome', api);
+    const { runLocalPipeline } = await import(
+      '../../../apps/extension/src/content/core/translation/localPipelineClient'
+    );
+    const detection = {
+      width: 1,
+      height: 2,
+      packedMask: new Blob([Uint8Array.of(1)], { type: 'application/octet-stream' }),
+      regions: [{
+        id: 'region-1',
+        box: { x: 0, y: 0, width: 1, height: 2 },
+        direction: 'v' as const,
+        prob: 0.9,
+        sourceText: '',
+        translatedText: '',
+      }],
+    };
+
+    await completePipelineRun(
+      runLocalPipeline,
+      client,
+      undefined,
+      { precomputedDetection: detection },
+      (jobId) => {
+        expect(client.sent).toContainEqual(expect.objectContaining({
+          type: 'start',
+          jobId,
+          detection: {
+            width: 1,
+            height: 2,
+            packedMaskBase64: 'AQ==',
+            regions: detection.regions,
+          },
+        }));
+      },
+    );
   });
 });

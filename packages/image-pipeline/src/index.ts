@@ -20,7 +20,13 @@ import { registerTypesetFonts } from './pipeline/typeset/fontRuntime';
 import { canvasToPngBlob, summarizePipelineArtifacts } from './protocol';
 import type { PipelineArtifacts } from './types';
 import type { DetectionFallbackStrategy } from './pipeline/detect';
+import type { PrecomputedTextDetection } from './pipeline/detect/precomputedDetection';
 import { hasTranslatableText } from './translatableText';
+export {
+  probeTextDetection,
+  type TextDetectionProbeOptions,
+  type TextDetectionProbeResult,
+} from './pipeline/detect/probe';
 
 export type {
   LlmProvider,
@@ -62,6 +68,7 @@ export type ImagePipelineDependencies = {
 };
 
 export type { DetectionFallbackStrategy } from './pipeline/detect';
+export type { PrecomputedTextDetection } from './pipeline/detect/precomputedDetection';
 
 export interface ImagePipeline {
   run(
@@ -124,6 +131,7 @@ export type ImagePipelineRequest = {
   source: Blob;
   config: Readonly<PipelineConfig>;
   workingCopy: Readonly<WorkingCopySpec>;
+  precomputedDetection?: Readonly<PrecomputedTextDetection>;
 };
 
 export type PipelineRetryProgress = {
@@ -509,12 +517,40 @@ function validateRequest(request: unknown): asserts request is ImagePipelineRequ
     || request.source.size <= 0
     || !validateConfig(request.config)
     || !validateWorkingCopySpec(request.workingCopy)
+    || !validatePrecomputedDetection(request.precomputedDetection)
   ) {
     throw new ImagePipelineAdmissionError(
       'INVALID_REQUEST',
       '本地图片流水线请求结构无效',
     );
   }
+}
+
+function validatePrecomputedDetection(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!isRecord(value)) return false;
+  const width = value.width;
+  const height = value.height;
+  if (
+    !isPositiveInteger(width)
+    || !isPositiveInteger(height)
+    || !(value.packedMask instanceof Blob)
+    || value.packedMask.size !== Math.ceil((width * height) / 8)
+    || !Array.isArray(value.regions)
+  ) {
+    return false;
+  }
+  return value.regions.every((region) => (
+    isRecord(region)
+    && typeof region.id === 'string'
+    && region.id.length > 0
+    && isBox(region.box)
+    && (region.quad === undefined || isQuad(region.quad))
+    && (region.direction === undefined || region.direction === 'h' || region.direction === 'v')
+    && (region.prob === undefined || (typeof region.prob === 'number' && Number.isFinite(region.prob)))
+    && typeof region.sourceText === 'string'
+    && typeof region.translatedText === 'string'
+  ));
 }
 
 function reportListenerError(error: unknown): void {
@@ -648,6 +684,9 @@ class ImagePipelineRuntime<Artifacts> {
       source: request.source,
       config: cloneAndFreeze(request.config),
       workingCopy: cloneAndFreeze(request.workingCopy),
+      precomputedDetection: request.precomputedDetection
+        ? cloneAndFreeze(request.precomputedDetection)
+        : undefined,
     };
     const controller = new AbortController();
     const listeners = new Set<(progress: PipelineProgress) => void>();
@@ -1344,6 +1383,7 @@ export function createImagePipeline(
           observer: dependencies.observer,
           detectionFallbackStrategy:
             dependencies.detectionFallbackStrategy,
+          precomputedDetection: request.precomputedDetection,
         },
       );
       return {

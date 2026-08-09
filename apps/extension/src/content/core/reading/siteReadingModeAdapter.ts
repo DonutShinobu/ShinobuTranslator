@@ -14,5 +14,19 @@ export function createSiteReadingModeAdapter(adapter: SiteAdapter): ReadingModeA
           prepareReadingPage: (page, signal) => adapter.prepareReadingPage!(page, signal),
         }
       : {}),
+    ...(adapter.planReadingLogicalPages
+      ? {
+          planReadingLogicalPages: (pages, signal) => (
+            adapter.planReadingLogicalPages!(pages, signal)
+          ),
+        }
+      : {}),
+    ...(adapter.splitReadingLogicalPageResult
+      ? {
+          splitReadingLogicalPageResult: (page, image, debug, signal) => (
+            adapter.splitReadingLogicalPageResult!(page, image, debug, signal)
+          ),
+        }
+      : {}),
   };
 }

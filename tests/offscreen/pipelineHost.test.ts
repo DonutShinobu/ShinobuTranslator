@@ -6,6 +6,7 @@ import type { ModelRuntime } from '@shinobu/model-runtime';
 
 const mocks = vi.hoisted(() => ({
   runPipeline: vi.fn(),
+  probeTextDetection: vi.fn(),
   disposeAllModelSessions: vi.fn(async () => undefined),
   blobToBase64: vi.fn(async () => 'cmVzdWx0'),
 }));
@@ -13,6 +14,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../packages/image-pipeline/src/pipeline/orchestrator', () => ({
   runPipeline: mocks.runPipeline,
   PipelineStageError: class PipelineStageError extends Error {},
+}));
+
+vi.mock('@shinobu/image-pipeline', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@shinobu/image-pipeline')>(),
+  probeTextDetection: mocks.probeTextDetection,
 }));
 
 vi.mock('../../packages/model-runtime/src/runtime/modelRegistry', () => ({
@@ -108,7 +114,16 @@ function artifacts(): PipelineArtifacts {
   };
 }
 
-function sendImageJob(port: FakePort, jobId: string): void {
+function sendImageJob(
+  port: FakePort,
+  jobId: string,
+  detection?: {
+    width: number;
+    height: number;
+    packedMaskBase64: string;
+    regions: readonly unknown[];
+  },
+): void {
   port.emit({ type: 'prepare', jobId });
   port.emit({
     type: 'start',
@@ -129,6 +144,7 @@ function sendImageJob(port: FakePort, jobId: string): void {
       processMode: 'original',
     },
     input: { chunkCount: 1, totalChars: 4 },
+    ...(detection ? { detection } : {}),
   });
   port.emit({ type: 'input-chunk', jobId, index: 0, data: 'AQ==' });
   port.emit({ type: 'input-complete', jobId });
@@ -141,6 +157,7 @@ describe('PipelineHost single-task admission', () => {
 
   beforeEach(() => {
     mocks.runPipeline.mockReset();
+    mocks.probeTextDetection.mockReset();
     mocks.disposeAllModelSessions.mockClear();
     mocks.blobToBase64.mockReset();
     mocks.blobToBase64.mockResolvedValue('cmVzdWx0');
@@ -215,6 +232,98 @@ describe('PipelineHost single-task admission', () => {
         }),
       }),
     }));
+  });
+
+  it('executes a detection-only job and returns the packed reusable artifact', async () => {
+    mocks.blobToBase64.mockResolvedValueOnce('AQ==');
+    mocks.probeTextDetection.mockResolvedValueOnce({
+      detection: {
+        width: 1,
+        height: 2,
+        packedMask: new Blob([Uint8Array.of(1)], { type: 'application/octet-stream' }),
+        regions: [{
+          id: 'region-1',
+          box: { x: 0, y: 0, width: 1, height: 2 },
+          direction: 'v',
+          prob: 0.9,
+          sourceText: '',
+          translatedText: '',
+        }],
+      },
+      detectorSignature: 'detector-v1',
+      topTouches: true,
+      bottomTouches: true,
+    });
+    const host = createHost();
+    host.connect();
+
+    port.emit({ type: 'prepare', jobId: 'probe-1' });
+    port.emit({
+      type: 'start-detection-probe',
+      jobId: 'probe-1',
+      file: { name: 'probe.png', type: 'image/png', size: 1, lastModified: 1 },
+      input: { chunkCount: 1, totalChars: 4 },
+    });
+    port.emit({ type: 'input-chunk', jobId: 'probe-1', index: 0, data: 'AQ==' });
+    port.emit({ type: 'input-complete', jobId: 'probe-1' });
+
+    await vi.waitFor(() => expect(port.sent).toContainEqual({
+      type: 'complete',
+      jobId: 'probe-1',
+    }));
+    expect(mocks.probeTextDetection).toHaveBeenCalledWith(
+      expect.any(File),
+      expect.objectContaining({
+        modelRuntime: expect.any(Object),
+        platform: expect.any(Object),
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(port.sent).toContainEqual({
+      type: 'detection-result',
+      jobId: 'probe-1',
+      detection: {
+        width: 1,
+        height: 2,
+        packedMaskBase64: 'AQ==',
+        regions: expect.any(Array),
+      },
+      detectorSignature: 'detector-v1',
+      topTouches: true,
+      bottomTouches: true,
+    });
+    expect(mocks.runPipeline).not.toHaveBeenCalled();
+  });
+
+  it('injects a transmitted precomputed detection into a normal pipeline run', async () => {
+    mocks.runPipeline.mockResolvedValueOnce(artifacts());
+    const host = createHost();
+    host.connect();
+    sendImageJob(port, 'reuse-1', {
+      width: 1,
+      height: 2,
+      packedMaskBase64: 'AQ==',
+      regions: [{
+        id: 'region-1',
+        box: { x: 0, y: 0, width: 1, height: 2 },
+        direction: 'v',
+        prob: 0.9,
+        sourceText: '',
+        translatedText: '',
+      }],
+    });
+
+    await vi.waitFor(() => expect(mocks.runPipeline).toHaveBeenCalledOnce());
+    const options = mocks.runPipeline.mock.calls[0][3];
+    expect(options.precomputedDetection).toEqual(expect.objectContaining({
+      width: 1,
+      height: 2,
+      regions: expect.any(Array),
+      packedMask: expect.any(Blob),
+    }));
+    expect(new Uint8Array(await options.precomputedDetection.packedMask.arrayBuffer())).toEqual(
+      Uint8Array.of(1),
+    );
   });
 
   it('does not retain an unexpectedly overlapping task after rejecting it', async () => {

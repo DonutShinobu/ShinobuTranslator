@@ -6,12 +6,24 @@ import type {
   ReaderSessionSignal,
   ReaderVisibleSpread,
 } from '../core/continuous/contracts';
-import type { ReadingPageReference } from '../core/types';
+import type {
+  ReadingLogicalPagePlan,
+  ReadingLogicalPageResultSlice,
+  ReadingLogicalPageTarget,
+  ReadingPageReference,
+  ReadingPageTarget,
+} from '../core/types';
 import {
   createRuntimeImageDownloader,
   type DownloadImageForTranslation,
 } from '../core/translation/imageTranslationExecution';
 import { sendRuntimeMessage } from '../../shared/messages';
+import {
+  readLocalDetectorSignature,
+  runLocalDetectionProbe,
+  type ReadLocalDetectorSignature,
+  type RunLocalDetectionProbe,
+} from '../core/translation/localPipelineClient';
 import {
   acquireGigaViewerPageFile,
   createGigaViewerContextKey,
@@ -21,6 +33,14 @@ import {
   type GigaViewerManifest,
   type GigaViewerManifestSource,
 } from './gigaViewerManifest';
+import {
+  planGigaViewerTtbLogicalPages,
+  type GigaViewerTtbLogicalPagePlan,
+} from './gigaViewerTtbPagination';
+import {
+  composeGigaViewerTtbFiles,
+  splitGigaViewerTtbBlob,
+} from './gigaViewerTtbImages';
 
 const rootSelector = 'section.js-viewer';
 const pagesSelector = '.js-viewer-content';
@@ -73,6 +93,24 @@ export type GigaViewerReaderEngineDependencies = {
   location: Pick<Location, 'origin' | 'pathname'>;
   downloadImage?: DownloadImageForTranslation;
   restoreImage?: typeof restoreGigaViewerPageImage;
+  probeDetection?: RunLocalDetectionProbe;
+  readDetectorSignature?: ReadLocalDetectorSignature;
+  composeVerticalFiles?: typeof composeGigaViewerTtbFiles;
+  splitVerticalBlob?: typeof splitGigaViewerTtbBlob;
+};
+
+type GigaViewerTtbPaginationEntry = {
+  target: ReadingLogicalPageTarget;
+  pageIndices: readonly number[];
+  precomputedDetection?: Awaited<ReturnType<RunLocalDetectionProbe>>['detection'];
+};
+
+type GigaViewerTtbPaginationCache = {
+  key: string;
+  plan: ReadingLogicalPagePlan;
+  diagnostics: GigaViewerTtbLogicalPagePlan['boundaries'];
+  detectorSignature: string;
+  entries: ReadonlyMap<string, GigaViewerTtbPaginationEntry>;
 };
 
 class GigaViewerReaderEngineSession implements ReaderEngineReadingModeSession {
@@ -82,6 +120,11 @@ class GigaViewerReaderEngineSession implements ReaderEngineReadingModeSession {
   private readonly manifestSource: GigaViewerManifestSource;
   private readonly downloadImage: DownloadImageForTranslation;
   private readonly restoreImage: typeof restoreGigaViewerPageImage;
+  private readonly probeDetection: RunLocalDetectionProbe;
+  private readonly readDetectorSignature: ReadLocalDetectorSignature;
+  private readonly composeVerticalFiles: typeof composeGigaViewerTtbFiles;
+  private readonly splitVerticalBlob: typeof splitGigaViewerTtbBlob;
+  private ttbPaginationCache: GigaViewerTtbPaginationCache | null = null;
   private bottomBarAnchor: HTMLElement | null = null;
   private disposed = false;
 
@@ -91,13 +134,25 @@ class GigaViewerReaderEngineSession implements ReaderEngineReadingModeSession {
     private readonly document: Document,
     private readonly location: Pick<Location, 'origin' | 'pathname'>,
     contextKey: string,
-    dependencies: Pick<GigaViewerReaderEngineDependencies, 'downloadImage' | 'restoreImage'>,
+    dependencies: Pick<
+      GigaViewerReaderEngineDependencies,
+      | 'downloadImage'
+      | 'restoreImage'
+      | 'probeDetection'
+      | 'readDetectorSignature'
+      | 'composeVerticalFiles'
+      | 'splitVerticalBlob'
+    >,
   ) {
     this.contextKey = contextKey;
     this.manifestSource = { read: () => readGigaViewerManifest(this.document) };
     this.downloadImage = dependencies.downloadImage
       ?? createRuntimeImageDownloader(sendRuntimeMessage);
     this.restoreImage = dependencies.restoreImage ?? restoreGigaViewerPageImage;
+    this.probeDetection = dependencies.probeDetection ?? runLocalDetectionProbe;
+    this.readDetectorSignature = dependencies.readDetectorSignature ?? readLocalDetectorSignature;
+    this.composeVerticalFiles = dependencies.composeVerticalFiles ?? composeGigaViewerTtbFiles;
+    this.splitVerticalBlob = dependencies.splitVerticalBlob ?? splitGigaViewerTtbBlob;
   }
 
   getReadingContextKey(): string {
@@ -207,7 +262,131 @@ class GigaViewerReaderEngineSession implements ReaderEngineReadingModeSession {
     };
   }
 
+  async planReadingLogicalPages(
+    pages: readonly ReadingPageTarget[],
+    signal: AbortSignal,
+  ): Promise<ReadingLogicalPagePlan> {
+    const manifest = this.readCurrentManifest();
+    if (!manifest) throw new Error('GigaViewer reading context changed');
+    if (
+      pages.length !== manifest.pages.length
+      || pages.some((page, index) => page.pageIndex !== index || page.key !== this.pageKey(index))
+    ) {
+      throw new Error('GigaViewer 阅读页列表与当前章节不一致');
+    }
+    if (manifest.readingDirection !== 'ttb' || pages.length < 2) {
+      return {
+        pages: pages.map((page) => ({ ...page, members: [page] })),
+      };
+    }
+
+    const requestedDetectorSignature = this.readDetectorSignature();
+    if (this.ttbPaginationCache?.detectorSignature === requestedDetectorSignature) {
+      return this.ttbPaginationCache.plan;
+    }
+    this.ttbPaginationCache = null;
+
+    const probeResults: Awaited<ReturnType<RunLocalDetectionProbe>>[] = [];
+    for (const page of manifest.pages) {
+      if (signal.aborted) throw signal.reason;
+      const file = await acquireGigaViewerPageFile(
+        page.pageIndex,
+        this.contextKey,
+        this.manifestSource,
+        this.location,
+        this.downloadImage,
+        this.restoreImage,
+        signal,
+      );
+      const probe = await this.probeDetection(file, { signal });
+      if (probe.detection.width !== page.width || probe.detection.height !== page.height) {
+        throw new Error(`GigaViewer TTB 第 ${page.pageIndex + 1} 个切片的预检测尺寸不一致`);
+      }
+      probeResults.push(probe);
+    }
+
+    const detectorSignatures = new Set(probeResults.map(({ detectorSignature }) => detectorSignature));
+    if (detectorSignatures.size !== 1) {
+      throw new Error('GigaViewer TTB 预检测期间 detector 签名发生变化');
+    }
+    const probeDetectorSignature = probeResults[0].detectorSignature;
+    const cacheKey = JSON.stringify([
+      this.contextKey,
+      'ttb-edge-mask-v1',
+      requestedDetectorSignature,
+      probeDetectorSignature,
+    ]);
+
+    const pagination: GigaViewerTtbLogicalPagePlan = planGigaViewerTtbLogicalPages(
+      manifest.pages.map((_, pageIndex) => ({
+        pageIndex,
+        width: probeResults[pageIndex].detection.width,
+        height: probeResults[pageIndex].detection.height,
+        topTouches: probeResults[pageIndex].topTouches,
+        bottomTouches: probeResults[pageIndex].bottomTouches,
+      })),
+    );
+    const sourceByIndex = new Map(pages.map((page) => [page.pageIndex, page]));
+    const entries = new Map<string, GigaViewerTtbPaginationEntry>();
+    const logicalPages = pagination.pages.map((logicalPage): ReadingLogicalPageTarget => {
+      const members = logicalPage.pageIndices.map((pageIndex) => {
+        const page = sourceByIndex.get(pageIndex);
+        if (!page) throw new Error(`GigaViewer TTB 第 ${pageIndex + 1} 个切片不存在`);
+        return page;
+      });
+      const first = members[0];
+      const last = members[members.length - 1];
+      const key = `${this.contextKey}:logical:${first.pageIndex}-${last.pageIndex}`;
+      const target: ReadingLogicalPageTarget = {
+        key,
+        originalUrl: `engine-source:${key}`,
+        pageIndex: first.pageIndex,
+        members,
+      };
+      entries.set(key, {
+        target,
+        pageIndices: logicalPage.pageIndices,
+        precomputedDetection: members.length === 1
+          ? probeResults[first.pageIndex].detection
+          : undefined,
+      });
+      return target;
+    });
+    const plan: ReadingLogicalPagePlan = { pages: logicalPages };
+    this.ttbPaginationCache = {
+      key: cacheKey,
+      plan,
+      diagnostics: pagination.boundaries,
+      detectorSignature: requestedDetectorSignature,
+      entries,
+    };
+    return plan;
+  }
+
   async prepareReadingPage(page: ReadingPageReference, signal: AbortSignal) {
+    const paginationEntry = this.ttbPaginationCache?.entries.get(page.key);
+    if (paginationEntry) {
+      const files: File[] = [];
+      for (const pageIndex of paginationEntry.pageIndices) {
+        files.push(await acquireGigaViewerPageFile(
+          pageIndex,
+          this.contextKey,
+          this.manifestSource,
+          this.location,
+          this.downloadImage,
+          this.restoreImage,
+          signal,
+        ));
+      }
+      if (files.length === 1) {
+        return {
+          source: { kind: 'prepared-file' as const, file: files[0] },
+          precomputedDetection: paginationEntry.precomputedDetection,
+        };
+      }
+      const file = await this.composeVerticalFiles(files, signal, this.document);
+      return { source: { kind: 'prepared-file' as const, file } };
+    }
     if (!Number.isInteger(page.pageIndex) || Number(page.pageIndex) < 0) {
       throw new Error('GigaViewer reading page has no logical page index');
     }
@@ -221,6 +400,31 @@ class GigaViewerReaderEngineSession implements ReaderEngineReadingModeSession {
       signal,
     );
     return { source: { kind: 'prepared-file' as const, file } };
+  }
+
+  async splitReadingLogicalPageResult(
+    page: ReadingLogicalPageTarget,
+    image: Blob,
+    debug: Blob | undefined,
+    signal: AbortSignal,
+  ): Promise<readonly ReadingLogicalPageResultSlice[]> {
+    const entry = this.ttbPaginationCache?.entries.get(page.key);
+    if (!entry || entry.target.members.length === 1) {
+      const target = entry?.target.members[0] ?? page.members[0];
+      return [{ page: target, image, ...(debug ? { debug } : {}) }];
+    }
+    const manifest = this.readCurrentManifest();
+    if (!manifest) throw new Error('GigaViewer reading context changed');
+    const heights = entry.pageIndices.map((pageIndex) => manifest.pages[pageIndex].height);
+    const images = await this.splitVerticalBlob(image, heights, signal, this.document);
+    const debugImages = debug
+      ? await this.splitVerticalBlob(debug, heights, signal, this.document)
+      : undefined;
+    return entry.target.members.map((member, index) => ({
+      page: member,
+      image: images[index],
+      ...(debugImages ? { debug: debugImages[index] } : {}),
+    }));
   }
 
   createBottomBarAnchor(): HTMLElement | null {
@@ -354,6 +558,7 @@ class GigaViewerReaderEngineSession implements ReaderEngineReadingModeSession {
     for (const stop of [...this.observers]) stop();
     this.bottomBarAnchor?.remove();
     this.bottomBarAnchor = null;
+    this.ttbPaginationCache = null;
     for (const projection of this.root.querySelectorAll('[data-mt-reading-projection]')) {
       projection.remove();
     }

@@ -38,6 +38,20 @@ export interface ReadingPageTarget extends ReadingPageReference {
   pageIndex: number; // 0-indexed page number
 }
 
+export interface ReadingLogicalPageTarget extends ReadingPageTarget {
+  members: readonly ReadingPageTarget[];
+}
+
+export type ReadingLogicalPagePlan = {
+  pages: readonly ReadingLogicalPageTarget[];
+};
+
+export type ReadingLogicalPageResultSlice = {
+  page: ReadingPageTarget;
+  image: Blob;
+  debug?: Blob;
+};
+
 /** @deprecated Use ReadingPageTarget. Kept as a source-compatible alias. */
 export type UrlTarget = ReadingPageTarget;
 
@@ -84,6 +98,16 @@ export interface ReadingModeAdapter {
     page: ReadingPageReference,
     signal: AbortSignal,
   ): Promise<ImageTranslationExecutionRequest>;
+  planReadingLogicalPages?(
+    pages: readonly ReadingPageTarget[],
+    signal: AbortSignal,
+  ): Promise<ReadingLogicalPagePlan>;
+  splitReadingLogicalPageResult?(
+    page: ReadingLogicalPageTarget,
+    image: Blob,
+    debug: Blob | undefined,
+    signal: AbortSignal,
+  ): Promise<readonly ReadingLogicalPageResultSlice[]>;
 }
 
 export interface SiteAdapter {
@@ -111,6 +135,16 @@ export interface SiteAdapter {
     page: ReadingPageReference,
     signal: AbortSignal,
   ): Promise<ImageTranslationExecutionRequest>;
+  planReadingLogicalPages?(
+    pages: readonly ReadingPageTarget[],
+    signal: AbortSignal,
+  ): Promise<ReadingLogicalPagePlan>;
+  splitReadingLogicalPageResult?(
+    page: ReadingLogicalPageTarget,
+    image: Blob,
+    debug: Blob | undefined,
+    signal: AbortSignal,
+  ): Promise<readonly ReadingLogicalPageResultSlice[]>;
 }
 
 export type PhotoViewStatus = 'idle' | 'running' | 'translated' | 'showingOriginal' | 'error';

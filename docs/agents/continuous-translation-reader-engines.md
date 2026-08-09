@@ -1,7 +1,7 @@
 # 连续翻译模式：阅读器引擎框架与已适配引擎
 
-- 状态：已确认，可进入实现拆分
-- 确认日期：2026-08-07
+- 状态：框架已实现；ComiciViewer、GigaViewer 与 BinB Speed Reader 已接入
+- 最近确认日期：2026-08-09
 - 首个回归页面：<https://bibibi-comic.com/episodes/7e06f5b186c99>
 
 本文是后续实现的规范来源。实现者应先读根目录 [`CONTEXT.md`](../../CONTEXT.md)，沿用其中的“连续翻译模式”“连续翻译显示模式”“图片翻译执行活动”等术语。
@@ -21,9 +21,11 @@
 → 翻页后继续
 ```
 
-框架必须能承载不同阅读器引擎。ComiciViewer 是首个适配器；GigaViewer 已按当前“翻译当前页 / 翻译全部”阅读模式标准接入。PUBLUS、CLIP STUDIO READER 和 BinB 尚未实现。
+框架必须能承载不同阅读器引擎。ComiciViewer 是首个适配器；GigaViewer 与 BinB Speed Reader 已按当前“翻译当前页 / 翻译全部”阅读模式标准接入。PUBLUS 和 CLIP STUDIO READER 尚未实现。
 
 > 2026-08-08 实现补记：GigaViewer 使用清单直接准备尚未显示的正文页，因此其“翻译全部”不依赖预先翻页或导出惰性 Canvas。引擎专用约束见 [`continuous-translation-giga-viewer.md`](./continuous-translation-giga-viewer.md)。
+
+> 2026-08-09 实现补记：BinB Speed Reader 使用当前阅读会话的官方内容协议准备清单页，并在内存中恢复拼图图片。这是经单独确认的引擎专用读取模式能力，不扩大通用自动连续捕获的范围。约束见 [`continuous-translation-binb.md`](./continuous-translation-binb.md)。
 
 ### 完成标准
 
@@ -50,8 +52,8 @@
 
 ### 范围外
 
-- 解析阅读器私有 API、CDN 协议或隐藏页面资源。
-- 预取尚未显示的 Canvas、整章翻译或后台翻页。
+- 通用自动连续捕获框架不解析阅读器私有 API、CDN 协议或隐藏页面资源；经单独规范确认的阅读模式适配器可以使用当前会话的官方内容协议。
+- 通用自动连续捕获不预取尚未显示的 Canvas、不整章翻译，也不后台翻页；支持完整清单的阅读模式适配器按其引擎规范执行“翻译全部”。
 - 修改 Canvas 渲染方法、注入 `drawImage` hook 或替换阅读器内部 Canvas。
 - Nano Banana 整图翻译或其他会随 FIFO 自动产生云端整图调用的执行类型。
 - 把 Pixiv、Twitter、E-Hentai 迁移到新框架。
@@ -407,7 +409,7 @@ arbiter.begin({ owner: 'continuous', origin: 'automatic' });
 
 ## 13. 引擎专用规范
 
-实现 ComiciViewer 的检测、页面枚举、observer、结构夹具或真实页面回归时，必须继续阅读 [`continuous-translation-comici.md`](./continuous-translation-comici.md)。实现 GigaViewer 时必须继续阅读 [`continuous-translation-giga-viewer.md`](./continuous-translation-giga-viewer.md)。引擎规范是各自结构事实的单一来源；通用层不得反向依赖其中的 selector、class 或清单字段。
+实现 ComiciViewer 的检测、页面枚举、observer、结构夹具或真实页面回归时，必须继续阅读 [`continuous-translation-comici.md`](./continuous-translation-comici.md)。实现 GigaViewer 时必须继续阅读 [`continuous-translation-giga-viewer.md`](./continuous-translation-giga-viewer.md)。实现 BinB Speed Reader 时必须继续阅读 [`continuous-translation-binb.md`](./continuous-translation-binb.md)。引擎规范是各自结构事实的单一来源；通用层不得反向依赖其中的 selector、class 或清单字段。
 
 ## 14. 生命周期与清理
 

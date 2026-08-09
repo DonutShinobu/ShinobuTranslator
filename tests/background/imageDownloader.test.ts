@@ -715,4 +715,25 @@ describe('ImageDownloader', () => {
     await expect(downloader.download({ imageUrl }, {})).rejects.toThrow(/图片地址/u);
     expect(fetchImage).not.toHaveBeenCalled();
   });
+
+  it('enforces the declared reader content-server boundary and disables redirects', async () => {
+    const fetchImage = vi.fn(async () => createJpegResponse({
+      url: 'https://cdn.example/books/one/page.jpg',
+    }));
+    const downloader = createImageDownloader({ chromeApi: null, fetchImage });
+
+    await expect(downloader.download({
+      imageUrl: 'https://cdn.example/books/one/page.jpg',
+      allowedBaseUrl: 'https://cdn.example/books/one/',
+    }, {})).resolves.toMatchObject({ sourceUrl: 'https://cdn.example/books/one/page.jpg' });
+    expect(fetchImage).toHaveBeenCalledWith(
+      'https://cdn.example/books/one/page.jpg',
+      expect.objectContaining({ redirect: 'error' }),
+    );
+
+    await expect(downloader.download({
+      imageUrl: 'https://cdn.example/books/two/page.jpg',
+      allowedBaseUrl: 'https://cdn.example/books/one/',
+    }, {})).rejects.toThrow(/允许范围/u);
+  });
 });

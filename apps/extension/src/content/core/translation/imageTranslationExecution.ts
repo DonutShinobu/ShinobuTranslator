@@ -52,6 +52,8 @@ export type ImageTranslationSource =
       kind: 'remote-image';
       url: string;
       referrerPolicy?: ReferrerPolicy;
+      /** Optional HTTPS origin/base-path boundary enforced by the background downloader. */
+      allowedBaseUrl?: string;
     }
   | {
       kind: 'prepared-file';
@@ -370,6 +372,9 @@ export function createRuntimeImageDownloader(
         ...(contentSessionId ? { contentSessionId } : {}),
         ...(source.referrerPolicy !== undefined
           ? { referrerPolicy: source.referrerPolicy }
+          : {}),
+        ...(source.allowedBaseUrl !== undefined
+          ? { allowedBaseUrl: source.allowedBaseUrl }
           : {}),
       });
       throwIfAborted(signal);

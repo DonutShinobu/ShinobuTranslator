@@ -1,6 +1,6 @@
 # 连续翻译模式：实施与验证计划
 
-排期、拆任务、选择测试或开始任一代码切片时读取本文。先读通用设计 [`continuous-translation-reader-engines.md`](./continuous-translation-reader-engines.md)；涉及 ComiciViewer 时再读 [`continuous-translation-comici.md`](./continuous-translation-comici.md)。
+排期、拆任务、选择测试或开始任一代码切片时读取本文。先读通用设计 [`continuous-translation-reader-engines.md`](./continuous-translation-reader-engines.md)；涉及 ComiciViewer、GigaViewer 或 BinB Speed Reader 时，再分别阅读 [`continuous-translation-comici.md`](./continuous-translation-comici.md)、[`continuous-translation-giga-viewer.md`](./continuous-translation-giga-viewer.md) 或 [`continuous-translation-binb.md`](./continuous-translation-binb.md)。
 
 每个切片独立保持类型检查和相关测试为绿。开始前用 CodeGraph 复核涉及符号及当前工作树差异。
 

@@ -74,6 +74,13 @@ function createServices(settings: ExtensionSettings = defaultExtensionSettings):
         sourceUrl: 'https://example.com/page',
       })),
     },
+    readers: {
+      fetch: vi.fn(async (request: { url: string; allowedBaseUrl: string }) => ({
+        text: '{"result":1}',
+        contentType: 'application/json',
+        sourceUrl: request.url,
+      })),
+    },
     providers: {
       llm: vi.fn(async (_message: MessageOf<'mt:llm-chat-completions'>) => ({
         ok: true as const,
@@ -152,6 +159,7 @@ describe('routeBackgroundMessage', () => {
       imageUrl: 'https://example.com/image.png',
       referrerPolicy: 'strict-origin-when-cross-origin',
       contentSessionId: 'session-1',
+      allowedBaseUrl: 'https://example.com/',
     }, sender, services)).resolves.toEqual({
       ok: true,
       type: 'mt:download-image',
@@ -162,9 +170,22 @@ describe('routeBackgroundMessage', () => {
     expect(services.images.download).toHaveBeenCalledWith({
       imageUrl: 'https://example.com/image.png',
       referrerPolicy: 'strict-origin-when-cross-origin',
+      allowedBaseUrl: 'https://example.com/',
     }, sender, 'session-1');
     await routeBackgroundMessage({ type: 'mt:capture-visible-tab' }, sender, services);
     expect(services.images.capture).toHaveBeenCalledWith(sender);
+
+    await expect(routeBackgroundMessage({
+      type: 'mt:fetch-reader-resource',
+      url: 'https://cdn.example/book/content',
+      allowedBaseUrl: 'https://cdn.example/book/',
+    }, sender, services)).resolves.toEqual({
+      ok: true,
+      type: 'mt:fetch-reader-resource',
+      text: '{"result":1}',
+      contentType: 'application/json',
+      sourceUrl: 'https://cdn.example/book/content',
+    });
   });
 
   it('delegates provider messages and preserves external error identity', async () => {

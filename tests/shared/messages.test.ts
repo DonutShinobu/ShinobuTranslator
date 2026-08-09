@@ -13,6 +13,12 @@ describe("isRuntimeMessage", () => {
       imageUrl: "https://example.com/a.png",
       referrerPolicy: "strict-origin-when-cross-origin",
       contentSessionId: "session-1",
+      allowedBaseUrl: "https://example.com/content/",
+    })).toBe(true);
+    expect(isRuntimeMessage({
+      type: "mt:fetch-reader-resource",
+      url: "https://cdn.example/content/manifest",
+      allowedBaseUrl: "https://cdn.example/content/",
     })).toBe(true);
     expect(isRuntimeMessage({ type: "mt:capture-visible-tab" })).toBe(true);
     expect(isRuntimeMessage({ type: "mt:context-menu-translate" })).toBe(true);
@@ -36,6 +42,21 @@ describe("isRuntimeMessage", () => {
       type: "mt:download-image",
       imageUrl: "https://example.com/a.png",
       referrerPolicy: "send-everything",
+    })).toBe(false);
+    expect(isRuntimeMessage({
+      type: "mt:fetch-reader-resource",
+      url: "http://cdn.example/content/manifest",
+      allowedBaseUrl: "https://cdn.example/content/",
+    })).toBe(false);
+    expect(isRuntimeMessage({
+      type: "mt:fetch-reader-resource",
+      url: "https://cdn.example/content/manifest",
+      allowedBaseUrl: "https://cdn.example/content/?escape=1",
+    })).toBe(false);
+    expect(isRuntimeMessage({
+      type: "mt:download-image",
+      imageUrl: "https://cdn.example/content/page.jpg",
+      allowedBaseUrl: "https://cdn.example/content/#escape",
     })).toBe(false);
   });
 

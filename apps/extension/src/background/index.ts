@@ -27,6 +27,7 @@ import {
   captureVisibleTab,
 } from './images/imageService';
 import { createImageDownloader } from './images/imageDownloader';
+import { createReaderResourceFetcher } from './readers/readerResourceFetcher';
 import { registerMenusAndCommands } from './menus/registerMenus';
 import {
   getOpenAiOAuthStatus,
@@ -63,6 +64,7 @@ import {
 import { ContinuousTabStateService } from './continuous/continuousTabStateService';
 
 const imageDownloader = createImageDownloader();
+const readerResourceFetcher = createReaderResourceFetcher();
 const settingsRepository = createExtensionSettingsRepository({
   readState: getSettingsState,
   writeState: async (state) => {
@@ -116,6 +118,9 @@ const services: BackgroundServices = {
   images: {
     download: imageDownloader.download,
     capture: captureVisibleTab,
+  },
+  readers: {
+    fetch: readerResourceFetcher.fetch,
   },
   providers: {
     llm: handleLlmChatCompletions,

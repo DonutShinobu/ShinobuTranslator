@@ -44,7 +44,15 @@ export class ReaderEngineReadingModeModule implements ReaderEngineReadingModeMod
         subtree: true,
         childList: true,
         attributes: true,
-        attributeFilter: ['id', 'class', 'data-comici-viewer-id', 'data-value'],
+        attributeFilter: [
+          'id',
+          'class',
+          'data-comici-viewer-id',
+          'data-value',
+          'data-ptbinb',
+          'data-ptbinb-cid',
+          'data-ptimg',
+        ],
       });
     }
     this.sync();

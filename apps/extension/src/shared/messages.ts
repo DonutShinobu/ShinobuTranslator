@@ -5,6 +5,10 @@ import { requireExtensionRuntime } from './extensionRuntime';
 import { isLlmThinkingLevel } from '@shinobu/text-translation';
 import type { LlmThinkingLevel } from '@shinobu/text-translation';
 import { isReferrerPolicy } from './referrerPolicy';
+import {
+  parseCredentiallessHttpsUrl,
+  parseRestrictedResourceBaseUrl,
+} from './restrictedResourceUrl';
 import { toErrorMessage } from './utils';
 import { isContentSessionId } from './contentSession';
 import {
@@ -33,6 +37,13 @@ export type DownloadImageMessage = {
   imageUrl: string;
   referrerPolicy?: ReferrerPolicy;
   contentSessionId?: string;
+  allowedBaseUrl?: string;
+};
+
+export type FetchReaderResourceMessage = {
+  type: 'mt:fetch-reader-resource';
+  url: string;
+  allowedBaseUrl: string;
 };
 
 export type CaptureVisibleTabMessage = {
@@ -159,6 +170,7 @@ export type ContinuousTabStateRuntimeMessage = {
 export type RuntimeMessage =
   | ExtensionControlRuntimeMessage
   | DownloadImageMessage
+  | FetchReaderResourceMessage
   | CaptureVisibleTabMessage
   | LlmChatCompletionsMessage
   | GeminiAppImageTranslateMessage
@@ -182,6 +194,13 @@ export type RuntimeSuccessResponse =
       ok: true;
       type: 'mt:download-image';
       base64: string;
+      contentType: string;
+      sourceUrl: string;
+    }
+  | {
+      ok: true;
+      type: 'mt:fetch-reader-resource';
+      text: string;
       contentType: string;
       sourceUrl: string;
     }
@@ -287,7 +306,22 @@ function isDownloadImageMessage(value: Record<string, unknown>): value is Downlo
     return false;
   }
   return (value.referrerPolicy === undefined || isReferrerPolicy(value.referrerPolicy))
+    && (
+      value.allowedBaseUrl === undefined
+      || (typeof value.allowedBaseUrl === 'string'
+        && Boolean(parseRestrictedResourceBaseUrl(value.allowedBaseUrl)))
+    )
     && (value.contentSessionId === undefined || isContentSessionId(value.contentSessionId));
+}
+
+function isFetchReaderResourceMessage(
+  value: Record<string, unknown>,
+): value is FetchReaderResourceMessage {
+  return value.type === 'mt:fetch-reader-resource'
+    && typeof value.url === 'string'
+    && Boolean(parseCredentiallessHttpsUrl(value.url))
+    && typeof value.allowedBaseUrl === 'string'
+    && Boolean(parseRestrictedResourceBaseUrl(value.allowedBaseUrl));
 }
 
 export function getRuntimeErrorCode(error: unknown): RuntimeErrorCode | undefined {
@@ -503,6 +537,7 @@ export function isRuntimeMessage(value: unknown): value is RuntimeMessage {
   return (
     isExtensionControlRuntimeMessage(value) ||
     isDownloadImageMessage(value) ||
+    isFetchReaderResourceMessage(value) ||
     type === 'mt:capture-visible-tab' ||
     type === 'mt:diagnostic-log-export' ||
     type === 'mt:diagnostic-log-clear' ||

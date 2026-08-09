@@ -1,5 +1,6 @@
 import { createComiciReaderEngineAdapter } from '../../readerEngines/comici';
 import { createGigaViewerReaderEngineAdapter } from '../../readerEngines/gigaViewer';
+import { createBinbReaderEngineAdapter } from '../../readerEngines/binb';
 import { ReaderEngineRegistry } from '../continuous/readerEngineRegistry';
 import type { PhotoStateStore } from '../state/photoStateStore';
 import type { ImageTranslationExecutionArbiter } from '../translation/imageTranslationExecutionArbiter';
@@ -16,6 +17,7 @@ export function createDefaultReaderEngineReadingModeModule(
     registry: new ReaderEngineRegistry([
       createComiciReaderEngineAdapter(),
       createGigaViewerReaderEngineAdapter(),
+      createBinbReaderEngineAdapter(),
     ]),
     stateStore,
     executionArbiter,

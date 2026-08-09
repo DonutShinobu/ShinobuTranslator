@@ -5,6 +5,7 @@ import type {
   RuntimeResponse,
 } from '../../shared/messages';
 import type { ImageDownloadRequest } from '../images/imageDownloader';
+import type { ReaderResourceRequest } from '../readers/readerResourceFetcher';
 
 type MessageOf<T extends RuntimeMessage['type']> = Extract<RuntimeMessage, { type: T }>;
 type SuccessOf<T extends RuntimeResponse['type']> = Extract<RuntimeResponse, { ok: true; type: T }>;
@@ -46,6 +47,9 @@ export type BackgroundServices = {
       contentSessionId?: string,
     ): Promise<PayloadOf<'mt:download-image'>>;
     capture(sender: ExtensionMessageSender): Promise<PayloadOf<'mt:capture-visible-tab'>>;
+  };
+  readers: {
+    fetch(request: ReaderResourceRequest): Promise<PayloadOf<'mt:fetch-reader-resource'>>;
   };
   providers: {
     llm(message: MessageOf<'mt:llm-chat-completions'>): Promise<SuccessOf<'mt:llm-chat-completions'>>;
@@ -108,11 +112,24 @@ export async function routeBackgroundMessage(
       ...(message.referrerPolicy !== undefined
         ? { referrerPolicy: message.referrerPolicy }
         : {}),
+      ...(message.allowedBaseUrl !== undefined
+        ? { allowedBaseUrl: message.allowedBaseUrl }
+        : {}),
     };
     return {
       ok: true,
       type: 'mt:download-image',
       ...await services.images.download(request, sender, message.contentSessionId),
+    };
+  }
+  if (message.type === 'mt:fetch-reader-resource') {
+    return {
+      ok: true,
+      type: 'mt:fetch-reader-resource',
+      ...await services.readers.fetch({
+        url: message.url,
+        allowedBaseUrl: message.allowedBaseUrl,
+      }),
     };
   }
   if (message.type === 'mt:capture-visible-tab') {

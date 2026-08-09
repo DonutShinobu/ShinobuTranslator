@@ -6,6 +6,10 @@ import {
   type ExtensionWebRequestHeadersDetails,
 } from '../../shared/extensionRuntime';
 import { isReferrerPolicy } from '../../shared/referrerPolicy';
+import {
+  isUrlWithinRestrictedResourceBase,
+  parseRestrictedResourceBaseUrl,
+} from '../../shared/restrictedResourceUrl';
 import { arrayBufferToBase64, toErrorMessage } from '../../shared/utils';
 import { SerialTaskQueue } from '../serialTaskQueue';
 
@@ -19,6 +23,7 @@ const maxTrackedDocumentPolicies = 256;
 export type ImageDownloadRequest = {
   imageUrl: string;
   referrerPolicy?: ReferrerPolicy;
+  allowedBaseUrl?: string;
 };
 
 export type DownloadedImage = {
@@ -318,6 +323,18 @@ function parseHttpUrl(value: string, label: string): URL {
   return parsed;
 }
 
+function parseAllowedBaseUrl(value: string): URL {
+  const parsed = parseRestrictedResourceBaseUrl(value);
+  if (!parsed) {
+    throw new Error('允许的图片范围必须是无凭据、无查询参数的 HTTPS URL');
+  }
+  return parsed;
+}
+
+function isWithinAllowedBase(target: URL, base: URL): boolean {
+  return isUrlWithinRestrictedResourceBase(target, base);
+}
+
 function getTrustedDocumentUrl(sender: ExtensionMessageSender): URL | undefined {
   for (const candidate of [sender.documentUrl, sender.tab?.url]) {
     if (!candidate) continue;
@@ -480,7 +497,13 @@ export function createImageDownloader(
     request: ImageDownloadRequest,
     sender: ExtensionMessageSender,
   ): Promise<DownloadedImage> {
-    parseHttpUrl(request.imageUrl, '图片地址');
+    const requestedImageUrl = parseHttpUrl(request.imageUrl, '图片地址');
+    const allowedBase = request.allowedBaseUrl
+      ? parseAllowedBaseUrl(request.allowedBaseUrl)
+      : undefined;
+    if (allowedBase && !isWithinAllowedBase(requestedImageUrl, allowedBase)) {
+      throw new Error('图片地址超出允许范围');
+    }
     const trustedDocumentUrl = getTrustedDocumentUrl(sender);
     const candidates = buildOriginalCandidates(request.imageUrl);
     const initializationResults = await initialization;
@@ -492,6 +515,9 @@ export function createImageDownloader(
     for (let index = 0; index < candidates.length; index += 1) {
       const candidate = candidates[index];
       const targetUrl = parseHttpUrl(candidate, '图片地址');
+      if (allowedBase && !isWithinAllowedBase(targetUrl, allowedBase)) {
+        throw new Error('图片候选地址超出允许范围');
+      }
       const referer = computeReferrer(trustedDocumentUrl, targetUrl, effectiveReferrerPolicy);
       const startedAt = Date.now();
       let dnrError = startupDnrErrors.join('; ') || undefined;
@@ -552,11 +578,16 @@ export function createImageDownloader(
           method: 'GET',
           credentials: 'include',
           cache: 'default',
-          redirect: 'follow',
+          redirect: allowedBase ? 'error' : 'follow',
           signal: abortController.signal,
         });
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
+        }
+
+        const sourceUrl = parseHttpUrl(response.url || candidate, '图片响应地址');
+        if (allowedBase && !isWithinAllowedBase(sourceUrl, allowedBase)) {
+          throw new Error('图片响应地址超出允许范围');
         }
 
         const buffer = await response.arrayBuffer();
@@ -577,7 +608,7 @@ export function createImageDownloader(
         downloadedImage = {
           base64: arrayBufferToBase64(buffer),
           contentType,
-          sourceUrl: response.url || candidate,
+          sourceUrl: sourceUrl.href,
         };
       } catch (error) {
         attemptFailure = {

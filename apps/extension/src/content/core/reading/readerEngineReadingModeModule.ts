@@ -113,7 +113,14 @@ export class ReaderEngineReadingModeModule implements ReaderEngineReadingModeMod
         () => this.scheduleSync(),
         () => this.cancelSync(),
       );
-      this.stopSessionObserver = session.observe(() => this.scheduleSync());
+      this.stopSessionObserver = session.observe((signal) => {
+        if (signal.kind === 'navigation-state-changed') {
+          this.cancelSync();
+          this.sync();
+          return;
+        }
+        this.scheduleSync();
+      });
     }
     this.controller?.sync();
   }

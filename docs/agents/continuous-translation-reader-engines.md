@@ -1,6 +1,6 @@
 # 连续翻译模式：阅读器引擎框架与已适配引擎
 
-- 状态：框架已实现；ComiciViewer、GigaViewer 与 BinB Speed Reader 已接入
+- 状态：框架已实现；ComiciViewer、GigaViewer、BinB Speed Reader、CLIP STUDIO READER 与 PUBLUS Reader 已接入
 - 最近确认日期：2026-08-09
 - 首个回归页面：<https://bibibi-comic.com/episodes/7e06f5b186c99>
 
@@ -21,11 +21,13 @@
 → 翻页后继续
 ```
 
-框架必须能承载不同阅读器引擎。ComiciViewer 是首个适配器；GigaViewer 与 BinB Speed Reader 已按当前“翻译当前页 / 翻译全部”阅读模式标准接入。PUBLUS 和 CLIP STUDIO READER 尚未实现。
+框架必须能承载不同阅读器引擎。ComiciViewer 是首个适配器；GigaViewer、BinB Speed Reader 与 CLIP STUDIO READER 已按当前“翻译当前页 / 翻译全部”阅读模式标准接入。PUBLUS Reader 已接入可靠的“翻译当前页”，但其完整页序与页面二进制恢复依赖阅读器内部解包状态；在“不读私有全局、不注入 Hook”的边界下，“翻译全部”明确返回 `unsupported-format`，不冒充完整发现。
 
 > 2026-08-08 实现补记：GigaViewer 使用清单直接准备尚未显示的正文页，因此其“翻译全部”不依赖预先翻页或导出惰性 Canvas。引擎专用约束见 [`continuous-translation-giga-viewer.md`](./continuous-translation-giga-viewer.md)。
 
 > 2026-08-09 实现补记：BinB Speed Reader 使用当前阅读会话的官方内容协议准备清单页，并在内存中恢复拼图图片。这是经单独确认的引擎专用读取模式能力，不扩大通用自动连续捕获的范围。约束见 [`continuous-translation-binb.md`](./continuous-translation-binb.md)。
+
+> 2026-08-09 实现补记：CLIP STUDIO READER 使用当前会话已观察到的官方 diazepam 请求端点读取 `face.xml`、页 XML 与页二进制，在内存中按官方 4×4 表恢复并拼成当前跨页；约束见 [`continuous-translation-clip-studio-reader.md`](./continuous-translation-clip-studio-reader.md)。PUBLUS Reader 的当前页能力与显式全量边界见 [`continuous-translation-publus-reader.md`](./continuous-translation-publus-reader.md)。
 
 ### 完成标准
 
@@ -409,7 +411,7 @@ arbiter.begin({ owner: 'continuous', origin: 'automatic' });
 
 ## 13. 引擎专用规范
 
-实现 ComiciViewer 的检测、页面枚举、observer、结构夹具或真实页面回归时，必须继续阅读 [`continuous-translation-comici.md`](./continuous-translation-comici.md)。实现 GigaViewer 时必须继续阅读 [`continuous-translation-giga-viewer.md`](./continuous-translation-giga-viewer.md)。实现 BinB Speed Reader 时必须继续阅读 [`continuous-translation-binb.md`](./continuous-translation-binb.md)。引擎规范是各自结构事实的单一来源；通用层不得反向依赖其中的 selector、class 或清单字段。
+实现 ComiciViewer 的检测、页面枚举、observer、结构夹具或真实页面回归时，必须继续阅读 [`continuous-translation-comici.md`](./continuous-translation-comici.md)。实现 GigaViewer 时必须继续阅读 [`continuous-translation-giga-viewer.md`](./continuous-translation-giga-viewer.md)。实现 BinB Speed Reader 时必须继续阅读 [`continuous-translation-binb.md`](./continuous-translation-binb.md)。实现 CLIP STUDIO READER 时必须继续阅读 [`continuous-translation-clip-studio-reader.md`](./continuous-translation-clip-studio-reader.md)。实现 PUBLUS Reader 时必须继续阅读 [`continuous-translation-publus-reader.md`](./continuous-translation-publus-reader.md)。引擎规范是各自结构事实的单一来源；通用层不得反向依赖其中的 selector、class 或清单字段。
 
 ## 14. 生命周期与清理
 

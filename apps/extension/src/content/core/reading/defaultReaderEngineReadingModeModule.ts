@@ -1,6 +1,8 @@
 import { createComiciReaderEngineAdapter } from '../../readerEngines/comici';
 import { createGigaViewerReaderEngineAdapter } from '../../readerEngines/gigaViewer';
 import { createBinbReaderEngineAdapter } from '../../readerEngines/binb';
+import { createClipStudioReaderAdapter } from '../../readerEngines/clipStudioReader';
+import { createPublusReaderAdapter } from '../../readerEngines/publusReader';
 import { ReaderEngineRegistry } from '../continuous/readerEngineRegistry';
 import type { PhotoStateStore } from '../state/photoStateStore';
 import type { ImageTranslationExecutionArbiter } from '../translation/imageTranslationExecutionArbiter';
@@ -18,6 +20,8 @@ export function createDefaultReaderEngineReadingModeModule(
       createComiciReaderEngineAdapter(),
       createGigaViewerReaderEngineAdapter(),
       createBinbReaderEngineAdapter(),
+      createClipStudioReaderAdapter(),
+      createPublusReaderAdapter(),
     ]),
     stateStore,
     executionArbiter,

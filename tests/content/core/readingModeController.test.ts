@@ -383,6 +383,56 @@ describe('ReadingModeController', () => {
     expect(bar.remove).toHaveBeenCalledOnce();
   });
 
+  it('restores the original image when navigation reaches an untranslated page', async () => {
+    const firstPage: ImageTarget = {
+      element: {} as HTMLImageElement,
+      key: 'page-1',
+      originalUrl: 'https://example.com/page-1.jpg',
+    };
+    const secondPage: ImageTarget = {
+      element: {} as HTMLImageElement,
+      key: 'page-2',
+      originalUrl: 'https://example.com/page-2.jpg',
+    };
+    let visiblePage = firstPage;
+    const applyImageByKey = vi.fn();
+    const adapter: SiteAdapter = {
+      match: () => true,
+      findImages: () => [],
+      createUiAnchor: () => ({} as HTMLElement),
+      applyImage: () => {},
+      observe: () => () => {},
+      createBottomBarAnchor: () => ({ appendChild: vi.fn() } as unknown as HTMLElement),
+      getVisiblePages: () => [visiblePage],
+      applyImageByKey,
+    };
+    const store = new PhotoStateStore(200, { revokeObjectURL: vi.fn() });
+    const firstState = store.ensure(firstPage.key, firstPage.originalUrl);
+    firstState.translatedUrl = 'blob:translated-page-1';
+    firstState.status = 'translated';
+    const bar = createFakeBar();
+    const controller = new ReadingModeController(
+      createSiteReadingModeAdapter(adapter),
+      store,
+      arbitrate(createImageTranslationExecutionModule({
+        prepareExecution: prepareExecutionFromSettings(),
+      })),
+      vi.fn(),
+      vi.fn(),
+      () => bar.ui,
+    );
+
+    controller.sync();
+    bar.current.click?.();
+    await Promise.resolve();
+    expect(applyImageByKey).toHaveBeenLastCalledWith(firstPage.key, 'blob:translated-page-1');
+
+    visiblePage = secondPage;
+    controller.sync();
+
+    expect(applyImageByKey).toHaveBeenLastCalledWith(secondPage.key, secondPage.originalUrl);
+  });
+
   it('passes the document meta referrer policy when downloading a reading-mode page', async () => {
     vi.stubGlobal('document', {
       querySelector: vi.fn(() => ({ content: 'origin' })),

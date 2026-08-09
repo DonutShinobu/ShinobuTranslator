@@ -103,20 +103,18 @@ export class ReadingModeController {
         });
       }
 
-      // Apply stored translated images to any newly-visible pages.
+      // Reconcile every visible page so an untranslated page also clears a stale projection.
       // During translation loops, always show translated; otherwise respect toggle mode.
       const visiblePages = this.adapter.getVisiblePages();
       for (const page of visiblePages) {
         const state = this.stateStore.get(page.key);
-        if (state?.translatedUrl) {
-          const isRunning = this.operation.kind !== 'idle';
-          const url = isRunning
-            ? state.translatedUrl
-            : this.globalTranslateMode === 'translated'
-              ? state.translatedUrl
-              : page.originalUrl;
-          this.adapter.applyImageByKey(page.key, url);
-        }
+        const translatedUrl = state?.translatedUrl;
+        const shouldShowTranslation = Boolean(translatedUrl)
+          && (this.operation.kind !== 'idle' || this.globalTranslateMode === 'translated');
+        this.adapter.applyImageByKey(
+          page.key,
+          shouldShowTranslation && translatedUrl ? translatedUrl : page.originalUrl,
+        );
       }
 
       this.renderReadingModeBar();

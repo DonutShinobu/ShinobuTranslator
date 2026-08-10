@@ -37,6 +37,7 @@ function manifest(): ClipStudioReaderManifest {
 
 function createReader(currentPage = 1) {
   let current = currentPage;
+  let readerLoading = false;
   const projections: HTMLImageElement[] = [];
   const canvasPixels = new Uint8ClampedArray(8 * 6 * 4);
   for (let y = 1; y < 5; y += 1) {
@@ -70,6 +71,15 @@ function createReader(currentPage = 1) {
     removeEventListener: vi.fn(),
     contains: () => false,
   } as unknown as HTMLElement;
+  const loadingSpinner = {
+    isConnected: true,
+    nodeType: 1,
+    classList: {
+      contains: (name: string) => name === 'onstage' && readerLoading,
+    },
+    closest: () => null,
+    style: { display: 'block', visibility: 'hidden', opacity: '0' },
+  } as unknown as HTMLElement;
   const body = {
     appendChild: vi.fn((element: HTMLElement) => {
       Object.defineProperty(element, 'parentElement', { configurable: true, value: body });
@@ -86,6 +96,7 @@ function createReader(currentPage = 1) {
     fullscreenElement: null,
     querySelector: (selector: string) => {
       if (selector === '#stage') return root;
+      if (selector === '#screen_loading_spinner_layer') return loadingSpinner;
       if (selector === '#menu_nombre_current') return { textContent: String(current) };
       if (selector === '#menu_nombre_total') return { textContent: '4' };
       return null;
@@ -128,6 +139,11 @@ function createReader(currentPage = 1) {
     projections,
     root,
     screenLayer,
+    loadingSpinner,
+    setLoading(value: boolean) {
+      readerLoading = value;
+      loadingSpinner.style.visibility = value ? 'visible' : 'hidden';
+    },
     setCurrent(value: number) { current = value; },
     window,
   };
@@ -235,6 +251,58 @@ describe('CLIP STUDIO READER adapter', () => {
     session.applyImageByKey(discovery.pages[0]!.key, discovery.pages[0]!.originalUrl);
     expect(dom.projections).toHaveLength(0);
     expect(dom.screenLayer.style).not.toHaveProperty('isolation');
+  });
+
+  it('keeps the native loading state visible while navigation waits for its target page', async () => {
+    const mutationCallbacks: MutationCallback[] = [];
+    class FakeMutationObserver {
+      constructor(callback: MutationCallback) {
+        mutationCallbacks.push(callback);
+      }
+
+      observe(): void {}
+      disconnect(): void {}
+      takeRecords(): MutationRecord[] { return []; }
+    }
+    vi.stubGlobal('MutationObserver', FakeMutationObserver);
+    const dom = createReader(1);
+    const adapter = createClipStudioReaderAdapter({
+      document: dom.document,
+      window: dom.window,
+      location: { href: 'https://reader.example/viewer/book/42?token=one' },
+      createContentClient: () => contentClient(),
+    });
+    const session = adapter.createReadingModeSession!(adapter.detect()!);
+    const discovery = await session.discoverReadingPages();
+    if (discovery.status !== 'complete') throw new Error('expected complete discovery');
+
+    session.applyImageByKey(discovery.pages[0]!.key, 'blob:translated-page-1');
+    expect(dom.projections).toHaveLength(1);
+    const onSignal = vi.fn();
+    session.observe(onSignal);
+
+    dom.setLoading(true);
+    const loadingRecord = {
+      type: 'attributes',
+      target: dom.loadingSpinner,
+      addedNodes: [],
+      removedNodes: [],
+    } as unknown as MutationRecord;
+    mutationCallbacks[0]!([loadingRecord], {} as MutationObserver);
+    expect(dom.projections).toHaveLength(0);
+    session.applyImageByKey(discovery.pages[0]!.key, 'blob:translated-page-1');
+    expect(dom.projections).toHaveLength(0);
+    expect(onSignal).toHaveBeenCalledWith({ kind: 'navigation-state-changed' });
+
+    dom.setLoading(false);
+    dom.setCurrent(3);
+    mutationCallbacks[0]!([loadingRecord], {} as MutationObserver);
+    session.applyImageByKey(discovery.pages[1]!.key, 'blob:translated-page-2');
+    expect(dom.projections).toHaveLength(1);
+    expect(dom.projections[0]).toMatchObject({
+      src: 'blob:translated-page-2',
+      dataset: { mtReadingProjectionKey: discovery.pages[1]!.key },
+    });
   });
 
   it('removes the previous page projection as soon as native navigation is observed', async () => {

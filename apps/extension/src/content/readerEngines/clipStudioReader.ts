@@ -25,6 +25,7 @@ import {
 
 const rootSelector = '#stage';
 const screenLayerSelector = '#screen_layer';
+const loadingSpinnerSelector = '#screen_loading_spinner_layer';
 const currentCounterSelector = '#menu_nombre_current';
 const totalCounterSelector = '#menu_nombre_total';
 const translateAllPageLimit = 200;
@@ -275,6 +276,16 @@ class ClipStudioReaderSession implements ReaderEngineReadingModeSession {
     )) ?? null;
   }
 
+  private isNativeLoading(): boolean {
+    const spinner = this.document.querySelector<HTMLElement>(loadingSpinnerSelector);
+    if (!spinner?.isConnected) return false;
+    if (spinner.classList.contains('onstage')) return true;
+    const style = this.window.getComputedStyle?.(spinner);
+    return style?.display !== 'none'
+      && style?.visibility !== 'hidden'
+      && Number(style?.opacity ?? '1') > 0;
+  }
+
   readVisibleSpread(): ReaderVisibleSpread {
     const spread = this.currentSpread();
     const canvas = this.readActiveCanvas();
@@ -424,6 +435,10 @@ class ClipStudioReaderSession implements ReaderEngineReadingModeSession {
       for (const projection of projections) projection.remove();
       return;
     }
+    if (this.isNativeLoading()) {
+      for (const projection of projections) projection.remove();
+      return;
+    }
     const image = projections[0] ?? this.document.createElement('img');
     for (const duplicate of projections) {
       if (duplicate !== image) duplicate.remove();
@@ -448,7 +463,7 @@ class ClipStudioReaderSession implements ReaderEngineReadingModeSession {
 
   private removeStaleProjections(): void {
     const spread = this.currentSpread();
-    const currentKey = spread ? this.pageKey(spread.pageIndex) : null;
+    const currentKey = !this.isNativeLoading() && spread ? this.pageKey(spread.pageIndex) : null;
     for (const projection of this.screenLayer.querySelectorAll<HTMLImageElement>(
       '[data-mt-reading-projection]',
     )) {

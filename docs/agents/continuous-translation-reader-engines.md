@@ -1,7 +1,7 @@
 # 连续翻译模式：阅读器引擎框架与已适配引擎
 
 - 状态：框架已实现；ComiciViewer、GigaViewer、BinB Speed Reader、CLIP STUDIO READER 与 PUBLUS Reader 已接入
-- 最近确认日期：2026-08-09
+- 最近确认日期：2026-08-10
 - 首个回归页面：<https://bibibi-comic.com/episodes/7e06f5b186c99>
 
 本文是后续实现的规范来源。实现者应先读根目录 [`CONTEXT.md`](../../CONTEXT.md)，沿用其中的“连续翻译模式”“连续翻译显示模式”“图片翻译执行活动”等术语。
@@ -21,13 +21,15 @@
 → 翻页后继续
 ```
 
-框架必须能承载不同阅读器引擎。ComiciViewer 是首个适配器；GigaViewer、BinB Speed Reader 与 CLIP STUDIO READER 已按当前“翻译当前页 / 翻译全部”阅读模式标准接入。PUBLUS Reader 已接入可靠的“翻译当前页”，但其完整页序与页面二进制恢复依赖阅读器内部解包状态；在“不读私有全局、不注入 Hook”的边界下，“翻译全部”明确返回 `unsupported-format`，不冒充完整发现。
+框架必须能承载不同阅读器引擎。ComiciViewer 是首个适配器；GigaViewer、BinB Speed Reader、CLIP STUDIO READER 与 PUBLUS Reader 已按当前“翻译当前页 / 翻译全部”阅读模式标准接入。PUBLUS 通过当前会话已观察到的许可/配置请求读取权威目录，1.x 在内存中解包并复原分块，2.x 直接准备固定布局图片；未知协议仍失败关闭。
 
 > 2026-08-08 实现补记：GigaViewer 使用清单直接准备尚未显示的正文页，因此其“翻译全部”不依赖预先翻页或导出惰性 Canvas。引擎专用约束见 [`continuous-translation-giga-viewer.md`](./continuous-translation-giga-viewer.md)。
 
 > 2026-08-09 实现补记：BinB Speed Reader 使用当前阅读会话的官方内容协议准备清单页，并在内存中恢复拼图图片。这是经单独确认的引擎专用读取模式能力，不扩大通用自动连续捕获的范围。约束见 [`continuous-translation-binb.md`](./continuous-translation-binb.md)。
 
-> 2026-08-09 实现补记：CLIP STUDIO READER 使用当前会话已观察到的官方 diazepam 请求端点读取 `face.xml`、页 XML 与页二进制，在内存中按官方 4×4 表恢复并拼成当前跨页；约束见 [`continuous-translation-clip-studio-reader.md`](./continuous-translation-clip-studio-reader.md)。PUBLUS Reader 的当前页能力与显式全量边界见 [`continuous-translation-publus-reader.md`](./continuous-translation-publus-reader.md)。
+> 2026-08-09 实现补记：CLIP STUDIO READER 使用当前会话已观察到的官方 diazepam 请求端点读取 `face.xml`、页 XML 与页二进制，在内存中按官方 4×4 表恢复并拼成当前跨页；约束见 [`continuous-translation-clip-studio-reader.md`](./continuous-translation-clip-studio-reader.md)。
+
+> 2026-08-10 实现补记：PUBLUS Reader 通过被动 Resource Timing 重放当前会话已经发出的许可入口，以 `configuration.contents` 发现全页；1.x/2.x 的严格协议边界见 [`continuous-translation-publus-reader.md`](./continuous-translation-publus-reader.md)。
 
 ### 完成标准
 

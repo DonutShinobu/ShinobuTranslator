@@ -7,6 +7,21 @@ import type {
   ReaderVisibleSpread,
 } from '../core/continuous/contracts';
 import type { ReadingPageReference } from '../core/types';
+import {
+  createRuntimeImageDownloader,
+  type DownloadImageForTranslation,
+} from '../core/translation/imageTranslationExecution';
+import { sendRuntimeMessage } from '../../shared/messages';
+import {
+  createPublusReaderContentClient,
+  PublusReaderInvalidResponseError,
+  PublusReaderUnsupportedError,
+  type PublusObservedSession,
+  type PublusReaderManifest,
+  type PublusReaderContentClient,
+  type PublusReaderResourceFetcher,
+  type RestorePublusV1Image,
+} from './publusReaderContent';
 
 const rootSelector = '#viewer.viewer, #viewer';
 const rendererSelector = '#renderer';
@@ -19,6 +34,12 @@ export type PublusReaderDependencies = {
   document: Document;
   window: Window;
   location: PublusLocation;
+  createContentClient?: (options: {
+    readObservedSession: () => PublusObservedSession | null;
+  }) => PublusReaderContentClient;
+  fetchResource?: PublusReaderResourceFetcher;
+  downloadImage?: DownloadImageForTranslation;
+  restoreImage?: RestorePublusV1Image;
 };
 
 type PublusDetectionConfig = {
@@ -48,11 +69,74 @@ function createContextKey(value: string): string | null {
   }
 }
 
-function hasPublusImageReaderScript(document: Document): boolean {
-  return [...document.scripts]
-    .map((script) => script.src)
-    .filter(Boolean)
-    .some((source) => /\/viewer_image_[^/]*\.js(?:\?|$)/iu.test(source));
+function readPublusProtocolMajor(document: Document): 1 | 2 | null {
+  for (const script of [...document.scripts]) {
+    const match = /\/viewer_image_([12])\.[^/]*\.js(?:\?|$)/iu.exec(script.src);
+    if (match?.[1] === '1') return 1;
+    if (match?.[1] === '2') return 2;
+  }
+  return null;
+}
+
+function parseObservedHttpsUrl(value: string): URL | null {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.username && !url.password ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+function readObservedSession(
+  document: Document,
+  window: Window,
+  location: PublusLocation,
+): PublusObservedSession | null {
+  const viewer = parseObservedHttpsUrl(location.href);
+  const cid = viewer?.searchParams.get('cid');
+  const protocolMajor = readPublusProtocolMajor(document);
+  if (!viewer || !cid || !protocolMajor) return null;
+  const resources = (window.performance?.getEntriesByType?.('resource') ?? [])
+    .map((entry, order) => ({ url: parseObservedHttpsUrl(entry.name), order }))
+    .filter((entry): entry is { url: URL; order: number } => entry.url !== null);
+  const configuration = [...resources]
+    .reverse()
+    .find(({ url }) => /\/configuration_pack\.json$/u.test(url.pathname));
+  if (!configuration) return null;
+  const contentCheck = [...resources]
+    .reverse()
+    .find(({ url, order }) => (
+      order < configuration.order
+      && url.searchParams.get('cid') === cid
+      && !/\.(?:css|js|mjs|png|jpe?g|gif|webp|svg|woff2?)(?:$|\/)/iu.test(url.pathname)
+    ));
+  if (!contentCheck) return null;
+  return {
+    viewerUrl: viewer.href,
+    contentCheckUrl: contentCheck.url.href,
+    configurationUrl: configuration.url.href,
+    protocolMajor,
+  };
+}
+
+function createRuntimePublusResourceFetcher(): PublusReaderResourceFetcher {
+  return async (request, options) => {
+    if (options?.signal?.aborted) throw options.signal.reason;
+    const response = await sendRuntimeMessage({
+      type: 'mt:fetch-reader-resource',
+      url: request.url,
+      allowedBaseUrl: request.allowedBaseUrl,
+    });
+    if (options?.signal?.aborted) throw options.signal.reason;
+    if (!response.ok || response.type !== 'mt:fetch-reader-resource') {
+      throw new Error(response.ok ? 'PUBLUS 阅读器资源请求失败' : response.error);
+    }
+    return {
+      text: response.text,
+      contentType: response.contentType,
+      sourceUrl: response.sourceUrl,
+    };
+  };
 }
 
 function readDetectionConfig(
@@ -105,6 +189,8 @@ class PublusReaderSession implements ReaderEngineReadingModeSession {
   private readonly observerStops = new Set<() => void>();
   private bottomBarAnchor: HTMLElement | null = null;
   private disposed = false;
+  private readonly contentClient: PublusReaderContentClient;
+  private manifest: PublusReaderManifest | null = null;
 
   constructor(
     private readonly root: HTMLElement,
@@ -112,8 +198,24 @@ class PublusReaderSession implements ReaderEngineReadingModeSession {
     private readonly document: Document,
     private readonly window: Window,
     config: PublusDetectionConfig,
+    private readonly dependencies: PublusReaderDependencies,
   ) {
     this.contextKey = config.contextKey;
+    const readSession = () => readObservedSession(
+      this.document,
+      this.window,
+      this.dependencies.location,
+    );
+    this.contentClient = dependencies.createContentClient?.({
+      readObservedSession: readSession,
+    }) ?? createPublusReaderContentClient({
+      readObservedSession: readSession,
+      fetchResource: dependencies.fetchResource ?? createRuntimePublusResourceFetcher(),
+      downloadImage: dependencies.downloadImage
+        ?? createRuntimeImageDownloader(sendRuntimeMessage),
+      document: this.document,
+      restoreImage: dependencies.restoreImage,
+    });
   }
 
   getReadingContextKey(): string {
@@ -187,19 +289,140 @@ class PublusReaderSession implements ReaderEngineReadingModeSession {
   }
 
   getVisiblePages(): readonly ReadingPageReference[] {
-    return this.readVisibleSpread().pages.map(({ identity }) => ({
-      key: this.pageKey(identity.pageIndex),
-      originalUrl: this.pageReference(identity.pageIndex),
-      pageIndex: identity.pageIndex,
+    return this.readVisibleReadingPageIndexes().map((pageIndex) => ({
+      key: this.pageKey(pageIndex),
+      originalUrl: this.pageReference(pageIndex),
+      pageIndex,
     }));
   }
 
-  async discoverReadingPages() {
+  private readVisibleReadingPageIndexes(
+    active = this.readActiveSurface(),
+  ): readonly number[] {
+    const currentPageIndex = parseCurrentPageIndex(this.document);
+    if (currentPageIndex === null || !active) return [];
+    const manifest = this.manifest;
+    const currentPage = manifest?.pages[currentPageIndex];
+    const canvasRect = active.canvas.getBoundingClientRect();
+    if (
+      !manifest
+      || !currentPage
+      || canvasRect.width <= canvasRect.height
+      || currentPage.width >= currentPage.height
+    ) {
+      return [currentPageIndex];
+    }
+
+    let pageIndex = 0;
+    while (pageIndex < manifest.pages.length) {
+      const page = manifest.pages[pageIndex]!;
+      if (pageIndex === 0 || page.width >= page.height) {
+        if (pageIndex === currentPageIndex) return [pageIndex];
+        pageIndex += 1;
+        continue;
+      }
+      const next = manifest.pages[pageIndex + 1];
+      const members = next && next.width < next.height
+        ? [pageIndex, pageIndex + 1]
+        : [pageIndex];
+      if (members.includes(currentPageIndex)) return members;
+      pageIndex += members.length;
+    }
+    return [currentPageIndex];
+  }
+
+  private readProjectionLayout(
+    pageIndex: number,
+    active: { canvas: HTMLCanvasElement; viewport: HTMLElement },
+    visiblePageIndexes: readonly number[],
+  ): { rect: DOMRect; objectPosition: 'center center' | 'left center' | 'right center' } {
+    const canvasRect = active.canvas.getBoundingClientRect();
+    const manifest = this.manifest;
+    const page = manifest?.pages[pageIndex];
+    if (
+      !manifest
+      || !page
+      || canvasRect.width <= canvasRect.height
+      || page.width >= page.height
+    ) {
+      return { rect: canvasRect, objectPosition: 'center center' };
+    }
+
+    let side: 'left' | 'right';
+    if (visiblePageIndexes.length === 2) {
+      const memberIndex = visiblePageIndexes.indexOf(pageIndex);
+      side = manifest.direction === 'rtl'
+        ? (memberIndex === 0 ? 'right' : 'left')
+        : (memberIndex === 0 ? 'left' : 'right');
+    } else {
+      const oddPhysicalPage = pageIndex % 2 === 0;
+      side = manifest.direction === 'rtl'
+        ? (oddPhysicalPage ? 'left' : 'right')
+        : (oddPhysicalPage ? 'right' : 'left');
+    }
+
+    const width = canvasRect.width / 2;
+    const left = canvasRect.left + (side === 'right' ? width : 0);
     return {
-      status: 'incomplete' as const,
-      reason: 'unsupported-format' as const,
-      detail: 'PUBLUS 的完整页序与页面恢复依赖阅读器内部解包状态；当前边界仅支持翻译当前显示页',
+      objectPosition: side === 'left' ? 'right center' : 'left center',
+      rect: {
+        left,
+        right: left + width,
+        width,
+        x: left,
+        top: canvasRect.top,
+        bottom: canvasRect.bottom,
+        y: canvasRect.top,
+        height: canvasRect.height,
+        toJSON: () => ({}),
+      },
     };
+  }
+
+  async discoverReadingPages(signal?: AbortSignal) {
+    try {
+      const current = readDetectionConfig(this.root, this.dependencies);
+      if (!current || current.contextKey !== this.contextKey) {
+        return { status: 'incomplete' as const, reason: 'metadata-unavailable' as const };
+      }
+      const manifest = await this.contentClient.read({ signal });
+      this.manifest = manifest;
+      return {
+        status: 'complete' as const,
+        pages: Array.from({ length: manifest.pageCount }, (_, pageIndex) => ({
+          key: this.pageKey(pageIndex),
+          originalUrl: this.pageReference(pageIndex),
+          pageIndex,
+        })),
+      };
+    } catch (error) {
+      if (error instanceof PublusReaderUnsupportedError) {
+        return {
+          status: 'incomplete' as const,
+          reason: 'unsupported-format' as const,
+          detail: error.message,
+        };
+      }
+      return {
+        status: 'incomplete' as const,
+        reason: error instanceof PublusReaderInvalidResponseError
+          ? 'invalid-response' as const
+          : 'request-failed' as const,
+      };
+    }
+  }
+
+  async prepareReadingPage(page: ReadingPageReference, signal: AbortSignal) {
+    if (!Number.isSafeInteger(page.pageIndex) || Number(page.pageIndex) < 0) {
+      throw new Error('PUBLUS 阅读页缺少物理页序号');
+    }
+    const current = readDetectionConfig(this.root, this.dependencies);
+    if (!current || current.contextKey !== this.contextKey) {
+      throw new Error('PUBLUS 阅读上下文已变化');
+    }
+    this.manifest ??= await this.contentClient.read({ signal });
+    const file = await this.contentClient.acquirePublusPageFile(Number(page.pageIndex), signal);
+    return { source: { kind: 'prepared-file' as const, file } };
   }
 
   createBottomBarAnchor(): HTMLElement | null {
@@ -225,32 +448,44 @@ class PublusReaderSession implements ReaderEngineReadingModeSession {
   }
 
   applyImageByKey(key: string, url: string): void {
-    const pageIndex = parseCurrentPageIndex(this.document);
     const active = this.readActiveSurface();
-    if (pageIndex === null || !active || this.pageKey(pageIndex) !== key) return;
+    if (!active) return;
+    const visiblePageIndexes = this.readVisibleReadingPageIndexes(active);
+    const pageIndex = visiblePageIndexes.find((index) => this.pageKey(index) === key);
+    if (pageIndex === undefined) return;
     const projections = [
       ...active.viewport.querySelectorAll<HTMLImageElement>('[data-mt-reading-projection]'),
     ];
+    const visibleKeys = new Set(visiblePageIndexes.map((index) => this.pageKey(index)));
+    for (const projection of projections) {
+      if (!visibleKeys.has(projection.dataset.mtReadingProjectionKey ?? '')) projection.remove();
+    }
+    const matching = projections.filter((projection) => (
+      projection.dataset.mtReadingProjectionKey === key && projection.parentElement === active.viewport
+    ));
     if (url === this.pageReference(pageIndex)) {
-      for (const projection of projections) projection.remove();
+      for (const projection of matching) projection.remove();
       return;
     }
-    const image = projections[0] ?? this.document.createElement('img');
-    for (const duplicate of projections.slice(1)) duplicate.remove();
+    const image = matching[0] ?? this.document.createElement('img');
+    for (const duplicate of matching.slice(1)) duplicate.remove();
     image.dataset.mtReadingProjection = '';
+    image.dataset.mtReadingProjectionKey = key;
     image.alt = '';
     image.src = url;
     image.style.position = 'absolute';
     image.style.pointerEvents = 'none';
     image.style.zIndex = '2147483645';
-    image.style.objectFit = 'fill';
+    image.style.objectFit = 'contain';
     if (image.parentElement !== active.viewport) active.viewport.appendChild(image);
     const viewportRect = active.viewport.getBoundingClientRect();
-    const canvasRect = active.canvas.getBoundingClientRect();
-    image.style.left = `${canvasRect.left - viewportRect.left}px`;
-    image.style.top = `${canvasRect.top - viewportRect.top}px`;
-    image.style.width = `${canvasRect.width}px`;
-    image.style.height = `${canvasRect.height}px`;
+    const projection = this.readProjectionLayout(pageIndex, active, visiblePageIndexes);
+    const projectionRect = projection.rect;
+    image.style.objectPosition = projection.objectPosition;
+    image.style.left = `${projectionRect.left - viewportRect.left}px`;
+    image.style.top = `${projectionRect.top - viewportRect.top}px`;
+    image.style.width = `${projectionRect.width}px`;
+    image.style.height = `${projectionRect.height}px`;
   }
 
   observe(onSignal: (signal: ReaderSessionSignal) => void): () => void {
@@ -313,7 +548,7 @@ class PublusReaderAdapter implements ReaderEngineAdapter {
 
   detect(): ReaderEngineDetection | null {
     const root = this.dependencies.document.querySelector<HTMLElement>(rootSelector);
-    if (!root || !hasPublusImageReaderScript(this.dependencies.document)) return null;
+    if (!root || !readPublusProtocolMajor(this.dependencies.document)) return null;
     const config = readDetectionConfig(root, this.dependencies);
     if (
       !config
@@ -360,6 +595,7 @@ class PublusReaderAdapter implements ReaderEngineAdapter {
       this.dependencies.document,
       this.dependencies.window,
       config,
+      this.dependencies,
     );
   }
 }

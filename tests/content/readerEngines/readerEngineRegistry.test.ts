@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   ReaderEngineRegistry,
-  type ReaderEngineAdapter,
-  type ReaderEngineDetection,
-} from '../../../apps/extension/src/content/core/continuous';
+} from '../../../apps/extension/src/content/core/reading/readerEngineRegistry';
+import type {
+  ReaderEngineAdapter,
+  ReaderEngineDetection,
+} from '../../../apps/extension/src/content/core/reading/readerEngineContracts';
 
 function adapter(
   engineId: string,
@@ -12,7 +14,7 @@ function adapter(
   return {
     engineId,
     detect: () => detection,
-    createSession: () => {
+    createReadingModeSession: () => {
       throw new Error('not needed by registry selection');
     },
   };

@@ -86,12 +86,7 @@ export class ImageTranslationController {
     }
 
     const jankMonitor = this.runtime.createJankMonitor('image');
-    const admission = this.executionArbiter.begin({
-      owner: 'inline-image',
-      origin: 'explicit',
-    });
-    if (admission.status !== 'active') return Promise.resolve();
-    const activity = admission.activity;
+    const activity = this.executionArbiter.begin();
     const releaseState = this.stateStore.protect(key);
     const task = startPhotoStateImageTranslation({
       executionModule: activity,

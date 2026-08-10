@@ -55,13 +55,7 @@ export interface ReaderEngineReadingModeSession
 export interface ReaderEngineAdapter {
   readonly engineId: string;
   detect(): ReaderEngineDetection | null;
-  createSession(detection: ReaderEngineDetection): ReaderEngineSession;
-  createReadingModeSession?(
+  createReadingModeSession(
     detection: ReaderEngineDetection,
   ): ReaderEngineReadingModeSession;
-}
-
-export interface ContinuousTranslationModule {
-  start(): void;
-  dispose(): void;
 }

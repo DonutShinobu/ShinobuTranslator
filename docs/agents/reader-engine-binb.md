@@ -1,10 +1,10 @@
-# 连续翻译模式：BinB Speed Reader 适配规范
+# 阅读模式：BinB Speed Reader 适配规范
 
 - 状态：已实现
 - 确认日期：2026-08-09
 - 适用入口：阅读模式中的“翻译当前页 / 翻译全部”
 
-本文是 BinB Speed Reader 适配的结构事实与安全边界来源。通用契约见 [`continuous-translation-reader-engines.md`](./continuous-translation-reader-engines.md)。
+本文是 BinB Speed Reader 适配的结构事实与安全边界来源。通用契约见 [`reader-engines.md`](./reader-engines.md)。
 
 ## 1. 支持范围
 

@@ -1,6 +1,6 @@
 # 阅读模式：GigaViewer 引擎规范
 
-在实现或修改 GigaViewer 检测、清单解析、页面映射、图片还原、observer 或真实页面回归时读取本文。通用阅读模式沿用现有 `ReaderEngineAdapter`、`ReadingModeController` 和“翻译当前页 / 翻译全部”语义。
+在实现或修改 GigaViewer 检测、清单解析、页面映射、图片还原、observer 或真实页面回归时读取本文。通用契约见 [`reader-engines.md`](./reader-engines.md)。
 
 基准页面：<https://www.sunday-webry.com/episode/12207421983473064570>
 

@@ -2,10 +2,9 @@ import type {
   ReaderEngineAdapter,
   ReaderEngineDetection,
   ReaderEngineReadingModeSession,
-  ReaderEngineSession,
   ReaderSessionSignal,
   ReaderVisibleSpread,
-} from '../core/continuous/contracts';
+} from '../core/reading/readerEngineContracts';
 import type {
   ReadingLogicalPagePlan,
   ReadingLogicalPageResultSlice,
@@ -599,10 +598,6 @@ class GigaViewerReaderEngineAdapter implements ReaderEngineAdapter {
         'readableProduct.pageStructure.pages',
       ],
     };
-  }
-
-  createSession(detection: ReaderEngineDetection): ReaderEngineSession {
-    return this.createReaderSession(detection);
   }
 
   createReadingModeSession(detection: ReaderEngineDetection): ReaderEngineReadingModeSession {

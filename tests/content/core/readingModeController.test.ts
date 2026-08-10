@@ -772,11 +772,7 @@ describe('ReadingModeController', () => {
     bar.all.click?.();
     await vi.waitFor(() => expect(pipelineSignal).toBeDefined());
 
-    const replacement = executionArbiter.begin({
-      owner: 'screenshot',
-      origin: 'explicit',
-    });
-    expect(replacement.status).toBe('active');
+    const replacement = executionArbiter.begin();
     expect(pipelineSignal?.aborted).toBe(false);
 
     readingContextKey = 'artwork-2';
@@ -792,6 +788,6 @@ describe('ReadingModeController', () => {
     await vi.waitFor(() => expect(bar.all.disabled).toBe(false));
 
     expect(pipelineSignal?.aborted).toBe(false);
-    if (replacement.status === 'active') replacement.activity.end();
+    replacement.end();
   });
 });

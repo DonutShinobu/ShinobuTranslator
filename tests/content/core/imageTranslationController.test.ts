@@ -227,11 +227,7 @@ describe('ImageTranslationController', () => {
     const click = harness.controller.handleTranslateClick(harness.target);
     await vi.waitFor(() => expect(pipelineSignal).toBeDefined());
 
-    const replacement = harness.executionArbiter.begin({
-      owner: 'screenshot',
-      origin: 'explicit',
-    });
-    expect(replacement.status).toBe('active');
+    const replacement = harness.executionArbiter.begin();
     expect(pipelineSignal?.aborted).toBe(false);
 
     completePipeline(localResult());
@@ -243,7 +239,7 @@ describe('ImageTranslationController', () => {
       mode: 'translated',
       errorText: '',
     });
-    if (replacement.status === 'active') replacement.activity.end();
+    replacement.end();
   });
 
   it('passes captured tweet context into the local LLM pipeline', async () => {

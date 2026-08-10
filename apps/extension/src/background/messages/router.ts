@@ -12,20 +12,6 @@ type SuccessOf<T extends RuntimeResponse['type']> = Extract<RuntimeResponse, { o
 type PayloadOf<T extends RuntimeResponse['type']> = Omit<SuccessOf<T>, 'ok' | 'type'>;
 
 export type BackgroundServices = {
-  continuous?: {
-    artifacts: {
-      handle(
-        command: MessageOf<'mt:page-artifact'>['command'],
-        sender: ExtensionMessageSender,
-      ): Promise<unknown>;
-    };
-    tabState: {
-      handle(
-        command: MessageOf<'mt:continuous-tab-state'>['command'],
-        sender: ExtensionMessageSender,
-      ): Promise<unknown>;
-    };
-  };
   settings: {
     get(): Promise<import('../../shared/config').ExtensionSettings>;
   };
@@ -89,22 +75,6 @@ export async function routeBackgroundMessage(
       type: 'mt:extension-control',
       result: await services.extensionControl.handle(message.command, sender),
     };
-  }
-  if (message.type === 'mt:page-artifact') {
-    if (!services.continuous) throw new Error('页面产物服务不可用');
-    return {
-      ok: true,
-      type: 'mt:page-artifact',
-      result: await services.continuous.artifacts.handle(message.command, sender),
-    } as RuntimeResponse;
-  }
-  if (message.type === 'mt:continuous-tab-state') {
-    if (!services.continuous) throw new Error('连续翻译标签页状态服务不可用');
-    return {
-      ok: true,
-      type: 'mt:continuous-tab-state',
-      result: await services.continuous.tabState.handle(message.command, sender),
-    } as RuntimeResponse;
   }
   if (message.type === 'mt:download-image') {
     const request: ImageDownloadRequest = {

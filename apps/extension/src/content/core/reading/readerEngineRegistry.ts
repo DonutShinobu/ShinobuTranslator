@@ -1,7 +1,7 @@
 import type {
   ReaderEngineAdapter,
   ReaderEngineDetection,
-} from './contracts';
+} from './readerEngineContracts';
 
 export type DetectedReaderEngine = {
   adapter: ReaderEngineAdapter;

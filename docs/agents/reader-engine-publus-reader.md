@@ -3,6 +3,7 @@
 - 状态：当前页与“翻译全部”已实现
 - 最近确认日期：2026-08-10
 - 引擎 ID：`publus-reader`
+- 通用契约：[`reader-engines.md`](./reader-engines.md)
 
 ## 强指纹
 

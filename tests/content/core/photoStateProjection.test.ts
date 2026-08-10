@@ -162,10 +162,9 @@ describe('photo state projection', () => {
       runLocalPipeline: () => new Promise(() => undefined),
     });
     const arbiter = createImageTranslationExecutionArbiter(module);
-    const firstAdmission = arbiter.begin({ owner: 'inline-image', origin: 'explicit' });
-    if (firstAdmission.status !== 'active') throw new Error('Expected active inline activity');
+    const firstActivity = arbiter.begin();
     const first = startPhotoStateImageTranslation({
-      executionModule: firstAdmission.activity,
+      executionModule: firstActivity,
       request: {
         source: {
           kind: 'prepared-file',
@@ -177,10 +176,9 @@ describe('photo state projection', () => {
     });
     await Promise.resolve();
 
-    const secondAdmission = arbiter.begin({ owner: 'reading-mode', origin: 'explicit' });
-    if (secondAdmission.status !== 'active') throw new Error('Expected active reading activity');
+    const secondActivity = arbiter.begin();
     const second = startPhotoStateImageTranslation({
-      executionModule: secondAdmission.activity,
+      executionModule: secondActivity,
       request: {
         source: {
           kind: 'prepared-file',
@@ -192,11 +190,11 @@ describe('photo state projection', () => {
     });
 
     expect(first.signal.aborted).toBe(false);
-    firstAdmission.activity.end('first owner cleanup');
+    firstActivity.end('first activity cleanup');
     await expect(first.result).rejects.toMatchObject({ code: 'TASK_CANCELLED' });
     expect(state.status).toBe('running');
 
-    secondAdmission.activity.end('test cleanup');
+    secondActivity.end('test cleanup');
     await expect(second.result).rejects.toMatchObject({ code: 'TASK_CANCELLED' });
   });
 

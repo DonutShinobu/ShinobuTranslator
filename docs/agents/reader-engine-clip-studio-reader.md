@@ -3,6 +3,7 @@
 - 状态：已实现
 - 最近确认日期：2026-08-09
 - 引擎 ID：`clip-studio-reader`
+- 通用契约：[`reader-engines.md`](./reader-engines.md)
 
 ## 强指纹
 

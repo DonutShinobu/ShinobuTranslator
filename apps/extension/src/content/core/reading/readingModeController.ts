@@ -218,7 +218,6 @@ export class ReadingModeController {
       }
 
       const activity = this.beginActivity();
-      if (!activity) return;
       this.operation = { kind: 'translating-current' };
       this.renderReadingModeBar();
 
@@ -256,7 +255,6 @@ export class ReadingModeController {
       if (this.operation.kind !== 'idle') return;
 
       const activity = this.beginActivity();
-      if (!activity) return;
       this.errorText = '';
       this.operation = { kind: 'discovering-all' };
       this.renderReadingModeBar();
@@ -520,14 +518,10 @@ export class ReadingModeController {
       ), 0);
     }
 
-  private beginActivity(): ImageTranslationExecutionActivity | null {
-      const admission = this.executionArbiter.begin({
-        owner: 'reading-mode',
-        origin: 'explicit',
-      });
-      if (admission.status !== 'active') return null;
-      this.activeActivity = admission.activity;
-      return admission.activity;
+  private beginActivity(): ImageTranslationExecutionActivity {
+      const activity = this.executionArbiter.begin();
+      this.activeActivity = activity;
+      return activity;
     }
 
   private finishActivity(activity: ImageTranslationExecutionActivity): void {

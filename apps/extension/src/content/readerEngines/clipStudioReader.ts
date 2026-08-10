@@ -2,10 +2,9 @@ import type {
   ReaderEngineAdapter,
   ReaderEngineDetection,
   ReaderEngineReadingModeSession,
-  ReaderEngineSession,
   ReaderSessionSignal,
   ReaderVisibleSpread,
-} from '../core/continuous/contracts';
+} from '../core/reading/readerEngineContracts';
 import type { ReadingPageReference } from '../core/types';
 import {
   createRuntimeImageDownloader,
@@ -565,10 +564,6 @@ class ClipStudioReaderAdapter implements ReaderEngineAdapter {
         'observed HTTPS diazepam resource protocol',
       ],
     };
-  }
-
-  createSession(detection: ReaderEngineDetection): ReaderEngineSession {
-    return this.createReaderSession(detection);
   }
 
   createReadingModeSession(detection: ReaderEngineDetection): ReaderEngineReadingModeSession {

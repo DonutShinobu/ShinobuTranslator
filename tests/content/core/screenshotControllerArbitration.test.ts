@@ -119,10 +119,7 @@ describe('ScreenshotController arbitration', () => {
     });
     await vi.waitFor(() => expect(mocks.sendRuntimeMessage).toHaveBeenCalledOnce());
 
-    const replacement = executionArbiter.begin({
-      owner: 'inline-image',
-      origin: 'explicit',
-    });
+    const replacement = executionArbiter.begin();
     capture.resolve({
       ok: true,
       type: 'mt:capture-visible-tab',
@@ -133,10 +130,9 @@ describe('ScreenshotController arbitration', () => {
 
     expect(mocks.cropScreenshotToFile).toHaveBeenCalledOnce();
     expect(pipelineSignal?.aborted).toBe(false);
-    expect(replacement.status).toBe('active');
 
     controller.dispose();
     await pending;
-    if (replacement.status === 'active') replacement.activity.end();
+    replacement.end();
   });
 });

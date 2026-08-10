@@ -9,7 +9,6 @@ import type {
 import {
   createImageTranslationExecutionArbiter,
   type ImageTranslationExecutionActivity,
-  type ImageTranslationExecutionActivityRequest,
 } from '../../../apps/extension/src/content/core/translation/imageTranslationExecutionArbiter';
 
 const request: ImageTranslationExecutionRequest = {
@@ -99,80 +98,28 @@ function crossReportingCancellationExecutionModule(): {
 
 function beginActive(
   arbiter: ReturnType<typeof createImageTranslationExecutionArbiter>,
-  activity: ImageTranslationExecutionActivityRequest,
 ): ImageTranslationExecutionActivity {
-  const result = arbiter.begin(activity);
-  expect(result.status).toBe('active');
-  if (result.status !== 'active') throw new Error('expected an active activity');
-  return result.activity;
+  return arbiter.begin();
 }
 
 describe('image translation execution arbiter', () => {
-  it('keeps explicit activities from different owners active together', () => {
+  it('keeps concurrent activities active together', () => {
     const arbiter = createImageTranslationExecutionArbiter(
       neverSettlingExecutionModule(),
     );
-    const inline = beginActive(arbiter, {
-      owner: 'inline-image',
-      origin: 'explicit',
-    });
-    const screenshot = beginActive(arbiter, {
-      owner: 'screenshot',
-      origin: 'explicit',
-    });
-
-    expect(inline.signal.aborted).toBe(false);
-    expect(screenshot.signal.aborted).toBe(false);
-  });
-
-  it('keeps activities from the same owner active together', () => {
-    const arbiter = createImageTranslationExecutionArbiter(
-      neverSettlingExecutionModule(),
-    );
-    const first = beginActive(arbiter, {
-      owner: 'inline-image',
-      origin: 'explicit',
-    });
-
-    const second = beginActive(arbiter, {
-      owner: 'inline-image',
-      origin: 'explicit',
-    });
+    const first = beginActive(arbiter);
+    const second = beginActive(arbiter);
 
     expect(first.signal.aborted).toBe(false);
     expect(second.signal.aborted).toBe(false);
-  });
-
-  it('admits an automatic activity without replacing an explicit owner', () => {
-    const arbiter = createImageTranslationExecutionArbiter(
-      neverSettlingExecutionModule(),
-    );
-    const explicit = beginActive(arbiter, {
-      owner: 'screenshot',
-      origin: 'explicit',
-    });
-
-    const automatic = beginActive(arbiter, {
-      owner: 'continuous',
-      origin: 'automatic',
-    });
-
-    expect(automatic.signal.aborted).toBe(false);
-    expect(explicit.signal.aborted).toBe(false);
   });
 
   it('ending one activity cancels only that activity tasks', async () => {
     const arbiter = createImageTranslationExecutionArbiter(
       neverSettlingExecutionModule(),
     );
-    const inline = beginActive(arbiter, {
-      owner: 'inline-image',
-      origin: 'explicit',
-    });
-    const screenshot = beginActive(arbiter, {
-      owner: 'screenshot',
-      origin: 'explicit',
-    });
+    const inline = beginActive(arbiter);
+    const screenshot = beginActive(arbiter);
     const inlineTask = inline.start(request);
     const screenshotTask = screenshot.start(request);
 
@@ -191,10 +138,7 @@ describe('image translation execution arbiter', () => {
   it('does not deliver progress after an activity ends', async () => {
     const execution = controllableExecutionModule();
     const arbiter = createImageTranslationExecutionArbiter(execution.module);
-    const activity = beginActive(arbiter, {
-      owner: 'inline-image',
-      origin: 'explicit',
-    });
+    const activity = beginActive(arbiter);
     const task = activity.start(request);
     const progress: ImageTranslationExecutionProgress[] = [];
     task.progress((event) => progress.push(event));
@@ -213,10 +157,7 @@ describe('image translation execution arbiter', () => {
   it('stops task delivery before broadcasting the activity abort', async () => {
     const execution = controllableExecutionModule();
     const arbiter = createImageTranslationExecutionArbiter(execution.module);
-    const activity = beginActive(arbiter, {
-      owner: 'inline-image',
-      origin: 'explicit',
-    });
+    const activity = beginActive(arbiter);
     const task = activity.start(request);
     await Promise.resolve();
     execution.report({ phase: 'preparing', operation: 'prepare-execution' });
@@ -236,14 +177,8 @@ describe('image translation execution arbiter', () => {
   it('blocks every activity before cancelling any underlying execution on dispose', async () => {
     const execution = crossReportingCancellationExecutionModule();
     const arbiter = createImageTranslationExecutionArbiter(execution.module);
-    const firstActivity = beginActive(arbiter, {
-      owner: 'inline-image',
-      origin: 'explicit',
-    });
-    const secondActivity = beginActive(arbiter, {
-      owner: 'inline-image',
-      origin: 'explicit',
-    });
+    const firstActivity = beginActive(arbiter);
+    const secondActivity = beginActive(arbiter);
     const firstTask = firstActivity.start(request);
     const secondTask = secondActivity.start(request);
     const secondProgress: ImageTranslationExecutionProgress[] = [];
@@ -262,14 +197,11 @@ describe('image translation execution arbiter', () => {
     const arbiter = createImageTranslationExecutionArbiter(
       neverSettlingExecutionModule(),
     );
-    const active = beginActive(arbiter, {
-      owner: 'inline-image',
-      origin: 'explicit',
-    });
+    const active = beginActive(arbiter);
     let reentrantError: unknown;
     active.signal.addEventListener('abort', () => {
       try {
-        arbiter.begin({ owner: 'reading-mode', origin: 'explicit' });
+        arbiter.begin();
       } catch (error) {
         reentrantError = error;
       }
@@ -280,9 +212,6 @@ describe('image translation execution arbiter', () => {
     expect(reentrantError).toMatchObject({
       message: '图片翻译执行仲裁器已停止',
     });
-    expect(() => arbiter.begin({
-      owner: 'screenshot',
-      origin: 'explicit',
-    })).toThrow('图片翻译执行仲裁器已停止');
+    expect(() => arbiter.begin()).toThrow('图片翻译执行仲裁器已停止');
   });
 });

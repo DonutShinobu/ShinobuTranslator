@@ -129,7 +129,7 @@ describe('Comici reader engine', () => {
     const detection = adapter.detect();
     expect(detection).not.toBeNull();
 
-    const session = adapter.createSession(detection!);
+    const session = adapter.createReadingModeSession(detection!);
 
     expect(session.contextKey).toBe(
       'comici:viewer-42:https://reader.example/episodes/one',
@@ -208,7 +208,7 @@ describe('Comici reader engine', () => {
       document,
       location: { origin: 'https://reader.example', pathname: '/episodes/one' },
     });
-    const session = adapter.createSession(adapter.detect()!);
+    const session = adapter.createReadingModeSession(adapter.detect()!);
     const signals: string[] = [];
     const stop = session.observe((signal) => signals.push(signal.kind));
 
@@ -285,7 +285,7 @@ describe('Comici reader engine', () => {
     const session = createComiciReaderEngineAdapter({
       document,
       location: { origin: 'https://reader.example', pathname: '/episodes/one' },
-    }).createSession({ confidence: 'strong', root, evidence: ['fake'] });
+    }).createReadingModeSession({ confidence: 'strong', root, evidence: ['fake'] });
 
     session.observe(() => undefined);
     expect(observe).toHaveBeenCalledWith(first.slot);

@@ -2,10 +2,9 @@ import type {
   ReaderEngineAdapter,
   ReaderEngineDetection,
   ReaderEngineReadingModeSession,
-  ReaderEngineSession,
   ReaderSessionSignal,
   ReaderVisibleSpread,
-} from '../core/continuous/contracts';
+} from '../core/reading/readerEngineContracts';
 import type { ReadingPageReference } from '../core/types';
 import {
   createRuntimeImageDownloader,
@@ -355,15 +354,6 @@ class ComiciReaderEngineAdapter implements ReaderEngineAdapter {
         '#xCVPages > .-cv-page',
       ],
     };
-  }
-
-  createSession(detection: ReaderEngineDetection): ReaderEngineSession {
-    return new ComiciReaderEngineSession(
-      detection.root,
-      this.dependencies.document,
-      this.dependencies.location,
-      this.dependencies,
-    );
   }
 
   createReadingModeSession(detection: ReaderEngineDetection): ReaderEngineReadingModeSession {

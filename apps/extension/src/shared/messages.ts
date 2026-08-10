@@ -11,16 +11,6 @@ import {
 } from './restrictedResourceUrl';
 import { toErrorMessage } from './utils';
 import { isContentSessionId } from './contentSession';
-import {
-  isPageArtifactKind,
-  isPageArtifactRef,
-  type PageArtifactCommand,
-  type PageArtifactResult,
-} from './pageArtifacts';
-import type {
-  ContinuousTabStateCommand,
-  ContinuousTabStateResult,
-} from './continuousTabState';
 import type {
   ExtensionControlCommand,
   ExtensionControlResult,
@@ -157,16 +147,6 @@ export type DiagnosticLogClearMessage = {
   type: 'mt:diagnostic-log-clear';
 };
 
-export type PageArtifactRuntimeMessage = {
-  type: 'mt:page-artifact';
-  command: PageArtifactCommand;
-};
-
-export type ContinuousTabStateRuntimeMessage = {
-  type: 'mt:continuous-tab-state';
-  command: ContinuousTabStateCommand;
-};
-
 export type RuntimeMessage =
   | ExtensionControlRuntimeMessage
   | DownloadImageMessage
@@ -178,8 +158,6 @@ export type RuntimeMessage =
   | DiagnosticLogEventMessage
   | DiagnosticLogExportMessage
   | DiagnosticLogClearMessage
-  | PageArtifactRuntimeMessage
-  | ContinuousTabStateRuntimeMessage
   | ContextMenuTranslateMessage
   | StartScreenshotTranslateMessage
   | ShortcutTranslateHoverMessage;
@@ -254,16 +232,6 @@ export type RuntimeSuccessResponse =
   | {
       ok: true;
       type: 'mt:diagnostic-log-clear';
-    }
-  | {
-      ok: true;
-      type: 'mt:page-artifact';
-      result: PageArtifactResult;
-    }
-  | {
-      ok: true;
-      type: 'mt:continuous-tab-state';
-      result: ContinuousTabStateResult;
     };
 
 export type RuntimeErrorDetail = {
@@ -273,8 +241,7 @@ export type RuntimeErrorDetail = {
 
 export type RuntimeErrorCode =
   | 'llm_thinking_config'
-  | 'extension_settings_conflict'
-  | 'page_artifact_quota';
+  | 'extension_settings_conflict';
 
 export type RuntimeErrorResponse = {
   ok: false;
@@ -331,7 +298,6 @@ export function getRuntimeErrorCode(error: unknown): RuntimeErrorCode | undefine
   if (
     error.errorCode === 'llm_thinking_config'
     || error.errorCode === 'extension_settings_conflict'
-    || error.errorCode === 'page_artifact_quota'
   ) {
     return error.errorCode;
   }
@@ -502,33 +468,6 @@ function isDiagnosticLogEventMessage(value: Record<string, unknown>): value is D
   );
 }
 
-function isPageArtifactRuntimeMessage(
-  value: Record<string, unknown>,
-): value is PageArtifactRuntimeMessage {
-  if (value.type !== 'mt:page-artifact' || !isRecord(value.command)) return false;
-  const command = value.command;
-  if (!isContentSessionId(command.contentSessionId)) return false;
-  if (command.operation === 'probe' || command.operation === 'clear') return true;
-  if (command.operation === 'put') {
-    return isPageArtifactKind(command.kind)
-      && isRecord(command.file)
-      && typeof command.file.base64 === 'string'
-      && typeof command.file.contentType === 'string'
-      && typeof command.file.filename === 'string';
-  }
-  return (command.operation === 'read' || command.operation === 'delete')
-    && isPageArtifactRef(command.ref);
-}
-
-function isContinuousTabStateRuntimeMessage(
-  value: Record<string, unknown>,
-): value is ContinuousTabStateRuntimeMessage {
-  if (value.type !== 'mt:continuous-tab-state' || !isRecord(value.command)) return false;
-  const command = value.command;
-  return command.operation === 'read'
-    || (command.operation === 'write' && typeof command.enabled === 'boolean');
-}
-
 export function isRuntimeMessage(value: unknown): value is RuntimeMessage {
   if (!isRecord(value)) {
     return false;
@@ -547,8 +486,6 @@ export function isRuntimeMessage(value: unknown): value is RuntimeMessage {
     isGeminiAppImageTranslateMessage(value) ||
     isGeminiApiImageTranslateMessage(value) ||
     isDiagnosticLogEventMessage(value) ||
-    isPageArtifactRuntimeMessage(value) ||
-    isContinuousTabStateRuntimeMessage(value) ||
     isLlmChatCompletionsMessage(value)
   );
 }

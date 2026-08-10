@@ -246,7 +246,7 @@ describe('GigaViewer reader engine', () => {
     });
     const detection = adapter.detect();
     expect(detection).not.toBeNull();
-    const session = adapter.createSession(detection!);
+    const session = adapter.createReadingModeSession(detection!);
 
     expect(session.readVisibleSpread()).toEqual({
       pages: [

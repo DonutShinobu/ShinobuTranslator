@@ -3,7 +3,7 @@ import { createGigaViewerReaderEngineAdapter } from '../../readerEngines/gigaVie
 import { createBinbReaderEngineAdapter } from '../../readerEngines/binb';
 import { createClipStudioReaderAdapter } from '../../readerEngines/clipStudioReader';
 import { createPublusReaderAdapter } from '../../readerEngines/publusReader';
-import { ReaderEngineRegistry } from '../continuous/readerEngineRegistry';
+import { ReaderEngineRegistry } from './readerEngineRegistry';
 import type { PhotoStateStore } from '../state/photoStateStore';
 import type { ImageTranslationExecutionArbiter } from '../translation/imageTranslationExecutionArbiter';
 import {

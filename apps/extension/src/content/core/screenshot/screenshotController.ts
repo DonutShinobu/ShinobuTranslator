@@ -1,7 +1,7 @@
 import {
   RuntimeVisibleTabCapturePort,
   type VisibleTabCapturePort,
-} from '../continuous/visibleTabCapturePort';
+} from './visibleTabCapturePort';
 import {
   createScreenshotResultUi,
   repositionScreenshotResultOverlay,
@@ -238,12 +238,7 @@ export class ScreenshotController {
       scheduleAnchorSync();
 
       const runImagePipeline = async (): Promise<void> => {
-        const admission = this.executionArbiter.begin({
-          owner: 'screenshot',
-          origin: 'explicit',
-        });
-        if (admission.status !== 'active') return;
-        const activity = admission.activity;
+        const activity = this.executionArbiter.begin();
         activeActivity = activity;
         const releaseState = this.stateStore.protect(key);
         activeJankMonitor = createProgressJankMonitor('context-image');
@@ -393,12 +388,7 @@ export class ScreenshotController {
       };
 
       const runScreenshotPipeline = async (): Promise<void> => {
-        const admission = this.executionArbiter.begin({
-          owner: 'screenshot',
-          origin: 'explicit',
-        });
-        if (admission.status !== 'active') return;
-        const activity = admission.activity;
+        const activity = this.executionArbiter.begin();
         activeActivity = activity;
         const releaseState = this.stateStore.protect(key);
         let executionTaskStarted = false;

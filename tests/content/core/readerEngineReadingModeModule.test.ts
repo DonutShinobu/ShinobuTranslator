@@ -3,8 +3,8 @@ import type {
   ReaderEngineAdapter,
   ReaderEngineReadingModeSession,
   ReaderSessionSignal,
-} from '../../../apps/extension/src/content/core/continuous/contracts';
-import { ReaderEngineRegistry } from '../../../apps/extension/src/content/core/continuous/readerEngineRegistry';
+} from '../../../apps/extension/src/content/core/reading/readerEngineContracts';
+import { ReaderEngineRegistry } from '../../../apps/extension/src/content/core/reading/readerEngineRegistry';
 import { ReaderEngineReadingModeModule } from '../../../apps/extension/src/content/core/reading/readerEngineReadingModeModule';
 import { PhotoStateStore } from '../../../apps/extension/src/content/core/state/photoStateStore';
 import type { ImageTranslationExecutionArbiter } from '../../../apps/extension/src/content/core/translation/imageTranslationExecutionArbiter';
@@ -48,7 +48,6 @@ describe('ReaderEngineReadingModeModule', () => {
         contextKey: 'clip-studio-reader:book-1',
         evidence: ['clip-studio-reader'],
       }),
-      createSession: () => session,
       createReadingModeSession: () => session,
     };
     const window = {
@@ -125,7 +124,6 @@ describe('ReaderEngineReadingModeModule', () => {
         contextKey,
         evidence: ['giga-viewer'],
       }),
-      createSession: () => createReadingModeSession(),
       createReadingModeSession,
     };
     const document = { documentElement: {} } as Document;

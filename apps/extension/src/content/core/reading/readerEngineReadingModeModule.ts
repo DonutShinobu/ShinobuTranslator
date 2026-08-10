@@ -1,8 +1,8 @@
 import type { PhotoStateStore } from '../state/photoStateStore';
 import type { ImageTranslationExecutionArbiter } from '../translation/imageTranslationExecutionArbiter';
-import type { ReaderEngineReadingModeSession } from '../continuous/contracts';
-import type { DetectedReaderEngine } from '../continuous/readerEngineRegistry';
-import { ReaderEngineRegistry } from '../continuous/readerEngineRegistry';
+import type { ReaderEngineReadingModeSession } from './readerEngineContracts';
+import type { DetectedReaderEngine } from './readerEngineRegistry';
+import { ReaderEngineRegistry } from './readerEngineRegistry';
 import { ReadingModeController } from './readingModeController';
 
 export type ReaderEngineReadingModeModuleDependencies = {
@@ -97,7 +97,7 @@ export class ReaderEngineReadingModeModule implements ReaderEngineReadingModeMod
   private sync(): void {
     if (this.disposed) return;
     const detected = this.dependencies.registry.detect();
-    if (!detected?.adapter.createReadingModeSession) {
+    if (!detected) {
       this.unbindSession();
       return;
     }

@@ -31,6 +31,8 @@ describe('Firefox listing sync', () => {
 
   it.each([false, true])('syncs fields and notes, preserving previous images on upload failure (%s)', async (failUpload) => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
+    let uploadAttempts = 0;
+    const sleep = vi.fn(async () => {});
     const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
       calls.push({ url, init });
@@ -38,9 +40,10 @@ describe('Firefox listing sync', () => {
       if (url.includes('googleusercontent.com')) return new Response(new Uint8Array([1, 2]), { headers: { 'content-type': 'image/jpeg' } });
       expect((init?.headers as Record<string, string>).Authorization).toMatch(/^JWT /);
       if (init?.method === 'POST' && failUpload) return new Response('', { status: 400 });
+      if (init?.method === 'POST' && uploadAttempts++ === 0) return new Response('', { status: 429, headers: { 'retry-after': '2' } });
       return new Response(JSON.stringify({ guid: 'shinobu-translator@donutshinobu', previews: [{ id: 42 }] }));
     }) as typeof fetch;
-    const run = syncFirefoxListing({ release, apiKey: 'key', apiSecret: 'secret', fetchImpl });
+    const run = syncFirefoxListing({ release, apiKey: 'key', apiSecret: 'secret', fetchImpl, sleep });
     if (failUpload) await expect(run).rejects.toThrow('HTTP 400');
     else await run;
     const jsonPatches = calls.filter(({ init }) => init?.method === 'PATCH' && typeof init.body === 'string');
@@ -48,7 +51,10 @@ describe('Firefox listing sync', () => {
     expect(jsonPatches[1].url).toContain('/versions/0.8.3/');
     expect(JSON.parse(jsonPatches[1].init!.body as string)).toEqual({ release_notes: { 'en-US': release.body, 'zh-CN': release.body } });
     expect(calls.filter(({ init }) => init?.method === 'DELETE')).toHaveLength(failUpload ? 0 : 1);
-    if (!failUpload) expect(calls.at(-1)?.url).toContain('/previews/42/');
+    if (!failUpload) {
+      expect(calls.at(-1)?.url).toContain('/previews/42/');
+      expect(sleep).toHaveBeenCalledWith(2000);
+    }
   });
 
   it('does not write in dry-run mode and refuses prereleases', async () => {

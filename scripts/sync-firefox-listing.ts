@@ -2,6 +2,7 @@ import { createHmac, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { setTimeout } from 'node:timers/promises';
 import { SHINOBU_CHROME_EXTENSION_ID } from './publish-chrome-web-store.mjs';
 
 const AMO = 'https://addons.mozilla.org/api/v5/addons/addon/shinobu-translator%40donutshinobu/';
@@ -59,6 +60,7 @@ export async function syncFirefoxListing(options: {
   apiSecret?: string;
   dryRun?: boolean;
   fetchImpl?: typeof fetch;
+  sleep?: (ms: number) => Promise<unknown>;
 }): Promise<void> {
   const { release, apiKey, apiSecret, dryRun } = options;
   if (!/^v\d+\.\d+\.\d+$/.test(release.tagName) || release.isDraft || release.isPrerelease) {
@@ -97,14 +99,26 @@ export async function syncFirefoxListing(options: {
 
   const amo = async (path: string, method = 'GET', body?: object | FormData) => {
     const multipart = body instanceof FormData;
-    return request(`${AMO}${path}`, {
-      method, redirect: 'error',
-      headers: {
-        Authorization: `JWT ${amoJwt(apiKey!, apiSecret!)}`,
-        ...(!multipart && body ? { 'Content-Type': 'application/json' } : {}),
-      },
-      ...(body ? { body: multipart ? body : JSON.stringify(body) } : {}),
-    });
+    for (let attempt = 0; ; attempt++) {
+      const response = await fetchImpl(`${AMO}${path}`, {
+        method, redirect: 'error', signal: AbortSignal.timeout(60_000),
+        headers: {
+          Authorization: `JWT ${amoJwt(apiKey!, apiSecret!)}`,
+          ...(!multipart && body ? { 'Content-Type': 'application/json' } : {}),
+        },
+        ...(body ? { body: multipart ? body : JSON.stringify(body) } : {}),
+      });
+      if (response.ok) return response;
+      // Retry only explicit throttling; an ambiguous upload failure could have created a preview.
+      const retryAfter = response.headers.get('retry-after');
+      const seconds = retryAfter === null ? 60 : Number(retryAfter);
+      if (response.status !== 429 || attempt >= 3 || !Number.isFinite(seconds) || seconds > 300) {
+        throw new Error(`${method} ${AMO}${path}: HTTP ${response.status}; ${(await response.text()).slice(0, 500)}`);
+      }
+      console.log(`AMO throttled ${method} ${path}; retrying after ${Math.max(1, seconds)}s`);
+      await response.arrayBuffer();
+      await (options.sleep ?? setTimeout)(Math.max(1, seconds) * 1000);
+    }
   };
   const before = await (await amo('')).json();
   if (before.guid !== 'shinobu-translator@donutshinobu' || !Array.isArray(before.previews)

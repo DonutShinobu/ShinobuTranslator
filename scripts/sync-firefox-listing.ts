@@ -112,7 +112,7 @@ export async function syncFirefoxListing(options: {
       // Retry only explicit throttling; an ambiguous upload failure could have created a preview.
       const retryAfter = response.headers.get('retry-after');
       const seconds = retryAfter === null ? 60 : Number(retryAfter);
-      if (response.status !== 429 || attempt >= 3 || !Number.isFinite(seconds) || seconds > 300) {
+      if (response.status !== 429 || attempt >= 3 || !Number.isFinite(seconds) || seconds > 3600) {
         throw new Error(`${method} ${AMO}${path}: HTTP ${response.status}; ${(await response.text()).slice(0, 500)}`);
       }
       console.log(`AMO throttled ${method} ${path}; retrying after ${Math.max(1, seconds)}s`);

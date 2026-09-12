@@ -40,7 +40,7 @@ describe('Firefox listing sync', () => {
       if (url.includes('googleusercontent.com')) return new Response(new Uint8Array([1, 2]), { headers: { 'content-type': 'image/jpeg' } });
       expect((init?.headers as Record<string, string>).Authorization).toMatch(/^JWT /);
       if (init?.method === 'POST' && failUpload) return new Response('', { status: 400 });
-      if (init?.method === 'POST' && uploadAttempts++ === 0) return new Response('', { status: 429, headers: { 'retry-after': '2' } });
+      if (init?.method === 'POST' && uploadAttempts++ === 0) return new Response('', { status: 429, headers: { 'retry-after': '2405' } });
       return new Response(JSON.stringify({ guid: 'shinobu-translator@donutshinobu', previews: [{ id: 42 }] }));
     }) as typeof fetch;
     const run = syncFirefoxListing({ release, apiKey: 'key', apiSecret: 'secret', fetchImpl, sleep });
@@ -53,7 +53,7 @@ describe('Firefox listing sync', () => {
     expect(calls.filter(({ init }) => init?.method === 'DELETE')).toHaveLength(failUpload ? 0 : 1);
     if (!failUpload) {
       expect(calls.at(-1)?.url).toContain('/previews/42/');
-      expect(sleep).toHaveBeenCalledWith(2000);
+      expect(sleep).toHaveBeenCalledWith(2405000);
     }
   });
 

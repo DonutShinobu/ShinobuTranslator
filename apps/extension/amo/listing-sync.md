@@ -19,4 +19,6 @@ The Chrome API does not expose listing text or media, so the script reads the pu
 
 Screenshots are replaced only after all source images are downloaded and all new uploads are accepted. A failed upload leaves previous screenshots intact; rerun the workflow after resolving the error. Listing sync runs serially to prevent overlapping replacements.
 
+AMO can apply both minute and hourly upload limits. Explicit HTTP 429 responses respect `Retry-After` (up to one hour per wait, at most three retries), generating a fresh JWT for each attempt. Other failed uploads stop the job instead of risking duplicate submissions.
+
 API references: [AMO listing, icons, previews and versions](https://mozilla.github.io/addons-server/topics/api/addons.html), [AMO authentication](https://mozilla.github.io/addons-server/topics/api/auth.html), [Chrome API methods](https://developer.chrome.com/docs/webstore/api/reference/rest).

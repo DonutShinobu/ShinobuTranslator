@@ -8,15 +8,15 @@
       "count": 1,
       "dependency": "web-ext",
       "dependencyVersion": "10.3.0",
-      "sha256": "d73a839aeb592926e5347233e49f6570166f0abb1640331964a21678d0498472"
+      "sha256": "4369c0d507552f371ff4f1690f3f1db3f08b1a0e72be46fae28872437e386601"
     },
     {
       "code": "DANGEROUS_EVAL",
       "file": "ort/ort-wasm-simd-threaded.jsep.mjs",
       "count": 1,
       "dependency": "onnxruntime-web",
-      "dependencyVersion": "1.24.1",
-      "sha256": "9b7e9dbe87f1cb3df68660418492e8c6b0cae6fe83ce46ef1a51dbc95580e690"
+      "dependencyVersion": "1.27.0",
+      "sha256": "7788e2884aa16c899e860e5a51053c9d4291fb795a726dea91fb7b7d5c69c773"
     },
     {
       "code": "UNSAFE_VAR_ASSIGNMENT",
@@ -24,23 +24,15 @@
       "count": 2,
       "dependency": "react-dom",
       "dependencyVersion": "18.3.1",
-      "sha256": "7337fd7bbc257422d44e8bc1f3d5ecc095969ed7988aa9b89a4b41401abf89f8"
-    },
-    {
-      "code": "DANGEROUS_EVAL",
-      "file": "onnxWorker.js",
-      "count": 1,
-      "dependency": "onnxruntime-web",
-      "dependencyVersion": "1.24.1",
-      "sha256": "e2be18cde54961da23789bb5f87f1797d1adbfd589c7e4e76863995c1dd45408"
+      "sha256": "898db7263818881f6d471666414e276c9f941ccf563e89ea6a1e1f83d6d1e2b6"
     },
     {
       "code": "UNSAFE_VAR_ASSIGNMENT",
       "file": "onnxWorker.js",
       "count": 1,
       "dependency": "onnxruntime-web",
-      "dependencyVersion": "1.24.1",
-      "sha256": "e2be18cde54961da23789bb5f87f1797d1adbfd589c7e4e76863995c1dd45408"
+      "dependencyVersion": "1.27.0",
+      "sha256": "d2032f27f3e64b9e095dd7a9d5ea9b9193bfbb29b0f7c9d27d2ebe9b093b0c9b"
     }
   ]
 }

@@ -14,8 +14,8 @@
     "zh-CN": "翻译 X、Pixiv、eHentai 与普通网页图片中的文字。"
   },
   "description": {
-    "en-US": "ShinobuTranslator detects, recognizes, translates, removes, and typesets text inside images. Local image processing runs in the extension; configured translation providers receive only the data described in the privacy policy. Source: https://github.com/DonutShinobu/ShinobuTranslator Privacy: https://github.com/DonutShinobu/ShinobuTranslator/blob/main/PRIVACY_POLICY.md Support: https://github.com/DonutShinobu/ShinobuTranslator/issues",
-    "zh-CN": "ShinobuTranslator 可检测、识别、翻译、去字并重新排版网页图片中的文字。本地图片处理在扩展内完成；仅按隐私政策向用户配置的翻译服务发送所需数据。源码：https://github.com/DonutShinobu/ShinobuTranslator 隐私政策：https://github.com/DonutShinobu/ShinobuTranslator/blob/main/PRIVACY_POLICY.md 支持：https://github.com/DonutShinobu/ShinobuTranslator/issues"
+    "en-US": "ShinobuTranslator detects, recognizes, translates, removes, and typesets text inside images. Local image processing runs in the extension; configured translation providers receive only the data described in the privacy policy. Source: https://github.com/DonutShinobu/ShinobuTranslator Privacy: https://github.com/DonutShinobu/ShinobuTranslator/blob/master/PRIVACY_POLICY.md Support: https://github.com/DonutShinobu/ShinobuTranslator/issues",
+    "zh-CN": "ShinobuTranslator 可检测、识别、翻译、去字并重新排版网页图片中的文字。本地图片处理在扩展内完成；仅按隐私政策向用户配置的翻译服务发送所需数据。源码：https://github.com/DonutShinobu/ShinobuTranslator 隐私政策：https://github.com/DonutShinobu/ShinobuTranslator/blob/master/PRIVACY_POLICY.md 支持：https://github.com/DonutShinobu/ShinobuTranslator/issues"
   },
   "homepage": {
     "en-US": "https://github.com/DonutShinobu/ShinobuTranslator",

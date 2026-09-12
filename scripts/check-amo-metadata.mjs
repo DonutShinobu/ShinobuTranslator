@@ -32,7 +32,7 @@ if (!metadata.version?.approval_notes) {
 for (const requiredUrl of [
   'https://github.com/DonutShinobu/ShinobuTranslator',
   'https://github.com/DonutShinobu/ShinobuTranslator/issues',
-  'https://github.com/DonutShinobu/ShinobuTranslator/blob/main/PRIVACY_POLICY.md',
+  'https://github.com/DonutShinobu/ShinobuTranslator/blob/master/PRIVACY_POLICY.md',
 ]) {
   if (!JSON.stringify(metadata).includes(requiredUrl)) {
     throw new Error(`AMO metadata is missing required link: ${requiredUrl}`);

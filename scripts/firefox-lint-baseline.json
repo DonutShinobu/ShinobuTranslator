@@ -16,7 +16,7 @@
       "count": 1,
       "dependency": "onnxruntime-web",
       "dependencyVersion": "1.27.0",
-      "sha256": "7788e2884aa16c899e860e5a51053c9d4291fb795a726dea91fb7b7d5c69c773"
+      "sha256": "3ee381d20a80f51a788a1c4a5872f6f1d047538dd4342f4af00062de5f9ea4c6"
     },
     {
       "code": "UNSAFE_VAR_ASSIGNMENT",

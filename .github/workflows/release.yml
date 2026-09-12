@@ -3,6 +3,12 @@ name: Build, Release & Submit Extensions
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      listing_tag:
+        description: 'Sync Firefox listing only, using this existing stable release (e.g. v0.8.3)'
+        required: true
+        type: string
 
 concurrency:
   group: extension-release-${{ github.event.release.tag_name }}
@@ -214,3 +220,32 @@ jobs:
         env:
           WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
           WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}
+
+  sync_firefox_listing:
+    name: Sync Firefox store listing
+    concurrency:
+      group: firefox-store-listing
+      cancel-in-progress: false
+    needs: publish_firefox
+    if: ${{ always() && (needs.publish_firefox.result == 'success' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-latest
+    environment: browser-stores
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Read stable release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.listing_tag }}
+        run: gh release view "$RELEASE_TAG" --json tagName,body,isDraft,isPrerelease > "$RUNNER_TEMP/firefox-listing-release.json"
+      - name: Copy Chrome listing and GitHub release notes to AMO
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
+          WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}
+        run: npx --no-install tsx scripts/sync-firefox-listing.ts "$RUNNER_TEMP/firefox-listing-release.json"

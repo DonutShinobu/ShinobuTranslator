@@ -26,4 +26,13 @@ describe('extension store release workflow', () => {
     expect(workflow).toContain('--channel listed');
     expect(workflow).toContain('--approval-timeout 0');
   });
+
+  it('syncs listing after Firefox submission and supports a listing-only manual run', () => {
+    expect(workflow).toContain('workflow_dispatch:');
+    expect(workflow).toContain('listing_tag:');
+    expect(workflow).toMatch(/sync_firefox_listing:[\s\S]*?needs: publish_firefox/);
+    expect(workflow).toContain("needs.publish_firefox.result == 'success'");
+    expect(workflow).toContain('scripts/sync-firefox-listing.ts');
+    expect(workflow).toContain('gh release view "$RELEASE_TAG"');
+  });
 });

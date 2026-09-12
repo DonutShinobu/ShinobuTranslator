@@ -17,7 +17,7 @@ export const llmBuiltInProviderDefinitions: Record<
   deepseek: {
     label: 'DeepSeek', webLabel: 'DeepSeek',
     baseUrl: 'https://api.deepseek.com',
-    models: ['deepseek-v4-flash', 'deepseek-v4-pro'],
+    models: ['deepseek-flash', 'deepseek-v4-pro'],
     defaultAuthMode: 'api_key',
   },
   gemini: {
@@ -29,7 +29,7 @@ export const llmBuiltInProviderDefinitions: Record<
   glm: {
     label: 'GLM (智谱)', webLabel: 'GLM / Z.AI',
     baseUrl: 'https://api.z.ai/api/paas/v4',
-    models: ['glm-5.2', 'glm-5.1', 'glm-5-turbo', 'glm-5', 'glm-4.7', 'glm-4.7-flash', 'glm-4.7-flashx'],
+    models: ['glm-5.3', 'glm-5.3-flash', 'glm-5.2', 'glm-5.1', 'glm-5-turbo', 'glm-5', 'glm-4.7', 'glm-4.7-flash', 'glm-4.7-flashx'],
     defaultAuthMode: 'api_key',
   },
   kimi: {
@@ -53,7 +53,7 @@ export const llmBuiltInProviderDefinitions: Record<
   openai: {
     label: 'OpenAI', webLabel: 'OpenAI',
     baseUrl: 'https://api.openai.com/v1',
-    models: ['gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-5.5-pro', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano'],
+    models: ['gpt-6-astra', 'gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-5.5-pro', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano'],
     defaultAuthMode: 'openai_oauth',
   },
 };
@@ -73,6 +73,10 @@ const modelPresetMigrations: Partial<Record<
   BuiltInLlmProvider,
   Record<string, string>
 >> = {
+  deepseek: {
+    'deepseek-v4-flash': 'deepseek-flash',
+    'deepseek-v4-flash-vision-exp': 'deepseek-flash',
+  },
   kimi: { 'kimi-k2.5': 'kimi-k2.6' },
   mimo: {
     'MiMo-V2.5-Pro': 'mimo-v2.5-pro',

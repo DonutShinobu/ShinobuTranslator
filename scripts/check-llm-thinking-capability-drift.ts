@@ -54,14 +54,6 @@ function expectedRemoteOptions(
   capability: LlmThinkingCapability,
 ): ModelsDevReasoningOption[] {
   if (localProvider === 'deepseek') {
-    if (model === 'deepseek-v4-flash') {
-      // Known models.dev discrepancy: official DeepSeek docs expose High/Max as
-      // distinct efforts and map Low/Medium compatibility values to High.
-      return normalizeRemoteOptions([
-        { type: 'toggle' },
-        { type: 'effort', values: ['low', 'high', 'max'] },
-      ]);
-    }
     return normalizeRemoteOptions([
       { type: 'toggle' },
       { type: 'effort', values: capability.levels.filter((level) => level !== 'off') },
@@ -117,7 +109,9 @@ async function main(): Promise<void> {
     const localProvider = key.slice(0, separator);
     const model = key.slice(separator + 1);
     const remoteProvider = modelsDevProviderByLocalProvider[localProvider];
-    const remoteModel = remoteProvider ? remote[remoteProvider]?.models?.[model] : undefined;
+    // models.dev still lists Flash under the legacy alias accepted by DeepSeek.
+    const remoteModel = (remoteProvider ? remote[remoteProvider]?.models?.[model] : undefined)
+      ?? (key === 'deepseek/deepseek-flash' ? remote.deepseek?.models?.['deepseek-v4-flash'] : undefined);
     if (!remoteModel) {
       drift.push(`${key}: models.dev 缺少对应模型`);
       continue;

@@ -11,15 +11,38 @@ import {
 import { llmBuiltInProviderDefinitions } from '../../apps/extension/src/shared/config';
 
 describe('built-in LLM thinking capabilities', () => {
+  it.each(['glm-5.3', 'glm-5.3-flash', 'gpt-6-astra'])('keeps reasoning enabled for %s, including invalid saved off settings', (model) => {
+    const provider = model.startsWith('glm') ? 'glm' : 'openai';
+    for (const level of ['off', 'low', 'high', 'max'] as const) {
+      const request = adaptLlmThinkingChatCompletionRequest({ model, messages: [] }, { provider, model, level });
+      expect(request.reasoning_effort).toBe(level === 'off' ? 'low' : level);
+      if (provider === 'glm') expect(request.thinking).toEqual({ type: 'enabled' });
+    }
+  });
+
+  it('sends the new DeepSeek Flash low effort', () => {
+    expect(adaptLlmThinkingChatCompletionRequest({ model: 'deepseek-flash', messages: [] }, {
+      provider: 'deepseek', model: 'deepseek-flash', level: 'low',
+    })).toMatchObject({ thinking: { type: 'enabled' }, reasoning_effort: 'low' });
+  });
+
   it('matches the official-verified capability matrix for every built-in text model', () => {
     expect(llmThinkingCapabilityRegistry).toEqual({
-      'deepseek/deepseek-v4-flash': {
-        levels: ['off', 'high', 'max'],
+      'deepseek/deepseek-flash': {
+        levels: ['off', 'low', 'high', 'max'],
         defaultLevel: 'off',
       },
       'deepseek/deepseek-v4-pro': {
         levels: ['off', 'high', 'max'],
         defaultLevel: 'off',
+      },
+      'glm/glm-5.3': {
+        levels: ['low', 'high', 'max'],
+        defaultLevel: 'low',
+      },
+      'glm/glm-5.3-flash': {
+        levels: ['low', 'high', 'max'],
+        defaultLevel: 'low',
       },
       'glm/glm-5.2': {
         levels: ['off', 'high', 'max'],
@@ -84,6 +107,10 @@ describe('built-in LLM thinking capabilities', () => {
       'mimo/mimo-v2.5': {
         levels: ['off', 'on'],
         defaultLevel: 'off',
+      },
+      'openai/gpt-6-astra': {
+        levels: ['low', 'medium', 'high', 'xhigh', 'max'],
+        defaultLevel: 'low',
       },
       'openai/gpt-5.6-luna': {
         levels: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
@@ -167,16 +194,16 @@ describe('built-in LLM thinking capabilities', () => {
 
   it('normalizes invalid saved levels to each model safe default without affecting other models', () => {
     expect(normalizeLlmThinkingByModel({
-      'deepseek/deepseek-v4-flash': 'high',
+      'deepseek/deepseek-flash': 'high',
       'deepseek/deepseek-v4-pro': 'invalid',
       'openai/gpt-5.5-pro': 'off',
     })).toMatchObject({
-      'deepseek/deepseek-v4-flash': 'high',
+      'deepseek/deepseek-flash': 'high',
       'deepseek/deepseek-v4-pro': 'off',
       'openai/gpt-5.5-pro': 'medium',
     });
     expect(createDefaultLlmThinkingByModel()).toMatchObject({
-      'deepseek/deepseek-v4-flash': 'off',
+      'deepseek/deepseek-flash': 'off',
       'kimi/kimi-k3': 'max',
       'minimax/MiniMax-M2.7': 'on',
       'openai/gpt-5.5-pro': 'medium',

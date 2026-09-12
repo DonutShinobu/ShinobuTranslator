@@ -3,6 +3,7 @@ import type {
   LlmProvider,
   LlmThinkingLevel,
 } from './contracts';
+import { migrateBuiltInModelPreset } from './providerCatalog';
 
 export type { LlmThinkingLevel } from './contracts';
 
@@ -71,13 +72,21 @@ const thinkingLevelLabels: Record<LlmThinkingLevel, string> = {
 };
 
 export const llmThinkingCapabilityRegistry: Record<string, LlmThinkingCapability> = {
-  'deepseek/deepseek-v4-flash': {
-    levels: ['off', 'high', 'max'],
+  'deepseek/deepseek-flash': {
+    levels: ['off', 'low', 'high', 'max'],
     defaultLevel: 'off',
   },
   'deepseek/deepseek-v4-pro': {
     levels: ['off', 'high', 'max'],
     defaultLevel: 'off',
+  },
+  'glm/glm-5.3': {
+    levels: ['low', 'high', 'max'],
+    defaultLevel: 'low',
+  },
+  'glm/glm-5.3-flash': {
+    levels: ['low', 'high', 'max'],
+    defaultLevel: 'low',
   },
   'glm/glm-5.2': {
     levels: ['off', 'high', 'max'],
@@ -143,6 +152,10 @@ export const llmThinkingCapabilityRegistry: Record<string, LlmThinkingCapability
     levels: ['off', 'on'],
     defaultLevel: 'off',
   },
+  'openai/gpt-6-astra': {
+    levels: ['low', 'medium', 'high', 'xhigh', 'max'],
+    defaultLevel: 'low',
+  },
   'openai/gpt-5.6-luna': {
     levels: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
     defaultLevel: 'off',
@@ -185,7 +198,7 @@ export function getLlmThinkingCapability(
   provider: LlmProvider,
   model: string,
 ): LlmThinkingCapability | null {
-  return llmThinkingCapabilityRegistry[llmThinkingCapabilityKey(provider, model)] ?? null;
+  return llmThinkingCapabilityRegistry[llmThinkingCapabilityKey(provider, migrateBuiltInModelPreset(provider, model))] ?? null;
 }
 
 export function getLlmThinkingControl(provider: LlmProvider, model: string): LlmThinkingControl | null {
@@ -232,7 +245,9 @@ export function normalizeLlmThinkingByModel(value: unknown): LlmThinkingByModel 
     : {};
   return Object.fromEntries(
     Object.entries(llmThinkingCapabilityRegistry).map(([key, capability]) => {
-      const candidate = raw[key];
+      const candidate = raw[key] ?? (key === 'deepseek/deepseek-flash'
+        ? raw['deepseek/deepseek-v4-flash'] ?? raw['deepseek/deepseek-v4-flash-vision-exp']
+        : undefined);
       const normalized = typeof candidate === 'string'
         && capability.levels.includes(candidate as LlmThinkingLevel)
         ? candidate as LlmThinkingLevel
@@ -300,7 +315,7 @@ export function adaptLlmThinkingChatCompletionRequest(
     request.thinking = {
       type: level === 'off' ? 'disabled' : 'enabled',
     };
-    if (level === 'high' || level === 'max') {
+    if (level === 'low' || level === 'high' || level === 'max') {
       request.reasoning_effort = level;
     }
     return request;
@@ -310,7 +325,7 @@ export function adaptLlmThinkingChatCompletionRequest(
     request.thinking = {
       type: level === 'off' ? 'disabled' : 'enabled',
     };
-    if (context.model === 'glm-5.2' && (level === 'high' || level === 'max')) {
+    if (level === 'low' || level === 'high' || level === 'max') {
       request.reasoning_effort = level;
     }
     return request;

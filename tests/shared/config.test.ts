@@ -18,12 +18,23 @@ import {
 } from "../../apps/extension/src/shared/config";
 
 describe("built-in LLM catalog", () => {
+  it.each(['deepseek-v4-flash', 'deepseek-v4-flash-vision-exp'])("migrates %s and preserves its thinking setting", (model) => {
+    const settings = normalizeSettings({
+      translator: 'llm',
+      llmProvider: 'deepseek',
+      llmProfiles: { deepseek: { modelPreset: model } },
+      llmThinkingByModel: { [`deepseek/${model}`]: 'high' },
+    });
+    expect(settings.llmProfiles.deepseek.modelPreset).toBe('deepseek-flash');
+    expect(toPipelineConfig(settings).llmThinkingLevel).toBe('high');
+  });
+
   it("matches the confirmed provider model matrix and new-profile defaults", () => {
     expect(llmBuiltInProviderDefinitions).toMatchObject({
       deepseek: {
         label: "DeepSeek",
         baseUrl: "https://api.deepseek.com",
-        models: ["deepseek-v4-flash", "deepseek-v4-pro"],
+        models: ["deepseek-flash", "deepseek-v4-pro"],
       },
       gemini: {
         label: "Nano Banana",
@@ -34,6 +45,8 @@ describe("built-in LLM catalog", () => {
         label: "GLM (智谱)",
         baseUrl: "https://api.z.ai/api/paas/v4",
         models: [
+          "glm-5.3",
+          "glm-5.3-flash",
           "glm-5.2",
           "glm-5.1",
           "glm-5-turbo",
@@ -68,6 +81,7 @@ describe("built-in LLM catalog", () => {
         label: "OpenAI",
         baseUrl: "https://api.openai.com/v1",
         models: [
+          "gpt-6-astra",
           "gpt-5.6-luna",
           "gpt-5.6-terra",
           "gpt-5.6-sol",
@@ -122,11 +136,11 @@ describe("built-in LLM catalog", () => {
       llmProfiles: {
         deepseek: {
           apiKey: "sk-test",
-          modelPreset: "deepseek-v4-flash",
+          modelPreset: "deepseek-flash",
         },
       },
       llmThinkingByModel: {
-        "deepseek/deepseek-v4-flash": "high",
+        "deepseek/deepseek-flash": "high",
         "deepseek/deepseek-v4-pro": "max",
       },
     });
@@ -144,7 +158,7 @@ describe("built-in LLM catalog", () => {
     expect(toPipelineConfig(flashSettings).llmThinkingLevel).toBe("high");
     expect(toPipelineConfig(proSettings).llmThinkingLevel).toBe("max");
     expect(proSettings.llmThinkingByModel).toMatchObject({
-      "deepseek/deepseek-v4-flash": "high",
+      "deepseek/deepseek-flash": "high",
       "deepseek/deepseek-v4-pro": "max",
     });
   });

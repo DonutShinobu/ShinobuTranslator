@@ -1,3 +1,4 @@
+import { isLlmProvider } from '@shinobu/text-translation';
 import type {
   OcrRunDebugInfo,
   OcrPostFilterDebugInfo,
@@ -29,6 +30,7 @@ export const LOCAL_PIPELINE_CLIENT_PORT = 'mt:local-pipeline-client';
 export const LOCAL_PIPELINE_HOST_PORT = 'mt:pipeline-host';
 export const LOCAL_PIPELINE_CHUNK_SIZE = 4 * 1024 * 1024;
 export const LOCAL_PIPELINE_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+export const LOCAL_PIPELINE_MAX_CONCURRENT_JOBS = 3;
 
 export type LocalPipelineErrorCode =
   | 'PIPELINE_HOST_UNAVAILABLE'
@@ -394,7 +396,7 @@ function isValidPipelineConfig(value: unknown): value is PipelineConfig {
   ];
   if (!stringKeys.every((key) => typeof value[key] === 'string')) return false;
   if (value.translator !== 'google_web' && value.translator !== 'llm') return false;
-  if (!['deepseek', 'gemini', 'glm', 'kimi', 'minimax', 'mimo', 'openai', 'custom'].includes(String(value.llmProvider))) return false;
+  if (!isLlmProvider(value.llmProvider)) return false;
   if (value.llmAuthMode !== 'api_key' && value.llmAuthMode !== 'openai_oauth' && value.llmAuthMode !== 'gemini_app') return false;
   if (value.ocrEngine !== 'paddleocr_v6_medium') return false;
   if (value.processMode !== 'translate' && value.processMode !== 'erase' && value.processMode !== 'original') return false;

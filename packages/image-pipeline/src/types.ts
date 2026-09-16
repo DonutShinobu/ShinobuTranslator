@@ -128,6 +128,11 @@ export type TypesetDebugVerticalItem = {
 };
 
 export type TypesetLayoutDiagnostics = {
+  minimumFontSize?: number;
+  readabilityReflowed?: boolean;
+  minimumFontSizeRelaxed?: boolean;
+  boundedLayout?: boolean;
+  spacingTightened?: boolean;
   sourceGeometryProfileUsed: boolean;
   sourceFontSize?: number;
   sourceAdvance?: number;

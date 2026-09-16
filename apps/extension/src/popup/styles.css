@@ -1175,6 +1175,13 @@ html, body {
   line-height: 1.35;
 }
 
+.bailian-optimization-notice {
+  margin: -1px 0 8px 96px;
+  color: var(--accent);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
 .thinking-slider-control {
   --thinking-slider-motion-duration: 220ms;
   --thinking-slider-motion-easing: cubic-bezier(0.22, 1, 0.36, 1);

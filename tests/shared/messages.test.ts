@@ -6,6 +6,14 @@ import {
 } from "../../apps/extension/src/shared/messages";
 
 describe("isRuntimeMessage", () => {
+  it('validates cancellation identifiers without requiring diagnostic logging', () => {
+    expect(isRuntimeMessage({ type: 'mt:llm-cancel', requestId: 'request-1' })).toBe(true);
+    for (const requestId of [undefined, '', 42, 'x'.repeat(129)]) {
+      expect(isRuntimeMessage({ type: 'mt:llm-cancel', requestId })).toBe(false);
+    }
+    expect(isRuntimeMessage({ type: 'mt:llm-chat-completions', requestId: 'request-1', body: { model: 'test', messages: [] } })).toBe(true);
+    expect(isRuntimeMessage({ type: 'mt:llm-chat-completions', requestId: 42, body: { model: 'test', messages: [] } })).toBe(false);
+  });
   it("accepts image and screenshot translation runtime messages", () => {
     expect(isRuntimeMessage({ type: "mt:download-image", imageUrl: "https://example.com/a.png" })).toBe(true);
     expect(isRuntimeMessage({
@@ -76,6 +84,10 @@ describe("isRuntimeMessage", () => {
     expect(isRuntimeMessage({
       type: "mt:extension-control",
       command: { kind: "replace-api-key", provider: "deepseek", apiKey: "secret" },
+    })).toBe(true);
+    expect(isRuntimeMessage({
+      type: "mt:extension-control",
+      command: { kind: "replace-api-key", provider: "alibaba", apiKey: "secret" },
     })).toBe(true);
     expect(isRuntimeMessage({
       type: "mt:extension-control",

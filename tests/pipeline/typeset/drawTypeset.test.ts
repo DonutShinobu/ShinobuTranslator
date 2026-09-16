@@ -7,6 +7,8 @@ import type {
   PlatformProvider,
 } from '../../../packages/image-pipeline/src/runtime/platform';
 import type { TextRegion } from '../../../packages/image-pipeline/src/types';
+import { prepareReadableRegion, resolveMinimumReadableFontSize } from '../../../packages/image-pipeline/src/pipeline/typeset/readability';
+import { computeReadableHorizontalTypeset, computeReadableVerticalTypeset } from '../../../packages/image-pipeline/src/pipeline/typeset/readableLayout';
 
 function parseCanvasFontSize(font: string, fallback: number): number {
   return Number.parseFloat(font.match(/([\d.]+)px/u)?.[1] ?? '') || fallback;
@@ -58,6 +60,28 @@ const platform: PlatformProvider = {
   waitForFonts: async () => {},
 };
 
+function makeTinyRegion(direction: 'v' | 'h' = 'v'): TextRegion {
+  const width = 210;
+  const height = 320;
+  const data = new Uint8Array(width * height);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (((x + 0.5 - width / 2) / (width / 2)) ** 2
+        + ((y + 0.5 - height / 2) / (height / 2)) ** 2 < 1) data[y * width + x] = 1;
+    }
+  }
+  return {
+    id: 'tiny', direction,
+    box: { x: 135, y: 95, width: 65, height: 50 },
+    fontSize: 8,
+    sourceText: '原文第一列\n原文第二列\n原文第三列\n原文第四列',
+    translatedText: '就是因为有大家在，我才能一直坚持到现在，真的非常感谢你们！',
+    translatedColumns: ['就是因为有大家在，', '我才能一直坚持到现在，', '真的非常感谢你们！'],
+    originalLineCount: 4,
+    bubbleMask: { x: 70, y: 20, width, height, data },
+  };
+}
+
 function makeRegions(): TextRegion[] {
   return [
     {
@@ -88,6 +112,197 @@ function makeRegions(): TextRegion[] {
 }
 
 describe('drawTypeset', () => {
+  it.each(['v', 'h'] as const)('reflows tiny %s translation at the minimum size within a large bubble', async (direction) => {
+    const region = makeTinyRegion(direction);
+    const original = structuredClone(region);
+    const result = await drawTypeset(createCanvas(800, 600), [region], 'zh-CHS',
+      { renderText: false, collectDebugLog: true }, platform);
+    const debug = result.debugLog!.regions[0];
+    expect(debug.fittedFontSize).toBe(18);
+    expect(debug.layoutDiagnostics).toMatchObject({ minimumFontSize: 18, readabilityReflowed: true });
+    expect(debug.preferredColumns).toEqual([]);
+    expect(debug.columnGlyphCenters.flat().map((glyph) => glyph.ch).join('')).toBe(region.translatedText);
+    expect(debug.expandedBox.width * debug.expandedBox.height).toBeGreaterThan(region.box.width * region.box.height);
+    // Every corner of every rendered line/column remains inside the detected bubble.
+    const mask = region.bubbleMask!;
+    for (const quad of debug.columnCanvasQuads) {
+      for (const point of quad) {
+        const x = Math.floor(point.x - mask.x);
+        const y = Math.floor(point.y - mask.y);
+        expect(x).toBeGreaterThanOrEqual(0);
+        expect(x).toBeLessThan(mask.width);
+        expect(y).toBeGreaterThanOrEqual(0);
+        expect(y).toBeLessThan(mask.height);
+        expect(mask.data[y * mask.width + x]).toBe(1);
+      }
+    }
+    expect(region).toEqual(original);
+  });
+
+  it.each([400, 800, 1600])('scales the readable floor with a %s-pixel page', async (width) => {
+    const region = makeTinyRegion();
+    const scale = width / 800;
+    region.bubbleMask = undefined;
+    region.box = { x: 100 * scale, y: 100 * scale, width: 100 * scale, height: 160 * scale };
+    const result = await drawTypeset(createCanvas(width, width), [region], 'zh-CHS',
+      { renderText: false, collectDebugLog: true }, platform);
+    expect(resolveMinimumReadableFontSize(width)).toBe(18 * scale);
+    expect(result.debugLog!.regions[0].fittedFontSize).toBeGreaterThanOrEqual(18 * scale);
+  });
+
+  it('leaves already-readable typesetting unchanged', async () => {
+    const region = makeRegions()[0];
+    const options = { renderText: false, collectDebugLog: true };
+    const original = await drawTypeset(createCanvas(800, 600), [region], 'zh-CHS', { ...options, minimumFontSize: 0 }, platform);
+    const readable = await drawTypeset(createCanvas(800, 600), [region], 'zh-CHS', options, platform);
+    expect(readable.debugLog!.regions).toEqual(original.debugLog!.regions);
+  });
+
+  it('preserves original-text mode and supports an explicit minimum override', async () => {
+    const region = makeTinyRegion();
+    const options = { renderText: false, collectDebugLog: true };
+    const disabled = await drawTypeset(createCanvas(800, 600), [region], 'zh-CHS', { ...options, minimumFontSize: 0 }, platform);
+    expect(disabled.debugLog!.regions[0].fittedFontSize).toBeLessThan(18);
+    const larger = await drawTypeset(createCanvas(800, 600), [region], 'zh-CHS', { ...options, minimumFontSize: 24 }, platform);
+    expect(larger.debugLog!.regions[0].fittedFontSize).toBe(24);
+    region.translatedText = '';
+    region.translatedColumns = undefined;
+    const source = await drawTypeset(createCanvas(800, 600), [region], 'zh-CHS', options, platform);
+    expect(source.debugLog!.regions[0].layoutDiagnostics?.readabilityReflowed).not.toBe(true);
+  });
+
+  it('avoids neighboring text when selecting bubble whitespace', () => {
+    const region = makeTinyRegion();
+    region.box = { x: 80, y: 50, width: 30, height: 40 };
+    region.bubbleMask = { x: 40, y: 20, width: 200, height: 300, data: new Uint8Array(200 * 300).fill(1) };
+    const neighbor: TextRegion = { ...region, id: 'neighbor', box: { x: 150, y: 20, width: 90, height: 300 } };
+    const prepared = prepareReadableRegion(region, 8, 18, 800, 600, [region, neighbor]);
+    expect(prepared.box.x + prepared.box.width).toBeLessThan(150);
+    expect(prepared.box.x).toBeGreaterThan(40);
+    expect(prepared.box.height).toBeGreaterThan(region.box.height);
+    expect(prepared.translatedColumns).toBeUndefined();
+  });
+
+  it('clips bubble search to the page and handles missing or empty masks', () => {
+    const region = makeTinyRegion();
+    region.box = { x: 0, y: 0, width: 20, height: 20 };
+    region.bubbleMask = { x: -20, y: -30, width: 100, height: 100, data: new Uint8Array(10000).fill(1) };
+    const prepared = prepareReadableRegion(region, 8, 18, 800, 600, [region]);
+    expect(prepared.box).toEqual({ x: 6, y: 6, width: 68, height: 58 });
+    region.bubbleMask.data.fill(0);
+    const empty = prepareReadableRegion(region, 8, 18, 800, 600, [region]);
+    expect(empty.box).toEqual(region.box);
+    region.bubbleMask = undefined;
+    expect(prepareReadableRegion(region, 8, 18, 800, 600, [region]).box).toEqual(empty.box);
+  });
+
+  it.each(['v', 'h'] as const)('relaxes the font target only to keep dense %s text complete and inside its bubble', async (direction) => {
+    const region = makeTinyRegion(direction);
+    region.translatedText = '甲乙丙丁戊己庚辛壬癸'.repeat(20);
+    region.translatedColumns = undefined;
+    const result = await drawTypeset(createCanvas(800, 600), [region], 'zh-CHS',
+      { renderText: false, collectDebugLog: true }, platform);
+    const debug = result.debugLog!.regions[0];
+    expect(debug.fittedFontSize).toBeLessThan(18);
+    expect(debug.layoutDiagnostics).toMatchObject({ minimumFontSizeRelaxed: true, boundedLayout: true, spacingTightened: true });
+    const safe = prepareReadableRegion(region, 8, 18, 800, 600, [region]).box;
+    expect(debug.expandedBox).toEqual(safe);
+    expect(debug.columnGlyphCenters.flat().map((glyph) => glyph.ch).join('')).toBe(region.translatedText);
+    for (const box of debug.columnBoxes) {
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.y).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(debug.offscreenWidth);
+      expect(box.y + box.height).toBeLessThanOrEqual(debug.offscreenHeight);
+    }
+    for (const point of debug.columnCanvasQuads.flat()) {
+      expect(point.x).toBeGreaterThanOrEqual(safe.x);
+      expect(point.y).toBeGreaterThanOrEqual(safe.y);
+      expect(point.x).toBeLessThanOrEqual(safe.x + safe.width);
+      expect(point.y).toBeLessThanOrEqual(safe.y + safe.height);
+    }
+  });
+
+  it.each(['v', 'h'] as const)('tightens %s spacing before reducing the requested font', (direction) => {
+    const ctx = createMeasureContext();
+    const originalMeasure = ctx.measureText.bind(ctx);
+    ctx.measureText = (text) => ({ ...originalMeasure(text),
+      fontBoundingBoxAscent: parseCanvasFontSize(ctx.font, 16) * 1.1,
+      fontBoundingBoxDescent: parseCanvasFontSize(ctx.font, 16) * 0.3 });
+    const region: TextRegion = { id: 'compact', direction, fontSize: 8,
+      box: { x: 100, y: 100, width: direction === 'v' ? 74 : 90, height: direction === 'v' ? 160 : 86 },
+      sourceText: '原文', translatedText: '甲乙丙丁戊己庚辛'.repeat(3) + '壬癸子丑' };
+    const input = { region, fontFamily: 'Test Sans', measureCtx: ctx, minimumFontSize: 18 };
+    const layout = direction === 'v' ? computeReadableVerticalTypeset(input) : computeReadableHorizontalTypeset(input);
+    expect(layout.fittedFontSize).toBe(18);
+    expect(layout.expandedRegion.box).toEqual(region.box);
+    expect(layout.layoutDiagnostics).toMatchObject({ spacingTightened: true, minimumFontSizeRelaxed: false });
+    if ('columns' in layout) {
+      expect(layout.layoutDiagnostics.advanceScale).toBeLessThan(1);
+      expect(layout.metrics.colSpacing).toBe(0);
+      for (const glyph of layout.columns.flatMap((column) => column.glyphs)) {
+        expect(glyph.advanceY).toBeGreaterThanOrEqual(glyph.inkHeight);
+        expect(layout.metrics.colWidth).toBeGreaterThan(glyph.inkWidth);
+      }
+    } else {
+      expect(layout.lineHeightScale).toBeLessThan(1);
+      for (const line of layout.lineBoxes) expect(line.lineHeight).toBeGreaterThan(line.inkHeight);
+    }
+  });
+
+  it.each(['v', 'h'] as const)('keeps %s punctuation without hanging it outside the last cell', (direction) => {
+    const region: TextRegion = { id: 'punctuation', box: { x: 0, y: 0, width: 110, height: 78 },
+      sourceText: '原文', translatedText: '甲乙丙丁，戊己庚辛。壬癸（子丑）……' };
+    const input = { region, fontFamily: 'Test Sans', measureCtx: createMeasureContext(), minimumFontSize: 18 };
+    const layout = direction === 'v' ? computeReadableVerticalTypeset(input) : computeReadableHorizontalTypeset(input);
+    expect(layout.fittedFontSize).toBe(18);
+    const content = 'columns' in layout ? layout.columns.flatMap((c) => c.glyphs.map((g) => g.sourceText)).join('')
+      : layout.lines.map((line) => line.text).join('');
+    expect(content).toBe(region.translatedText);
+    for (const box of layout.debugColumnBoxes) {
+      expect(box.x - layout.strokePadding).toBeGreaterThanOrEqual(0);
+      expect(box.y - layout.strokePadding).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width - layout.strokePadding).toBeLessThanOrEqual(region.box.width);
+      expect(box.y + box.height - layout.strokePadding).toBeLessThanOrEqual(region.box.height);
+    }
+  });
+
+  it.each(['v', 'h'] as const)('partitions connected bubbles and renders %s neighbors independently of processing order', async (direction) => {
+    const mask = { x: 40, y: 20, width: 260, height: 220, data: new Uint8Array(260 * 220).fill(1) };
+    const left: TextRegion = { id: 'left', direction, fontSize: 8, sourceText: '一\n二\n三\n四',
+      box: { x: 90, y: 70, width: 50, height: 60 }, bubbleMask: mask,
+      translatedText: '虽然我不会放任他们在城里乱来，但也不能让无辜的人因此受到伤害。大家先冷静下来。' };
+    const right: TextRegion = { id: 'right', direction, fontSize: 8, sourceText: '一\n二',
+      box: { x: 215, y: 70, width: 40, height: 60 }, bubbleMask: mask,
+      translatedText: '我就是这个意思。' };
+    const draw = async (regions: TextRegion[]) => (await drawTypeset(createCanvas(800, 600), regions, 'zh-CHS',
+      { renderText: false, collectDebugLog: true }, platform)).debugLog!.regions;
+    const forward = await draw([left, right]);
+    const backward = await draw([right, left]);
+    const cut = ((left.box.x + left.box.width / 2) + (right.box.x + right.box.width / 2)) / 2;
+    expect(forward[0].expandedBox.x + forward[0].expandedBox.width).toBeLessThan(cut);
+    expect(forward[1].expandedBox.x).toBeGreaterThan(cut);
+    for (const [index, source] of [left, right].entries()) {
+      const a = forward[index];
+      const b = backward.find((region) => region.regionId === a.regionId)!;
+      expect(a.columnGlyphCenters.flat().map((g) => g.ch).join('')).toBe(source.translatedText);
+      expect(a.expandedBox).toEqual(b.expandedBox);
+      expect(a.columnCanvasQuads).toEqual(b.columnCanvasQuads);
+    }
+  });
+
+  it('repairs overflowing source-column spacing even above the minimum font size', async () => {
+    const region: TextRegion = { id: 'wide-pitch', direction: 'v', fontSize: 20,
+      box: { x: 100, y: 100, width: 40, height: 100 }, sourceText: '第一列\n第二列',
+      translatedText: '甲乙丙丁戊己', translatedColumns: ['甲乙丙', '丁戊己'], originalLineCount: 2 };
+    const result = await drawTypeset(createCanvas(800, 600), [region], 'zh-CHS',
+      { renderText: false, collectDebugLog: true }, platform);
+    const debug = result.debugLog!.regions[0];
+    expect(debug.fittedFontSize).toBeGreaterThanOrEqual(18);
+    expect(debug.layoutDiagnostics?.boundedLayout).toBe(true);
+    expect(debug.expandedBox).toEqual(region.box);
+    expect(debug.columnGlyphCenters.flat().map((g) => g.ch).join('')).toBe(region.translatedText);
+  });
+
   it('applies horizontal source style and exposes baseline line boxes', () => {
     const region: TextRegion = {
       id: 'horizontal-source-style',

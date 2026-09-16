@@ -6,6 +6,7 @@ import type {
 } from '../../shared/messages';
 import type { ImageDownloadRequest } from '../images/imageDownloader';
 import type { ReaderResourceRequest } from '../readers/readerResourceFetcher';
+import { cancelLlmRequest, runCancelableLlmRequest } from '../providers/llmCancellation';
 
 type MessageOf<T extends RuntimeMessage['type']> = Extract<RuntimeMessage, { type: T }>;
 type SuccessOf<T extends RuntimeResponse['type']> = Extract<RuntimeResponse, { ok: true; type: T }>;
@@ -38,7 +39,7 @@ export type BackgroundServices = {
     fetch(request: ReaderResourceRequest): Promise<PayloadOf<'mt:fetch-reader-resource'>>;
   };
   providers: {
-    llm(message: MessageOf<'mt:llm-chat-completions'>): Promise<SuccessOf<'mt:llm-chat-completions'>>;
+    llm(message: MessageOf<'mt:llm-chat-completions'>, signal?: AbortSignal): Promise<SuccessOf<'mt:llm-chat-completions'>>;
     geminiAppImage(message: MessageOf<'mt:gemini-app-image-translate'>): Promise<SuccessOf<'mt:gemini-app-image-translate'>>;
     geminiApiImage(message: MessageOf<'mt:gemini-api-image-translate'>): Promise<SuccessOf<'mt:gemini-api-image-translate'>>;
   };
@@ -106,7 +107,11 @@ export async function routeBackgroundMessage(
     return { ok: true, type: 'mt:capture-visible-tab', ...await services.images.capture(sender) };
   }
   if (message.type === 'mt:llm-chat-completions') {
-    return services.providers.llm(message);
+    return runCancelableLlmRequest(sender, message.requestId, (signal) => services.providers.llm(message, signal));
+  }
+  if (message.type === 'mt:llm-cancel') {
+    cancelLlmRequest(sender, message.requestId);
+    return { ok: true, type: 'mt:llm-cancel' };
   }
   if (message.type === 'mt:gemini-app-image-translate') {
     return services.providers.geminiAppImage(message);

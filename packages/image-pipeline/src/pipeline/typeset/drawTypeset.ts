@@ -21,6 +21,8 @@ import {
 import type { RegionTypesetDebug } from "./fontMetrics";
 import type { CompositeTransform } from "./geometry";
 import { formatTypesetFont } from "./fontRuntime";
+import { layoutOverflowsReadableArea, prepareReadableRegion, resolveMinimumReadableFontSize } from './readability';
+import { computeReadableHorizontalTypeset, computeReadableVerticalTypeset } from './readableLayout';
 
 // ---------------------------------------------------------------------------
 // Constants (horizontal-only)
@@ -42,6 +44,8 @@ export type DrawTypesetOptions = {
   debugMode?: boolean;
   renderText?: boolean;
   collectDebugLog?: boolean;
+  /** Readability target (18px per 800px page width). Fit spacing first; bounds take priority. Zero disables reflow. */
+  minimumFontSize?: number;
 };
 
 export type DrawTypesetResult = {
@@ -59,6 +63,9 @@ export async function drawTypeset(
   const debugMode = options?.debugMode === true;
   const renderText = options?.renderText !== false;
   const collectDebugLog = options?.collectDebugLog === true;
+  const minimumFontSize = options?.minimumFontSize !== undefined && Number.isFinite(options.minimumFontSize)
+    ? Math.max(0, options.minimumFontSize)
+    : resolveMinimumReadableFontSize(canvas.width);
   // Ensure fonts are loaded before measuring/rendering
   await platform.waitForFonts();
 
@@ -97,11 +104,21 @@ export async function drawTypeset(
     let singleColumnMaxLength: number | null;
 
     if (isVerticalInput) {
-      const vResult = computeFullVerticalTypeset({
+      let vResult = computeFullVerticalTypeset({
         region: inputRegion,
         fontFamily,
         measureCtx,
       });
+      if (translatedRaw.trim() && minimumFontSize > 0) {
+        const readableRegion = prepareReadableRegion(
+          inputRegion, vResult.fittedFontSize, minimumFontSize, canvas.width, canvas.height, regions,
+        );
+        if (vResult.fittedFontSize < minimumFontSize || layoutOverflowsReadableArea(vResult, readableRegion.box)) {
+          readableRegion.translatedText = vResult.text;
+          vResult = computeReadableVerticalTypeset({ region: readableRegion, fontFamily, measureCtx,
+            minimumFontSize, preferredFontSize: vResult.fittedFontSize });
+        }
+      }
 
       region = vResult.expandedRegion;
       estimatedInitialFontSize = vResult.initialFontSize;
@@ -189,12 +206,22 @@ export async function drawTypeset(
         strokePadding: vResult.strokePadding,
       };
     } else {
-      const horizontal = computeFullHorizontalTypeset({
+      let horizontal = computeFullHorizontalTypeset({
         region: inputRegion,
         fontFamily,
         measureCtx,
       });
       if (!horizontal) continue;
+      if (translatedRaw.trim() && minimumFontSize > 0) {
+        const readableRegion = prepareReadableRegion(
+          inputRegion, horizontal.fittedFontSize, minimumFontSize, canvas.width, canvas.height, regions,
+        );
+        if (horizontal.fittedFontSize < minimumFontSize || layoutOverflowsReadableArea(horizontal, readableRegion.box)) {
+          readableRegion.translatedText = horizontal.text;
+          horizontal = computeReadableHorizontalTypeset({ region: readableRegion, fontFamily, measureCtx,
+            minimumFontSize, preferredFontSize: horizontal.fittedFontSize });
+        }
+      }
 
       region = horizontal.expandedRegion;
       estimatedInitialFontSize = horizontal.initialFontSize;
@@ -251,6 +278,7 @@ export async function drawTypeset(
       };
     }
 
+    renderRegions[regionIndex] = region;
     let transform: CompositeTransform | null = null;
     if (offCanvas) {
       transform = compositeRegion(

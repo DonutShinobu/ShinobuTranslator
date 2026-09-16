@@ -32,6 +32,37 @@ type DiagnosticLogStore = {
 };
 
 const diagnosticLogMaxEvents = 2000;
+const diagnosticLogMaxBytes = 4 * 1024 * 1024;
+const diagnosticEventMaxBytes = 128 * 1024;
+const diagnosticFlushIntervalMs = 1000;
+const eventBytes = new WeakMap<DiagnosticLogEvent, number>();
+type BufferedLogState = {
+  store?: DiagnosticLogStore;
+  pending: DiagnosticLogEvent[];
+  dropped: boolean;
+  dirty?: boolean;
+  timer?: ReturnType<typeof setTimeout>;
+};
+let bufferedLog: BufferedLogState = { pending: [], dropped: false };
+
+function sizeOfEvent(event: DiagnosticLogEvent): number {
+  let size = eventBytes.get(event);
+  if (size === undefined) {
+    size = new TextEncoder().encode(JSON.stringify(event)).length;
+    eventBytes.set(event, size);
+  }
+  return size;
+}
+
+function trimEvents(events: DiagnosticLogEvent[]): boolean {
+  let bytes = events.reduce((sum, event) => sum + sizeOfEvent(event), 0);
+  let removed = 0;
+  while (events.length - removed > diagnosticLogMaxEvents || bytes > diagnosticLogMaxBytes) {
+    bytes -= sizeOfEvent(events[removed++]);
+  }
+  if (removed) events.splice(0, removed);
+  return removed > 0;
+}
 
 function normalizeStoredDiagnosticLogEvent(value: unknown): DiagnosticLogEvent | null {
   if (
@@ -120,26 +151,62 @@ async function writeDiagnosticLogStore(store: DiagnosticLogStore): Promise<void>
   await storageSet(diagnosticLogStorageKey, store);
 }
 
-async function appendDiagnosticLogEvent(event: DiagnosticLogEvent): Promise<void> {
-  const store = await readDiagnosticLogStore();
-  const normalized = createDiagnosticEvent(event, event.sessionId);
-  const events = [...store.events, normalized];
-  const overflow = Math.max(0, events.length - diagnosticLogMaxEvents);
-  const nextEvents = overflow > 0 ? events.slice(overflow) : events;
-  await writeDiagnosticLogStore({
-    events: nextEvents,
-    truncated: store.truncated || overflow > 0,
-    truncationReason: overflow > 0 ? `事件数量超过 ${diagnosticLogMaxEvents}，已丢弃最早的 ${overflow} 条` : store.truncationReason,
-  });
+/** Acknowledge enqueueing, never storage I/O. Call flushDiagnosticLog on export. */
+export function recordDiagnosticLogEvent(event: DiagnosticLogEvent): Promise<void> {
+  let normalized = createDiagnosticEvent(event, event.sessionId);
+  if (sizeOfEvent(normalized) > diagnosticEventMaxBytes) {
+    const summary = Object.fromEntries(Object.entries(normalized.data ?? {}).filter(([key]) => (
+      ['durationMs', 'runStatus', 'model', 'provider', 'thinkingDisabled', 'image', 'stageTimings', 'detectedRegionCount'].includes(key)
+    )));
+    normalized = { ...normalized, data: { ...summary, truncated: true, reason: '单条日志过大，已省略详细数据' } };
+    if (sizeOfEvent(normalized) > diagnosticEventMaxBytes) normalized = { ...normalized, data: { truncated: true } };
+  }
+  const state = bufferedLog;
+  state.pending.push(normalized);
+  state.dropped = trimEvents(state.pending) || state.dropped;
+  if (!state.timer) {
+    state.timer = setTimeout(() => {
+      state.timer = undefined;
+      void flushDiagnosticLog().catch(() => undefined);
+    }, diagnosticFlushIntervalMs);
+  }
+  return Promise.resolve();
 }
 
-export function recordDiagnosticLogEvent(event: DiagnosticLogEvent): Promise<void> {
-  const write = diagnosticLogWriteQueue.then(
-    () => appendDiagnosticLogEvent(event),
-    () => appendDiagnosticLogEvent(event),
-  );
+/** Serialized flushes also order clear/export against any in-flight write. */
+export function flushDiagnosticLog(): Promise<void> {
+  const state = bufferedLog;
+  if (state.timer) clearTimeout(state.timer);
+  state.timer = undefined;
+  const flush = async (): Promise<void> => {
+    state.store ??= await readDiagnosticLogStore();
+    if (!state.pending.length && !state.dirty) return;
+    const events = [...state.store.events, ...state.pending];
+    const dropped = trimEvents(events) || state.dropped;
+    state.store = {
+      events,
+      truncated: state.store.truncated || dropped,
+      truncationReason: dropped
+        ? `日志超过 ${diagnosticLogMaxEvents} 条或 4 MiB，已丢弃最早的事件`
+        : state.store.truncationReason,
+    };
+    state.pending.splice(0);
+    state.dropped = false;
+    // Keep the in-memory snapshot dirty on failure; retry without duplicating
+    // events on the next batch/export. Logging never blocks translation.
+    state.dirty = true;
+    await writeDiagnosticLogStore(state.store);
+    state.dirty = false;
+  };
+  const write = diagnosticLogWriteQueue.then(flush, flush);
   diagnosticLogWriteQueue = write.catch(() => undefined);
   return write;
+}
+
+export async function resetDiagnosticLogStateForTests(): Promise<void> {
+  if (bufferedLog.timer) clearTimeout(bufferedLog.timer);
+  await diagnosticLogWriteQueue.catch(() => undefined);
+  bufferedLog = { pending: [], dropped: false };
 }
 
 export function toImageTranslateDiagnosticData(image: { base64: string; contentType: string; filename: string }): Record<string, unknown> {
@@ -193,12 +260,15 @@ export function deriveDiagnosticRuns(events: DiagnosticLogEvent[]): DiagnosticLo
 }
 
 export async function exportDiagnosticLog(): Promise<DiagnosticLogTextExport> {
-  await diagnosticLogWriteQueue.catch(() => undefined);
-  const store = await readDiagnosticLogStore();
+  await flushDiagnosticLog().catch(() => undefined);
+  const store = bufferedLog.store ?? { events: [] };
+  // Include accepted events even if persistence is temporarily unavailable.
+  const exportEvents = [...store.events, ...bufferedLog.pending];
+  const exportTruncated = trimEvents(exportEvents) || bufferedLog.dropped;
   const settings = await getSettings();
   const chromeApi = getExtensionApi();
   const manifest = chromeApi?.runtime?.getManifest?.();
-  const events = store.events;
+  const events = exportEvents;
   const exportedAt = new Date().toISOString();
   const extension = {
     version: manifest?.version,
@@ -224,12 +294,18 @@ export async function exportDiagnosticLog(): Promise<DiagnosticLogTextExport> {
       environment,
       activeSettings,
       runs,
-      truncated: store.truncated,
+      truncated: store.truncated || exportTruncated,
       truncationReason: store.truncationReason,
     }),
   };
 }
 
 export async function clearDiagnosticLog(): Promise<void> {
-  await storageRemove(diagnosticLogStorageKey);
+  if (bufferedLog.timer) clearTimeout(bufferedLog.timer);
+  // Replace the buffer now. Old writes finish before removal; new writes wait
+  // behind removal, so clear cannot resurrect old events or delete new ones.
+  bufferedLog = { store: { events: [] }, pending: [], dropped: false };
+  const clear = diagnosticLogWriteQueue.then(() => storageRemove(diagnosticLogStorageKey));
+  diagnosticLogWriteQueue = clear.catch(() => undefined);
+  await clear;
 }

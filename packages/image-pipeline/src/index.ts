@@ -11,6 +11,7 @@ import type {
   TextTranslator,
   TranslationReferenceContext,
 } from '@shinobu/text-translation';
+import { isLlmProvider } from '@shinobu/text-translation';
 import type { ModelRuntime } from '@shinobu/model-runtime';
 import type { DiagnosticLogObserver } from '@shinobu/diagnostics';
 import type { PipelineCanvas, PlatformProvider } from './runtime/platform';
@@ -66,6 +67,8 @@ export type ImagePipelineDependencies = {
   detectionFallbackStrategy: DetectionFallbackStrategy;
   fontSource?: (path: string) => string;
   observer?: DiagnosticLogObserver;
+  /** Let an outer host own the shared model runtime lifecycle when false. */
+  disposeModelRuntime?: boolean;
 };
 
 export type { DetectionFallbackStrategy } from './pipeline/detect';
@@ -407,16 +410,7 @@ function validateConfig(config: unknown): config is PipelineConfig {
   ];
   return stringKeys.every((key) => typeof config[key] === 'string')
     && (config.translator === 'google_web' || config.translator === 'llm')
-    && [
-      'deepseek',
-      'gemini',
-      'glm',
-      'kimi',
-      'minimax',
-      'mimo',
-      'openai',
-      'custom',
-    ].includes(String(config.llmProvider))
+    && isLlmProvider(config.llmProvider)
     && (
       config.llmAuthMode === 'api_key'
       || config.llmAuthMode === 'openai_oauth'
@@ -1438,7 +1432,9 @@ export function createImagePipeline(
       }
     },
     dispose() {
-      return dependencies.modelRuntime.dispose();
+      return dependencies.disposeModelRuntime === false
+        ? undefined
+        : dependencies.modelRuntime.dispose();
     },
   });
 

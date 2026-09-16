@@ -43,7 +43,7 @@ export const translationProviderOptions: ReadonlyArray<{
   id: TranslationProviderId;
   label: string;
 }> = [
-  ...(['deepseek', 'glm', 'kimi', 'minimax', 'mimo', 'openai'] as const)
+  ...(['alibaba', 'deepseek', 'glm', 'kimi', 'minimax', 'mimo', 'openai'] as const)
     .map((id) => ({
       id,
       label: llmBuiltInProviderDefinitions[id].webLabel,
@@ -52,6 +52,10 @@ export const translationProviderOptions: ReadonlyArray<{
 ];
 
 export const defaultWebProviderProfiles: WebProviderProfiles = {
+  alibaba: {
+    baseUrl: llmBuiltInProviderDefinitions.alibaba.baseUrl,
+    model: llmBuiltInProviderDefinitions.alibaba.models[0],
+  },
   deepseek: {
     baseUrl: llmBuiltInProviderDefinitions.deepseek.baseUrl,
     model: llmBuiltInProviderDefinitions.deepseek.models[0],

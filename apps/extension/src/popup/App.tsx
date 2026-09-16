@@ -22,6 +22,7 @@ import {
 import { getExtensionRuntime } from '../shared/extensionRuntime';
 import {
   getLlmThinkingControl,
+  isAlibabaBailianCompatibleBaseUrl,
   llmThinkingCapabilityKey,
   resolveLlmThinkingLevel,
   type LlmThinkingLevel,
@@ -862,6 +863,11 @@ export function App() {
   }
 
   const currentProfile = settings.llmProfiles[settings.llmProvider];
+  const usesAlibabaBailian = settings.llmProvider === 'alibaba'
+    || (
+      settings.llmProvider === 'custom'
+      && isAlibabaBailianCompatibleBaseUrl(currentProfile.customBaseUrl)
+    );
   const usesNanoBanana = usesNanoBananaImagePipeline(settings);
   const usesGeminiApp = usesGeminiAppImagePipeline(settings);
   const usesGeminiApi = usesGeminiApiImagePipeline(settings);
@@ -870,6 +876,7 @@ export function App() {
   const builtInCustomModelPlaceholder = currentProviderModels[0] ?? currentProfile.modelPreset;
   const currentThinkingModel =
     settings.llmProvider !== 'custom' &&
+    settings.llmProvider !== 'alibaba' &&
     settings.llmProvider !== 'gemini' &&
     !currentProfile.useCustomModel
       ? currentProfile.modelPreset
@@ -1328,7 +1335,7 @@ export function App() {
                       />
                     </div>
                   </>
-                ) : settings.llmProvider === 'custom' ? (
+                ) : settings.llmProvider === 'custom' || settings.llmProvider === 'alibaba' ? (
                   <>
                     <label className="field">
                       <span className="field-label">Base URL</span>
@@ -1339,21 +1346,64 @@ export function App() {
                           updateActiveLlmProfile({ customBaseUrl: event.target.value }, { showSaveStatus: true })
                         }
                         disabled={loading}
-                        placeholder="https://api.example.com/v1"
+                        placeholder={settings.llmProvider === 'alibaba'
+                          ? llmBuiltInProviderDefinitions.alibaba.baseUrl
+                          : 'https://api.example.com/v1'}
                       />
                     </label>
-                    <label className="field">
-                      <span className="field-label">模型名称</span>
-                      <input
-                        type="text"
-                        value={currentProfile.modelCustom}
-                        onChange={(event) =>
-                          updateActiveLlmProfile({ modelCustom: event.target.value }, { showSaveStatus: true })
-                        }
-                        disabled={loading}
-                        placeholder="例如：your-model-name"
-                      />
-                    </label>
+                    {settings.llmProvider === 'alibaba' ? (
+                      <div className="field model-field">
+                        <span className="field-label">模型名称</span>
+                        <div className="model-control">
+                          {currentProfile.useCustomModel ? (
+                            <input
+                              type="text"
+                              value={currentProfile.modelCustom}
+                              onChange={(event) =>
+                                updateActiveLlmProfile({ modelCustom: event.target.value }, { showSaveStatus: true })
+                              }
+                              disabled={loading}
+                              placeholder={builtInCustomModelPlaceholder}
+                            />
+                          ) : (
+                            <SelectControl
+                              ariaLabel="模型名称"
+                              options={currentProviderModels.map((model) => ({ value: model, label: model }))}
+                              value={currentProfile.modelPreset}
+                              onChange={(modelPreset) => updateActiveLlmProfile({ modelPreset })}
+                              disabled={loading}
+                            />
+                          )}
+                          <label className={`custom-model-toggle${loading ? ' custom-model-toggle-disabled' : ''}`}>
+                            <input
+                              type="checkbox"
+                              checked={currentProfile.useCustomModel}
+                              onChange={(event) => updateUseCustomModel(event.target.checked)}
+                              disabled={loading}
+                            />
+                            <span>自定义</span>
+                          </label>
+                        </div>
+                      </div>
+                    ) : (
+                      <label className="field">
+                        <span className="field-label">模型名称</span>
+                        <input
+                          type="text"
+                          value={currentProfile.modelCustom}
+                          onChange={(event) =>
+                            updateActiveLlmProfile({ modelCustom: event.target.value }, { showSaveStatus: true })
+                          }
+                          disabled={loading}
+                          placeholder="例如：your-model-name"
+                        />
+                      </label>
+                    )}
+                    {usesAlibabaBailian ? (
+                      <div className="bailian-optimization-notice">
+                        阿里云百炼翻译模式：全部模型关闭思考，最大输出 2048 Token
+                      </div>
+                    ) : null}
                     <ApiKeyField
                       key={`api-key-${settings.llmProvider}-${currentProfile.authMode}`}
                       value={apiKeyValues[settings.llmProvider] ?? ''}

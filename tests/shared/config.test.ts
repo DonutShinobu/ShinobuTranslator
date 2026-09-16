@@ -31,6 +31,19 @@ describe("built-in LLM catalog", () => {
 
   it("matches the confirmed provider model matrix and new-profile defaults", () => {
     expect(llmBuiltInProviderDefinitions).toMatchObject({
+      alibaba: {
+        label: "阿里云百炼",
+        baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        models: [
+          "deepseek-v4-pro",
+          "deepseek-v4-flash",
+          "qwen3.8-flash",
+          "qwen3.7-plus",
+          "glm-5.2",
+          "kimi-k3",
+          "MiniMax-M2.5",
+        ],
+      },
       deepseek: {
         label: "DeepSeek",
         baseUrl: "https://api.deepseek.com",
@@ -92,6 +105,37 @@ describe("built-in LLM catalog", () => {
           "gpt-5.4-nano",
         ],
       },
+    });
+  });
+
+  it("migrates an active Alibaba-compatible custom profile into the dedicated provider", () => {
+    const settings = normalizeSettings({
+      translator: "llm",
+      llmProvider: "custom",
+      llmProfiles: {
+        custom: {
+          apiKey: "sk-bailian",
+          authMode: "api_key",
+          modelPreset: "",
+          modelCustom: "deepseek-v4-pro",
+          useCustomModel: true,
+          customBaseUrl: "https://ws-example.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+        },
+      },
+    });
+
+    expect(settings.llmProvider).toBe("alibaba");
+    expect(settings.llmProfiles.alibaba).toMatchObject({
+      apiKey: "sk-bailian",
+      modelCustom: "deepseek-v4-pro",
+      useCustomModel: true,
+      customBaseUrl: "https://ws-example.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+    });
+    expect(toPipelineConfig(settings)).toMatchObject({
+      llmProvider: "alibaba",
+      llmBaseUrl: "https://ws-example.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+      llmModel: "deepseek-v4-pro",
+      llmUseCustomModel: true,
     });
   });
 

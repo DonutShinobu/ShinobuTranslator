@@ -114,6 +114,7 @@ export function createDirectTextTranslationTransport(
           model: request.body.model,
           level: request.proxyConfig.thinkingLevel,
           useCustomModel: request.proxyConfig.useCustomModel === true,
+          baseUrl,
         });
       try {
         return await requester.request({
@@ -129,6 +130,7 @@ export function createDirectTextTranslationTransport(
           provider: request.proxyConfig.provider,
           model: request.body.model,
           useCustomModel: request.proxyConfig.useCustomModel === true,
+          baseUrl,
           errorDetail: `${error.detail ?? ''}\n${error.responseText ?? ''}`,
         });
         throw new TextTranslationTransportError(

@@ -24,6 +24,7 @@ import {
   applyImageTranslationResult,
   startPhotoStateImageTranslation,
 } from '../translation/photoStateProjection';
+import { LOCAL_PIPELINE_MAX_CONCURRENT_JOBS } from '@shinobu/image-pipeline/protocol';
 
 type ReadingOperation =
   | { kind: 'idle' }
@@ -335,35 +336,84 @@ export class ReadingModeController {
           (member) => !this.stateStore.get(member.key)?.translatedUrl,
         ));
         const imageFailures: Array<{ pageIndex: number }> = [];
-        for (const page of pendingUrls) {
-          if (this.operation.kind !== 'translating-all') break;
-          if (!await this.waitUntilResumed(activity)) return;
-          this.operation = { kind: 'translating-all', total, pageIndex: page.pageIndex };
-          const label = this.readingBarUi?.translateAllBtn.querySelector('.mt-x-label') as HTMLElement;
-          if (label) label.textContent = `${page.pageIndex + 1}/${total} 准备中`;
+        const label = this.readingBarUi?.translateAllBtn.querySelector('.mt-x-label') as HTMLElement;
+        const activeStages = new Map<number, string>();
+        let nextPendingIndex = 0;
+        let runtimeFailed = false;
+        let cancelled = false;
 
-          const outcome = await this.translatePage(activity, page, (stageText) => {
-            if (label) label.textContent = `${page.pageIndex + 1}/${total} ${stageText}`;
-          });
-          if (outcome.status === 'cancelled') {
-            this.operation = { kind: 'idle' };
-            this.renderReadingModeBar();
+        const updateBatchLabel = (): void => {
+          if (!label) return;
+          const completed = this.countCompletedPages(urls);
+          const active = [...activeStages.entries()].sort(([left], [right]) => left - right);
+          if (active.length === 0) {
+            label.textContent = `已完成 ${completed}/${total}`;
             return;
           }
-          if (outcome.status === 'runtime-failed') {
-            const completed = this.countCompletedPages(urls);
-            this.operation = { kind: 'idle' };
-            this.globalTranslateMode = completed > 0 ? 'translated' : this.globalTranslateMode;
-            this.errorText = `已完成 ${completed}/${total}：流水线运行环境不可用，请检查设置后重试`;
-            this.renderReadingModeBar();
-            return;
+          const [pageIndex, stageText] = active[0]!;
+          label.textContent = `已完成 ${completed}/${total} · ${active.length} 页处理中 · 第 ${pageIndex + 1} 页 ${stageText}`;
+        };
+
+        const translateNextPages = async (): Promise<void> => {
+          while (
+            !runtimeFailed
+            && !cancelled
+            && this.operation.kind === 'translating-all'
+            && nextPendingIndex < pendingUrls.length
+          ) {
+            if (!await this.waitUntilResumed(activity)) {
+              cancelled = true;
+              return;
+            }
+            if (nextPendingIndex >= pendingUrls.length) return;
+            const page = pendingUrls[nextPendingIndex++]!;
+            this.operation = { kind: 'translating-all', total, pageIndex: page.pageIndex };
+            activeStages.set(page.pageIndex, '准备中');
+            updateBatchLabel();
+
+            const outcome = await this.translatePage(activity, page, (stageText) => {
+              activeStages.set(page.pageIndex, stageText);
+              updateBatchLabel();
+            });
+            activeStages.delete(page.pageIndex);
+            updateBatchLabel();
+
+            if (outcome.status === 'cancelled') {
+              cancelled = true;
+              return;
+            }
+            if (outcome.status === 'runtime-failed') {
+              runtimeFailed = true;
+              activity.end('翻译全部遇到流水线运行环境错误');
+              return;
+            }
+            if (outcome.status === 'image-failed') {
+              imageFailures.push({ pageIndex: page.pageIndex });
+              continue;
+            }
+            if (this.operation.kind !== 'translating-all') return;
+            this.scheduleCoreSync();
           }
-          if (outcome.status === 'image-failed') {
-            imageFailures.push({ pageIndex: page.pageIndex });
-            continue;
-          }
-          if (this.operation.kind !== 'translating-all') break;
-          this.scheduleCoreSync();
+        };
+
+        const workerCount = Math.min(
+          LOCAL_PIPELINE_MAX_CONCURRENT_JOBS,
+          pendingUrls.length,
+        );
+        await Promise.all(Array.from({ length: workerCount }, () => translateNextPages()));
+
+        if (runtimeFailed) {
+          const completed = this.countCompletedPages(urls);
+          this.operation = { kind: 'idle' };
+          this.globalTranslateMode = completed > 0 ? 'translated' : this.globalTranslateMode;
+          this.errorText = `已完成 ${completed}/${total}：流水线运行环境不可用，请检查设置后重试`;
+          this.renderReadingModeBar();
+          return;
+        }
+        if (cancelled || activity.signal.aborted) {
+          this.operation = { kind: 'idle' };
+          this.renderReadingModeBar();
+          return;
         }
 
         if (this.operation.kind !== 'translating-all') return;

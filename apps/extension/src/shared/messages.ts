@@ -2,7 +2,7 @@ import type { DiagnosticLogEvent, DiagnosticLogTextExport } from '@shinobu/diagn
 import type { StageTiming } from '@shinobu/image-pipeline/benchmark';
 import type { LlmAuthMode, LlmProvider } from '@shinobu/text-translation';
 import { requireExtensionRuntime } from './extensionRuntime';
-import { isLlmThinkingLevel } from '@shinobu/text-translation';
+import { isLlmProvider, isLlmThinkingLevel } from '@shinobu/text-translation';
 import type { LlmThinkingLevel } from '@shinobu/text-translation';
 import { isReferrerPolicy } from './referrerPolicy';
 import {
@@ -51,6 +51,8 @@ export type LlmChatCompletionRequestBody = {
   response_format?: {
     type: 'json_object' | 'text';
   };
+  enable_thinking?: boolean;
+  max_tokens?: number;
   reasoning_effort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   reasoning_split?: boolean;
   thinking?: {
@@ -68,6 +70,7 @@ export type LlmChatCompletionsProxyConfig = {
 
 export type LlmChatCompletionsMessage = {
   type: 'mt:llm-chat-completions';
+  requestId?: string;
   body: LlmChatCompletionRequestBody;
   proxyConfig?: LlmChatCompletionsProxyConfig;
   diagnosticRunId?: string;
@@ -153,6 +156,7 @@ export type RuntimeMessage =
   | FetchReaderResourceMessage
   | CaptureVisibleTabMessage
   | LlmChatCompletionsMessage
+  | { type: 'mt:llm-cancel'; requestId: string }
   | GeminiAppImageTranslateMessage
   | GeminiApiImageTranslateMessage
   | DiagnosticLogEventMessage
@@ -163,6 +167,7 @@ export type RuntimeMessage =
   | ShortcutTranslateHoverMessage;
 
 export type RuntimeSuccessResponse =
+  | { ok: true; type: 'mt:llm-cancel' }
   | {
       ok: true;
       type: 'mt:extension-control';
@@ -333,19 +338,6 @@ export function getRuntimeTransportMetadata(error: unknown): {
   return metadata;
 }
 
-function isLlmProvider(value: unknown): value is LlmProvider {
-  return (
-    value === 'deepseek' ||
-    value === 'gemini' ||
-    value === 'glm' ||
-    value === 'kimi' ||
-    value === 'minimax' ||
-    value === 'mimo' ||
-    value === 'openai' ||
-    value === 'custom'
-  );
-}
-
 function isLlmAuthMode(value: unknown): value is LlmAuthMode {
   return value === 'api_key' || value === 'openai_oauth' || value === 'gemini_app';
 }
@@ -401,6 +393,7 @@ function isLlmChatCompletionsMessage(value: Record<string, unknown>): value is L
   return (
     typeof value.body.model === 'string' &&
     Array.isArray(value.body.messages) &&
+    (value.requestId === undefined || (typeof value.requestId === 'string' && value.requestId.length > 0 && value.requestId.length <= 128)) &&
     (value.diagnosticRunId === undefined || typeof value.diagnosticRunId === 'string')
   );
 }
@@ -480,6 +473,7 @@ export function isRuntimeMessage(value: unknown): value is RuntimeMessage {
     type === 'mt:capture-visible-tab' ||
     type === 'mt:diagnostic-log-export' ||
     type === 'mt:diagnostic-log-clear' ||
+    (type === 'mt:llm-cancel' && typeof value.requestId === 'string' && value.requestId.length > 0 && value.requestId.length <= 128) ||
     type === 'mt:context-menu-translate' ||
     type === 'mt:start-screenshot-translate' ||
     type === 'mt:shortcut-translate-hover' ||

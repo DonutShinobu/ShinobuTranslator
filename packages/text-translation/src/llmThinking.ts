@@ -3,7 +3,10 @@ import type {
   LlmProvider,
   LlmThinkingLevel,
 } from './contracts';
-import { migrateBuiltInModelPreset } from './providerCatalog';
+import {
+  isAlibabaBailianCompatibleBaseUrl,
+  migrateBuiltInModelPreset,
+} from './providerCatalog';
 
 export type { LlmThinkingLevel } from './contracts';
 
@@ -19,7 +22,10 @@ export type LlmThinkingRequestContext = {
   model: string;
   level: LlmThinkingLevel | undefined;
   useCustomModel?: boolean;
+  baseUrl?: string;
 };
+
+export const ALIBABA_BAILIAN_TRANSLATION_MAX_TOKENS = 2_048;
 
 export function isLlmThinkingLevel(value: unknown): value is LlmThinkingLevel {
   return (
@@ -42,12 +48,19 @@ export function isLlmThinkingConfigurationRejection(options: {
   provider: LlmProvider;
   model: string;
   useCustomModel?: boolean;
+  baseUrl?: string;
   errorDetail: string;
 }): boolean {
   return (
     (options.status === 400 || options.status === 422)
-    && !options.useCustomModel
-    && getLlmThinkingCapability(options.provider, options.model) !== null
+    && (
+      options.provider === 'alibaba'
+      || isAlibabaBailianCompatibleBaseUrl(options.baseUrl)
+      || (
+        !options.useCustomModel
+        && getLlmThinkingCapability(options.provider, options.model) !== null
+      )
+    )
     && isLlmThinkingConfigurationErrorDetail(options.errorDetail)
   );
 }
@@ -276,6 +289,16 @@ export function adaptLlmThinkingChatCompletionRequest(
   body: LlmChatCompletionRequestBody,
   context: LlmThinkingRequestContext,
 ): LlmChatCompletionRequestBody {
+  if (context.provider === 'alibaba' || isAlibabaBailianCompatibleBaseUrl(context.baseUrl)) {
+    const request = { ...body };
+    delete request.reasoning_effort;
+    delete request.reasoning_split;
+    delete request.thinking;
+    request.enable_thinking = false;
+    request.max_tokens = body.max_tokens ?? ALIBABA_BAILIAN_TRANSLATION_MAX_TOKENS;
+    return request;
+  }
+
   if (context.provider === 'custom' || context.useCustomModel) {
     return { ...body };
   }

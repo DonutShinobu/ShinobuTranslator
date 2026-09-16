@@ -3,6 +3,7 @@ import {
   createDefaultLlmThinkingByModel,
   detectBuiltInProviderByBaseUrl,
   getDefaultModelPreset,
+  isAlibabaBailianCompatibleBaseUrl,
   isBuiltInProvider,
   isLlmProvider,
   llmBuiltInProviderDefinitions,
@@ -45,7 +46,9 @@ function createDefaultProviderProfile(provider: LlmProvider): LlmProviderProfile
       modelPreset: getDefaultModelPreset(provider),
       modelCustom: '',
       useCustomModel: false,
-      customBaseUrl: '',
+      customBaseUrl: provider === 'alibaba'
+        ? llmBuiltInProviderDefinitions.alibaba.baseUrl
+        : '',
     };
   }
   return {
@@ -60,6 +63,7 @@ function createDefaultProviderProfile(provider: LlmProvider): LlmProviderProfile
 
 function createDefaultLlmProfiles(): Record<LlmProvider, LlmProviderProfile> {
   return {
+    alibaba: createDefaultProviderProfile('alibaba'),
     deepseek: createDefaultProviderProfile('deepseek'),
     gemini: createDefaultProviderProfile('gemini'),
     glm: createDefaultProviderProfile('glm'),
@@ -319,7 +323,9 @@ function normalizeProviderProfile(
       modelPreset: candidatePreset,
       modelCustom,
       useCustomModel,
-      customBaseUrl: '',
+      customBaseUrl: provider === 'alibaba'
+        ? customBaseUrlInput || (legacy?.llmCustomBaseUrl ?? defaults.customBaseUrl)
+        : '',
     };
   }
 
@@ -342,8 +348,20 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
   const legacyGeminiAppEnabled = raw.imageEngine === 'gemini_app' && raw.geminiAppExperimentalEnabled === true;
   const translator = legacyGeminiAppEnabled || legacyTranslator === 'llm' ? 'llm' : 'google_web';
   const legacyBaseUrl = typeof raw.llmBaseUrl === 'string' ? raw.llmBaseUrl.trim() : '';
+  const rawProfiles = raw.llmProfiles && typeof raw.llmProfiles === 'object' ? (raw.llmProfiles as Record<string, unknown>) : {};
+  const rawCustomProfile = rawProfiles.custom && typeof rawProfiles.custom === 'object'
+    ? rawProfiles.custom as Record<string, unknown>
+    : null;
+  const selectedCustomBaseUrl = normalizeProfileString(
+    rawCustomProfile?.customBaseUrl,
+    typeof raw.llmCustomBaseUrl === 'string' ? raw.llmCustomBaseUrl : legacyBaseUrl,
+  );
+  const migrateSelectedAlibabaCustomProvider = raw.llmProvider === 'custom'
+    && isAlibabaBailianCompatibleBaseUrl(selectedCustomBaseUrl);
   const providerFromBaseUrl = detectBuiltInProviderByBaseUrl(legacyBaseUrl);
-  const provider = raw.llmProvider === 'gemini_api'
+  const provider = migrateSelectedAlibabaCustomProvider
+    ? 'alibaba'
+    : raw.llmProvider === 'gemini_api'
     ? 'gemini'
     : isLlmProvider(raw.llmProvider)
       ? raw.llmProvider
@@ -362,10 +380,13 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     llmApiKey: typeof raw.llmApiKey === 'string' ? raw.llmApiKey.trim() : defaultExtensionSettings.llmProfiles[provider].apiKey,
     llmAuthMode: raw.llmAuthMode,
   };
-  const rawProfiles = raw.llmProfiles && typeof raw.llmProfiles === 'object' ? (raw.llmProfiles as Record<string, unknown>) : {};
   const rawGeminiProfile = rawProfiles.gemini ?? rawProfiles.gemini_api;
+  const rawAlibabaProfile = migrateSelectedAlibabaCustomProvider
+    ? rawProfiles.custom
+    : rawProfiles.alibaba;
 
   const llmProfiles: Record<LlmProvider, LlmProviderProfile> = {
+    alibaba: normalizeProviderProfile('alibaba', rawAlibabaProfile, provider === 'alibaba' ? legacy : null),
     deepseek: normalizeProviderProfile('deepseek', rawProfiles.deepseek, provider === 'deepseek' ? legacy : null),
     gemini: normalizeProviderProfile('gemini', rawGeminiProfile, provider === 'gemini' ? legacy : null),
     glm: normalizeProviderProfile('glm', rawProfiles.glm, provider === 'glm' ? legacy : null),
@@ -418,8 +439,11 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
 
 export function resolveLlmBaseUrl(settings: ExtensionSettings): string {
   const profile = settings.llmProfiles[settings.llmProvider];
-  if (settings.llmProvider === 'custom') {
-    return profile.customBaseUrl.trim();
+  if (settings.llmProvider === 'custom' || settings.llmProvider === 'alibaba') {
+    return profile.customBaseUrl.trim()
+      || (settings.llmProvider === 'alibaba'
+        ? llmBuiltInProviderDefinitions.alibaba.baseUrl
+        : '');
   }
   return llmBuiltInProviderDefinitions[settings.llmProvider].baseUrl;
 }

@@ -63,6 +63,7 @@ export type PipelineHostDependencies = {
   fontSource?: (path: string) => string;
   hostInstanceId?: string;
   idleTimeoutMs?: number;
+  maxConcurrentJobs?: number;
 };
 
 const extensionPipelineHostDiagnostics: DiagnosticLogEmitter = {
@@ -128,19 +129,20 @@ export class PipelineHost {
   private port: ExtensionPort | null = null;
   private readonly jobs = new Map<string, PipelineJob>();
   private readonly queue: PipelineJob[] = [];
-  private activeJob: PipelineJob | null = null;
+  private readonly activeJobs = new Map<string, ImagePipeline>();
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private idleReleasePromise: Promise<void> | null = null;
   private idleGeneration = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
-  private readonly imageRuntime: ImagePipeline;
+  private readonly imageRuntimes: ImagePipeline[];
   private readonly platform: PipelinePlatform;
   private readonly modelRuntime: ModelRuntime;
   private readonly translationTransport: TextTranslationTransport;
   private readonly diagnostics: DiagnosticLogEmitter;
   private readonly hostInstanceId: string;
   private readonly idleTimeoutMs: number;
+  private readonly maxConcurrentJobs: number;
 
   constructor(
     private readonly transport: PipelineHostTransport = new RuntimePipelineHostTransport(),
@@ -154,16 +156,23 @@ export class PipelineHost {
     this.platform = dependencies.platform;
     this.hostInstanceId = dependencies.hostInstanceId ?? createHostInstanceId();
     this.idleTimeoutMs = dependencies.idleTimeoutMs ?? LOCAL_PIPELINE_IDLE_TIMEOUT_MS;
+    this.maxConcurrentJobs = dependencies.maxConcurrentJobs ?? 1;
     if (!Number.isFinite(this.idleTimeoutMs) || this.idleTimeoutMs < 0) {
       throw new RangeError('PipelineHost idleTimeoutMs 必须是非负有限数值');
     }
-    this.imageRuntime = createImagePipeline({
-      platform: dependencies.platform,
-      modelRuntime: this.modelRuntime,
-      detectionFallbackStrategy: { kind: 'heuristic-only' },
-      fontSource: dependencies.fontSource,
-      observer: this.diagnostics,
-    });
+    if (!Number.isInteger(this.maxConcurrentJobs) || this.maxConcurrentJobs < 1) {
+      throw new RangeError('PipelineHost maxConcurrentJobs 必须是正整数');
+    }
+    this.imageRuntimes = Array.from({ length: this.maxConcurrentJobs }, () =>
+      createImagePipeline({
+        platform: dependencies.platform,
+        modelRuntime: this.modelRuntime,
+        detectionFallbackStrategy: { kind: 'heuristic-only' },
+        fontSource: dependencies.fontSource,
+        observer: this.diagnostics,
+        // The host owns the one model runtime shared by all pipeline lanes.
+        disposeModelRuntime: false,
+      }));
     this.emitLifecycleEvent('host-created', '流水线宿主已创建');
   }
 
@@ -212,24 +221,28 @@ export class PipelineHost {
       this.reconnectTimer = null;
     }
     const cancellation = createCancelledError('流水线宿主已关闭');
-    if (this.activeJob) {
-      this.activeJob.cancellationReason = {
+    for (const jobId of this.activeJobs.keys()) {
+      const job = this.jobs.get(jobId);
+      if (!job) continue;
+      job.cancellationReason = {
         code: 'runtime-disposed',
         messageKey: 'pipeline.cancelled.runtimeDisposed',
         diagnosticSummary: cancellation.message,
       };
+      job.abortController.abort(cancellation);
     }
-    this.activeJob?.abortController.abort(cancellation);
     for (const job of this.jobs.values()) {
-      if (job !== this.activeJob) job.abortController.abort(cancellation);
+      if (!this.activeJobs.has(job.id)) job.abortController.abort(cancellation);
     }
     this.queue.length = 0;
     this.jobs.clear();
-    void this.imageRuntime.dispose({
+    const reason = {
       code: 'runtime-disposed',
       messageKey: 'pipeline.cancelled.runtimeDisposed',
       diagnosticSummary: cancellation.message,
-    });
+    } satisfies PipelineCancellationReason;
+    void Promise.all(this.imageRuntimes.map((runtime) => runtime.dispose(reason)))
+      .then(() => this.modelRuntime.dispose());
     const port = this.port;
     this.port = null;
     port?.disconnect();
@@ -270,7 +283,7 @@ export class PipelineHost {
     if (this.jobs.has(message.jobId)) {
       throw createProtocolError(`任务 ID 已存在: ${message.jobId}`);
     }
-    if (this.jobs.size > 0 || this.activeJob) {
+    if (this.jobs.size >= this.maxConcurrentJobs) {
       const error = new Error('流水线宿主正在处理另一张图片') as Error & {
         code: 'RUNTIME_BUSY';
       };
@@ -359,7 +372,7 @@ export class PipelineHost {
       diagnosticSummary: reason || '本地流水线任务已取消',
     };
     const cancellation = new ImagePipelineCancelledError(cancellationReason);
-    if (job === this.activeJob) {
+    if (this.activeJobs.has(job.id)) {
       job.cancellationReason = cancellationReason;
       job.abortController.abort(cancellation);
       return;
@@ -381,26 +394,33 @@ export class PipelineHost {
   }
 
   private async pump(): Promise<void> {
-    if (this.activeJob) return;
     if (this.idleReleasePromise) {
       await this.idleReleasePromise.catch(() => undefined);
-      if (this.activeJob) return;
     }
-    const job = this.queue.shift();
-    if (!job) {
+    while (this.activeJobs.size < this.maxConcurrentJobs) {
+      const job = this.queue.shift();
+      if (!job) break;
+      const runtime = this.imageRuntimes.find((candidate) =>
+        ![...this.activeJobs.values()].includes(candidate));
+      if (!runtime) break;
+      this.activeJobs.set(job.id, runtime);
+      job.state = 'active';
+      this.postQueuePositions();
+      void this.runActiveJob(job, runtime);
+    }
+    if (this.activeJobs.size === 0 && this.queue.length === 0) {
       this.scheduleIdleClose();
-      return;
     }
-    this.activeJob = job;
-    job.state = 'active';
-    this.postQueuePositions();
+  }
+
+  private async runActiveJob(job: PipelineJob, runtime: ImagePipeline): Promise<void> {
     let terminalMessage: PipelineTerminalMessage;
     try {
-      terminalMessage = await this.execute(job);
+      terminalMessage = await this.execute(job, runtime);
     } catch (error) {
       terminalMessage = this.finishJob(job, error);
     }
-    this.activeJob = null;
+    this.activeJobs.delete(job.id);
     this.postQueuePositions();
     const deliveryPort = this.port;
     if (!safelyPost(deliveryPort, terminalMessage) && deliveryPort) {
@@ -409,7 +429,7 @@ export class PipelineHost {
     void this.pump();
   }
 
-  private async execute(job: PipelineJob): Promise<PipelineTerminalMessage> {
+  private async execute(job: PipelineJob, imageRuntime: ImagePipeline): Promise<PipelineTerminalMessage> {
     if (!job.file || !job.operation || (job.operation === 'pipeline' && !job.config)) {
       return this.finishJob(job, createProtocolError('任务缺少图片或流水线配置'));
     }
@@ -426,7 +446,7 @@ export class PipelineHost {
       recordRuntimeEvent: (event) => this.recordRuntimeEvent(job, event),
     });
     const startedAt = performance.now();
-    await this.diagnostics.emitAsync({
+    this.diagnostics.emit({
       runId: job.diagnosticRunId,
       level: 'info',
       category: 'pipeline.stage',
@@ -446,7 +466,7 @@ export class PipelineHost {
     let stopProgress = (): void => undefined;
     let stopCancellation = (): void => undefined;
     try {
-      const task = this.imageRuntime.run({
+      const task = imageRuntime.run({
         source: job.file,
         config,
         workingCopy: { strategy: 'source-native' },
@@ -533,7 +553,7 @@ export class PipelineHost {
       job.state = 'finished';
       this.jobs.delete(job.id);
 
-      await this.diagnostics.emitAsync({
+      this.diagnostics.emit({
         runId: job.diagnosticRunId,
         level: 'info',
         category: 'pipeline.stage',
@@ -553,7 +573,7 @@ export class PipelineHost {
         ? job.abortController.signal.reason ?? createCancelledError()
         : error;
       const terminalMessage = this.finishJob(job, finalError);
-      await this.diagnostics.emitAsync({
+      this.diagnostics.emit({
         runId: job.diagnosticRunId,
         level: 'error',
         category: 'error',
@@ -570,7 +590,7 @@ export class PipelineHost {
     } finally {
       stopCancellation();
       stopProgress();
-      await this.imageRuntime.whenIdle();
+      await imageRuntime.whenIdle();
       removePerfSink();
     }
   }
@@ -664,14 +684,14 @@ export class PipelineHost {
   }
 
   private postQueuePositions(): void {
-    if (this.activeJob) {
-      safelyPost(this.port, { type: 'queued', jobId: this.activeJob.id, position: 0 });
+    for (const jobId of this.activeJobs.keys()) {
+      safelyPost(this.port, { type: 'queued', jobId, position: 0 });
     }
     this.queue.forEach((job, index) => {
       safelyPost(this.port, {
         type: 'queued',
         jobId: job.id,
-        position: index + (this.activeJob ? 1 : 0),
+        position: index + this.activeJobs.size,
       });
     });
   }
@@ -712,14 +732,16 @@ export class PipelineHost {
   private handleDisconnect(port: ExtensionPort): void {
     if (this.port !== port) return;
     this.port = null;
-    if (this.activeJob) {
-      const cancellation = createCancelledError('流水线宿主连接已断开');
-      this.activeJob.cancellationReason = {
+    const cancellation = createCancelledError('流水线宿主连接已断开');
+    for (const jobId of this.activeJobs.keys()) {
+      const job = this.jobs.get(jobId);
+      if (!job) continue;
+      job.cancellationReason = {
         code: 'transport-disconnected',
         messageKey: 'pipeline.cancelled.transportDisconnected',
         diagnosticSummary: cancellation.message,
       };
-      this.activeJob.abortController.abort(cancellation);
+      job.abortController.abort(cancellation);
     }
     for (const job of [...this.queue]) {
       job.abortController.abort(createCancelledError('流水线宿主连接已断开'));
@@ -728,12 +750,12 @@ export class PipelineHost {
     }
     this.queue.length = 0;
     for (const job of this.jobs.values()) {
-      if (job !== this.activeJob) {
+      if (!this.activeJobs.has(job.id)) {
         job.state = 'finished';
       }
     }
     for (const [jobId, job] of this.jobs) {
-      if (job !== this.activeJob) this.jobs.delete(jobId);
+      if (!this.activeJobs.has(job.id)) this.jobs.delete(jobId);
     }
     if (!this.disposed && this.transport.reconnectOnDisconnect) {
       this.reconnectTimer = setTimeout(() => this.connect(), 250);
@@ -748,7 +770,7 @@ export class PipelineHost {
 
   private scheduleIdleClose(): void {
     this.clearIdleClose();
-    if (this.disposed || this.activeJob || this.queue.length > 0 || this.jobs.size > 0) return;
+    if (this.disposed || this.activeJobs.size > 0 || this.queue.length > 0 || this.jobs.size > 0) return;
     const generation = this.idleGeneration;
     this.idleTimer = setTimeout(() => {
       void this.releaseIdleResources(generation);
@@ -756,7 +778,7 @@ export class PipelineHost {
   }
 
   private async releaseIdleResources(generation: number): Promise<void> {
-    if (generation !== this.idleGeneration || this.activeJob || this.jobs.size > 0) return;
+    if (generation !== this.idleGeneration || this.activeJobs.size > 0 || this.jobs.size > 0) return;
     const releasePromise = this.modelRuntime.dispose();
     this.idleReleasePromise = releasePromise;
     try {
@@ -785,7 +807,7 @@ export class PipelineHost {
         this.idleReleasePromise = null;
       }
     }
-    if (generation === this.idleGeneration && !this.activeJob && this.jobs.size === 0) {
+    if (generation === this.idleGeneration && this.activeJobs.size === 0 && this.jobs.size === 0) {
       this.emitLifecycleEvent('idle-close-requested', '流水线宿主请求关闭空闲宿主');
       safelyPost(this.port, {
         type: 'idle-close',

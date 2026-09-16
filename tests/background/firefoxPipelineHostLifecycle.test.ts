@@ -316,7 +316,7 @@ describe('FirefoxPipelineHostLifecycle', () => {
       expect(responses).toContainEqual({ type: 'complete', jobId: 'firefox-translate' });
     });
     expect(requestChatCompletion).toHaveBeenCalledOnce();
-    expect(emitDiagnosticLogAsync).toHaveBeenCalledWith(expect.objectContaining({
+    expect(emitDiagnosticLog).toHaveBeenCalledWith(expect.objectContaining({
       runId: 'run-firefox-translate',
       source: { context: 'pipeline-host', module: 'pipelineHost.ts' },
     }));
@@ -326,7 +326,7 @@ describe('FirefoxPipelineHostLifecycle', () => {
     await lifecycle.closeHost();
   });
 
-  it('waits for host cleanup before admitting the next image', async () => {
+  it('does not hold the next image or result delivery behind diagnostic persistence', async () => {
     const api: ExtensionBrowserApi = {
       runtime: {
         getURL: (path) => `moz-extension://test/${path}`,
@@ -346,7 +346,7 @@ describe('FirefoxPipelineHostLifecycle', () => {
     const lifecycle = new FirefoxPipelineHostLifecycle({
       ...createRuntimeDependencies(),
       diagnostics: {
-        emit: vi.fn(),
+        emit: (event) => { void emitDiagnosticLogAsync(event); },
         emitAsync: emitDiagnosticLogAsync,
       },
     });
@@ -376,8 +376,6 @@ describe('FirefoxPipelineHostLifecycle', () => {
       transferImageJob(firstContentClient, 'first-image');
       transferImageJob(secondContentClient, 'second-image');
       await finishLogStarted.promise;
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-      releaseFinishLog.resolve();
 
       await vi.waitFor(() => {
         expect(firstResponses).toContainEqual({ type: 'complete', jobId: 'first-image' });

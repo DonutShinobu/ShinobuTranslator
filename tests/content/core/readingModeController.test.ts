@@ -102,6 +102,7 @@ function arbitrate(execution: ImageTranslationExecutionModule) {
 
 function createThreePageBatchScenario(
   runLocalPipeline: NonNullable<ImageTranslationExecutionDependencies['runLocalPipeline']>,
+  pageCount = 3,
 ) {
   vi.stubGlobal('document', {
     querySelector: vi.fn(() => null),
@@ -111,11 +112,11 @@ function createThreePageBatchScenario(
     requestAnimationFrame: vi.fn(() => 1),
     cancelAnimationFrame: vi.fn(),
   });
-  const pages = [
-    { key: 'page-1', originalUrl: 'https://cdn.example/page-1.jpg', pageIndex: 0 },
-    { key: 'page-2', originalUrl: 'https://cdn.example/page-2.jpg', pageIndex: 1 },
-    { key: 'page-3', originalUrl: 'https://cdn.example/page-3.jpg', pageIndex: 2 },
-  ];
+  const pages = Array.from({ length: pageCount }, (_, pageIndex) => ({
+    key: `page-${pageIndex + 1}`,
+    originalUrl: `https://cdn.example/page-${pageIndex + 1}.jpg`,
+    pageIndex,
+  }));
   const adapter: SiteAdapter = {
     match: () => true,
     findImages: () => [],
@@ -498,21 +499,29 @@ describe('ReadingModeController', () => {
   });
 
   it('stops admitting pages after a runtime-scoped pipeline failure', async () => {
+    const pendingResolvers: Array<(result: LocalPipelineResult) => void> = [];
     const runLocalPipeline = vi.fn(async () => {
-      if (runLocalPipeline.mock.calls.length === 1) return localResult();
-      throw Object.assign(new Error('pipeline host unavailable'), {
-        code: 'PIPELINE_HOST_UNAVAILABLE',
+      if (runLocalPipeline.mock.calls.length === 2) {
+        throw Object.assign(new Error('pipeline host unavailable'), {
+          code: 'PIPELINE_HOST_UNAVAILABLE',
+        });
+      }
+      return new Promise<LocalPipelineResult>((resolve) => {
+        pendingResolvers.push(resolve);
       });
     });
-    const { bar, controller, downloadImage } = createThreePageBatchScenario(runLocalPipeline);
+    const { bar, controller, downloadImage } = createThreePageBatchScenario(runLocalPipeline, 4);
 
     controller.sync();
     bar.all.click?.();
 
+    await vi.waitFor(() => expect(runLocalPipeline).toHaveBeenCalledTimes(3));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    pendingResolvers.forEach((resolve) => resolve(localResult()));
     await vi.waitFor(() => expect(bar.all.disabled).toBe(false));
-    expect(runLocalPipeline).toHaveBeenCalledTimes(2);
-    expect(downloadImage).toHaveBeenCalledTimes(2);
-    expect(bar.error.textContent).toBe('已完成 1/3：流水线运行环境不可用，请检查设置后重试');
+    expect(runLocalPipeline).toHaveBeenCalledTimes(3);
+    expect(downloadImage).toHaveBeenCalledTimes(3);
+    expect(bar.error.textContent).toBe('已完成 0/4：流水线运行环境不可用，请检查设置后重试');
     expect(bar.error.dataset.variant).toBe('error');
   });
 
@@ -723,6 +732,8 @@ describe('ReadingModeController', () => {
     const pages = [
       { key: 'page-1', originalUrl: 'https://cdn.example/page-1.jpg', pageIndex: 0 },
       { key: 'page-2', originalUrl: 'https://cdn.example/page-2.jpg', pageIndex: 1 },
+      { key: 'page-3', originalUrl: 'https://cdn.example/page-3.jpg', pageIndex: 2 },
+      { key: 'page-4', originalUrl: 'https://cdn.example/page-4.jpg', pageIndex: 3 },
     ];
     let readingContextKey = 'artwork-1';
     const adapter: SiteAdapter = {
@@ -743,15 +754,15 @@ describe('ReadingModeController', () => {
       file: new File([source], 'source.png', { type: source.type }),
     }));
     let pipelineSignal: AbortSignal | undefined;
-    let resolveFirst!: (result: LocalPipelineResult) => void;
+    const pendingResolvers: Array<(result: LocalPipelineResult) => void> = [];
     const executionModule = createImageTranslationExecutionModule({
       prepareExecution: prepareExecutionFromSettings(),
       downloadImage,
       runLocalPipeline: (_file, _config, _onProgress, options) => {
         pipelineSignal = options?.signal;
-        if (!resolveFirst) {
+        if (pendingResolvers.length < 3) {
           return new Promise<LocalPipelineResult>((resolve) => {
-            resolveFirst = resolve;
+            pendingResolvers.push(resolve);
           });
         }
         return Promise.resolve(localResult());
@@ -770,21 +781,23 @@ describe('ReadingModeController', () => {
 
     controller.sync();
     bar.all.click?.();
-    await vi.waitFor(() => expect(pipelineSignal).toBeDefined());
+    await vi.waitFor(() => expect(pendingResolvers).toHaveLength(3));
 
     const replacement = executionArbiter.begin();
     expect(pipelineSignal?.aborted).toBe(false);
 
     readingContextKey = 'artwork-2';
     controller.sync();
-    resolveFirst(localResult());
+    pendingResolvers.forEach((resolve) => resolve(localResult()));
     await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(downloadImage).toHaveBeenCalledOnce();
+    // The three admitted lanes may finish while the reading DOM is suspended,
+    // but no fourth page should start before the original context resumes.
+    expect(downloadImage).toHaveBeenCalledTimes(3);
     expect(pipelineSignal?.aborted).toBe(false);
 
     readingContextKey = 'artwork-1';
     controller.sync();
-    await vi.waitFor(() => expect(downloadImage).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(downloadImage).toHaveBeenCalledTimes(4));
     await vi.waitFor(() => expect(bar.all.disabled).toBe(false));
 
     expect(pipelineSignal?.aborted).toBe(false);

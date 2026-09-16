@@ -183,7 +183,7 @@ describe('built-in LLM thinking capabilities', () => {
   it('requires every built-in text model to have one exact capability definition', () => {
     const catalogKeys = Object.entries(llmBuiltInProviderDefinitions)
       .flatMap(([provider, definition]) => (
-        provider === 'gemini'
+        provider === 'gemini' || provider === 'alibaba'
           ? []
           : definition.models.map((model) => `${provider}/${model}`)
       ))
@@ -315,6 +315,73 @@ describe('built-in LLM thinking capabilities', () => {
       model: 'deepseek-custom',
       level: undefined,
       useCustomModel: true,
+    })).toEqual(body);
+  });
+
+  it.each([
+    'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/',
+    'https://ws-example.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
+  ])('disables thinking and caps output for every Alibaba Bailian model at %s', (baseUrl) => {
+    const body = {
+      model: 'any-model-name',
+      messages: [{ role: 'user' as const, content: 'translate' }],
+      response_format: { type: 'json_object' as const },
+      reasoning_effort: 'max' as const,
+      thinking: { type: 'enabled' as const },
+    };
+
+    expect(adaptLlmThinkingChatCompletionRequest(body, {
+      provider: 'custom',
+      model: body.model,
+      level: undefined,
+      useCustomModel: true,
+      baseUrl,
+    })).toEqual({
+      model: body.model,
+      messages: body.messages,
+      response_format: body.response_format,
+      enable_thinking: false,
+      max_tokens: 2_048,
+    });
+  });
+
+  it('enforces the non-thinking translation policy for the dedicated Alibaba provider', () => {
+    expect(adaptLlmThinkingChatCompletionRequest({
+      model: 'custom-bailian-model',
+      messages: [],
+      reasoning_effort: 'high',
+    }, {
+      provider: 'alibaba',
+      model: 'custom-bailian-model',
+      level: undefined,
+      useCustomModel: true,
+    })).toEqual({
+      model: 'custom-bailian-model',
+      messages: [],
+      enable_thinking: false,
+      max_tokens: 2_048,
+    });
+  });
+
+  it('preserves an explicit smaller Alibaba output cap and ignores lookalike hosts', () => {
+    const body = {
+      model: 'deepseek-v4-pro',
+      messages: [{ role: 'user' as const, content: 'translate' }],
+      max_tokens: 1_024,
+    };
+
+    expect(adaptLlmThinkingChatCompletionRequest(body, {
+      provider: 'custom',
+      model: body.model,
+      level: undefined,
+      baseUrl: 'https://workspace.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1',
+    })).toMatchObject({ enable_thinking: false, max_tokens: 1_024 });
+    expect(adaptLlmThinkingChatCompletionRequest(body, {
+      provider: 'custom',
+      model: body.model,
+      level: undefined,
+      baseUrl: 'https://maas.aliyuncs.com.example.com/compatible-mode/v1',
     })).toEqual(body);
   });
 });

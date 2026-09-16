@@ -90,7 +90,7 @@ function transferJob(client: FakePort, jobId: string, data = 'YQ=='): void {
   client.emitMessage({ type: 'input-complete', jobId });
 }
 
-function createHarness(diagnostics?: DiagnosticLogEmitter): {
+function createHarness(diagnostics?: DiagnosticLogEmitter, maxConcurrentJobs = 1): {
   broker: PipelineHostBroker;
   host: FakePort;
   createDocument: ReturnType<typeof vi.fn>;
@@ -115,7 +115,7 @@ function createHarness(diagnostics?: DiagnosticLogEmitter): {
       closeDocument,
     },
   };
-  broker = new PipelineHostBroker(chromeApi, undefined, diagnostics);
+  broker = new PipelineHostBroker(chromeApi, undefined, diagnostics, maxConcurrentJobs);
   return { broker, host, createDocument, closeDocument };
 }
 
@@ -200,6 +200,36 @@ describe('PipelineHostBroker', () => {
       { type: 'input-complete', jobId: 'job-1' },
       { type: 'input-complete', jobId: 'job-2' },
     ]);
+  });
+
+  it('admits two jobs and keeps later work queued when configured for two lanes', async () => {
+    const { broker, host } = createHarness(undefined, 2);
+    const clients = Array.from({ length: 3 }, () => new FakePort(LOCAL_PIPELINE_CLIENT_PORT));
+    clients.forEach((client) => broker.handlePort(client));
+    clients.forEach((client, index) => {
+      client.emitMessage({ type: 'prepare', jobId: `job-${index + 1}` });
+    });
+    await vi.waitFor(() => expect(clients[2]!.sent).toContainEqual({
+      type: 'ready',
+      jobId: 'job-3',
+    }));
+
+    clients.forEach((client, index) => transferJob(client, `job-${index + 1}`));
+
+    expect(host.sent).toContainEqual({ type: 'input-complete', jobId: 'job-1' });
+    expect(host.sent).toContainEqual({ type: 'input-complete', jobId: 'job-2' });
+    expect(host.sent).not.toContainEqual({ type: 'input-complete', jobId: 'job-3' });
+    expect(broker.getLifecycleSnapshot().activeJobCount).toBe(2);
+    expect(clients[2]!.sent).toContainEqual({
+      type: 'queued',
+      jobId: 'job-3',
+      position: 2,
+    });
+
+    host.emitMessage({ type: 'complete', jobId: 'job-1' });
+
+    expect(host.sent).toContainEqual({ type: 'input-complete', jobId: 'job-3' });
+    expect(broker.getLifecycleSnapshot().activeJobCount).toBe(2);
   });
 
   it('forwards detection-only jobs and their reusable artifacts', async () => {

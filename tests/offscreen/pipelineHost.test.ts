@@ -234,6 +234,33 @@ describe('PipelineHost single-task admission', () => {
     }));
   });
 
+  it('runs two jobs concurrently when the host is configured with two lanes', async () => {
+    const first = deferred<PipelineArtifacts>();
+    const second = deferred<PipelineArtifacts>();
+    mocks.runPipeline
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise);
+    const host = createHost({ maxConcurrentJobs: 2 });
+    host.connect();
+
+    sendImageJob(port, 'job-1');
+    sendImageJob(port, 'job-2');
+
+    await vi.waitFor(() => expect(mocks.runPipeline).toHaveBeenCalledTimes(2));
+    expect(port.sent).not.toContainEqual(expect.objectContaining({
+      type: 'error',
+      error: expect.objectContaining({ code: 'RUNTIME_BUSY' }),
+    }));
+
+    first.resolve(artifacts());
+    second.resolve(artifacts());
+
+    await vi.waitFor(() => {
+      expect(port.sent).toContainEqual({ type: 'complete', jobId: 'job-1' });
+      expect(port.sent).toContainEqual({ type: 'complete', jobId: 'job-2' });
+    });
+  });
+
   it('executes a detection-only job and returns the packed reusable artifact', async () => {
     mocks.blobToBase64.mockResolvedValueOnce('AQ==');
     mocks.probeTextDetection.mockResolvedValueOnce({

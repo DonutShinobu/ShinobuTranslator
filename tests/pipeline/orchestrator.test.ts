@@ -8,6 +8,9 @@ import type { PipelineConfig, PipelineProgress, TextRegion } from '../../package
 import type { ModelRuntime } from '@shinobu/model-runtime';
 import type { TextTranslator } from '@shinobu/text-translation';
 import { createImagePipeline } from '../../packages/image-pipeline/src';
+import { isLocalPipelineClientMessage } from '@shinobu/image-pipeline/protocol';
+import { llmProviderOptions } from '@shinobu/text-translation';
+import { normalizeSettings, toPipelineConfig } from '../../apps/extension/src/shared/config';
 
 const pipelineMocks = vi.hoisted(() => ({
   fileToImage: vi.fn(),
@@ -246,6 +249,49 @@ beforeEach(() => {
 });
 
 describe('runPipeline', () => {
+  it.each(llmProviderOptions.filter(({ value }) => value !== 'gemini'))(
+    'admits the popup configuration for $label through the image pipeline and returns a translated image',
+    async ({ value: provider }) => {
+      const config = toPipelineConfig(normalizeSettings({
+        translator: 'llm',
+        llmProvider: provider,
+        llmProfiles: {
+          alibaba: {
+            modelPreset: 'deepseek-v4-pro',
+            customBaseUrl: 'https://ws-example.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
+          },
+          custom: { modelCustom: 'test-model', customBaseUrl: 'https://example.com/v1' },
+        },
+      }));
+      const source = createFile();
+      expect(isLocalPipelineClientMessage({
+        type: 'start',
+        jobId: 'provider-admission-test',
+        file: { name: source.name, size: source.size, type: source.type, lastModified: source.lastModified },
+        config,
+        input: { chunkCount: 1, totalChars: 12 },
+      })).toBe(true);
+      const pipeline = createImagePipeline({
+        platform: pipelineMocks.browserPlatform as PlatformProvider,
+        modelRuntime,
+        detectionFallbackStrategy: { kind: 'heuristic-only' },
+      });
+      try {
+        const result = await pipeline.run({
+          source,
+          config,
+          workingCopy: { strategy: 'source-native' },
+        }, { textTranslator }).result;
+        expect(pipelineMocks.runTranslate).toHaveBeenCalledOnce();
+        expect(pipelineMocks.drawTypeset.mock.calls[0][1]).toEqual([translatedRegion]);
+        expect(result.status).toBe('completed');
+        expect(await result.image.text()).toBe('platform-png');
+      } finally {
+        await pipeline.dispose();
+      }
+    },
+  );
+
   it('reuses a precomputed detection instead of invoking the detector again', async () => {
     const precomputedDetection = {
       width: 100,

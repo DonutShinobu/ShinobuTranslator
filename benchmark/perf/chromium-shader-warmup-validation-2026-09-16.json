@@ -1,0 +1,247 @@
+[
+  {
+    "mode": "final",
+    "round": 0,
+    "variant": "baseline",
+    "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T15-21-47-280Z.json",
+    "totalMs": 4794.8,
+    "worker": {
+      "samples": 569,
+      "maxDeltaMs": 118.8,
+      "p95DeltaMs": 12.5,
+      "over33Count": 16,
+      "over50Count": 9,
+      "over100Count": 1,
+      "longestSlowStreak": 1,
+      "available": true,
+      "mode": "worker-raf"
+    },
+    "preloadMs": 561.4,
+    "image": {
+      "width": 2921,
+      "height": 4096,
+      "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+    },
+    "trace": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-trace-1789572110612.json",
+    "pipeline": {
+      "CompileShaderDXC": {
+        "count": 111,
+        "totalMs": 1172.4319999999996
+      },
+      "DeviceBase::APICreateComputePipeline": {
+        "count": 124,
+        "totalMs": 1254.8809999999994
+      }
+    },
+    "dxcThreads": {
+      "CrGpuMain": 111
+    }
+  },
+  {
+    "mode": "final",
+    "round": 0,
+    "variant": "optimized",
+    "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T15-21-56-776Z.json",
+    "totalMs": 3847.7,
+    "worker": {
+      "samples": 558,
+      "maxDeltaMs": 43.8,
+      "p95DeltaMs": 6.4,
+      "over33Count": 2,
+      "over50Count": 0,
+      "over100Count": 0,
+      "longestSlowStreak": 1,
+      "available": true,
+      "mode": "worker-raf"
+    },
+    "preloadMs": 580.7,
+    "image": {
+      "width": 2921,
+      "height": 4096,
+      "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+    },
+    "trace": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-trace-1789572120107.json",
+    "pipeline": {
+      "DeviceBase::APICreateComputePipelineAsync": {
+        "count": 108,
+        "totalMs": 4.476000000000002
+      },
+      "CompileShaderDXC": {
+        "count": 111,
+        "totalMs": 1249.4039999999998
+      },
+      "DeviceBase::APICreateComputePipeline": {
+        "count": 124,
+        "totalMs": 19.979000000000006
+      }
+    },
+    "dxcThreads": {
+      "ThreadPoolForegroundWorker": 108,
+      "CrGpuMain": 3
+    }
+  },
+  {
+    "mode": "final",
+    "round": 1,
+    "variant": "baseline",
+    "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T15-22-13-748Z.json",
+    "totalMs": 4773.9,
+    "worker": {
+      "samples": 565,
+      "maxDeltaMs": 118.8,
+      "p95DeltaMs": 12.5,
+      "over33Count": 16,
+      "over50Count": 9,
+      "over100Count": 1,
+      "longestSlowStreak": 1,
+      "available": true,
+      "mode": "worker-raf"
+    },
+    "preloadMs": 579.6,
+    "image": {
+      "width": 2921,
+      "height": 4096,
+      "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+    }
+  },
+  {
+    "mode": "final",
+    "round": 1,
+    "variant": "optimized",
+    "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T15-22-06-006Z.json",
+    "totalMs": 3730.2,
+    "worker": {
+      "samples": 557,
+      "maxDeltaMs": 56.3,
+      "p95DeltaMs": 6.4,
+      "over33Count": 3,
+      "over50Count": 1,
+      "over100Count": 0,
+      "longestSlowStreak": 1,
+      "available": true,
+      "mode": "worker-raf"
+    },
+    "preloadMs": 576.8,
+    "image": {
+      "width": 2921,
+      "height": 4096,
+      "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+    }
+  },
+  {
+    "mode": "final",
+    "round": 2,
+    "variant": "baseline",
+    "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T15-22-21-430Z.json",
+    "totalMs": 4857.7,
+    "worker": {
+      "samples": 579,
+      "maxDeltaMs": 118.7,
+      "p95DeltaMs": 12.5,
+      "over33Count": 17,
+      "over50Count": 8,
+      "over100Count": 1,
+      "longestSlowStreak": 1,
+      "available": true,
+      "mode": "worker-raf"
+    },
+    "preloadMs": 565.9,
+    "image": {
+      "width": 2921,
+      "height": 4096,
+      "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+    }
+  },
+  {
+    "mode": "final",
+    "round": 2,
+    "variant": "optimized",
+    "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T15-22-27-823Z.json",
+    "totalMs": 3575.5,
+    "worker": {
+      "samples": 510,
+      "maxDeltaMs": 50,
+      "p95DeltaMs": 6.4,
+      "over33Count": 3,
+      "over50Count": 0,
+      "over100Count": 0,
+      "longestSlowStreak": 1,
+      "available": true,
+      "mode": "worker-raf"
+    },
+    "preloadMs": 596.5,
+    "image": {
+      "width": 2921,
+      "height": 4096,
+      "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+    }
+  },
+  {
+    "mode": "native",
+    "round": 0,
+    "variant": "baseline",
+    "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T15-22-42-712Z.json",
+    "totalMs": 3449.4,
+    "worker": {
+      "samples": 500,
+      "maxDeltaMs": 50,
+      "p95DeltaMs": 6.4,
+      "over33Count": 2,
+      "over50Count": 0,
+      "over100Count": 0,
+      "longestSlowStreak": 1,
+      "available": true,
+      "mode": "worker-raf"
+    },
+    "preloadMs": 561.4,
+    "image": {
+      "width": 2921,
+      "height": 4096,
+      "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+    },
+    "trace": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-trace-1789572165909.json",
+    "pipeline": {
+      "DeviceBase::APICreateComputePipeline": {
+        "count": 124,
+        "totalMs": 44.56400000000002
+      }
+    },
+    "dxcThreads": {}
+  },
+  {
+    "mode": "native",
+    "round": 0,
+    "variant": "optimized",
+    "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T15-22-51-673Z.json",
+    "totalMs": 3511.6,
+    "worker": {
+      "samples": 534,
+      "maxDeltaMs": 56.2,
+      "p95DeltaMs": 6.4,
+      "over33Count": 2,
+      "over50Count": 1,
+      "over100Count": 0,
+      "longestSlowStreak": 1,
+      "available": true,
+      "mode": "worker-raf"
+    },
+    "preloadMs": 568.6,
+    "image": {
+      "width": 2921,
+      "height": 4096,
+      "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+    },
+    "trace": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-trace-1789572174961.json",
+    "pipeline": {
+      "DeviceBase::APICreateComputePipelineAsync": {
+        "count": 108,
+        "totalMs": 2.6409999999999996
+      },
+      "DeviceBase::APICreateComputePipeline": {
+        "count": 124,
+        "totalMs": 11.827000000000004
+      }
+    },
+    "dxcThreads": {}
+  }
+]

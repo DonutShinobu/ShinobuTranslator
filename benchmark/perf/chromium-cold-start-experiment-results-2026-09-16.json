@@ -1,0 +1,1782 @@
+{
+  "createdAt": "2026-09-16T14:57:46.672Z",
+  "workerRestored": true,
+  "groups": [
+    {
+      "id": "1789569928165",
+      "workerSha256": "d2032f27f3e64b9e095dd7a9d5ea9b9193bfbb29b0f7c9d27d2ebe9b093b0c9b",
+      "samples": [
+        {
+          "variant": "baseline",
+          "round": 0,
+          "runIndex": 0,
+          "totalMs": 5031.9,
+          "preloadMs": 747.5,
+          "workerMaxMs": 118.7,
+          "workerOver50": 9,
+          "cpuBusyPercent": 57.98522739847294,
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-45-34-914Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "baseline",
+          "round": 0,
+          "runIndex": 1,
+          "totalMs": 1963.4,
+          "preloadMs": 1.4,
+          "workerMaxMs": 18.8,
+          "workerOver50": 0,
+          "cpuBusyPercent": 55.52594171997157,
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-45-37-188Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "dispatch1",
+          "round": 0,
+          "runIndex": 0,
+          "totalMs": 5244.5,
+          "preloadMs": 753,
+          "workerMaxMs": 62.5,
+          "workerOver50": 2,
+          "cpuBusyPercent": 49.64857840016974,
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-45-44-491Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "dispatch1",
+          "round": 0,
+          "runIndex": 1,
+          "totalMs": 2008.1,
+          "preloadMs": 0.9,
+          "workerMaxMs": 25,
+          "workerOver50": 0,
+          "cpuBusyPercent": 32.73447544914342,
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-45-46-799Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "threads1",
+          "round": 0,
+          "runIndex": 0,
+          "totalMs": 4896.9,
+          "preloadMs": 742.2,
+          "workerMaxMs": 125,
+          "workerOver50": 9,
+          "cpuBusyPercent": 35.10803579135138,
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-45-53-617Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "threads1",
+          "round": 0,
+          "runIndex": 1,
+          "totalMs": 1945.7,
+          "preloadMs": 1.3,
+          "workerMaxMs": 18.8,
+          "workerOver50": 0,
+          "cpuBusyPercent": 24.667485904293773,
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-45-55-881Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "async4",
+          "round": 0,
+          "runIndex": 0,
+          "totalMs": 4198.5,
+          "preloadMs": 1119.7,
+          "workerMaxMs": 56.3,
+          "workerOver50": 1,
+          "cpuBusyPercent": 36.06239770184053,
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-46-02-011Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 369.29999999701977
+            }
+          ]
+        },
+        {
+          "variant": "async4",
+          "round": 0,
+          "runIndex": 1,
+          "totalMs": 1934.8,
+          "preloadMs": 0.9,
+          "workerMaxMs": 18.8,
+          "workerOver50": 0,
+          "cpuBusyPercent": 32.7920072661217,
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-46-04-261Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 369.29999999701977
+            }
+          ]
+        },
+        {
+          "variant": "async16",
+          "round": 0,
+          "runIndex": 0,
+          "totalMs": 4596.2,
+          "preloadMs": 949.7,
+          "workerMaxMs": 62.5,
+          "workerOver50": 2,
+          "cpuBusyPercent": 36.0346196116742,
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-46-10-835Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 183.3999999910593
+            }
+          ]
+        },
+        {
+          "variant": "async16",
+          "round": 0,
+          "runIndex": 1,
+          "totalMs": 2811.2,
+          "preloadMs": 0.9,
+          "workerMaxMs": 37.6,
+          "workerOver50": 0,
+          "cpuBusyPercent": 25.69251209546013,
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-46-13-976Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 183.3999999910593
+            }
+          ]
+        },
+        {
+          "variant": "async16",
+          "round": 1,
+          "runIndex": 0,
+          "totalMs": 4671.9,
+          "preloadMs": 955.7,
+          "workerMaxMs": 62.5,
+          "workerOver50": 2,
+          "cpuBusyPercent": 59.78731960144765,
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-46-20-690Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 200.29999999701977
+            }
+          ]
+        },
+        {
+          "variant": "async16",
+          "round": 1,
+          "runIndex": 1,
+          "totalMs": 2893.3,
+          "preloadMs": 1.2,
+          "workerMaxMs": 37.5,
+          "workerOver50": 0,
+          "cpuBusyPercent": 43.41536095357108,
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-46-23-972Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 200.29999999701977
+            }
+          ]
+        },
+        {
+          "variant": "async4",
+          "round": 1,
+          "runIndex": 0,
+          "totalMs": 4552,
+          "preloadMs": 1124.6,
+          "workerMaxMs": 68.7,
+          "workerOver50": 2,
+          "cpuBusyPercent": 49.15365377577162,
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-46-30-443Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 361.29999999701977
+            }
+          ]
+        },
+        {
+          "variant": "async4",
+          "round": 1,
+          "runIndex": 1,
+          "totalMs": 2096.8,
+          "preloadMs": 0.7,
+          "workerMaxMs": 18.7,
+          "workerOver50": 0,
+          "cpuBusyPercent": 35.548350436206846,
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-46-32-845Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 361.29999999701977
+            }
+          ]
+        },
+        {
+          "variant": "threads1",
+          "round": 1,
+          "runIndex": 0,
+          "totalMs": 4888.1,
+          "preloadMs": 752.8,
+          "workerMaxMs": 118.7,
+          "workerOver50": 11,
+          "cpuBusyPercent": 36.1750021644397,
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-46-39-716Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "threads1",
+          "round": 1,
+          "runIndex": 1,
+          "totalMs": 1886.3,
+          "preloadMs": 0.9,
+          "workerMaxMs": 18.7,
+          "workerOver50": 0,
+          "cpuBusyPercent": 27.852199151596334,
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-46-41-921Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "dispatch1",
+          "round": 1,
+          "runIndex": 0,
+          "totalMs": 5884.1,
+          "preloadMs": 770.4,
+          "workerMaxMs": 62.6,
+          "workerOver50": 1,
+          "cpuBusyPercent": 30.339025585258305,
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-46-49-775Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "dispatch1",
+          "round": 1,
+          "runIndex": 1,
+          "totalMs": 2538.5,
+          "preloadMs": 0.8,
+          "workerMaxMs": 18.9,
+          "workerOver50": 0,
+          "cpuBusyPercent": 29.34858224114423,
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-46-52-610Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "baseline",
+          "round": 1,
+          "runIndex": 0,
+          "totalMs": 5427.7,
+          "preloadMs": 740.7,
+          "workerMaxMs": 131.3,
+          "workerOver50": 10,
+          "cpuBusyPercent": 27.755879988590102,
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-47-00-135Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "baseline",
+          "round": 1,
+          "runIndex": 1,
+          "totalMs": 2231.8,
+          "preloadMs": 0.7,
+          "workerMaxMs": 25,
+          "workerOver50": 0,
+          "cpuBusyPercent": 21.104449353108233,
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-47-02-688Z.json",
+          "precompile": []
+        }
+      ],
+      "summaries": [
+        {
+          "variant": "baseline",
+          "n": 2,
+          "coldMedianMs": 5229.799999999999,
+          "warmMedianMs": 2097.6000000000004,
+          "preloadMedianMs": 744.1,
+          "workerMaxMedianMs": 125,
+          "workerOver50Median": 9.5
+        },
+        {
+          "variant": "dispatch1",
+          "n": 2,
+          "coldMedianMs": 5564.3,
+          "warmMedianMs": 2273.3,
+          "preloadMedianMs": 761.7,
+          "workerMaxMedianMs": 62.55,
+          "workerOver50Median": 1.5
+        },
+        {
+          "variant": "threads1",
+          "n": 2,
+          "coldMedianMs": 4892.5,
+          "warmMedianMs": 1916,
+          "preloadMedianMs": 747.5,
+          "workerMaxMedianMs": 121.85,
+          "workerOver50Median": 10
+        },
+        {
+          "variant": "async4",
+          "n": 2,
+          "coldMedianMs": 4375.25,
+          "warmMedianMs": 2015.8000000000002,
+          "preloadMedianMs": 1122.15,
+          "workerMaxMedianMs": 62.5,
+          "workerOver50Median": 1.5
+        },
+        {
+          "variant": "async16",
+          "n": 2,
+          "coldMedianMs": 4634.049999999999,
+          "warmMedianMs": 2852.25,
+          "preloadMedianMs": 952.7,
+          "workerMaxMedianMs": 62.5,
+          "workerOver50Median": 2
+        }
+      ]
+    },
+    {
+      "id": "1789570042914",
+      "workerSha256": "d2032f27f3e64b9e095dd7a9d5ea9b9193bfbb29b0f7c9d27d2ebe9b093b0c9b",
+      "samples": [
+        {
+          "variant": "baseline",
+          "round": 0,
+          "runIndex": 0,
+          "totalMs": 5488.6,
+          "preloadMs": 761.7,
+          "workerMaxMs": 118.9,
+          "workerOver50": 10,
+          "cpuBusyPercent": 31.605727435438503,
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-47-30-811Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "baseline",
+          "round": 0,
+          "runIndex": 1,
+          "totalMs": 2237.3,
+          "preloadMs": 0.8,
+          "workerMaxMs": 25.1,
+          "workerOver50": 0,
+          "cpuBusyPercent": 30.325964074864963,
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-47-33-654Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "dispatch4",
+          "round": 0,
+          "runIndex": 0,
+          "totalMs": 5596.4,
+          "preloadMs": 759.2,
+          "workerMaxMs": 62.5,
+          "workerOver50": 3,
+          "cpuBusyPercent": 32.55813953488372,
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-47-41-797Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "dispatch4",
+          "round": 0,
+          "runIndex": 1,
+          "totalMs": 2151.7,
+          "preloadMs": 2,
+          "workerMaxMs": 18.9,
+          "workerOver50": 0,
+          "cpuBusyPercent": 25.003271823059812,
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-47-44-565Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "async4",
+          "round": 0,
+          "runIndex": 0,
+          "totalMs": 4651.3,
+          "preloadMs": 1176.5,
+          "workerMaxMs": 62.4,
+          "workerOver50": 2,
+          "cpuBusyPercent": 39.93590607544514,
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-47-51-752Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 380.29999999701977
+            }
+          ]
+        },
+        {
+          "variant": "async4",
+          "round": 0,
+          "runIndex": 1,
+          "totalMs": 1969.4,
+          "preloadMs": 0.7,
+          "workerMaxMs": 18.7,
+          "workerOver50": 0,
+          "cpuBusyPercent": 48.40528634361233,
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-47-54-426Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 380.29999999701977
+            }
+          ]
+        },
+        {
+          "variant": "async4",
+          "round": 1,
+          "runIndex": 0,
+          "totalMs": 4444.6,
+          "preloadMs": 1157.2,
+          "workerMaxMs": 68.6,
+          "workerOver50": 2,
+          "cpuBusyPercent": 59.98929100129138,
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-48-01-313Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 376.6000000089407
+            }
+          ]
+        },
+        {
+          "variant": "async4",
+          "round": 1,
+          "runIndex": 1,
+          "totalMs": 1993.2,
+          "preloadMs": 1.3,
+          "workerMaxMs": 18.8,
+          "workerOver50": 0,
+          "cpuBusyPercent": 35.22635762053149,
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-48-03-957Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 376.6000000089407
+            }
+          ]
+        },
+        {
+          "variant": "dispatch4",
+          "round": 1,
+          "runIndex": 0,
+          "totalMs": 5318.6,
+          "preloadMs": 732.5,
+          "workerMaxMs": 62.5,
+          "workerOver50": 1,
+          "cpuBusyPercent": 30.676040673657457,
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-48-11-524Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "dispatch4",
+          "round": 1,
+          "runIndex": 1,
+          "totalMs": 2651.8,
+          "preloadMs": 0.8,
+          "workerMaxMs": 37.6,
+          "workerOver50": 0,
+          "cpuBusyPercent": 40.76344677617962,
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-48-15-098Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "baseline",
+          "round": 1,
+          "runIndex": 0,
+          "totalMs": 4949.5,
+          "preloadMs": 739.9,
+          "workerMaxMs": 118.6,
+          "workerOver50": 10,
+          "cpuBusyPercent": 27.901880993711046,
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-48-22-502Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "baseline",
+          "round": 1,
+          "runIndex": 1,
+          "totalMs": 1907.8,
+          "preloadMs": 1,
+          "workerMaxMs": 18.8,
+          "workerOver50": 0,
+          "cpuBusyPercent": 19.571174640793952,
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-48-25-089Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "baseline",
+          "round": 2,
+          "runIndex": 0,
+          "totalMs": 5106.9,
+          "preloadMs": 732.7,
+          "workerMaxMs": 118.6,
+          "workerOver50": 8,
+          "cpuBusyPercent": 25.23621394629241,
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-48-32-676Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "baseline",
+          "round": 2,
+          "runIndex": 1,
+          "totalMs": 1875.9,
+          "preloadMs": 0.8,
+          "workerMaxMs": 18.7,
+          "workerOver50": 0,
+          "cpuBusyPercent": 18.467944629928347,
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-48-35-253Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "dispatch4",
+          "round": 2,
+          "runIndex": 0,
+          "totalMs": 5021.7,
+          "preloadMs": 733.1,
+          "workerMaxMs": 56.3,
+          "workerOver50": 4,
+          "cpuBusyPercent": 48.80249526567896,
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-48-42-813Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "dispatch4",
+          "round": 2,
+          "runIndex": 1,
+          "totalMs": 1910.1,
+          "preloadMs": 1,
+          "workerMaxMs": 25.1,
+          "workerOver50": 0,
+          "cpuBusyPercent": 42.899741808793046,
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-48-45-354Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "async4",
+          "round": 2,
+          "runIndex": 0,
+          "totalMs": 4173.7,
+          "preloadMs": 1108.7,
+          "workerMaxMs": 56.2,
+          "workerOver50": 1,
+          "cpuBusyPercent": 49.775282776134866,
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-48-52-076Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 371.5
+            }
+          ]
+        },
+        {
+          "variant": "async4",
+          "round": 2,
+          "runIndex": 1,
+          "totalMs": 1940,
+          "preloadMs": 0.7,
+          "workerMaxMs": 18.8,
+          "workerOver50": 0,
+          "cpuBusyPercent": 30.00358937544867,
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-48-54-681Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 371.5
+            }
+          ]
+        }
+      ],
+      "summaries": [
+        {
+          "variant": "baseline",
+          "n": 3,
+          "coldMedianMs": 5106.9,
+          "warmMedianMs": 1907.8,
+          "preloadMedianMs": 739.9,
+          "workerMaxMedianMs": 118.6,
+          "workerOver50Median": 10
+        },
+        {
+          "variant": "dispatch4",
+          "n": 3,
+          "coldMedianMs": 5318.6,
+          "warmMedianMs": 2151.7,
+          "preloadMedianMs": 733.1,
+          "workerMaxMedianMs": 62.5,
+          "workerOver50Median": 3
+        },
+        {
+          "variant": "async4",
+          "n": 3,
+          "coldMedianMs": 4444.6,
+          "warmMedianMs": 1969.4,
+          "preloadMedianMs": 1157.2,
+          "workerMaxMedianMs": 62.4,
+          "workerOver50Median": 2
+        }
+      ]
+    },
+    {
+      "id": "1789570237502",
+      "workerSha256": "d2032f27f3e64b9e095dd7a9d5ea9b9193bfbb29b0f7c9d27d2ebe9b093b0c9b",
+      "samples": [
+        {
+          "variant": "baseline",
+          "round": 0,
+          "runIndex": 0,
+          "totalMs": 3407.7,
+          "preloadMs": 704.9,
+          "workerMaxMs": 93.8,
+          "workerOver50": 9,
+          "cpuBusyPercent": 40.569585139827815,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\images\\字体颜色 2.jpg",
+          "resultImage": {
+            "width": 1322,
+            "height": 1824,
+            "sha256": "fe906487f9b3b0c742039ad752f465832675008459f7bea516efd89ea4bde832"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-50-42-672Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "baseline",
+          "round": 0,
+          "runIndex": 1,
+          "totalMs": 931.8,
+          "preloadMs": 0.8,
+          "workerMaxMs": 6.4,
+          "workerOver50": 0,
+          "cpuBusyPercent": 25.56559396699769,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\images\\字体颜色 2.jpg",
+          "resultImage": {
+            "width": 1322,
+            "height": 1824,
+            "sha256": "fe906487f9b3b0c742039ad752f465832675008459f7bea516efd89ea4bde832"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-50-43-969Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "async4",
+          "round": 0,
+          "runIndex": 0,
+          "totalMs": 2914.2,
+          "preloadMs": 1045.8,
+          "workerMaxMs": 62.4,
+          "workerOver50": 1,
+          "cpuBusyPercent": 47.29333076700991,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\images\\字体颜色 2.jpg",
+          "resultImage": {
+            "width": 1322,
+            "height": 1824,
+            "sha256": "fe906487f9b3b0c742039ad752f465832675008459f7bea516efd89ea4bde832"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-50-48-982Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 376.29999999701977
+            }
+          ]
+        },
+        {
+          "variant": "async4",
+          "round": 0,
+          "runIndex": 1,
+          "totalMs": 876.4,
+          "preloadMs": 0.7,
+          "workerMaxMs": 6.4,
+          "workerOver50": 0,
+          "cpuBusyPercent": 34.56199513763626,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\images\\字体颜色 2.jpg",
+          "resultImage": {
+            "width": 1322,
+            "height": 1824,
+            "sha256": "fe906487f9b3b0c742039ad752f465832675008459f7bea516efd89ea4bde832"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-50-50-208Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 376.29999999701977
+            }
+          ]
+        },
+        {
+          "variant": "async4",
+          "round": 1,
+          "runIndex": 0,
+          "totalMs": 2854,
+          "preloadMs": 1045.6,
+          "workerMaxMs": 56.3,
+          "workerOver50": 1,
+          "cpuBusyPercent": 41.12970301873868,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\images\\字体颜色 2.jpg",
+          "resultImage": {
+            "width": 1322,
+            "height": 1824,
+            "sha256": "fe906487f9b3b0c742039ad752f465832675008459f7bea516efd89ea4bde832"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-50-55-077Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 372.09999999403954
+            }
+          ]
+        },
+        {
+          "variant": "async4",
+          "round": 1,
+          "runIndex": 1,
+          "totalMs": 893.5,
+          "preloadMs": 0.4,
+          "workerMaxMs": 6.5,
+          "workerOver50": 0,
+          "cpuBusyPercent": 42.99789410348978,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\images\\字体颜色 2.jpg",
+          "resultImage": {
+            "width": 1322,
+            "height": 1824,
+            "sha256": "fe906487f9b3b0c742039ad752f465832675008459f7bea516efd89ea4bde832"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-50-56-324Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 372.09999999403954
+            }
+          ]
+        },
+        {
+          "variant": "baseline",
+          "round": 1,
+          "runIndex": 0,
+          "totalMs": 4288.8,
+          "preloadMs": 801.1,
+          "workerMaxMs": 118.8,
+          "workerOver50": 13,
+          "cpuBusyPercent": 62.540727172521116,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\images\\字体颜色 2.jpg",
+          "resultImage": {
+            "width": 1322,
+            "height": 1824,
+            "sha256": "fe906487f9b3b0c742039ad752f465832675008459f7bea516efd89ea4bde832"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-51-02-931Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "baseline",
+          "round": 1,
+          "runIndex": 1,
+          "totalMs": 1472.2,
+          "preloadMs": 0.9,
+          "workerMaxMs": 6.5,
+          "workerOver50": 0,
+          "cpuBusyPercent": 44.075178715144624,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\images\\字体颜色 2.jpg",
+          "resultImage": {
+            "width": 1322,
+            "height": 1824,
+            "sha256": "fe906487f9b3b0c742039ad752f465832675008459f7bea516efd89ea4bde832"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-51-04-806Z.json",
+          "precompile": []
+        }
+      ],
+      "summaries": [
+        {
+          "variant": "baseline",
+          "n": 2,
+          "coldMedianMs": 3848.25,
+          "warmMedianMs": 1202,
+          "preloadMedianMs": 753,
+          "workerMaxMedianMs": 106.3,
+          "workerOver50Median": 11
+        },
+        {
+          "variant": "async4",
+          "n": 2,
+          "coldMedianMs": 2884.1,
+          "warmMedianMs": 884.95,
+          "preloadMedianMs": 1045.6999999999998,
+          "workerMaxMedianMs": 59.349999999999994,
+          "workerOver50Median": 1
+        }
+      ]
+    },
+    {
+      "id": "1789570303528",
+      "workerSha256": "d2032f27f3e64b9e095dd7a9d5ea9b9193bfbb29b0f7c9d27d2ebe9b093b0c9b",
+      "samples": [
+        {
+          "variant": "baseline",
+          "round": 0,
+          "runIndex": 0,
+          "totalMs": 5350,
+          "preloadMs": 842.1,
+          "workerMaxMs": 124.9,
+          "workerOver50": 12,
+          "cpuBusyPercent": 54.07881607422862,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-51-51-188Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "baseline",
+          "round": 0,
+          "runIndex": 1,
+          "totalMs": 2072.2,
+          "preloadMs": 0.8,
+          "workerMaxMs": 25,
+          "workerOver50": 0,
+          "cpuBusyPercent": 43.689551023178474,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-51-53-977Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "async4overlap",
+          "round": 0,
+          "runIndex": 0,
+          "totalMs": 4223.2,
+          "preloadMs": 821.3,
+          "workerMaxMs": 62.4,
+          "workerOver50": 1,
+          "cpuBusyPercent": 66.59276411949222,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-52-00-813Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 981
+            }
+          ]
+        },
+        {
+          "variant": "async4overlap",
+          "round": 0,
+          "runIndex": 1,
+          "totalMs": 2126.7,
+          "preloadMs": 0.9,
+          "workerMaxMs": 18.8,
+          "workerOver50": 0,
+          "cpuBusyPercent": 35.10227009880052,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-52-03-577Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 981
+            }
+          ]
+        },
+        {
+          "variant": "async4overlap",
+          "round": 1,
+          "runIndex": 0,
+          "totalMs": 4639.8,
+          "preloadMs": 793.5,
+          "workerMaxMs": 56.3,
+          "workerOver50": 3,
+          "cpuBusyPercent": 35.63417910673047,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-52-10-974Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 964
+            }
+          ]
+        },
+        {
+          "variant": "async4overlap",
+          "round": 1,
+          "runIndex": 1,
+          "totalMs": 3030.9,
+          "preloadMs": 0.8,
+          "workerMaxMs": 37.5,
+          "workerOver50": 0,
+          "cpuBusyPercent": 23.360312587217415,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-52-14-850Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 964
+            }
+          ]
+        },
+        {
+          "variant": "baseline",
+          "round": 1,
+          "runIndex": 0,
+          "totalMs": 4908.8,
+          "preloadMs": 758.3,
+          "workerMaxMs": 125,
+          "workerOver50": 10,
+          "cpuBusyPercent": 29.620659510741053,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-52-22-212Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "baseline",
+          "round": 1,
+          "runIndex": 1,
+          "totalMs": 1921.1,
+          "preloadMs": 0.6,
+          "workerMaxMs": 18.8,
+          "workerOver50": 0,
+          "cpuBusyPercent": 29.358875555066245,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-52-24-825Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "baseline",
+          "round": 2,
+          "runIndex": 0,
+          "totalMs": 4970,
+          "preloadMs": 734.8,
+          "workerMaxMs": 125,
+          "workerOver50": 9,
+          "cpuBusyPercent": 42.12322035326164,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-52-32-407Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "baseline",
+          "round": 2,
+          "runIndex": 1,
+          "totalMs": 1954.7,
+          "preloadMs": 0.8,
+          "workerMaxMs": 18.8,
+          "workerOver50": 0,
+          "cpuBusyPercent": 51.1062338489858,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-52-35-073Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "async4overlap",
+          "round": 2,
+          "runIndex": 0,
+          "totalMs": 4169.7,
+          "preloadMs": 786.8,
+          "workerMaxMs": 62.5,
+          "workerOver50": 1,
+          "cpuBusyPercent": 63.55840298980596,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-52-41-743Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 1121.3999999910593
+            }
+          ]
+        },
+        {
+          "variant": "async4overlap",
+          "round": 2,
+          "runIndex": 1,
+          "totalMs": 2004.3,
+          "preloadMs": 1,
+          "workerMaxMs": 24.9,
+          "workerOver50": 0,
+          "cpuBusyPercent": 57.574494686392995,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-52-44-447Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 1121.3999999910593
+            }
+          ]
+        }
+      ],
+      "summaries": [
+        {
+          "variant": "baseline",
+          "n": 3,
+          "coldMedianMs": 4970,
+          "warmMedianMs": 1954.7,
+          "preloadMedianMs": 758.3,
+          "workerMaxMedianMs": 125,
+          "workerOver50Median": 10
+        },
+        {
+          "variant": "async4overlap",
+          "n": 3,
+          "coldMedianMs": 4223.2,
+          "warmMedianMs": 2126.7,
+          "preloadMedianMs": 793.5,
+          "workerMaxMedianMs": 62.4,
+          "workerOver50Median": 1
+        }
+      ]
+    },
+    {
+      "id": "1789570455743",
+      "workerSha256": "d2032f27f3e64b9e095dd7a9d5ea9b9193bfbb29b0f7c9d27d2ebe9b093b0c9b",
+      "samples": [
+        {
+          "variant": "baseline",
+          "round": 0,
+          "runIndex": 0,
+          "totalMs": 4871,
+          "preloadMs": 741.5,
+          "workerMaxMs": 118.7,
+          "workerOver50": 10,
+          "cpuBusyPercent": 33.99221453287197,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-54-22-894Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "baseline",
+          "round": 0,
+          "runIndex": 1,
+          "totalMs": 1918.7,
+          "preloadMs": 0.7,
+          "workerMaxMs": 18.7,
+          "workerOver50": 0,
+          "cpuBusyPercent": 18.313846606368113,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-54-25-337Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "async2overlap",
+          "round": 0,
+          "runIndex": 0,
+          "totalMs": 4253.4,
+          "preloadMs": 758.3,
+          "workerMaxMs": 56.1,
+          "workerOver50": 1,
+          "cpuBusyPercent": 39.953139953139946,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-54-32-129Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 1687
+            }
+          ]
+        },
+        {
+          "variant": "async2overlap",
+          "round": 0,
+          "runIndex": 1,
+          "totalMs": 1966.3,
+          "preloadMs": 0.8,
+          "workerMaxMs": 18.7,
+          "workerOver50": 0,
+          "cpuBusyPercent": 31.674353748793305,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-54-34-642Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 1687
+            }
+          ]
+        },
+        {
+          "variant": "async2overlap",
+          "round": 1,
+          "runIndex": 0,
+          "totalMs": 4950,
+          "preloadMs": 776.1,
+          "workerMaxMs": 68.7,
+          "workerOver50": 2,
+          "cpuBusyPercent": 37.50797453818563,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-54-42-319Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 1948.7999999970198
+            }
+          ]
+        },
+        {
+          "variant": "async2overlap",
+          "round": 1,
+          "runIndex": 1,
+          "totalMs": 3021.5,
+          "preloadMs": 0.7,
+          "workerMaxMs": 43.8,
+          "workerOver50": 0,
+          "cpuBusyPercent": 16.813396683435812,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-54-46-215Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 1948.7999999970198
+            }
+          ]
+        },
+        {
+          "variant": "baseline",
+          "round": 1,
+          "runIndex": 0,
+          "totalMs": 4990.1,
+          "preloadMs": 734.5,
+          "workerMaxMs": 118.7,
+          "workerOver50": 9,
+          "cpuBusyPercent": 52.886343685992564,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-54-53-587Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "baseline",
+          "round": 1,
+          "runIndex": 1,
+          "totalMs": 1996,
+          "preloadMs": 0.8,
+          "workerMaxMs": 18.8,
+          "workerOver50": 0,
+          "cpuBusyPercent": 55.0075420072263,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-54-56-166Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "baseline",
+          "round": 2,
+          "runIndex": 0,
+          "totalMs": 5996.4,
+          "preloadMs": 830.7,
+          "workerMaxMs": 143.7,
+          "workerOver50": 12,
+          "cpuBusyPercent": 50.61892285298399,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-55-04-631Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "baseline",
+          "round": 2,
+          "runIndex": 1,
+          "totalMs": 2335.1,
+          "preloadMs": 1.3,
+          "workerMaxMs": 25,
+          "workerOver50": 0,
+          "cpuBusyPercent": 33.258177008177,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-55-07-494Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "async2overlap",
+          "round": 2,
+          "runIndex": 0,
+          "totalMs": 5379.8,
+          "preloadMs": 798.4,
+          "workerMaxMs": 106.2,
+          "workerOver50": 4,
+          "cpuBusyPercent": 41.11277803143957,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-55-15-443Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 2202.5999999940395
+            }
+          ]
+        },
+        {
+          "variant": "async2overlap",
+          "round": 2,
+          "runIndex": 1,
+          "totalMs": 3099.3,
+          "preloadMs": 0.8,
+          "workerMaxMs": 50,
+          "workerOver50": 0,
+          "cpuBusyPercent": 20.69302875864579,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-55-19-350Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 2202.5999999940395
+            }
+          ]
+        }
+      ],
+      "summaries": [
+        {
+          "variant": "baseline",
+          "n": 3,
+          "coldMedianMs": 4990.1,
+          "warmMedianMs": 1996,
+          "preloadMedianMs": 741.5,
+          "workerMaxMedianMs": 118.7,
+          "workerOver50Median": 10
+        },
+        {
+          "variant": "async2overlap",
+          "n": 3,
+          "coldMedianMs": 4950,
+          "warmMedianMs": 3021.5,
+          "preloadMedianMs": 776.1,
+          "workerMaxMedianMs": 68.7,
+          "workerOver50Median": 2
+        }
+      ]
+    },
+    {
+      "id": "1789570537512",
+      "workerSha256": "d2032f27f3e64b9e095dd7a9d5ea9b9193bfbb29b0f7c9d27d2ebe9b093b0c9b",
+      "samples": [
+        {
+          "variant": "baseline",
+          "round": 0,
+          "runIndex": 0,
+          "totalMs": 5011.4,
+          "preloadMs": 757.8,
+          "workerMaxMs": 118.8,
+          "workerOver50": 9,
+          "cpuBusyPercent": 48.57698550400179,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-55-44-713Z.json",
+          "trace": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-trace-1789570551542.json",
+          "precompile": []
+        },
+        {
+          "variant": "baseline",
+          "round": 0,
+          "runIndex": 1,
+          "totalMs": 1944.5,
+          "preloadMs": 0.9,
+          "workerMaxMs": 18.7,
+          "workerOver50": 0,
+          "cpuBusyPercent": 41.34992268689992,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-55-47-239Z.json",
+          "trace": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-trace-1789570551542.json",
+          "precompile": []
+        },
+        {
+          "variant": "async4overlap",
+          "round": 0,
+          "runIndex": 0,
+          "totalMs": 3829.6,
+          "preloadMs": 741.2,
+          "workerMaxMs": 49.8,
+          "workerOver50": 0,
+          "cpuBusyPercent": 42.03475940715291,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-55-57-985Z.json",
+          "trace": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-trace-1789570564676.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 985
+            }
+          ]
+        },
+        {
+          "variant": "async4overlap",
+          "round": 0,
+          "runIndex": 1,
+          "totalMs": 1959.2,
+          "preloadMs": 0.8,
+          "workerMaxMs": 18.8,
+          "workerOver50": 0,
+          "cpuBusyPercent": 32.58250205584755,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "b7b8b16fca83417705d69257f3a72b0e346f01c4eebf7ed6204f18beac5c5be1"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-56-00-520Z.json",
+          "trace": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-trace-1789570564676.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 985
+            }
+          ]
+        }
+      ],
+      "summaries": [
+        {
+          "variant": "baseline",
+          "n": 1,
+          "coldMedianMs": 5011.4,
+          "warmMedianMs": 1944.5,
+          "preloadMedianMs": 757.8,
+          "workerMaxMedianMs": 118.8,
+          "workerOver50Median": 9
+        },
+        {
+          "variant": "async4overlap",
+          "n": 1,
+          "coldMedianMs": 3829.6,
+          "warmMedianMs": 1959.2,
+          "preloadMedianMs": 741.2,
+          "workerMaxMedianMs": 49.8,
+          "workerOver50Median": 0
+        }
+      ]
+    },
+    {
+      "id": "1789570603888",
+      "workerSha256": "d2032f27f3e64b9e095dd7a9d5ea9b9193bfbb29b0f7c9d27d2ebe9b093b0c9b",
+      "samples": [
+        {
+          "variant": "baseline",
+          "round": 0,
+          "runIndex": 0,
+          "totalMs": 3302.2,
+          "preloadMs": 656.3,
+          "workerMaxMs": 93.7,
+          "workerOver50": 7,
+          "cpuBusyPercent": 31.517302950429382,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\images\\字体颜色 2.jpg",
+          "resultImage": {
+            "width": 1322,
+            "height": 1824,
+            "sha256": "fe906487f9b3b0c742039ad752f465832675008459f7bea516efd89ea4bde832"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-56-49-033Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "baseline",
+          "round": 0,
+          "runIndex": 1,
+          "totalMs": 904.4,
+          "preloadMs": 0.5,
+          "workerMaxMs": 6.4,
+          "workerOver50": 0,
+          "cpuBusyPercent": 29.559264671948316,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\images\\字体颜色 2.jpg",
+          "resultImage": {
+            "width": 1322,
+            "height": 1824,
+            "sha256": "fe906487f9b3b0c742039ad752f465832675008459f7bea516efd89ea4bde832"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-56-50-201Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "async4overlap",
+          "round": 0,
+          "runIndex": 0,
+          "totalMs": 2513,
+          "preloadMs": 675,
+          "workerMaxMs": 49.9,
+          "workerOver50": 0,
+          "cpuBusyPercent": 50.044444444444444,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\images\\字体颜色 2.jpg",
+          "resultImage": {
+            "width": 1322,
+            "height": 1824,
+            "sha256": "fe906487f9b3b0c742039ad752f465832675008459f7bea516efd89ea4bde832"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-56-54-627Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 1071.5
+            }
+          ]
+        },
+        {
+          "variant": "async4overlap",
+          "round": 0,
+          "runIndex": 1,
+          "totalMs": 876.9,
+          "preloadMs": 0.8,
+          "workerMaxMs": 6.4,
+          "workerOver50": 0,
+          "cpuBusyPercent": 42.875117961623154,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\images\\字体颜色 2.jpg",
+          "resultImage": {
+            "width": 1322,
+            "height": 1824,
+            "sha256": "fe906487f9b3b0c742039ad752f465832675008459f7bea516efd89ea4bde832"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-56-55-776Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 1071.5
+            }
+          ]
+        },
+        {
+          "variant": "async4overlap",
+          "round": 1,
+          "runIndex": 0,
+          "totalMs": 2512.5,
+          "preloadMs": 690.2,
+          "workerMaxMs": 50,
+          "workerOver50": 0,
+          "cpuBusyPercent": 41.36993144791985,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\images\\字体颜色 2.jpg",
+          "resultImage": {
+            "width": 1322,
+            "height": 1824,
+            "sha256": "fe906487f9b3b0c742039ad752f465832675008459f7bea516efd89ea4bde832"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-57-00-250Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 1012.5
+            }
+          ]
+        },
+        {
+          "variant": "async4overlap",
+          "round": 1,
+          "runIndex": 1,
+          "totalMs": 878.3,
+          "preloadMs": 0.7,
+          "workerMaxMs": 6.4,
+          "workerOver50": 0,
+          "cpuBusyPercent": 32.93179098524133,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\images\\字体颜色 2.jpg",
+          "resultImage": {
+            "width": 1322,
+            "height": 1824,
+            "sha256": "fe906487f9b3b0c742039ad752f465832675008459f7bea516efd89ea4bde832"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-57-01-390Z.json",
+          "precompile": [
+            {
+              "kind": "precompile",
+              "count": 109,
+              "ms": 1012.5
+            }
+          ]
+        },
+        {
+          "variant": "baseline",
+          "round": 1,
+          "runIndex": 0,
+          "totalMs": 3682.4,
+          "preloadMs": 669.3,
+          "workerMaxMs": 112.5,
+          "workerOver50": 9,
+          "cpuBusyPercent": 39.256709207448125,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\images\\字体颜色 2.jpg",
+          "resultImage": {
+            "width": 1322,
+            "height": 1824,
+            "sha256": "fe906487f9b3b0c742039ad752f465832675008459f7bea516efd89ea4bde832"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-57-07-044Z.json",
+          "precompile": []
+        },
+        {
+          "variant": "baseline",
+          "round": 1,
+          "runIndex": 1,
+          "totalMs": 1364.3,
+          "preloadMs": 0.8,
+          "workerMaxMs": 12.6,
+          "workerOver50": 0,
+          "cpuBusyPercent": 25.73682643643942,
+          "image": "D:\\code\\ShinobuTranslator\\benchmark\\images\\字体颜色 2.jpg",
+          "resultImage": {
+            "width": 1322,
+            "height": 1824,
+            "sha256": "fe906487f9b3b0c742039ad752f465832675008459f7bea516efd89ea4bde832"
+          },
+          "report": "D:\\code\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-09-16T14-57-08-715Z.json",
+          "precompile": []
+        }
+      ],
+      "summaries": [
+        {
+          "variant": "baseline",
+          "n": 2,
+          "coldMedianMs": 3492.3,
+          "warmMedianMs": 1134.35,
+          "preloadMedianMs": 662.8,
+          "workerMaxMedianMs": 103.1,
+          "workerOver50Median": 8
+        },
+        {
+          "variant": "async4overlap",
+          "n": 2,
+          "coldMedianMs": 2512.75,
+          "warmMedianMs": 877.5999999999999,
+          "preloadMedianMs": 682.6,
+          "workerMaxMedianMs": 49.95,
+          "workerOver50Median": 0
+        }
+      ]
+    }
+  ]
+}

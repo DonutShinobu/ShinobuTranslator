@@ -18,6 +18,7 @@ import type {
 import type { RuntimeSelfCheckReport } from "../runtime/selfCheck";
 import { preprocessLetterboxGpu } from "./gpuPreprocess";
 import { SerialInferenceQueue } from "./inferenceQueue";
+import { installShaderWarmup } from "./shaderWarmup";
 import { installTrustedTypesPolicy } from '@shinobu/browser-runtime/trusted-types';
 
 installTrustedTypesPolicy();
@@ -56,6 +57,7 @@ function ensureOrtEnv(): void {
   ortAll.env.wasm.proxy = false;
 
   if (ortAll.env.webgpu) {
+    installShaderWarmup(ortAll.env.versions.web ?? 'unknown');
     ortAll.env.webgpu.powerPreference = "high-performance";
   }
 

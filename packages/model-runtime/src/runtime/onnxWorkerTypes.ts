@@ -11,6 +11,8 @@ export type TensorTransport = {
   data: Float32Array | BigInt64Array | Uint8Array;
   dims: number[];
   type: "float32" | "int64" | "bool";
+  // Experimental Paddle output stores [class index, original float32 probability].
+  ctcClassCount?: number;
 };
 
 // ---------------------------------------------------------------------------

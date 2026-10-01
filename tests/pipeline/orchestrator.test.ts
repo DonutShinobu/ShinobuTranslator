@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   PipelineCanvas,
   PipelineImage,
@@ -23,6 +23,7 @@ const pipelineMocks = vi.hoisted(() => ({
   drawRegions: vi.fn(),
   mergeTextLines: vi.fn(),
   refineTextMask: vi.fn(),
+  prepareReadingPanels: vi.fn(),
   sortRegionsForRender: vi.fn(),
   detectBubbles: vi.fn(),
   matchRegionsToBubbles: vi.fn(),
@@ -75,6 +76,7 @@ vi.mock('../../packages/image-pipeline/src/pipeline/maskRefinement', async (impo
   refineTextMask: pipelineMocks.refineTextMask,
 }));
 vi.mock('../../packages/image-pipeline/src/pipeline/readingOrder', () => ({
+  prepareReadingPanels: pipelineMocks.prepareReadingPanels,
   sortRegionsForRender: pipelineMocks.sortRegionsForRender,
 }));
 vi.mock('../../packages/image-pipeline/src/pipeline/bubbleDetect', () => ({
@@ -223,6 +225,7 @@ beforeEach(() => {
   pipelineMocks.drawRegions.mockReturnValue(visualizedCanvas);
   pipelineMocks.mergeTextLines.mockImplementation((regions: TextRegion[]) => regions);
   pipelineMocks.refineTextMask.mockReturnValue({ refinedMaskCanvas });
+  pipelineMocks.prepareReadingPanels.mockReturnValue([]);
   pipelineMocks.sortRegionsForRender.mockImplementation((regions: TextRegion[]) => regions);
   pipelineMocks.detectBubbles.mockResolvedValue({ bubbles: [] });
   pipelineMocks.matchRegionsToBubbles.mockReturnValue({
@@ -238,14 +241,111 @@ beforeEach(() => {
     __shinobuPaddleOcrRuntimeProbeSchedule?: unknown;
     __shinobuInpaintRuntimeProbeSchedule?: unknown;
     __shinobuBubbleRuntimeProbeSchedule?: unknown;
+    __shinobuColdStartPixelFastPath?: unknown;
+    __shinobuColdStartPanelOverlap?: unknown;
   };
   delete runtimeFlags.__shinobuPaddleOcrRuntimeProbe;
   delete runtimeFlags.__shinobuPaddleOcrRuntimeProbeSchedule;
   delete runtimeFlags.__shinobuInpaintRuntimeProbeSchedule;
   delete runtimeFlags.__shinobuBubbleRuntimeProbeSchedule;
+  delete runtimeFlags.__shinobuColdStartPixelFastPath;
+  delete runtimeFlags.__shinobuColdStartPanelOverlap;
+});
+
+afterEach(() => {
+  delete (globalThis as { __shinobuColdStartPanelOverlap?: boolean }).__shinobuColdStartPanelOverlap;
 });
 
 describe('runPipeline', () => {
+  it('leaves panel preparation at the original order stage by default', async () => {
+    await runPipeline(createFile(), baseConfig, () => {}, runtimeOptions);
+    expect(pipelineMocks.prepareReadingPanels).not.toHaveBeenCalled();
+    expect(pipelineMocks.sortRegionsForRender).toHaveBeenCalledWith(
+      [ocrRegion], originalCanvas, pipelineMocks.browserPlatform,
+    );
+  });
+
+  it('prepares panels after submitting detector load and consumes that exact result once', async () => {
+    (globalThis as { __shinobuColdStartPanelOverlap?: boolean }).__shinobuColdStartPanelOverlap = true;
+    const events: string[] = [];
+    const panels = [{ x: 0, y: 0, width: 100, height: 200 }];
+    let resolveDetector!: (value: { provider: 'wasm' }) => void;
+    const pendingDetector = new Promise<{ provider: 'wasm' }>(resolve => { resolveDetector = resolve; });
+    pipelineMocks.getModelSession.mockImplementationOnce(() => {
+      events.push('detector-submitted');
+      return pendingDetector;
+    });
+    pipelineMocks.prepareReadingPanels.mockImplementationOnce(() => {
+      events.push('panels');
+      expect(pipelineMocks.detectTextRegionsWithMask).not.toHaveBeenCalled();
+      resolveDetector({ provider: 'wasm' });
+      return panels;
+    });
+    await runPipeline(createFile(), baseConfig, () => {}, runtimeOptions);
+    expect(events).toEqual(['detector-submitted', 'panels']);
+    expect(pipelineMocks.prepareReadingPanels).toHaveBeenCalledOnce();
+    expect(pipelineMocks.sortRegionsForRender).toHaveBeenCalledWith(
+      [ocrRegion], originalCanvas, pipelineMocks.browserPlatform, panels,
+    );
+  });
+
+  it('preserves panel fallback and observes a failed detector probe', async () => {
+    (globalThis as { __shinobuColdStartPanelOverlap?: boolean }).__shinobuColdStartPanelOverlap = true;
+    pipelineMocks.prepareReadingPanels.mockReturnValueOnce(null);
+    pipelineMocks.getModelSession.mockRejectedValueOnce(new Error('model load failed'));
+    const result = await runPipeline(createFile(), baseConfig, () => {}, runtimeOptions);
+    expect(pipelineMocks.getModelSession).toHaveBeenCalledWith('detector');
+    expect(result.resultCanvas).toBe(typesetCanvas);
+    expect(pipelineMocks.sortRegionsForRender).toHaveBeenCalledWith(
+      [ocrRegion], originalCanvas, pipelineMocks.browserPlatform, null,
+    );
+  });
+
+  it('observes detector completion and stops before detection when cancelled during panel preparation', async () => {
+    (globalThis as { __shinobuColdStartPanelOverlap?: boolean }).__shinobuColdStartPanelOverlap = true;
+    const controller = new AbortController();
+    pipelineMocks.prepareReadingPanels.mockImplementationOnce(() => {
+      controller.abort();
+      return [];
+    });
+    await expect(runPipeline(createFile(), baseConfig, () => {}, {
+      ...runtimeOptions, signal: controller.signal,
+    })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(pipelineMocks.getModelSession).toHaveBeenCalledOnce();
+    expect(pipelineMocks.detectTextRegionsWithMask).not.toHaveBeenCalled();
+    expect(pipelineMocks.sortRegionsForRender).not.toHaveBeenCalled();
+  });
+
+  it('keeps precomputed detection on its original path without a detector preload to overlap', async () => {
+    (globalThis as { __shinobuColdStartPanelOverlap?: boolean }).__shinobuColdStartPanelOverlap = true;
+    await runPipeline(createFile(), baseConfig, () => {}, {
+      ...runtimeOptions,
+      precomputedDetection: {
+        width: 100, height: 200, packedMask: new Blob([new Uint8Array(2_500)]), regions: [detectedRegion],
+      },
+    });
+    expect(pipelineMocks.prepareReadingPanels).not.toHaveBeenCalled();
+    expect(pipelineMocks.materializePrecomputedDetection).toHaveBeenCalledOnce();
+    expect(pipelineMocks.sortRegionsForRender).toHaveBeenCalledWith(
+      [ocrRegion], originalCanvas, pipelineMocks.browserPlatform,
+    );
+  });
+
+  it('skips unused previews only for a complete non-debug pixel experiment', async () => {
+    (globalThis as typeof globalThis & {
+      __shinobuColdStartPixelFastPath?: boolean;
+    }).__shinobuColdStartPixelFastPath = true;
+    const artifacts = await runPipeline(createFile(), baseConfig, () => {}, runtimeOptions);
+    expect(pipelineMocks.drawRegions).not.toHaveBeenCalled();
+    expect(artifacts.detectionCanvas).toBe(originalCanvas);
+    expect(artifacts.ocrCanvas).toBe(originalCanvas);
+    expect(artifacts.resultCanvas).toBe(typesetCanvas);
+    await runPipeline(createFile(), { ...baseConfig, collectDebugLog: true }, () => {}, runtimeOptions);
+    expect(pipelineMocks.drawRegions).toHaveBeenCalledTimes(2);
+    await runPipeline(createFile(), baseConfig, () => {}, { ...runtimeOptions, stopAfter: 'order' });
+    expect(pipelineMocks.drawRegions).toHaveBeenCalledTimes(4);
+  });
+
   it('reuses a precomputed detection instead of invoking the detector again', async () => {
     const precomputedDetection = {
       width: 100,

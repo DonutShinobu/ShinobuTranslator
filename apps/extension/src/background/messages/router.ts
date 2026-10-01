@@ -5,6 +5,7 @@ import type {
   RuntimeResponse,
 } from '../../shared/messages';
 import type { ImageDownloadRequest } from '../images/imageDownloader';
+import { LOCAL_PIPELINE_STRUCTURED_CLONE_PROBE_TYPE } from '@shinobu/image-pipeline/protocol';
 import type { ReaderResourceRequest } from '../readers/readerResourceFetcher';
 
 type MessageOf<T extends RuntimeMessage['type']> = Extract<RuntimeMessage, { type: T }>;
@@ -77,8 +78,15 @@ export async function routeBackgroundMessage(
     };
   }
   if (message.type === 'mt:download-image') {
+    const preferBlob = (globalThis as { __shinobuColdStartDownloadBlob?: boolean })
+      .__shinobuColdStartDownloadBlob === true
+      && typeof Blob === 'function'
+      && message.structuredCloneProbe instanceof Blob
+      && message.structuredCloneProbe.size === 1
+      && message.structuredCloneProbe.type === LOCAL_PIPELINE_STRUCTURED_CLONE_PROBE_TYPE;
     const request: ImageDownloadRequest = {
       imageUrl: message.imageUrl,
+      ...(preferBlob ? { preferBlob: true } : {}),
       ...(message.referrerPolicy !== undefined
         ? { referrerPolicy: message.referrerPolicy }
         : {}),

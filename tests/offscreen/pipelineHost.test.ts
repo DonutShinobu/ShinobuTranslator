@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExtensionPort } from '../../apps/extension/src/shared/extensionRuntime';
 import type { PipelineArtifacts } from '../../packages/image-pipeline/src/types';
-import type { PipelinePlatform } from '@shinobu/image-pipeline';
+import type { PipelinePlatform, PipelineConfig } from '@shinobu/image-pipeline';
 import type { ModelRuntime } from '@shinobu/model-runtime';
+import { LOCAL_PIPELINE_STRUCTURED_CLONE_PROBE_TYPE } from '@shinobu/image-pipeline/protocol';
 
 const mocks = vi.hoisted(() => ({
   runPipeline: vi.fn(),
@@ -123,8 +124,12 @@ function sendImageJob(
     packedMaskBase64: string;
     regions: readonly unknown[];
   },
+  configOverrides?: Partial<PipelineConfig>,
+  binary = false,
 ): void {
-  port.emit({ type: 'prepare', jobId });
+  port.emit({ type: 'prepare', jobId, ...(binary ? {
+    structuredCloneProbe: new Blob([Uint8Array.of(83)], { type: LOCAL_PIPELINE_STRUCTURED_CLONE_PROBE_TYPE }),
+  } : {}) });
   port.emit({
     type: 'start',
     jobId,
@@ -142,11 +147,13 @@ function sendImageJob(
       collectDebugLog: false,
       ocrEngine: 'paddleocr_v6_medium',
       processMode: 'original',
+      ...configOverrides,
     },
-    input: { chunkCount: 1, totalChars: 4 },
+    input: binary ? { chunkCount: 0, totalChars: 0 } : { chunkCount: 1, totalChars: 4 },
+    ...(binary ? { binaryFile: new File([Uint8Array.of(1)], `${jobId}.png`, { type: 'image/png' }) } : {}),
     ...(detection ? { detection } : {}),
   });
-  port.emit({ type: 'input-chunk', jobId, index: 0, data: 'AQ==' });
+  if (!binary) port.emit({ type: 'input-chunk', jobId, index: 0, data: 'AQ==' });
   port.emit({ type: 'input-complete', jobId });
 }
 
@@ -173,6 +180,7 @@ describe('PipelineHost single-task admission', () => {
 
   afterEach(() => {
     hosts.forEach((host) => host.dispose());
+    vi.unstubAllGlobals();
     (globalThis as { chrome?: unknown }).chrome = originalChrome;
     port.disconnect();
   });
@@ -197,6 +205,351 @@ describe('PipelineHost single-task admission', () => {
     hosts.push(host);
     return host;
   }
+
+  it('waits for full result and debug PNG encoding before delivering native Blobs', async () => {
+    vi.stubGlobal('__shinobuColdStartStructuredClone', true);
+    const image = deferred<Blob>();
+    const debug = deferred<Blob>();
+    const encodeCanvasToPng = vi.fn()
+      .mockImplementationOnce(() => image.promise)
+      .mockImplementationOnce(() => debug.promise);
+    const output = artifacts();
+    output.debugOriginalCanvas = {} as PipelineArtifacts['debugOriginalCanvas'];
+    mocks.runPipeline.mockResolvedValueOnce(output);
+    const host = createHost({ platform: { encodeCanvasToPng } as unknown as PipelinePlatform });
+    host.connect();
+    sendImageJob(port, 'binary-png', undefined, { typesetDebug: true }, true);
+    expect(port.sent).toContainEqual({ type: 'ready', jobId: 'binary-png', structuredClone: true });
+    await vi.waitFor(() => expect(encodeCanvasToPng).toHaveBeenCalledOnce());
+    const received = mocks.runPipeline.mock.calls[0]![0] as File;
+    expect(received.name).toBe('binary-png.png');
+    expect(new Uint8Array(await received.arrayBuffer())).toEqual(Uint8Array.of(1));
+    expect(port.sent).not.toContainEqual(expect.objectContaining({ type: 'result-meta' }));
+    const imageBlob = new Blob([Uint8Array.of(0, 128, 255)], { type: 'image/png' });
+    const debugBlob = new Blob([Uint8Array.of(2, 255)], { type: 'image/png' });
+    image.resolve(imageBlob);
+    await vi.waitFor(() => expect(encodeCanvasToPng).toHaveBeenCalledTimes(2));
+    expect(port.sent).not.toContainEqual(expect.objectContaining({ type: 'result-meta' }));
+    debug.resolve(debugBlob);
+    await vi.waitFor(() => expect(port.sent).toContainEqual({ type: 'complete', jobId: 'binary-png' }));
+    expect(port.sent).toContainEqual(expect.objectContaining({
+      type: 'result-meta', jobId: 'binary-png',
+      result: { contentType: 'image/png', chunkCount: 0, totalChars: 0 }, resultBlob: imageBlob,
+      debug: { contentType: 'image/png', chunkCount: 0, totalChars: 0 }, debugBlob,
+    }));
+    expect(port.sent).not.toContainEqual(expect.objectContaining({ type: 'result-chunk' }));
+    expect(mocks.blobToBase64).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, false, true])('loads ordered early sessions and only defers inpaint when enabled (%s)', async (lateInpaint) => {
+    vi.stubGlobal('__shinobuColdStartEarlySessions', true);
+    vi.stubGlobal('__shinobuColdStartEarlyInpaintAfterBubble', lateInpaint);
+    const getSession = vi.fn(async (name: string) => ({
+      sessionId: name, provider: 'webgpu' as const, inputNames: ['input'], outputNames: ['output'],
+    }));
+    const readModel = vi.fn(async () => ({
+      name: 'paddleocr_v6_medium_rec', task: 'ocr', url: 'ocr.onnx',
+      dictUrl: 'early-session-order-dict.txt', input: [48, 320],
+      runtime: ['webgpu', 'webnn', 'wasm'],
+    }));
+    const run = vi.fn();
+    const host = createHost({ modelRuntime: {
+      getSession, readModel, readTextResource: vi.fn(async () => 'a\nb'),
+      run, dispose: mocks.disposeAllModelSessions,
+    } as unknown as ModelRuntime });
+    await (host as unknown as { earlySessions: Promise<void> }).earlySessions;
+    const earlyNames = ['detector', 'bubble', 'paddleocr_v6_medium_rec'];
+    if (lateInpaint !== true) earlyNames.push('inpaint');
+    expect(getSession.mock.calls.map(([name]) => name)).toEqual(earlyNames);
+    expect(getSession).toHaveBeenNthCalledWith(3, 'paddleocr_v6_medium_rec', ['webgpu', 'webnn', 'wasm'], undefined);
+    if (lateInpaint !== true) {
+      expect(getSession).toHaveBeenNthCalledWith(4, 'inpaint', ['webgpu', 'webnn', 'wasm']);
+    }
+    expect(run).not.toHaveBeenCalled();
+    if (lateInpaint === true) {
+      mocks.runPipeline.mockImplementationOnce(async (_file, _config, _progress, options: { modelRuntime: ModelRuntime }) => {
+        await options.modelRuntime.getSession('inpaint', ['webgpu', 'webnn', 'wasm']);
+        return artifacts();
+      });
+      host.connect();
+      sendImageJob(port, 'late-inpaint');
+      await vi.waitFor(() => expect(port.sent).toContainEqual({ type: 'complete', jobId: 'late-inpaint' }));
+      expect(getSession).toHaveBeenCalledTimes(4);
+      expect(getSession).toHaveBeenNthCalledWith(4, 'inpaint', ['webgpu', 'webnn', 'wasm']);
+    }
+  });
+
+  it('stops later session preparation on dispose and waits for the current step', async () => {
+    vi.stubGlobal('__shinobuColdStartEarlySessions', true);
+    const bubble = deferred<void>();
+    const getSession = vi.fn(async (name: string) => {
+      if (name === 'bubble') await bubble.promise;
+      return { sessionId: name, provider: 'webgpu' as const, inputNames: [], outputNames: [] };
+    });
+    const host = createHost({ modelRuntime: {
+      getSession, dispose: mocks.disposeAllModelSessions,
+    } as unknown as ModelRuntime });
+    await vi.waitFor(() => expect(getSession).toHaveBeenCalledWith('bubble'));
+    host.dispose();
+    expect(mocks.disposeAllModelSessions).not.toHaveBeenCalled();
+    bubble.resolve(undefined);
+    await vi.waitFor(() => expect(mocks.disposeAllModelSessions).toHaveBeenCalledOnce());
+    expect(getSession.mock.calls.map(([name]) => name)).toEqual(['detector', 'bubble']);
+  });
+
+  it('starts ordered early sessions only after the real detector submission, without waiting for its output', async () => {
+    vi.stubGlobal('__shinobuColdStartEarlySessions', true);
+    vi.stubGlobal('__shinobuColdStartSessionsAfterSubmit', true);
+    const events: string[] = [];
+    const detectorResult = deferred<unknown>();
+    let submitted: (() => void) | undefined;
+    const getSession = vi.fn(async (name: string) => {
+      events.push(`session:${name}`);
+      return { sessionId: name, provider: 'webgpu' as const, inputNames: [], outputNames: [] };
+    });
+    const runImage = vi.fn((_id: string, _image: ImageBitmap, onSubmitted?: () => void) => {
+      submitted = onSubmitted;
+      return detectorResult.promise;
+    });
+    mocks.runPipeline.mockImplementation(async (_file, _config, _progress, options: { modelRuntime: ModelRuntime }) => {
+      await options.modelRuntime.runImage('detector', {} as ImageBitmap);
+      return artifacts();
+    });
+    const host = createHost({ modelRuntime: {
+      getSession, runImage,
+      readModel: vi.fn(async () => ({ name: 'paddleocr_v6_medium_rec', task: 'ocr', url: 'ocr.onnx', dictUrl: 'after-submit-order.txt', input: [48, 320] })),
+      readTextResource: vi.fn(async () => 'a\nb'), dispose: mocks.disposeAllModelSessions,
+    } as unknown as ModelRuntime });
+    host.connect();
+    sendImageJob(port, 'after-submit');
+    await vi.waitFor(() => expect(runImage).toHaveBeenCalledOnce());
+    expect(getSession.mock.calls.map(([name]) => name)).toEqual(['detector']);
+    events.push('detector:posted');
+    submitted?.();
+    await vi.waitFor(() => expect(getSession).toHaveBeenCalledTimes(4));
+    expect(events).toEqual(['session:detector', 'detector:posted', 'session:bubble', 'session:paddleocr_v6_medium_rec', 'session:inpaint']);
+    expect(port.sent).not.toContainEqual({ type: 'complete', jobId: 'after-submit' });
+    submitted?.();
+    expect(getSession).toHaveBeenCalledTimes(4);
+    detectorResult.resolve({ outputs: {}, ratio: 1, unpaddedWidth: 1, unpaddedHeight: 1 });
+    await vi.waitFor(() => expect(port.sent).toContainEqual({ type: 'complete', jobId: 'after-submit' }));
+  });
+
+  it.each(['complete', 'failed', 'cancel'] as const)('releases the detector submission gate when a job ends without submitting (%s)', async (terminal) => {
+    vi.stubGlobal('__shinobuColdStartEarlySessions', true);
+    vi.stubGlobal('__shinobuColdStartSessionsAfterSubmit', true);
+    const getSession = vi.fn(async () => ({ sessionId: 'detector', provider: 'webgpu' as const, inputNames: [], outputNames: [] }));
+    if (terminal === 'complete') mocks.runPipeline.mockResolvedValueOnce(artifacts());
+    else if (terminal === 'failed') mocks.runPipeline.mockRejectedValueOnce(new Error('decode failed'));
+    else mocks.runPipeline.mockImplementation((_file, _config, _progress, options: { signal: AbortSignal }) => (
+      new Promise<PipelineArtifacts>((_resolve, reject) => options.signal.addEventListener('abort', () => reject(options.signal.reason), { once: true }))
+    ));
+    const host = createHost({ modelRuntime: { getSession, dispose: mocks.disposeAllModelSessions } as unknown as ModelRuntime });
+    host.connect();
+    sendImageJob(port, `gate-${terminal}`);
+    await vi.waitFor(() => expect(mocks.runPipeline).toHaveBeenCalledOnce());
+    if (terminal === 'cancel') port.emit({ type: 'cancel', jobId: 'gate-cancel', reason: 'cancel before detector' });
+    await vi.waitFor(() => expect(port.sent).toContainEqual(expect.objectContaining({ type: terminal === 'complete' ? 'complete' : 'error', jobId: `gate-${terminal}` })));
+    host.dispose();
+    await vi.waitFor(() => expect(mocks.disposeAllModelSessions).toHaveBeenCalledOnce());
+    expect(getSession).toHaveBeenCalledOnce();
+  });
+
+  it('releases an unsubmitted detector gate on idle close and does not create later sessions', async () => {
+    vi.stubGlobal('__shinobuColdStartEarlySessions', true);
+    vi.stubGlobal('__shinobuColdStartSessionsAfterSubmit', true);
+    vi.useFakeTimers();
+    try {
+      const getSession = vi.fn(async () => ({ sessionId: 'detector', provider: 'webgpu' as const, inputNames: [], outputNames: [] }));
+      const host = createHost({ idleTimeoutMs: 1_000, modelRuntime: { getSession, dispose: mocks.disposeAllModelSessions } as unknown as ModelRuntime });
+      host.connect();
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(mocks.disposeAllModelSessions).toHaveBeenCalledOnce();
+      expect(getSession).toHaveBeenCalledOnce();
+      expect(port.sent).toContainEqual({ type: 'idle-close', hostInstanceId: 'pipeline-host-test' });
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('keeps CPU provider early loading compatible when no GPU detector submission exists', async () => {
+    vi.stubGlobal('__shinobuColdStartEarlySessions', true);
+    vi.stubGlobal('__shinobuColdStartSessionsAfterSubmit', true);
+    const getSession = vi.fn(async (name: string) => ({ sessionId: name, provider: 'wasm' as const, inputNames: [], outputNames: [] }));
+    createHost({ modelRuntime: {
+      getSession,
+      readModel: vi.fn(async () => ({ name: 'paddleocr_v6_medium_rec', task: 'ocr', url: 'ocr.onnx', dictUrl: 'after-submit-cpu.txt', input: [48, 320] })),
+      readTextResource: vi.fn(async () => 'a\nb'), dispose: mocks.disposeAllModelSessions,
+    } as unknown as ModelRuntime });
+    await vi.waitFor(() => expect(getSession).toHaveBeenCalledTimes(4));
+    expect(getSession.mock.calls.map(([name]) => name)).toEqual(['detector', 'bubble', 'paddleocr_v6_medium_rec', 'inpaint']);
+  });
+
+  it('starts fonts and detector together and waits for fonts before delivering a result', async () => {
+    vi.stubGlobal('__shinobuColdStartOverlap', true);
+    const fonts = deferred<void>();
+    const getSession = vi.fn(async () => ({ sessionId: 'detector', provider: 'webgpu' as const }));
+    const platform = {
+      registerFont: vi.fn(),
+      waitForFonts: vi.fn(() => fonts.promise),
+    } as unknown as PipelinePlatform;
+    const output = artifacts();
+    mocks.runPipeline.mockResolvedValueOnce(output);
+    const host = createHost({
+      modelRuntime: { getSession, dispose: mocks.disposeAllModelSessions } as unknown as ModelRuntime,
+      platform,
+      fontSource: (path) => `extension://${path}`,
+    });
+    expect(platform.registerFont).toHaveBeenCalledTimes(2);
+    expect(getSession).toHaveBeenCalledWith('detector');
+    host.connect();
+    sendImageJob(port, 'fonts-overlap');
+    await vi.waitFor(() => expect(mocks.runPipeline).toHaveBeenCalledOnce());
+    expect(port.sent).not.toContainEqual({ type: 'complete', jobId: 'fonts-overlap' });
+    fonts.resolve(undefined);
+    await vi.waitFor(() => expect(port.sent).toContainEqual({ type: 'complete', jobId: 'fonts-overlap' }));
+  });
+
+  it.each([false, true])('selected fonts wait for config, support later language/debug requests and reuse registered faces (late=%s)', async (late) => {
+    vi.stubGlobal('__shinobuColdStartOverlap', true);
+    vi.stubGlobal('__shinobuColdStartFontsAfterDetect', late);
+    vi.stubGlobal('__shinobuColdStartSelectedFonts', true);
+    const registerFont = vi.fn();
+    const platform = { registerFont, waitForFonts: vi.fn(async () => undefined) } as unknown as PipelinePlatform;
+    mocks.runPipeline.mockImplementation(async (_file, _config, onProgress) => {
+      onProgress({ stage: 'typeset', operation: 'render' });
+      return artifacts();
+    });
+    const host = createHost({
+      modelRuntime: {
+        getSession: vi.fn(async () => ({ sessionId: 'detector', provider: 'webgpu' })),
+        dispose: mocks.disposeAllModelSessions,
+      } as unknown as ModelRuntime,
+      platform, fontSource: (path) => `extension://${path}`,
+    });
+    expect(registerFont).not.toHaveBeenCalled(); // The target language is unknown in the constructor.
+    host.connect();
+    for (const [jobId, config, count] of [
+      ['selected-cn', { targetLang: 'zh-CN' }, 1],
+      ['selected-ja', { targetLang: 'ja' }, 1],
+      ['selected-tw', { targetLang: 'zh-CHT' }, 2],
+      ['selected-debug', { targetLang: 'zh-CHT', typesetDebug: true }, 4],
+    ] as const) {
+      sendImageJob(port, jobId, undefined, config);
+      await vi.waitFor(() => expect(port.sent).toContainEqual({ type: 'complete', jobId }));
+      expect(registerFont).toHaveBeenCalledTimes(count);
+    }
+    expect(registerFont.mock.calls.slice(0, 2).map((args) => args[1])).toEqual(['MTX-SourceHanSans-CN', 'MTX-SourceHanSans-TW']);
+  });
+
+  it.each(['typesetDebug', 'eraseDebug', 'collectDebugLog'] as const)('selected fonts retain both families before early debug rendering (%s)', async (flag) => {
+    vi.stubGlobal('__shinobuColdStartOverlap', true);
+    vi.stubGlobal('__shinobuColdStartFontsAfterDetect', true);
+    vi.stubGlobal('__shinobuColdStartSelectedFonts', true);
+    const fonts = deferred<void>();
+    const platform = { registerFont: vi.fn(), waitForFonts: vi.fn(() => fonts.promise) } as unknown as PipelinePlatform;
+    mocks.runPipeline.mockResolvedValueOnce(artifacts());
+    const host = createHost({
+      modelRuntime: {
+        getSession: vi.fn(async () => ({ sessionId: 'detector', provider: 'webgpu' })),
+        dispose: mocks.disposeAllModelSessions,
+      } as unknown as ModelRuntime,
+      platform, fontSource: (path) => `extension://${path}`,
+    });
+    host.connect();
+    sendImageJob(port, 'selected-early-debug', undefined, { targetLang: 'zh-CHT', [flag]: true });
+    await vi.waitFor(() => expect(platform.registerFont).toHaveBeenCalledTimes(2));
+    expect(mocks.runPipeline).not.toHaveBeenCalled();
+    fonts.resolve(undefined);
+    await vi.waitFor(() => expect(port.sent).toContainEqual({ type: 'complete', jobId: 'selected-early-debug' }));
+  });
+
+  it.each([false, true])('reports a deferred font failure and releases produced canvases (late=%s)', async (late) => {
+    vi.stubGlobal('__shinobuColdStartOverlap', true);
+    vi.stubGlobal('__shinobuColdStartFontsAfterDetect', late);
+    const output = artifacts();
+    mocks.runPipeline.mockResolvedValueOnce(output);
+    const host = createHost({
+      modelRuntime: {
+        getSession: vi.fn(async () => ({ sessionId: 'detector', provider: 'webgpu' })),
+        dispose: mocks.disposeAllModelSessions,
+      } as unknown as ModelRuntime,
+      platform: {
+        registerFont: vi.fn(),
+        waitForFonts: vi.fn(async () => { throw new Error('font failed'); }),
+      } as unknown as PipelinePlatform,
+      fontSource: (path) => `extension://${path}`,
+    });
+    await Promise.resolve();
+    host.connect();
+    sendImageJob(port, 'fonts-fail');
+    await vi.waitFor(() => expect(port.sent).toContainEqual(expect.objectContaining({
+      type: 'error', jobId: 'fonts-fail',
+      error: expect.objectContaining({ code: 'PIPELINE_EXECUTION_FAILED', stage: 'finalize' }),
+    })));
+    expect(output.resultCanvas.width).toBe(0);
+    expect(output.resultCanvas.height).toBe(0);
+    expect(port.sent).not.toContainEqual({ type: 'complete', jobId: 'fonts-fail' });
+  });
+
+  it.each(['bubble', 'typeset', 'none'])('starts late fonts before rendering or at finalization and waits before delivery (%s)', async (stage) => {
+    vi.stubGlobal('__shinobuColdStartOverlap', true);
+    vi.stubGlobal('__shinobuColdStartFontsAfterDetect', true);
+    const fonts = deferred<void>();
+    const platform = {
+      registerFont: vi.fn(),
+      waitForFonts: vi.fn(() => fonts.promise),
+    } as unknown as PipelinePlatform;
+    mocks.runPipeline.mockImplementationOnce(async (_file, _config, onProgress) => {
+      expect(platform.registerFont).not.toHaveBeenCalled();
+      onProgress({ stage: 'detect', detail: 'detect' });
+      expect(platform.registerFont).not.toHaveBeenCalled();
+      if (stage !== 'none') {
+        onProgress({ stage, detail: stage });
+        expect(platform.registerFont).toHaveBeenCalledTimes(2);
+      }
+      return artifacts();
+    });
+    const host = createHost({
+      modelRuntime: {
+        getSession: vi.fn(async () => ({ sessionId: 'detector', provider: 'webgpu' })),
+        dispose: mocks.disposeAllModelSessions,
+      } as unknown as ModelRuntime,
+      platform,
+      fontSource: (path) => `extension://${path}`,
+    });
+    expect(platform.registerFont).not.toHaveBeenCalled();
+    host.connect();
+    sendImageJob(port, 'late-fonts');
+    await vi.waitFor(() => expect(platform.registerFont).toHaveBeenCalledTimes(2));
+    expect(port.sent).not.toContainEqual({ type: 'complete', jobId: 'late-fonts' });
+    fonts.resolve(undefined);
+    await vi.waitFor(() => expect(port.sent).toContainEqual({ type: 'complete', jobId: 'late-fonts' }));
+    expect(platform.registerFont).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['typesetDebug', 'eraseDebug', 'collectDebugLog'] as const)('waits for late fonts before any debug pipeline work (%s)', async (flag) => {
+    vi.stubGlobal('__shinobuColdStartOverlap', true);
+    vi.stubGlobal('__shinobuColdStartFontsAfterDetect', true);
+    const fonts = deferred<void>();
+    const platform = {
+      registerFont: vi.fn(),
+      waitForFonts: vi.fn(() => fonts.promise),
+    } as unknown as PipelinePlatform;
+    mocks.runPipeline.mockResolvedValueOnce(artifacts());
+    const host = createHost({
+      modelRuntime: {
+        getSession: vi.fn(async () => ({ sessionId: 'detector', provider: 'webgpu' })),
+        dispose: mocks.disposeAllModelSessions,
+      } as unknown as ModelRuntime,
+      platform,
+      fontSource: (path) => `extension://${path}`,
+    });
+    host.connect();
+    sendImageJob(port, 'debug-fonts', undefined, { [flag]: true });
+    await vi.waitFor(() => expect(platform.registerFont).toHaveBeenCalledTimes(2));
+    expect(mocks.runPipeline).not.toHaveBeenCalled();
+    fonts.resolve(undefined);
+    await vi.waitFor(() => expect(port.sent).toContainEqual({ type: 'complete', jobId: 'debug-fonts' }));
+  });
 
   it('rejects unexpected overlap instead of maintaining a second queue', async () => {
     const first = deferred<PipelineArtifacts>();

@@ -1,0 +1,6403 @@
+{
+  "createdAt": "2026-10-01T16:31:04.905Z",
+  "diagnosticOnly": true,
+  "checks": "detector input/all 3 outputs, OCR text/confidence/boxes/inputs/providers, PNG/RGBA, host-close lifetime, GPU errors/device loss passed",
+  "rows": [
+    {
+      "variant": "baseline-verifydet-verifyinput",
+      "cacheState": "new-profile",
+      "image": "benchmark/color/fixtures/typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+      "browserVersion": "151.0.7922.34",
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-15-04-775Z.json",
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "raw": [
+        {
+          "phase": "detector-input-sha256",
+          "dims": [
+            1,
+            3,
+            1024,
+            1024
+          ],
+          "bytes": 12582912,
+          "sha256": "74a1604ddb29953a37f41646f50be1e856ae64cee6f50d506f75e99428862d87"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "blk",
+          "dims": [
+            1,
+            64512,
+            7
+          ],
+          "bytes": 1806336,
+          "sha256": "92c48c1ff39b040d3f0c8952b0f2eba910d68796681637c8928e873b9adf48e1"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "det",
+          "dims": [
+            1,
+            2,
+            1024,
+            1024
+          ],
+          "bytes": 8388608,
+          "sha256": "5b1e1a14284fc72a5a27ec84a3de19ee3efdd047cdde11d3f5db5803471281e4"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "seg",
+          "dims": [
+            1,
+            1,
+            1024,
+            1024
+          ],
+          "bytes": 4194304,
+          "sha256": "1c09dd1ffe00135583ccb6fd943907ab435634e21c455d41968aed054dd6505f"
+        }
+      ],
+      "providers": [
+        [
+          "detector",
+          "webgpu",
+          null
+        ],
+        [
+          "bubble",
+          "webgpu",
+          null
+        ],
+        [
+          "ocr",
+          "webgpu",
+          null
+        ],
+        [
+          "inpaint",
+          "webgpu",
+          null
+        ]
+      ],
+      "detectedRegionCount": 9,
+      "ocr": {
+        "model": "paddleocr_v6_medium_rec",
+        "normalize": "minus_one_to_one",
+        "channelOrder": "bgr",
+        "accepted": 17,
+        "rejected": 0,
+        "regions": [
+          {
+            "direction": "v",
+            "box": {
+              "x": 2574,
+              "y": 417,
+              "width": 66,
+              "height": 322
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              234
+            ],
+            "decodedText": "いろはっ!",
+            "confidence": 0.9715988535357322,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1381,
+              "y": 437,
+              "width": 99,
+              "height": 266
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              129
+            ],
+            "decodedText": "して",
+            "confidence": 0.9740116905342261,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1474,
+              "y": 438,
+              "width": 93,
+              "height": 348
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              180
+            ],
+            "decodedText": "壁ドン！",
+            "confidence": 0.8186369059757643,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 225,
+              "y": 1049,
+              "width": 82,
+              "height": 242
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              142
+            ],
+            "decodedText": "はあ？",
+            "confidence": 0.9937390647196263,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2645,
+              "y": 1537,
+              "width": 71,
+              "height": 174
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              118
+            ],
+            "decodedText": "そんな",
+            "confidence": 0.9999845822294757,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2539,
+              "y": 1542,
+              "width": 48,
+              "height": 264
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              264
+            ],
+            "decodedText": "なくない？",
+            "confidence": 0.9341674343749292,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2587,
+              "y": 1542,
+              "width": 66,
+              "height": 320
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              255
+            ],
+            "decodedText": "いいもんじゃ",
+            "confidence": 0.9983589189302663,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2070,
+              "y": 1721,
+              "width": 66,
+              "height": 294
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              214
+            ],
+            "decodedText": "いいから！",
+            "confidence": 0.9512002254960463,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2131,
+              "y": 1726,
+              "width": 79,
+              "height": 292
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              190
+            ],
+            "decodedText": "一回だけで",
+            "confidence": 0.9977466828254913,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2202,
+              "y": 1729,
+              "width": 66,
+              "height": 286
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              208
+            ],
+            "decodedText": "一回だけ！",
+            "confidence": 0.9703642876476418,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 271,
+              "y": 2171,
+              "width": 82,
+              "height": 134
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              78
+            ],
+            "decodedText": "もー",
+            "confidence": 0.9800111873442238,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 207,
+              "y": 2183,
+              "width": 79,
+              "height": 182
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              111
+            ],
+            "decodedText": "一回ね",
+            "confidence": 0.9995389854091881,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2201,
+              "y": 2292,
+              "width": 472,
+              "height": 40
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "無断転載禁止·AI学習禁",
+            "confidence": 0.9930956286527682,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2201,
+              "y": 2358,
+              "width": 383,
+              "height": 46
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "Donot reupload my art",
+            "confidence": 0.9855356964882539,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2195,
+              "y": 2406,
+              "width": 508,
+              "height": 53
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "DonotusemyartforAIraing",
+            "confidence": 0.9193470218733215,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2424,
+              "y": 2472,
+              "width": 213,
+              "height": 28
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "@arupakastui",
+            "confidence": 0.8999183719162668,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2418,
+              "y": 2638,
+              "width": 65,
+              "height": 236
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              174
+            ],
+            "decodedText": "待てて",
+            "confidence": 0.9998700781415792,
+            "accepted": true
+          }
+        ],
+        "inputDims": [
+          [
+            1,
+            3,
+            48,
+            234
+          ],
+          [
+            2,
+            3,
+            48,
+            160
+          ],
+          [
+            3,
+            3,
+            48,
+            192
+          ],
+          [
+            2,
+            3,
+            48,
+            128
+          ],
+          [
+            1,
+            3,
+            48,
+            288
+          ],
+          [
+            1,
+            3,
+            48,
+            256
+          ],
+          [
+            2,
+            3,
+            48,
+            224
+          ],
+          [
+            1,
+            3,
+            48,
+            96
+          ],
+          [
+            4,
+            3,
+            48,
+            320
+          ]
+        ],
+        "inputBytes": 2162304
+      },
+      "png": {
+        "type": "image/png",
+        "bytes": 7988558,
+        "sha256": "03add1fb9c9f71093afee8d6133def7d3ee3a84267e97da65df5fe698eac1c98",
+        "rgbaSha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97",
+        "readableAfterHostClosed": true
+      },
+      "gpu": [
+        {
+          "deviceLost": false,
+          "uncapturedErrors": 0,
+          "requestedBufferBytesPeak": 1143390720
+        }
+      ]
+    },
+    {
+      "variant": "baseline-verifydet-verifyinput",
+      "cacheState": "retained-cache-new-process",
+      "image": "benchmark/color/fixtures/typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+      "browserVersion": "151.0.7922.34",
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-15-11-641Z.json",
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "raw": [
+        {
+          "phase": "detector-input-sha256",
+          "dims": [
+            1,
+            3,
+            1024,
+            1024
+          ],
+          "bytes": 12582912,
+          "sha256": "74a1604ddb29953a37f41646f50be1e856ae64cee6f50d506f75e99428862d87"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "blk",
+          "dims": [
+            1,
+            64512,
+            7
+          ],
+          "bytes": 1806336,
+          "sha256": "92c48c1ff39b040d3f0c8952b0f2eba910d68796681637c8928e873b9adf48e1"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "det",
+          "dims": [
+            1,
+            2,
+            1024,
+            1024
+          ],
+          "bytes": 8388608,
+          "sha256": "5b1e1a14284fc72a5a27ec84a3de19ee3efdd047cdde11d3f5db5803471281e4"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "seg",
+          "dims": [
+            1,
+            1,
+            1024,
+            1024
+          ],
+          "bytes": 4194304,
+          "sha256": "1c09dd1ffe00135583ccb6fd943907ab435634e21c455d41968aed054dd6505f"
+        }
+      ],
+      "providers": [
+        [
+          "detector",
+          "webgpu",
+          null
+        ],
+        [
+          "bubble",
+          "webgpu",
+          null
+        ],
+        [
+          "ocr",
+          "webgpu",
+          null
+        ],
+        [
+          "inpaint",
+          "webgpu",
+          null
+        ]
+      ],
+      "detectedRegionCount": 9,
+      "ocr": {
+        "model": "paddleocr_v6_medium_rec",
+        "normalize": "minus_one_to_one",
+        "channelOrder": "bgr",
+        "accepted": 17,
+        "rejected": 0,
+        "regions": [
+          {
+            "direction": "v",
+            "box": {
+              "x": 2574,
+              "y": 417,
+              "width": 66,
+              "height": 322
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              234
+            ],
+            "decodedText": "いろはっ!",
+            "confidence": 0.9715988535357322,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1381,
+              "y": 437,
+              "width": 99,
+              "height": 266
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              129
+            ],
+            "decodedText": "して",
+            "confidence": 0.9740116905342261,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1474,
+              "y": 438,
+              "width": 93,
+              "height": 348
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              180
+            ],
+            "decodedText": "壁ドン！",
+            "confidence": 0.8186369059757643,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 225,
+              "y": 1049,
+              "width": 82,
+              "height": 242
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              142
+            ],
+            "decodedText": "はあ？",
+            "confidence": 0.9937390647196263,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2645,
+              "y": 1537,
+              "width": 71,
+              "height": 174
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              118
+            ],
+            "decodedText": "そんな",
+            "confidence": 0.9999845822294757,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2539,
+              "y": 1542,
+              "width": 48,
+              "height": 264
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              264
+            ],
+            "decodedText": "なくない？",
+            "confidence": 0.9341674343749292,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2587,
+              "y": 1542,
+              "width": 66,
+              "height": 320
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              255
+            ],
+            "decodedText": "いいもんじゃ",
+            "confidence": 0.9983589189302663,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2070,
+              "y": 1721,
+              "width": 66,
+              "height": 294
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              214
+            ],
+            "decodedText": "いいから！",
+            "confidence": 0.9512002254960463,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2131,
+              "y": 1726,
+              "width": 79,
+              "height": 292
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              190
+            ],
+            "decodedText": "一回だけで",
+            "confidence": 0.9977466828254913,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2202,
+              "y": 1729,
+              "width": 66,
+              "height": 286
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              208
+            ],
+            "decodedText": "一回だけ！",
+            "confidence": 0.9703642876476418,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 271,
+              "y": 2171,
+              "width": 82,
+              "height": 134
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              78
+            ],
+            "decodedText": "もー",
+            "confidence": 0.9800111873442238,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 207,
+              "y": 2183,
+              "width": 79,
+              "height": 182
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              111
+            ],
+            "decodedText": "一回ね",
+            "confidence": 0.9995389854091881,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2201,
+              "y": 2292,
+              "width": 472,
+              "height": 40
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "無断転載禁止·AI学習禁",
+            "confidence": 0.9930956286527682,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2201,
+              "y": 2358,
+              "width": 383,
+              "height": 46
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "Donot reupload my art",
+            "confidence": 0.9855356964882539,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2195,
+              "y": 2406,
+              "width": 508,
+              "height": 53
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "DonotusemyartforAIraing",
+            "confidence": 0.9193470218733215,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2424,
+              "y": 2472,
+              "width": 213,
+              "height": 28
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "@arupakastui",
+            "confidence": 0.8999183719162668,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2418,
+              "y": 2638,
+              "width": 65,
+              "height": 236
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              174
+            ],
+            "decodedText": "待てて",
+            "confidence": 0.9998700781415792,
+            "accepted": true
+          }
+        ],
+        "inputDims": [
+          [
+            1,
+            3,
+            48,
+            234
+          ],
+          [
+            2,
+            3,
+            48,
+            160
+          ],
+          [
+            3,
+            3,
+            48,
+            192
+          ],
+          [
+            2,
+            3,
+            48,
+            128
+          ],
+          [
+            1,
+            3,
+            48,
+            288
+          ],
+          [
+            1,
+            3,
+            48,
+            256
+          ],
+          [
+            2,
+            3,
+            48,
+            224
+          ],
+          [
+            1,
+            3,
+            48,
+            96
+          ],
+          [
+            4,
+            3,
+            48,
+            320
+          ]
+        ],
+        "inputBytes": 2162304
+      },
+      "png": {
+        "type": "image/png",
+        "bytes": 7988558,
+        "sha256": "03add1fb9c9f71093afee8d6133def7d3ee3a84267e97da65df5fe698eac1c98",
+        "rgbaSha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97",
+        "readableAfterHostClosed": true
+      },
+      "gpu": [
+        {
+          "deviceLost": false,
+          "uncapturedErrors": 0,
+          "requestedBufferBytesPeak": 1143390720
+        }
+      ]
+    },
+    {
+      "variant": "production-verifydet-verifyinput",
+      "cacheState": "new-profile",
+      "image": "benchmark/color/fixtures/typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+      "browserVersion": "151.0.7922.34",
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-15-18-895Z.json",
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "raw": [
+        {
+          "phase": "detector-input-sha256",
+          "dims": [
+            1,
+            3,
+            1024,
+            1024
+          ],
+          "bytes": 12582912,
+          "sha256": "74a1604ddb29953a37f41646f50be1e856ae64cee6f50d506f75e99428862d87"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "blk",
+          "dims": [
+            1,
+            64512,
+            7
+          ],
+          "bytes": 1806336,
+          "sha256": "92c48c1ff39b040d3f0c8952b0f2eba910d68796681637c8928e873b9adf48e1"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "det",
+          "dims": [
+            1,
+            2,
+            1024,
+            1024
+          ],
+          "bytes": 8388608,
+          "sha256": "5b1e1a14284fc72a5a27ec84a3de19ee3efdd047cdde11d3f5db5803471281e4"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "seg",
+          "dims": [
+            1,
+            1,
+            1024,
+            1024
+          ],
+          "bytes": 4194304,
+          "sha256": "1c09dd1ffe00135583ccb6fd943907ab435634e21c455d41968aed054dd6505f"
+        }
+      ],
+      "providers": [
+        [
+          "detector",
+          "webgpu",
+          null
+        ],
+        [
+          "bubble",
+          "webgpu",
+          null
+        ],
+        [
+          "ocr",
+          "webgpu",
+          null
+        ],
+        [
+          "inpaint",
+          "webgpu",
+          null
+        ]
+      ],
+      "detectedRegionCount": 9,
+      "ocr": {
+        "model": "paddleocr_v6_medium_rec",
+        "normalize": "minus_one_to_one",
+        "channelOrder": "bgr",
+        "accepted": 17,
+        "rejected": 0,
+        "regions": [
+          {
+            "direction": "v",
+            "box": {
+              "x": 2574,
+              "y": 417,
+              "width": 66,
+              "height": 322
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              234
+            ],
+            "decodedText": "いろはっ!",
+            "confidence": 0.9715988535357322,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1381,
+              "y": 437,
+              "width": 99,
+              "height": 266
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              129
+            ],
+            "decodedText": "して",
+            "confidence": 0.9740116905342261,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1474,
+              "y": 438,
+              "width": 93,
+              "height": 348
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              180
+            ],
+            "decodedText": "壁ドン！",
+            "confidence": 0.8186369059757643,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 225,
+              "y": 1049,
+              "width": 82,
+              "height": 242
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              142
+            ],
+            "decodedText": "はあ？",
+            "confidence": 0.9937390647196263,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2645,
+              "y": 1537,
+              "width": 71,
+              "height": 174
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              118
+            ],
+            "decodedText": "そんな",
+            "confidence": 0.9999845822294757,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2539,
+              "y": 1542,
+              "width": 48,
+              "height": 264
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              264
+            ],
+            "decodedText": "なくない？",
+            "confidence": 0.9341674343749292,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2587,
+              "y": 1542,
+              "width": 66,
+              "height": 320
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              255
+            ],
+            "decodedText": "いいもんじゃ",
+            "confidence": 0.9983589189302663,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2070,
+              "y": 1721,
+              "width": 66,
+              "height": 294
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              214
+            ],
+            "decodedText": "いいから！",
+            "confidence": 0.9512002254960463,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2131,
+              "y": 1726,
+              "width": 79,
+              "height": 292
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              190
+            ],
+            "decodedText": "一回だけで",
+            "confidence": 0.9977466828254913,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2202,
+              "y": 1729,
+              "width": 66,
+              "height": 286
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              208
+            ],
+            "decodedText": "一回だけ！",
+            "confidence": 0.9703642876476418,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 271,
+              "y": 2171,
+              "width": 82,
+              "height": 134
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              78
+            ],
+            "decodedText": "もー",
+            "confidence": 0.9800111873442238,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 207,
+              "y": 2183,
+              "width": 79,
+              "height": 182
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              111
+            ],
+            "decodedText": "一回ね",
+            "confidence": 0.9995389854091881,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2201,
+              "y": 2292,
+              "width": 472,
+              "height": 40
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "無断転載禁止·AI学習禁",
+            "confidence": 0.9930956286527682,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2201,
+              "y": 2358,
+              "width": 383,
+              "height": 46
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "Donot reupload my art",
+            "confidence": 0.9855356964882539,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2195,
+              "y": 2406,
+              "width": 508,
+              "height": 53
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "DonotusemyartforAIraing",
+            "confidence": 0.9193470218733215,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2424,
+              "y": 2472,
+              "width": 213,
+              "height": 28
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "@arupakastui",
+            "confidence": 0.8999183719162668,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2418,
+              "y": 2638,
+              "width": 65,
+              "height": 236
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              174
+            ],
+            "decodedText": "待てて",
+            "confidence": 0.9998700781415792,
+            "accepted": true
+          }
+        ],
+        "inputDims": [
+          [
+            1,
+            3,
+            48,
+            234
+          ],
+          [
+            2,
+            3,
+            48,
+            160
+          ],
+          [
+            3,
+            3,
+            48,
+            192
+          ],
+          [
+            2,
+            3,
+            48,
+            128
+          ],
+          [
+            1,
+            3,
+            48,
+            288
+          ],
+          [
+            1,
+            3,
+            48,
+            256
+          ],
+          [
+            2,
+            3,
+            48,
+            224
+          ],
+          [
+            1,
+            3,
+            48,
+            96
+          ],
+          [
+            4,
+            3,
+            48,
+            320
+          ]
+        ],
+        "inputBytes": 2162304
+      },
+      "png": {
+        "type": "image/png",
+        "bytes": 7988558,
+        "sha256": "03add1fb9c9f71093afee8d6133def7d3ee3a84267e97da65df5fe698eac1c98",
+        "rgbaSha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97",
+        "readableAfterHostClosed": true
+      },
+      "gpu": [
+        {
+          "deviceLost": false,
+          "uncapturedErrors": 0,
+          "requestedBufferBytesPeak": 1144439296
+        }
+      ]
+    },
+    {
+      "variant": "production-verifydet-verifyinput",
+      "cacheState": "retained-cache-new-process",
+      "image": "benchmark/color/fixtures/typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+      "browserVersion": "151.0.7922.34",
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-15-24-387Z.json",
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "raw": [
+        {
+          "phase": "detector-input-sha256",
+          "dims": [
+            1,
+            3,
+            1024,
+            1024
+          ],
+          "bytes": 12582912,
+          "sha256": "74a1604ddb29953a37f41646f50be1e856ae64cee6f50d506f75e99428862d87"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "blk",
+          "dims": [
+            1,
+            64512,
+            7
+          ],
+          "bytes": 1806336,
+          "sha256": "92c48c1ff39b040d3f0c8952b0f2eba910d68796681637c8928e873b9adf48e1"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "det",
+          "dims": [
+            1,
+            2,
+            1024,
+            1024
+          ],
+          "bytes": 8388608,
+          "sha256": "5b1e1a14284fc72a5a27ec84a3de19ee3efdd047cdde11d3f5db5803471281e4"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "seg",
+          "dims": [
+            1,
+            1,
+            1024,
+            1024
+          ],
+          "bytes": 4194304,
+          "sha256": "1c09dd1ffe00135583ccb6fd943907ab435634e21c455d41968aed054dd6505f"
+        }
+      ],
+      "providers": [
+        [
+          "detector",
+          "webgpu",
+          null
+        ],
+        [
+          "bubble",
+          "webgpu",
+          null
+        ],
+        [
+          "ocr",
+          "webgpu",
+          null
+        ],
+        [
+          "inpaint",
+          "webgpu",
+          null
+        ]
+      ],
+      "detectedRegionCount": 9,
+      "ocr": {
+        "model": "paddleocr_v6_medium_rec",
+        "normalize": "minus_one_to_one",
+        "channelOrder": "bgr",
+        "accepted": 17,
+        "rejected": 0,
+        "regions": [
+          {
+            "direction": "v",
+            "box": {
+              "x": 2574,
+              "y": 417,
+              "width": 66,
+              "height": 322
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              234
+            ],
+            "decodedText": "いろはっ!",
+            "confidence": 0.9715988535357322,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1381,
+              "y": 437,
+              "width": 99,
+              "height": 266
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              129
+            ],
+            "decodedText": "して",
+            "confidence": 0.9740116905342261,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1474,
+              "y": 438,
+              "width": 93,
+              "height": 348
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              180
+            ],
+            "decodedText": "壁ドン！",
+            "confidence": 0.8186369059757643,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 225,
+              "y": 1049,
+              "width": 82,
+              "height": 242
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              142
+            ],
+            "decodedText": "はあ？",
+            "confidence": 0.9937390647196263,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2645,
+              "y": 1537,
+              "width": 71,
+              "height": 174
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              118
+            ],
+            "decodedText": "そんな",
+            "confidence": 0.9999845822294757,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2539,
+              "y": 1542,
+              "width": 48,
+              "height": 264
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              264
+            ],
+            "decodedText": "なくない？",
+            "confidence": 0.9341674343749292,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2587,
+              "y": 1542,
+              "width": 66,
+              "height": 320
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              255
+            ],
+            "decodedText": "いいもんじゃ",
+            "confidence": 0.9983589189302663,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2070,
+              "y": 1721,
+              "width": 66,
+              "height": 294
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              214
+            ],
+            "decodedText": "いいから！",
+            "confidence": 0.9512002254960463,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2131,
+              "y": 1726,
+              "width": 79,
+              "height": 292
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              190
+            ],
+            "decodedText": "一回だけで",
+            "confidence": 0.9977466828254913,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2202,
+              "y": 1729,
+              "width": 66,
+              "height": 286
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              208
+            ],
+            "decodedText": "一回だけ！",
+            "confidence": 0.9703642876476418,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 271,
+              "y": 2171,
+              "width": 82,
+              "height": 134
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              78
+            ],
+            "decodedText": "もー",
+            "confidence": 0.9800111873442238,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 207,
+              "y": 2183,
+              "width": 79,
+              "height": 182
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              111
+            ],
+            "decodedText": "一回ね",
+            "confidence": 0.9995389854091881,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2201,
+              "y": 2292,
+              "width": 472,
+              "height": 40
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "無断転載禁止·AI学習禁",
+            "confidence": 0.9930956286527682,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2201,
+              "y": 2358,
+              "width": 383,
+              "height": 46
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "Donot reupload my art",
+            "confidence": 0.9855356964882539,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2195,
+              "y": 2406,
+              "width": 508,
+              "height": 53
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "DonotusemyartforAIraing",
+            "confidence": 0.9193470218733215,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2424,
+              "y": 2472,
+              "width": 213,
+              "height": 28
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "@arupakastui",
+            "confidence": 0.8999183719162668,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2418,
+              "y": 2638,
+              "width": 65,
+              "height": 236
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              174
+            ],
+            "decodedText": "待てて",
+            "confidence": 0.9998700781415792,
+            "accepted": true
+          }
+        ],
+        "inputDims": [
+          [
+            1,
+            3,
+            48,
+            234
+          ],
+          [
+            2,
+            3,
+            48,
+            160
+          ],
+          [
+            3,
+            3,
+            48,
+            192
+          ],
+          [
+            2,
+            3,
+            48,
+            128
+          ],
+          [
+            1,
+            3,
+            48,
+            288
+          ],
+          [
+            1,
+            3,
+            48,
+            256
+          ],
+          [
+            2,
+            3,
+            48,
+            224
+          ],
+          [
+            1,
+            3,
+            48,
+            96
+          ],
+          [
+            4,
+            3,
+            48,
+            320
+          ]
+        ],
+        "inputBytes": 2162304
+      },
+      "png": {
+        "type": "image/png",
+        "bytes": 7988558,
+        "sha256": "03add1fb9c9f71093afee8d6133def7d3ee3a84267e97da65df5fe698eac1c98",
+        "rgbaSha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97",
+        "readableAfterHostClosed": true
+      },
+      "gpu": [
+        {
+          "deviceLost": false,
+          "uncapturedErrors": 0,
+          "requestedBufferBytesPeak": 1144439296
+        }
+      ]
+    },
+    {
+      "variant": "baseline-verifydet-verifyinput",
+      "cacheState": "new-profile",
+      "image": "assets/readme/translated1.png",
+      "browserVersion": "151.0.7922.34",
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-16-20-185Z.json",
+      "resultImage": {
+        "width": 1487,
+        "height": 2048,
+        "sha256": "06007f59966f605e51fc0ceab3f8aa13b5b5282218b77be762a6c9abdf1bfda0"
+      },
+      "raw": [
+        {
+          "phase": "detector-input-sha256",
+          "dims": [
+            1,
+            3,
+            1024,
+            1024
+          ],
+          "bytes": 12582912,
+          "sha256": "bb3614136c6285aa81d31de80f3c1e586dfb977807f3180c99c9ff58ba7b064e"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "blk",
+          "dims": [
+            1,
+            64512,
+            7
+          ],
+          "bytes": 1806336,
+          "sha256": "8bfd904147382ffc68ba44190caa0d0f4de82b49ff79ae044a4fdf96b99daf62"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "det",
+          "dims": [
+            1,
+            2,
+            1024,
+            1024
+          ],
+          "bytes": 8388608,
+          "sha256": "4cc8b1dd075a8d223963168325b2de0e70fde792dc3b2a990bfc3606f306906a"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "seg",
+          "dims": [
+            1,
+            1,
+            1024,
+            1024
+          ],
+          "bytes": 4194304,
+          "sha256": "4e2b2eb54b6ae2af7d64249879b5d29182dfe49dc6ce7799c2c8445d85ee8392"
+        }
+      ],
+      "providers": [
+        [
+          "detector",
+          "webgpu",
+          null
+        ],
+        [
+          "bubble",
+          "webgpu",
+          null
+        ],
+        [
+          "ocr",
+          "webgpu",
+          null
+        ],
+        [
+          "inpaint",
+          "webgpu",
+          null
+        ]
+      ],
+      "detectedRegionCount": 14,
+      "ocr": {
+        "model": "paddleocr_v6_medium_rec",
+        "normalize": "minus_one_to_one",
+        "channelOrder": "bgr",
+        "accepted": 28,
+        "rejected": 0,
+        "regions": [
+          {
+            "direction": "v",
+            "box": {
+              "x": 213,
+              "y": 0,
+              "width": 40,
+              "height": 107
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              128
+            ],
+            "decodedText": "是啊…",
+            "confidence": 0.994233364280385,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 174,
+              "y": 2,
+              "width": 28,
+              "height": 134
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              230
+            ],
+            "decodedText": "很温柔呢",
+            "confidence": 0.999156999930156,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 255,
+              "y": 3,
+              "width": 41,
+              "height": 70
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              82
+            ],
+            "decodedText": "嗯…",
+            "confidence": 0.9978108599874398,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1331,
+              "y": 9,
+              "width": 46,
+              "height": 280
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              319
+            ],
+            "decodedText": "得坂本怎么样？",
+            "confidence": 0.9947188906972412,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1396,
+              "y": 11,
+              "width": 38,
+              "height": 280
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "喂喂，小梅你觉",
+            "confidence": 0.9086100516476007,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 23,
+              "y": 185,
+              "width": 38,
+              "height": 140
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              177
+            ],
+            "decodedText": "些吗2",
+            "confidence": 0.9940732497847669,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 75,
+              "y": 187,
+              "width": 38,
+              "height": 170
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              215
+            ],
+            "decodedText": "呃，就这",
+            "confidence": 0.7955936051112303,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1120,
+              "y": 206,
+              "width": 79,
+              "height": 106
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              73
+            ],
+            "decodedText": "君？",
+            "confidence": 0.9975324361139062,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1171,
+              "y": 212,
+              "width": 64,
+              "height": 98
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              74
+            ],
+            "decodedText": "坂本",
+            "confidence": 0.9976594779394609,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1342,
+              "y": 471,
+              "width": 46,
+              "height": 162
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              169
+            ],
+            "decodedText": "赛亚呢？",
+            "confidence": 0.9946064781247028,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1405,
+              "y": 471,
+              "width": 47,
+              "height": 166
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              180
+            ],
+            "decodedText": "那么，弥",
+            "confidence": 0.8475410964413576,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 598,
+              "y": 918,
+              "width": 95,
+              "height": 137
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              76
+            ],
+            "decodedText": "咦？",
+            "confidence": 0.9712623688920067,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 10,
+              "y": 1054,
+              "width": 44,
+              "height": 236
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              270
+            ],
+            "decodedText": "也没什么……",
+            "confidence": 0.9941435995162174,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 67,
+              "y": 1054,
+              "width": 49,
+              "height": 268
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              276
+            ],
+            "decodedText": "我、我啊",
+            "confidence": 0.9860798615524953,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 371,
+              "y": 1428,
+              "width": 44,
+              "height": 152
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              179
+            ],
+            "decodedText": "前几天呢",
+            "confidence": 0.9995738093292508,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 428,
+              "y": 1430,
+              "width": 42,
+              "height": 170
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              194
+            ],
+            "decodedText": "啊，还有，",
+            "confidence": 0.897223452160798,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1402,
+              "y": 1433,
+              "width": 40,
+              "height": 112
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              134
+            ],
+            "decodedText": "有趣啊",
+            "confidence": 0.9988588386421042,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1447,
+              "y": 1438,
+              "width": 28,
+              "height": 210
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "反应每次都很",
+            "confidence": 0.9998974336172882,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 859,
+              "y": 1479,
+              "width": 43,
+              "height": 308
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "敬语，真了不起啊。",
+            "confidence": 0.9942718132745799,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 913,
+              "y": 1486,
+              "width": 34,
+              "height": 312
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "你对店员之类的也用",
+            "confidence": 0.9999412025715829,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1085,
+              "y": 1502,
+              "width": 38,
+              "height": 72
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              91
+            ],
+            "decodedText": "嗯嗯",
+            "confidence": 0.9992751333744583,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 198,
+              "y": 1534,
+              "width": 42,
+              "height": 146
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              167
+            ],
+            "decodedText": "到了呢…",
+            "confidence": 0.9930976447424079,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 255,
+              "y": 1535,
+              "width": 38,
+              "height": 218
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              293
+            ],
+            "decodedText": "你马上就注意",
+            "confidence": 0.9999214986460394,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 309,
+              "y": 1535,
+              "width": 38,
+              "height": 202
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              255
+            ],
+            "decodedText": "换了个发型，",
+            "confidence": 0.9976125985677695,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 706,
+              "y": 1604,
+              "width": 33,
+              "height": 210
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              305
+            ],
+            "decodedText": "哇，真不错！",
+            "confidence": 0.9664263359842146,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 35,
+              "y": 1791,
+              "width": 55,
+              "height": 158
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              146
+            ],
+            "decodedText": "还有吗？",
+            "confidence": 0.9942379200183821,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 75,
+              "y": 1795,
+              "width": 50,
+              "height": 96
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              92
+            ],
+            "decodedText": "呼呼",
+            "confidence": 0.9998411743134618,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 84,
+              "y": 1880,
+              "width": 32,
+              "height": 46
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              69
+            ],
+            "decodedText": "、",
+            "confidence": 0.2029584646224976,
+            "accepted": true
+          }
+        ],
+        "inputDims": [
+          [
+            1,
+            3,
+            48,
+            128
+          ],
+          [
+            2,
+            3,
+            48,
+            256
+          ],
+          [
+            7,
+            3,
+            48,
+            96
+          ],
+          [
+            7,
+            3,
+            48,
+            320
+          ],
+          [
+            5,
+            3,
+            48,
+            192
+          ],
+          [
+            2,
+            3,
+            48,
+            224
+          ],
+          [
+            2,
+            3,
+            48,
+            288
+          ],
+          [
+            2,
+            3,
+            48,
+            160
+          ]
+        ],
+        "inputBytes": 3373056
+      },
+      "png": {
+        "type": "image/png",
+        "bytes": 3536271,
+        "sha256": "88eab557ea563fcce9b9f045025dbcb6e99d5dc739a894346b4a4597f6e2e169",
+        "rgbaSha256": "06007f59966f605e51fc0ceab3f8aa13b5b5282218b77be762a6c9abdf1bfda0",
+        "readableAfterHostClosed": true
+      },
+      "gpu": [
+        {
+          "deviceLost": false,
+          "uncapturedErrors": 0,
+          "requestedBufferBytesPeak": 1222295936
+        }
+      ]
+    },
+    {
+      "variant": "baseline-verifydet-verifyinput",
+      "cacheState": "retained-cache-new-process",
+      "image": "assets/readme/translated1.png",
+      "browserVersion": "151.0.7922.34",
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-16-25-580Z.json",
+      "resultImage": {
+        "width": 1487,
+        "height": 2048,
+        "sha256": "06007f59966f605e51fc0ceab3f8aa13b5b5282218b77be762a6c9abdf1bfda0"
+      },
+      "raw": [
+        {
+          "phase": "detector-input-sha256",
+          "dims": [
+            1,
+            3,
+            1024,
+            1024
+          ],
+          "bytes": 12582912,
+          "sha256": "bb3614136c6285aa81d31de80f3c1e586dfb977807f3180c99c9ff58ba7b064e"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "blk",
+          "dims": [
+            1,
+            64512,
+            7
+          ],
+          "bytes": 1806336,
+          "sha256": "8bfd904147382ffc68ba44190caa0d0f4de82b49ff79ae044a4fdf96b99daf62"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "det",
+          "dims": [
+            1,
+            2,
+            1024,
+            1024
+          ],
+          "bytes": 8388608,
+          "sha256": "4cc8b1dd075a8d223963168325b2de0e70fde792dc3b2a990bfc3606f306906a"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "seg",
+          "dims": [
+            1,
+            1,
+            1024,
+            1024
+          ],
+          "bytes": 4194304,
+          "sha256": "4e2b2eb54b6ae2af7d64249879b5d29182dfe49dc6ce7799c2c8445d85ee8392"
+        }
+      ],
+      "providers": [
+        [
+          "detector",
+          "webgpu",
+          null
+        ],
+        [
+          "bubble",
+          "webgpu",
+          null
+        ],
+        [
+          "ocr",
+          "webgpu",
+          null
+        ],
+        [
+          "inpaint",
+          "webgpu",
+          null
+        ]
+      ],
+      "detectedRegionCount": 14,
+      "ocr": {
+        "model": "paddleocr_v6_medium_rec",
+        "normalize": "minus_one_to_one",
+        "channelOrder": "bgr",
+        "accepted": 28,
+        "rejected": 0,
+        "regions": [
+          {
+            "direction": "v",
+            "box": {
+              "x": 213,
+              "y": 0,
+              "width": 40,
+              "height": 107
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              128
+            ],
+            "decodedText": "是啊…",
+            "confidence": 0.994233364280385,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 174,
+              "y": 2,
+              "width": 28,
+              "height": 134
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              230
+            ],
+            "decodedText": "很温柔呢",
+            "confidence": 0.999156999930156,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 255,
+              "y": 3,
+              "width": 41,
+              "height": 70
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              82
+            ],
+            "decodedText": "嗯…",
+            "confidence": 0.9978108599874398,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1331,
+              "y": 9,
+              "width": 46,
+              "height": 280
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              319
+            ],
+            "decodedText": "得坂本怎么样？",
+            "confidence": 0.9947188906972412,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1396,
+              "y": 11,
+              "width": 38,
+              "height": 280
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "喂喂，小梅你觉",
+            "confidence": 0.9086100516476007,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 23,
+              "y": 185,
+              "width": 38,
+              "height": 140
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              177
+            ],
+            "decodedText": "些吗2",
+            "confidence": 0.9940732497847669,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 75,
+              "y": 187,
+              "width": 38,
+              "height": 170
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              215
+            ],
+            "decodedText": "呃，就这",
+            "confidence": 0.7955936051112303,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1120,
+              "y": 206,
+              "width": 79,
+              "height": 106
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              73
+            ],
+            "decodedText": "君？",
+            "confidence": 0.9975324361139062,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1171,
+              "y": 212,
+              "width": 64,
+              "height": 98
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              74
+            ],
+            "decodedText": "坂本",
+            "confidence": 0.9976594779394609,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1342,
+              "y": 471,
+              "width": 46,
+              "height": 162
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              169
+            ],
+            "decodedText": "赛亚呢？",
+            "confidence": 0.9946064781247028,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1405,
+              "y": 471,
+              "width": 47,
+              "height": 166
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              180
+            ],
+            "decodedText": "那么，弥",
+            "confidence": 0.8475410964413576,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 598,
+              "y": 918,
+              "width": 95,
+              "height": 137
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              76
+            ],
+            "decodedText": "咦？",
+            "confidence": 0.9712623688920067,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 10,
+              "y": 1054,
+              "width": 44,
+              "height": 236
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              270
+            ],
+            "decodedText": "也没什么……",
+            "confidence": 0.9941435995162174,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 67,
+              "y": 1054,
+              "width": 49,
+              "height": 268
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              276
+            ],
+            "decodedText": "我、我啊",
+            "confidence": 0.9860798615524953,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 371,
+              "y": 1428,
+              "width": 44,
+              "height": 152
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              179
+            ],
+            "decodedText": "前几天呢",
+            "confidence": 0.9995738093292508,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 428,
+              "y": 1430,
+              "width": 42,
+              "height": 170
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              194
+            ],
+            "decodedText": "啊，还有，",
+            "confidence": 0.897223452160798,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1402,
+              "y": 1433,
+              "width": 40,
+              "height": 112
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              134
+            ],
+            "decodedText": "有趣啊",
+            "confidence": 0.9988588386421042,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1447,
+              "y": 1438,
+              "width": 28,
+              "height": 210
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "反应每次都很",
+            "confidence": 0.9998974336172882,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 859,
+              "y": 1479,
+              "width": 43,
+              "height": 308
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "敬语，真了不起啊。",
+            "confidence": 0.9942718132745799,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 913,
+              "y": 1486,
+              "width": 34,
+              "height": 312
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "你对店员之类的也用",
+            "confidence": 0.9999412025715829,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1085,
+              "y": 1502,
+              "width": 38,
+              "height": 72
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              91
+            ],
+            "decodedText": "嗯嗯",
+            "confidence": 0.9992751333744583,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 198,
+              "y": 1534,
+              "width": 42,
+              "height": 146
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              167
+            ],
+            "decodedText": "到了呢…",
+            "confidence": 0.9930976447424079,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 255,
+              "y": 1535,
+              "width": 38,
+              "height": 218
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              293
+            ],
+            "decodedText": "你马上就注意",
+            "confidence": 0.9999214986460394,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 309,
+              "y": 1535,
+              "width": 38,
+              "height": 202
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              255
+            ],
+            "decodedText": "换了个发型，",
+            "confidence": 0.9976125985677695,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 706,
+              "y": 1604,
+              "width": 33,
+              "height": 210
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              305
+            ],
+            "decodedText": "哇，真不错！",
+            "confidence": 0.9664263359842146,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 35,
+              "y": 1791,
+              "width": 55,
+              "height": 158
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              146
+            ],
+            "decodedText": "还有吗？",
+            "confidence": 0.9942379200183821,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 75,
+              "y": 1795,
+              "width": 50,
+              "height": 96
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              92
+            ],
+            "decodedText": "呼呼",
+            "confidence": 0.9998411743134618,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 84,
+              "y": 1880,
+              "width": 32,
+              "height": 46
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              69
+            ],
+            "decodedText": "、",
+            "confidence": 0.2029584646224976,
+            "accepted": true
+          }
+        ],
+        "inputDims": [
+          [
+            1,
+            3,
+            48,
+            128
+          ],
+          [
+            2,
+            3,
+            48,
+            256
+          ],
+          [
+            7,
+            3,
+            48,
+            96
+          ],
+          [
+            7,
+            3,
+            48,
+            320
+          ],
+          [
+            5,
+            3,
+            48,
+            192
+          ],
+          [
+            2,
+            3,
+            48,
+            224
+          ],
+          [
+            2,
+            3,
+            48,
+            288
+          ],
+          [
+            2,
+            3,
+            48,
+            160
+          ]
+        ],
+        "inputBytes": 3373056
+      },
+      "png": {
+        "type": "image/png",
+        "bytes": 3536271,
+        "sha256": "88eab557ea563fcce9b9f045025dbcb6e99d5dc739a894346b4a4597f6e2e169",
+        "rgbaSha256": "06007f59966f605e51fc0ceab3f8aa13b5b5282218b77be762a6c9abdf1bfda0",
+        "readableAfterHostClosed": true
+      },
+      "gpu": [
+        {
+          "deviceLost": false,
+          "uncapturedErrors": 0,
+          "requestedBufferBytesPeak": 1222295936
+        }
+      ]
+    },
+    {
+      "variant": "production-verifydet-verifyinput",
+      "cacheState": "new-profile",
+      "image": "assets/readme/translated1.png",
+      "browserVersion": "151.0.7922.34",
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-16-30-451Z.json",
+      "resultImage": {
+        "width": 1487,
+        "height": 2048,
+        "sha256": "06007f59966f605e51fc0ceab3f8aa13b5b5282218b77be762a6c9abdf1bfda0"
+      },
+      "raw": [
+        {
+          "phase": "detector-input-sha256",
+          "dims": [
+            1,
+            3,
+            1024,
+            1024
+          ],
+          "bytes": 12582912,
+          "sha256": "bb3614136c6285aa81d31de80f3c1e586dfb977807f3180c99c9ff58ba7b064e"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "blk",
+          "dims": [
+            1,
+            64512,
+            7
+          ],
+          "bytes": 1806336,
+          "sha256": "8bfd904147382ffc68ba44190caa0d0f4de82b49ff79ae044a4fdf96b99daf62"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "det",
+          "dims": [
+            1,
+            2,
+            1024,
+            1024
+          ],
+          "bytes": 8388608,
+          "sha256": "4cc8b1dd075a8d223963168325b2de0e70fde792dc3b2a990bfc3606f306906a"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "seg",
+          "dims": [
+            1,
+            1,
+            1024,
+            1024
+          ],
+          "bytes": 4194304,
+          "sha256": "4e2b2eb54b6ae2af7d64249879b5d29182dfe49dc6ce7799c2c8445d85ee8392"
+        }
+      ],
+      "providers": [
+        [
+          "detector",
+          "webgpu",
+          null
+        ],
+        [
+          "bubble",
+          "webgpu",
+          null
+        ],
+        [
+          "ocr",
+          "webgpu",
+          null
+        ],
+        [
+          "inpaint",
+          "webgpu",
+          null
+        ]
+      ],
+      "detectedRegionCount": 14,
+      "ocr": {
+        "model": "paddleocr_v6_medium_rec",
+        "normalize": "minus_one_to_one",
+        "channelOrder": "bgr",
+        "accepted": 28,
+        "rejected": 0,
+        "regions": [
+          {
+            "direction": "v",
+            "box": {
+              "x": 213,
+              "y": 0,
+              "width": 40,
+              "height": 107
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              128
+            ],
+            "decodedText": "是啊…",
+            "confidence": 0.994233364280385,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 174,
+              "y": 2,
+              "width": 28,
+              "height": 134
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              230
+            ],
+            "decodedText": "很温柔呢",
+            "confidence": 0.999156999930156,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 255,
+              "y": 3,
+              "width": 41,
+              "height": 70
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              82
+            ],
+            "decodedText": "嗯…",
+            "confidence": 0.9978108599874398,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1331,
+              "y": 9,
+              "width": 46,
+              "height": 280
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              319
+            ],
+            "decodedText": "得坂本怎么样？",
+            "confidence": 0.9947188906972412,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1396,
+              "y": 11,
+              "width": 38,
+              "height": 280
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "喂喂，小梅你觉",
+            "confidence": 0.9086100516476007,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 23,
+              "y": 185,
+              "width": 38,
+              "height": 140
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              177
+            ],
+            "decodedText": "些吗2",
+            "confidence": 0.9940732497847669,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 75,
+              "y": 187,
+              "width": 38,
+              "height": 170
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              215
+            ],
+            "decodedText": "呃，就这",
+            "confidence": 0.7955936051112303,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1120,
+              "y": 206,
+              "width": 79,
+              "height": 106
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              73
+            ],
+            "decodedText": "君？",
+            "confidence": 0.9975324361139062,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1171,
+              "y": 212,
+              "width": 64,
+              "height": 98
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              74
+            ],
+            "decodedText": "坂本",
+            "confidence": 0.9976594779394609,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1342,
+              "y": 471,
+              "width": 46,
+              "height": 162
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              169
+            ],
+            "decodedText": "赛亚呢？",
+            "confidence": 0.9946064781247028,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1405,
+              "y": 471,
+              "width": 47,
+              "height": 166
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              180
+            ],
+            "decodedText": "那么，弥",
+            "confidence": 0.8475410964413576,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 598,
+              "y": 918,
+              "width": 95,
+              "height": 137
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              76
+            ],
+            "decodedText": "咦？",
+            "confidence": 0.9712623688920067,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 10,
+              "y": 1054,
+              "width": 44,
+              "height": 236
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              270
+            ],
+            "decodedText": "也没什么……",
+            "confidence": 0.9941435995162174,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 67,
+              "y": 1054,
+              "width": 49,
+              "height": 268
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              276
+            ],
+            "decodedText": "我、我啊",
+            "confidence": 0.9860798615524953,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 371,
+              "y": 1428,
+              "width": 44,
+              "height": 152
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              179
+            ],
+            "decodedText": "前几天呢",
+            "confidence": 0.9995738093292508,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 428,
+              "y": 1430,
+              "width": 42,
+              "height": 170
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              194
+            ],
+            "decodedText": "啊，还有，",
+            "confidence": 0.897223452160798,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1402,
+              "y": 1433,
+              "width": 40,
+              "height": 112
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              134
+            ],
+            "decodedText": "有趣啊",
+            "confidence": 0.9988588386421042,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1447,
+              "y": 1438,
+              "width": 28,
+              "height": 210
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "反应每次都很",
+            "confidence": 0.9998974336172882,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 859,
+              "y": 1479,
+              "width": 43,
+              "height": 308
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "敬语，真了不起啊。",
+            "confidence": 0.9942718132745799,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 913,
+              "y": 1486,
+              "width": 34,
+              "height": 312
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "你对店员之类的也用",
+            "confidence": 0.9999412025715829,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1085,
+              "y": 1502,
+              "width": 38,
+              "height": 72
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              91
+            ],
+            "decodedText": "嗯嗯",
+            "confidence": 0.9992751333744583,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 198,
+              "y": 1534,
+              "width": 42,
+              "height": 146
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              167
+            ],
+            "decodedText": "到了呢…",
+            "confidence": 0.9930976447424079,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 255,
+              "y": 1535,
+              "width": 38,
+              "height": 218
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              293
+            ],
+            "decodedText": "你马上就注意",
+            "confidence": 0.9999214986460394,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 309,
+              "y": 1535,
+              "width": 38,
+              "height": 202
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              255
+            ],
+            "decodedText": "换了个发型，",
+            "confidence": 0.9976125985677695,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 706,
+              "y": 1604,
+              "width": 33,
+              "height": 210
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              305
+            ],
+            "decodedText": "哇，真不错！",
+            "confidence": 0.9664263359842146,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 35,
+              "y": 1791,
+              "width": 55,
+              "height": 158
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              146
+            ],
+            "decodedText": "还有吗？",
+            "confidence": 0.9942379200183821,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 75,
+              "y": 1795,
+              "width": 50,
+              "height": 96
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              92
+            ],
+            "decodedText": "呼呼",
+            "confidence": 0.9998411743134618,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 84,
+              "y": 1880,
+              "width": 32,
+              "height": 46
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              69
+            ],
+            "decodedText": "、",
+            "confidence": 0.2029584646224976,
+            "accepted": true
+          }
+        ],
+        "inputDims": [
+          [
+            1,
+            3,
+            48,
+            128
+          ],
+          [
+            2,
+            3,
+            48,
+            256
+          ],
+          [
+            7,
+            3,
+            48,
+            96
+          ],
+          [
+            7,
+            3,
+            48,
+            320
+          ],
+          [
+            5,
+            3,
+            48,
+            192
+          ],
+          [
+            2,
+            3,
+            48,
+            224
+          ],
+          [
+            2,
+            3,
+            48,
+            288
+          ],
+          [
+            2,
+            3,
+            48,
+            160
+          ]
+        ],
+        "inputBytes": 3373056
+      },
+      "png": {
+        "type": "image/png",
+        "bytes": 3536271,
+        "sha256": "88eab557ea563fcce9b9f045025dbcb6e99d5dc739a894346b4a4597f6e2e169",
+        "rgbaSha256": "06007f59966f605e51fc0ceab3f8aa13b5b5282218b77be762a6c9abdf1bfda0",
+        "readableAfterHostClosed": true
+      },
+      "gpu": [
+        {
+          "deviceLost": false,
+          "uncapturedErrors": 0,
+          "requestedBufferBytesPeak": 1222558080
+        }
+      ]
+    },
+    {
+      "variant": "production-verifydet-verifyinput",
+      "cacheState": "retained-cache-new-process",
+      "image": "assets/readme/translated1.png",
+      "browserVersion": "151.0.7922.34",
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-16-34-688Z.json",
+      "resultImage": {
+        "width": 1487,
+        "height": 2048,
+        "sha256": "06007f59966f605e51fc0ceab3f8aa13b5b5282218b77be762a6c9abdf1bfda0"
+      },
+      "raw": [
+        {
+          "phase": "detector-input-sha256",
+          "dims": [
+            1,
+            3,
+            1024,
+            1024
+          ],
+          "bytes": 12582912,
+          "sha256": "bb3614136c6285aa81d31de80f3c1e586dfb977807f3180c99c9ff58ba7b064e"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "blk",
+          "dims": [
+            1,
+            64512,
+            7
+          ],
+          "bytes": 1806336,
+          "sha256": "8bfd904147382ffc68ba44190caa0d0f4de82b49ff79ae044a4fdf96b99daf62"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "det",
+          "dims": [
+            1,
+            2,
+            1024,
+            1024
+          ],
+          "bytes": 8388608,
+          "sha256": "4cc8b1dd075a8d223963168325b2de0e70fde792dc3b2a990bfc3606f306906a"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "seg",
+          "dims": [
+            1,
+            1,
+            1024,
+            1024
+          ],
+          "bytes": 4194304,
+          "sha256": "4e2b2eb54b6ae2af7d64249879b5d29182dfe49dc6ce7799c2c8445d85ee8392"
+        }
+      ],
+      "providers": [
+        [
+          "detector",
+          "webgpu",
+          null
+        ],
+        [
+          "bubble",
+          "webgpu",
+          null
+        ],
+        [
+          "ocr",
+          "webgpu",
+          null
+        ],
+        [
+          "inpaint",
+          "webgpu",
+          null
+        ]
+      ],
+      "detectedRegionCount": 14,
+      "ocr": {
+        "model": "paddleocr_v6_medium_rec",
+        "normalize": "minus_one_to_one",
+        "channelOrder": "bgr",
+        "accepted": 28,
+        "rejected": 0,
+        "regions": [
+          {
+            "direction": "v",
+            "box": {
+              "x": 213,
+              "y": 0,
+              "width": 40,
+              "height": 107
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              128
+            ],
+            "decodedText": "是啊…",
+            "confidence": 0.994233364280385,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 174,
+              "y": 2,
+              "width": 28,
+              "height": 134
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              230
+            ],
+            "decodedText": "很温柔呢",
+            "confidence": 0.999156999930156,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 255,
+              "y": 3,
+              "width": 41,
+              "height": 70
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              82
+            ],
+            "decodedText": "嗯…",
+            "confidence": 0.9978108599874398,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1331,
+              "y": 9,
+              "width": 46,
+              "height": 280
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              319
+            ],
+            "decodedText": "得坂本怎么样？",
+            "confidence": 0.9947188906972412,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1396,
+              "y": 11,
+              "width": 38,
+              "height": 280
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "喂喂，小梅你觉",
+            "confidence": 0.9086100516476007,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 23,
+              "y": 185,
+              "width": 38,
+              "height": 140
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              177
+            ],
+            "decodedText": "些吗2",
+            "confidence": 0.9940732497847669,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 75,
+              "y": 187,
+              "width": 38,
+              "height": 170
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              215
+            ],
+            "decodedText": "呃，就这",
+            "confidence": 0.7955936051112303,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1120,
+              "y": 206,
+              "width": 79,
+              "height": 106
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              73
+            ],
+            "decodedText": "君？",
+            "confidence": 0.9975324361139062,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1171,
+              "y": 212,
+              "width": 64,
+              "height": 98
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              74
+            ],
+            "decodedText": "坂本",
+            "confidence": 0.9976594779394609,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1342,
+              "y": 471,
+              "width": 46,
+              "height": 162
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              169
+            ],
+            "decodedText": "赛亚呢？",
+            "confidence": 0.9946064781247028,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1405,
+              "y": 471,
+              "width": 47,
+              "height": 166
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              180
+            ],
+            "decodedText": "那么，弥",
+            "confidence": 0.8475410964413576,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 598,
+              "y": 918,
+              "width": 95,
+              "height": 137
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              76
+            ],
+            "decodedText": "咦？",
+            "confidence": 0.9712623688920067,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 10,
+              "y": 1054,
+              "width": 44,
+              "height": 236
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              270
+            ],
+            "decodedText": "也没什么……",
+            "confidence": 0.9941435995162174,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 67,
+              "y": 1054,
+              "width": 49,
+              "height": 268
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              276
+            ],
+            "decodedText": "我、我啊",
+            "confidence": 0.9860798615524953,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 371,
+              "y": 1428,
+              "width": 44,
+              "height": 152
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              179
+            ],
+            "decodedText": "前几天呢",
+            "confidence": 0.9995738093292508,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 428,
+              "y": 1430,
+              "width": 42,
+              "height": 170
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              194
+            ],
+            "decodedText": "啊，还有，",
+            "confidence": 0.897223452160798,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1402,
+              "y": 1433,
+              "width": 40,
+              "height": 112
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              134
+            ],
+            "decodedText": "有趣啊",
+            "confidence": 0.9988588386421042,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1447,
+              "y": 1438,
+              "width": 28,
+              "height": 210
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "反应每次都很",
+            "confidence": 0.9998974336172882,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 859,
+              "y": 1479,
+              "width": 43,
+              "height": 308
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "敬语，真了不起啊。",
+            "confidence": 0.9942718132745799,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 913,
+              "y": 1486,
+              "width": 34,
+              "height": 312
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "你对店员之类的也用",
+            "confidence": 0.9999412025715829,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1085,
+              "y": 1502,
+              "width": 38,
+              "height": 72
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              91
+            ],
+            "decodedText": "嗯嗯",
+            "confidence": 0.9992751333744583,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 198,
+              "y": 1534,
+              "width": 42,
+              "height": 146
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              167
+            ],
+            "decodedText": "到了呢…",
+            "confidence": 0.9930976447424079,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 255,
+              "y": 1535,
+              "width": 38,
+              "height": 218
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              293
+            ],
+            "decodedText": "你马上就注意",
+            "confidence": 0.9999214986460394,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 309,
+              "y": 1535,
+              "width": 38,
+              "height": 202
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              255
+            ],
+            "decodedText": "换了个发型，",
+            "confidence": 0.9976125985677695,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 706,
+              "y": 1604,
+              "width": 33,
+              "height": 210
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              305
+            ],
+            "decodedText": "哇，真不错！",
+            "confidence": 0.9664263359842146,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 35,
+              "y": 1791,
+              "width": 55,
+              "height": 158
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              146
+            ],
+            "decodedText": "还有吗？",
+            "confidence": 0.9942379200183821,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 75,
+              "y": 1795,
+              "width": 50,
+              "height": 96
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              92
+            ],
+            "decodedText": "呼呼",
+            "confidence": 0.9998411743134618,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 84,
+              "y": 1880,
+              "width": 32,
+              "height": 46
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              69
+            ],
+            "decodedText": "、",
+            "confidence": 0.2029584646224976,
+            "accepted": true
+          }
+        ],
+        "inputDims": [
+          [
+            1,
+            3,
+            48,
+            128
+          ],
+          [
+            2,
+            3,
+            48,
+            256
+          ],
+          [
+            7,
+            3,
+            48,
+            96
+          ],
+          [
+            7,
+            3,
+            48,
+            320
+          ],
+          [
+            5,
+            3,
+            48,
+            192
+          ],
+          [
+            2,
+            3,
+            48,
+            224
+          ],
+          [
+            2,
+            3,
+            48,
+            288
+          ],
+          [
+            2,
+            3,
+            48,
+            160
+          ]
+        ],
+        "inputBytes": 3373056
+      },
+      "png": {
+        "type": "image/png",
+        "bytes": 3536271,
+        "sha256": "88eab557ea563fcce9b9f045025dbcb6e99d5dc739a894346b4a4597f6e2e169",
+        "rgbaSha256": "06007f59966f605e51fc0ceab3f8aa13b5b5282218b77be762a6c9abdf1bfda0",
+        "readableAfterHostClosed": true
+      },
+      "gpu": [
+        {
+          "deviceLost": false,
+          "uncapturedErrors": 0,
+          "requestedBufferBytesPeak": 1222558080
+        }
+      ]
+    },
+    {
+      "variant": "baseline-verifydet-verifyinput",
+      "cacheState": "new-profile",
+      "image": "benchmark/color/fixtures/typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+      "browserVersion": "154.0.4258.48",
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-23-24-475Z.json",
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "raw": [
+        {
+          "phase": "detector-input-sha256",
+          "dims": [
+            1,
+            3,
+            1024,
+            1024
+          ],
+          "bytes": 12582912,
+          "sha256": "74a1604ddb29953a37f41646f50be1e856ae64cee6f50d506f75e99428862d87"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "blk",
+          "dims": [
+            1,
+            64512,
+            7
+          ],
+          "bytes": 1806336,
+          "sha256": "92c48c1ff39b040d3f0c8952b0f2eba910d68796681637c8928e873b9adf48e1"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "det",
+          "dims": [
+            1,
+            2,
+            1024,
+            1024
+          ],
+          "bytes": 8388608,
+          "sha256": "5b1e1a14284fc72a5a27ec84a3de19ee3efdd047cdde11d3f5db5803471281e4"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "seg",
+          "dims": [
+            1,
+            1,
+            1024,
+            1024
+          ],
+          "bytes": 4194304,
+          "sha256": "1c09dd1ffe00135583ccb6fd943907ab435634e21c455d41968aed054dd6505f"
+        }
+      ],
+      "providers": [
+        [
+          "detector",
+          "webgpu",
+          null
+        ],
+        [
+          "bubble",
+          "webgpu",
+          null
+        ],
+        [
+          "ocr",
+          "webgpu",
+          null
+        ],
+        [
+          "inpaint",
+          "webgpu",
+          null
+        ]
+      ],
+      "detectedRegionCount": 9,
+      "ocr": {
+        "model": "paddleocr_v6_medium_rec",
+        "normalize": "minus_one_to_one",
+        "channelOrder": "bgr",
+        "accepted": 17,
+        "rejected": 0,
+        "regions": [
+          {
+            "direction": "v",
+            "box": {
+              "x": 2574,
+              "y": 417,
+              "width": 66,
+              "height": 322
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              234
+            ],
+            "decodedText": "いろはっ!",
+            "confidence": 0.9715988535357322,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1381,
+              "y": 437,
+              "width": 99,
+              "height": 266
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              129
+            ],
+            "decodedText": "して",
+            "confidence": 0.9740116905342261,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1474,
+              "y": 438,
+              "width": 93,
+              "height": 348
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              180
+            ],
+            "decodedText": "壁ドン！",
+            "confidence": 0.8186369059757643,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 225,
+              "y": 1049,
+              "width": 82,
+              "height": 242
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              142
+            ],
+            "decodedText": "はあ？",
+            "confidence": 0.9937390647196263,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2645,
+              "y": 1537,
+              "width": 71,
+              "height": 174
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              118
+            ],
+            "decodedText": "そんな",
+            "confidence": 0.9999845822294757,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2539,
+              "y": 1542,
+              "width": 48,
+              "height": 264
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              264
+            ],
+            "decodedText": "なくない？",
+            "confidence": 0.9341674343749292,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2587,
+              "y": 1542,
+              "width": 66,
+              "height": 320
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              255
+            ],
+            "decodedText": "いいもんじゃ",
+            "confidence": 0.9983589189302663,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2070,
+              "y": 1721,
+              "width": 66,
+              "height": 294
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              214
+            ],
+            "decodedText": "いいから！",
+            "confidence": 0.9512002254960463,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2131,
+              "y": 1726,
+              "width": 79,
+              "height": 292
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              190
+            ],
+            "decodedText": "一回だけで",
+            "confidence": 0.9977466828254913,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2202,
+              "y": 1729,
+              "width": 66,
+              "height": 286
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              208
+            ],
+            "decodedText": "一回だけ！",
+            "confidence": 0.9703642876476418,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 271,
+              "y": 2171,
+              "width": 82,
+              "height": 134
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              78
+            ],
+            "decodedText": "もー",
+            "confidence": 0.9800111873442238,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 207,
+              "y": 2183,
+              "width": 79,
+              "height": 182
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              111
+            ],
+            "decodedText": "一回ね",
+            "confidence": 0.9995389854091881,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2201,
+              "y": 2292,
+              "width": 472,
+              "height": 40
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "無断転載禁止·AI学習禁",
+            "confidence": 0.9930956286527682,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2201,
+              "y": 2358,
+              "width": 383,
+              "height": 46
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "Donot reupload my art",
+            "confidence": 0.9855356964882539,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2195,
+              "y": 2406,
+              "width": 508,
+              "height": 53
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "DonotusemyartforAIraing",
+            "confidence": 0.9193470218733215,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2424,
+              "y": 2472,
+              "width": 213,
+              "height": 28
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "@arupakastui",
+            "confidence": 0.8999183719162668,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2418,
+              "y": 2638,
+              "width": 65,
+              "height": 236
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              174
+            ],
+            "decodedText": "待てて",
+            "confidence": 0.9998700781415792,
+            "accepted": true
+          }
+        ],
+        "inputDims": [
+          [
+            1,
+            3,
+            48,
+            234
+          ],
+          [
+            2,
+            3,
+            48,
+            160
+          ],
+          [
+            3,
+            3,
+            48,
+            192
+          ],
+          [
+            2,
+            3,
+            48,
+            128
+          ],
+          [
+            1,
+            3,
+            48,
+            288
+          ],
+          [
+            1,
+            3,
+            48,
+            256
+          ],
+          [
+            2,
+            3,
+            48,
+            224
+          ],
+          [
+            1,
+            3,
+            48,
+            96
+          ],
+          [
+            4,
+            3,
+            48,
+            320
+          ]
+        ],
+        "inputBytes": 2162304
+      },
+      "png": {
+        "type": "image/png",
+        "bytes": 7988558,
+        "sha256": "03add1fb9c9f71093afee8d6133def7d3ee3a84267e97da65df5fe698eac1c98",
+        "rgbaSha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97",
+        "readableAfterHostClosed": true
+      },
+      "gpu": [
+        {
+          "deviceLost": false,
+          "uncapturedErrors": 0,
+          "requestedBufferBytesPeak": 1143390720
+        }
+      ]
+    },
+    {
+      "variant": "baseline-verifydet-verifyinput",
+      "cacheState": "retained-cache-new-process",
+      "image": "benchmark/color/fixtures/typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+      "browserVersion": "154.0.4258.48",
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-23-33-081Z.json",
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "raw": [
+        {
+          "phase": "detector-input-sha256",
+          "dims": [
+            1,
+            3,
+            1024,
+            1024
+          ],
+          "bytes": 12582912,
+          "sha256": "74a1604ddb29953a37f41646f50be1e856ae64cee6f50d506f75e99428862d87"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "blk",
+          "dims": [
+            1,
+            64512,
+            7
+          ],
+          "bytes": 1806336,
+          "sha256": "92c48c1ff39b040d3f0c8952b0f2eba910d68796681637c8928e873b9adf48e1"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "det",
+          "dims": [
+            1,
+            2,
+            1024,
+            1024
+          ],
+          "bytes": 8388608,
+          "sha256": "5b1e1a14284fc72a5a27ec84a3de19ee3efdd047cdde11d3f5db5803471281e4"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "seg",
+          "dims": [
+            1,
+            1,
+            1024,
+            1024
+          ],
+          "bytes": 4194304,
+          "sha256": "1c09dd1ffe00135583ccb6fd943907ab435634e21c455d41968aed054dd6505f"
+        }
+      ],
+      "providers": [
+        [
+          "detector",
+          "webgpu",
+          null
+        ],
+        [
+          "bubble",
+          "webgpu",
+          null
+        ],
+        [
+          "ocr",
+          "webgpu",
+          null
+        ],
+        [
+          "inpaint",
+          "webgpu",
+          null
+        ]
+      ],
+      "detectedRegionCount": 9,
+      "ocr": {
+        "model": "paddleocr_v6_medium_rec",
+        "normalize": "minus_one_to_one",
+        "channelOrder": "bgr",
+        "accepted": 17,
+        "rejected": 0,
+        "regions": [
+          {
+            "direction": "v",
+            "box": {
+              "x": 2574,
+              "y": 417,
+              "width": 66,
+              "height": 322
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              234
+            ],
+            "decodedText": "いろはっ!",
+            "confidence": 0.9715988535357322,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1381,
+              "y": 437,
+              "width": 99,
+              "height": 266
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              129
+            ],
+            "decodedText": "して",
+            "confidence": 0.9740116905342261,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1474,
+              "y": 438,
+              "width": 93,
+              "height": 348
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              180
+            ],
+            "decodedText": "壁ドン！",
+            "confidence": 0.8186369059757643,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 225,
+              "y": 1049,
+              "width": 82,
+              "height": 242
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              142
+            ],
+            "decodedText": "はあ？",
+            "confidence": 0.9937390647196263,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2645,
+              "y": 1537,
+              "width": 71,
+              "height": 174
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              118
+            ],
+            "decodedText": "そんな",
+            "confidence": 0.9999845822294757,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2539,
+              "y": 1542,
+              "width": 48,
+              "height": 264
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              264
+            ],
+            "decodedText": "なくない？",
+            "confidence": 0.9341674343749292,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2587,
+              "y": 1542,
+              "width": 66,
+              "height": 320
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              255
+            ],
+            "decodedText": "いいもんじゃ",
+            "confidence": 0.9983589189302663,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2070,
+              "y": 1721,
+              "width": 66,
+              "height": 294
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              214
+            ],
+            "decodedText": "いいから！",
+            "confidence": 0.9512002254960463,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2131,
+              "y": 1726,
+              "width": 79,
+              "height": 292
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              190
+            ],
+            "decodedText": "一回だけで",
+            "confidence": 0.9977466828254913,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2202,
+              "y": 1729,
+              "width": 66,
+              "height": 286
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              208
+            ],
+            "decodedText": "一回だけ！",
+            "confidence": 0.9703642876476418,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 271,
+              "y": 2171,
+              "width": 82,
+              "height": 134
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              78
+            ],
+            "decodedText": "もー",
+            "confidence": 0.9800111873442238,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 207,
+              "y": 2183,
+              "width": 79,
+              "height": 182
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              111
+            ],
+            "decodedText": "一回ね",
+            "confidence": 0.9995389854091881,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2201,
+              "y": 2292,
+              "width": 472,
+              "height": 40
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "無断転載禁止·AI学習禁",
+            "confidence": 0.9930956286527682,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2201,
+              "y": 2358,
+              "width": 383,
+              "height": 46
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "Donot reupload my art",
+            "confidence": 0.9855356964882539,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2195,
+              "y": 2406,
+              "width": 508,
+              "height": 53
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "DonotusemyartforAIraing",
+            "confidence": 0.9193470218733215,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2424,
+              "y": 2472,
+              "width": 213,
+              "height": 28
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "@arupakastui",
+            "confidence": 0.8999183719162668,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2418,
+              "y": 2638,
+              "width": 65,
+              "height": 236
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              174
+            ],
+            "decodedText": "待てて",
+            "confidence": 0.9998700781415792,
+            "accepted": true
+          }
+        ],
+        "inputDims": [
+          [
+            1,
+            3,
+            48,
+            234
+          ],
+          [
+            2,
+            3,
+            48,
+            160
+          ],
+          [
+            3,
+            3,
+            48,
+            192
+          ],
+          [
+            2,
+            3,
+            48,
+            128
+          ],
+          [
+            1,
+            3,
+            48,
+            288
+          ],
+          [
+            1,
+            3,
+            48,
+            256
+          ],
+          [
+            2,
+            3,
+            48,
+            224
+          ],
+          [
+            1,
+            3,
+            48,
+            96
+          ],
+          [
+            4,
+            3,
+            48,
+            320
+          ]
+        ],
+        "inputBytes": 2162304
+      },
+      "png": {
+        "type": "image/png",
+        "bytes": 7988558,
+        "sha256": "03add1fb9c9f71093afee8d6133def7d3ee3a84267e97da65df5fe698eac1c98",
+        "rgbaSha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97",
+        "readableAfterHostClosed": true
+      },
+      "gpu": [
+        {
+          "deviceLost": false,
+          "uncapturedErrors": 0,
+          "requestedBufferBytesPeak": 1143390720
+        }
+      ]
+    },
+    {
+      "variant": "production-verifydet-verifyinput",
+      "cacheState": "new-profile",
+      "image": "benchmark/color/fixtures/typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+      "browserVersion": "154.0.4258.48",
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-23-40-138Z.json",
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "raw": [
+        {
+          "phase": "detector-input-sha256",
+          "dims": [
+            1,
+            3,
+            1024,
+            1024
+          ],
+          "bytes": 12582912,
+          "sha256": "74a1604ddb29953a37f41646f50be1e856ae64cee6f50d506f75e99428862d87"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "blk",
+          "dims": [
+            1,
+            64512,
+            7
+          ],
+          "bytes": 1806336,
+          "sha256": "92c48c1ff39b040d3f0c8952b0f2eba910d68796681637c8928e873b9adf48e1"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "det",
+          "dims": [
+            1,
+            2,
+            1024,
+            1024
+          ],
+          "bytes": 8388608,
+          "sha256": "5b1e1a14284fc72a5a27ec84a3de19ee3efdd047cdde11d3f5db5803471281e4"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "seg",
+          "dims": [
+            1,
+            1,
+            1024,
+            1024
+          ],
+          "bytes": 4194304,
+          "sha256": "1c09dd1ffe00135583ccb6fd943907ab435634e21c455d41968aed054dd6505f"
+        }
+      ],
+      "providers": [
+        [
+          "detector",
+          "webgpu",
+          null
+        ],
+        [
+          "bubble",
+          "webgpu",
+          null
+        ],
+        [
+          "ocr",
+          "webgpu",
+          null
+        ],
+        [
+          "inpaint",
+          "webgpu",
+          null
+        ]
+      ],
+      "detectedRegionCount": 9,
+      "ocr": {
+        "model": "paddleocr_v6_medium_rec",
+        "normalize": "minus_one_to_one",
+        "channelOrder": "bgr",
+        "accepted": 17,
+        "rejected": 0,
+        "regions": [
+          {
+            "direction": "v",
+            "box": {
+              "x": 2574,
+              "y": 417,
+              "width": 66,
+              "height": 322
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              234
+            ],
+            "decodedText": "いろはっ!",
+            "confidence": 0.9715988535357322,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1381,
+              "y": 437,
+              "width": 99,
+              "height": 266
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              129
+            ],
+            "decodedText": "して",
+            "confidence": 0.9740116905342261,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1474,
+              "y": 438,
+              "width": 93,
+              "height": 348
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              180
+            ],
+            "decodedText": "壁ドン！",
+            "confidence": 0.8186369059757643,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 225,
+              "y": 1049,
+              "width": 82,
+              "height": 242
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              142
+            ],
+            "decodedText": "はあ？",
+            "confidence": 0.9937390647196263,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2645,
+              "y": 1537,
+              "width": 71,
+              "height": 174
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              118
+            ],
+            "decodedText": "そんな",
+            "confidence": 0.9999845822294757,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2539,
+              "y": 1542,
+              "width": 48,
+              "height": 264
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              264
+            ],
+            "decodedText": "なくない？",
+            "confidence": 0.9341674343749292,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2587,
+              "y": 1542,
+              "width": 66,
+              "height": 320
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              255
+            ],
+            "decodedText": "いいもんじゃ",
+            "confidence": 0.9983589189302663,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2070,
+              "y": 1721,
+              "width": 66,
+              "height": 294
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              214
+            ],
+            "decodedText": "いいから！",
+            "confidence": 0.9512002254960463,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2131,
+              "y": 1726,
+              "width": 79,
+              "height": 292
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              190
+            ],
+            "decodedText": "一回だけで",
+            "confidence": 0.9977466828254913,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2202,
+              "y": 1729,
+              "width": 66,
+              "height": 286
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              208
+            ],
+            "decodedText": "一回だけ！",
+            "confidence": 0.9703642876476418,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 271,
+              "y": 2171,
+              "width": 82,
+              "height": 134
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              78
+            ],
+            "decodedText": "もー",
+            "confidence": 0.9800111873442238,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 207,
+              "y": 2183,
+              "width": 79,
+              "height": 182
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              111
+            ],
+            "decodedText": "一回ね",
+            "confidence": 0.9995389854091881,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2201,
+              "y": 2292,
+              "width": 472,
+              "height": 40
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "無断転載禁止·AI学習禁",
+            "confidence": 0.9930956286527682,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2201,
+              "y": 2358,
+              "width": 383,
+              "height": 46
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "Donot reupload my art",
+            "confidence": 0.9855356964882539,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2195,
+              "y": 2406,
+              "width": 508,
+              "height": 53
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "DonotusemyartforAIraing",
+            "confidence": 0.9193470218733215,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2424,
+              "y": 2472,
+              "width": 213,
+              "height": 28
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "@arupakastui",
+            "confidence": 0.8999183719162668,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2418,
+              "y": 2638,
+              "width": 65,
+              "height": 236
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              174
+            ],
+            "decodedText": "待てて",
+            "confidence": 0.9998700781415792,
+            "accepted": true
+          }
+        ],
+        "inputDims": [
+          [
+            1,
+            3,
+            48,
+            234
+          ],
+          [
+            2,
+            3,
+            48,
+            160
+          ],
+          [
+            3,
+            3,
+            48,
+            192
+          ],
+          [
+            2,
+            3,
+            48,
+            128
+          ],
+          [
+            1,
+            3,
+            48,
+            288
+          ],
+          [
+            1,
+            3,
+            48,
+            256
+          ],
+          [
+            2,
+            3,
+            48,
+            224
+          ],
+          [
+            1,
+            3,
+            48,
+            96
+          ],
+          [
+            4,
+            3,
+            48,
+            320
+          ]
+        ],
+        "inputBytes": 2162304
+      },
+      "png": {
+        "type": "image/png",
+        "bytes": 7988558,
+        "sha256": "03add1fb9c9f71093afee8d6133def7d3ee3a84267e97da65df5fe698eac1c98",
+        "rgbaSha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97",
+        "readableAfterHostClosed": true
+      },
+      "gpu": [
+        {
+          "deviceLost": false,
+          "uncapturedErrors": 0,
+          "requestedBufferBytesPeak": 1144439296
+        }
+      ]
+    },
+    {
+      "variant": "production-verifydet-verifyinput",
+      "cacheState": "retained-cache-new-process",
+      "image": "benchmark/color/fixtures/typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+      "browserVersion": "154.0.4258.48",
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-23-45-359Z.json",
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "raw": [
+        {
+          "phase": "detector-input-sha256",
+          "dims": [
+            1,
+            3,
+            1024,
+            1024
+          ],
+          "bytes": 12582912,
+          "sha256": "74a1604ddb29953a37f41646f50be1e856ae64cee6f50d506f75e99428862d87"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "blk",
+          "dims": [
+            1,
+            64512,
+            7
+          ],
+          "bytes": 1806336,
+          "sha256": "92c48c1ff39b040d3f0c8952b0f2eba910d68796681637c8928e873b9adf48e1"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "det",
+          "dims": [
+            1,
+            2,
+            1024,
+            1024
+          ],
+          "bytes": 8388608,
+          "sha256": "5b1e1a14284fc72a5a27ec84a3de19ee3efdd047cdde11d3f5db5803471281e4"
+        },
+        {
+          "phase": "detector-output-sha256",
+          "output": "seg",
+          "dims": [
+            1,
+            1,
+            1024,
+            1024
+          ],
+          "bytes": 4194304,
+          "sha256": "1c09dd1ffe00135583ccb6fd943907ab435634e21c455d41968aed054dd6505f"
+        }
+      ],
+      "providers": [
+        [
+          "detector",
+          "webgpu",
+          null
+        ],
+        [
+          "bubble",
+          "webgpu",
+          null
+        ],
+        [
+          "ocr",
+          "webgpu",
+          null
+        ],
+        [
+          "inpaint",
+          "webgpu",
+          null
+        ]
+      ],
+      "detectedRegionCount": 9,
+      "ocr": {
+        "model": "paddleocr_v6_medium_rec",
+        "normalize": "minus_one_to_one",
+        "channelOrder": "bgr",
+        "accepted": 17,
+        "rejected": 0,
+        "regions": [
+          {
+            "direction": "v",
+            "box": {
+              "x": 2574,
+              "y": 417,
+              "width": 66,
+              "height": 322
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              234
+            ],
+            "decodedText": "いろはっ!",
+            "confidence": 0.9715988535357322,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1381,
+              "y": 437,
+              "width": 99,
+              "height": 266
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              129
+            ],
+            "decodedText": "して",
+            "confidence": 0.9740116905342261,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 1474,
+              "y": 438,
+              "width": 93,
+              "height": 348
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              180
+            ],
+            "decodedText": "壁ドン！",
+            "confidence": 0.8186369059757643,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 225,
+              "y": 1049,
+              "width": 82,
+              "height": 242
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              142
+            ],
+            "decodedText": "はあ？",
+            "confidence": 0.9937390647196263,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2645,
+              "y": 1537,
+              "width": 71,
+              "height": 174
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              118
+            ],
+            "decodedText": "そんな",
+            "confidence": 0.9999845822294757,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2539,
+              "y": 1542,
+              "width": 48,
+              "height": 264
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              264
+            ],
+            "decodedText": "なくない？",
+            "confidence": 0.9341674343749292,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2587,
+              "y": 1542,
+              "width": 66,
+              "height": 320
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              255
+            ],
+            "decodedText": "いいもんじゃ",
+            "confidence": 0.9983589189302663,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2070,
+              "y": 1721,
+              "width": 66,
+              "height": 294
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              214
+            ],
+            "decodedText": "いいから！",
+            "confidence": 0.9512002254960463,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2131,
+              "y": 1726,
+              "width": 79,
+              "height": 292
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              190
+            ],
+            "decodedText": "一回だけで",
+            "confidence": 0.9977466828254913,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2202,
+              "y": 1729,
+              "width": 66,
+              "height": 286
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              208
+            ],
+            "decodedText": "一回だけ！",
+            "confidence": 0.9703642876476418,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 271,
+              "y": 2171,
+              "width": 82,
+              "height": 134
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              78
+            ],
+            "decodedText": "もー",
+            "confidence": 0.9800111873442238,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 207,
+              "y": 2183,
+              "width": 79,
+              "height": 182
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              111
+            ],
+            "decodedText": "一回ね",
+            "confidence": 0.9995389854091881,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2201,
+              "y": 2292,
+              "width": 472,
+              "height": 40
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "無断転載禁止·AI学習禁",
+            "confidence": 0.9930956286527682,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2201,
+              "y": 2358,
+              "width": 383,
+              "height": 46
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "Donot reupload my art",
+            "confidence": 0.9855356964882539,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2195,
+              "y": 2406,
+              "width": 508,
+              "height": 53
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "DonotusemyartforAIraing",
+            "confidence": 0.9193470218733215,
+            "accepted": true
+          },
+          {
+            "direction": "h",
+            "box": {
+              "x": 2424,
+              "y": 2472,
+              "width": 213,
+              "height": 28
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              320
+            ],
+            "decodedText": "@arupakastui",
+            "confidence": 0.8999183719162668,
+            "accepted": true
+          },
+          {
+            "direction": "v",
+            "box": {
+              "x": 2418,
+              "y": 2638,
+              "width": 65,
+              "height": 236
+            },
+            "inputDims": [
+              1,
+              3,
+              48,
+              174
+            ],
+            "decodedText": "待てて",
+            "confidence": 0.9998700781415792,
+            "accepted": true
+          }
+        ],
+        "inputDims": [
+          [
+            1,
+            3,
+            48,
+            234
+          ],
+          [
+            2,
+            3,
+            48,
+            160
+          ],
+          [
+            3,
+            3,
+            48,
+            192
+          ],
+          [
+            2,
+            3,
+            48,
+            128
+          ],
+          [
+            1,
+            3,
+            48,
+            288
+          ],
+          [
+            1,
+            3,
+            48,
+            256
+          ],
+          [
+            2,
+            3,
+            48,
+            224
+          ],
+          [
+            1,
+            3,
+            48,
+            96
+          ],
+          [
+            4,
+            3,
+            48,
+            320
+          ]
+        ],
+        "inputBytes": 2162304
+      },
+      "png": {
+        "type": "image/png",
+        "bytes": 7988558,
+        "sha256": "03add1fb9c9f71093afee8d6133def7d3ee3a84267e97da65df5fe698eac1c98",
+        "rgbaSha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97",
+        "readableAfterHostClosed": true
+      },
+      "gpu": [
+        {
+          "deviceLost": false,
+          "uncapturedErrors": 0,
+          "requestedBufferBytesPeak": 1144439296
+        }
+      ]
+    }
+  ]
+}

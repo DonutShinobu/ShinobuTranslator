@@ -17,11 +17,22 @@ import type {
 } from "../runtime/onnxWorkerTypes";
 import type { RuntimeSelfCheckReport } from "../runtime/selfCheck";
 import { preprocessLetterboxGpu } from "./gpuPreprocess";
+import { reducePaddleCtc } from './gpuPaddleCtc';
 import { SerialInferenceQueue } from "./inferenceQueue";
 import { installShaderWarmup } from "./shaderWarmup";
+import { beginFirstDetectorModelPrefetch } from './modelPrefetch';
 import { installTrustedTypesPolicy } from '@shinobu/browser-runtime/trusted-types';
 
 installTrustedTypesPolicy();
+type InitMark = { phase: string; startedAt: number; durationMs: number; model?: string; bytes?: number; dims?: readonly number[]; sha256?: string; output?: string };
+function markStart(): number {
+  return (globalThis as { __shinobuColdStartInitMark?: (mark: InitMark) => void }).__shinobuColdStartInitMark ? performance.now() : 0;
+}
+function markEnd(phase: string, startedAt: number, metadata: Omit<InitMark, 'phase' | 'startedAt' | 'durationMs'> = {}): void {
+  (globalThis as { __shinobuColdStartInitMark?: (mark: InitMark) => void }).__shinobuColdStartInitMark?.({
+    phase, startedAt, durationMs: performance.now() - startedAt, ...metadata,
+  });
+}
 // ---------------------------------------------------------------------------
 // ORT environment
 // ---------------------------------------------------------------------------
@@ -110,7 +121,45 @@ function probeWebNnAvailability(): { available: boolean; reason?: string } {
   return { available: true };
 }
 
+let adapterOverlapPromise: Promise<void> | null = null;
+
+function startWebGpuAdapterOverlap(): boolean {
+  const gpu = typeof navigator === 'undefined' ? undefined : navigator.gpu;
+  const gpuFlags = ortAll.env.webgpu;
+  if (!gpu?.requestAdapter || !gpuFlags) return false;
+  if (gpuFlags.adapter || getWebGpuDevice()) return true;
+  if (!adapterOverlapPromise) {
+    const startedAt = markStart();
+    adapterOverlapPromise = (async () => {
+      let outcome = 'unused';
+      try {
+        // Same selection policy as ORT's initEp; let ORT create its own device.
+        const adapter = await gpu.requestAdapter({
+          powerPreference: gpuFlags.powerPreference,
+          forceFallbackAdapter: gpuFlags.forceFallbackAdapter,
+        });
+        const descriptor = Object.getOwnPropertyDescriptor(gpuFlags, 'adapter');
+        if (adapter && ortAll.env.webgpu === gpuFlags && !gpuFlags.adapter && !getWebGpuDevice()
+          && (!descriptor || descriptor.writable)) {
+          gpuFlags.adapter = adapter;
+          outcome = 'assigned';
+        }
+      } catch {
+        // Null/rejection/late or locked adapters leave real ORT init/fallback in charge.
+        outcome = 'failed';
+      } finally {
+        markEnd(`adapter-overlap-${outcome}`, startedAt);
+      }
+    })().catch(() => undefined);
+  }
+  return true;
+}
+
 async function probeWebGpuAvailability(): Promise<{ available: boolean; reason?: string }> {
+  if ((globalThis as { __shinobuColdStartReuseGpuAvailability?: boolean }).__shinobuColdStartReuseGpuAvailability
+    && getWebGpuDevice()) return { available: true };
+  if ((globalThis as { __shinobuColdStartAdapterOverlap?: boolean }).__shinobuColdStartAdapterOverlap === true
+    && startWebGpuAdapterOverlap()) return { available: true };
   const nav = typeof navigator === "undefined" ? null : (navigator as Navigator & {
     gpu?: { requestAdapter?: () => Promise<unknown> };
   });
@@ -189,118 +238,131 @@ async function createSession(
       };
     }
 
-    const providerOrder: RuntimeProvider[] = [];
-    const providerErrors: Partial<Record<RuntimeProvider, string>> = {};
+    const releasePrefetch = beginFirstDetectorModelPrefetch(modelKey, modelUrl);
+    try {
+      const providerOrder: RuntimeProvider[] = [];
+      const providerErrors: Partial<Record<RuntimeProvider, string>> = {};
 
-    for (const provider of normalized) {
-      if (provider === "webnn") {
-        const probe = probeWebNnAvailability();
-        if (probe.available) {
-          providerOrder.push(provider);
-        } else if (probe.reason) {
-          providerErrors.webnn = probe.reason;
+      for (const provider of normalized) {
+        if (provider === "webnn") {
+          const probe = probeWebNnAvailability();
+          if (probe.available) {
+            providerOrder.push(provider);
+          } else if (probe.reason) {
+            providerErrors.webnn = probe.reason;
+          }
+          continue;
         }
-        continue;
-      }
-      if (provider === "webgpu") {
-        const probe = await probeWebGpuAvailability();
-        if (probe.available) {
-          providerOrder.push(provider);
-        } else if (probe.reason) {
-          providerErrors.webgpu = probe.reason;
+        if (provider === "webgpu") {
+          const probeStart = markStart();
+          const probe = await probeWebGpuAvailability();
+          markEnd('webgpu-availability', probeStart, { model: modelKey });
+          if (probe.available) {
+            providerOrder.push(provider);
+          } else if (probe.reason) {
+            providerErrors.webgpu = probe.reason;
+          }
+          continue;
         }
-        continue;
+        providerOrder.push(provider);
       }
-      providerOrder.push(provider);
-    }
 
-    if (providerOrder.length === 0) {
-      providerOrder.push("wasm");
-    }
+      if (providerOrder.length === 0) {
+        providerOrder.push("wasm");
+      }
 
-    for (const provider of providerOrder) {
-      const attemptErrors: string[] = [];
-      let abortProvider = false;
-      for (const ep of getExecutionProviderAttempts(provider)) {
-        if (abortProvider) break;
-        const maxAttempts = provider === "webnn" ? 2 : 1;
-        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-          try {
-            const sessionOptions: Parameters<typeof ortAll.InferenceSession.create>[1] = {
-              executionProviders: [ep],
-              graphOptimizationLevel: experimentalSessionOptions?.graphOptimizationLevel ?? "all",
-            };
-            if (experimentalSessionOptions?.useOrtModelBytesForInitializers) {
-              sessionOptions.extra = {
-                session: {
-                  use_ort_model_bytes_for_initializers: "1",
-                },
+      for (const provider of providerOrder) {
+        const attemptErrors: string[] = [];
+        let abortProvider = false;
+        for (const ep of getExecutionProviderAttempts(provider)) {
+          if (abortProvider) break;
+          const maxAttempts = provider === "webnn" ? 2 : 1;
+          for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+            try {
+              const sessionOptions: Parameters<typeof ortAll.InferenceSession.create>[1] = {
+                executionProviders: [ep],
+                graphOptimizationLevel: experimentalSessionOptions?.graphOptimizationLevel ?? "all",
               };
-            }
-            if (provider === "webgpu" && experimentalSessionOptions) {
-              if (typeof experimentalSessionOptions.enableGraphCapture === "boolean") {
-                sessionOptions.enableGraphCapture = experimentalSessionOptions.enableGraphCapture;
+              if (experimentalSessionOptions?.useOrtModelBytesForInitializers) {
+                sessionOptions.extra = {
+                  session: {
+                    use_ort_model_bytes_for_initializers: "1",
+                  },
+                };
               }
-              if (experimentalSessionOptions.preferredOutputLocation !== undefined) {
-                sessionOptions.preferredOutputLocation = experimentalSessionOptions.preferredOutputLocation;
+              if (provider === "webgpu" && experimentalSessionOptions) {
+                if (typeof experimentalSessionOptions.enableGraphCapture === "boolean") {
+                  sessionOptions.enableGraphCapture = experimentalSessionOptions.enableGraphCapture;
+                }
+                if (experimentalSessionOptions.preferredOutputLocation !== undefined) {
+                  sessionOptions.preferredOutputLocation = experimentalSessionOptions.preferredOutputLocation;
+                }
+                if (experimentalSessionOptions.freeDimensionOverrides) {
+                  sessionOptions.freeDimensionOverrides = experimentalSessionOptions.freeDimensionOverrides;
+                }
               }
-              if (experimentalSessionOptions.freeDimensionOverrides) {
-                sessionOptions.freeDimensionOverrides = experimentalSessionOptions.freeDimensionOverrides;
+              if (provider === "webgpu" && modelKey === "detector") {
+                sessionOptions.preferredOutputLocation = "gpu-buffer";
               }
-            }
-            if (provider === "webgpu" && modelKey === "detector") {
-              sessionOptions.preferredOutputLocation = "gpu-buffer";
-            }
-            const session = await createSessionWithTimeout(
-              modelUrl,
-              sessionOptions,
-              SESSION_CREATE_TIMEOUT_MS
-            );
+              if (provider === 'webgpu' && modelKey === 'paddleocr_v6_medium_rec'
+                && (globalThis as { __shinobuColdStartGpuCtc?: boolean }).__shinobuColdStartGpuCtc) {
+                sessionOptions.preferredOutputLocation = 'gpu-buffer';
+              }
+              const sessionStart = markStart();
+              const session = await createSessionWithTimeout(
+                modelUrl,
+                sessionOptions,
+                SESSION_CREATE_TIMEOUT_MS
+              );
+              markEnd('ort-create-session', sessionStart, { model: modelKey });
 
-            const webnnDeviceType = provider === "webnn" ? inferWebNnDeviceType(ep) : undefined;
+              const webnnDeviceType = provider === "webnn" ? inferWebNnDeviceType(ep) : undefined;
 
-            if (provider === "wasm") {
-              if (providerErrors.webnn) {
-                console.warn(`[onnx-worker] WebNN 不可用，回退到 WASM: ${providerErrors.webnn}`);
+              if (provider === "wasm") {
+                if (providerErrors.webnn) {
+                  console.warn(`[onnx-worker] WebNN 不可用，回退到 WASM: ${providerErrors.webnn}`);
+                }
+                if (providerErrors.webgpu) {
+                  console.warn(`[onnx-worker] WebGPU 不可用，回退到 WASM: ${providerErrors.webgpu}`);
+                }
               }
-              if (providerErrors.webgpu) {
-                console.warn(`[onnx-worker] WebGPU 不可用，回退到 WASM: ${providerErrors.webgpu}`);
+
+              sessions.set(sessionId, { session, provider, webnnDeviceType, modelUrl });
+
+              return {
+                sessionId,
+                provider,
+                webnnDeviceType,
+                inputNames: [...session.inputNames],
+                outputNames: [...session.outputNames],
+              };
+            } catch (error) {
+              const message = toErrorMessage(error);
+              attemptErrors.push(message);
+              if (isCreateTimeoutError(message)) {
+                abortProvider = true;
+                break;
               }
-            }
-
-            sessions.set(sessionId, { session, provider, webnnDeviceType, modelUrl });
-
-            return {
-              sessionId,
-              provider,
-              webnnDeviceType,
-              inputNames: [...session.inputNames],
-              outputNames: [...session.outputNames],
-            };
-          } catch (error) {
-            const message = toErrorMessage(error);
-            attemptErrors.push(message);
-            if (isCreateTimeoutError(message)) {
-              abortProvider = true;
+              if (provider === "webnn" && attempt + 1 < maxAttempts && isContextLostRuntimeError(error)) {
+                await new Promise((resolve) => setTimeout(resolve, 120));
+                continue;
+              }
               break;
             }
-            if (provider === "webnn" && attempt + 1 < maxAttempts && isContextLostRuntimeError(error)) {
-              await new Promise((resolve) => setTimeout(resolve, 120));
-              continue;
-            }
-            break;
           }
         }
+        providerErrors[provider] = attemptErrors.join(" || ");
       }
-      providerErrors[provider] = attemptErrors.join(" || ");
+
+      const detail = ["webnn", "webgpu", "wasm"]
+        .filter((p) => providerErrors[p as RuntimeProvider])
+        .map((p) => `${p}: ${providerErrors[p as RuntimeProvider]}`)
+        .join(" | ");
+
+      throw new Error(`ONNX Session 创建失败: ${detail || "未知错误"}`);
+    } finally {
+      releasePrefetch?.();
     }
-
-    const detail = ["webnn", "webgpu", "wasm"]
-      .filter((p) => providerErrors[p as RuntimeProvider])
-      .map((p) => `${p}: ${providerErrors[p as RuntimeProvider]}`)
-      .join(" | ");
-
-    throw new Error(`ONNX Session 创建失败: ${detail || "未知错误"}`);
   });
 }
 
@@ -361,13 +423,36 @@ async function runInference(
     let outputs: Record<string, ortAll.Tensor> | undefined;
     try {
       try {
+        const runStart = markStart();
         outputs = await entry.session.run(ortFeeds);
+        markEnd('ort-run', runStart, { model: sessionId.split(':')[0] });
         const result: InferenceResult = {
           outputs: {},
         };
         const outTransferables: ArrayBuffer[] = [];
         for (const [name, tensor] of Object.entries(outputs)) {
-          const transport = await tensorToTransport(tensor);
+          const downloadStart = markStart();
+          const device = getWebGpuDevice();
+          const compactCtc = (globalThis as { __shinobuColdStartGpuCtc?: boolean }).__shinobuColdStartGpuCtc
+            && sessionId.startsWith('paddleocr_v6_medium_rec:')
+            && tensor.location === 'gpu-buffer' && tensor.type === 'float32' && tensor.dims.length === 3 && device;
+          const transport = compactCtc
+            ? await reducePaddleCtc(device, tensor.gpuBuffer, tensor.dims)
+            : await tensorToTransport(tensor);
+          markEnd('output-readback', downloadStart, { model: sessionId.split(':')[0], bytes: transport.data.byteLength, dims: tensor.dims });
+          if (compactCtc && (globalThis as { __shinobuColdStartGpuCtcVerify?: boolean }).__shinobuColdStartGpuCtcVerify) {
+            const full = await tensor.getData() as Float32Array;
+            const classes = tensor.dims[2];
+            const maxima = transport.data as Float32Array;
+            for (let row = 0; row < full.length / classes; row++) {
+              const offset = row * classes;
+              let best = 0;
+              for (let c = 1; c < classes; c++) if (full[offset + c] > full[offset + best]) best = c;
+              if (maxima[row * 2] !== best || !Object.is(maxima[row * 2 + 1], full[offset + best])) {
+                throw new Error(`GPU CTC maxima changed at row ${row}`);
+              }
+            }
+          }
           result.outputs[name] = transport;
           if (transport.data instanceof Float32Array) {
             outTransferables.push(transport.data.buffer as ArrayBuffer);
@@ -584,12 +669,16 @@ async function runDetectWithGpuPreprocess(
     let outputs: Record<string, ortAll.Tensor> | undefined;
     try {
       const inputSize = 1024;
+      const preprocessStart = markStart();
       const preprocessed = await preprocessLetterboxGpu(imageSource, inputSize);
+      markEnd('detector-gpu-preprocess', preprocessStart, { model: 'detector' });
       inputTensor = preprocessed.tensor;
 
       const inputName = entry.session.inputNames[0] ?? "images";
       const feeds: Record<string, ortAll.Tensor> = { [inputName]: inputTensor };
+      const runStart = markStart();
       outputs = await entry.session.run(feeds);
+      markEnd('ort-run', runStart, { model: 'detector' });
 
       const result: GpuDetectResult = {
         outputs: {},
@@ -598,15 +687,46 @@ async function runDetectWithGpuPreprocess(
         unpaddedHeight: preprocessed.params.unpaddedHeight,
       };
       const outTransferables: ArrayBuffer[] = [];
+      const outputEntries = Object.entries(outputs);
+      const parallelReadback = (globalThis as { __shinobuColdStartDetectorReadbackParallel?: boolean }).__shinobuColdStartDetectorReadbackParallel === true
+        && outputEntries.length === 3
+        && new Set(outputEntries.map(([, tensor]) => tensor)).size === 3
+        && outputEntries.every(([, tensor]) => tensor.location === "gpu-buffer" && tensor.type === "float32");
+      // Each getData owns a staging buffer, but dispose must await every pending map.
+      const readbacks = parallelReadback ? await Promise.allSettled(outputEntries.map(async ([, tensor]) => {
+        const startedAt = markStart();
+        const data = (await tensor.getData()) as Float32Array;
+        return { data, startedAt, durationMs: markStart() - startedAt };
+      })) : undefined;
 
-      for (const [name, outTensor] of Object.entries(outputs)) {
+      for (let outputIndex = 0; outputIndex < outputEntries.length; outputIndex++) {
+        const [name, outTensor] = outputEntries[outputIndex]!;
+        const readback = readbacks?.[outputIndex];
+        if (readback?.status === "rejected") throw readback.reason;
+        const downloadStart = readback?.status === "fulfilled" ? readback.value.startedAt : markStart();
         let data: Float32Array | BigInt64Array | Uint8Array;
-        if (outTensor.location === "gpu-buffer") {
+        if (readback?.status === "fulfilled") {
+          data = readback.value.data;
+        } else if (outTensor.location === "gpu-buffer") {
           data = (await outTensor.getData()) as Float32Array;
         } else {
           data = outTensor.data as Float32Array | BigInt64Array | Uint8Array;
         }
         const transport: TensorTransport = { data, dims: [...outTensor.dims], type: outTensor.type as "float32" | "int64" | "bool" };
+        if (readback?.status === "fulfilled") {
+          (globalThis as { __shinobuColdStartInitMark?: (mark: InitMark) => void }).__shinobuColdStartInitMark?.({
+            phase: 'output-readback', startedAt: downloadStart, durationMs: readback.value.durationMs,
+            model: 'detector', bytes: data.byteLength, dims: outTensor.dims,
+          });
+        } else {
+          markEnd('output-readback', downloadStart, { model: 'detector', bytes: data.byteLength, dims: outTensor.dims });
+        }
+        if ((globalThis as { __shinobuColdStartDetectorOutputVerify?: boolean }).__shinobuColdStartDetectorOutputVerify) {
+          const verifyStart = markStart();
+          const hash = await crypto.subtle.digest('SHA-256', new Uint8Array(data.buffer as ArrayBuffer, data.byteOffset, data.byteLength));
+          markEnd('detector-output-sha256', verifyStart, { model: 'detector', output: name, dims: outTensor.dims, bytes: data.byteLength,
+            sha256: Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, '0')).join('') });
+        }
         result.outputs[name] = transport;
         if (data instanceof Float32Array) {
           outTransferables.push(data.buffer as ArrayBuffer);

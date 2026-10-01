@@ -28,6 +28,8 @@ export type DownloadImageMessage = {
   referrerPolicy?: ReferrerPolicy;
   contentSessionId?: string;
   allowedBaseUrl?: string;
+  /** Optional experiment probe; JSON serializers deliver an ordinary object. */
+  structuredCloneProbe?: unknown;
 };
 
 export type FetchReaderResourceMessage = {
@@ -174,6 +176,8 @@ export type RuntimeSuccessResponse =
       base64: string;
       contentType: string;
       sourceUrl: string;
+      /** Present only after a real Blob survives the request probe. */
+      blob?: Blob;
     }
   | {
       ok: true;

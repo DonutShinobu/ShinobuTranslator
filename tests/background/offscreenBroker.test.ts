@@ -1,9 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PipelineHostBroker } from '../../apps/extension/src/background/localPipeline/offscreenBroker';
 import type { ExtensionBrowserApi, ExtensionPort } from '../../apps/extension/src/shared/extensionRuntime';
 import {
   LOCAL_PIPELINE_CLIENT_PORT,
   LOCAL_PIPELINE_HOST_PORT,
+  LOCAL_PIPELINE_STRUCTURED_CLONE_PROBE_TYPE,
 } from '../../packages/image-pipeline/src/protocol/index';
 import type { DiagnosticLogEmitter } from '../../apps/extension/src/shared/diagnosticLogClient';
 
@@ -120,6 +121,73 @@ function createHarness(diagnostics?: DiagnosticLogEmitter): {
 }
 
 describe('PipelineHostBroker', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('negotiates real Blob input at the broker before host admission', async () => {
+    vi.stubGlobal('__shinobuColdStartStructuredClone', true);
+    const { broker, host } = createHarness();
+    const client = new FakePort(LOCAL_PIPELINE_CLIENT_PORT);
+    broker.handlePort(client);
+    const probe = new Blob([Uint8Array.of(83)], { type: LOCAL_PIPELINE_STRUCTURED_CLONE_PROBE_TYPE });
+    client.emitMessage({ type: 'prepare', jobId: 'binary', structuredCloneProbe: probe });
+    await vi.waitFor(() => expect(client.sent).toContainEqual({
+      type: 'ready', jobId: 'binary', structuredClone: true,
+    }));
+    expect(host.sent).not.toContainEqual(expect.objectContaining({ type: 'prepare' }));
+    const binaryFile = new File([Uint8Array.of(0, 128, 255)], 'binary.png', { type: 'image/png' });
+    client.emitMessage({
+      type: 'start', jobId: 'binary',
+      file: { name: binaryFile.name, type: binaryFile.type, size: binaryFile.size, lastModified: binaryFile.lastModified },
+      config: pipelineConfig, input: { chunkCount: 0, totalChars: 0 }, binaryFile,
+    });
+    expect(host.sent).toHaveLength(0);
+    client.emitMessage({ type: 'input-complete', jobId: 'binary' });
+    expect(host.sent).toEqual([
+      { type: 'prepare', jobId: 'binary', diagnosticRunId: undefined, structuredCloneProbe: probe },
+      expect.objectContaining({ type: 'start', jobId: 'binary', binaryFile }),
+      { type: 'input-complete', jobId: 'binary' },
+    ]);
+    expect(broker.getLifecycleSnapshot().activeJobId).toBe('binary');
+    host.emitMessage({ type: 'complete', jobId: 'binary' });
+    expect(broker.getLifecycleSnapshot().jobCount).toBe(0);
+    client.disconnect();
+  });
+
+  it('uses the legacy path after a JSON-serialized Blob probe becomes an object', async () => {
+    vi.stubGlobal('__shinobuColdStartStructuredClone', true);
+    const { broker, host } = createHarness();
+    const client = new FakePort(LOCAL_PIPELINE_CLIENT_PORT);
+    broker.handlePort(client);
+    client.emitMessage({ type: 'prepare', jobId: 'json', structuredCloneProbe: {} });
+    await vi.waitFor(() => expect(client.sent).toContainEqual({
+      type: 'ready', jobId: 'json', structuredClone: false,
+    }));
+    transferJob(client, 'json');
+    expect(host.sent).toContainEqual({ type: 'prepare', jobId: 'json', diagnosticRunId: undefined });
+    expect(host.sent).toContainEqual(expect.objectContaining({ type: 'input-chunk', data: 'YQ==' }));
+    client.disconnect();
+  });
+
+  it('rejects binary input that has no successful capability probe', async () => {
+    const { broker, host } = createHarness();
+    const client = new FakePort(LOCAL_PIPELINE_CLIENT_PORT);
+    broker.handlePort(client);
+    client.emitMessage({ type: 'prepare', jobId: 'unnegotiated' });
+    await vi.waitFor(() => expect(client.sent).toContainEqual({ type: 'ready', jobId: 'unnegotiated' }));
+    client.emitMessage({
+      type: 'start', jobId: 'unnegotiated',
+      file: { name: 'source.png', type: 'image/png', size: 1, lastModified: 0 },
+      config: pipelineConfig, input: { chunkCount: 0, totalChars: 0 },
+      binaryFile: new Blob(['x'], { type: 'image/png' }),
+    });
+    expect(client.sent).toContainEqual(expect.objectContaining({
+      type: 'error', error: expect.objectContaining({ code: 'TRANSFER_PROTOCOL_ERROR' }),
+    }));
+    expect(host.sent).toHaveLength(0);
+    expect(broker.getLifecycleSnapshot().jobCount).toBe(0);
+    client.disconnect();
+  });
+
   it('deduplicates concurrent document creation and acknowledges prepares without forwarding queued work', async () => {
     const { broker, host, createDocument } = createHarness();
     const first = new FakePort(LOCAL_PIPELINE_CLIENT_PORT);

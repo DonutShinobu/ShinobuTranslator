@@ -49,6 +49,7 @@ describe('dual-target extension manifests', () => {
     const manifest = createExtensionManifest('chromium', extensionPackage.version);
     expect(manifest.manifest_version).toBe(3);
     expect(manifest.minimum_chrome_version).toBe('109');
+    expect(manifest.message_serialization).toBe('structured_clone');
     expect(manifest.permissions).toContain('offscreen');
     expect(manifest.background).toEqual({
       service_worker: 'background-chromium.js',

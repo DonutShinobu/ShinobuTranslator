@@ -1,6 +1,7 @@
 import type { Rect, TextRegion } from "../../types";
 import type { PlatformProvider, PipelineCanvas } from "../../runtime/platform";
 import { clamp, polygonArea } from "../utils";
+import { tryNativeOpaqueMaskThreshold } from "../image";
 
 export type Point = {
   x: number;
@@ -259,6 +260,9 @@ export function scaleRegions(regions: TextRegion[], scale: number, maxW: number,
 }
 
 export function connectedComponents(mask: Uint8Array, width: number, height: number): Component[] {
+  const pixelFastPath = (globalThis as typeof globalThis & {
+    __shinobuColdStartPixelFastPath?: boolean;
+  }).__shinobuColdStartPixelFastPath === true;
   const total = width * height;
   const visited = new Uint8Array(total);
   const queue = new Int32Array(total);
@@ -284,7 +288,7 @@ export function connectedComponents(mask: Uint8Array, width: number, height: num
     while (head < tail) {
       const current = queue[head];
       head += 1;
-      pixels.push(current);
+      if (!pixelFastPath) pixels.push(current);
 
       const x = current % width;
       const y = Math.floor(current / width);
@@ -315,13 +319,13 @@ export function connectedComponents(mask: Uint8Array, width: number, height: num
 
     const compWidth = maxX - minX + 1;
     const compHeight = maxY - minY + 1;
-    const area = pixels.length;
+    const area = tail;
     if (area <= 9 || compWidth <= 0 || compHeight <= 0) {
       continue;
     }
 
     out.push({
-      pixels: Int32Array.from(pixels),
+      pixels: pixelFastPath ? queue.slice(0, tail) : Int32Array.from(pixels),
       rect: {
         x: minX,
         y: minY,
@@ -386,13 +390,22 @@ export function computeScaleFactor(rawMaskHeight: number, imageHeight: number): 
 }
 
 export function toMaskCanvas(mask: Uint8Array, width: number, height: number, outW: number, outH: number, platform: PlatformProvider): PipelineCanvas {
+  const pixelFastPath = (globalThis as typeof globalThis & {
+    __shinobuColdStartPixelFastPath?: boolean;
+  }).__shinobuColdStartPixelFastPath === true;
+  const opaqueBlack = new Uint32Array(new Uint8Array([0, 0, 0, 255]).buffer)[0];
   const src = makeCanvas(width, height, platform);
   const srcCtx = src.getContext("2d");
   if (!srcCtx) {
     throw new Error("Mask refinement 输出失败：无法创建源画布上下文");
   }
   const imageData = srcCtx.createImageData(width, height);
-  for (let i = 0, p = 0; i < mask.length; i += 1, p += 4) {
+  if (pixelFastPath && imageData.data.byteOffset % 4 === 0) {
+    const pixels = new Uint32Array(imageData.data.buffer, imageData.data.byteOffset, mask.length);
+    for (let i = 0; i < mask.length; i += 1) {
+      pixels[i] = mask[i] > 0 ? 0xffffffff : opaqueBlack;
+    }
+  } else for (let i = 0, p = 0; i < mask.length; i += 1, p += 4) {
     const v = mask[i] > 0 ? 255 : 0;
     imageData.data[p] = v;
     imageData.data[p + 1] = v;
@@ -408,8 +421,15 @@ export function toMaskCanvas(mask: Uint8Array, width: number, height: number, ou
   }
   outCtx.imageSmoothingEnabled = true;
   outCtx.drawImage(src, 0, 0, outW, outH);
+  const nativeThreshold = tryNativeOpaqueMaskThreshold(out, platform);
+  if (nativeThreshold) return nativeThreshold;
   const outData = outCtx.getImageData(0, 0, outW, outH);
-  for (let p = 0; p < outData.data.length; p += 4) {
+  if (pixelFastPath && outData.data.byteOffset % 4 === 0) {
+    const pixels = new Uint32Array(outData.data.buffer, outData.data.byteOffset, outW * outH);
+    for (let i = 0; i < pixels.length; i += 1) {
+      pixels[i] = outData.data[i * 4] > 127 ? 0xffffffff : opaqueBlack;
+    }
+  } else for (let p = 0; p < outData.data.length; p += 4) {
     const v = outData.data[p] > 127 ? 255 : 0;
     outData.data[p] = v;
     outData.data[p + 1] = v;
@@ -539,6 +559,36 @@ export function refineRegionMask(gray: Uint8Array, seedMask: Uint8Array): Uint8A
 const BRIGHT_THRESHOLD = 40;
 const OUTLINE_RATIO_THRESHOLD = 0.5;
 
+function outsideGrayQuarterHistogram(
+  gray: Uint8Array,
+  mask: Uint8Array,
+  width: number,
+  rx0: number,
+  ry0: number,
+  rx1: number,
+  ry1: number,
+): number | undefined {
+  const histogram = new Uint32Array(256);
+  let count = 0;
+  for (let y = ry0; y <= ry1; y += 1) {
+    for (let x = rx0; x <= rx1; x += 1) {
+      const index = y * width + x;
+      if (mask[index] === 0) {
+        histogram[gray[index]] += 1;
+        count += 1;
+      }
+    }
+  }
+  if (count === 0) return undefined;
+  const targetIndex = Math.floor(count * 0.25);
+  let cumulative = 0;
+  for (let value = 0; value < histogram.length; value += 1) {
+    cumulative += histogram[value];
+    if (cumulative > targetIndex) return value;
+  }
+  return undefined;
+}
+
 export function detectOutlineWidth(
   gray: Uint8Array,
   mask: Uint8Array,
@@ -553,19 +603,26 @@ export function detectOutlineWidth(
   const ry1 = Math.min(height - 1, Math.floor(regionRect.y + regionRect.height));
 
   // 1. 计算背景亮度（使用 Q1 避免描边像素抬高背景估计）
-  const outsideGray: number[] = [];
-  for (let y = ry0; y <= ry1; y += 1) {
-    for (let x = rx0; x <= rx1; x += 1) {
-      if (mask[y * width + x] === 0) {
-        outsideGray.push(gray[y * width + x]);
+  let bgMedian: number;
+  if ((globalThis as { __shinobuColdStartMaskHistogram?: boolean }).__shinobuColdStartMaskHistogram === true) {
+    const quarter = outsideGrayQuarterHistogram(gray, mask, width, rx0, ry0, rx1, ry1);
+    if (quarter === undefined) return 0;
+    bgMedian = quarter;
+  } else {
+    const outsideGray: number[] = [];
+    for (let y = ry0; y <= ry1; y += 1) {
+      for (let x = rx0; x <= rx1; x += 1) {
+        if (mask[y * width + x] === 0) {
+          outsideGray.push(gray[y * width + x]);
+        }
       }
     }
+    if (outsideGray.length === 0) {
+      return 0;
+    }
+    outsideGray.sort((a, b) => a - b);
+    bgMedian = outsideGray[Math.floor(outsideGray.length * 0.25)];
   }
-  if (outsideGray.length === 0) {
-    return 0;
-  }
-  outsideGray.sort((a, b) => a - b);
-  const bgMedian = outsideGray[Math.floor(outsideGray.length * 0.25)];
 
   // 2. 找 mask 边界像素
   const boundaryPixels: Array<{ x: number; y: number }> = [];

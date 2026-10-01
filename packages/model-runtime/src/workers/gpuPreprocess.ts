@@ -92,6 +92,16 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `;
 
+// Experimental direct stores retain the original sampling expressions. Only
+// destination bindings and channel offsets change; all values remain float32.
+const LETTERBOX_DIRECT_SHADER = LETTERBOX_SHADER
+  .replace(/@group\(0\) @binding\(1\) var<storage, read_write> dst_ch0: array<f32>;\s*@group\(0\) @binding\(2\) var<storage, read_write> dst_ch1: array<f32>;\s*@group\(0\) @binding\(3\) var<storage, read_write> dst_ch2: array<f32>;/,
+    "@group(0) @binding(1) var<storage, read_write> dst: array<f32>;")
+  .replace("@binding(4) var<uniform>", "@binding(2) var<uniform>")
+  .replaceAll("dst_ch0[dst_idx]", "dst[dst_idx]")
+  .replaceAll("dst_ch1[dst_idx]", "dst[total + dst_idx]")
+  .replaceAll("dst_ch2[dst_idx]", "dst[2u * total + dst_idx]");
+
 // ---------------------------------------------------------------------------
 // Letterbox parameters (shared with CPU implementation)
 // ---------------------------------------------------------------------------
@@ -123,6 +133,21 @@ export function computeLetterboxParams(
 let cachedDevice: GPUDevice | null = null;
 let cachedPipeline: GPUComputePipeline | null = null;
 let cachedBindGroupLayout: GPUBindGroupLayout | null = null;
+let cachedDirect = false;
+let cachedAutoLayout = false;
+
+type PreprocessMark = {
+  phase: string; startedAt: number; durationMs: number; model: string;
+  bytes?: number; dims?: readonly number[]; sha256?: string;
+};
+type PreprocessObserver = (mark: PreprocessMark) => void;
+
+function markStart(observer?: PreprocessObserver): number {
+  return observer ? performance.now() : 0;
+}
+function markEnd(observer: PreprocessObserver | undefined, phase: string, startedAt: number): void {
+  observer?.({ phase, startedAt, durationMs: performance.now() - startedAt, model: "detector" });
+}
 
 function getOrtDevice(): GPUDevice {
   const device = (ortAll.env.webgpu as unknown as { device?: GPUDevice }).device;
@@ -132,36 +157,60 @@ function getOrtDevice(): GPUDevice {
   return device;
 }
 
-function ensurePipeline(device: GPUDevice): {
+function ensurePipeline(device: GPUDevice, direct: boolean, autoLayout: boolean, observer?: PreprocessObserver): {
   pipeline: GPUComputePipeline;
   bindGroupLayout: GPUBindGroupLayout;
 } {
-  if (cachedDevice === device && cachedPipeline && cachedBindGroupLayout) {
+  if (cachedDevice === device && cachedDirect === direct && cachedAutoLayout === autoLayout
+    && cachedPipeline && cachedBindGroupLayout) {
     return { pipeline: cachedPipeline, bindGroupLayout: cachedBindGroupLayout };
   }
 
-  const shaderModule = device.createShaderModule({ code: LETTERBOX_SHADER });
+  const moduleStart = markStart(observer);
+  const shaderModule = device.createShaderModule({ code: direct ? LETTERBOX_DIRECT_SHADER : LETTERBOX_SHADER });
+  markEnd(observer, "detector-preprocess-module", moduleStart);
 
-  const bindGroupLayout = device.createBindGroupLayout({
-    entries: [
-      { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "float" } },
-      { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
-      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
-      { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
-      { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
-    ],
-  });
+  let bindGroupLayout: GPUBindGroupLayout | undefined;
+  let pipelineLayout: GPUPipelineLayout | "auto" = "auto";
+  if (!autoLayout) {
+    const layoutStart = markStart(observer);
+    bindGroupLayout = device.createBindGroupLayout({
+      entries: direct ? [
+        { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "float" } },
+        { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+        { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+      ] : [
+        { binding: 0, visibility: GPUShaderStage.COMPUTE, texture: { sampleType: "float" } },
+        { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+        { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+        { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: "storage" } },
+        { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: "uniform" } },
+      ],
+    });
 
-  const pipelineLayout = device.createPipelineLayout({
-    bindGroupLayouts: [bindGroupLayout],
-  });
+    pipelineLayout = device.createPipelineLayout({
+      bindGroupLayouts: [bindGroupLayout],
+    });
+    markEnd(observer, "detector-preprocess-layout", layoutStart);
+  }
 
+  const pipelineStart = markStart(observer);
   const pipeline = device.createComputePipeline({
     layout: pipelineLayout,
     compute: { module: shaderModule, entryPoint: "main" },
   });
+  markEnd(observer, "detector-preprocess-pipeline", pipelineStart);
+  if (!bindGroupLayout) {
+    // An auto layout belongs to this exact pipeline, including a reused
+    // asynchronously compiled template returned by the benchmark probe.
+    const layoutStart = markStart(observer);
+    bindGroupLayout = pipeline.getBindGroupLayout(0);
+    markEnd(observer, "detector-preprocess-layout", layoutStart);
+  }
 
   cachedDevice = device;
+  cachedDirect = direct;
+  cachedAutoLayout = autoLayout;
   cachedPipeline = pipeline;
   cachedBindGroupLayout = bindGroupLayout;
   return { pipeline, bindGroupLayout };
@@ -191,12 +240,25 @@ export async function preprocessLetterboxGpu(
   dstSize: number
 ): Promise<LetterboxGpuResult> {
   const device = getOrtDevice();
+  const experimental = globalThis as typeof globalThis & {
+    __shinobuColdStartGpuPreprocessNoFence?: boolean;
+    __shinobuColdStartGpuPreprocessDirect?: boolean;
+    __shinobuColdStartGpuPreprocessAutoLayout?: boolean;
+    __shinobuColdStartGpuPreprocessVerify?: boolean;
+    __shinobuColdStartInitMark?: PreprocessObserver;
+  };
+  const noFence = experimental.__shinobuColdStartGpuPreprocessNoFence === true;
+  const direct = experimental.__shinobuColdStartGpuPreprocessDirect === true;
+  const autoLayout = experimental.__shinobuColdStartGpuPreprocessAutoLayout === true;
+  const verify = experimental.__shinobuColdStartGpuPreprocessVerify === true;
+  const observer = experimental.__shinobuColdStartInitMark;
 
   const srcWidth = imageSource.width;
   const srcHeight = imageSource.height;
   const lbParams = computeLetterboxParams(srcWidth, srcHeight, dstSize);
 
   // Step 1: Copy image to GPUTexture via copyExternalImageToTexture
+  const textureStart = markStart(observer);
   const srcTexture = device.createTexture({
     size: [srcWidth, srcHeight],
     format: "rgba8unorm",
@@ -208,20 +270,26 @@ export async function preprocessLetterboxGpu(
     { texture: srcTexture },
     [srcWidth, srcHeight]
   );
+  markEnd(observer, "detector-preprocess-texturecopy", textureStart);
 
   // Step 2: Create output buffers for 3 channels
   const pixelCount = dstSize * dstSize;
   const bufferSize = pixelCount * 4; // float32 per pixel per channel
+  const nchwBufferSize = 3 * bufferSize;
+  const nchwBuffer = direct ? device.createBuffer({
+    size: nchwBufferSize,
+    usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+  }) : null;
 
-  const ch0Buffer = device.createBuffer({
+  const ch0Buffer = direct ? null : device.createBuffer({
     size: bufferSize,
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
   });
-  const ch1Buffer = device.createBuffer({
+  const ch1Buffer = direct ? null : device.createBuffer({
     size: bufferSize,
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
   });
-  const ch2Buffer = device.createBuffer({
+  const ch2Buffer = direct ? null : device.createBuffer({
     size: bufferSize,
     usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
   });
@@ -246,17 +314,21 @@ export async function preprocessLetterboxGpu(
   device.queue.writeBuffer(uniformBuffer, 0, uniformData);
 
   // Step 4: Create bind group and dispatch compute
-  const { pipeline, bindGroupLayout } = ensurePipeline(device);
+  const { pipeline, bindGroupLayout } = ensurePipeline(device, direct, autoLayout, observer);
 
   const textureView = srcTexture.createView();
 
   const bindGroup = device.createBindGroup({
     layout: bindGroupLayout,
-    entries: [
+    entries: direct ? [
       { binding: 0, resource: textureView },
-      { binding: 1, resource: { buffer: ch0Buffer } },
-      { binding: 2, resource: { buffer: ch1Buffer } },
-      { binding: 3, resource: { buffer: ch2Buffer } },
+      { binding: 1, resource: { buffer: nchwBuffer! } },
+      { binding: 2, resource: { buffer: uniformBuffer } },
+    ] : [
+      { binding: 0, resource: textureView },
+      { binding: 1, resource: { buffer: ch0Buffer! } },
+      { binding: 2, resource: { buffer: ch1Buffer! } },
+      { binding: 3, resource: { buffer: ch2Buffer! } },
       { binding: 4, resource: { buffer: uniformBuffer } },
     ],
   });
@@ -271,52 +343,85 @@ export async function preprocessLetterboxGpu(
   passEncoder.end();
 
   // Step 5: Copy 3 channel buffers into a single NCHW buffer
-  const totalFloats = 3 * pixelCount;
-  const nchwBufferSize = totalFloats * 4;
-  const nchwBuffer = device.createBuffer({
+  const outputBuffer = nchwBuffer ?? device.createBuffer({
     size: nchwBufferSize,
-    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE,
+    usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE | (verify ? GPUBufferUsage.COPY_SRC : 0),
   });
 
-  commandEncoder.copyBufferToBuffer(ch0Buffer, 0, nchwBuffer, 0, bufferSize);
-  commandEncoder.copyBufferToBuffer(ch1Buffer, 0, nchwBuffer, bufferSize, bufferSize);
-  commandEncoder.copyBufferToBuffer(ch2Buffer, 0, nchwBuffer, bufferSize * 2, bufferSize);
+  if (!direct) {
+    commandEncoder.copyBufferToBuffer(ch0Buffer!, 0, outputBuffer, 0, bufferSize);
+    commandEncoder.copyBufferToBuffer(ch1Buffer!, 0, outputBuffer, bufferSize, bufferSize);
+    commandEncoder.copyBufferToBuffer(ch2Buffer!, 0, outputBuffer, bufferSize * 2, bufferSize);
+  }
 
   device.queue.submit([commandEncoder.finish()]);
 
-  // Wait for GPU work to complete
-  await device.queue.onSubmittedWorkDone();
+  let intermediatesDisposed = false;
+  const disposeIntermediates = () => {
+    if (intermediatesDisposed) return;
+    intermediatesDisposed = true;
+    srcTexture.destroy();
+    ch0Buffer?.destroy();
+    ch1Buffer?.destroy();
+    ch2Buffer?.destroy();
+    uniformBuffer.destroy();
+  };
+  if (!noFence) {
+    const fenceStart = markStart(observer);
+    await device.queue.onSubmittedWorkDone();
+    markEnd(observer, "detector-preprocess-fence", fenceStart);
+    disposeIntermediates();
+  }
+  // The same queue executes preprocessing before ORT inference. With noFence,
+  // retain inputs until the Worker disposes this tensor after reading outputs.
 
-  // Clean up intermediate resources
-  srcTexture.destroy();
-  ch0Buffer.destroy();
-  ch1Buffer.destroy();
-  ch2Buffer.destroy();
-  uniformBuffer.destroy();
-
-  // Step 6: Create ort.Tensor from the NCHW GPUBuffer
-  const tensor = ortAll.Tensor.fromGpuBuffer(nchwBuffer, {
-    dims: [1, 3, dstSize, dstSize],
-    dataType: "float32",
-    download: async () => {
-      const stagingBuffer = device.createBuffer({
-        size: nchwBufferSize,
-        usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
-      });
+  const downloadNchw = async () => {
+    const stagingBuffer = device.createBuffer({
+      size: nchwBufferSize,
+      usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+    });
+    try {
       const encoder = device.createCommandEncoder();
-      encoder.copyBufferToBuffer(nchwBuffer, 0, stagingBuffer, 0, nchwBufferSize);
+      encoder.copyBufferToBuffer(outputBuffer, 0, stagingBuffer, 0, nchwBufferSize);
       device.queue.submit([encoder.finish()]);
-      await device.queue.onSubmittedWorkDone();
+      if (!noFence) await device.queue.onSubmittedWorkDone();
       await stagingBuffer.mapAsync(GPUMapMode.READ);
       const data = new Float32Array(stagingBuffer.getMappedRange().slice(0));
       stagingBuffer.unmap();
-      stagingBuffer.destroy();
       return data;
-    },
+    } finally {
+      stagingBuffer.destroy();
+    }
+  };
+
+  // Step 6: Create ort.Tensor from the NCHW GPUBuffer
+  const tensor = ortAll.Tensor.fromGpuBuffer(outputBuffer, {
+    dims: [1, 3, dstSize, dstSize],
+    dataType: "float32",
+    download: downloadNchw,
     dispose: () => {
-      nchwBuffer.destroy();
+      disposeIntermediates();
+      outputBuffer.destroy();
     },
   });
+
+  // Quality-only probe. Do not call tensor.getData(): ORT would change its
+  // location to CPU and subsequent inference would test a different feed path.
+  if (verify) {
+    const startedAt = performance.now();
+    try {
+      const data = await downloadNchw();
+      const digest = await crypto.subtle.digest("SHA-256", data.buffer as ArrayBuffer);
+      const sha256 = [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, "0")).join("");
+      experimental.__shinobuColdStartInitMark?.({
+        phase: "detector-input-sha256", startedAt, durationMs: performance.now() - startedAt,
+        model: "detector", bytes: data.byteLength, dims: [1, 3, dstSize, dstSize], sha256,
+      });
+    } catch (error) {
+      tensor.dispose();
+      throw error;
+    }
+  }
 
   return { tensor, params: lbParams };
 }

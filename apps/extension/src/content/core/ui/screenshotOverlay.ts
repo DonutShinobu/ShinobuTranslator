@@ -818,6 +818,9 @@ export function createScreenshotResultUi(rect: ScreenshotRect): ScreenshotResult
   const image = document.createElement('img');
   image.alt = '翻译截图';
   image.draggable = false;
+  if ((globalThis as typeof globalThis & {
+    __shinobuColdStartResultDisplayInstant?: boolean;
+  }).__shinobuColdStartResultDisplayInstant === true) image.style.transition = 'none';
 
   const closeButton = document.createElement('button');
   closeButton.className = 'mt-x-pill-close';

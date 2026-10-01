@@ -24,12 +24,15 @@ export type ImageDownloadRequest = {
   imageUrl: string;
   referrerPolicy?: ReferrerPolicy;
   allowedBaseUrl?: string;
+  /** Set by the router only after the download Blob capability probe succeeds. */
+  preferBlob?: boolean;
 };
 
 export type DownloadedImage = {
   base64: string;
   contentType: string;
   sourceUrl: string;
+  blob?: Blob;
 };
 
 export type ImageDownloader = {
@@ -605,11 +608,39 @@ export function createImageDownloader(
           );
         }
 
+        const observe = (globalThis as {
+          __shinobuColdStartInitMark?: (record: Record<string, unknown>) => void;
+        }).__shinobuColdStartInitMark;
+        const encodeStartedAt = observe ? performance.now() : 0;
+        let blob: Blob | undefined;
+        if (request.preferBlob && typeof Blob === 'function') {
+          try {
+            blob = new Blob([buffer], { type: contentType });
+          } catch {
+            // Keep the original Base64 path if native Blob materialization fails.
+          }
+        }
+        const base64 = blob ? '' : arrayBufferToBase64(buffer);
         downloadedImage = {
-          base64: arrayBufferToBase64(buffer),
+          base64,
           contentType,
           sourceUrl: sourceUrl.href,
+          ...(blob ? { blob } : {}),
         };
+        if (observe) {
+          try {
+            observe({
+              phase: 'image.download-encode',
+              startedAt: encodeStartedAt,
+              durationMs: performance.now() - encodeStartedAt,
+              transport: blob ? 'blob' : 'base64',
+              bytes: buffer.byteLength,
+              base64Length: base64.length,
+            });
+          } catch {
+            // Benchmark observers never affect the downloaded image.
+          }
+        }
       } catch (error) {
         attemptFailure = {
           candidateIndex: index + 1,

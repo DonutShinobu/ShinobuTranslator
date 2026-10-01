@@ -19,7 +19,7 @@ import {
 } from './detect/precomputedDetection';
 import { runOcr } from "./ocr";
 import { preparePaddleOcrRuntime, warmupPaddleOcrRuntime } from "./ocr/paddleocrProvider";
-import { runInpaint } from "./inpaint";
+import { prepareInpaintSource, runInpaint, type PreparedInpaintSource } from "./inpaint";
 import { drawTypeset } from "./typeset";
 import { drawRegions } from "./visualize";
 import { mergeTextLines } from "./textlineMerge";
@@ -27,8 +27,8 @@ import {
   filterOcrRegions,
 } from "./ocrPostFilter";
 import { OCR_POST_FILTER_RULE_ID } from "./ocrPostFilter/rule";
-import { MaskRefinementImageError, refineTextMask } from "./maskRefinement";
-import { sortRegionsForRender } from "./readingOrder";
+import { MaskRefinementImageError, prepareTextMaskGray, refineTextMask, type PreparedTextMaskGray } from "./maskRefinement";
+import { prepareReadingPanels, sortRegionsForRender, type PreparedReadingPanels } from "./readingOrder";
 import { detectBubbles, matchRegionsToBubbles, type BubbleDetection } from "./bubbleDetect";
 import {
   type ModelRuntime,
@@ -416,6 +416,10 @@ export async function runPipeline(
   const stageTimings: StageTiming[] = [];
   const signal = options.signal;
   const stopAfterOrder = options.stopAfter === "order";
+  const collectStagePreviews = (globalThis as typeof globalThis & {
+    __shinobuColdStartPixelFastPath?: boolean;
+  }).__shinobuColdStartPixelFastPath !== true || stopAfterOrder
+    || config.typesetDebug || config.eraseDebug || config.collectDebugLog;
 
   throwIfCancelled(signal);
   report(onProgress, "load", "加载图片");
@@ -479,6 +483,40 @@ export async function runPipeline(
   throwIfCancelled(signal);
   report(onProgress, "preload", "加载检测模型");
   const preloadT0 = performance.now();
+  let preparedPanels: PreparedReadingPanels | undefined;
+  let preparedMaskGray: PreparedTextMaskGray | undefined;
+  let preparedInpaintSource: PreparedInpaintSource | undefined;
+  let sourcePreReadStarted = false;
+  const sourcePreReadEnabled = (globalThis as {
+    __shinobuColdStartSourcePreRead?: boolean;
+  }).__shinobuColdStartSourcePreRead === true && !stopAfterOrder && !options.precomputedDetection;
+  const onDetectorSubmitted = sourcePreReadEnabled ? () => {
+    if (sourcePreReadStarted || signal?.aborted) return;
+    sourcePreReadStarted = true;
+    const observe = (globalThis as {
+      __shinobuColdStartInitMark?: (record: Record<string, unknown>) => void;
+    }).__shinobuColdStartInitMark;
+    const startedAt = observe ? performance.now() : 0;
+    let originalStartedAt = startedAt;
+    // Normal detector masks are returned at original dimensions. The consumer
+    // checks the actual scaled dimensions and falls back if a host differs.
+    try { preparedMaskGray = prepareTextMaskGray(originalCanvas, originalCanvas.height, platform); }
+    catch { /* Leave the normal mask stage responsible for its own error. */ }
+    if (observe) originalStartedAt = performance.now();
+    try { preparedInpaintSource = prepareInpaintSource(originalCanvas, platform); }
+    catch { /* Leave the normal inpaint stage responsible for its own error. */ }
+    if (observe) {
+      try {
+        const finishedAt = performance.now();
+        observe({ phase: 'source.preread', startedAt, durationMs: finishedAt - startedAt,
+          grayMs: originalStartedAt - startedAt, originalMs: finishedAt - originalStartedAt,
+          grayPrepared: preparedMaskGray !== undefined, originalPrepared: preparedInpaintSource !== undefined,
+          width: originalCanvas.width, height: originalCanvas.height,
+          scaledWidth: preparedMaskGray?.scaledWidth, scaledHeight: preparedMaskGray?.scaledHeight,
+        });
+      } catch { /* Optional diagnostics cannot affect the real model request. */ }
+    }
+  } : undefined;
   if (options.precomputedDetection) {
     setRuntimeStage({
       model: 'detector',
@@ -487,7 +525,13 @@ export async function runPipeline(
       detail: 'detector 使用阅读会话预检测结果',
     });
   } else {
-    setRuntimeStage(await probeRuntime(modelRuntime, "detector"));
+    const detectorProbe = probeRuntime(modelRuntime, "detector");
+    if ((globalThis as { __shinobuColdStartPanelOverlap?: boolean }).__shinobuColdStartPanelOverlap === true) {
+      // Compute from the unchanged source while the existing Session load is pending.
+      // Panel errors remain the reading-order fallback; always observe detectorProbe.
+      preparedPanels = prepareReadingPanels(originalCanvas, platform);
+    }
+    setRuntimeStage(await detectorProbe);
   }
   throwIfCancelled(signal);
   stageTimings.push({ stage: "preload", label: "加载检测模型", durationMs: performance.now() - preloadT0 });
@@ -531,13 +575,16 @@ export async function runPipeline(
           platform,
           modelRuntime,
           options.detectionFallbackStrategy,
+          onDetectorSubmitted,
         );
     throwIfCancelled(signal);
     latestRegions = detected.regions;
     stageRegions.detected = cloneTextRegions(latestRegions);
     detectionMaskCanvas = detected.rawMaskCanvas;
     segmentationCanvas = detected.rawMaskCanvas;
-    detectionCanvas = drawRegions(originalCanvas, detected.regions, "文本检测", () => "文本框", platform);
+    detectionCanvas = collectStagePreviews
+      ? drawRegions(originalCanvas, detected.regions, "文本检测", () => "文本框", platform)
+      : originalCanvas;
     ocrCanvas = detectionCanvas;
     cleanedCanvas = ocrCanvas;
     resultCanvas = cleanedCanvas;
@@ -666,7 +713,7 @@ export async function runPipeline(
     latestRegions = ocrResult.regions;
     stageRegions.ocr = cloneTextRegions(latestRegions);
     ocrDebug = ocrResult.debug;
-    ocrCanvas = ocrResult.regions.length === 0
+    ocrCanvas = !collectStagePreviews || ocrResult.regions.length === 0
       ? originalCanvas
       : drawRegions(originalCanvas, ocrResult.regions, "OCR 识别", (region) => region.sourceText, platform);
     cleanedCanvas = ocrCanvas;
@@ -820,7 +867,9 @@ export async function runPipeline(
   report(onProgress, "order", "文本顺序排序");
   try {
     const t0 = performance.now();
-    latestRegions = sortRegionsForRender(latestRegions, originalCanvas, platform);
+    latestRegions = preparedPanels === undefined
+      ? sortRegionsForRender(latestRegions, originalCanvas, platform)
+      : sortRegionsForRender(latestRegions, originalCanvas, platform, preparedPanels);
     stageRegions.ordered = cloneTextRegions(latestRegions);
     stageTimings.push({ stage: "order", label: "文本顺序排序", durationMs: performance.now() - t0 });
   } catch (error) {
@@ -944,7 +993,8 @@ export async function runPipeline(
       const refineResult = refineTextMask(originalCanvas, regionsWithText, detectionMaskCanvas, platform, {
         method: "fit_text",
         kernelSize: 3
-      }, config.eraseDebug);
+      }, config.eraseDebug, preparedMaskGray);
+      preparedMaskGray = undefined;
       throwIfCancelled(signal);
       refinedMaskCanvas = refineResult.refinedMaskCanvas;
       if (refineResult.debugLayers) {
@@ -975,7 +1025,9 @@ export async function runPipeline(
         refinedMaskCanvas,
         platform,
         modelRuntime,
+        preparedInpaintSource,
       );
+      preparedInpaintSource = undefined;
       throwIfCancelled(signal);
       const inpaintDurationMs = performance.now() - t0;
       inpaintTiming = { stage: "inpaint", label: "\u53bb\u5b57", durationMs: inpaintDurationMs };

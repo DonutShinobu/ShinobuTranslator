@@ -33,7 +33,7 @@ export interface ModelRuntime {
     sessionId: string,
     feeds: Record<string, TensorTransport>,
   ): Promise<InferenceResult>;
-  runImage(sessionId: string, image: ImageBitmap): Promise<GpuDetectResult>;
+  runImage(sessionId: string, image: ImageBitmap, onSubmitted?: () => void): Promise<GpuDetectResult>;
   readTextResource(url: string): Promise<string>;
   releaseSession(name: ModelName): Promise<void>;
   dispose(): Promise<void>;

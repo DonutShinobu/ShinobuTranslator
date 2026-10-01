@@ -1,0 +1,1223 @@
+{
+  "createdAt": "2026-10-01T15:22:20.929Z",
+  "status": "experiment-pass-fixed-cold-start-budget",
+  "scope": {
+    "baseCommit": "f26f779",
+    "browserVersion": "151.0.7922.34",
+    "gpuDevices": [
+      {
+        "vendorId": 4318,
+        "deviceId": 11269,
+        "subSysId": 542906225,
+        "revision": 161,
+        "vendorString": "",
+        "deviceString": "NVIDIA GeForce RTX 5070 Ti",
+        "driverVendor": "NVIDIA",
+        "driverVersion": "32.0.16.1074"
+      },
+      {
+        "vendorId": 4318,
+        "deviceId": 11269,
+        "subSysId": 542906225,
+        "revision": 161,
+        "vendorString": "",
+        "deviceString": "NVIDIA GeForce RTX 5070 Ti",
+        "driverVendor": "",
+        "driverVersion": "32.0.16.1074"
+      },
+      {
+        "vendorId": 4318,
+        "deviceId": 11269,
+        "subSysId": 542906225,
+        "revision": 161,
+        "vendorString": "",
+        "deviceString": "NVIDIA GeForce RTX 5070 Ti",
+        "driverVendor": "",
+        "driverVersion": "32.0.16.1074"
+      },
+      {
+        "vendorId": 4318,
+        "deviceId": 11269,
+        "subSysId": 542906225,
+        "revision": 161,
+        "vendorString": "",
+        "deviceString": "NVIDIA GeForce RTX 5070 Ti",
+        "driverVendor": "",
+        "driverVersion": "32.0.16.1074"
+      },
+      {
+        "vendorId": 5140,
+        "deviceId": 140,
+        "subSysId": 0,
+        "revision": 0,
+        "vendorString": "",
+        "deviceString": "Microsoft Basic Render Driver",
+        "driverVendor": "",
+        "driverVersion": "10.0.26100.9278"
+      }
+    ],
+    "processMode": "original",
+    "endPoint": "same trigger to full PNG decoded and next requestAnimationFrame",
+    "newProfile": true,
+    "workerAndSessionsNew": true,
+    "systemAndDriverCachesCleared": false,
+    "modelsChanged": false,
+    "precisionChanged": false,
+    "resolutionChanged": false,
+    "productionDefaultsEnabled": false,
+    "universalDeviceOrImageClaim": false
+  },
+  "fixedBaseline": {
+    "browserVersion": "145.0.7632.6",
+    "newProfileMs": 5691,
+    "retainedCacheNewProcessMs": 4665.3,
+    "newProfileBudgetMs": 2845.5,
+    "retainedCacheBudgetMs": 2332.65
+  },
+  "candidate": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+  "stats": [
+    {
+      "variant": "baseline",
+      "cacheState": "new-profile",
+      "n": 5,
+      "runsMs": [
+        5792.376806640625,
+        5345.490966796875,
+        5198.083935546875,
+        5495.712939453125,
+        5129.518994140625
+      ],
+      "medianVisibleMs": 5345.490966796875,
+      "minMs": 5129.518994140625,
+      "maxMs": 5792.376806640625,
+      "medianTotalMs": 5169,
+      "reports": [
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-08-20-381Z.json",
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-09-37-317Z.json",
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-10-16-458Z.json",
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-11-32-347Z.json",
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-12-09-268Z.json"
+      ]
+    },
+    {
+      "variant": "baseline",
+      "cacheState": "retained-cache-new-process",
+      "n": 5,
+      "runsMs": [
+        3748.30712890625,
+        3731.304052734375,
+        3730.097998046875,
+        3723.4388671875,
+        3735.3529296875
+      ],
+      "medianVisibleMs": 3731.304052734375,
+      "minMs": 3723.4388671875,
+      "maxMs": 3748.30712890625,
+      "medianTotalMs": 3552.9,
+      "reports": [
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-08-31-761Z.json",
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-09-51-843Z.json",
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-10-27-029Z.json",
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-11-45-079Z.json",
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-12-19-672Z.json"
+      ]
+    },
+    {
+      "variant": "baseline",
+      "cacheState": "same-worker",
+      "n": 5,
+      "runsMs": [
+        2270.359912109375,
+        2219.457861328125,
+        2138.871044921875,
+        2138.80771484375,
+        2213.959033203125
+      ],
+      "medianVisibleMs": 2213.959033203125,
+      "minMs": 2138.80771484375,
+      "maxMs": 2270.359912109375,
+      "medianTotalMs": 2061.7,
+      "reports": [
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-08-23-643Z.json",
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-09-40-645Z.json",
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-10-19-647Z.json",
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-11-35-555Z.json",
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-12-12-465Z.json"
+      ]
+    },
+    {
+      "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+      "cacheState": "new-profile",
+      "n": 5,
+      "runsMs": [
+        2783.8900390625,
+        2405.729736328125,
+        2431.187060546875,
+        2480.4939453125,
+        2424.82216796875
+      ],
+      "medianVisibleMs": 2431.187060546875,
+      "minMs": 2405.729736328125,
+      "maxMs": 2783.8900390625,
+      "fixedBudgetMs": 2845.5,
+      "allRunsWithinBudget": true,
+      "medianTotalMs": 2252.7,
+      "reports": [
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-08-46-135Z.json",
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-09-12-230Z.json",
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-10-38-912Z.json",
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-11-03-356Z.json",
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-12-31-497Z.json"
+      ]
+    },
+    {
+      "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+      "cacheState": "retained-cache-new-process",
+      "n": 5,
+      "runsMs": [
+        1830.2869140625,
+        1980.3349609375,
+        2142.483984375,
+        2042.73095703125,
+        2062.65380859375
+      ],
+      "medianVisibleMs": 2042.73095703125,
+      "minMs": 1830.2869140625,
+      "maxMs": 2142.483984375,
+      "fixedBudgetMs": 2332.65,
+      "allRunsWithinBudget": true,
+      "medianTotalMs": 1863.5,
+      "reports": [
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-08-59-196Z.json",
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-09-20-701Z.json",
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-10-50-276Z.json",
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-11-12-635Z.json",
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-12-42-109Z.json"
+      ]
+    },
+    {
+      "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+      "cacheState": "same-worker",
+      "n": 5,
+      "runsMs": [
+        1757.93818359375,
+        1728.65,
+        1738.48505859375,
+        1731.816015625,
+        1732.856201171875
+      ],
+      "medianVisibleMs": 1732.856201171875,
+      "minMs": 1728.65,
+      "maxMs": 1757.93818359375,
+      "medianTotalMs": 1579.9,
+      "reports": [
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-08-48-941Z.json",
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-09-15-008Z.json",
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-10-41-733Z.json",
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-11-06-159Z.json",
+        "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-12-34-282Z.json"
+      ]
+    }
+  ],
+  "medianRows": {
+    "new-profile:baseline": {
+      "row": {
+        "variant": "baseline",
+        "round": 1,
+        "runIndex": 0,
+        "cacheState": "new-profile",
+        "totalMs": 5169,
+        "visibleResultMs": 5345.490966796875,
+        "displayTailMs": 176.490966796875,
+        "system": {
+          "cpuBusyPercent": 24.912849283730054,
+          "minFreeMemoryBytes": 7517044736
+        },
+        "resultImage": {
+          "width": 2921,
+          "height": 4096,
+          "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+        },
+        "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-09-37-317Z.json"
+      },
+      "phases": [
+        [
+          "配置/取图/传输/宿主",
+          604.5
+        ],
+        [
+          "宿主准备/字体/解码",
+          295.79999999999995
+        ],
+        [
+          "检测加载剩余等待",
+          888.4
+        ],
+        [
+          "文本检测",
+          823.5
+        ],
+        [
+          "气泡检测",
+          539.7
+        ],
+        [
+          "OCR",
+          920
+        ],
+        [
+          "合并/过滤/阅读顺序",
+          133.2
+        ],
+        [
+          "遮罩",
+          212.3
+        ],
+        [
+          "去字",
+          473.1
+        ],
+        [
+          "排版",
+          24.3
+        ],
+        [
+          "完整PNG编码/交付",
+          251.79999999999998
+        ],
+        [
+          "解码/下一帧",
+          176.490966796875
+        ],
+        [
+          "切换剩余",
+          2.399999999999636
+        ]
+      ]
+    },
+    "new-profile:candidate": {
+      "row": {
+        "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+        "round": 2,
+        "runIndex": 0,
+        "cacheState": "new-profile",
+        "totalMs": 2252.7,
+        "visibleResultMs": 2431.187060546875,
+        "displayTailMs": 178.487060546875,
+        "system": {
+          "cpuBusyPercent": 40.05524861878453,
+          "minFreeMemoryBytes": 7973900288
+        },
+        "resultImage": {
+          "width": 2921,
+          "height": 4096,
+          "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+        },
+        "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-10-38-912Z.json"
+      },
+      "phases": [
+        [
+          "配置/取图/传输/宿主",
+          180.1
+        ],
+        [
+          "宿主准备/字体/解码",
+          93.4
+        ],
+        [
+          "检测加载剩余等待",
+          287.8
+        ],
+        [
+          "文本检测",
+          394.9
+        ],
+        [
+          "气泡检测",
+          241.1
+        ],
+        [
+          "OCR",
+          454.8
+        ],
+        [
+          "合并/过滤/阅读顺序",
+          9.3
+        ],
+        [
+          "遮罩",
+          135.1
+        ],
+        [
+          "去字",
+          268.1
+        ],
+        [
+          "排版",
+          25.9
+        ],
+        [
+          "完整PNG编码/交付",
+          159.89999999999998
+        ],
+        [
+          "解码/下一帧",
+          178.487060546875
+        ],
+        [
+          "切换剩余",
+          2.299999999999727
+        ]
+      ]
+    },
+    "retained-cache-new-process:baseline": {
+      "row": {
+        "variant": "baseline",
+        "round": 1,
+        "runIndex": 0,
+        "cacheState": "retained-cache-new-process",
+        "totalMs": 3545.4,
+        "visibleResultMs": 3731.304052734375,
+        "displayTailMs": 185.904052734375,
+        "system": {
+          "cpuBusyPercent": 23.90603681806498,
+          "minFreeMemoryBytes": 7473053696
+        },
+        "resultImage": {
+          "width": 2921,
+          "height": 4096,
+          "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+        },
+        "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-09-51-843Z.json"
+      },
+      "phases": [
+        [
+          "配置/取图/传输/宿主",
+          569.1
+        ],
+        [
+          "宿主准备/字体/解码",
+          296.6
+        ],
+        [
+          "检测加载剩余等待",
+          610.8
+        ],
+        [
+          "文本检测",
+          347
+        ],
+        [
+          "气泡检测",
+          304.2
+        ],
+        [
+          "OCR",
+          451.6
+        ],
+        [
+          "合并/过滤/阅读顺序",
+          130.20000000000002
+        ],
+        [
+          "遮罩",
+          210
+        ],
+        [
+          "去字",
+          339.5
+        ],
+        [
+          "排版",
+          25.6
+        ],
+        [
+          "完整PNG编码/交付",
+          258.5
+        ],
+        [
+          "解码/下一帧",
+          185.904052734375
+        ],
+        [
+          "切换剩余",
+          2.3000000000006366
+        ]
+      ]
+    },
+    "retained-cache-new-process:candidate": {
+      "row": {
+        "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+        "round": 3,
+        "runIndex": 0,
+        "cacheState": "retained-cache-new-process",
+        "totalMs": 1863.5,
+        "visibleResultMs": 2042.73095703125,
+        "displayTailMs": 179.23095703125,
+        "system": {
+          "cpuBusyPercent": 25.31115679312278,
+          "minFreeMemoryBytes": 7291088896
+        },
+        "resultImage": {
+          "width": 2921,
+          "height": 4096,
+          "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+        },
+        "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-11-12-635Z.json"
+      },
+      "phases": [
+        [
+          "配置/取图/传输/宿主",
+          166.5
+        ],
+        [
+          "宿主准备/字体/解码",
+          6.9
+        ],
+        [
+          "检测加载剩余等待",
+          249.1
+        ],
+        [
+          "文本检测",
+          240.9
+        ],
+        [
+          "气泡检测",
+          173.6
+        ],
+        [
+          "OCR",
+          420.2
+        ],
+        [
+          "合并/过滤/阅读顺序",
+          9
+        ],
+        [
+          "遮罩",
+          151.7
+        ],
+        [
+          "去字",
+          255.5
+        ],
+        [
+          "排版",
+          25.4
+        ],
+        [
+          "完整PNG编码/交付",
+          162.39999999999998
+        ],
+        [
+          "解码/下一帧",
+          179.23095703125
+        ],
+        [
+          "切换剩余",
+          2.299999999999727
+        ]
+      ]
+    }
+  },
+  "quality": {
+    "artifact": "cold-start-budget-final-quality-2026-10-01.json",
+    "groups": 7,
+    "rows": 67,
+    "checks": [
+      {
+        "path": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\.tmp\\cold-budget\\1790866767884-results.json",
+        "checks": "pixels/OCR confidence/regions/input dimensions/providers/timing passed"
+      },
+      {
+        "path": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\.tmp\\cold-budget\\1790867286516-results.json",
+        "checks": "pixels/OCR confidence/regions/input dimensions/providers/timing passed"
+      },
+      {
+        "path": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\.tmp\\cold-budget\\1790867907841-results.json",
+        "checks": "pixels/OCR confidence/regions/input dimensions/providers/timing passed"
+      },
+      {
+        "path": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\.tmp\\cold-budget\\1790866046598-results.json",
+        "checks": "pixels/OCR confidence/regions/input dimensions/providers/timing passed"
+      },
+      {
+        "path": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\.tmp\\cold-budget\\1790863277823-results.json",
+        "checks": "pixels/OCR confidence/regions/input dimensions/providers/timing passed"
+      },
+      {
+        "path": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\.tmp\\cold-budget\\1790867139694-results.json",
+        "checks": "pixels/OCR confidence/regions/input dimensions/providers/timing passed"
+      },
+      {
+        "path": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\.tmp\\cold-budget\\1790863172428-results.json",
+        "checks": "pixels/OCR confidence/regions/input dimensions/providers/timing passed"
+      }
+    ],
+    "qa": [
+      {
+        "variant": "baseline-verifydet-verifyinput",
+        "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-18-47-721Z.json",
+        "image": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+        "resultImage": {
+          "width": 2921,
+          "height": 4096,
+          "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+        },
+        "rawHashes": [
+          {
+            "phase": "detector-input-sha256",
+            "dims": [
+              1,
+              3,
+              1024,
+              1024
+            ],
+            "bytes": 12582912,
+            "sha256": "74a1604ddb29953a37f41646f50be1e856ae64cee6f50d506f75e99428862d87"
+          },
+          {
+            "phase": "detector-output-sha256",
+            "output": "blk",
+            "dims": [
+              1,
+              64512,
+              7
+            ],
+            "bytes": 1806336,
+            "sha256": "92c48c1ff39b040d3f0c8952b0f2eba910d68796681637c8928e873b9adf48e1"
+          },
+          {
+            "phase": "detector-output-sha256",
+            "output": "seg",
+            "dims": [
+              1,
+              1,
+              1024,
+              1024
+            ],
+            "bytes": 4194304,
+            "sha256": "1c09dd1ffe00135583ccb6fd943907ab435634e21c455d41968aed054dd6505f"
+          },
+          {
+            "phase": "detector-output-sha256",
+            "output": "det",
+            "dims": [
+              1,
+              2,
+              1024,
+              1024
+            ],
+            "bytes": 8388608,
+            "sha256": "5b1e1a14284fc72a5a27ec84a3de19ee3efdd047cdde11d3f5db5803471281e4"
+          }
+        ],
+        "gpuSummary": {
+          "kind": "gpu-buffer-submit-summary",
+          "timeOrigin": 1790867922142.1,
+          "requestedBytesOnly": true,
+          "deviceId": 0,
+          "deviceReadyAt": 487.39999985694885,
+          "requestedBufferBytesCreated": 1451707184,
+          "requestedBufferBytesLive": 1140244992,
+          "requestedBufferBytesPeak": 1143390720,
+          "buffersCreated": 2123,
+          "buffersDestroyed": 825,
+          "buffersLive": 1298,
+          "buffersPeak": 1299,
+          "uploadStagingBuffersCreated": 804,
+          "uploadStagingBytesCreated": 216558480,
+          "queueSubmits": 1060,
+          "firstSubmitAt": 754.8999998569489,
+          "firstSubmitMsSinceDevice": 267.5,
+          "queueWriteBufferCalls": 3920,
+          "queueWriteBufferBytes": 366080,
+          "firstWriteBufferAt": 896.7999999523163,
+          "firstWriteBufferMsSinceDevice": 409.40000009536743,
+          "apiTimingEnabled": false,
+          "queueSubmitNativeSyncMs": 0,
+          "maxQueueSubmitNativeSyncMs": 0,
+          "queueWriteBufferNativeSyncMs": 0,
+          "uniformWriteBufferCalls": 0,
+          "uniformWriteBufferBytes": 0,
+          "uniformWriteBufferNativeSyncMs": 0,
+          "maxUniformWriteBufferNativeSyncMs": 0,
+          "deviceLost": false,
+          "uncapturedErrors": 0
+        },
+        "blobLifetime": {
+          "result": "content-PNG-and-decoded-RGBA-identical-after-host-close",
+          "host": {
+            "beforeCount": 1,
+            "afterCount": 0
+          },
+          "before": {
+            "url": "blob:http://127.0.0.1:25962/c30fca11-bc20-44ba-8d5d-d22c5173d510",
+            "type": "image/png",
+            "bytes": 7988558,
+            "pngHash": "03add1fb9c9f71093afee8d6133def7d3ee3a84267e97da65df5fe698eac1c98",
+            "rgbaHash": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97",
+            "width": 2921,
+            "height": 4096
+          },
+          "after": {
+            "url": "blob:http://127.0.0.1:25962/c30fca11-bc20-44ba-8d5d-d22c5173d510",
+            "type": "image/png",
+            "bytes": 7988558,
+            "pngHash": "03add1fb9c9f71093afee8d6133def7d3ee3a84267e97da65df5fe698eac1c98",
+            "rgbaHash": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97",
+            "width": 2921,
+            "height": 4096
+          }
+        }
+      },
+      {
+        "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-verifydet-verifyinput",
+        "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T14-47-39-757Z.json",
+        "image": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+        "resultImage": {
+          "width": 2921,
+          "height": 4096,
+          "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+        },
+        "rawHashes": [
+          {
+            "phase": "detector-input-sha256",
+            "dims": [
+              1,
+              3,
+              1024,
+              1024
+            ],
+            "bytes": 12582912,
+            "sha256": "74a1604ddb29953a37f41646f50be1e856ae64cee6f50d506f75e99428862d87"
+          },
+          {
+            "phase": "detector-output-sha256",
+            "output": "blk",
+            "dims": [
+              1,
+              64512,
+              7
+            ],
+            "bytes": 1806336,
+            "sha256": "92c48c1ff39b040d3f0c8952b0f2eba910d68796681637c8928e873b9adf48e1"
+          },
+          {
+            "phase": "detector-output-sha256",
+            "output": "seg",
+            "dims": [
+              1,
+              1,
+              1024,
+              1024
+            ],
+            "bytes": 4194304,
+            "sha256": "1c09dd1ffe00135583ccb6fd943907ab435634e21c455d41968aed054dd6505f"
+          },
+          {
+            "phase": "detector-output-sha256",
+            "output": "det",
+            "dims": [
+              1,
+              2,
+              1024,
+              1024
+            ],
+            "bytes": 8388608,
+            "sha256": "5b1e1a14284fc72a5a27ec84a3de19ee3efdd047cdde11d3f5db5803471281e4"
+          }
+        ],
+        "gpuSummary": {
+          "kind": "gpu-buffer-submit-summary",
+          "timeOrigin": 1790866056050.2,
+          "requestedBytesOnly": true,
+          "deviceId": 0,
+          "deviceReadyAt": 384.59999990463257,
+          "requestedBufferBytesCreated": 1417663440,
+          "requestedBufferBytesLive": 1141293568,
+          "requestedBufferBytesPeak": 1144439296,
+          "buffersCreated": 2142,
+          "buffersDestroyed": 843,
+          "buffersLive": 1299,
+          "buffersPeak": 1300,
+          "uploadStagingBuffersCreated": 804,
+          "uploadStagingBytesCreated": 216558480,
+          "queueSubmits": 1069,
+          "firstSubmitAt": 709.2000000476837,
+          "firstSubmitMsSinceDevice": 324.60000014305115,
+          "queueWriteBufferCalls": 3929,
+          "queueWriteBufferBytes": 366224,
+          "firstWriteBufferAt": 1141.4000000953674,
+          "firstWriteBufferMsSinceDevice": 756.8000001907349,
+          "apiTimingEnabled": false,
+          "queueSubmitNativeSyncMs": 0,
+          "maxQueueSubmitNativeSyncMs": 0,
+          "queueWriteBufferNativeSyncMs": 0,
+          "uniformWriteBufferCalls": 0,
+          "uniformWriteBufferBytes": 0,
+          "uniformWriteBufferNativeSyncMs": 0,
+          "maxUniformWriteBufferNativeSyncMs": 0,
+          "deviceLost": false,
+          "uncapturedErrors": 0
+        }
+      },
+      {
+        "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-verifydet-verifyinput",
+        "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T14-48-04-888Z.json",
+        "image": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+        "resultImage": {
+          "width": 2921,
+          "height": 4096,
+          "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+        },
+        "rawHashes": [
+          {
+            "phase": "detector-input-sha256",
+            "dims": [
+              1,
+              3,
+              1024,
+              1024
+            ],
+            "bytes": 12582912,
+            "sha256": "74a1604ddb29953a37f41646f50be1e856ae64cee6f50d506f75e99428862d87"
+          },
+          {
+            "phase": "detector-output-sha256",
+            "output": "blk",
+            "dims": [
+              1,
+              64512,
+              7
+            ],
+            "bytes": 1806336,
+            "sha256": "92c48c1ff39b040d3f0c8952b0f2eba910d68796681637c8928e873b9adf48e1"
+          },
+          {
+            "phase": "detector-output-sha256",
+            "output": "seg",
+            "dims": [
+              1,
+              1,
+              1024,
+              1024
+            ],
+            "bytes": 4194304,
+            "sha256": "1c09dd1ffe00135583ccb6fd943907ab435634e21c455d41968aed054dd6505f"
+          },
+          {
+            "phase": "detector-output-sha256",
+            "output": "det",
+            "dims": [
+              1,
+              2,
+              1024,
+              1024
+            ],
+            "bytes": 8388608,
+            "sha256": "5b1e1a14284fc72a5a27ec84a3de19ee3efdd047cdde11d3f5db5803471281e4"
+          }
+        ],
+        "gpuSummary": {
+          "kind": "gpu-buffer-submit-summary",
+          "timeOrigin": 1790866081257.2,
+          "requestedBytesOnly": true,
+          "deviceId": 0,
+          "deviceReadyAt": 828.2999999523163,
+          "requestedBufferBytesCreated": 1417663440,
+          "requestedBufferBytesLive": 1141293568,
+          "requestedBufferBytesPeak": 1144439296,
+          "buffersCreated": 2142,
+          "buffersDestroyed": 843,
+          "buffersLive": 1299,
+          "buffersPeak": 1300,
+          "uploadStagingBuffersCreated": 804,
+          "uploadStagingBytesCreated": 216558480,
+          "queueSubmits": 1069,
+          "firstSubmitAt": 1078.2000000476837,
+          "firstSubmitMsSinceDevice": 249.90000009536743,
+          "queueWriteBufferCalls": 3929,
+          "queueWriteBufferBytes": 366224,
+          "firstWriteBufferAt": 1432.5999999046326,
+          "firstWriteBufferMsSinceDevice": 604.2999999523163,
+          "apiTimingEnabled": false,
+          "queueSubmitNativeSyncMs": 0,
+          "maxQueueSubmitNativeSyncMs": 0,
+          "queueWriteBufferNativeSyncMs": 0,
+          "uniformWriteBufferCalls": 0,
+          "uniformWriteBufferBytes": 0,
+          "uniformWriteBufferNativeSyncMs": 0,
+          "maxUniformWriteBufferNativeSyncMs": 0,
+          "deviceLost": false,
+          "uncapturedErrors": 0
+        }
+      },
+      {
+        "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu-verifydet-verifyinput",
+        "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T14-48-17-207Z.json",
+        "image": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+        "resultImage": {
+          "width": 2921,
+          "height": 4096,
+          "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+        },
+        "rawHashes": [
+          {
+            "phase": "detector-input-sha256",
+            "dims": [
+              1,
+              3,
+              1024,
+              1024
+            ],
+            "bytes": 12582912,
+            "sha256": "74a1604ddb29953a37f41646f50be1e856ae64cee6f50d506f75e99428862d87"
+          },
+          {
+            "phase": "detector-output-sha256",
+            "output": "blk",
+            "dims": [
+              1,
+              64512,
+              7
+            ],
+            "bytes": 1806336,
+            "sha256": "92c48c1ff39b040d3f0c8952b0f2eba910d68796681637c8928e873b9adf48e1"
+          },
+          {
+            "phase": "detector-output-sha256",
+            "output": "seg",
+            "dims": [
+              1,
+              1,
+              1024,
+              1024
+            ],
+            "bytes": 4194304,
+            "sha256": "1c09dd1ffe00135583ccb6fd943907ab435634e21c455d41968aed054dd6505f"
+          },
+          {
+            "phase": "detector-output-sha256",
+            "output": "det",
+            "dims": [
+              1,
+              2,
+              1024,
+              1024
+            ],
+            "bytes": 8388608,
+            "sha256": "5b1e1a14284fc72a5a27ec84a3de19ee3efdd047cdde11d3f5db5803471281e4"
+          }
+        ],
+        "gpuSummary": {
+          "kind": "gpu-buffer-submit-summary",
+          "timeOrigin": 1790866094548.4,
+          "requestedBytesOnly": true,
+          "deviceId": 0,
+          "deviceReadyAt": 247.20000004768372,
+          "requestedBufferBytesCreated": 1417663440,
+          "requestedBufferBytesLive": 1141293568,
+          "requestedBufferBytesPeak": 1144439296,
+          "buffersCreated": 2142,
+          "buffersDestroyed": 843,
+          "buffersLive": 1299,
+          "buffersPeak": 1300,
+          "uploadStagingBuffersCreated": 804,
+          "uploadStagingBytesCreated": 216558480,
+          "queueSubmits": 1069,
+          "firstSubmitAt": 474.90000009536743,
+          "firstSubmitMsSinceDevice": 227.70000004768372,
+          "queueWriteBufferCalls": 3929,
+          "queueWriteBufferBytes": 366224,
+          "firstWriteBufferAt": 753.4000000953674,
+          "firstWriteBufferMsSinceDevice": 506.2000000476837,
+          "apiTimingEnabled": false,
+          "queueSubmitNativeSyncMs": 0,
+          "maxQueueSubmitNativeSyncMs": 0,
+          "queueWriteBufferNativeSyncMs": 0,
+          "uniformWriteBufferCalls": 0,
+          "uniformWriteBufferBytes": 0,
+          "uniformWriteBufferNativeSyncMs": 0,
+          "maxUniformWriteBufferNativeSyncMs": 0,
+          "deviceLost": false,
+          "uncapturedErrors": 0
+        }
+      },
+      {
+        "variant": "baseline-verifydet-verifyinput",
+        "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-05-51-652Z.json",
+        "image": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\assets\\readme\\translated1.png",
+        "resultImage": {
+          "width": 1487,
+          "height": 2048,
+          "sha256": "06007f59966f605e51fc0ceab3f8aa13b5b5282218b77be762a6c9abdf1bfda0"
+        },
+        "rawHashes": [
+          {
+            "phase": "detector-input-sha256",
+            "dims": [
+              1,
+              3,
+              1024,
+              1024
+            ],
+            "bytes": 12582912,
+            "sha256": "bb3614136c6285aa81d31de80f3c1e586dfb977807f3180c99c9ff58ba7b064e"
+          },
+          {
+            "phase": "detector-output-sha256",
+            "output": "blk",
+            "dims": [
+              1,
+              64512,
+              7
+            ],
+            "bytes": 1806336,
+            "sha256": "8bfd904147382ffc68ba44190caa0d0f4de82b49ff79ae044a4fdf96b99daf62"
+          },
+          {
+            "phase": "detector-output-sha256",
+            "output": "seg",
+            "dims": [
+              1,
+              1,
+              1024,
+              1024
+            ],
+            "bytes": 4194304,
+            "sha256": "4e2b2eb54b6ae2af7d64249879b5d29182dfe49dc6ce7799c2c8445d85ee8392"
+          },
+          {
+            "phase": "detector-output-sha256",
+            "output": "det",
+            "dims": [
+              1,
+              2,
+              1024,
+              1024
+            ],
+            "bytes": 8388608,
+            "sha256": "4cc8b1dd075a8d223963168325b2de0e70fde792dc3b2a990bfc3606f306906a"
+          }
+        ],
+        "gpuSummary": {
+          "kind": "gpu-buffer-submit-summary",
+          "timeOrigin": 1790867145940.8,
+          "requestedBytesOnly": true,
+          "deviceId": 0,
+          "deviceReadyAt": 420.7000000476837,
+          "requestedBufferBytesCreated": 1551506064,
+          "requestedBufferBytesLive": 1219150208,
+          "requestedBufferBytesPeak": 1222295936,
+          "buffersCreated": 2129,
+          "buffersDestroyed": 823,
+          "buffersLive": 1306,
+          "buffersPeak": 1307,
+          "uploadStagingBuffersCreated": 803,
+          "uploadStagingBytesCreated": 217769232,
+          "queueSubmits": 1041,
+          "firstSubmitAt": 733.9000000953674,
+          "firstSubmitMsSinceDevice": 313.2000000476837,
+          "queueWriteBufferCalls": 3638,
+          "queueWriteBufferBytes": 341472,
+          "firstWriteBufferAt": 832.4000000953674,
+          "firstWriteBufferMsSinceDevice": 411.7000000476837,
+          "apiTimingEnabled": false,
+          "queueSubmitNativeSyncMs": 0,
+          "maxQueueSubmitNativeSyncMs": 0,
+          "queueWriteBufferNativeSyncMs": 0,
+          "uniformWriteBufferCalls": 0,
+          "uniformWriteBufferBytes": 0,
+          "uniformWriteBufferNativeSyncMs": 0,
+          "maxUniformWriteBufferNativeSyncMs": 0,
+          "deviceLost": false,
+          "uncapturedErrors": 0
+        },
+        "blobLifetime": {
+          "result": "content-PNG-and-decoded-RGBA-identical-after-host-close",
+          "host": {
+            "beforeCount": 1,
+            "afterCount": 0
+          },
+          "before": {
+            "url": "blob:http://127.0.0.1:24005/0cae62ad-df69-455a-a808-4996cc299de8",
+            "type": "image/png",
+            "bytes": 3536271,
+            "pngHash": "88eab557ea563fcce9b9f045025dbcb6e99d5dc739a894346b4a4597f6e2e169",
+            "rgbaHash": "06007f59966f605e51fc0ceab3f8aa13b5b5282218b77be762a6c9abdf1bfda0",
+            "width": 1487,
+            "height": 2048
+          },
+          "after": {
+            "url": "blob:http://127.0.0.1:24005/0cae62ad-df69-455a-a808-4996cc299de8",
+            "type": "image/png",
+            "bytes": 3536271,
+            "pngHash": "88eab557ea563fcce9b9f045025dbcb6e99d5dc739a894346b4a4597f6e2e169",
+            "rgbaHash": "06007f59966f605e51fc0ceab3f8aa13b5b5282218b77be762a6c9abdf1bfda0",
+            "width": 1487,
+            "height": 2048
+          }
+        }
+      },
+      {
+        "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu-verifydet-verifyinput",
+        "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-06-27-054Z.json",
+        "image": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\assets\\readme\\translated1.png",
+        "resultImage": {
+          "width": 1487,
+          "height": 2048,
+          "sha256": "06007f59966f605e51fc0ceab3f8aa13b5b5282218b77be762a6c9abdf1bfda0"
+        },
+        "rawHashes": [
+          {
+            "phase": "detector-input-sha256",
+            "dims": [
+              1,
+              3,
+              1024,
+              1024
+            ],
+            "bytes": 12582912,
+            "sha256": "bb3614136c6285aa81d31de80f3c1e586dfb977807f3180c99c9ff58ba7b064e"
+          },
+          {
+            "phase": "detector-output-sha256",
+            "output": "blk",
+            "dims": [
+              1,
+              64512,
+              7
+            ],
+            "bytes": 1806336,
+            "sha256": "8bfd904147382ffc68ba44190caa0d0f4de82b49ff79ae044a4fdf96b99daf62"
+          },
+          {
+            "phase": "detector-output-sha256",
+            "output": "seg",
+            "dims": [
+              1,
+              1,
+              1024,
+              1024
+            ],
+            "bytes": 4194304,
+            "sha256": "4e2b2eb54b6ae2af7d64249879b5d29182dfe49dc6ce7799c2c8445d85ee8392"
+          },
+          {
+            "phase": "detector-output-sha256",
+            "output": "det",
+            "dims": [
+              1,
+              2,
+              1024,
+              1024
+            ],
+            "bytes": 8388608,
+            "sha256": "4cc8b1dd075a8d223963168325b2de0e70fde792dc3b2a990bfc3606f306906a"
+          }
+        ],
+        "gpuSummary": {
+          "kind": "gpu-buffer-submit-summary",
+          "timeOrigin": 1790867184314.3,
+          "requestedBytesOnly": true,
+          "deviceId": 0,
+          "deviceReadyAt": 404.80000019073486,
+          "requestedBufferBytesCreated": 1496997168,
+          "requestedBufferBytesLive": 1219412352,
+          "requestedBufferBytesPeak": 1222558080,
+          "buffersCreated": 2146,
+          "buffersDestroyed": 839,
+          "buffersLive": 1307,
+          "buffersPeak": 1308,
+          "uploadStagingBuffersCreated": 803,
+          "uploadStagingBytesCreated": 217769232,
+          "queueSubmits": 1049,
+          "firstSubmitAt": 629.8000001907349,
+          "firstSubmitMsSinceDevice": 225,
+          "queueWriteBufferCalls": 3646,
+          "queueWriteBufferBytes": 341600,
+          "firstWriteBufferAt": 778.3000001907349,
+          "firstWriteBufferMsSinceDevice": 373.5,
+          "apiTimingEnabled": false,
+          "queueSubmitNativeSyncMs": 0,
+          "maxQueueSubmitNativeSyncMs": 0,
+          "queueWriteBufferNativeSyncMs": 0,
+          "uniformWriteBufferCalls": 0,
+          "uniformWriteBufferBytes": 0,
+          "uniformWriteBufferNativeSyncMs": 0,
+          "maxUniformWriteBufferNativeSyncMs": 0,
+          "deviceLost": false,
+          "uncapturedErrors": 0
+        },
+        "blobLifetime": {
+          "result": "content-PNG-and-decoded-RGBA-identical-after-host-close",
+          "host": {
+            "beforeCount": 1,
+            "afterCount": 0
+          },
+          "before": {
+            "url": "blob:http://127.0.0.1:28640/71daecf4-cee3-4f32-8784-6e14154e7990",
+            "type": "image/png",
+            "bytes": 3536271,
+            "pngHash": "88eab557ea563fcce9b9f045025dbcb6e99d5dc739a894346b4a4597f6e2e169",
+            "rgbaHash": "06007f59966f605e51fc0ceab3f8aa13b5b5282218b77be762a6c9abdf1bfda0",
+            "width": 1487,
+            "height": 2048
+          },
+          "after": {
+            "url": "blob:http://127.0.0.1:28640/71daecf4-cee3-4f32-8784-6e14154e7990",
+            "type": "image/png",
+            "bytes": 3536271,
+            "pngHash": "88eab557ea563fcce9b9f045025dbcb6e99d5dc739a894346b4a4597f6e2e169",
+            "rgbaHash": "06007f59966f605e51fc0ceab3f8aa13b5b5282218b77be762a6c9abdf1bfda0",
+            "width": 1487,
+            "height": 2048
+          }
+        }
+      }
+    ]
+  },
+  "runtime": {
+    "ortVersion": "1.27.0",
+    "pairedWasmResources": {
+      "ort-wasm-simd-threaded.jsep.mjs": {
+        "bytes": 46614,
+        "sha256": "3ee381d20a80f51a788a1c4a5872f6f1d047538dd4342f4af00062de5f9ea4c6"
+      },
+      "ort-wasm-simd-threaded.jsep.wasm": {
+        "bytes": 26827543,
+        "sha256": "78feeeb3d08f6bcee94d938ed322f69073bb8076b5f9d34697a574ffba8deb48"
+      }
+    },
+    "baselineWorker": {
+      "bytes": 839107,
+      "sha256": "cf01add57f7fdd49955b0bc490c18a9df4de5d8b7004463413188567eeab590a"
+    },
+    "candidateWorker": {
+      "path": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\.tmp\\cold-budget-jsepjs\\onnxWorker.js",
+      "bytes": 396072,
+      "sha256": "7d99022ed8162355f86b90c33f14354f2b3c88e356309122c123b62f99104164"
+    },
+    "modelHashes": {
+      "detector": "0e9c3979e73092a56404c835e63d9894e7d94b50b356ee29e84ee6a32d65f7d9",
+      "inpaint": "acdddccfdc32780c8947946814e9eea6a8b0d5b1880fb46f3be8389510f11689",
+      "bubble": "3da3317f6dffe27cf5c9396dc95d5324fb647e22adeb7bf304edbe921789f0a0",
+      "paddleocr_v6_medium_rec": "9c09abf0957f7968c7586464b7397b84ad2387a0497a351af40e9acc71b673ba"
+    },
+    "templates": {
+      "path": "cold-start-budget-templates-2026-10-01.json",
+      "count": 110,
+      "sha256": "c2f656cba2edb329d334861634f7e0c56616d80409828d62240ac68e557f04ba",
+      "key": "[\"1.27.0\",\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36\",\"nvidia\",\"blackwell\",\"\",\"\",[\"chromium-experimental-timestamp-query-inside-passes\",\"core-features-and-limits\",\"shader-f16\",\"subgroups\"],{\"maxTextureDimension1D\":8192,\"maxTextureDimension2D\":8192,\"maxTextureDimension3D\":2048,\"maxTextureArrayLayers\":256,\"maxBindGroups\":4,\"maxBindGroupsPlusVertexBuffers\":24,\"maxBindingsPerBindGroup\":1000,\"maxDynamicUniformBuffersPerPipelineLayout\":8,\"maxDynamicStorageBuffersPerPipelineLayout\":4,\"maxSampledTexturesPerShaderStage\":16,\"maxSamplersPerShaderStage\":16,\"maxStorageBuffersPerShaderStage\":8,\"maxStorageTexturesPerShaderStage\":4,\"maxUniformBuffersPerShaderStage\":12,\"maxUniformBufferBindingSize\":65536,\"maxStorageBufferBindingSize\":2147483644,\"minUniformBufferOffsetAlignment\":256,\"minStorageBufferOffsetAlignment\":256,\"maxVertexBuffers\":8,\"maxBufferSize\":2147483648,\"maxVertexAttributes\":16,\"maxVertexBufferArrayStride\":2048,\"maxInterStageShaderVariables\":16,\"maxColorAttachments\":8,\"maxColorAttachmentBytesPerSample\":32,\"maxComputeWorkgroupStorageSize\":32768,\"maxComputeInvocationsPerWorkgroup\":1024,\"maxComputeWorkgroupSizeX\":1024,\"maxComputeWorkgroupSizeY\":1024,\"maxComputeWorkgroupSizeZ\":64,\"maxComputeWorkgroupsPerDimension\":65535,\"maxImmediateSize\":64,\"maxStorageBuffersInFragmentStage\":8,\"maxStorageTexturesInFragmentStage\":4,\"maxStorageBuffersInVertexStage\":8,\"maxStorageTexturesInVertexStage\":4}]"
+    }
+  },
+  "ordinarySources": [
+    ".tmp/cold-budget/1790866767884-results.json",
+    ".tmp/cold-budget/1790867286516-results.json"
+  ],
+  "negativeConfirmationSource": ".tmp/cold-budget/1790863507005-results.json",
+  "distSourcesRestored": true,
+  "manifestStructuredClone": null
+}

@@ -389,17 +389,39 @@ export async function probePaddleGraphCapture(
 
 export async function runDetectWithGpuPreprocess(
   sessionId: string,
-  imageSource: ImageBitmap
+  imageSource: ImageBitmap,
+  onSubmitted?: () => void,
 ): Promise<GpuDetectResult> {
   const proxy = await getProxy();
   const startedAt = performance.now();
   let result: GpuDetectResult | null = null;
   let failure: unknown = null;
   try {
-    result = await proxy.runDetectWithGpuPreprocess(
-      sessionId,
-      Comlink.transfer(imageSource, [imageSource])
-    );
+    // Comlink posts synchronously, but converts postMessage errors into a
+    // rejected Promise. Observe a successful post only for this optional hook.
+    const currentWorker = onSubmitted ? worker : null;
+    const originalPost = currentWorker?.postMessage;
+    let submitted = false;
+    if (currentWorker && originalPost) {
+      currentWorker.postMessage = function (...args: unknown[]): void {
+        Reflect.apply(originalPost, this, args);
+        const message = args[0] as { type?: string; path?: string[] } | undefined;
+        if (message?.type === 'APPLY' && message.path?.at(-1) === 'runDetectWithGpuPreprocess') submitted = true;
+      };
+    }
+    let pending: Promise<GpuDetectResult>;
+    try {
+      pending = proxy.runDetectWithGpuPreprocess(
+        sessionId,
+        Comlink.transfer(imageSource, [imageSource])
+      );
+    } finally {
+      if (currentWorker && originalPost) currentWorker.postMessage = originalPost;
+    }
+    if (submitted) {
+      try { onSubmitted?.(); } catch { /* A scheduling observer must not interrupt the real RPC. */ }
+    }
+    result = await pending;
     return result;
   } catch (error) {
     failure = error;

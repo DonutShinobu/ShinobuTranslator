@@ -1,0 +1,3183 @@
+{
+  "createdAt": "2026-10-01T15:22:20.386Z",
+  "groups": [
+    {
+      "path": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\.tmp\\cold-budget\\1790866767884-results.json",
+      "checks": "pixels/OCR confidence/regions/input dimensions/providers/timing passed",
+      "medians": [
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint",
+          "cacheState": "new-profile",
+          "n": 3,
+          "visibleMs": 2829.746875,
+          "totalMs": 2655.7,
+          "phases": {
+            "entryPrepareLoad": 782.7,
+            "detect": 640.3,
+            "bubble": 193.6,
+            "ocr": 384.7,
+            "order": 0.8,
+            "mask": 241.30000019073486,
+            "inpaint": 215.59999990463257,
+            "typeset": 25.2,
+            "delivery": 164.39999999999998,
+            "display": 174.046875,
+            "ocrInference": 167.40000009536743,
+            "ocrDecode": 0.2999997138977051,
+            "ocrOutputBytes": 3752,
+            "png": 156
+          }
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel",
+          "cacheState": "new-profile",
+          "n": 3,
+          "visibleMs": 3193.231884765625,
+          "totalMs": 2907.8,
+          "phases": {
+            "entryPrepareLoad": 853.1,
+            "detect": 558.8,
+            "bubble": 244.1,
+            "ocr": 354.9,
+            "order": 1.1,
+            "mask": 324.90000009536743,
+            "inpaint": 250.70000004768372,
+            "typeset": 39.4,
+            "delivery": 252.3,
+            "display": 285.431884765625,
+            "ocrInference": 206.60000038146973,
+            "ocrDecode": 0.2999999523162842,
+            "ocrOutputBytes": 3752,
+            "png": 243.39999985694885
+          }
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "cacheState": "new-profile",
+          "n": 3,
+          "visibleMs": 2392.4708984375,
+          "totalMs": 2214.3,
+          "phases": {
+            "entryPrepareLoad": 578.6,
+            "detect": 420.9,
+            "bubble": 252.7,
+            "ocr": 348,
+            "order": 1.1,
+            "mask": 142.5,
+            "inpaint": 263.40000009536743,
+            "typeset": 25.8,
+            "delivery": 178.1,
+            "display": 178.1708984375,
+            "ocrInference": 164.39999985694885,
+            "ocrDecode": 0.2999999523162842,
+            "ocrOutputBytes": 3752,
+            "png": 170.20000004768372
+          }
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint",
+          "cacheState": "same-worker",
+          "n": 3,
+          "visibleMs": 1801.58203125,
+          "totalMs": 1645,
+          "phases": {
+            "entryPrepareLoad": 379.1,
+            "detect": 238.8,
+            "bubble": 116.3,
+            "ocr": 191.6,
+            "order": 0.6,
+            "mask": 203.70000004768372,
+            "inpaint": 196.09999990463257,
+            "typeset": 12,
+            "delivery": 165.6,
+            "display": 156.58203125,
+            "ocrInference": 58.299999713897705,
+            "ocrDecode": 0.19999980926513672,
+            "ocrOutputBytes": 3776,
+            "png": 157.70000004768372
+          }
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel",
+          "cacheState": "same-worker",
+          "n": 3,
+          "visibleMs": 2311.691064453125,
+          "totalMs": 2073.1,
+          "phases": {
+            "entryPrepareLoad": 501.5,
+            "detect": 304.2,
+            "bubble": 188.7,
+            "ocr": 224.8,
+            "order": 0.9,
+            "mask": 277.2999999523163,
+            "inpaint": 241,
+            "typeset": 23.5,
+            "delivery": 244.4,
+            "display": 238.591064453125,
+            "ocrInference": 97.09999990463257,
+            "ocrDecode": 0.20000028610229492,
+            "ocrOutputBytes": 3776,
+            "png": 237
+          }
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "cacheState": "same-worker",
+          "n": 3,
+          "visibleMs": 1924.38388671875,
+          "totalMs": 1771.4,
+          "phases": {
+            "entryPrepareLoad": 369.3,
+            "detect": 170.1,
+            "bubble": 129.1,
+            "ocr": 216,
+            "order": 0.6,
+            "mask": 133.29999995231628,
+            "inpaint": 202.20000004768372,
+            "typeset": 13.9,
+            "delivery": 168.1,
+            "display": 158.296142578125,
+            "ocrInference": 61.49999952316284,
+            "ocrDecode": 0.2999999523162842,
+            "ocrOutputBytes": 3776,
+            "png": 159.19999980926514
+          }
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint",
+          "cacheState": "retained-cache-new-process",
+          "n": 3,
+          "visibleMs": 2111.515966796875,
+          "totalMs": 1937.9,
+          "phases": {
+            "entryPrepareLoad": 439.2,
+            "detect": 345.7,
+            "bubble": 148.8,
+            "ocr": 399.2,
+            "order": 0.7,
+            "mask": 197.5,
+            "inpaint": 193.69999980926514,
+            "typeset": 25,
+            "delivery": 161.79999999999998,
+            "display": 173.615966796875,
+            "ocrInference": 125.60000038146973,
+            "ocrDecode": 0.2999997138977051,
+            "ocrOutputBytes": 3752,
+            "png": 152.30000019073486
+          }
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel",
+          "cacheState": "retained-cache-new-process",
+          "n": 3,
+          "visibleMs": 1969.324951171875,
+          "totalMs": 1792.5,
+          "phases": {
+            "entryPrepareLoad": 452.8,
+            "detect": 332.6,
+            "bubble": 145.5,
+            "ocr": 247,
+            "order": 0.8,
+            "mask": 200.90000009536743,
+            "inpaint": 198.5,
+            "typeset": 25.6,
+            "delivery": 164,
+            "display": 176.824951171875,
+            "ocrInference": 136.99999928474426,
+            "ocrDecode": 0.40000009536743164,
+            "ocrOutputBytes": 3752,
+            "png": 154.70000004768372
+          }
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "cacheState": "retained-cache-new-process",
+          "n": 3,
+          "visibleMs": 2042.574951171875,
+          "totalMs": 1863.5,
+          "phases": {
+            "entryPrepareLoad": 490.2,
+            "detect": 244.9,
+            "bubble": 177.3,
+            "ocr": 253.7,
+            "order": 0.7,
+            "mask": 149.79999995231628,
+            "inpaint": 257,
+            "typeset": 27.2,
+            "delivery": 164.6,
+            "display": 179.074951171875,
+            "ocrInference": 144.10000014305115,
+            "ocrDecode": 0.3000001907348633,
+            "ocrOutputBytes": 3752,
+            "png": 155.40000009536743
+          }
+        }
+      ],
+      "rows": [
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint",
+          "round": 0,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 2350.2,
+          "visibleResultMs": 2523.76591796875,
+          "displayTailMs": 173.56591796875,
+          "system": {
+            "cpuBusyPercent": 52.89488476672288,
+            "minFreeMemoryBytes": 7293276160
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T14-59-35-440Z.json",
+          "phases": {
+            "entryPrepareLoad": 687.5,
+            "detect": 554,
+            "bubble": 193.6,
+            "ocr": 273.8,
+            "order": 0.8,
+            "mask": 219,
+            "inpaint": 215.59999990463257,
+            "typeset": 25.2,
+            "delivery": 164.39999999999998,
+            "display": 173.56591796875,
+            "ocrInference": 167.40000009536743,
+            "ocrDecode": 0.2999997138977051,
+            "ocrOutputBytes": 3752,
+            "png": 156
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint",
+          "round": 0,
+          "runIndex": 1,
+          "cacheState": "same-worker",
+          "totalMs": 1421.8,
+          "visibleResultMs": 1573.69697265625,
+          "displayTailMs": 151.89697265625,
+          "system": {
+            "cpuBusyPercent": 16.556849145405007,
+            "minFreeMemoryBytes": 6991159296
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T14-59-38-082Z.json",
+          "phases": {
+            "entryPrepareLoad": 347.5,
+            "detect": 238.8,
+            "bubble": 116.3,
+            "ocr": 135,
+            "order": 0.6,
+            "mask": 203.70000004768372,
+            "inpaint": 196.09999990463257,
+            "typeset": 12,
+            "delivery": 165.6,
+            "display": 151.89697265625,
+            "ocrInference": 55.59999966621399,
+            "ocrDecode": 0.20000004768371582,
+            "ocrOutputBytes": 3776,
+            "png": 157.70000004768372
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint",
+          "round": 0,
+          "runIndex": 0,
+          "cacheState": "retained-cache-new-process",
+          "totalMs": 1778.4,
+          "visibleResultMs": 1961.08603515625,
+          "displayTailMs": 182.68603515625,
+          "system": {
+            "cpuBusyPercent": 33.11559547416307,
+            "minFreeMemoryBytes": 8147456000
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T14-59-44-957Z.json",
+          "phases": {
+            "entryPrepareLoad": 447.1,
+            "detect": 353.5,
+            "bubble": 140.6,
+            "ocr": 239.3,
+            "order": 0.6,
+            "mask": 195.09999990463257,
+            "inpaint": 191.90000009536743,
+            "typeset": 39,
+            "delivery": 161.79999999999998,
+            "display": 182.68603515625,
+            "ocrInference": 144.5,
+            "ocrDecode": 0.19999980926513672,
+            "ocrOutputBytes": 3752,
+            "png": 152.30000019073486
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel",
+          "round": 0,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 3071.3,
+          "visibleResultMs": 3363.006787109375,
+          "displayTailMs": 291.706787109375,
+          "system": {
+            "cpuBusyPercent": 58.864184058564085,
+            "minFreeMemoryBytes": 8325488640
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-00-01-836Z.json",
+          "phases": {
+            "entryPrepareLoad": 867.7,
+            "detect": 631.3,
+            "bubble": 290.5,
+            "ocr": 354.9,
+            "order": 1.3,
+            "mask": 344.59999990463257,
+            "inpaint": 250.70000004768372,
+            "typeset": 50.4,
+            "delivery": 263.8,
+            "display": 291.706787109375,
+            "ocrInference": 206.60000038146973,
+            "ocrDecode": 0.6000001430511475,
+            "ocrOutputBytes": 3752,
+            "png": 255.09999990463257
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel",
+          "round": 0,
+          "runIndex": 1,
+          "cacheState": "same-worker",
+          "totalMs": 2073.1,
+          "visibleResultMs": 2311.691064453125,
+          "displayTailMs": 238.591064453125,
+          "system": {
+            "cpuBusyPercent": 26.26594053377532,
+            "minFreeMemoryBytes": 8063369216
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-00-05-326Z.json",
+          "phases": {
+            "entryPrepareLoad": 501.5,
+            "detect": 332.3,
+            "bubble": 188.7,
+            "ocr": 213.9,
+            "order": 0.9,
+            "mask": 280.90000009536743,
+            "inpaint": 277.2000000476837,
+            "typeset": 28.9,
+            "delivery": 244.4,
+            "display": 238.591064453125,
+            "ocrInference": 97.09999990463257,
+            "ocrDecode": 0.39999985694885254,
+            "ocrOutputBytes": 3776,
+            "png": 237
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel",
+          "round": 0,
+          "runIndex": 0,
+          "cacheState": "retained-cache-new-process",
+          "totalMs": 1756.7,
+          "visibleResultMs": 1936.5671875,
+          "displayTailMs": 179.8671875,
+          "system": {
+            "cpuBusyPercent": 31.03068450039339,
+            "minFreeMemoryBytes": 8459124736
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-00-16-881Z.json",
+          "phases": {
+            "entryPrepareLoad": 430.3,
+            "detect": 336.8,
+            "bubble": 145.5,
+            "ocr": 233.8,
+            "order": 0.8,
+            "mask": 202.79999995231628,
+            "inpaint": 198.5,
+            "typeset": 30.4,
+            "delivery": 168.2,
+            "display": 179.8671875,
+            "ocrInference": 136.99999928474426,
+            "ocrDecode": 0.40000009536743164,
+            "ocrOutputBytes": 3752,
+            "png": 154.90000009536743
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "round": 0,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 2136.1,
+          "visibleResultMs": 2311.6810546875,
+          "displayTailMs": 175.5810546875,
+          "system": {
+            "cpuBusyPercent": 43.12791570156266,
+            "minFreeMemoryBytes": 8242106368
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-00-24-100Z.json",
+          "phases": {
+            "entryPrepareLoad": 578.6,
+            "detect": 420.9,
+            "bubble": 252.7,
+            "ocr": 288.8,
+            "order": 1.4,
+            "mask": 142.5,
+            "inpaint": 247.60000014305115,
+            "typeset": 24.8,
+            "delivery": 164.9,
+            "display": 175.5810546875,
+            "ocrInference": 164.39999985694885,
+            "ocrDecode": 0.2999997138977051,
+            "ocrOutputBytes": 3752,
+            "png": 155.59999990463257
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "round": 0,
+          "runIndex": 1,
+          "cacheState": "same-worker",
+          "totalMs": 1317.5,
+          "visibleResultMs": 1475.796142578125,
+          "displayTailMs": 158.296142578125,
+          "system": {
+            "cpuBusyPercent": 29.49101796407185,
+            "minFreeMemoryBytes": 7881830400
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-00-26-674Z.json",
+          "phases": {
+            "entryPrepareLoad": 358.8,
+            "detect": 170.1,
+            "bubble": 129.1,
+            "ocr": 147.5,
+            "order": 0.6,
+            "mask": 133.29999995231628,
+            "inpaint": 198.69999980926514,
+            "typeset": 11.7,
+            "delivery": 165.5,
+            "display": 158.296142578125,
+            "ocrInference": 61.49999952316284,
+            "ocrDecode": 0.09999990463256836,
+            "ocrOutputBytes": 3776,
+            "png": 157.59999990463257
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "round": 0,
+          "runIndex": 0,
+          "cacheState": "retained-cache-new-process",
+          "totalMs": 1694.5,
+          "visibleResultMs": 1873.843994140625,
+          "displayTailMs": 179.343994140625,
+          "system": {
+            "cpuBusyPercent": 27.19546742209632,
+            "minFreeMemoryBytes": 8775241728
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-00-32-544Z.json",
+          "phases": {
+            "entryPrepareLoad": 428.1,
+            "detect": 242.4,
+            "bubble": 177.3,
+            "ocr": 235.1,
+            "order": 0.7,
+            "mask": 149.79999995231628,
+            "inpaint": 256.40000009536743,
+            "typeset": 27.2,
+            "delivery": 164.6,
+            "display": 179.343994140625,
+            "ocrInference": 144.10000014305115,
+            "ocrDecode": 0.20000004768371582,
+            "ocrOutputBytes": 3752,
+            "png": 155.40000009536743
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "round": 1,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 2886.8,
+          "visibleResultMs": 3156.256787109375,
+          "displayTailMs": 269.456787109375,
+          "system": {
+            "cpuBusyPercent": 57.32145874061738,
+            "minFreeMemoryBytes": 8881242112
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-00-46-633Z.json",
+          "phases": {
+            "entryPrepareLoad": 898.9,
+            "detect": 503.3,
+            "bubble": 311.7,
+            "ocr": 348,
+            "order": 1.1,
+            "mask": 216.29999995231628,
+            "inpaint": 299.7999999523163,
+            "typeset": 46.2,
+            "delivery": 243.79999999999998,
+            "display": 269.456787109375,
+            "ocrInference": 210.80000019073486,
+            "ocrDecode": 0.4999997615814209,
+            "ocrOutputBytes": 3752,
+            "png": 233.5
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "round": 1,
+          "runIndex": 1,
+          "cacheState": "same-worker",
+          "totalMs": 2126.3,
+          "visibleResultMs": 2380.27802734375,
+          "displayTailMs": 253.97802734375,
+          "system": {
+            "cpuBusyPercent": 46.682588497022834,
+            "minFreeMemoryBytes": 7460954112
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-00-50-512Z.json",
+          "phases": {
+            "entryPrepareLoad": 652.1,
+            "detect": 256,
+            "bubble": 211.7,
+            "ocr": 216,
+            "order": 1,
+            "mask": 211.90000009536743,
+            "inpaint": 290.10000014305115,
+            "typeset": 24.4,
+            "delivery": 259.5,
+            "display": 253.97802734375,
+            "ocrInference": 100.89999985694885,
+            "ocrDecode": 0.3000001907348633,
+            "ocrOutputBytes": 3776,
+            "png": 250.90000009536743
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "round": 1,
+          "runIndex": 0,
+          "cacheState": "retained-cache-new-process",
+          "totalMs": 1863.5,
+          "visibleResultMs": 2042.574951171875,
+          "displayTailMs": 179.074951171875,
+          "system": {
+            "cpuBusyPercent": 59.228690921203594,
+            "minFreeMemoryBytes": 7719739392
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-00-59-794Z.json",
+          "phases": {
+            "entryPrepareLoad": 490.2,
+            "detect": 295.5,
+            "bubble": 208.5,
+            "ocr": 253.7,
+            "order": 0.8,
+            "mask": 145.40000009536743,
+            "inpaint": 261.10000014305115,
+            "typeset": 28,
+            "delivery": 169.39999999999998,
+            "display": 179.074951171875,
+            "ocrInference": 146.70000052452087,
+            "ocrDecode": 0.3000001907348633,
+            "ocrOutputBytes": 3752,
+            "png": 157.70000004768372
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel",
+          "round": 1,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 2907.8,
+          "visibleResultMs": 3193.231884765625,
+          "displayTailMs": 285.431884765625,
+          "system": {
+            "cpuBusyPercent": 46.375950570342205,
+            "minFreeMemoryBytes": 8344043520
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-01-23-444Z.json",
+          "phases": {
+            "entryPrepareLoad": 853.1,
+            "detect": 558.8,
+            "bubble": 244.1,
+            "ocr": 351,
+            "order": 1.1,
+            "mask": 324.90000009536743,
+            "inpaint": 266.7000000476837,
+            "typeset": 39.4,
+            "delivery": 252.3,
+            "display": 285.431884765625,
+            "ocrInference": 227.5,
+            "ocrDecode": 0.2999999523162842,
+            "ocrOutputBytes": 3752,
+            "png": 243.39999985694885
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel",
+          "round": 1,
+          "runIndex": 1,
+          "cacheState": "same-worker",
+          "totalMs": 2122.6,
+          "visibleResultMs": 2368.8890625,
+          "displayTailMs": 246.2890625,
+          "system": {
+            "cpuBusyPercent": 40.296584979192815,
+            "minFreeMemoryBytes": 8008499200
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-01-26-881Z.json",
+          "phases": {
+            "entryPrepareLoad": 602.5,
+            "detect": 304.2,
+            "bubble": 198.2,
+            "ocr": 224.8,
+            "order": 0.9,
+            "mask": 277.2999999523163,
+            "inpaint": 241,
+            "typeset": 23.5,
+            "delivery": 246.2,
+            "display": 246.2890625,
+            "ocrInference": 105.30000019073486,
+            "ocrDecode": 0.19999980926513672,
+            "ocrOutputBytes": 3776,
+            "png": 238.70000004768372
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel",
+          "round": 1,
+          "runIndex": 0,
+          "cacheState": "retained-cache-new-process",
+          "totalMs": 1792.5,
+          "visibleResultMs": 1969.324951171875,
+          "displayTailMs": 176.824951171875,
+          "system": {
+            "cpuBusyPercent": 39.58341429293125,
+            "minFreeMemoryBytes": 8453136384
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-01-32-492Z.json",
+          "phases": {
+            "entryPrepareLoad": 478.2,
+            "detect": 332.6,
+            "bubble": 148.6,
+            "ocr": 247,
+            "order": 0.8,
+            "mask": 195.20000004768372,
+            "inpaint": 185.80000019073486,
+            "typeset": 24.6,
+            "delivery": 164,
+            "display": 176.824951171875,
+            "ocrInference": 150,
+            "ocrDecode": 0.5999999046325684,
+            "ocrOutputBytes": 3752,
+            "png": 154.70000004768372
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint",
+          "round": 1,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 2975.8,
+          "visibleResultMs": 3259.038037109375,
+          "displayTailMs": 283.238037109375,
+          "system": {
+            "cpuBusyPercent": 46.00429946723993,
+            "minFreeMemoryBytes": 8384315392
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-01-45-821Z.json",
+          "phases": {
+            "entryPrepareLoad": 843.2,
+            "detect": 640.3,
+            "bubble": 209.9,
+            "ocr": 384.7,
+            "order": 1.2,
+            "mask": 304,
+            "inpaint": 307,
+            "typeset": 37.7,
+            "delivery": 230.8,
+            "display": 283.238037109375,
+            "ocrInference": 224,
+            "ocrDecode": 0.4999997615814209,
+            "ocrOutputBytes": 3752,
+            "png": 221.90000009536743
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint",
+          "round": 1,
+          "runIndex": 1,
+          "cacheState": "same-worker",
+          "totalMs": 2051.4,
+          "visibleResultMs": 2308.052099609375,
+          "displayTailMs": 256.652099609375,
+          "system": {
+            "cpuBusyPercent": 18.15207388977881,
+            "minFreeMemoryBytes": 7926919168
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-01-49-393Z.json",
+          "phases": {
+            "entryPrepareLoad": 485.5,
+            "detect": 349.2,
+            "bubble": 173.2,
+            "ocr": 191.6,
+            "order": 1,
+            "mask": 281.5,
+            "inpaint": 267,
+            "typeset": 43.8,
+            "delivery": 255.79999999999998,
+            "display": 256.652099609375,
+            "ocrInference": 89,
+            "ocrDecode": 0.19999980926513672,
+            "ocrOutputBytes": 3776,
+            "png": 250.69999980926514
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint",
+          "round": 1,
+          "runIndex": 0,
+          "cacheState": "retained-cache-new-process",
+          "totalMs": 1937.9,
+          "visibleResultMs": 2111.515966796875,
+          "displayTailMs": 173.615966796875,
+          "system": {
+            "cpuBusyPercent": 20.958321315258143,
+            "minFreeMemoryBytes": 8379244544
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-01-57-403Z.json",
+          "phases": {
+            "entryPrepareLoad": 415.8,
+            "detect": 341.8,
+            "bubble": 150,
+            "ocr": 399.2,
+            "order": 0.9,
+            "mask": 204.09999990463257,
+            "inpaint": 229.09999990463257,
+            "typeset": 25,
+            "delivery": 159.29999999999998,
+            "display": 173.615966796875,
+            "ocrInference": 98.29999995231628,
+            "ocrDecode": 0.2999997138977051,
+            "ocrOutputBytes": 3752,
+            "png": 151.90000009536743
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint",
+          "round": 2,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 2655.7,
+          "visibleResultMs": 2829.746875,
+          "displayTailMs": 174.046875,
+          "system": {
+            "cpuBusyPercent": 41.0688836104513,
+            "minFreeMemoryBytes": 8567664640
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-02-18-642Z.json",
+          "phases": {
+            "entryPrepareLoad": 782.7,
+            "detect": 669.1,
+            "bubble": 136.3,
+            "ocr": 443.9,
+            "order": 0.7,
+            "mask": 241.30000019073486,
+            "inpaint": 185.5,
+            "typeset": 24.2,
+            "delivery": 157,
+            "display": 174.046875,
+            "ocrInference": 80.20000004768372,
+            "ocrDecode": 0.19999980926513672,
+            "ocrOutputBytes": 3752,
+            "png": 149.39999985694885
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint",
+          "round": 2,
+          "runIndex": 1,
+          "cacheState": "same-worker",
+          "totalMs": 1645,
+          "visibleResultMs": 1801.58203125,
+          "displayTailMs": 156.58203125,
+          "system": {
+            "cpuBusyPercent": 22.87556580408233,
+            "minFreeMemoryBytes": 8070627328
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-02-21-503Z.json",
+          "phases": {
+            "entryPrepareLoad": 379.1,
+            "detect": 227.7,
+            "bubble": 114.9,
+            "ocr": 375.1,
+            "order": 0.6,
+            "mask": 191.40000009536743,
+            "inpaint": 174.5,
+            "typeset": 12,
+            "delivery": 163.7,
+            "display": 156.58203125,
+            "ocrInference": 58.299999713897705,
+            "ocrDecode": 0.10000014305114746,
+            "ocrOutputBytes": 3776,
+            "png": 154.20000004768372
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint",
+          "round": 2,
+          "runIndex": 0,
+          "cacheState": "retained-cache-new-process",
+          "totalMs": 1958.2,
+          "visibleResultMs": 2129.510791015625,
+          "displayTailMs": 171.310791015625,
+          "system": {
+            "cpuBusyPercent": 38.46372385383003,
+            "minFreeMemoryBytes": 8578240512
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-02-28-301Z.json",
+          "phases": {
+            "entryPrepareLoad": 439.2,
+            "detect": 345.7,
+            "bubble": 148.8,
+            "ocr": 429.2,
+            "order": 0.7,
+            "mask": 197.5,
+            "inpaint": 193.69999980926514,
+            "typeset": 24.3,
+            "delivery": 163.8,
+            "display": 171.310791015625,
+            "ocrInference": 125.60000038146973,
+            "ocrDecode": 0.5,
+            "ocrOutputBytes": 3752,
+            "png": 155.79999995231628
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel",
+          "round": 2,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 2192.2,
+          "visibleResultMs": 2368.12578125,
+          "displayTailMs": 175.92578125,
+          "system": {
+            "cpuBusyPercent": 38.38354762361671,
+            "minFreeMemoryBytes": 8477368320
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-02-38-364Z.json",
+          "phases": {
+            "entryPrepareLoad": 559.4,
+            "detect": 465.3,
+            "bubble": 156.5,
+            "ocr": 407.5,
+            "order": 0.7,
+            "mask": 214.79999995231628,
+            "inpaint": 188.60000014305115,
+            "typeset": 24.3,
+            "delivery": 160,
+            "display": 175.92578125,
+            "ocrInference": 85.20000004768372,
+            "ocrDecode": 0.2999999523162842,
+            "ocrOutputBytes": 3752,
+            "png": 150.90000009536743
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel",
+          "round": 2,
+          "runIndex": 1,
+          "cacheState": "same-worker",
+          "totalMs": 1597.6,
+          "visibleResultMs": 1758.07998046875,
+          "displayTailMs": 160.47998046875,
+          "system": {
+            "cpuBusyPercent": 17.583969634108666,
+            "minFreeMemoryBytes": 8057970688
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-02-41-136Z.json",
+          "phases": {
+            "entryPrepareLoad": 378.2,
+            "detect": 216.4,
+            "bubble": 113.6,
+            "ocr": 357.6,
+            "order": 0.4,
+            "mask": 179.79999995231628,
+            "inpaint": 175.20000004768372,
+            "typeset": 11.8,
+            "delivery": 158.1,
+            "display": 160.47998046875,
+            "ocrInference": 61.799999713897705,
+            "ocrDecode": 0.20000028610229492,
+            "ocrOutputBytes": 3776,
+            "png": 152.20000004768372
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel",
+          "round": 2,
+          "runIndex": 0,
+          "cacheState": "retained-cache-new-process",
+          "totalMs": 1975.9,
+          "visibleResultMs": 2148.75888671875,
+          "displayTailMs": 172.85888671875,
+          "system": {
+            "cpuBusyPercent": 27.76256669474867,
+            "minFreeMemoryBytes": 8604008448
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-02-47-865Z.json",
+          "phases": {
+            "entryPrepareLoad": 452.8,
+            "detect": 324.3,
+            "bubble": 143.9,
+            "ocr": 399.7,
+            "order": 0.7,
+            "mask": 200.90000009536743,
+            "inpaint": 259.59999990463257,
+            "typeset": 25.6,
+            "delivery": 158.8,
+            "display": 172.85888671875,
+            "ocrInference": 102.89999961853027,
+            "ocrDecode": 0.2999999523162842,
+            "ocrOutputBytes": 3752,
+            "png": 149.80000019073486
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "round": 2,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 2214.3,
+          "visibleResultMs": 2392.4708984375,
+          "displayTailMs": 178.1708984375,
+          "system": {
+            "cpuBusyPercent": 48.861237990234685,
+            "minFreeMemoryBytes": 8666570752
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-03-03-862Z.json",
+          "phases": {
+            "entryPrepareLoad": 558.5,
+            "detect": 391.7,
+            "bubble": 232.3,
+            "ocr": 418.3,
+            "order": 0.7,
+            "mask": 136.10000014305115,
+            "inpaint": 263.40000009536743,
+            "typeset": 25.8,
+            "delivery": 178.1,
+            "display": 178.1708984375,
+            "ocrInference": 96.19999980926514,
+            "ocrDecode": 0.2999999523162842,
+            "ocrOutputBytes": 3752,
+            "png": 170.20000004768372
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "round": 2,
+          "runIndex": 1,
+          "cacheState": "same-worker",
+          "totalMs": 1771.4,
+          "visibleResultMs": 1924.38388671875,
+          "displayTailMs": 152.98388671875,
+          "system": {
+            "cpuBusyPercent": 23.50867464152737,
+            "minFreeMemoryBytes": 8269660160
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-03-07-014Z.json",
+          "phases": {
+            "entryPrepareLoad": 369.3,
+            "detect": 167.6,
+            "bubble": 126.5,
+            "ocr": 593.8,
+            "order": 0.5,
+            "mask": 127.5,
+            "inpaint": 202.20000004768372,
+            "typeset": 13.9,
+            "delivery": 168.1,
+            "display": 152.98388671875,
+            "ocrInference": 58.50000023841858,
+            "ocrDecode": 0.2999999523162842,
+            "ocrOutputBytes": 3776,
+            "png": 159.19999980926514
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "round": 2,
+          "runIndex": 0,
+          "cacheState": "retained-cache-new-process",
+          "totalMs": 1971,
+          "visibleResultMs": 2144.416015625,
+          "displayTailMs": 173.416015625,
+          "system": {
+            "cpuBusyPercent": 21.71132115698955,
+            "minFreeMemoryBytes": 8709705728
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-03-17-639Z.json",
+          "phases": {
+            "entryPrepareLoad": 506.6,
+            "detect": 244.9,
+            "bubble": 164.4,
+            "ocr": 448.8,
+            "order": 0.6,
+            "mask": 151.79999995231628,
+            "inpaint": 257,
+            "typeset": 26.7,
+            "delivery": 160.4,
+            "display": 173.416015625,
+            "ocrInference": 103.69999980926514,
+            "ocrDecode": 0.5,
+            "ocrOutputBytes": 3752,
+            "png": 152.70000004768372
+          },
+          "inpaintProfiles": []
+        }
+      ]
+    },
+    {
+      "path": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\.tmp\\cold-budget\\1790867286516-results.json",
+      "checks": "pixels/OCR confidence/regions/input dimensions/providers/timing passed",
+      "medians": [
+        {
+          "variant": "baseline",
+          "cacheState": "new-profile",
+          "n": 5,
+          "visibleMs": 5345.490966796875,
+          "totalMs": 5169,
+          "phases": {
+            "entryPrepareLoad": 1644.1,
+            "detect": 825.8,
+            "bubble": 539.7,
+            "ocr": 912.5,
+            "order": 124.2,
+            "mask": 213.40000009536743,
+            "inpaint": 473,
+            "typeset": 25.7,
+            "delivery": 256.6,
+            "display": 179.283935546875,
+            "ocrInference": 585,
+            "ocrDecode": 13.300000190734863,
+            "ocrOutputBytes": 35099960,
+            "png": 148.10000014305115
+          }
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "cacheState": "new-profile",
+          "n": 5,
+          "visibleMs": 2431.187060546875,
+          "totalMs": 2252.7,
+          "phases": {
+            "entryPrepareLoad": 561.3,
+            "detect": 430.7,
+            "bubble": 220.7,
+            "ocr": 448.3,
+            "order": 0.7,
+            "mask": 149.20000004768372,
+            "inpaint": 260.19999980926514,
+            "typeset": 26.1,
+            "delivery": 158.89999999999998,
+            "display": 175.7900390625,
+            "ocrInference": 88.19999980926514,
+            "ocrDecode": 0.3000001907348633,
+            "ocrOutputBytes": 3752,
+            "png": 151
+          }
+        },
+        {
+          "variant": "baseline",
+          "cacheState": "same-worker",
+          "n": 5,
+          "visibleMs": 2213.959033203125,
+          "totalMs": 2061.7,
+          "phases": {
+            "entryPrepareLoad": 408.6,
+            "detect": 241.6,
+            "bubble": 49.4,
+            "ocr": 385.9,
+            "order": 123.6,
+            "mask": 192.60000014305115,
+            "inpaint": 282.10000014305115,
+            "typeset": 11.6,
+            "delivery": 295.1,
+            "display": 152.259033203125,
+            "ocrInference": 72.60000038146973,
+            "ocrDecode": 11.499999523162842,
+            "ocrOutputBytes": 35324480,
+            "png": 189.79999995231628
+          }
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "cacheState": "same-worker",
+          "n": 5,
+          "visibleMs": 1732.856201171875,
+          "totalMs": 1579.9,
+          "phases": {
+            "entryPrepareLoad": 332.7,
+            "detect": 165.1,
+            "bubble": 129.1,
+            "ocr": 424.9,
+            "order": 0.5,
+            "mask": 130.70000004768372,
+            "inpaint": 202.60000014305115,
+            "typeset": 13.8,
+            "delivery": 156.1,
+            "display": 152.68505859375,
+            "ocrInference": 60.60000014305115,
+            "ocrDecode": 0.19999980926513672,
+            "ocrOutputBytes": 3776,
+            "png": 149.79999995231628
+          }
+        },
+        {
+          "variant": "baseline",
+          "cacheState": "retained-cache-new-process",
+          "n": 5,
+          "visibleMs": 3731.304052734375,
+          "totalMs": 3552.9,
+          "phases": {
+            "entryPrepareLoad": 1493.4,
+            "detect": 347,
+            "bubble": 304.2,
+            "ocr": 453,
+            "order": 121.9,
+            "mask": 211,
+            "inpaint": 329.59999990463257,
+            "typeset": 25.3,
+            "delivery": 256.7,
+            "display": 178.8388671875,
+            "ocrInference": 115.50000023841858,
+            "ocrDecode": 12.999999523162842,
+            "ocrOutputBytes": 35099960,
+            "png": 144.20000004768372
+          }
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "cacheState": "retained-cache-new-process",
+          "n": 5,
+          "visibleMs": 2042.73095703125,
+          "totalMs": 1863.5,
+          "phases": {
+            "entryPrepareLoad": 423.7,
+            "detect": 240.9,
+            "bubble": 175,
+            "ocr": 420.2,
+            "order": 0.7,
+            "mask": 149.10000014305115,
+            "inpaint": 256.90000009536743,
+            "typeset": 25.9,
+            "delivery": 160.29999999999998,
+            "display": 177.3349609375,
+            "ocrInference": 104.60000014305115,
+            "ocrDecode": 0.39999985694885254,
+            "ocrOutputBytes": 3752,
+            "png": 152.10000014305115
+          }
+        }
+      ],
+      "rows": [
+        {
+          "variant": "baseline",
+          "round": 0,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 5607.4,
+          "visibleResultMs": 5792.376806640625,
+          "displayTailMs": 184.976806640625,
+          "system": {
+            "cpuBusyPercent": 21.50986725887044,
+            "minFreeMemoryBytes": 7603208192
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-08-20-381Z.json",
+          "phases": {
+            "entryPrepareLoad": 1625.5,
+            "detect": 1379.9,
+            "bubble": 554.1,
+            "ocr": 912.5,
+            "order": 122.7,
+            "mask": 214.60000014305115,
+            "inpaint": 497.7000000476837,
+            "typeset": 25.2,
+            "delivery": 258.6,
+            "display": 184.976806640625,
+            "ocrInference": 585,
+            "ocrDecode": 13.300000190734863,
+            "ocrOutputBytes": 35099960,
+            "png": 147.90000009536743
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "baseline",
+          "round": 0,
+          "runIndex": 1,
+          "cacheState": "same-worker",
+          "totalMs": 2114.2,
+          "visibleResultMs": 2270.359912109375,
+          "displayTailMs": 156.159912109375,
+          "system": {
+            "cpuBusyPercent": 32.6530612244898,
+            "minFreeMemoryBytes": 7232040960
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-08-23-643Z.json",
+          "phases": {
+            "entryPrepareLoad": 483.4,
+            "detect": 249.1,
+            "bubble": 49.8,
+            "ocr": 358.8,
+            "order": 123.6,
+            "mask": 197.90000009536743,
+            "inpaint": 317.60000014305115,
+            "typeset": 11.6,
+            "delivery": 318.6,
+            "display": 156.159912109375,
+            "ocrInference": 71.69999957084656,
+            "ocrDecode": 11.900000810623169,
+            "ocrOutputBytes": 35324480,
+            "png": 201.29999995231628
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "baseline",
+          "round": 0,
+          "runIndex": 0,
+          "cacheState": "retained-cache-new-process",
+          "totalMs": 3571.5,
+          "visibleResultMs": 3748.30712890625,
+          "displayTailMs": 176.80712890625,
+          "system": {
+            "cpuBusyPercent": 32.07780239603145,
+            "minFreeMemoryBytes": 7536267264
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-08-31-761Z.json",
+          "phases": {
+            "entryPrepareLoad": 1493.4,
+            "detect": 346.8,
+            "bubble": 309.8,
+            "ocr": 459.3,
+            "order": 124,
+            "mask": 201.70000004768372,
+            "inpaint": 332.2999999523163,
+            "typeset": 27.5,
+            "delivery": 256.7,
+            "display": 176.80712890625,
+            "ocrInference": 121.09999990463257,
+            "ocrDecode": 13.700000047683716,
+            "ocrOutputBytes": 35099960,
+            "png": 144.40000009536743
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "round": 0,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 2608.1,
+          "visibleResultMs": 2783.8900390625,
+          "displayTailMs": 175.7900390625,
+          "system": {
+            "cpuBusyPercent": 36.08459666853827,
+            "minFreeMemoryBytes": 7986192384
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-08-46-135Z.json",
+          "phases": {
+            "entryPrepareLoad": 637.6,
+            "detect": 544.4,
+            "bubble": 178.4,
+            "ocr": 650.8,
+            "order": 0.6,
+            "mask": 149.40000009536743,
+            "inpaint": 248.70000004768372,
+            "typeset": 26.1,
+            "delivery": 156.29999999999998,
+            "display": 175.7900390625,
+            "ocrInference": 85.39999961853027,
+            "ocrDecode": 0.3000001907348633,
+            "ocrOutputBytes": 3752,
+            "png": 148.10000014305115
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "round": 0,
+          "runIndex": 1,
+          "cacheState": "same-worker",
+          "totalMs": 1607.8,
+          "visibleResultMs": 1757.93818359375,
+          "displayTailMs": 150.13818359375,
+          "system": {
+            "cpuBusyPercent": 16.75931194467545,
+            "minFreeMemoryBytes": 7650344960
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-08-48-941Z.json",
+          "phases": {
+            "entryPrepareLoad": 384.6,
+            "detect": 163.8,
+            "bubble": 129.9,
+            "ocr": 424.9,
+            "order": 0.4,
+            "mask": 131.79999995231628,
+            "inpaint": 200.60000014305115,
+            "typeset": 14,
+            "delivery": 155.7,
+            "display": 150.13818359375,
+            "ocrInference": 60.60000014305115,
+            "ocrDecode": 0,
+            "ocrOutputBytes": 3776,
+            "png": 149.19999980926514
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "round": 0,
+          "runIndex": 0,
+          "cacheState": "retained-cache-new-process",
+          "totalMs": 1657.7,
+          "visibleResultMs": 1830.2869140625,
+          "displayTailMs": 172.5869140625,
+          "system": {
+            "cpuBusyPercent": 24.76528270394325,
+            "minFreeMemoryBytes": 8065974272
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-08-59-196Z.json",
+          "phases": {
+            "entryPrepareLoad": 415,
+            "detect": 241.9,
+            "bubble": 175,
+            "ocr": 234.8,
+            "order": 0.7,
+            "mask": 137.09999990463257,
+            "inpaint": 259.30000019073486,
+            "typeset": 26.6,
+            "delivery": 157.39999999999998,
+            "display": 172.5869140625,
+            "ocrInference": 138.49999976158142,
+            "ocrDecode": 0.40000033378601074,
+            "ocrOutputBytes": 3752,
+            "png": 150.20000004768372
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "round": 1,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 2231.5,
+          "visibleResultMs": 2405.729736328125,
+          "displayTailMs": 174.229736328125,
+          "system": {
+            "cpuBusyPercent": 49.51426177100468,
+            "minFreeMemoryBytes": 7913938944
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-09-12-230Z.json",
+          "phases": {
+            "entryPrepareLoad": 560.8,
+            "detect": 430.7,
+            "bubble": 245.4,
+            "ocr": 402.3,
+            "order": 1.1,
+            "mask": 137.29999995231628,
+            "inpaint": 260.19999980926514,
+            "typeset": 26.3,
+            "delivery": 157.9,
+            "display": 174.229736328125,
+            "ocrInference": 88.5,
+            "ocrDecode": 0.5,
+            "ocrOutputBytes": 3752,
+            "png": 148.79999995231628
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "round": 1,
+          "runIndex": 1,
+          "cacheState": "same-worker",
+          "totalMs": 1573.9,
+          "visibleResultMs": 1728.65,
+          "displayTailMs": 154.75,
+          "system": {
+            "cpuBusyPercent": 24.017388966073593,
+            "minFreeMemoryBytes": 7486095360
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-09-15-008Z.json",
+          "phases": {
+            "entryPrepareLoad": 329,
+            "detect": 165.1,
+            "bubble": 127,
+            "ocr": 427.5,
+            "order": 0.5,
+            "mask": 127.40000009536743,
+            "inpaint": 213.70000004768372,
+            "typeset": 13.8,
+            "delivery": 165.1,
+            "display": 154.75,
+            "ocrInference": 58.10000014305115,
+            "ocrDecode": 0.09999990463256836,
+            "ocrOutputBytes": 3776,
+            "png": 158.30000019073486
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "round": 1,
+          "runIndex": 0,
+          "cacheState": "retained-cache-new-process",
+          "totalMs": 1803,
+          "visibleResultMs": 1980.3349609375,
+          "displayTailMs": 177.3349609375,
+          "system": {
+            "cpuBusyPercent": 30.062245446860835,
+            "minFreeMemoryBytes": 8020312064
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-09-20-701Z.json",
+          "phases": {
+            "entryPrepareLoad": 423.7,
+            "detect": 242.8,
+            "bubble": 178.2,
+            "ocr": 350.3,
+            "order": 0.6,
+            "mask": 149.10000014305115,
+            "inpaint": 262.2999999523163,
+            "typeset": 26.2,
+            "delivery": 160.29999999999998,
+            "display": 177.3349609375,
+            "ocrInference": 103.60000085830688,
+            "ocrDecode": 0.09999990463256836,
+            "ocrOutputBytes": 3752,
+            "png": 152.20000004768372
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "baseline",
+          "round": 1,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 5169,
+          "visibleResultMs": 5345.490966796875,
+          "displayTailMs": 176.490966796875,
+          "system": {
+            "cpuBusyPercent": 24.912849283730054,
+            "minFreeMemoryBytes": 7517044736
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-09-37-317Z.json",
+          "phases": {
+            "entryPrepareLoad": 1788.7,
+            "detect": 823.5,
+            "bubble": 539.7,
+            "ocr": 920,
+            "order": 125.1,
+            "mask": 213.40000009536743,
+            "inpaint": 473,
+            "typeset": 24.3,
+            "delivery": 251.79999999999998,
+            "display": 176.490966796875,
+            "ocrInference": 587.0999999046326,
+            "ocrDecode": 13.499999523162842,
+            "ocrOutputBytes": 35099960,
+            "png": 142.70000004768372
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "baseline",
+          "round": 1,
+          "runIndex": 1,
+          "cacheState": "same-worker",
+          "totalMs": 2070.9,
+          "visibleResultMs": 2219.457861328125,
+          "displayTailMs": 148.557861328125,
+          "system": {
+            "cpuBusyPercent": 18.981371517763222,
+            "minFreeMemoryBytes": 7057797120
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-09-40-645Z.json",
+          "phases": {
+            "entryPrepareLoad": 408.6,
+            "detect": 241.6,
+            "bubble": 54,
+            "ocr": 455.8,
+            "order": 118.9,
+            "mask": 190.10000014305115,
+            "inpaint": 282.10000014305115,
+            "typeset": 21.1,
+            "delivery": 294.5,
+            "display": 148.557861328125,
+            "ocrInference": 89,
+            "ocrDecode": 11.100000143051147,
+            "ocrOutputBytes": 35324480,
+            "png": 186
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "baseline",
+          "round": 1,
+          "runIndex": 0,
+          "cacheState": "retained-cache-new-process",
+          "totalMs": 3545.4,
+          "visibleResultMs": 3731.304052734375,
+          "displayTailMs": 185.904052734375,
+          "system": {
+            "cpuBusyPercent": 23.90603681806498,
+            "minFreeMemoryBytes": 7473053696
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-09-51-843Z.json",
+          "phases": {
+            "entryPrepareLoad": 1476.5,
+            "detect": 347,
+            "bubble": 304.2,
+            "ocr": 451.6,
+            "order": 121.9,
+            "mask": 211,
+            "inpaint": 331.5,
+            "typeset": 25.6,
+            "delivery": 258.5,
+            "display": 185.904052734375,
+            "ocrInference": 114.00000071525574,
+            "ocrDecode": 12.999999523162842,
+            "ocrOutputBytes": 35099960,
+            "png": 144.79999995231628
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "baseline",
+          "round": 2,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 5018.8,
+          "visibleResultMs": 5198.083935546875,
+          "displayTailMs": 179.283935546875,
+          "system": {
+            "cpuBusyPercent": 26.941287213566177,
+            "minFreeMemoryBytes": 7216492544
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-10-16-458Z.json",
+          "phases": {
+            "entryPrepareLoad": 1616,
+            "detect": 825.8,
+            "bubble": 553.2,
+            "ocr": 920,
+            "order": 124.7,
+            "mask": 204.5,
+            "inpaint": 477.2000000476837,
+            "typeset": 25.7,
+            "delivery": 255.2,
+            "display": 179.283935546875,
+            "ocrInference": 592.4999997615814,
+            "ocrDecode": 13.200000047683716,
+            "ocrOutputBytes": 35099960,
+            "png": 148.10000014305115
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "baseline",
+          "round": 2,
+          "runIndex": 1,
+          "cacheState": "same-worker",
+          "totalMs": 1983.3,
+          "visibleResultMs": 2138.871044921875,
+          "displayTailMs": 155.571044921875,
+          "system": {
+            "cpuBusyPercent": 20.726601859078976,
+            "minFreeMemoryBytes": 6724984832
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-10-19-647Z.json",
+          "phases": {
+            "entryPrepareLoad": 400.3,
+            "detect": 230.7,
+            "bubble": 47.4,
+            "ocr": 380.7,
+            "order": 142.4,
+            "mask": 192.60000014305115,
+            "inpaint": 279.7000000476837,
+            "typeset": 11.3,
+            "delivery": 295.1,
+            "display": 155.571044921875,
+            "ocrInference": 72.60000038146973,
+            "ocrDecode": 11.799999475479126,
+            "ocrOutputBytes": 35324480,
+            "png": 189.80000019073486
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "baseline",
+          "round": 2,
+          "runIndex": 0,
+          "cacheState": "retained-cache-new-process",
+          "totalMs": 3552.9,
+          "visibleResultMs": 3730.097998046875,
+          "displayTailMs": 177.197998046875,
+          "system": {
+            "cpuBusyPercent": 20.321119965198818,
+            "minFreeMemoryBytes": 7745900544
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-10-27-029Z.json",
+          "phases": {
+            "entryPrepareLoad": 1502.3,
+            "detect": 346.3,
+            "bubble": 301.9,
+            "ocr": 453,
+            "order": 121.3,
+            "mask": 201.60000014305115,
+            "inpaint": 329.59999990463257,
+            "typeset": 24.9,
+            "delivery": 252.60000000000002,
+            "display": 177.197998046875,
+            "ocrInference": 121.79999995231628,
+            "ocrDecode": 12.800000190734863,
+            "ocrOutputBytes": 35099960,
+            "png": 143.90000009536743
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "round": 2,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 2252.7,
+          "visibleResultMs": 2431.187060546875,
+          "displayTailMs": 178.487060546875,
+          "system": {
+            "cpuBusyPercent": 40.05524861878453,
+            "minFreeMemoryBytes": 7973900288
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-10-38-912Z.json",
+          "phases": {
+            "entryPrepareLoad": 561.3,
+            "detect": 394.9,
+            "bubble": 241.1,
+            "ocr": 454.8,
+            "order": 0.7,
+            "mask": 136.20000004768372,
+            "inpaint": 268,
+            "typeset": 25.9,
+            "delivery": 159.89999999999998,
+            "display": 178.487060546875,
+            "ocrInference": 88.19999980926514,
+            "ocrDecode": 0.2999999523162842,
+            "ocrOutputBytes": 3752,
+            "png": 151.59999990463257
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "round": 2,
+          "runIndex": 1,
+          "cacheState": "same-worker",
+          "totalMs": 1585.8,
+          "visibleResultMs": 1738.48505859375,
+          "displayTailMs": 152.68505859375,
+          "system": {
+            "cpuBusyPercent": 26.162867019647308,
+            "minFreeMemoryBytes": 7535464448
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-10-41-733Z.json",
+          "phases": {
+            "entryPrepareLoad": 384.9,
+            "detect": 163.7,
+            "bubble": 132.9,
+            "ocr": 408.2,
+            "order": 0.5,
+            "mask": 124.20000004768372,
+            "inpaint": 201.19999980926514,
+            "typeset": 13.1,
+            "delivery": 154.9,
+            "display": 152.68505859375,
+            "ocrInference": 58.50000023841858,
+            "ocrDecode": 0.2999999523162842,
+            "ocrOutputBytes": 3776,
+            "png": 148.5
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "round": 2,
+          "runIndex": 0,
+          "cacheState": "retained-cache-new-process",
+          "totalMs": 1960.9,
+          "visibleResultMs": 2142.483984375,
+          "displayTailMs": 181.583984375,
+          "system": {
+            "cpuBusyPercent": 39.876106194690266,
+            "minFreeMemoryBytes": 6884020224
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-10-50-276Z.json",
+          "phases": {
+            "entryPrepareLoad": 528.2,
+            "detect": 240.6,
+            "bubble": 168.2,
+            "ocr": 420.5,
+            "order": 0.8,
+            "mask": 157,
+            "inpaint": 240.60000014305115,
+            "typeset": 25.9,
+            "delivery": 164,
+            "display": 181.583984375,
+            "ocrInference": 101.89999961853027,
+            "ocrDecode": 0.3000001907348633,
+            "ocrOutputBytes": 3752,
+            "png": 154.59999990463257
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "round": 3,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 2303.2,
+          "visibleResultMs": 2480.4939453125,
+          "displayTailMs": 177.2939453125,
+          "system": {
+            "cpuBusyPercent": 42.56820177430587,
+            "minFreeMemoryBytes": 7192195072
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-11-03-356Z.json",
+          "phases": {
+            "entryPrepareLoad": 556.3,
+            "detect": 544.2,
+            "bubble": 164.1,
+            "ocr": 411.3,
+            "order": 0.8,
+            "mask": 149.20000004768372,
+            "inpaint": 281.40000009536743,
+            "typeset": 27.2,
+            "delivery": 158.89999999999998,
+            "display": 177.2939453125,
+            "ocrInference": 87.19999980926514,
+            "ocrDecode": 0.20000028610229492,
+            "ocrOutputBytes": 3752,
+            "png": 151
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "round": 3,
+          "runIndex": 1,
+          "cacheState": "same-worker",
+          "totalMs": 1579.9,
+          "visibleResultMs": 1731.816015625,
+          "displayTailMs": 151.916015625,
+          "system": {
+            "cpuBusyPercent": 21.1185941751037,
+            "minFreeMemoryBytes": 6717591552
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-11-06-159Z.json",
+          "phases": {
+            "entryPrepareLoad": 332.7,
+            "detect": 167.6,
+            "bubble": 129.1,
+            "ocr": 416.5,
+            "order": 0.5,
+            "mask": 132.29999995231628,
+            "inpaint": 222,
+            "typeset": 14.3,
+            "delivery": 162.79999999999998,
+            "display": 151.916015625,
+            "ocrInference": 60.99999952316284,
+            "ocrDecode": 0.20000004768371582,
+            "ocrOutputBytes": 3776,
+            "png": 155.39999985694885
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "round": 3,
+          "runIndex": 0,
+          "cacheState": "retained-cache-new-process",
+          "totalMs": 1863.5,
+          "visibleResultMs": 2042.73095703125,
+          "displayTailMs": 179.23095703125,
+          "system": {
+            "cpuBusyPercent": 25.31115679312278,
+            "minFreeMemoryBytes": 7291088896
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-11-12-635Z.json",
+          "phases": {
+            "entryPrepareLoad": 422.5,
+            "detect": 240.9,
+            "bubble": 173.6,
+            "ocr": 420.2,
+            "order": 0.7,
+            "mask": 151.90000009536743,
+            "inpaint": 256.09999990463257,
+            "typeset": 25.4,
+            "delivery": 162.39999999999998,
+            "display": 179.23095703125,
+            "ocrInference": 104.90000009536743,
+            "ocrDecode": 0.40000009536743164,
+            "ocrOutputBytes": 3752,
+            "png": 152.10000014305115
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "baseline",
+          "round": 3,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 5314.7,
+          "visibleResultMs": 5495.712939453125,
+          "displayTailMs": 181.012939453125,
+          "system": {
+            "cpuBusyPercent": 27.486018817027436,
+            "minFreeMemoryBytes": 7567233024
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-11-32-347Z.json",
+          "phases": {
+            "entryPrepareLoad": 1834.8,
+            "detect": 917.8,
+            "bubble": 539.3,
+            "ocr": 908.5,
+            "order": 122.4,
+            "mask": 225.90000009536743,
+            "inpaint": 472.2999999523163,
+            "typeset": 26.5,
+            "delivery": 257.6,
+            "display": 181.012939453125,
+            "ocrInference": 577.2999997138977,
+            "ocrDecode": 13.700000047683716,
+            "ocrOutputBytes": 35099960,
+            "png": 148.5
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "baseline",
+          "round": 3,
+          "runIndex": 1,
+          "cacheState": "same-worker",
+          "totalMs": 1989.9,
+          "visibleResultMs": 2138.80771484375,
+          "displayTailMs": 148.90771484375,
+          "system": {
+            "cpuBusyPercent": 32.17221828490432,
+            "minFreeMemoryBytes": 7155380224
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-11-35-555Z.json",
+          "phases": {
+            "entryPrepareLoad": 399.5,
+            "detect": 232,
+            "bubble": 48.5,
+            "ocr": 391.7,
+            "order": 119.7,
+            "mask": 189.20000004768372,
+            "inpaint": 283.2000000476837,
+            "typeset": 24.1,
+            "delivery": 298.9,
+            "display": 148.90771484375,
+            "ocrInference": 86.69999957084656,
+            "ocrDecode": 11,
+            "ocrOutputBytes": 35324480,
+            "png": 189.79999995231628
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "baseline",
+          "round": 3,
+          "runIndex": 0,
+          "cacheState": "retained-cache-new-process",
+          "totalMs": 3544.6,
+          "visibleResultMs": 3723.4388671875,
+          "displayTailMs": 178.8388671875,
+          "system": {
+            "cpuBusyPercent": 22.792124270307713,
+            "minFreeMemoryBytes": 7496835072
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-11-45-079Z.json",
+          "phases": {
+            "entryPrepareLoad": 1481.8,
+            "detect": 351.2,
+            "bubble": 300.4,
+            "ocr": 457.1,
+            "order": 122.1,
+            "mask": 217.5,
+            "inpaint": 320.7000000476837,
+            "typeset": 24.7,
+            "delivery": 252.6,
+            "display": 178.8388671875,
+            "ocrInference": 115.50000023841858,
+            "ocrDecode": 13.200000047683716,
+            "ocrOutputBytes": 35099960,
+            "png": 143.5
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "baseline",
+          "round": 4,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 4951.8,
+          "visibleResultMs": 5129.518994140625,
+          "displayTailMs": 177.718994140625,
+          "system": {
+            "cpuBusyPercent": 20.717432526839563,
+            "minFreeMemoryBytes": 7562309632
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-12-09-268Z.json",
+          "phases": {
+            "entryPrepareLoad": 1644.1,
+            "detect": 817,
+            "bubble": 531.9,
+            "ocr": 865.7,
+            "order": 124.2,
+            "mask": 198.90000009536743,
+            "inpaint": 469.7999999523163,
+            "typeset": 26.1,
+            "delivery": 256.6,
+            "display": 177.718994140625,
+            "ocrInference": 581.7000002861023,
+            "ocrDecode": 12.999999761581421,
+            "ocrOutputBytes": 35099960,
+            "png": 149.29999995231628
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "baseline",
+          "round": 4,
+          "runIndex": 1,
+          "cacheState": "same-worker",
+          "totalMs": 2061.7,
+          "visibleResultMs": 2213.959033203125,
+          "displayTailMs": 152.259033203125,
+          "system": {
+            "cpuBusyPercent": 23.151697699890473,
+            "minFreeMemoryBytes": 6967521280
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-12-12-465Z.json",
+          "phases": {
+            "entryPrepareLoad": 450.1,
+            "detect": 242.6,
+            "bubble": 49.4,
+            "ocr": 385.9,
+            "order": 130.8,
+            "mask": 216.69999980926514,
+            "inpaint": 276.60000014305115,
+            "typeset": 11.6,
+            "delivery": 294.9,
+            "display": 152.259033203125,
+            "ocrInference": 70.59999990463257,
+            "ocrDecode": 11.499999523162842,
+            "ocrOutputBytes": 35324480,
+            "png": 184.70000004768372
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "baseline",
+          "round": 4,
+          "runIndex": 0,
+          "cacheState": "retained-cache-new-process",
+          "totalMs": 3554.6,
+          "visibleResultMs": 3735.3529296875,
+          "displayTailMs": 180.7529296875,
+          "system": {
+            "cpuBusyPercent": 35.87450980392157,
+            "minFreeMemoryBytes": 7511281664
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-12-19-672Z.json",
+          "phases": {
+            "entryPrepareLoad": 1511.1,
+            "detect": 351.7,
+            "bubble": 309,
+            "ocr": 430.6,
+            "order": 121.9,
+            "mask": 211.70000004768372,
+            "inpaint": 319.69999980926514,
+            "typeset": 25.3,
+            "delivery": 257.09999999999997,
+            "display": 180.7529296875,
+            "ocrInference": 115.20000004768372,
+            "ocrDecode": 12.899999856948853,
+            "ocrOutputBytes": 35099960,
+            "png": 144.20000004768372
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "round": 4,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 2251.1,
+          "visibleResultMs": 2424.82216796875,
+          "displayTailMs": 173.72216796875,
+          "system": {
+            "cpuBusyPercent": 43.25169520388891,
+            "minFreeMemoryBytes": 7929970688
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-12-31-497Z.json",
+          "phases": {
+            "entryPrepareLoad": 579.5,
+            "detect": 390.5,
+            "bubble": 220.7,
+            "ocr": 448.3,
+            "order": 0.6,
+            "mask": 160,
+            "inpaint": 248.80000019073486,
+            "typeset": 23.9,
+            "delivery": 163.7,
+            "display": 173.72216796875,
+            "ocrInference": 91.7000002861023,
+            "ocrDecode": 0.3000001907348633,
+            "ocrOutputBytes": 3752,
+            "png": 156
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "round": 4,
+          "runIndex": 1,
+          "cacheState": "same-worker",
+          "totalMs": 1578,
+          "visibleResultMs": 1732.856201171875,
+          "displayTailMs": 154.856201171875,
+          "system": {
+            "cpuBusyPercent": 19.38693197095993,
+            "minFreeMemoryBytes": 7406612480
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-12-34-282Z.json",
+          "phases": {
+            "entryPrepareLoad": 330.1,
+            "detect": 167.5,
+            "bubble": 128.1,
+            "ocr": 446.1,
+            "order": 0.6,
+            "mask": 130.70000004768372,
+            "inpaint": 202.60000014305115,
+            "typeset": 12.9,
+            "delivery": 156.1,
+            "display": 154.856201171875,
+            "ocrInference": 62,
+            "ocrDecode": 0.19999980926513672,
+            "ocrOutputBytes": 3776,
+            "png": 149.79999995231628
+          },
+          "inpaintProfiles": []
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu",
+          "round": 4,
+          "runIndex": 0,
+          "cacheState": "retained-cache-new-process",
+          "totalMs": 1888,
+          "visibleResultMs": 2062.65380859375,
+          "displayTailMs": 174.65380859375,
+          "system": {
+            "cpuBusyPercent": 27.62904182735093,
+            "minFreeMemoryBytes": 8049434624
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-12-42-109Z.json",
+          "phases": {
+            "entryPrepareLoad": 461.1,
+            "detect": 236.8,
+            "bubble": 182.5,
+            "ocr": 420.8,
+            "order": 0.6,
+            "mask": 136.20000004768372,
+            "inpaint": 256.90000009536743,
+            "typeset": 25.7,
+            "delivery": 157.79999999999998,
+            "display": 174.65380859375,
+            "ocrInference": 104.60000014305115,
+            "ocrDecode": 0.39999985694885254,
+            "ocrOutputBytes": 3752,
+            "png": 150
+          },
+          "inpaintProfiles": []
+        }
+      ]
+    },
+    {
+      "path": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\.tmp\\cold-budget\\1790867907841-results.json",
+      "checks": "pixels/OCR confidence/regions/input dimensions/providers/timing passed",
+      "medians": [
+        {
+          "variant": "baseline-verifydet-verifyinput",
+          "cacheState": "new-profile",
+          "n": 1,
+          "visibleMs": 5534.376171875,
+          "totalMs": 5356.8,
+          "phases": {
+            "entryPrepareLoad": 1800.2,
+            "detect": 862.4,
+            "bubble": 544.4,
+            "ocr": 1013.4,
+            "order": 129.1,
+            "mask": 221.79999995231628,
+            "inpaint": 485.5,
+            "typeset": 24.3,
+            "delivery": 266.2,
+            "display": 177.576171875,
+            "ocrInference": 581.6000001430511,
+            "ocrDecode": 13.299999713897705,
+            "ocrOutputBytes": 35099960,
+            "png": 150.90000009536743
+          }
+        }
+      ],
+      "rows": [
+        {
+          "variant": "baseline-verifydet-verifyinput",
+          "round": 0,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 5356.8,
+          "visibleResultMs": 5534.376171875,
+          "displayTailMs": 177.576171875,
+          "system": {
+            "cpuBusyPercent": 25.44059686540211,
+            "minFreeMemoryBytes": 7350042624
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-18-47-721Z.json",
+          "phases": {
+            "entryPrepareLoad": 1800.2,
+            "detect": 862.4,
+            "bubble": 544.4,
+            "ocr": 1013.4,
+            "order": 129.1,
+            "mask": 221.79999995231628,
+            "inpaint": 485.5,
+            "typeset": 24.3,
+            "delivery": 266.2,
+            "display": 177.576171875,
+            "ocrInference": 581.6000001430511,
+            "ocrDecode": 13.299999713897705,
+            "ocrOutputBytes": 35099960,
+            "png": 150.90000009536743
+          },
+          "inpaintProfiles": []
+        }
+      ]
+    },
+    {
+      "path": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\.tmp\\cold-budget\\1790866046598-results.json",
+      "checks": "pixels/OCR confidence/regions/input dimensions/providers/timing passed",
+      "medians": [
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-verifydet-verifyinput",
+          "cacheState": "new-profile",
+          "n": 1,
+          "visibleMs": 3470.6701171875,
+          "totalMs": 3202.3,
+          "phases": {
+            "entryPrepareLoad": 857.7,
+            "detect": 796.6,
+            "bubble": 209.3,
+            "ocr": 383.5,
+            "order": 1.2,
+            "mask": 320.5,
+            "inpaint": 322.40000009536743,
+            "typeset": 44.4,
+            "delivery": 251.2,
+            "display": 268.3701171875,
+            "ocrInference": 231.49999976158142,
+            "ocrDecode": 0.5999999046325684,
+            "ocrOutputBytes": 3752,
+            "png": 239.60000014305115
+          }
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-verifydet-verifyinput",
+          "cacheState": "new-profile",
+          "n": 1,
+          "visibleMs": 3522.93505859375,
+          "totalMs": 3336,
+          "phases": {
+            "entryPrepareLoad": 1247,
+            "detect": 682.5,
+            "bubble": 216.2,
+            "ocr": 493.4,
+            "order": 1.3,
+            "mask": 274.60000014305115,
+            "inpaint": 205.40000009536743,
+            "typeset": 30.1,
+            "delivery": 170.5,
+            "display": 186.93505859375,
+            "ocrInference": 166.7000002861023,
+            "ocrDecode": 0.4999997615814209,
+            "ocrOutputBytes": 3752,
+            "png": 162.19999980926514
+          }
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu-verifydet-verifyinput",
+          "cacheState": "new-profile",
+          "n": 1,
+          "visibleMs": 2500.989013671875,
+          "totalMs": 2321,
+          "phases": {
+            "entryPrepareLoad": 574.3,
+            "detect": 456.3,
+            "bubble": 237.8,
+            "ocr": 422.2,
+            "order": 0.7,
+            "mask": 149.90000009536743,
+            "inpaint": 279.2999999523163,
+            "typeset": 26.1,
+            "delivery": 164.79999999999998,
+            "display": 179.989013671875,
+            "ocrInference": 95.59999966621399,
+            "ocrDecode": 0.5000002384185791,
+            "ocrOutputBytes": 3752,
+            "png": 155.39999985694885
+          }
+        }
+      ],
+      "rows": [
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-verifydet-verifyinput",
+          "round": 0,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 3202.3,
+          "visibleResultMs": 3470.6701171875,
+          "displayTailMs": 268.3701171875,
+          "system": {
+            "cpuBusyPercent": 49.097143849292465,
+            "minFreeMemoryBytes": 10275401728
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T14-47-39-757Z.json",
+          "phases": {
+            "entryPrepareLoad": 857.7,
+            "detect": 796.6,
+            "bubble": 209.3,
+            "ocr": 383.5,
+            "order": 1.2,
+            "mask": 320.5,
+            "inpaint": 322.40000009536743,
+            "typeset": 44.4,
+            "delivery": 251.2,
+            "display": 268.3701171875,
+            "ocrInference": 231.49999976158142,
+            "ocrDecode": 0.5999999046325684,
+            "ocrOutputBytes": 3752,
+            "png": 239.60000014305115
+          },
+          "inpaintProfiles": [
+            {
+              "kind": "inpaint-profile",
+              "actualProvider": "webgpu",
+              "phases": {
+                "setup": 0.10000014305114746,
+                "preprocess": 33.700000047683716,
+                "modelRun": 45.799999952316284,
+                "decode": 7.3999998569488525,
+                "readOriginal": 36,
+                "readMask": 45.40000009536743,
+                "resize": 110.20000004768372,
+                "compose": 42.700000047683716
+              }
+            }
+          ]
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-verifydet-verifyinput",
+          "round": 0,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 3336,
+          "visibleResultMs": 3522.93505859375,
+          "displayTailMs": 186.93505859375,
+          "system": {
+            "cpuBusyPercent": 42.45932812169871,
+            "minFreeMemoryBytes": 10458124288
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T14-48-04-888Z.json",
+          "phases": {
+            "entryPrepareLoad": 1247,
+            "detect": 682.5,
+            "bubble": 216.2,
+            "ocr": 493.4,
+            "order": 1.3,
+            "mask": 274.60000014305115,
+            "inpaint": 205.40000009536743,
+            "typeset": 30.1,
+            "delivery": 170.5,
+            "display": 186.93505859375,
+            "ocrInference": 166.7000002861023,
+            "ocrDecode": 0.4999997615814209,
+            "ocrOutputBytes": 3752,
+            "png": 162.19999980926514
+          },
+          "inpaintProfiles": [
+            {
+              "kind": "inpaint-profile",
+              "actualProvider": "webgpu",
+              "phases": {
+                "setup": 0.09999990463256836,
+                "preprocess": 22.90000009536743,
+                "modelRun": 47.299999952316284,
+                "decode": 7,
+                "readOriginal": 23.299999952316284,
+                "readMask": 31.90000009536743,
+                "resize": 48.09999990463257,
+                "compose": 24.100000143051147
+              }
+            }
+          ]
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu-verifydet-verifyinput",
+          "round": 0,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 2321,
+          "visibleResultMs": 2500.989013671875,
+          "displayTailMs": 179.989013671875,
+          "system": {
+            "cpuBusyPercent": 53.7283401903961,
+            "minFreeMemoryBytes": 10515337216
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T14-48-17-207Z.json",
+          "phases": {
+            "entryPrepareLoad": 574.3,
+            "detect": 456.3,
+            "bubble": 237.8,
+            "ocr": 422.2,
+            "order": 0.7,
+            "mask": 149.90000009536743,
+            "inpaint": 279.2999999523163,
+            "typeset": 26.1,
+            "delivery": 164.79999999999998,
+            "display": 179.989013671875,
+            "ocrInference": 95.59999966621399,
+            "ocrDecode": 0.5000002384185791,
+            "ocrOutputBytes": 3752,
+            "png": 155.39999985694885
+          },
+          "inpaintProfiles": [
+            {
+              "kind": "inpaint-profile",
+              "actualProvider": "webgpu",
+              "phases": {
+                "setup": 0.09999990463256836,
+                "preprocess": 51.60000014305115,
+                "modelRun": 46.799999952316284,
+                "decode": 5.599999904632568,
+                "readOriginal": 21,
+                "readMask": 35.200000047683716,
+                "resize": 91.70000004768372,
+                "compose": 23.700000047683716
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\.tmp\\cold-budget\\1790863277823-results.json",
+      "checks": "pixels/OCR confidence/regions/input dimensions/providers/timing passed",
+      "medians": [
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-verifydet-verifyinput",
+          "cacheState": "new-profile",
+          "n": 1,
+          "visibleMs": 2529.79189453125,
+          "totalMs": 2355.6,
+          "phases": {
+            "entryPrepareLoad": 558.4,
+            "detect": 634.6,
+            "bubble": 133.5,
+            "ocr": 411.4,
+            "order": 0.7,
+            "mask": 228.5,
+            "inpaint": 196.40000009536743,
+            "typeset": 24.9,
+            "delivery": 157.8,
+            "display": 174.19189453125,
+            "ocrInference": 89.39999961853027,
+            "ocrDecode": 0.2999997138977051,
+            "ocrOutputBytes": 3752,
+            "png": 148.89999985694885
+          }
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-displayinstant-verifydet-verifyinput",
+          "cacheState": "new-profile",
+          "n": 1,
+          "visibleMs": 2548.806982421875,
+          "totalMs": 2375.4,
+          "phases": {
+            "entryPrepareLoad": 570.2,
+            "detect": 662.8,
+            "bubble": 137.5,
+            "ocr": 355.3,
+            "order": 0.7,
+            "mask": 234,
+            "inpaint": 218.29999995231628,
+            "typeset": 27.8,
+            "delivery": 159.1,
+            "display": 173.406982421875,
+            "ocrInference": 84.90000033378601,
+            "ocrDecode": 0.09999990463256836,
+            "ocrOutputBytes": 3752,
+            "png": 150.79999995231628
+          }
+        }
+      ],
+      "rows": [
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-verifydet-verifyinput",
+          "round": 0,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 2355.6,
+          "visibleResultMs": 2529.79189453125,
+          "displayTailMs": 174.19189453125,
+          "system": {
+            "cpuBusyPercent": 39.714368988633055,
+            "minFreeMemoryBytes": 10455007232
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T14-01-26-072Z.json",
+          "phases": {
+            "entryPrepareLoad": 558.4,
+            "detect": 634.6,
+            "bubble": 133.5,
+            "ocr": 411.4,
+            "order": 0.7,
+            "mask": 228.5,
+            "inpaint": 196.40000009536743,
+            "typeset": 24.9,
+            "delivery": 157.8,
+            "display": 174.19189453125,
+            "ocrInference": 89.39999961853027,
+            "ocrDecode": 0.2999997138977051,
+            "ocrOutputBytes": 3752,
+            "png": 148.89999985694885
+          },
+          "inpaintProfiles": [
+            {
+              "kind": "inpaint-profile",
+              "actualProvider": "webgpu",
+              "phases": {
+                "setup": 0.09999990463256836,
+                "preprocess": 18.200000047683716,
+                "modelRun": 43.700000047683716,
+                "decode": 14.099999904632568,
+                "readOriginal": 16.200000047683716,
+                "readMask": 29.09999990463257,
+                "resize": 45.60000014305115,
+                "compose": 23.200000047683716
+              }
+            }
+          ]
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-displayinstant-verifydet-verifyinput",
+          "round": 0,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 2375.4,
+          "visibleResultMs": 2548.806982421875,
+          "displayTailMs": 173.406982421875,
+          "system": {
+            "cpuBusyPercent": 43.99882301015153,
+            "minFreeMemoryBytes": 10383753216
+          },
+          "resultImage": {
+            "width": 2921,
+            "height": 4096,
+            "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T14-01-41-253Z.json",
+          "phases": {
+            "entryPrepareLoad": 570.2,
+            "detect": 662.8,
+            "bubble": 137.5,
+            "ocr": 355.3,
+            "order": 0.7,
+            "mask": 234,
+            "inpaint": 218.29999995231628,
+            "typeset": 27.8,
+            "delivery": 159.1,
+            "display": 173.406982421875,
+            "ocrInference": 84.90000033378601,
+            "ocrDecode": 0.09999990463256836,
+            "ocrOutputBytes": 3752,
+            "png": 150.79999995231628
+          },
+          "inpaintProfiles": [
+            {
+              "kind": "inpaint-profile",
+              "actualProvider": "webgpu",
+              "phases": {
+                "setup": 0.20000004768371582,
+                "preprocess": 22.799999952316284,
+                "modelRun": 43.200000047683716,
+                "decode": 6.099999904632568,
+                "readOriginal": 19.600000143051147,
+                "readMask": 25.399999856948853,
+                "resize": 77.20000004768372,
+                "compose": 22.700000047683716
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\.tmp\\cold-budget\\1790867139694-results.json",
+      "checks": "pixels/OCR confidence/regions/input dimensions/providers/timing passed",
+      "medians": [
+        {
+          "variant": "baseline-verifydet-verifyinput",
+          "cacheState": "new-profile",
+          "n": 1,
+          "visibleMs": 6042.89814453125,
+          "totalMs": 5931.8,
+          "phases": {
+            "entryPrepareLoad": 1477.3,
+            "detect": 1509.4,
+            "bubble": 762,
+            "ocr": 990.1,
+            "order": 287.7,
+            "mask": 138.40000009536743,
+            "inpaint": 444.09999990463257,
+            "typeset": 109.3,
+            "delivery": 202.89999999999998,
+            "display": 111.09814453125,
+            "ocrInference": 725.1999998092651,
+            "ocrDecode": 31.59999990463257,
+            "ocrOutputBytes": 54782880,
+            "png": 107.39999985694885
+          }
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu-verifydet-verifyinput",
+          "cacheState": "new-profile",
+          "n": 1,
+          "visibleMs": 2512.965966796875,
+          "totalMs": 2434.6,
+          "phases": {
+            "entryPrepareLoad": 767.6,
+            "detect": 473.6,
+            "bubble": 369,
+            "ocr": 369.1,
+            "order": 1.5,
+            "mask": 90.70000004768372,
+            "inpaint": 128.39999985694885,
+            "typeset": 145.2,
+            "delivery": 84,
+            "display": 78.365966796875,
+            "ocrInference": 168.599999666214,
+            "ocrDecode": 0.2999999523162842,
+            "ocrOutputBytes": 5856,
+            "png": 77.5
+          }
+        }
+      ],
+      "rows": [
+        {
+          "variant": "baseline-verifydet-verifyinput",
+          "round": 0,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 5931.8,
+          "visibleResultMs": 6042.89814453125,
+          "displayTailMs": 111.09814453125,
+          "system": {
+            "cpuBusyPercent": 45.54076993388018,
+            "minFreeMemoryBytes": 8220205056
+          },
+          "resultImage": {
+            "width": 1487,
+            "height": 2048,
+            "sha256": "06007f59966f605e51fc0ceab3f8aa13b5b5282218b77be762a6c9abdf1bfda0"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-05-51-652Z.json",
+          "phases": {
+            "entryPrepareLoad": 1477.3,
+            "detect": 1509.4,
+            "bubble": 762,
+            "ocr": 990.1,
+            "order": 287.7,
+            "mask": 138.40000009536743,
+            "inpaint": 444.09999990463257,
+            "typeset": 109.3,
+            "delivery": 202.89999999999998,
+            "display": 111.09814453125,
+            "ocrInference": 725.1999998092651,
+            "ocrDecode": 31.59999990463257,
+            "ocrOutputBytes": 54782880,
+            "png": 107.39999985694885
+          },
+          "inpaintProfiles": [
+            {
+              "kind": "inpaint-profile",
+              "actualProvider": "webgpu",
+              "phases": {
+                "setup": 0.09999990463256836,
+                "preprocess": 14.100000143051147,
+                "modelRun": 321.59999990463257,
+                "decode": 6.700000047683716,
+                "readOriginal": 21.40000009536743,
+                "readMask": 26.09999990463257,
+                "resize": 20.59999990463257,
+                "compose": 31.40000009536743
+              }
+            }
+          ]
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-readparallel-threshold-thresholdgpu-verifydet-verifyinput",
+          "round": 0,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 2434.6,
+          "visibleResultMs": 2512.965966796875,
+          "displayTailMs": 78.365966796875,
+          "system": {
+            "cpuBusyPercent": 52.280097574974896,
+            "minFreeMemoryBytes": 7860019200
+          },
+          "resultImage": {
+            "width": 1487,
+            "height": 2048,
+            "sha256": "06007f59966f605e51fc0ceab3f8aa13b5b5282218b77be762a6c9abdf1bfda0"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T15-06-27-054Z.json",
+          "phases": {
+            "entryPrepareLoad": 767.6,
+            "detect": 473.6,
+            "bubble": 369,
+            "ocr": 369.1,
+            "order": 1.5,
+            "mask": 90.70000004768372,
+            "inpaint": 128.39999985694885,
+            "typeset": 145.2,
+            "delivery": 84,
+            "display": 78.365966796875,
+            "ocrInference": 168.599999666214,
+            "ocrDecode": 0.2999999523162842,
+            "ocrOutputBytes": 5856,
+            "png": 77.5
+          },
+          "inpaintProfiles": [
+            {
+              "kind": "inpaint-profile",
+              "actualProvider": "webgpu",
+              "phases": {
+                "setup": 0.10000014305114746,
+                "preprocess": 17.59999990463257,
+                "modelRun": 48,
+                "decode": 5.6000001430511475,
+                "readOriginal": 9.399999856948853,
+                "readMask": 11.299999952316284,
+                "resize": 24.200000047683716,
+                "compose": 11
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\.tmp\\cold-budget\\1790863172428-results.json",
+      "checks": "pixels/OCR confidence/regions/input dimensions/providers/timing passed",
+      "medians": [
+        {
+          "variant": "baseline-verifydet-verifyinput",
+          "cacheState": "new-profile",
+          "n": 1,
+          "visibleMs": 4347.230224609375,
+          "totalMs": 4274.5,
+          "phases": {
+            "entryPrepareLoad": 1177.7,
+            "detect": 721.2,
+            "bubble": 484.3,
+            "ocr": 1148.1,
+            "order": 168,
+            "mask": 93.29999995231628,
+            "inpaint": 278.7999999523163,
+            "typeset": 61.1,
+            "delivery": 137,
+            "display": 72.730224609375,
+            "ocrInference": 434.900000333786,
+            "ocrDecode": 17.799999713897705,
+            "ocrOutputBytes": 54782880,
+            "png": 72.5
+          }
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-verifydet-verifyinput",
+          "cacheState": "new-profile",
+          "n": 1,
+          "visibleMs": 2598.760791015625,
+          "totalMs": 2523.2,
+          "phases": {
+            "entryPrepareLoad": 552.6,
+            "detect": 550.3,
+            "bubble": 105,
+            "ocr": 954.8,
+            "order": 0.6,
+            "mask": 97.79999995231628,
+            "inpaint": 112.29999995231628,
+            "typeset": 68.1,
+            "delivery": 77.6,
+            "display": 75.560791015625,
+            "ocrInference": 85.8999993801117,
+            "ocrDecode": 0.40000009536743164,
+            "ocrOutputBytes": 5856,
+            "png": 73.09999990463257
+          }
+        }
+      ],
+      "rows": [
+        {
+          "variant": "baseline-verifydet-verifyinput",
+          "round": 0,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 4274.5,
+          "visibleResultMs": 4347.230224609375,
+          "displayTailMs": 72.730224609375,
+          "system": {
+            "cpuBusyPercent": 32.5481833839088,
+            "minFreeMemoryBytes": 10648588288
+          },
+          "resultImage": {
+            "width": 1487,
+            "height": 2048,
+            "sha256": "06007f59966f605e51fc0ceab3f8aa13b5b5282218b77be762a6c9abdf1bfda0"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T13-59-55-490Z.json",
+          "phases": {
+            "entryPrepareLoad": 1177.7,
+            "detect": 721.2,
+            "bubble": 484.3,
+            "ocr": 1148.1,
+            "order": 168,
+            "mask": 93.29999995231628,
+            "inpaint": 278.7999999523163,
+            "typeset": 61.1,
+            "delivery": 137,
+            "display": 72.730224609375,
+            "ocrInference": 434.900000333786,
+            "ocrDecode": 17.799999713897705,
+            "ocrOutputBytes": 54782880,
+            "png": 72.5
+          },
+          "inpaintProfiles": [
+            {
+              "kind": "inpaint-profile",
+              "actualProvider": "webgpu",
+              "phases": {
+                "setup": 0.20000004768371582,
+                "preprocess": 17.700000047683716,
+                "modelRun": 183.89999985694885,
+                "decode": 5.1000001430511475,
+                "readOriginal": 15,
+                "readMask": 16.799999952316284,
+                "resize": 22.09999990463257,
+                "compose": 14.800000190734863
+              }
+            }
+          ]
+        },
+        {
+          "variant": "all-direct-latefonts-binary-prefetch-nofence-reuse-selectedfonts-deviceprobe-jsepjs-basic-async8-history4-adapteroverlap-workerpng-autolayout-paneloverlap-fontblob-imgblob-maskpack-ctcseed-downloadblob-lateinpaint-verifydet-verifyinput",
+          "round": 0,
+          "runIndex": 0,
+          "cacheState": "new-profile",
+          "totalMs": 2523.2,
+          "visibleResultMs": 2598.760791015625,
+          "displayTailMs": 75.560791015625,
+          "system": {
+            "cpuBusyPercent": 39.754961747422115,
+            "minFreeMemoryBytes": 10475122688
+          },
+          "resultImage": {
+            "width": 1487,
+            "height": 2048,
+            "sha256": "06007f59966f605e51fc0ceab3f8aa13b5b5282218b77be762a6c9abdf1bfda0"
+          },
+          "report": "C:\\Users\\STONE\\.codex\\worktrees\\cold-start-budget\\ShinobuTranslator\\benchmark\\perf\\reports\\ui-jank-2026-10-01T14-00-05-458Z.json",
+          "phases": {
+            "entryPrepareLoad": 552.6,
+            "detect": 550.3,
+            "bubble": 105,
+            "ocr": 954.8,
+            "order": 0.6,
+            "mask": 97.79999995231628,
+            "inpaint": 112.29999995231628,
+            "typeset": 68.1,
+            "delivery": 77.6,
+            "display": 75.560791015625,
+            "ocrInference": 85.8999993801117,
+            "ocrDecode": 0.40000009536743164,
+            "ocrOutputBytes": 5856,
+            "png": 73.09999990463257
+          },
+          "inpaintProfiles": [
+            {
+              "kind": "inpaint-profile",
+              "actualProvider": "webgpu",
+              "phases": {
+                "setup": 0.09999990463256836,
+                "preprocess": 26.40000009536743,
+                "modelRun": 42.39999985694885,
+                "decode": 4.800000190734863,
+                "readOriginal": 10.699999809265137,
+                "readMask": 7.900000095367432,
+                "resize": 13.099999904632568,
+                "compose": 6
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

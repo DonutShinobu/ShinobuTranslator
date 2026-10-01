@@ -1,6 +1,7 @@
 import {
   ImagePipelineCancelledError,
   createImagePipeline,
+  preparePaddleOcrRuntime,
   probeTextDetection,
   type ImagePipeline,
   type PipelineConfig,
@@ -29,6 +30,7 @@ import {
   serializePipelineError,
   splitBase64Chunks,
   summarizePipelineArtifacts,
+  supportsLocalPipelineStructuredClone,
   type LocalPipelineArtifactMeta,
   type LocalPipelineClientMessage,
   type LocalPipelineFileMeta,
@@ -72,12 +74,14 @@ const extensionPipelineHostDiagnostics: DiagnosticLogEmitter = {
 
 type PipelineJob = {
   id: string;
+  structuredClone: boolean;
   diagnosticRunId?: string;
   fileMeta?: LocalPipelineFileMeta;
   config?: PipelineConfig;
   operation?: 'pipeline' | 'detection-probe';
   precomputedDetection?: PrecomputedTextDetection;
   input?: Base64ChunkAssembler;
+  binaryFile?: Blob;
   file?: File;
   abortController: AbortController;
   cancellationReason?: PipelineCancellationReason;
@@ -134,6 +138,10 @@ export class PipelineHost {
   private idleGeneration = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
+  private earlySessions: Promise<void> | null = null;
+  private stopEarlySessions = false;
+  private readonly sessionsAfterSubmit: boolean;
+  private detectorSubmissionSettler: ((submitted: boolean) => void) | null = null;
   private readonly imageRuntime: ImagePipeline;
   private readonly platform: PipelinePlatform;
   private readonly modelRuntime: ModelRuntime;
@@ -150,7 +158,26 @@ export class PipelineHost {
       ?? extensionTextTranslationTransport;
     this.diagnostics = dependencies.diagnostics
       ?? extensionPipelineHostDiagnostics;
-    this.modelRuntime = dependencies.modelRuntime;
+    const flags = globalThis as {
+      __shinobuColdStartOverlap?: boolean;
+      __shinobuColdStartEarlySessions?: boolean;
+      __shinobuColdStartSessionsAfterSubmit?: boolean;
+      __shinobuColdStartEarlyInpaintAfterBubble?: boolean;
+    };
+    const earlyInpaintAfterBubble = flags.__shinobuColdStartEarlyInpaintAfterBubble === true;
+    this.sessionsAfterSubmit = flags.__shinobuColdStartEarlySessions === true
+      && flags.__shinobuColdStartSessionsAfterSubmit === true;
+    const detectorSubmission = this.sessionsAfterSubmit
+      ? new Promise<boolean>((resolve) => { this.detectorSubmissionSettler = resolve; })
+      : null;
+    const baseRuntime = dependencies.modelRuntime;
+    this.modelRuntime = this.sessionsAfterSubmit ? {
+      ...baseRuntime,
+      runImage: (sessionId, image, onSubmitted) => baseRuntime.runImage(sessionId, image, () => {
+        this.settleDetectorSubmission(true);
+        onSubmitted?.();
+      }),
+    } : baseRuntime;
     this.platform = dependencies.platform;
     this.hostInstanceId = dependencies.hostInstanceId ?? createHostInstanceId();
     this.idleTimeoutMs = dependencies.idleTimeoutMs ?? LOCAL_PIPELINE_IDLE_TIMEOUT_MS;
@@ -164,7 +191,39 @@ export class PipelineHost {
       fontSource: dependencies.fontSource,
       observer: this.diagnostics,
     });
+    if (flags.__shinobuColdStartOverlap || flags.__shinobuColdStartEarlySessions) {
+      // getSession shares the normal detector session and its pending creation.
+      // ModelRuntime.dispose already waits for pending sessions on cancellation.
+      const detector = this.modelRuntime.getSession('detector');
+      void detector.catch(() => undefined);
+      if (flags.__shinobuColdStartEarlySessions) {
+        this.earlySessions = detector.then(async (handle) => {
+          if (detectorSubmission && handle.provider === 'webgpu' && !await detectorSubmission) return;
+          if (detectorSubmission && handle.provider !== 'webgpu') this.settleDetectorSubmission(false);
+          if (this.stopEarlySessions) return;
+          await this.modelRuntime.getSession('bubble');
+          if (this.stopEarlySessions) return;
+          await preparePaddleOcrRuntime(this.modelRuntime);
+          if (this.stopEarlySessions) return;
+          if (!earlyInpaintAfterBubble) {
+            await this.modelRuntime.getSession('inpaint', ['webgpu', 'webnn', 'wasm']);
+          }
+        }).catch(() => undefined);
+      }
+    }
     this.emitLifecycleEvent('host-created', '流水线宿主已创建');
+  }
+
+  private settleDetectorSubmission(submitted: boolean): void {
+    const settle = this.detectorSubmissionSettler;
+    this.detectorSubmissionSettler = null;
+    settle?.(submitted);
+  }
+
+  private stopDelayedSessions(): void {
+    if (!this.sessionsAfterSubmit) return;
+    this.stopEarlySessions = true;
+    this.settleDetectorSubmission(false);
   }
 
   private emitLifecycleEvent(
@@ -205,6 +264,8 @@ export class PipelineHost {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.stopEarlySessions = true;
+    this.stopDelayedSessions();
     this.emitLifecycleEvent('host-disposed', '流水线宿主已关闭');
     this.clearIdleClose();
     if (this.reconnectTimer) {
@@ -225,11 +286,13 @@ export class PipelineHost {
     }
     this.queue.length = 0;
     this.jobs.clear();
-    void this.imageRuntime.dispose({
+    const disposeRuntime = (): Promise<void> => this.imageRuntime.dispose({
       code: 'runtime-disposed',
       messageKey: 'pipeline.cancelled.runtimeDisposed',
       diagnosticSummary: cancellation.message,
     });
+    if (this.earlySessions) void this.earlySessions.then(disposeRuntime);
+    else void disposeRuntime();
     const port = this.port;
     this.port = null;
     port?.disconnect();
@@ -280,11 +343,17 @@ export class PipelineHost {
     }
     this.jobs.set(message.jobId, {
       id: message.jobId,
+      structuredClone: supportsLocalPipelineStructuredClone(message.structuredCloneProbe),
       diagnosticRunId: message.diagnosticRunId,
       abortController: new AbortController(),
       state: 'prepared',
     });
-    safelyPost(this.port, { type: 'ready', jobId: message.jobId });
+    safelyPost(this.port, {
+      type: 'ready', jobId: message.jobId,
+      ...(message.structuredCloneProbe === undefined ? {} : {
+        structuredClone: supportsLocalPipelineStructuredClone(message.structuredCloneProbe),
+      }),
+    });
   }
 
   private startTransfer(message: Extract<
@@ -292,6 +361,10 @@ export class PipelineHost {
     { type: 'start' | 'start-detection-probe' }
   >): void {
     const job = this.requireJob(message.jobId, 'prepared');
+    if (message.type === 'start' && message.binaryFile) {
+      if (!job.structuredClone) throw createProtocolError('任务尚未协商二进制输入传输');
+      job.binaryFile = message.binaryFile;
+    }
     job.fileMeta = message.file;
     job.operation = message.type === 'start' ? 'pipeline' : 'detection-probe';
     if (message.type === 'start') {
@@ -328,7 +401,7 @@ export class PipelineHost {
       throw createProtocolError('输入传输尚未初始化');
     }
     const base64 = job.input.complete();
-    const blob = base64ToBlob(base64, job.fileMeta.type);
+    const blob = job.binaryFile ?? base64ToBlob(base64, job.fileMeta.type);
     if (blob.size !== job.fileMeta.size) {
       throw createProtocolError(`输入图片大小不符: 期望 ${job.fileMeta.size}, 实际 ${blob.size}`);
     }
@@ -336,6 +409,7 @@ export class PipelineHost {
       type: job.fileMeta.type,
       lastModified: job.fileMeta.lastModified,
     });
+    job.binaryFile = undefined;
     job.state = 'queued';
     this.queue.push(job);
     this.postQueuePositions();
@@ -348,6 +422,7 @@ export class PipelineHost {
   ): void {
     const job = this.jobs.get(jobId);
     if (!job || job.state === 'finished') return;
+    this.stopDelayedSessions();
     const cancellationReason: PipelineCancellationReason = (
       reason
       && typeof reason === 'object'
@@ -400,6 +475,7 @@ export class PipelineHost {
     } catch (error) {
       terminalMessage = this.finishJob(job, error);
     }
+    this.stopDelayedSessions();
     this.activeJob = null;
     this.postQueuePositions();
     const deliveryPort = this.port;
@@ -501,10 +577,12 @@ export class PipelineHost {
       >;
       const resultBlob = pipelineResult.image;
       const debugBlob = pipelineResult.debug;
-      const resultBase64 = await blobToBase64(resultBlob);
+      const resultBase64 = job.structuredClone ? '' : await blobToBase64(resultBlob);
       throwIfJobCancelled();
       const resultChunks = splitBase64Chunks(resultBase64);
-      const debugBase64 = debugBlob ? await blobToBase64(debugBlob) : undefined;
+      const debugBase64 = debugBlob
+        ? job.structuredClone ? '' : await blobToBase64(debugBlob)
+        : undefined;
       throwIfJobCancelled();
       const debugChunks = debugBase64 === undefined ? undefined : splitBase64Chunks(debugBase64);
 
@@ -517,6 +595,7 @@ export class PipelineHost {
         debug: debugBlob && debugBase64 !== undefined && debugChunks
           ? toArtifactMeta(debugBlob.type || 'image/png', debugChunks, debugBase64.length)
           : undefined,
+        ...(job.structuredClone ? { resultBlob, ...(debugBlob ? { debugBlob } : {}) } : {}),
         summary,
         record: pipelineResult.record,
       });
@@ -698,6 +777,7 @@ export class PipelineHost {
   }
 
   private finishJob(job: PipelineJob, error: unknown): PipelineTerminalMessage {
+    this.stopDelayedSessions();
     job.state = 'finished';
     this.jobs.delete(job.id);
     const queueIndex = this.queue.indexOf(job);
@@ -711,6 +791,7 @@ export class PipelineHost {
 
   private handleDisconnect(port: ExtensionPort): void {
     if (this.port !== port) return;
+    this.stopDelayedSessions();
     this.port = null;
     if (this.activeJob) {
       const cancellation = createCancelledError('流水线宿主连接已断开');
@@ -757,7 +838,11 @@ export class PipelineHost {
 
   private async releaseIdleResources(generation: number): Promise<void> {
     if (generation !== this.idleGeneration || this.activeJob || this.jobs.size > 0) return;
-    const releasePromise = this.modelRuntime.dispose();
+    this.stopEarlySessions = true;
+    this.stopDelayedSessions();
+    const releasePromise = this.earlySessions
+      ? this.earlySessions.then(() => this.modelRuntime.dispose())
+      : this.modelRuntime.dispose();
     this.idleReleasePromise = releasePromise;
     try {
       await releasePromise;

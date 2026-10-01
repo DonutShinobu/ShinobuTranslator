@@ -60,6 +60,7 @@ export function createExtensionManifest(target: ExtensionTarget, version: string
       manifest_version: 3,
       action: TOOLBAR_ACTION,
       minimum_chrome_version: '109',
+      message_serialization: 'structured_clone',
       background: {
         service_worker: 'background-chromium.js',
         type: 'module',

@@ -25,6 +25,27 @@ import {
 
 export type { MaskRefinementOptions } from "./algorithms";
 
+export type PreparedTextMaskGray = {
+  sourceCanvas: PipelineCanvas;
+  scaledWidth: number;
+  scaledHeight: number;
+  pixels: Uint8Array;
+};
+
+export function prepareTextMaskGray(
+  sourceCanvas: PipelineCanvas,
+  rawMaskHeight: number,
+  platform: PlatformProvider,
+): PreparedTextMaskGray {
+  const scaleFactor = computeScaleFactor(rawMaskHeight, sourceCanvas.height);
+  const scaledWidth = Math.max(1, Math.round(sourceCanvas.width * scaleFactor));
+  const scaledHeight = Math.max(1, Math.round(sourceCanvas.height * scaleFactor));
+  return {
+    sourceCanvas, scaledWidth, scaledHeight,
+    pixels: readGrayImage(sourceCanvas, scaledWidth, scaledHeight, platform),
+  };
+}
+
 export class MaskRefinementImageError extends Error {
   constructor(message: string) {
     super(message);
@@ -38,7 +59,8 @@ export function refineTextMask(
   rawMaskCanvas: PipelineCanvas,
   platform: PlatformProvider,
   options: MaskRefinementOptions = {},
-  collectDebugLayers = false
+  collectDebugLayers = false,
+  preparedGray?: PreparedTextMaskGray,
 ): RefineTextMaskResult {
   const method = options.method ?? "fit_text";
   if (method !== "fit_text") {
@@ -61,15 +83,59 @@ export function refineTextMask(
   const scaledWidth = Math.max(1, Math.round(width * scaleFactor));
   const scaledHeight = Math.max(1, Math.round(height * scaleFactor));
 
+  // One buffered record after successful refinement; no clocks or payload copies
+  // unless both the explicit diagnostic flag and benchmark observer are present.
+  const diagnostics = globalThis as {
+    __shinobuColdStartMaskProfile?: boolean;
+    __shinobuColdStartMaskHistogram?: boolean;
+    __shinobuColdStartPixelFastPath?: boolean;
+    __shinobuColdStartInitMark?: (record: Record<string, unknown>) => void;
+  };
+  const observe = diagnostics.__shinobuColdStartMaskProfile === true
+    && typeof diagnostics.__shinobuColdStartInitMark === 'function'
+    ? diagnostics.__shinobuColdStartInitMark : undefined;
+  const timings = observe ? {
+    readBinaryMs: 0, readGrayMs: 0, prepareCcMs: 0, ccMs: 0, assignmentMs: 0,
+    regionsMs: 0, refineMs: 0, outlineMs: 0, localDilateMs: 0,
+    finalDilateMs: 0, toMaskCanvasMs: 0,
+  } : undefined;
+  const startedAt = observe ? performance.now() : 0;
+  let stageStartedAt = startedAt;
+  let processedRegionCount = 0;
+
   const scaledMask = readBinaryMask(rawMaskCanvas, scaledWidth, scaledHeight, platform);
-  const scaledGray = readGrayImage(originalCanvas, scaledWidth, scaledHeight, platform);
+  if (timings) {
+    const now = performance.now();
+    timings.readBinaryMs = now - stageStartedAt;
+    stageStartedAt = now;
+  }
+  const scaledGray = preparedGray?.sourceCanvas === originalCanvas
+    && preparedGray.scaledWidth === scaledWidth && preparedGray.scaledHeight === scaledHeight
+    && preparedGray.pixels.length === scaledWidth * scaledHeight
+    ? preparedGray.pixels
+    : readGrayImage(originalCanvas, scaledWidth, scaledHeight, platform);
+  if (timings) {
+    const now = performance.now();
+    timings.readGrayMs = now - stageStartedAt;
+    stageStartedAt = now;
+  }
   const scaledRegions = scaleRegions(regions, scaleFactor, scaledWidth, scaledHeight);
 
   const ccInput = scaledMask.slice();
   for (const region of scaledRegions) {
     drawRectOutline(ccInput, scaledWidth, scaledHeight, region.box);
   }
+  if (timings) {
+    const now = performance.now();
+    timings.prepareCcMs = now - stageStartedAt;
+    stageStartedAt = now;
+  }
   const components = connectedComponents(ccInput, scaledWidth, scaledHeight);
+  if (timings) {
+    const now = performance.now();
+    timings.ccMs = now - stageStartedAt;
+    stageStartedAt = now;
+  }
 
   const assigned: Component[][] = new Array(scaledRegions.length).fill(null).map(() => []);
   const extents: Array<AssignedExtent | null> = new Array(scaledRegions.length).fill(null);
@@ -140,6 +206,11 @@ export function refineTextMask(
   if (!valid) {
     throw new MaskRefinementImageError("Mask refinement 未分配到有效连通域，已禁用文本框遮罩回退");
   }
+  if (timings) {
+    const now = performance.now();
+    timings.assignmentMs = now - stageStartedAt;
+    stageStartedAt = now;
+  }
 
   const finalMask = new Uint8Array(scaledWidth * scaledHeight);
   const refinedMaskBeforeDilate = collectDebugLayers ? new Uint8Array(scaledWidth * scaledHeight) : null;
@@ -166,9 +237,11 @@ export function refineTextMask(
       }
     }
 
+    let regionStageStartedAt = timings ? performance.now() : 0;
     const rect1 = extendRect(baseRect, scaledWidth, scaledHeight, Math.floor(regionTextSize * 0.1));
     const ccRegion = extractSubMask(regionMask, scaledWidth, rect1);
     if (!hasForeground(ccRegion)) {
+      if (timings) timings.refineMs += performance.now() - regionStageStartedAt;
       continue;
     }
     const grayRegion = extractSubGray(scaledGray, scaledWidth, rect1);
@@ -178,8 +251,19 @@ export function refineTextMask(
     if (refinedMaskBeforeDilate) {
       orSubMask(refinedMaskBeforeDilate, scaledWidth, rect1, extractSubMask(regionMask, scaledWidth, rect1));
     }
+    if (timings) {
+      const now = performance.now();
+      timings.refineMs += now - regionStageStartedAt;
+      regionStageStartedAt = now;
+      processedRegionCount += 1;
+    }
 
     const outlineWidth = detectOutlineWidth(scaledGray, regionMask, scaledWidth, scaledHeight, baseRect, regionTextSize);
+    if (timings) {
+      const now = performance.now();
+      timings.outlineMs += now - regionStageStartedAt;
+      regionStageStartedAt = now;
+    }
     const outlineDilateExtra = outlineWidth > 0 ? outlineWidth * 2 : 0;
     const baseRatio = outlineWidth > 0 ? 0.05 : 0.1;
     const baseDilateSize = Math.max(Math.floor(Math.floor(regionTextSize * baseRatio) / 2) * 2 + 1, 3);
@@ -188,12 +272,24 @@ export function refineTextMask(
     const ccRegion2 = extractSubMask(regionMask, scaledWidth, rect2);
     const dilated = dilate(ccRegion2, rect2.width, rect2.height, dilateSize);
     orSubMask(finalMask, scaledWidth, rect2, dilated);
+    if (timings) timings.localDilateMs += performance.now() - regionStageStartedAt;
   }
 
   const perRegionDilatedSnapshot = collectDebugLayers ? finalMask.slice() : null;
+  if (timings) {
+    const now = performance.now();
+    timings.regionsMs = now - stageStartedAt;
+    stageStartedAt = now;
+  }
 
   const finalDilated = dilate(finalMask, scaledWidth, scaledHeight, Math.max(1, kernelSize));
+  if (timings) {
+    const now = performance.now();
+    timings.finalDilateMs = now - stageStartedAt;
+    stageStartedAt = now;
+  }
   const refinedMaskCanvas = toMaskCanvas(finalDilated, scaledWidth, scaledHeight, width, height, platform);
+  if (timings) timings.toMaskCanvasMs = performance.now() - stageStartedAt;
 
   const debugLayers = collectDebugLayers && refinedMaskBeforeDilate && perRegionDilatedSnapshot
     ? {
@@ -204,6 +300,21 @@ export function refineTextMask(
         scaledHeight,
       }
     : undefined;
+
+  if (observe && timings) {
+    try {
+      observe({
+        phase: 'mask.refinement', startedAt, durationMs: performance.now() - startedAt,
+        width, height, scaledWidth, scaledHeight, scaleFactor,
+        regionCount: regions.length, componentCount: components.length, processedRegionCount,
+        collectDebugLayers, histogram: diagnostics.__shinobuColdStartMaskHistogram === true,
+        pixelFastPath: diagnostics.__shinobuColdStartPixelFastPath === true,
+        timings,
+      });
+    } catch {
+      // Diagnostic observers never change the mask result or error behavior.
+    }
+  }
 
   return { refinedMaskCanvas, debugLayers };
 }

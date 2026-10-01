@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import { build } from 'vite';
+import { chromiumColdStartBanner } from '../../../scripts/cold-start-defaults.mjs';
 
 function readRequiredOption(name) {
   const index = process.argv.indexOf(name);
@@ -26,6 +27,7 @@ await build({
     },
     rollupOptions: {
       output: {
+        banner: outputDir.endsWith('dist-chromium') ? chromiumColdStartBanner : '',
         inlineDynamicImports: true,
       },
     },

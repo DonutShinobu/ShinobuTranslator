@@ -4,6 +4,9 @@ import { clamp } from "./utils";
 
 type Panel = Rect;
 
+// Undefined means no preparation; null retains the original simple-sort fallback.
+export type PreparedReadingPanels = Panel[] | null;
+
 type ConnectedComponent = {
   rect: Rect;
   area: number;
@@ -33,6 +36,37 @@ function toGrayscale(data: Uint8ClampedArray): Uint8Array {
 function blurGaussian7(src: Uint8Array, width: number, height: number): Uint8Array {
   const tmp = new Float32Array(width * height);
   const out = new Uint8Array(width * height);
+  if ((globalThis as typeof globalThis & {
+    __shinobuColdStartPixelFastPath?: boolean;
+  }).__shinobuColdStartPixelFastPath === true) {
+    for (let y = 0; y < height; y += 1) {
+      const row = y * width;
+      for (let x = 0; x < width; x += 1) {
+        let sum = 0;
+        if (x >= panelKernelRadius && x < width - panelKernelRadius) {
+          const p = row + x;
+          sum = src[p - 3] + src[p - 2] * 6 + src[p - 1] * 15
+            + src[p] * 20 + src[p + 1] * 15 + src[p + 2] * 6 + src[p + 3];
+        } else {
+          for (let k = -panelKernelRadius; k <= panelKernelRadius; k += 1) {
+            sum += src[row + clamp(x + k, 0, width - 1)] * panelKernel[k + panelKernelRadius];
+          }
+        }
+        tmp[row + x] = sum / panelKernelNorm;
+      }
+    }
+    for (let y = 0; y < height; y += 1) {
+      const [r0, r1, r2, r3, r4, r5, r6] = panelKernel.map((_, k) => (
+        clamp(y + k - panelKernelRadius, 0, height - 1) * width
+      ));
+      for (let x = 0; x < width; x += 1) {
+        const sum = tmp[r0 + x] + tmp[r1 + x] * 6 + tmp[r2 + x] * 15
+          + tmp[r3 + x] * 20 + tmp[r4 + x] * 15 + tmp[r5 + x] * 6 + tmp[r6 + x];
+        out[y * width + x] = Math.round(sum / panelKernelNorm);
+      }
+    }
+    return out;
+  }
 
   for (let y = 0; y < height; y += 1) {
     const rowOffset = y * width;
@@ -229,26 +263,60 @@ function detectPanels(sourceCanvas: PipelineCanvas, platform: PlatformProvider):
   const scaledWidth = Math.max(1, Math.round(sourceWidth * scale));
   const scaledHeight = Math.max(1, Math.round(sourceHeight * scale));
 
+  const observer = (globalThis as {
+    __shinobuColdStartInitMark?: (record: Record<string, unknown>) => void;
+  }).__shinobuColdStartInitMark;
+  const observe = typeof observer === "function" ? observer : undefined;
+  const startedAt = observe ? performance.now() : 0;
+  let previousAt = startedAt;
+  const timings: Record<string, number> | undefined = observe ? {} : undefined;
+  const mark = observe ? (field: string): void => {
+    const now = performance.now();
+    timings![field] = now - previousAt;
+    previousAt = now;
+  } : undefined;
+  let componentCount: number | undefined;
+  const finish = (panels: Panel[]): Panel[] => {
+    if (observe) {
+      try {
+        if (componentCount !== undefined) mark?.("rectFilterMs");
+        observe({ phase: "reading-panels.prepare", startedAt, durationMs: performance.now() - startedAt,
+          sourceWidth, sourceHeight, scaledWidth, scaledHeight, ...timings,
+          componentCount, panelCount: panels.length });
+      } catch { /* Optional diagnostics cannot affect panel detection. */ }
+    }
+    return panels;
+  };
+
   const work = platform.createCanvas(scaledWidth, scaledHeight);
   const ctx = work.getContext("2d", { willReadFrequently: true });
+  mark?.("canvasSetupMs");
   if (!ctx) {
-    return [];
+    return finish([]);
   }
   ctx.drawImage(sourceCanvas, 0, 0, scaledWidth, scaledHeight);
+  mark?.("canvasDrawResizeMs");
   const imageData = ctx.getImageData(0, 0, scaledWidth, scaledHeight);
+  mark?.("canvasReadMs");
 
   const gray = toGrayscale(imageData.data);
+  mark?.("grayMs");
   const blurred = blurGaussian7(gray, scaledWidth, scaledHeight);
+  mark?.("gaussianMs");
   const thresholded = thresholdToBinary(blurred, panelThreshold);
+  mark?.("thresholdMs");
   const { mask, width: borderedWidth, height: borderedHeight } = addWhiteBorderAndInvert(
     thresholded,
     scaledWidth,
     scaledHeight,
     panelBorderSize,
   );
+  mark?.("borderInvertMs");
 
   const minArea = panelMinAreaRef * scale * scale;
   const components = connectedComponents(mask, borderedWidth, borderedHeight);
+  mark?.("componentsMs");
+  componentCount = components.length;
   const panels: Panel[] = [];
   for (const component of components) {
     if (component.area < minArea) {
@@ -271,17 +339,17 @@ function detectPanels(sourceCanvas: PipelineCanvas, platform: PlatformProvider):
 
   const filtered = removeContainedPanels(panels);
   if (filtered.length === 0 || filtered.length > panelMaxCount) {
-    return [];
+    return finish([]);
   }
 
   const imageArea = sourceWidth * sourceHeight;
   const coveredArea = filtered.reduce((sum, panel) => sum + panel.width * panel.height, 0);
   const coverage = coveredArea / Math.max(1, imageArea);
   if (coverage < panelCoverageMin || coverage > panelCoverageMax) {
-    return [];
+    return finish([]);
   }
 
-  return filtered;
+  return finish(filtered);
 }
 
 function sortPanelsFill(panels: Panel[], rtl: boolean): Panel[] {
@@ -501,10 +569,24 @@ function simpleSort(regions: TextRegion[], rtl: boolean): TextRegion[] {
   return sorted;
 }
 
+export function prepareReadingPanels(
+  sourceCanvas: PipelineCanvas,
+  platform: PlatformProvider,
+): PreparedReadingPanels {
+  try {
+    return detectPanels(sourceCanvas, platform);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[reading-order] panel-aware 排序失败，回退 simple sort: ${message}`);
+    return null;
+  }
+}
+
 export function sortRegionsForRender(
   regions: TextRegion[],
   sourceCanvas: PipelineCanvas,
   platform: PlatformProvider,
+  preparedPanels?: PreparedReadingPanels,
 ): TextRegion[] {
   if (regions.length <= 1) {
     return [...regions];
@@ -513,8 +595,8 @@ export function sortRegionsForRender(
   const fallback = (): TextRegion[] => simpleSort(regions, defaultRtl);
 
   try {
-    const panels = detectPanels(sourceCanvas, platform);
-    if (panels.length === 0) {
+    const panels = preparedPanels === undefined ? detectPanels(sourceCanvas, platform) : preparedPanels;
+    if (!panels || panels.length === 0) {
       return fallback();
     }
 

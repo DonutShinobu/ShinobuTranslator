@@ -20,20 +20,7 @@ import {
 } from "./horizontalLayout";
 import type { RegionTypesetDebug } from "./fontMetrics";
 import type { CompositeTransform } from "./geometry";
-import { formatTypesetFont } from "./fontRuntime";
-
-// ---------------------------------------------------------------------------
-// Constants (horizontal-only)
-// ---------------------------------------------------------------------------
-
-const defaultFontFamily = '"MTX-SourceHanSans-CN", "Noto Sans CJK SC", "PingFang SC", sans-serif';
-
-function resolveFontFamily(targetLang?: string): string {
-  if (targetLang === 'zh-CHT') {
-    return '"MTX-SourceHanSans-TW", "Noto Sans CJK TC", "PingFang TC", sans-serif';
-  }
-  return defaultFontFamily;
-}
+import { formatTypesetFont, resolveTypesetFontFamily } from "./fontRuntime";
 // ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
@@ -62,7 +49,7 @@ export async function drawTypeset(
   // Ensure fonts are loaded before measuring/rendering
   await platform.waitForFonts();
 
-  const fontFamily = resolveFontFamily(targetLang);
+  const fontFamily = resolveTypesetFontFamily(targetLang);
 
   const out = platform.createCanvas(canvas.width, canvas.height);
 

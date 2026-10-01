@@ -11,6 +11,7 @@ import {
 } from '@shinobu/model-runtime';
 import { toErrorMessage } from '../../errorMessage';
 import { clamp, polygonArea, nmsBoxes, type ScoredBox } from "../utils";
+import { tryNativeOpaqueMaskThreshold } from "../image";
 
 type LetterboxResult = {
   input: Float32Array;
@@ -250,7 +251,14 @@ function binaryMaskToCanvas(mask: Uint8Array, width: number, height: number, pla
     throw new Error("文本检测遮罩输出无法创建画布上下文");
   }
   const image = ctx.createImageData(width, height);
-  for (let i = 0, p = 0; i < mask.length; i += 1, p += 4) {
+  if ((globalThis as { __shinobuColdStartMaskPacked?: boolean }).__shinobuColdStartMaskPacked === true
+    && image.data.byteOffset % 4 === 0 && image.data.length % 4 === 0) {
+    const pixels = new Uint32Array(image.data.buffer, image.data.byteOffset, image.data.length / 4);
+    const opaqueBlack = new Uint32Array(Uint8Array.of(0, 0, 0, 255).buffer)[0];
+    for (let i = 0; i < mask.length; i += 1) {
+      pixels[i] = mask[i] > 0 ? 0xffffffff : opaqueBlack;
+    }
+  } else for (let i = 0, p = 0; i < mask.length; i += 1, p += 4) {
     const value = mask[i] > 0 ? 255 : 0;
     image.data[p] = value;
     image.data[p + 1] = value;
@@ -268,18 +276,43 @@ function scaleMaskToOriginal(maskCanvas: PipelineCanvas, image: PipelineImage, p
     throw new Error("文本检测遮罩缩放失败");
   }
   ctx.imageSmoothingEnabled = true;
+  const drawT0 = performance.now();
   ctx.drawImage(maskCanvas, 0, 0, out.width, out.height);
+  markDetectorPostprocess('detector.mask-scale', drawT0);
+  const nativeThreshold = tryNativeOpaqueMaskThreshold(out, platform);
+  if (nativeThreshold) return nativeThreshold;
+  const readT0 = performance.now();
   const imageData = ctx.getImageData(0, 0, out.width, out.height);
+  markDetectorPostprocess('detector.mask-read', readT0);
   const data = imageData.data;
-  for (let p = 0; p < data.length; p += 4) {
+  const thresholdT0 = performance.now();
+  if ((globalThis as { __shinobuColdStartMaskPacked?: boolean }).__shinobuColdStartMaskPacked === true
+    && data.byteOffset % 4 === 0 && data.length % 4 === 0) {
+    const pixels = new Uint32Array(data.buffer, data.byteOffset, data.length / 4);
+    const opaqueBlack = new Uint32Array(Uint8Array.of(0, 0, 0, 255).buffer)[0];
+    for (let i = 0, p = 0; i < pixels.length; i += 1, p += 4) {
+      pixels[i] = data[p] > 127 ? 0xffffffff : opaqueBlack;
+    }
+  } else for (let p = 0; p < data.length; p += 4) {
     const value = data[p] > 127 ? 255 : 0;
     data[p] = value;
     data[p + 1] = value;
     data[p + 2] = value;
     data[p + 3] = 255;
   }
+  markDetectorPostprocess('detector.mask-threshold', thresholdT0);
+  const writeT0 = performance.now();
   ctx.putImageData(imageData, 0, 0);
+  markDetectorPostprocess('detector.mask-write', writeT0);
   return out;
+}
+
+function markDetectorPostprocess(phase: string, startedAt: number): void {
+  try {
+    (globalThis as {
+      __shinobuColdStartInitMark?: (record: Record<string, unknown>) => void;
+    }).__shinobuColdStartInitMark?.({ phase, startedAt, durationMs: performance.now() - startedAt });
+  } catch { /* Optional diagnostic observer. */ }
 }
 
 function buildMaskCanvasFromBinary(mask: Uint8Array, width: number, height: number, image: PipelineImage, platform: PlatformProvider): PipelineCanvas {
@@ -765,6 +798,7 @@ export async function detectByOnnx(
   image: PipelineImage,
   platform: PlatformProvider,
   modelRuntime: ModelRuntime,
+  onSubmitted?: () => void,
 ): Promise<DetectOutput> {
   const primaryHandle = await modelRuntime.getSession("detector");
   const inputSize = 1024;
@@ -781,7 +815,7 @@ export async function detectByOnnx(
       const imageBitmap = platform.createImageBitmap
         ? await platform.createImageBitmap(image)
         : await createImageBitmap(image as HTMLImageElement);
-      const gpuResult = await modelRuntime.runImage(primaryHandle.sessionId, imageBitmap);
+      const gpuResult = await modelRuntime.runImage(primaryHandle.sessionId, imageBitmap, onSubmitted);
       prep = {
         input: new Float32Array(0), // not needed for GPU path
         size: inputSize,
@@ -881,7 +915,9 @@ export async function detectByOnnx(
 
   const detTensor = pickDetTensor(outputTensors);
   if (detTensor) {
+    const regionT0 = performance.now();
     const regions = detectCtdRegionsFromDetTensor(detTensor, image, prep);
+    markDetectorPostprocess('detector.ctd-regions', regionT0);
 
     let maskTensor: TensorTransport = detTensor;
     try {

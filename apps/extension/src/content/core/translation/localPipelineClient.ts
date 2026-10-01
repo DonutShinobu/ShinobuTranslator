@@ -6,6 +6,7 @@ import {
 import {
   Base64ChunkAssembler,
   LOCAL_PIPELINE_CLIENT_PORT,
+  LOCAL_PIPELINE_STRUCTURED_CLONE_PROBE_TYPE,
   LocalPipelineRemoteError,
   createProtocolError,
   isLocalPipelineHostMessage,
@@ -24,7 +25,7 @@ import type {
 import type { PipelineConfig, PipelineProgress } from '@shinobu/image-pipeline';
 
 export type RunLocalPipeline = (
-  file: File,
+  file: File | Promise<File>,
   config: PipelineConfig,
   onProgress: (progress: PipelineProgress) => void,
   options?: { signal?: AbortSignal; precomputedDetection?: PrecomputedTextDetection },
@@ -244,6 +245,8 @@ export const runLocalDetectionProbe: RunLocalDetectionProbe = (file, options = {
 };
 
 export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, options = {}) => {
+  const inputFile = Promise.resolve(file);
+  void inputFile.catch(() => undefined);
   if (options.signal?.aborted) {
     return Promise.reject(cancellationRemoteError(options.signal.reason));
   }
@@ -258,15 +261,21 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
 
   const jobId = createJobId();
   const port = runtime.connect(LOCAL_PIPELINE_CLIENT_PORT);
+  const structuredCloneRequested = (globalThis as typeof globalThis & {
+    __shinobuColdStartStructuredClone?: boolean;
+  }).__shinobuColdStartStructuredClone === true;
   return new Promise<LocalPipelineResult>((resolve, reject) => {
     let settled = false;
     let transferStarted = false;
+    let structuredClone = false;
     let resultSummary: LocalPipelineArtifactSummary | null = null;
     let resultRecord: PipelineRecord | null = null;
     let resultStatus: LocalPipelineResult['status'] | null = null;
     let resultAssembler: Base64ChunkAssembler | null = null;
+    let resultBlob: Blob | null = null;
     let resultContentType = 'image/png';
     let debugAssembler: Base64ChunkAssembler | null = null;
+    let debugBlob: Blob | null = null;
     let debugContentType = 'image/png';
     let expectsDebug = false;
 
@@ -297,20 +306,24 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
         fail(cancellationRemoteError(options.signal.reason));
         return;
       }
-      if (!resultAssembler || !resultSummary || !resultRecord || !resultStatus) {
+      if ((!resultAssembler && !resultBlob) || !resultSummary || !resultRecord || !resultStatus) {
         fail(createProtocolError('结果完成消息早于结果元数据'));
         return;
       }
       try {
-        const resultBase64 = resultAssembler.complete();
+        const resultBase64 = resultAssembler?.complete();
         const debugBase64 = expectsDebug ? debugAssembler?.complete() : undefined;
-        if (expectsDebug && debugBase64 === undefined) {
+        if (expectsDebug && !debugBlob && debugBase64 === undefined) {
           throw createProtocolError('调试图片分块缺失');
         }
         const value: LocalPipelineResult = {
           status: resultStatus,
-          result: base64ToBlob(resultBase64, resultContentType),
-          debug: debugBase64 === undefined ? undefined : base64ToBlob(debugBase64, debugContentType),
+          result: resultBlob
+            ? resultBlob.type ? resultBlob : new Blob([resultBlob], { type: resultContentType })
+            : base64ToBlob(resultBase64!, resultContentType),
+          debug: debugBlob
+            ? debugBlob.type ? debugBlob : new Blob([debugBlob], { type: debugContentType })
+            : debugBase64 === undefined ? undefined : base64ToBlob(debugBase64, debugContentType),
           summary: resultSummary,
           record: resultRecord,
         };
@@ -330,27 +343,31 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
       if (transferStarted || settled) return;
       transferStarted = true;
       try {
+        const source = await inputFile;
+        if (settled) return;
         const [base64, packedMaskBase64] = await Promise.all([
-          blobToBase64(file),
+          structuredClone ? Promise.resolve('') : blobToBase64(source),
           options.precomputedDetection
             ? blobToBase64(options.precomputedDetection.packedMask)
             : Promise.resolve(undefined),
         ]);
+        if (settled) return;
         const chunks = splitBase64Chunks(base64);
         post(port, {
           type: 'start',
           jobId,
           file: {
-            name: file.name,
-            type: file.type || 'image/png',
-            size: file.size,
-            lastModified: file.lastModified,
+            name: source.name,
+            type: source.type || 'image/png',
+            size: source.size,
+            lastModified: source.lastModified,
           },
           config,
           input: {
             chunkCount: chunks.length,
             totalChars: base64.length,
           },
+          ...(structuredClone ? { binaryFile: source } : {}),
           ...(options.precomputedDetection && packedMaskBase64
             ? {
                 detection: {
@@ -380,6 +397,9 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
       if (value.type === 'host-ready' || value.type === 'idle-close') return;
       switch (value.type) {
         case 'ready':
+          if (!transferStarted) {
+            structuredClone = structuredCloneRequested && value.structuredClone === true;
+          }
           void sendInput();
           break;
         case 'queued':
@@ -396,18 +416,24 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
           fail(createProtocolError('图片流水线收到了检测预检结果'));
           break;
         case 'result-meta':
-          if (resultAssembler) {
+          if (resultStatus) {
             fail(createProtocolError('收到重复结果元数据'));
             return;
           }
-          resultAssembler = new Base64ChunkAssembler(value.result);
+          if (!structuredClone && (value.resultBlob || value.debugBlob)) {
+            fail(createProtocolError('收到未经协商的二进制结果'));
+            return;
+          }
+          resultBlob = value.resultBlob ?? null;
+          resultAssembler = resultBlob ? null : new Base64ChunkAssembler(value.result);
           resultContentType = value.result.contentType;
           resultSummary = value.summary;
           resultRecord = value.record;
           resultStatus = value.status;
           expectsDebug = Boolean(value.debug);
           if (value.debug) {
-            debugAssembler = new Base64ChunkAssembler(value.debug);
+            debugBlob = value.debugBlob ?? null;
+            debugAssembler = debugBlob ? null : new Base64ChunkAssembler(value.debug);
             debugContentType = value.debug.contentType;
           }
           break;
@@ -453,6 +479,7 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
 
     port.onMessage.addListener(onMessage);
     port.onDisconnect.addListener(onDisconnect);
+    void inputFile.catch(fail);
     options.signal?.addEventListener('abort', onAbort, { once: true });
     if (options.signal?.aborted) {
       onAbort();
@@ -463,6 +490,11 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
         type: 'prepare',
         jobId,
         diagnosticRunId: config.diagnosticRunId,
+        ...(structuredCloneRequested ? {
+          structuredCloneProbe: new Blob([Uint8Array.of(83)], {
+            type: LOCAL_PIPELINE_STRUCTURED_CLONE_PROBE_TYPE,
+          }),
+        } : {}),
       });
     } catch (error) {
       fail(error);

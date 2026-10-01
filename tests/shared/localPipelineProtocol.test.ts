@@ -1,202 +1,54 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createPipelineRecord } from '@shinobu/image-pipeline';
 import {
-  Base64ChunkAssembler,
-  LOCAL_PIPELINE_CHUNK_SIZE,
-  LocalPipelineRemoteError,
   isLocalPipelineClientMessage,
-  serializePipelineError,
-  splitBase64Chunks,
-} from '../../packages/image-pipeline/src/protocol/index';
+  isLocalPipelineHostMessage,
+  LOCAL_PIPELINE_STRUCTURED_CLONE_PROBE_TYPE,
+  supportsLocalPipelineStructuredClone,
+} from '@shinobu/image-pipeline/protocol';
 
-describe('local pipeline Port protocol', () => {
-  it('splits Base64 at the 4 MiB boundary', () => {
-    const value = 'a'.repeat(LOCAL_PIPELINE_CHUNK_SIZE + 3);
-    const chunks = splitBase64Chunks(value);
+describe('local pipeline native Blob transport validation', () => {
+  afterEach(() => vi.unstubAllGlobals());
 
-    expect(chunks).toHaveLength(2);
-    expect(chunks[0]).toHaveLength(LOCAL_PIPELINE_CHUNK_SIZE);
-    expect(chunks[1]).toBe('aaa');
-    expect(chunks.join('')).toBe(value);
+  it('requires the experiment and an actual Blob probe', () => {
+    const probe = new Blob([Uint8Array.of(83)], { type: LOCAL_PIPELINE_STRUCTURED_CLONE_PROBE_TYPE });
+    expect(supportsLocalPipelineStructuredClone(probe)).toBe(false);
+    vi.stubGlobal('__shinobuColdStartStructuredClone', true);
+    expect(supportsLocalPipelineStructuredClone(probe)).toBe(true);
+    expect(supportsLocalPipelineStructuredClone({})).toBe(false);
+    expect(supportsLocalPipelineStructuredClone(new Blob(['x']))).toBe(false);
+    expect(supportsLocalPipelineStructuredClone(new Blob(['xx'], { type: probe.type }))).toBe(false);
   });
 
-  it('accepts out-of-order chunks and restores their index order', () => {
-    const assembler = new Base64ChunkAssembler({ chunkCount: 3, totalChars: 6 });
-    assembler.add(2, 'ef');
-    assembler.add(0, 'ab');
-    assembler.add(1, 'cd');
-
-    expect(assembler.complete()).toBe('abcdef');
-  });
-
-  it('rejects duplicate, missing, and length-mismatched chunks', () => {
-    const duplicate = new Base64ChunkAssembler({ chunkCount: 1, totalChars: 2 });
-    duplicate.add(0, 'ab');
-    expect(() => duplicate.add(0, 'ab')).toThrow('重复分块');
-
-    const missing = new Base64ChunkAssembler({ chunkCount: 2, totalChars: 2 });
-    missing.add(1, 'b');
-    expect(() => missing.complete()).toThrow('分块缺失');
-
-    const wrongLength = new Base64ChunkAssembler({ chunkCount: 1, totalChars: 3 });
-    wrongLength.add(0, 'ab');
-    expect(() => wrongLength.complete()).toThrow('总长度不符');
-  });
-
-  it('validates message shape and chunk size', () => {
-    expect(isLocalPipelineClientMessage({ type: 'prepare', jobId: 'job-1' })).toBe(true);
-    expect(isLocalPipelineClientMessage({ type: 'prepare', jobId: '' })).toBe(false);
-    expect(isLocalPipelineClientMessage({
-      type: 'start',
-      jobId: 'job-1',
-      file: { name: 'source.png', type: 'image/png', size: 1, lastModified: 1 },
-      config: {},
-      input: { chunkCount: 1, totalChars: 4 },
-    })).toBe(false);
-    expect(isLocalPipelineClientMessage({
-      type: 'input-chunk',
-      jobId: 'job-1',
-      index: 0,
-      data: 'a'.repeat(LOCAL_PIPELINE_CHUNK_SIZE + 1),
-    })).toBe(false);
-    expect(isLocalPipelineClientMessage({
-      type: 'cancel',
-      jobId: 'job-1',
-      reason: {
-        code: 'owner-ended',
-        messageKey: 'pipeline.cancelled.ownerEnded',
-        diagnosticSummary: 'owner closed',
-      },
-    })).toBe(true);
-    expect(isLocalPipelineClientMessage({
-      type: 'cancel',
-      jobId: 'job-1',
-      reason: {
-        code: 'made-up',
-        messageKey: 'pipeline.cancelled.ownerEnded',
-      },
-    })).toBe(false);
-  });
-
-  it('accepts a well-formed tweet context and rejects malformed context at the Port boundary', () => {
-    const startMessage = {
-      type: 'start',
-      jobId: 'job-1',
-      file: { name: 'source.png', type: 'image/png', size: 1, lastModified: 1 },
+  it('rejects malformed, wrong-size, or mixed native/base64 input', () => {
+    const start = {
+      type: 'start', jobId: 'test',
+      file: { name: 'source.png', type: 'image/png', size: 1, lastModified: 0 },
       config: {
-        sourceLang: 'ja',
-        targetLang: 'zh-CHS',
-        translator: 'llm',
-        llmProvider: 'openai',
-        llmAuthMode: 'api_key',
-        llmBaseUrl: 'https://api.openai.com/v1',
-        llmModel: 'gpt-5.4-mini',
-        typesetDebug: false,
-        eraseDebug: false,
-        collectDebugLog: false,
-        ocrEngine: 'paddleocr_v6_medium',
-        processMode: 'translate',
+        sourceLang: 'ja', targetLang: 'zh-CN', translator: 'google_web', llmProvider: 'openai',
+        llmAuthMode: 'api_key', llmBaseUrl: '', llmModel: '', typesetDebug: false,
+        eraseDebug: false, collectDebugLog: false, ocrEngine: 'paddleocr_v6_medium', processMode: 'erase',
       },
-      input: { chunkCount: 1, totalChars: 4 },
+      input: { chunkCount: 0, totalChars: 0 }, binaryFile: new Blob(['x'], { type: 'image/png' }),
     };
-
-    expect(isLocalPipelineClientMessage({
-      ...startMessage,
-      config: {
-        ...startMessage.config,
-        translationContext: {
-          source: 'x_tweet',
-          currentTweetText: '当前推文正文',
-          quotedTweetText: '引用推文正文',
-        },
-      },
-    })).toBe(true);
-    expect(isLocalPipelineClientMessage({
-      ...startMessage,
-      config: {
-        ...startMessage.config,
-        llmApiKey: 'sk-must-not-cross-the-boundary',
-      },
-    })).toBe(false);
-    expect(isLocalPipelineClientMessage({
-      ...startMessage,
-      config: {
-        ...startMessage.config,
-        translationContext: {
-          source: 'x_tweet',
-          currentTweetText: 42,
-        },
-      },
-    })).toBe(false);
-    expect(isLocalPipelineClientMessage({
-      ...startMessage,
-      config: {
-        ...startMessage.config,
-        translationContext: {
-          source: 'page_text',
-          currentTweetText: '当前推文正文',
-        },
-      },
-    })).toBe(false);
+    expect(isLocalPipelineClientMessage(start)).toBe(true);
+    expect(isLocalPipelineClientMessage({ ...start, binaryFile: {} })).toBe(false);
+    expect(isLocalPipelineClientMessage({ ...start, binaryFile: new Blob(['xx']) })).toBe(false);
+    expect(isLocalPipelineClientMessage({ ...start, input: { chunkCount: 1, totalChars: 4 } })).toBe(false);
   });
 
-  it('serializes nested and circular causes with stable error codes', () => {
-    const root = new Error('root') as Error & { code?: string };
-    root.code = 'WORKER_BOOTSTRAP_FAILED';
-    const outer = new Error('outer', { cause: root });
-    Object.defineProperty(root, 'cause', { value: outer, configurable: true });
-
-    const serialized = serializePipelineError(outer);
-    expect(serialized.message).toBe('outer');
-    expect(serialized.cause).toMatchObject({
-      message: 'root',
-      code: 'WORKER_BOOTSTRAP_FAILED',
-      cause: '[CIRCULAR_CAUSE]',
-    });
-
-    const remote = new LocalPipelineRemoteError(serialized);
-    expect(remote.message).toBe('outer');
-    expect(remote.code).toBe('PIPELINE_STAGE_FAILED');
-  });
-
-  it('preserves only the safe shared failure envelope across the legacy Port boundary', () => {
-    const error = Object.assign(new Error('Authorization: Bearer secret-token'), {
-      code: 'PIPELINE_STAGE_FAILED',
-      cause: new Error('provider response contained secret-token'),
-      failure: {
-        code: 'IMAGE_DECODE_FAILED',
-        stage: 'decode',
-        scope: 'image',
-        retryable: true,
-        messageKey: 'pipeline.failure.imageDecode',
-        diagnostics: {
-          format: 'image/avif',
-        },
-      },
-    });
-
-    const serialized = serializePipelineError(error);
-    expect(serialized).toMatchObject({
-      code: 'IMAGE_DECODE_FAILED',
-      message: 'pipeline.failure.imageDecode',
-      scope: 'image',
-      retryable: true,
-      messageKey: 'pipeline.failure.imageDecode',
-      diagnostics: {
-        format: 'image/avif',
-      },
-    });
-    expect(JSON.stringify(serialized)).not.toContain('secret-token');
-    expect(serialized).not.toHaveProperty('stack');
-    expect(serialized).not.toHaveProperty('cause');
-
-    const remote = new LocalPipelineRemoteError(serialized);
-    expect(remote).toMatchObject({
-      scope: 'image',
-      retryable: true,
-      messageKey: 'pipeline.failure.imageDecode',
-      diagnostics: {
-        format: 'image/avif',
-      },
-    });
+  it('rejects malformed, wrong-type, mixed or orphan native PNG artifacts', () => {
+    const result = {
+      type: 'result-meta', jobId: 'test', status: 'completed',
+      result: { contentType: 'image/png', chunkCount: 0, totalChars: 0 },
+      resultBlob: new Blob(['png'], { type: 'image/png' }),
+      summary: { image: { width: 1, height: 1 }, detectedRegionCount: 0, stageTimings: [], runtimeStages: [] },
+      record: createPipelineRecord({ image: { width: 1, height: 1 }, ocr: [], ordered: [] }, { strategy: 'source-native' }),
+    };
+    expect(isLocalPipelineHostMessage(result)).toBe(true);
+    expect(isLocalPipelineHostMessage({ ...result, resultBlob: {} })).toBe(false);
+    expect(isLocalPipelineHostMessage({ ...result, resultBlob: new Blob(['x'], { type: 'image/jpeg' }) })).toBe(false);
+    expect(isLocalPipelineHostMessage({ ...result, result: { ...result.result, chunkCount: 1, totalChars: 4 } })).toBe(false);
+    expect(isLocalPipelineHostMessage({ ...result, debugBlob: result.resultBlob })).toBe(false);
   });
 });

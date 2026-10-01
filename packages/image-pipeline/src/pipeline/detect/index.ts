@@ -22,10 +22,11 @@ export async function detectTextRegionsWithMask(
   platform: PlatformProvider,
   modelRuntime: ModelRuntime,
   fallbackStrategy: DetectionFallbackStrategy,
+  onSubmitted?: () => void,
 ): Promise<DetectOutput> {
   const fallbackReasons: string[] = [];
   try {
-    const onnxResult = await detectByOnnx(image, platform, modelRuntime);
+    const onnxResult = await detectByOnnx(image, platform, modelRuntime, onSubmitted);
     return { ...onnxResult, engine: "onnx" };
   } catch (error) {
     const reason = toErrorMessage(error);

@@ -9,6 +9,7 @@ import type { ConsoleMessage, Page } from "@playwright/test";
 import type { Worker as PlaywrightWorker } from "@playwright/test";
 import type { ProcessMode } from "../../../apps/extension/src/shared/config";
 import type { ProgressJankReport } from "../../../apps/extension/src/content/core/types";
+import type { ExtensionPort } from "../../../apps/extension/src/shared/extensionRuntime";
 import { applyExtensionControlPatch } from './extension-control-driver';
 import { ensureExtensionDistReady } from './dist-contract';
 
@@ -286,7 +287,7 @@ async function main(): Promise<void> {
   const reports: ProgressJankReport[] = [];
 
   const context = await chromium.launchPersistentContext(USER_DATA_DIR, {
-    executablePath: chromium.executablePath(),
+    executablePath: argValue("browser-executable") ?? chromium.executablePath(),
     headless: false,
     ignoreDefaultArgs: ["--disable-extensions"],
     args: [
@@ -321,6 +322,19 @@ async function main(): Promise<void> {
     if (!extensionId) {
       throw new Error(`Unable to parse extension id from service worker URL: ${worker.url()}`);
     }
+    await worker.evaluate(() => {
+      const { chrome } = globalThis as typeof globalThis & {
+        chrome: { runtime: { onConnect: { addListener(listener: (port: ExtensionPort) => void): void } } };
+      };
+      chrome.runtime.onConnect.addListener((port) => {
+        port.onMessage.addListener((message) => {
+          const result = message as { type?: string; summary?: unknown };
+          if (result?.type === 'result-meta') {
+            (globalThis as typeof globalThis & { __pipelineSummary?: unknown }).__pipelineSummary = result.summary;
+          }
+        });
+      });
+    });
     await applyExtensionControlPatch(context, extensionId, {
       patch: {
         processMode,
@@ -334,6 +348,8 @@ async function main(): Promise<void> {
     });
 
     const page = await context.newPage();
+    const displayTools = process.argv.includes('--display-profile') || process.argv.includes('--blob-lifetime-check')
+      ? await import(new URL('./cold-start-display-probe.mjs', import.meta.url).href) : undefined;
     page.setDefaultTimeout(900000);
     page.on("console", (message) => {
       void readJankReportFromConsole(message).then((report) => {
@@ -353,6 +369,13 @@ async function main(): Promise<void> {
     const { gpu } = await browserCdp.send("SystemInfo.getInfo");
     console.log(JSON.stringify({ gpu: gpu.devices }));
     const cdp = await context.newCDPSession(page);
+    let jankFinishedEpochMs: number | undefined;
+    cdp.on('Runtime.consoleAPICalled', (event) => {
+      if (event.args.some((arg) => arg.value === '[shinobu:jank]')) {
+        jankFinishedEpochMs = event.timestamp;
+      }
+    });
+    await cdp.send('Runtime.enable');
     const trace = process.argv.includes("--trace");
     if (trace) await cdp.send("Tracing.start", {
       categories: "toplevel,gpu,viz,blink,devtools.timeline,disabled-by-default-gpu.service,disabled-by-default-gpu.dawn",
@@ -361,12 +384,33 @@ async function main(): Promise<void> {
     let exceeded = false;
     for (let runIndex = 0; runIndex < runs; runIndex += 1) {
       reports.length = 0;
+      jankFinishedEpochMs = undefined;
+      await worker.evaluate(() => {
+        delete (globalThis as typeof globalThis & { __pipelineSummary?: unknown }).__pipelineSummary;
+      });
       await page.goto(server.url, { waitUntil: "domcontentloaded" });
       await page.bringToFront();
       await page.waitForFunction(() => Boolean(document.getElementById("mt-overlay-style")), undefined, {
         timeout: 30000,
       });
       await moveMouseToImage(page);
+      if (process.argv.includes('--display-profile')) await displayTools.installColdStartDisplayProbe(page);
+      await page.evaluate(() => {
+        const state = { decodedEpochMs: 0, frameEpochMs: 0 };
+        (globalThis as typeof globalThis & { __resultDisplay?: typeof state }).__resultDisplay = state;
+        const observer = new MutationObserver(() => {
+          const image = document.querySelector<HTMLImageElement>('.mt-x-screenshot-result[data-image="translated"] img');
+          if (!image?.getAttribute('src')) return;
+          observer.disconnect();
+          void image.decode().then(() => {
+            state.decodedEpochMs = performance.timeOrigin + performance.now();
+            requestAnimationFrame(() => { state.frameEpochMs = performance.timeOrigin + performance.now(); });
+          });
+        });
+        observer.observe(document.documentElement, {
+          subtree: true, childList: true, attributes: true, attributeFilter: ['src', 'data-image'],
+        });
+      });
 
       const cpuBefore = cpus();
       if (witnessPage) await witnessPage.evaluate(() => {
@@ -408,6 +452,19 @@ async function main(): Promise<void> {
         throw new Error(`Hover shortcut failed: ${response.error ?? JSON.stringify(response)}`);
       }
       const report = await waitForJankReport(reports);
+      // Record display before hashing the full image; readback itself can delay a frame.
+      await page.waitForFunction(() => (
+        globalThis as typeof globalThis & { __resultDisplay?: { frameEpochMs: number } }
+      ).__resultDisplay?.frameEpochMs);
+      const display = await page.evaluate(() => (
+        globalThis as typeof globalThis & { __resultDisplay?: { decodedEpochMs: number; frameEpochMs: number } }
+      ).__resultDisplay);
+      const displayTailMs = display && jankFinishedEpochMs !== undefined
+        ? Math.max(0, display.frameEpochMs - jankFinishedEpochMs) : undefined;
+      const visibleResultMs = displayTailMs === undefined ? undefined : report.totalMs + displayTailMs;
+      const displayDiagnostics = process.argv.includes('--display-profile')
+        ? await displayTools.readColdStartDisplayProbe(page) : undefined;
+      if (process.argv.includes('--display-profile')) await displayTools.disposeColdStartDisplayProbe(page);
       const spinner = await readSpinnerStatus(page);
       const resultImage = await page.locator('.mt-x-screenshot-result[data-image="translated"] img').evaluate(async (element) => {
         const image = element as HTMLImageElement;
@@ -422,6 +479,8 @@ async function main(): Promise<void> {
         return { width: canvas.width, height: canvas.height,
           sha256: Array.from(new Uint8Array(hash), value => value.toString(16).padStart(2, '0')).join('') };
       });
+      const blobLifetime = process.argv.includes('--blob-lifetime-check') && runIndex === runs - 1
+        ? await displayTools.checkResultBlobAfterOffscreenClose(page, worker) : undefined;
       const smokeReport: JankSmokeReport = {
         createdAt: new Date().toISOString(),
         extensionId,
@@ -440,7 +499,10 @@ async function main(): Promise<void> {
         return { raf: summarize(state.raf), timer: summarize(state.timer) };
       });
       const system = { cpuBusyPercent: 100 * (1 - idleTicks / totalTicks), minFreeMemoryBytes, witness };
-      writeFileSync(reportPath, JSON.stringify({ ...smokeReport, runIndex, browserVersion: context.browser()?.version(), gpuDevices: gpu.devices, system, workerProbeRecords, resultImage }, null, 2));
+      const pipelineSummary = await worker.evaluate(() => (
+        globalThis as typeof globalThis & { __pipelineSummary?: unknown }
+      ).__pipelineSummary);
+      writeFileSync(reportPath, JSON.stringify({ ...smokeReport, runIndex, browserVersion: context.browser()?.version(), gpuDevices: gpu.devices, system, workerProbeRecords, resultImage, pipelineSummary, displayTailMs, visibleResultMs, displayDiagnostics, blobLifetime }, null, 2));
       console.log(JSON.stringify({ system }));
       console.log(`run=${runIndex + 1} cold=${runIndex === 0}`);
       printSummary(report, spinner);

@@ -3,6 +3,7 @@ import { createPipelineRecord } from '@shinobu/image-pipeline';
 import type { ExtensionBrowserApi, ExtensionPort } from '../../../apps/extension/src/shared/extensionRuntime';
 import {
   LOCAL_PIPELINE_CLIENT_PORT,
+  LOCAL_PIPELINE_STRUCTURED_CLONE_PROBE_TYPE,
 } from '../../../packages/image-pipeline/src/protocol/index';
 import type { PipelineConfig } from '../../../packages/image-pipeline/src/types';
 
@@ -132,6 +133,134 @@ describe('runLocalPipeline', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('transfers native File and completed PNG Blobs only after capability acknowledgement', async () => {
+    vi.stubGlobal('__shinobuColdStartStructuredClone', true);
+    const read = vi.spyOn(FakeFileReader.prototype, 'readAsDataURL');
+    const client = new FakePort(LOCAL_PIPELINE_CLIENT_PORT);
+    vi.stubGlobal('chrome', { runtime: { connect: () => client } } satisfies ExtensionBrowserApi);
+    const { runLocalPipeline } = await import(
+      '../../../apps/extension/src/content/core/translation/localPipelineClient'
+    );
+    const source = new File([Uint8Array.of(0, 128, 255)], 'source.png', { type: 'image/png' });
+    const pending = runLocalPipeline(source, pipelineConfig, () => undefined);
+    const prepare = client.sent[0] as { jobId: string; structuredCloneProbe: Blob };
+    expect(prepare.structuredCloneProbe).toBeInstanceOf(Blob);
+    expect(prepare.structuredCloneProbe.type).toBe(LOCAL_PIPELINE_STRUCTURED_CLONE_PROBE_TYPE);
+    client.emitMessage({ type: 'ready', jobId: prepare.jobId, structuredClone: true });
+    await vi.waitFor(() => expect(client.sent).toContainEqual({ type: 'input-complete', jobId: prepare.jobId }));
+    expect(client.sent).toContainEqual(expect.objectContaining({
+      type: 'start', binaryFile: source, input: { chunkCount: 0, totalChars: 0 },
+    }));
+    expect(client.sent.some((message) => (message as { type: string }).type === 'input-chunk')).toBe(false);
+    expect(read).not.toHaveBeenCalled();
+    const resultBlob = new Blob([Uint8Array.of(3, 127, 255)], { type: 'image/png' });
+    const debugBlob = new Blob([Uint8Array.of(5, 255)], { type: 'image/png' });
+    client.emitMessage({
+      type: 'result-meta', jobId: prepare.jobId, status: 'completed',
+      result: { contentType: 'image/png', chunkCount: 0, totalChars: 0 }, resultBlob,
+      debug: { contentType: 'image/png', chunkCount: 0, totalChars: 0 }, debugBlob,
+      summary: { image: { width: 1, height: 1 }, detectedRegionCount: 0, stageTimings: [], runtimeStages: [] },
+      record,
+    });
+    expect(client.disconnected).toBe(false);
+    client.emitMessage({ type: 'complete', jobId: prepare.jobId });
+    const result = await pending;
+    expect(result.result).toBe(resultBlob);
+    expect(result.debug).toBe(debugBlob);
+    expect(new Uint8Array(await result.result.arrayBuffer())).toEqual(Uint8Array.of(3, 127, 255));
+    expect(client.disconnected).toBe(true);
+    read.mockRestore();
+  });
+
+  it('falls back to Base64 when a requested capability is not acknowledged', async () => {
+    vi.stubGlobal('__shinobuColdStartStructuredClone', true);
+    const read = vi.spyOn(FakeFileReader.prototype, 'readAsDataURL');
+    const client = new FakePort(LOCAL_PIPELINE_CLIENT_PORT);
+    vi.stubGlobal('chrome', { runtime: { connect: () => client } } satisfies ExtensionBrowserApi);
+    const { runLocalPipeline } = await import(
+      '../../../apps/extension/src/content/core/translation/localPipelineClient'
+    );
+    await completePipelineRun(runLocalPipeline, client);
+    expect(client.sent).toContainEqual(expect.objectContaining({ type: 'input-chunk', data: 'AQ==' }));
+    expect(client.sent.find((message) => (message as { type: string }).type === 'start'))
+      .not.toHaveProperty('binaryFile');
+    expect(read).toHaveBeenCalledOnce();
+    read.mockRestore();
+  });
+
+  it('rejects an unsolicited native Blob result', async () => {
+    const client = new FakePort(LOCAL_PIPELINE_CLIENT_PORT);
+    vi.stubGlobal('chrome', { runtime: { connect: () => client } } satisfies ExtensionBrowserApi);
+    const { runLocalPipeline } = await import(
+      '../../../apps/extension/src/content/core/translation/localPipelineClient'
+    );
+    const pending = runLocalPipeline(new File(['x'], 'source.png'), pipelineConfig, () => undefined);
+    const { jobId } = client.sent[0] as { jobId: string };
+    const rejected = expect(pending).rejects.toMatchObject({ code: 'TRANSFER_PROTOCOL_ERROR' });
+    client.emitMessage({
+      type: 'result-meta', jobId, status: 'completed',
+      result: { contentType: 'image/png', chunkCount: 0, totalChars: 0 },
+      resultBlob: new Blob(['x'], { type: 'image/png' }),
+      summary: { image: { width: 1, height: 1 }, detectedRegionCount: 0, stageTimings: [], runtimeStages: [] },
+      record,
+    });
+    await rejected;
+    expect(client.disconnected).toBe(true);
+  });
+
+  it('opens the Port before a promised input arrives and closes it on source failure', async () => {
+    const client = new FakePort(LOCAL_PIPELINE_CLIENT_PORT);
+    vi.stubGlobal('chrome', {
+      runtime: { connect: () => client },
+    } satisfies ExtensionBrowserApi);
+    const { runLocalPipeline } = await import(
+      '../../../apps/extension/src/content/core/translation/localPipelineClient'
+    );
+    let rejectSource!: (error: Error) => void;
+    const source = new Promise<File>((_resolve, reject) => { rejectSource = reject; });
+    const result = runLocalPipeline(source, pipelineConfig, () => undefined);
+    const prepare = client.sent[0] as { jobId: string };
+    expect(client.sent[0]).toMatchObject({ type: 'prepare' });
+    client.emitMessage({ type: 'ready', jobId: prepare.jobId });
+    await Promise.resolve();
+    expect(client.sent).toHaveLength(1);
+    const failure = new Error('download failed');
+    const rejected = expect(result).rejects.toBe(failure);
+    rejectSource(failure);
+    await rejected;
+    expect(client.disconnected).toBe(true);
+    expect(client.sent).toHaveLength(1);
+  });
+
+  it.each([false, true])('does not transfer a promised input after cancellation (native=%s)', async (native) => {
+    vi.stubGlobal('__shinobuColdStartStructuredClone', native);
+    const client = new FakePort(LOCAL_PIPELINE_CLIENT_PORT);
+    vi.stubGlobal('chrome', {
+      runtime: { connect: () => client },
+    } satisfies ExtensionBrowserApi);
+    const { runLocalPipeline } = await import(
+      '../../../apps/extension/src/content/core/translation/localPipelineClient'
+    );
+    let resolveSource!: (file: File) => void;
+    const source = new Promise<File>((resolve) => { resolveSource = resolve; });
+    const controller = new AbortController();
+    const result = runLocalPipeline(source, pipelineConfig, () => undefined, { signal: controller.signal });
+    const { jobId } = client.sent[0] as { jobId: string };
+    client.emitMessage({ type: 'ready', jobId, structuredClone: native });
+    const rejected = expect(result).rejects.toMatchObject({ code: 'TASK_CANCELLED' });
+    controller.abort('closed');
+    client.emitMessage({
+      type: 'error', jobId,
+      error: { name: 'ImagePipelineCancelledError', code: 'TASK_CANCELLED', message: 'cancelled' },
+    });
+    await rejected;
+    resolveSource(new File(['source'], 'source.png', { type: 'image/png' }));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(client.disconnected).toBe(true);
+    expect(client.sent.map((message) => (message as { type: string }).type)).toEqual(['prepare', 'cancel']);
   });
 
   it('opens one client Port per completed pipeline job', async () => {

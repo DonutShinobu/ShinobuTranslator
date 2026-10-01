@@ -5,6 +5,7 @@ import react from '@vitejs/plugin-react';
 import type { Plugin, UserConfig } from 'vite';
 import { browserRuntimeBoundaryPlugin } from '../../scripts/vite-browser-runtime-boundary';
 import { createExtensionManifest, type ExtensionTarget } from './manifest';
+import { chromiumColdStartBanner } from '../../scripts/cold-start-defaults.mjs';
 
 const extensionRoot = import.meta.dirname;
 const repoRoot = resolve(extensionRoot, '../..');
@@ -158,6 +159,7 @@ export default defineConfig(({ mode }): UserConfig => {
           offscreen: resolve(extensionRoot, 'offscreen.html'),
         },
         output: {
+          banner: target === 'chromium' ? chromiumColdStartBanner : '',
           onlyExplicitManualChunks: true,
           entryFileNames: (chunkInfo) => `${chunkInfo.name}.js`,
           chunkFileNames: 'chunks/[name].js',

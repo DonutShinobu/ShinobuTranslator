@@ -50,7 +50,10 @@ function completedLocalResult(image: Blob): LocalPipelineResult {
   };
 }
 
-afterEach(() => setActiveContentSessionId(undefined));
+afterEach(() => {
+  setActiveContentSessionId(undefined);
+  vi.unstubAllGlobals();
+});
 
 function executionSnapshot(
   settings: ExtensionSettings = defaultExtensionSettings,
@@ -102,6 +105,29 @@ function prepareExecution(
 }
 
 describe('ImageTranslationExecutionModule', () => {
+  it('starts the local Port while acquiring a remote source', async () => {
+    vi.stubGlobal('__shinobuColdStartOverlap', true);
+    const file = new File(['source'], 'source.png', { type: 'image/png' });
+    let finishDownload!: (source: { file: File; blob: Blob; originalUrl: string }) => void;
+    const sourceReady = new Promise<{ file: File; blob: Blob; originalUrl: string }>((resolve) => {
+      finishDownload = resolve;
+    });
+    const runLocalPipeline = vi.fn(async (source: File | Promise<File>) => {
+      expect(await source).toBe(file);
+      return completedLocalResult(new Blob(['result']));
+    });
+    const module = createImageTranslationExecutionModule({
+      prepareExecution: prepareExecution(),
+      downloadImage: async () => sourceReady,
+      runLocalPipeline,
+    });
+    const task = module.start({ source: { kind: 'remote-image', url: 'https://example.com/source.png' } });
+    await vi.waitFor(() => expect(runLocalPipeline).toHaveBeenCalledOnce());
+    expect(runLocalPipeline.mock.calls[0]![0]).toBeInstanceOf(Promise);
+    finishDownload({ file, blob: file, originalUrl: 'https://example.com/source.png' });
+    await expect(task.result).resolves.toMatchObject({ source: { file } });
+  });
+
   it('forwards a reusable precomputed detection only to the local pipeline', async () => {
     const runLocalPipeline = vi.fn(async () => completedLocalResult(
       new Blob(['translated'], { type: 'image/png' }),

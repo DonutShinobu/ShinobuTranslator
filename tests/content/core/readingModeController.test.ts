@@ -603,8 +603,8 @@ describe('ReadingModeController', () => {
       applyImageByKey,
     };
     const translatedInputs: string[] = [];
-    const runLocalPipeline = vi.fn(async (file: File) => {
-      translatedInputs.push(await file.text());
+    const runLocalPipeline = vi.fn(async (file: File | Promise<File>) => {
+      translatedInputs.push(await (await file).text());
       return localResult();
     });
     const bar = createFakeBar();

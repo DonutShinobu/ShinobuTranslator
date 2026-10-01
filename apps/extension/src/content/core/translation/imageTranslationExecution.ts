@@ -7,7 +7,11 @@ import type {
   LocalPipelineArtifactSummary,
   LocalPipelineResult,
 } from '@shinobu/image-pipeline/protocol';
-import { base64ToBlob, blobToBase64 } from '@shinobu/image-pipeline/protocol';
+import {
+  base64ToBlob,
+  blobToBase64,
+  LOCAL_PIPELINE_STRUCTURED_CLONE_PROBE_TYPE,
+} from '@shinobu/image-pipeline/protocol';
 import type { TranslationFailure, TranslationTask } from '@shinobu/translator-core';
 import {
   TranslationCancelledError,
@@ -26,6 +30,7 @@ import {
 } from '../../../shared/extensionControl';
 import type {
   CloudImageTranslateMetadata,
+  DownloadImageMessage,
   RuntimeErrorDetail,
 } from '../../../shared/messages';
 import { getActiveContentSessionId } from '../../../shared/contentSession';
@@ -366,7 +371,7 @@ export function createRuntimeImageDownloader(
     }
     try {
       const contentSessionId = getActiveContentSessionId();
-      const response = await sendMessage({
+      const request: DownloadImageMessage = {
         type: 'mt:download-image',
         imageUrl: source.url,
         ...(contentSessionId ? { contentSessionId } : {}),
@@ -376,12 +381,56 @@ export function createRuntimeImageDownloader(
         ...(source.allowedBaseUrl !== undefined
           ? { allowedBaseUrl: source.allowedBaseUrl }
           : {}),
+      };
+      let structuredCloneProbe: Blob | undefined;
+      if ((globalThis as { __shinobuColdStartDownloadBlob?: boolean })
+        .__shinobuColdStartDownloadBlob === true && typeof Blob === 'function') {
+        try {
+          structuredCloneProbe = new Blob([Uint8Array.of(83)], {
+            type: LOCAL_PIPELINE_STRUCTURED_CLONE_PROBE_TYPE,
+          });
+        } catch {
+          // Native probe construction is optional; the existing request still works.
+        }
+      }
+      const preferBlob = Boolean(structuredCloneProbe);
+      let response = await sendMessage({
+        ...request,
+        ...(structuredCloneProbe ? { structuredCloneProbe } : {}),
       });
       throwIfAborted(signal);
+      if (preferBlob && response.ok && response.type === 'mt:download-image'
+        && response.base64 === ''
+        && !(response.blob instanceof Blob && response.blob.size > 0
+          && response.blob.type === response.contentType)) {
+        // A mismatched response serializer must not turn the source into an empty file.
+        response = await sendMessage(request);
+        throwIfAborted(signal);
+      }
       if (!response.ok || response.type !== 'mt:download-image') {
         throw new Error(response.ok ? '下载图片失败' : response.error);
       }
-      const blob = base64ToBlob(response.base64, response.contentType);
+      const observe = (globalThis as {
+        __shinobuColdStartInitMark?: (record: Record<string, unknown>) => void;
+      }).__shinobuColdStartInitMark;
+      const decodeStartedAt = observe ? performance.now() : 0;
+      const nativeBlob = preferBlob && response.blob instanceof Blob
+        && response.blob.size > 0 && response.blob.type === response.contentType;
+      const blob = nativeBlob ? response.blob! : base64ToBlob(response.base64, response.contentType);
+      if (observe) {
+        try {
+          observe({
+            phase: 'image.download-decode',
+            startedAt: decodeStartedAt,
+            durationMs: performance.now() - decodeStartedAt,
+            transport: nativeBlob ? 'blob' : 'base64',
+            bytes: blob.size,
+            base64Length: response.base64.length,
+          });
+        } catch {
+          // Benchmark observers never affect the acquired source.
+        }
+      }
       const suffix = inferFileExtension(response.contentType, response.sourceUrl);
       if (diagnosticRunId) {
         emitDiagnosticLog({
@@ -511,13 +560,53 @@ export function createImageTranslationExecutionModule(
     const diagnosticRunId = preparation.diagnosticLogEnabled
       ? createRunId('run')
       : undefined;
+    const config: PipelineConfig | undefined = preparation.pipelineConfig
+      ? { ...preparation.pipelineConfig }
+      : undefined;
+    if (config && config.translator === 'llm' && request.translationContext) {
+      config.translationContext = request.translationContext;
+    }
+    if (config && diagnosticRunId) config.diagnosticRunId = diagnosticRunId;
+    const executePipeline = (file: File | Promise<File>): Promise<LocalPipelineResult> => (
+      executeLocalPipeline(file, config!, (progress) => {
+        if (diagnosticRunId) {
+          emitDiagnosticLog({
+            runId: diagnosticRunId,
+            level: 'info',
+            category: 'pipeline.stage',
+            source: { context: 'content', module: 'imageTranslationExecution.ts' },
+            message: `进入阶段：${getStageLabel(progress.stage)}`,
+            data: { stage: progress.stage, detail: progress.detail },
+          });
+        }
+        reportProgress({
+          phase: 'executing',
+          execution: { kind: 'local-pipeline', progress },
+        });
+      }, { signal, precomputedDetection: request.precomputedDetection })
+    );
+    const overlap = kind === 'local-pipeline'
+      && (globalThis as { __shinobuColdStartOverlap?: boolean }).__shinobuColdStartOverlap === true;
+    const sourceReady = overlap
+      ? Promise.resolve().then(() => request.source.kind === 'prepared-file'
+        ? preparedSource(request.source.file)
+        : downloadImage(request.source, { signal, diagnosticRunId }))
+      : undefined;
+    const earlyPipelineResult = sourceReady
+      ? Promise.resolve().then(() => executePipeline(sourceReady.then((value) => value.file)))
+      : undefined;
+    // Source acquisition keeps its own error classification. Observe the early
+    // Port failure until the execution catch below can report it.
+    void earlyPipelineResult?.catch(() => undefined);
 
     reportProgress({ phase: 'preparing', operation: 'acquire-source' });
     let source: AcquiredImageTranslationSource;
     try {
-      source = request.source.kind === 'prepared-file'
-        ? preparedSource(request.source.file)
-        : await downloadImage(request.source, { signal, diagnosticRunId });
+      source = sourceReady
+        ? await sourceReady
+        : request.source.kind === 'prepared-file'
+          ? preparedSource(request.source.file)
+          : await downloadImage(request.source, { signal, diagnosticRunId });
       throwIfAborted(signal);
     } catch (error) {
       if (signal.aborted) throw signal.reason;
@@ -529,13 +618,6 @@ export function createImageTranslationExecutionModule(
     }
     reportProgress({ phase: 'preparing', operation: 'source-ready', source });
 
-    const config: PipelineConfig | undefined = preparation.pipelineConfig
-      ? { ...preparation.pipelineConfig }
-      : undefined;
-    if (config && config.translator === 'llm' && request.translationContext) {
-      config.translationContext = request.translationContext;
-    }
-    if (config && diagnosticRunId) config.diagnosticRunId = diagnosticRunId;
     if (diagnosticRunId) {
       await emitDiagnosticLogAsync({
         runId: diagnosticRunId,
@@ -602,27 +684,7 @@ export function createImageTranslationExecutionModule(
         };
       }
 
-      const result = await executeLocalPipeline(
-        source.file,
-        config!,
-        (progress) => {
-          if (diagnosticRunId) {
-            emitDiagnosticLog({
-              runId: diagnosticRunId,
-              level: 'info',
-              category: 'pipeline.stage',
-              source: { context: 'content', module: 'imageTranslationExecution.ts' },
-              message: `进入阶段：${getStageLabel(progress.stage)}`,
-              data: { stage: progress.stage, detail: progress.detail },
-            });
-          }
-          reportProgress({
-            phase: 'executing',
-            execution: { kind, progress },
-          });
-        },
-        { signal, precomputedDetection: request.precomputedDetection },
-      );
+      const result = await (earlyPipelineResult ?? executePipeline(source.file));
       throwIfAborted(signal);
       reportProgress({ phase: 'finalizing', operation: 'collect-artifacts' });
       throwIfAborted(signal);

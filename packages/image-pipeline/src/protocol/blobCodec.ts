@@ -1,5 +1,7 @@
 import type { PipelineCanvas } from '../runtime/platform';
 
+const encodedCanvasBase64 = new WeakMap<Blob, string>();
+
 export function base64ToBlob(base64: string, contentType: string): Blob {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
@@ -10,6 +12,8 @@ export function base64ToBlob(base64: string, contentType: string): Blob {
 }
 
 export function blobToBase64(blob: Blob): Promise<string> {
+  const encoded = encodedCanvasBase64.get(blob);
+  if (encoded !== undefined) return Promise.resolve(encoded);
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('读取图片数据失败'));
@@ -28,7 +32,14 @@ export function canvasToPngBlobSync(canvas: PipelineCanvas): Blob {
   if (!dataUrl.startsWith(prefix)) {
     throw new Error('导出译图失败');
   }
-  return base64ToBlob(dataUrl.slice(prefix.length), 'image/png');
+  const base64 = dataUrl.slice(prefix.length);
+  const blob = base64ToBlob(base64, 'image/png');
+  if ((globalThis as typeof globalThis & {
+    __shinobuColdStartPixelFastPath?: boolean;
+  }).__shinobuColdStartPixelFastPath === true) {
+    encodedCanvasBase64.set(blob, base64);
+  }
+  return blob;
 }
 
 export function canvasToPngBlob(canvas: PipelineCanvas): Promise<Blob> {

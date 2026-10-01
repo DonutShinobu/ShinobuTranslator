@@ -1,0 +1,1359 @@
+{
+  "createdAt": "2026-10-01T16:31:04.907Z",
+  "baseCommit": "f26f779",
+  "branch": "master",
+  "scope": "Chromium 151.0.7922.34 / RTX 5070 Ti / NVIDIA 610.74; processMode=original; full PNG delivery, decode, next RAF",
+  "build": {
+    "jsep": {
+      "libraryPath": ".tmp/build-chromium-jsep/ort-jsep.mjs",
+      "ortVersion": "1.27.0",
+      "bytes": 361511,
+      "sha256": "07cfd0572b00a9d5c464f47449a0e3c12e8aa1a339501adc03714337124079ef"
+    },
+    "modelSignature": "{\"detector\":\"0e9c3979e73092a56404c835e63d9894e7d94b50b356ee29e84ee6a32d65f7d9\",\"inpaint\":\"acdddccfdc32780c8947946814e9eea6a8b0d5b1880fb46f3be8389510f11689\",\"bubble\":\"3da3317f6dffe27cf5c9396dc95d5324fb647e22adeb7bf304edbe921789f0a0\",\"paddleocr_v6_medium_rec\":\"9c09abf0957f7968c7586464b7397b84ad2387a0497a351af40e9acc71b673ba\"}",
+    "templateCount": 110,
+    "templateSha256": "d6338386d49c7f02b853d96df1a29ed937f01ab7b0416ccefdc9b439781d2f65",
+    "flags": [
+      "__shinobuColdStartOverlap",
+      "__shinobuColdStartPixelFastPath",
+      "__shinobuColdStartGpuCtc",
+      "__shinobuColdStartEarlySessions",
+      "__shinobuColdStartInpaintPixels",
+      "__shinobuColdStartInpaintDirectPixels",
+      "__shinobuColdStartFontsAfterDetect",
+      "__shinobuColdStartStructuredClone",
+      "__shinobuColdStartGpuPreprocessNoFence",
+      "__shinobuColdStartSelectedFonts",
+      "__shinobuColdStartDetectorBasicOptimization",
+      "__shinobuColdStartWorkerPng",
+      "__shinobuColdStartPanelOverlap",
+      "__shinobuColdStartFontBlobUrl",
+      "__shinobuColdStartImageBlobUrl",
+      "__shinobuColdStartMaskPacked",
+      "__shinobuColdStartMaskNativeThreshold",
+      "__shinobuColdStartMaskNativeThresholdGpu",
+      "__shinobuColdStartEarlyInpaintAfterBubble",
+      "__shinobuColdStartDownloadBlob",
+      "__shinobuColdStartReuseGpuAvailability",
+      "__shinobuColdStartAdapterOverlap",
+      "__shinobuColdStartGpuPreprocessAutoLayout",
+      "__shinobuColdStartDetectorReadbackParallel",
+      "__shinobuColdStartModelPrefetch",
+      "__shinobuColdStartShaderTemplates",
+      "__shinobuColdStartReuseShaderPipelines"
+    ],
+    "jsHashes": {
+      "apps/extension/dist-chromium/background-chromium.js": "f5ba0a1086b69afa1e43ce3e3e366059ba57cdf1a0675c9fceb4e147e4e96cfd",
+      "apps/extension/dist-chromium/content.js": "8afc7f5790ca48fc60a7004993deb5262296e586addde17946e715bc257f7410",
+      "apps/extension/dist-chromium/offscreen.js": "9ae0e35b5dc518147f62b0e3b7fe0f148c495d7e38a16702c150357dfb430c83",
+      "apps/extension/dist-chromium/onnxWorker.js": "1099a7cee8ff38e9ae2b1e9aae58067e48ef8b586c891e4ea54e93372050bea7",
+      "apps/extension/dist-chromium/popup.js": "383e23c0dff269efef6bc919df9f38bd7ec393a78b6d8f165afb7d47dfc6ff34",
+      "apps/extension/dist-chromium/chunks/browserPipelinePlatform.js": "05d4dccb1fdfbe3e35783e6d0d27beb61b496f6e257ed145320a00f60dc60f9e",
+      "apps/extension/dist-chromium/chunks/contentSession.js": "2e10d6a03ec2862d1391efdf5b251f0f46092e9380e84b1b695aeeb598564be5",
+      "apps/extension/dist-chromium/chunks/diagnosticLog.js": "b068f17c021042fa278e3ca894562cbfabda315751648467f2b95254899296f7",
+      "apps/extension/dist-chromium/chunks/diagnosticLogClient.js": "9f61c20c31d7d8b5237e7c90c449d96b9e0a9f8a375852fe798b7332052be560",
+      "apps/extension/dist-chromium/chunks/errorMessage.js": "1eb0f2d4ec1304fd2db3408396ae4fe71ecb6bc7a787f1d285024a404af20854",
+      "apps/extension/dist-chromium/chunks/extensionControlTransport.js": "194b2810855b840be62f78bdb017112c92a0f277aac9df54f37937b424d056c7",
+      "apps/extension/dist-chromium/chunks/index.js": "c8452a21e06eb37644ada7c429c915bcf833f23f70bd800cb38cc46ded4932eb",
+      "apps/extension/dist-chromium/chunks/index2.js": "1ea69a9e5b5e1894f22352b40382a5ee826e5eb07f43a139e2bf12c3531b78eb",
+      "apps/extension/dist-chromium/chunks/messages.js": "ce9b9b8274b95771e2fedcc99df69887f2a6f68e1b292943a1d3a24dbfbf56ca",
+      "apps/extension/dist-chromium/chunks/modulepreload-polyfill.js": "9993b302878bcda386bb7e99768238a481cbf29eadc8c6ae0a9b977b533b4f0a",
+      "apps/extension/dist-chromium/chunks/onnxWorkerBridge.js": "a975f0b1a7d67d331fae0396b3e24ba3bb42e0f8691a6980dd68498bf77a2721",
+      "apps/extension/dist-chromium/chunks/performanceObserver.js": "f84bfffee57f6aa4640acc39caa3dc60def98105d59c36090f0482dcdeae98ee",
+      "apps/extension/dist-chromium/chunks/perfTrace.js": "59eb94a1642bb543e45ad8c70792c5d46af139a34d6ef864f78671782eb1cf2f",
+      "apps/extension/dist-chromium/chunks/pipelineHost.js": "66bd3e1eb2ea025d72a32dd35e781ece5168f94bfc788b2f350d995d3f1f9074",
+      "apps/extension/dist-chromium/chunks/probe.js": "97c359992fe06ffeda3140af6d305eb32fe46b185df711f0ee999c9d779441b0"
+    },
+    "manifestSha256": "8eed172f2a0d9d80089ce1e0c81d9e7e8655b7fe48a8b2b2c0fb96802bd47925"
+  },
+  "checks": "pixels/OCR confidence/regions/input dimensions/providers/timing passed",
+  "stats": [
+    {
+      "cacheState": "new-profile",
+      "label": "新 profile、新进程/Worker/Session",
+      "budgetMs": 2845.5,
+      "baseline": {
+        "variant": "baseline",
+        "cacheState": "new-profile",
+        "n": 5,
+        "visibleMs": 4985.04892578125,
+        "totalMs": 4875.9,
+        "phases": {
+          "entryPrepareLoad": 1620.5,
+          "detect": 826.9,
+          "bubble": 548,
+          "ocr": 757.5,
+          "order": 123.7,
+          "mask": 217,
+          "inpaint": 465,
+          "typeset": 26.4,
+          "delivery": 269,
+          "display": 107.215087890625,
+          "ocrInference": 644.7000000476837,
+          "ocrDecode": 13.000000476837158,
+          "ocrOutputBytes": 35099960,
+          "png": 144.5
+        }
+      },
+      "production": {
+        "variant": "production",
+        "cacheState": "new-profile",
+        "n": 5,
+        "visibleMs": 2378.726904296875,
+        "totalMs": 2233.7,
+        "phases": {
+          "entryPrepareLoad": 582.2,
+          "detect": 591.6,
+          "bubble": 177.5,
+          "ocr": 270.9,
+          "order": 0.7,
+          "mask": 151.5,
+          "inpaint": 260.7999999523163,
+          "typeset": 26.1,
+          "delivery": 162.2,
+          "display": 176.326904296875,
+          "ocrInference": 146.90000009536743,
+          "ocrDecode": 0.39999985694885254,
+          "ocrOutputBytes": 3752,
+          "png": 152.79999995231628
+        }
+      },
+      "samples": [
+        2378.726904296875,
+        2435.3361328125,
+        2335.68193359375,
+        2447.6248046875,
+        2366.69697265625
+      ],
+      "minMs": 2335.68193359375,
+      "maxMs": 2447.6248046875,
+      "reductionPercent": 52.28277716604186
+    },
+    {
+      "cacheState": "retained-cache-new-process",
+      "label": "保留缓存，新进程/Worker/Session",
+      "budgetMs": 2332.65,
+      "baseline": {
+        "variant": "baseline",
+        "cacheState": "retained-cache-new-process",
+        "n": 5,
+        "visibleMs": 3567.330126953125,
+        "totalMs": 3385.2,
+        "phases": {
+          "entryPrepareLoad": 1500.8,
+          "detect": 341.2,
+          "bubble": 311.9,
+          "ocr": 260.4,
+          "order": 123.7,
+          "mask": 205,
+          "inpaint": 322.90000009536743,
+          "typeset": 25.5,
+          "delivery": 270.8,
+          "display": 183.463134765625,
+          "ocrInference": 147.10000038146973,
+          "ocrDecode": 12.800000429153442,
+          "ocrOutputBytes": 35099960,
+          "png": 144.29999995231628
+        }
+      },
+      "production": {
+        "variant": "production",
+        "cacheState": "retained-cache-new-process",
+        "n": 5,
+        "visibleMs": 1805.37109375,
+        "totalMs": 1628,
+        "phases": {
+          "entryPrepareLoad": 439.3,
+          "detect": 234.3,
+          "bubble": 169.6,
+          "ocr": 208.5,
+          "order": 0.7,
+          "mask": 145.79999995231628,
+          "inpaint": 227.70000004768372,
+          "typeset": 25.3,
+          "delivery": 162.79999999999998,
+          "display": 174.6611328125,
+          "ocrInference": 110.29999995231628,
+          "ocrDecode": 0.40000009536743164,
+          "ocrOutputBytes": 3752,
+          "png": 154.79999995231628
+        }
+      },
+      "samples": [
+        1805.37109375,
+        1811.2529296875,
+        1798.34306640625,
+        1798.4041015625,
+        1817.9611328125
+      ],
+      "minMs": 1798.34306640625,
+      "maxMs": 1817.9611328125,
+      "reductionPercent": 49.391532897125586
+    },
+    {
+      "cacheState": "same-worker",
+      "label": "同 Worker 第二次，供参考",
+      "baseline": {
+        "variant": "baseline",
+        "cacheState": "same-worker",
+        "n": 5,
+        "visibleMs": 2036.7041015625,
+        "totalMs": 1880.5,
+        "phases": {
+          "entryPrepareLoad": 473.9,
+          "detect": 249.9,
+          "bubble": 48,
+          "ocr": 164.6,
+          "order": 122.6,
+          "mask": 187.69999980926514,
+          "inpaint": 280.89999985694885,
+          "typeset": 11.6,
+          "delivery": 310.8,
+          "display": 154.86279296875,
+          "ocrInference": 70.59999990463257,
+          "ocrDecode": 11.299999952316284,
+          "ocrOutputBytes": 35324480,
+          "png": 187.09999990463257
+        }
+      },
+      "production": {
+        "variant": "production",
+        "cacheState": "same-worker",
+        "n": 5,
+        "visibleMs": 1451.328125,
+        "totalMs": 1301,
+        "phases": {
+          "entryPrepareLoad": 338.9,
+          "detect": 170.6,
+          "bubble": 131.3,
+          "ocr": 138.3,
+          "order": 0.5,
+          "mask": 125.79999995231628,
+          "inpaint": 199.79999995231628,
+          "typeset": 13.8,
+          "delivery": 169.1,
+          "display": 152.55615234375,
+          "ocrInference": 54.50000047683716,
+          "ocrDecode": 0.10000014305114746,
+          "ocrOutputBytes": 3776,
+          "png": 159.90000009536743
+        }
+      },
+      "samples": [
+        1428.894140625,
+        1451.328125,
+        1465.95615234375,
+        1493.84599609375,
+        1438.56298828125
+      ],
+      "minMs": 1428.894140625,
+      "maxMs": 1493.84599609375,
+      "reductionPercent": 28.741336363658153
+    }
+  ],
+  "rows": [
+    {
+      "variant": "baseline",
+      "round": 0,
+      "runIndex": 0,
+      "cacheState": "new-profile",
+      "totalMs": 4888.5,
+      "visibleResultMs": 4995.715087890625,
+      "displayTailMs": 107.215087890625,
+      "system": {
+        "cpuBusyPercent": 31.92087139440394,
+        "minFreeMemoryBytes": 11592445952
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-17-40-933Z.json",
+      "phases": {
+        "entryPrepareLoad": 1636.5,
+        "detect": 836.1,
+        "bubble": 542,
+        "ocr": 753.2,
+        "order": 124.5,
+        "mask": 217,
+        "inpaint": 465,
+        "typeset": 24.6,
+        "delivery": 269,
+        "display": 107.215087890625,
+        "ocrInference": 642.7999997138977,
+        "ocrDecode": 13.099999904632568,
+        "ocrOutputBytes": 35099960,
+        "png": 143.90000009536743
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "baseline",
+      "round": 0,
+      "runIndex": 1,
+      "cacheState": "same-worker",
+      "totalMs": 1956.2,
+      "visibleResultMs": 2105.520068359375,
+      "displayTailMs": 149.320068359375,
+      "system": {
+        "cpuBusyPercent": 34.386919056363894,
+        "minFreeMemoryBytes": 11194724352
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-17-44-106Z.json",
+      "phases": {
+        "entryPrepareLoad": 438.5,
+        "detect": 376.7,
+        "bubble": 49.4,
+        "ocr": 163.7,
+        "order": 121.1,
+        "mask": 189.79999995231628,
+        "inpaint": 270.59999990463257,
+        "typeset": 11.3,
+        "delivery": 311.2,
+        "display": 149.320068359375,
+        "ocrInference": 70.59999990463257,
+        "ocrDecode": 11.099999904632568,
+        "ocrOutputBytes": 35324480,
+        "png": 184.79999995231628
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "baseline",
+      "round": 0,
+      "runIndex": 0,
+      "cacheState": "retained-cache-new-process",
+      "totalMs": 3385.2,
+      "visibleResultMs": 3567.330126953125,
+      "displayTailMs": 182.130126953125,
+      "system": {
+        "cpuBusyPercent": 45.47473625763465,
+        "minFreeMemoryBytes": 11609747456
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-17-50-435Z.json",
+      "phases": {
+        "entryPrepareLoad": 1500.8,
+        "detect": 341.2,
+        "bubble": 311.9,
+        "ocr": 258.5,
+        "order": 121.9,
+        "mask": 205,
+        "inpaint": 327.90000009536743,
+        "typeset": 25.5,
+        "delivery": 270.1,
+        "display": 182.130126953125,
+        "ocrInference": 145.7999997138977,
+        "ocrDecode": 12.900000095367432,
+        "ocrOutputBytes": 35099960,
+        "png": 144.90000009536743
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "production",
+      "round": 0,
+      "runIndex": 0,
+      "cacheState": "new-profile",
+      "totalMs": 2202.4,
+      "visibleResultMs": 2378.726904296875,
+      "displayTailMs": 176.326904296875,
+      "system": {
+        "cpuBusyPercent": 53.3685933761491,
+        "minFreeMemoryBytes": 11925889024
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-17-55-806Z.json",
+      "phases": {
+        "entryPrepareLoad": 563.3,
+        "detect": 591.6,
+        "bubble": 177.5,
+        "ocr": 271.5,
+        "order": 0.7,
+        "mask": 139.09999990463257,
+        "inpaint": 261.2000000476837,
+        "typeset": 26.2,
+        "delivery": 162,
+        "display": 176.326904296875,
+        "ocrInference": 152.80000019073486,
+        "ocrDecode": 0.39999985694885254,
+        "ocrOutputBytes": 3752,
+        "png": 153
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "production",
+      "round": 0,
+      "runIndex": 1,
+      "cacheState": "same-worker",
+      "totalMs": 1280.4,
+      "visibleResultMs": 1428.894140625,
+      "displayTailMs": 148.494140625,
+      "system": {
+        "cpuBusyPercent": 25.251201397990386,
+        "minFreeMemoryBytes": 11573391360
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-17-58-275Z.json",
+      "phases": {
+        "entryPrepareLoad": 338.9,
+        "detect": 169.8,
+        "bubble": 128.6,
+        "ocr": 137.8,
+        "order": 0.6,
+        "mask": 125.30000019073486,
+        "inpaint": 194.59999990463257,
+        "typeset": 13.2,
+        "delivery": 169.1,
+        "display": 148.494140625,
+        "ocrInference": 53.00000023841858,
+        "ocrDecode": 0,
+        "ocrOutputBytes": 3776,
+        "png": 158.70000004768372
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "production",
+      "round": 0,
+      "runIndex": 0,
+      "cacheState": "retained-cache-new-process",
+      "totalMs": 1628,
+      "visibleResultMs": 1805.37109375,
+      "displayTailMs": 177.37109375,
+      "system": {
+        "cpuBusyPercent": 35.81401252326959,
+        "minFreeMemoryBytes": 12057858048
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-18-02-950Z.json",
+      "phases": {
+        "entryPrepareLoad": 439.9,
+        "detect": 234.3,
+        "bubble": 166.6,
+        "ocr": 209.2,
+        "order": 0.7,
+        "mask": 153,
+        "inpaint": 227.70000004768372,
+        "typeset": 25.4,
+        "delivery": 161,
+        "display": 177.37109375,
+        "ocrInference": 113.90000009536743,
+        "ocrDecode": 0.40000033378601074,
+        "ocrOutputBytes": 3752,
+        "png": 152.09999990463257
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "production",
+      "round": 1,
+      "runIndex": 0,
+      "cacheState": "new-profile",
+      "totalMs": 2259.3,
+      "visibleResultMs": 2435.3361328125,
+      "displayTailMs": 176.0361328125,
+      "system": {
+        "cpuBusyPercent": 52.90644030263887,
+        "minFreeMemoryBytes": 11959078912
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-18-08-325Z.json",
+      "phases": {
+        "entryPrepareLoad": 601.4,
+        "detect": 614,
+        "bubble": 174.7,
+        "ocr": 270.9,
+        "order": 0.7,
+        "mask": 151.5,
+        "inpaint": 252.89999985694885,
+        "typeset": 25.2,
+        "delivery": 159.10000000000002,
+        "display": 176.0361328125,
+        "ocrInference": 144.19999933242798,
+        "ocrDecode": 0.20000004768371582,
+        "ocrOutputBytes": 3752,
+        "png": 149.89999985694885
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "production",
+      "round": 1,
+      "runIndex": 1,
+      "cacheState": "same-worker",
+      "totalMs": 1301,
+      "visibleResultMs": 1451.328125,
+      "displayTailMs": 150.328125,
+      "system": {
+        "cpuBusyPercent": 29.07940895078134,
+        "minFreeMemoryBytes": 11573870592
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-18-10-810Z.json",
+      "phases": {
+        "entryPrepareLoad": 334.8,
+        "detect": 170.6,
+        "bubble": 131.6,
+        "ocr": 143.8,
+        "order": 0.6,
+        "mask": 125.60000014305115,
+        "inpaint": 199.79999995231628,
+        "typeset": 21.4,
+        "delivery": 170.5,
+        "display": 150.328125,
+        "ocrInference": 54.50000047683716,
+        "ocrDecode": 0.09999990463256836,
+        "ocrOutputBytes": 3776,
+        "png": 161.5
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "production",
+      "round": 1,
+      "runIndex": 0,
+      "cacheState": "retained-cache-new-process",
+      "totalMs": 1634.5,
+      "visibleResultMs": 1811.2529296875,
+      "displayTailMs": 176.7529296875,
+      "system": {
+        "cpuBusyPercent": 34.509688040862855,
+        "minFreeMemoryBytes": 11974639616
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-18-15-457Z.json",
+      "phases": {
+        "entryPrepareLoad": 446.6,
+        "detect": 231.6,
+        "bubble": 173.4,
+        "ocr": 208.5,
+        "order": 0.7,
+        "mask": 145.79999995231628,
+        "inpaint": 225.20000004768372,
+        "typeset": 25.1,
+        "delivery": 162.79999999999998,
+        "display": 176.7529296875,
+        "ocrInference": 109.79999947547913,
+        "ocrDecode": 0.5,
+        "ocrOutputBytes": 3752,
+        "png": 154.79999995231628
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "baseline",
+      "round": 1,
+      "runIndex": 0,
+      "cacheState": "new-profile",
+      "totalMs": 4935.1,
+      "visibleResultMs": 5044.047998046875,
+      "displayTailMs": 108.947998046875,
+      "system": {
+        "cpuBusyPercent": 33.60823268777246,
+        "minFreeMemoryBytes": 11958304768
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-18-23-603Z.json",
+      "phases": {
+        "entryPrepareLoad": 1668.8,
+        "detect": 827.7,
+        "bubble": 551.7,
+        "ocr": 764.6,
+        "order": 122.5,
+        "mask": 224.60000014305115,
+        "inpaint": 461.60000014305115,
+        "typeset": 26.4,
+        "delivery": 271.3,
+        "display": 108.947998046875,
+        "ocrInference": 648.3999998569489,
+        "ocrDecode": 13.599999904632568,
+        "ocrOutputBytes": 35099960,
+        "png": 146.60000014305115
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "baseline",
+      "round": 1,
+      "runIndex": 1,
+      "cacheState": "same-worker",
+      "totalMs": 1880.5,
+      "visibleResultMs": 2036.7041015625,
+      "displayTailMs": 156.2041015625,
+      "system": {
+        "cpuBusyPercent": 21.940896662796362,
+        "minFreeMemoryBytes": 11335757824
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-18-26-699Z.json",
+      "phases": {
+        "entryPrepareLoad": 473.9,
+        "detect": 249.9,
+        "bubble": 47.5,
+        "ocr": 166.5,
+        "order": 133,
+        "mask": 186.79999995231628,
+        "inpaint": 289.5,
+        "typeset": 20.4,
+        "delivery": 308.20000000000005,
+        "display": 156.2041015625,
+        "ocrInference": 73.20000004768372,
+        "ocrDecode": 12.099999904632568,
+        "ocrOutputBytes": 35324480,
+        "png": 186.29999995231628
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "baseline",
+      "round": 1,
+      "runIndex": 0,
+      "cacheState": "retained-cache-new-process",
+      "totalMs": 3420.8,
+      "visibleResultMs": 3610.58515625,
+      "displayTailMs": 189.78515625,
+      "system": {
+        "cpuBusyPercent": 51.615261223578145,
+        "minFreeMemoryBytes": 11946291200
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-18-33-070Z.json",
+      "phases": {
+        "entryPrepareLoad": 1510.8,
+        "detect": 344.1,
+        "bubble": 327.4,
+        "ocr": 272.2,
+        "order": 122.2,
+        "mask": 203.20000004768372,
+        "inpaint": 318.09999990463257,
+        "typeset": 25.7,
+        "delivery": 273,
+        "display": 189.78515625,
+        "ocrInference": 150.50000023841858,
+        "ocrDecode": 13.700000047683716,
+        "ocrOutputBytes": 35099960,
+        "png": 147.60000014305115
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "baseline",
+      "round": 2,
+      "runIndex": 0,
+      "cacheState": "new-profile",
+      "totalMs": 4846.5,
+      "visibleResultMs": 4951.82080078125,
+      "displayTailMs": 105.32080078125,
+      "system": {
+        "cpuBusyPercent": 37.17634785632525,
+        "minFreeMemoryBytes": 11929677824
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-18-41-274Z.json",
+      "phases": {
+        "entryPrepareLoad": 1612.9,
+        "detect": 824.6,
+        "bubble": 544.3,
+        "ocr": 757.5,
+        "order": 122.7,
+        "mask": 208.70000004768372,
+        "inpaint": 465.7999999523163,
+        "typeset": 25.6,
+        "delivery": 265.8,
+        "display": 105.32080078125,
+        "ocrInference": 640.8999993801117,
+        "ocrDecode": 12.700000524520874,
+        "ocrOutputBytes": 35099960,
+        "png": 142
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "baseline",
+      "round": 2,
+      "runIndex": 1,
+      "cacheState": "same-worker",
+      "totalMs": 1865.3,
+      "visibleResultMs": 2019.419140625,
+      "displayTailMs": 154.119140625,
+      "system": {
+        "cpuBusyPercent": 28.510749282760163,
+        "minFreeMemoryBytes": 11394908160
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-18-44-273Z.json",
+      "phases": {
+        "entryPrepareLoad": 484.6,
+        "detect": 233,
+        "bubble": 48,
+        "ocr": 165.6,
+        "order": 122.6,
+        "mask": 187.69999980926514,
+        "inpaint": 280.89999985694885,
+        "typeset": 11.6,
+        "delivery": 312.2,
+        "display": 154.119140625,
+        "ocrInference": 68.20000004768372,
+        "ocrDecode": 11.200000047683716,
+        "ocrOutputBytes": 35324480,
+        "png": 188
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "baseline",
+      "round": 2,
+      "runIndex": 0,
+      "cacheState": "retained-cache-new-process",
+      "totalMs": 3364.4,
+      "visibleResultMs": 3548.151953125,
+      "displayTailMs": 183.751953125,
+      "system": {
+        "cpuBusyPercent": 28.447215329760834,
+        "minFreeMemoryBytes": 11874807808
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-18-50-654Z.json",
+      "phases": {
+        "entryPrepareLoad": 1472,
+        "detect": 346.3,
+        "bubble": 304,
+        "ocr": 264.2,
+        "order": 123.7,
+        "mask": 214.20000004768372,
+        "inpaint": 325.39999985694885,
+        "typeset": 25.4,
+        "delivery": 269.2,
+        "display": 183.751953125,
+        "ocrInference": 151,
+        "ocrDecode": 12.800000190734863,
+        "ocrOutputBytes": 35099960,
+        "png": 142.59999990463257
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "production",
+      "round": 2,
+      "runIndex": 0,
+      "cacheState": "new-profile",
+      "totalMs": 2233.7,
+      "visibleResultMs": 2335.68193359375,
+      "displayTailMs": 101.98193359375,
+      "system": {
+        "cpuBusyPercent": 53.345852895148674,
+        "minFreeMemoryBytes": 12224749568
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-18-56-064Z.json",
+      "phases": {
+        "entryPrepareLoad": 577.5,
+        "detect": 550.8,
+        "bubble": 186.8,
+        "ocr": 255.8,
+        "order": 0.9,
+        "mask": 177.80000019073486,
+        "inpaint": 275.09999990463257,
+        "typeset": 26.8,
+        "delivery": 172.5,
+        "display": 101.98193359375,
+        "ocrInference": 132.90000009536743,
+        "ocrDecode": 0.40000009536743164,
+        "ocrOutputBytes": 3752,
+        "png": 160.60000014305115
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "production",
+      "round": 2,
+      "runIndex": 1,
+      "cacheState": "same-worker",
+      "totalMs": 1313.4,
+      "visibleResultMs": 1465.95615234375,
+      "displayTailMs": 152.55615234375,
+      "system": {
+        "cpuBusyPercent": 31.357827476038334,
+        "minFreeMemoryBytes": 11817316352
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-18-58-583Z.json",
+      "phases": {
+        "entryPrepareLoad": 349.4,
+        "detect": 171.4,
+        "bubble": 131.3,
+        "ocr": 138.3,
+        "order": 0.5,
+        "mask": 126.89999985694885,
+        "inpaint": 205.09999990463257,
+        "typeset": 13.8,
+        "delivery": 174.29999999999998,
+        "display": 152.55615234375,
+        "ocrInference": 56.200000047683716,
+        "ocrDecode": 0.10000014305114746,
+        "ocrOutputBytes": 3776,
+        "png": 163.60000014305115
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "production",
+      "round": 2,
+      "runIndex": 0,
+      "cacheState": "retained-cache-new-process",
+      "totalMs": 1625.2,
+      "visibleResultMs": 1798.34306640625,
+      "displayTailMs": 173.14306640625,
+      "system": {
+        "cpuBusyPercent": 35.317460317460316,
+        "minFreeMemoryBytes": 12357148672
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-19-03-256Z.json",
+      "phases": {
+        "entryPrepareLoad": 430.1,
+        "detect": 232.1,
+        "bubble": 169.6,
+        "ocr": 207.5,
+        "order": 0.7,
+        "mask": 156,
+        "inpaint": 228.60000014305115,
+        "typeset": 26.2,
+        "delivery": 162.29999999999998,
+        "display": 173.14306640625,
+        "ocrInference": 106.7999997138977,
+        "ocrDecode": 0.40000009536743164,
+        "ocrOutputBytes": 3752,
+        "png": 153.5
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "production",
+      "round": 3,
+      "runIndex": 0,
+      "cacheState": "new-profile",
+      "totalMs": 2270.7,
+      "visibleResultMs": 2447.6248046875,
+      "displayTailMs": 176.9248046875,
+      "system": {
+        "cpuBusyPercent": 50.536374845869304,
+        "minFreeMemoryBytes": 12330766336
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-19-08-852Z.json",
+      "phases": {
+        "entryPrepareLoad": 582.2,
+        "detect": 620.2,
+        "bubble": 179.9,
+        "ocr": 283.3,
+        "order": 0.7,
+        "mask": 153.20000004768372,
+        "inpaint": 256.90000009536743,
+        "typeset": 26.1,
+        "delivery": 162.2,
+        "display": 176.9248046875,
+        "ocrInference": 165.09999990463257,
+        "ocrDecode": 0.19999980926513672,
+        "ocrOutputBytes": 3752,
+        "png": 151.29999995231628
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "production",
+      "round": 3,
+      "runIndex": 1,
+      "cacheState": "same-worker",
+      "totalMs": 1335.7,
+      "visibleResultMs": 1493.84599609375,
+      "displayTailMs": 158.14599609375,
+      "system": {
+        "cpuBusyPercent": 25.91271506504407,
+        "minFreeMemoryBytes": 11837018112
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-19-11-340Z.json",
+      "phases": {
+        "entryPrepareLoad": 384.5,
+        "detect": 166.5,
+        "bubble": 129.7,
+        "ocr": 139.2,
+        "order": 0.4,
+        "mask": 130.09999990463257,
+        "inpaint": 207.79999995231628,
+        "typeset": 13.2,
+        "delivery": 162,
+        "display": 158.14599609375,
+        "ocrInference": 55.90000009536743,
+        "ocrDecode": 0.20000004768371582,
+        "ocrOutputBytes": 3776,
+        "png": 155
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "production",
+      "round": 3,
+      "runIndex": 0,
+      "cacheState": "retained-cache-new-process",
+      "totalMs": 1624.7,
+      "visibleResultMs": 1798.4041015625,
+      "displayTailMs": 173.7041015625,
+      "system": {
+        "cpuBusyPercent": 31.445926429360295,
+        "minFreeMemoryBytes": 12418703360
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-19-15-959Z.json",
+      "phases": {
+        "entryPrepareLoad": 439.3,
+        "detect": 235.6,
+        "bubble": 166.5,
+        "ocr": 217.8,
+        "order": 1.2,
+        "mask": 141.20000004768372,
+        "inpaint": 222.90000009536743,
+        "typeset": 25.3,
+        "delivery": 164.79999999999998,
+        "display": 173.7041015625,
+        "ocrInference": 110.29999995231628,
+        "ocrDecode": 0.39999985694885254,
+        "ocrOutputBytes": 3752,
+        "png": 155.09999990463257
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "baseline",
+      "round": 3,
+      "runIndex": 0,
+      "cacheState": "new-profile",
+      "totalMs": 4875.9,
+      "visibleResultMs": 4985.04892578125,
+      "displayTailMs": 109.14892578125,
+      "system": {
+        "cpuBusyPercent": 44.02236569056952,
+        "minFreeMemoryBytes": 11915808768
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-19-24-025Z.json",
+      "phases": {
+        "entryPrepareLoad": 1612.3,
+        "detect": 826.9,
+        "bubble": 553.4,
+        "ocr": 755.9,
+        "order": 124,
+        "mask": 209.20000004768372,
+        "inpaint": 478.2999999523163,
+        "typeset": 26.8,
+        "delivery": 270.59999999999997,
+        "display": 109.14892578125,
+        "ocrInference": 644.7000000476837,
+        "ocrDecode": 13.000000476837158,
+        "ocrOutputBytes": 35099960,
+        "png": 145.90000009536743
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "baseline",
+      "round": 3,
+      "runIndex": 1,
+      "cacheState": "same-worker",
+      "totalMs": 1876,
+      "visibleResultMs": 2030.86279296875,
+      "displayTailMs": 154.86279296875,
+      "system": {
+        "cpuBusyPercent": 36.75043262357987,
+        "minFreeMemoryBytes": 11441393664
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-19-27-045Z.json",
+      "phases": {
+        "entryPrepareLoad": 483,
+        "detect": 233,
+        "bubble": 47,
+        "ocr": 164.6,
+        "order": 122.3,
+        "mask": 187.20000004768372,
+        "inpaint": 298.60000014305115,
+        "typeset": 11.4,
+        "delivery": 310.8,
+        "display": 154.86279296875,
+        "ocrInference": 71.7000002861023,
+        "ocrDecode": 11.299999952316284,
+        "ocrOutputBytes": 35324480,
+        "png": 189.5
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "baseline",
+      "round": 3,
+      "runIndex": 0,
+      "cacheState": "retained-cache-new-process",
+      "totalMs": 3402,
+      "visibleResultMs": 3585.463134765625,
+      "displayTailMs": 183.463134765625,
+      "system": {
+        "cpuBusyPercent": 34.877782582731,
+        "minFreeMemoryBytes": 11987001344
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-19-33-328Z.json",
+      "phases": {
+        "entryPrepareLoad": 1521.4,
+        "detect": 338.2,
+        "bubble": 311.3,
+        "ocr": 260.4,
+        "order": 124.1,
+        "mask": 203.70000004768372,
+        "inpaint": 322.39999985694885,
+        "typeset": 26.3,
+        "delivery": 272.3,
+        "display": 183.463134765625,
+        "ocrInference": 146.39999985694885,
+        "ocrDecode": 12.800000429153442,
+        "ocrOutputBytes": 35099960,
+        "png": 143
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "baseline",
+      "round": 4,
+      "runIndex": 0,
+      "cacheState": "new-profile",
+      "totalMs": 4864.6,
+      "visibleResultMs": 4971.628076171875,
+      "displayTailMs": 107.028076171875,
+      "system": {
+        "cpuBusyPercent": 32.18988970322506,
+        "minFreeMemoryBytes": 11910217728
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-19-41-334Z.json",
+      "phases": {
+        "entryPrepareLoad": 1620.5,
+        "detect": 823.8,
+        "bubble": 548,
+        "ocr": 757.5,
+        "order": 123.7,
+        "mask": 226.79999995231628,
+        "inpaint": 454.7000000476837,
+        "typeset": 26.4,
+        "delivery": 267,
+        "display": 107.028076171875,
+        "ocrInference": 645.9000000953674,
+        "ocrDecode": 12.699999570846558,
+        "ocrOutputBytes": 35099960,
+        "png": 144.5
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "baseline",
+      "round": 4,
+      "runIndex": 1,
+      "cacheState": "same-worker",
+      "totalMs": 1971.4,
+      "visibleResultMs": 2126.6548828125,
+      "displayTailMs": 155.2548828125,
+      "system": {
+        "cpuBusyPercent": 25.694716940748407,
+        "minFreeMemoryBytes": 11330830336
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-19-44-498Z.json",
+      "phases": {
+        "entryPrepareLoad": 463.4,
+        "detect": 353.4,
+        "bubble": 50.1,
+        "ocr": 158.4,
+        "order": 132.8,
+        "mask": 201,
+        "inpaint": 279,
+        "typeset": 23.1,
+        "delivery": 306.90000000000003,
+        "display": 155.2548828125,
+        "ocrInference": 69.5,
+        "ocrDecode": 12.099999904632568,
+        "ocrOutputBytes": 35324480,
+        "png": 187.09999990463257
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "baseline",
+      "round": 4,
+      "runIndex": 0,
+      "cacheState": "retained-cache-new-process",
+      "totalMs": 3379,
+      "visibleResultMs": 3561.316162109375,
+      "displayTailMs": 182.316162109375,
+      "system": {
+        "cpuBusyPercent": 31.87436382143376,
+        "minFreeMemoryBytes": 11876659200
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-19-50-841Z.json",
+      "phases": {
+        "entryPrepareLoad": 1498.7,
+        "detect": 335.5,
+        "bubble": 316.4,
+        "ocr": 255.3,
+        "order": 123.7,
+        "mask": 212.79999995231628,
+        "inpaint": 322.90000009536743,
+        "typeset": 23.5,
+        "delivery": 270.8,
+        "display": 182.316162109375,
+        "ocrInference": 147.10000038146973,
+        "ocrDecode": 12.600000143051147,
+        "ocrOutputBytes": 35099960,
+        "png": 144.29999995231628
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "production",
+      "round": 4,
+      "runIndex": 0,
+      "cacheState": "new-profile",
+      "totalMs": 2189.3,
+      "visibleResultMs": 2366.69697265625,
+      "displayTailMs": 177.39697265625,
+      "system": {
+        "cpuBusyPercent": 49.5338106603023,
+        "minFreeMemoryBytes": 12244725760
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-19-56-112Z.json",
+      "phases": {
+        "entryPrepareLoad": 610.1,
+        "detect": 563,
+        "bubble": 167,
+        "ocr": 253.9,
+        "order": 0.7,
+        "mask": 136.70000004768372,
+        "inpaint": 260.7999999523163,
+        "typeset": 25,
+        "delivery": 162.89999999999998,
+        "display": 177.39697265625,
+        "ocrInference": 146.90000009536743,
+        "ocrDecode": 0.5999999046325684,
+        "ocrOutputBytes": 3752,
+        "png": 152.79999995231628
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "production",
+      "round": 4,
+      "runIndex": 1,
+      "cacheState": "same-worker",
+      "totalMs": 1284.5,
+      "visibleResultMs": 1438.56298828125,
+      "displayTailMs": 154.06298828125,
+      "system": {
+        "cpuBusyPercent": 27.069170173734758,
+        "minFreeMemoryBytes": 11796729856
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-19-58-601Z.json",
+      "phases": {
+        "entryPrepareLoad": 338.2,
+        "detect": 172.2,
+        "bubble": 131.3,
+        "ocr": 136,
+        "order": 0.5,
+        "mask": 125.79999995231628,
+        "inpaint": 195.09999990463257,
+        "typeset": 14.1,
+        "delivery": 168.9,
+        "display": 154.06298828125,
+        "ocrInference": 53.40000057220459,
+        "ocrDecode": 0.19999980926513672,
+        "ocrOutputBytes": 3776,
+        "png": 159.90000009536743
+      },
+      "inpaintProfiles": []
+    },
+    {
+      "variant": "production",
+      "round": 4,
+      "runIndex": 0,
+      "cacheState": "retained-cache-new-process",
+      "totalMs": 1643.3,
+      "visibleResultMs": 1817.9611328125,
+      "displayTailMs": 174.6611328125,
+      "system": {
+        "cpuBusyPercent": 36.426730945058594,
+        "minFreeMemoryBytes": 12335058944
+      },
+      "resultImage": {
+        "width": 2921,
+        "height": 4096,
+        "sha256": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97"
+      },
+      "report": "benchmark/perf/reports/ui-jank-2026-10-01T16-20-03-426Z.json",
+      "phases": {
+        "entryPrepareLoad": 435.2,
+        "detect": 237.5,
+        "bubble": 171.6,
+        "ocr": 207.5,
+        "order": 0.7,
+        "mask": 141.5,
+        "inpaint": 251.5,
+        "typeset": 24.3,
+        "delivery": 163.79999999999998,
+        "display": 174.6611328125,
+        "ocrInference": 113.20000052452087,
+        "ocrDecode": 0.39999961853027344,
+        "ocrOutputBytes": 3752,
+        "png": 155.60000014305115
+      },
+      "inpaintProfiles": []
+    }
+  ],
+  "quality": {
+    "file": "cold-start-main-build-2026-10-02-quality.json",
+    "results": 12,
+    "browsers": [
+      "151.0.7922.34",
+      "154.0.4258.48"
+    ]
+  },
+  "tests": {
+    "vitest": {
+      "files": 16,
+      "passed": 162
+    },
+    "productionModelPrefetchCases": 28,
+    "shaderWarmupCheck": "passed",
+    "extensionTypecheck": "passed",
+    "testsTypecheck": "passed",
+    "benchmarkTypecheck": "passed",
+    "modelRuntimeTypecheck": "passed",
+    "imagePipelineTypecheck": "passed",
+    "releaseBoundaries": "passed",
+    "finalBuildJsMatchesMeasuredProduction": true
+  }
+}

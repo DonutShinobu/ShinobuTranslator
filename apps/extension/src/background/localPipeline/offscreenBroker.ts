@@ -14,6 +14,7 @@ import {
   isLocalPipelineErrorCode,
   isLocalPipelineHostMessage,
   serializePipelineError,
+  supportsLocalPipelineStructuredClone,
   type LocalPipelineClientMessage,
   type LocalPipelineErrorCode,
   type LocalPipelineHostMessage,
@@ -58,6 +59,8 @@ type HostWaiter = {
 
 type BufferedJob = {
   diagnosticRunId?: string;
+  structuredClone: boolean;
+  structuredCloneProbe?: unknown;
   state: 'prepared' | 'receiving' | 'queued' | 'active';
   start?: Extract<LocalPipelineClientMessage, { type: 'start' | 'start-detection-probe' }>;
   chunks: Map<number, Extract<LocalPipelineClientMessage, { type: 'input-chunk' }>>;
@@ -204,7 +207,15 @@ export class PipelineHostBroker {
           );
           return;
         }
-        const expectedChars = 4 * Math.ceil(value.file.size / 3);
+        const binaryFile = value.type === 'start' ? value.binaryFile : undefined;
+        if (binaryFile && !job.structuredClone) {
+          this.failJob(value.jobId, codedError(
+            'TRANSFER_PROTOCOL_ERROR',
+            '任务尚未协商二进制输入传输',
+          ));
+          return;
+        }
+        const expectedChars = binaryFile ? 0 : 4 * Math.ceil(value.file.size / 3);
         const expectedChunks = Math.ceil(expectedChars / LOCAL_PIPELINE_CHUNK_SIZE);
         if (
           value.input.totalChars !== expectedChars
@@ -303,6 +314,8 @@ export class PipelineHostBroker {
     connection.jobs.add(message.jobId);
     this.jobs.set(message.jobId, {
       diagnosticRunId: message.diagnosticRunId,
+      structuredClone: supportsLocalPipelineStructuredClone(message.structuredCloneProbe),
+      structuredCloneProbe: message.structuredCloneProbe,
       state: 'prepared',
       chunks: new Map(),
       receivedChars: 0,
@@ -326,6 +339,9 @@ export class PipelineHostBroker {
       if (!safelyPost(connection.port, {
         type: 'ready',
         jobId: message.jobId,
+        ...(message.structuredCloneProbe === undefined ? {} : {
+          structuredClone: supportsLocalPipelineStructuredClone(message.structuredCloneProbe),
+        }),
       } satisfies LocalPipelineHostMessage)) {
         this.releaseJob(message.jobId);
       }
@@ -486,6 +502,7 @@ export class PipelineHostBroker {
           type: 'prepare',
           jobId,
           diagnosticRunId: job.diagnosticRunId,
+          ...(job.structuredClone ? { structuredCloneProbe: job.structuredCloneProbe } : {}),
         },
         job.start!,
         ...[...job.chunks.values()].sort((left, right) => left.index - right.index),

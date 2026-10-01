@@ -16,7 +16,7 @@ import type { DiagnosticLogObserver } from '@shinobu/diagnostics';
 import type { PipelineCanvas, PlatformProvider } from './runtime/platform';
 import { runPipeline, PipelineStageError } from './pipeline/orchestrator';
 import { disposePipelineArtifacts } from './pipeline/resources';
-import { registerTypesetFonts } from './pipeline/typeset/fontRuntime';
+import { registerTypesetFonts, resolveTypesetFontFamily } from './pipeline/typeset/fontRuntime';
 import { canvasToPngBlob, summarizePipelineArtifacts } from './protocol';
 import type { PipelineArtifacts } from './types';
 import type { DetectionFallbackStrategy } from './pipeline/detect';
@@ -28,6 +28,7 @@ export {
   type TextDetectionProbeResult,
 } from './pipeline/detect/probe';
 export { DETECTION_MASK_EDGE_SEARCH_ROWS } from './pipeline/detect/packedDetectionMask';
+export { preparePaddleOcrRuntime } from './pipeline/ocr/paddleocrProvider';
 
 export type {
   LlmProvider,
@@ -1336,17 +1337,48 @@ export function createImagePipeline(
   dependencies: ImagePipelineDependencies,
 ): ImagePipeline {
   let activeExecution: ImagePipelineExecution | null = null;
+  const overlap = (globalThis as { __shinobuColdStartOverlap?: boolean })
+    .__shinobuColdStartOverlap === true;
+  const fontsAfterDetect = overlap && (globalThis as {
+    __shinobuColdStartFontsAfterDetect?: boolean;
+  }).__shinobuColdStartFontsAfterDetect === true;
+  const selectedFonts = (globalThis as {
+    __shinobuColdStartSelectedFonts?: boolean;
+  }).__shinobuColdStartSelectedFonts === true;
+  const registeredFontSelections = new Set<string>();
+  let fontsReady: Promise<void> | null = null;
+  const startFonts = (config?: Readonly<PipelineConfig>): void => {
+    if (!dependencies.fontSource || (selectedFonts && !config)) return;
+    const targetLang = selectedFonts && config
+      && !config.typesetDebug && !config.eraseDebug && !config.collectDebugLog
+      ? config.targetLang
+      : undefined;
+    const selection = targetLang === undefined ? 'all' : resolveTypesetFontFamily(targetLang);
+    if (registeredFontSelections.has('all') || registeredFontSelections.has(selection)) return;
+    registerTypesetFonts(dependencies.platform, dependencies.fontSource, targetLang);
+    registeredFontSelections.add(selection);
+    fontsReady = dependencies.platform.waitForFonts();
+    // Keep an early rejection observed; typeset/finalize still await this promise.
+    void fontsReady.catch(() => undefined);
+  };
+  if (overlap && !fontsAfterDetect) startFonts();
   const runtime = new ImagePipelineRuntime<PipelineArtifacts>({
     async prepare() {
-      if (dependencies.fontSource) {
-        registerTypesetFonts(dependencies.platform, dependencies.fontSource);
-        await dependencies.platform.waitForFonts();
-      }
+      if (!fontsAfterDetect) startFonts();
+      if (!overlap) await fontsReady;
     },
     async execute(request, context) {
       const execution = activeExecution;
       if (!execution) {
         throw new Error('流水线执行 capability 不可用');
+      }
+      if (selectedFonts && !fontsAfterDetect) {
+        startFonts(request.config);
+        if (!overlap) await fontsReady;
+      }
+      if (request.config.typesetDebug || request.config.eraseDebug || request.config.collectDebugLog) {
+        startFonts(request.config);
+        await fontsReady;
       }
       const preparedSource = dependencies.platform.prepareSource
         ? await dependencies.platform.prepareSource(
@@ -1375,7 +1407,10 @@ export function createImagePipeline(
       const artifacts = await runPipeline(
         source,
         request.config,
-        context.reportProgress,
+        (progress) => {
+          if (fontsAfterDetect && (progress.stage === 'bubble' || progress.stage === 'typeset')) startFonts(request.config);
+          context.reportProgress(progress);
+        },
         {
           signal: context.signal,
           platform: dependencies.platform,
@@ -1397,6 +1432,8 @@ export function createImagePipeline(
       };
     },
     async finalize(output, request) {
+      if (fontsAfterDetect) startFonts(request.config);
+      if (overlap || selectedFonts) await fontsReady;
       const finalizeStartedAt = performance.now();
       const encodeCanvasToPng = (canvas: PipelineCanvas): Blob | Promise<Blob> => (
         dependencies.platform.encodeCanvasToPng?.(canvas)

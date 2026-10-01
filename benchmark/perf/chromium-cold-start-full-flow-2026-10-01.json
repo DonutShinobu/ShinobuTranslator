@@ -1,0 +1,884 @@
+{
+  "createdAt": "2026-10-01T08:15:17.422Z",
+  "commit": "29e31c8 (current production implementation, HEAD f26f779)",
+  "browser": "Chromium 145.0.7632.6",
+  "ort": "1.27.0 JSEP",
+  "gpu": "NVIDIA GeForce RTX 5070 Ti",
+  "image": "benchmark/color/fixtures/typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+  "imageSize": [
+    2921,
+    4096
+  ],
+  "processMode": "original",
+  "clock": "Pipeline total: content progress tracker until result collected. Visible total: pipeline total plus PNG decode and next requestAnimationFrame, captured before full-image hashing. No external translation.",
+  "cacheBoundary": "fresh profiles reset extension CacheStorage; OS file cache and GPU driver cache not cleared",
+  "groups": {
+    "coldEmptyShaderCache": [
+      {
+        "report": "reports/ui-jank-2026-10-01T07-59-58-753Z.json",
+        "totalMs": 5538.9,
+        "stages": {
+          "entry": 720,
+          "runtime-prepare": 299.5,
+          "load": 36.2,
+          "preload": 933.9,
+          "detect": 915.5,
+          "bubble": 595.7,
+          "ocr": 764.3,
+          "merge": 4.7,
+          "ocr_postfilter": 6.8,
+          "order": 127.2,
+          "parallel": 785.3,
+          "typeset": 31.6,
+          "done": 0.6,
+          "finalize": 317.6
+        },
+        "maskRefineProgressMs": 243.4,
+        "inpaintProgressMs": 539.4,
+        "resultHash": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97",
+        "system": {
+          "cpuBusyPercent": 36.05688117618703,
+          "minFreeMemoryBytes": 3615465472
+        }
+      },
+      {
+        "report": "reports/ui-jank-2026-10-01T08-00-21-735Z.json",
+        "totalMs": 6778.6,
+        "stages": {
+          "entry": 618.8,
+          "runtime-prepare": 292.3,
+          "load": 35.5,
+          "preload": 923.7,
+          "detect": 1052.9,
+          "bubble": 991.3,
+          "ocr": 1132.8,
+          "merge": 5.3,
+          "ocr_postfilter": 10.3,
+          "order": 193.8,
+          "parallel": 1048.6,
+          "typeset": 52.7,
+          "done": 0.8,
+          "finalize": 419.8
+        },
+        "maskRefineProgressMs": 316.9,
+        "inpaintProgressMs": 729.3,
+        "resultHash": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97",
+        "system": {
+          "cpuBusyPercent": 41.63394044342744,
+          "minFreeMemoryBytes": 5334564864
+        }
+      },
+      {
+        "report": "reports/ui-jank-2026-10-01T08-04-14-107Z.json",
+        "totalMs": 6192.9,
+        "stages": {
+          "entry": 749.8,
+          "runtime-prepare": 292.9,
+          "load": 36.3,
+          "preload": 1259.2,
+          "detect": 1172.4,
+          "bubble": 569,
+          "ocr": 777.3,
+          "merge": 2.9,
+          "ocr_postfilter": 7.4,
+          "order": 128.2,
+          "parallel": 817.4,
+          "typeset": 47.9,
+          "done": 0.6,
+          "finalize": 331.6
+        },
+        "maskRefineProgressMs": 240.3,
+        "inpaintProgressMs": 574.7,
+        "resultHash": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97",
+        "system": {
+          "cpuBusyPercent": 48.03054707651412,
+          "minFreeMemoryBytes": 5070798848
+        }
+      }
+    ],
+    "warmSameWorker": [
+      {
+        "report": "reports/ui-jank-2026-10-01T08-00-02-205Z.json",
+        "totalMs": 2175.6,
+        "stages": {
+          "entry": 522.9,
+          "runtime-prepare": 41.2,
+          "load": 21.5,
+          "preload": 0.7,
+          "detect": 251.2,
+          "bubble": 119.3,
+          "ocr": 180.8,
+          "merge": 1.6,
+          "ocr_postfilter": 1.1,
+          "order": 120.4,
+          "parallel": 551.9,
+          "typeset": 22.6,
+          "done": 0.5,
+          "finalize": 339.9
+        },
+        "maskRefineProgressMs": 213.5,
+        "inpaintProgressMs": 336.4,
+        "resultHash": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97",
+        "system": {
+          "cpuBusyPercent": 37.61801952759966,
+          "minFreeMemoryBytes": 3341398016
+        }
+      },
+      {
+        "report": "reports/ui-jank-2026-10-01T08-00-26-361Z.json",
+        "totalMs": 3045.3,
+        "stages": {
+          "entry": 603.4,
+          "runtime-prepare": 8.1,
+          "load": 20,
+          "preload": 1.2,
+          "detect": 394.2,
+          "bubble": 187.8,
+          "ocr": 262.1,
+          "merge": 2.5,
+          "ocr_postfilter": 1.6,
+          "order": 189.6,
+          "parallel": 836.5,
+          "typeset": 33.4,
+          "done": 1.1,
+          "finalize": 503.8
+        },
+        "maskRefineProgressMs": 321.1,
+        "inpaintProgressMs": 513.1,
+        "resultHash": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97",
+        "system": {
+          "cpuBusyPercent": 37.964091128531685,
+          "minFreeMemoryBytes": 5065527296
+        }
+      },
+      {
+        "report": "reports/ui-jank-2026-10-01T08-04-17-525Z.json",
+        "totalMs": 2092.7,
+        "stages": {
+          "entry": 452.7,
+          "runtime-prepare": 34.9,
+          "load": 24.4,
+          "preload": 1.1,
+          "detect": 258.5,
+          "bubble": 117.5,
+          "ocr": 182.4,
+          "merge": 0.8,
+          "ocr_postfilter": 0.9,
+          "order": 123.7,
+          "parallel": 536.7,
+          "typeset": 23.1,
+          "done": 0.9,
+          "finalize": 335.1
+        },
+        "maskRefineProgressMs": 213.9,
+        "inpaintProgressMs": 320.6,
+        "resultHash": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97",
+        "system": {
+          "cpuBusyPercent": 47.66797891505972,
+          "minFreeMemoryBytes": 4784304128
+        }
+      }
+    ],
+    "coldPersistedShaderCache": [
+      {
+        "report": "reports/ui-jank-2026-10-01T08-05-18-205Z.json",
+        "totalMs": 4696.6,
+        "stages": {
+          "entry": 641.3,
+          "runtime-prepare": 273.6,
+          "load": 32.9,
+          "preload": 662,
+          "detect": 1305.7,
+          "bubble": 227.4,
+          "ocr": 430.4,
+          "merge": 3.5,
+          "ocr_postfilter": 5.4,
+          "order": 124.1,
+          "parallel": 639.1,
+          "typeset": 43.6,
+          "done": 0.6,
+          "finalize": 307
+        },
+        "maskRefineProgressMs": 270,
+        "inpaintProgressMs": 367.2,
+        "resultHash": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97",
+        "system": {
+          "cpuBusyPercent": 36.19402985074627,
+          "minFreeMemoryBytes": 5234122752
+        }
+      },
+      {
+        "report": "reports/ui-jank-2026-10-01T08-10-20-902Z.json",
+        "totalMs": 3856.9,
+        "stages": {
+          "entry": 666,
+          "runtime-prepare": 291.7,
+          "load": 38,
+          "preload": 714.1,
+          "detect": 417.4,
+          "bubble": 237.5,
+          "ocr": 421.2,
+          "merge": 3.4,
+          "ocr_postfilter": 5.7,
+          "order": 124.7,
+          "parallel": 604.5,
+          "typeset": 33.3,
+          "done": 0.7,
+          "finalize": 298.7
+        },
+        "maskRefineProgressMs": 229.8,
+        "inpaintProgressMs": 372.5,
+        "resultHash": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97",
+        "system": {
+          "cpuBusyPercent": 46.955938593152446,
+          "minFreeMemoryBytes": 5361602560
+        }
+      },
+      {
+        "report": "reports/ui-jank-2026-10-01T08-10-44-410Z.json",
+        "totalMs": 3636.1,
+        "stages": {
+          "entry": 615.4,
+          "runtime-prepare": 276.8,
+          "load": 32.2,
+          "preload": 656.2,
+          "detect": 377,
+          "bubble": 219.3,
+          "ocr": 396.6,
+          "merge": 3.5,
+          "ocr_postfilter": 5.4,
+          "order": 128,
+          "parallel": 590.6,
+          "typeset": 33.7,
+          "done": 0.6,
+          "finalize": 300.8
+        },
+        "maskRefineProgressMs": 215.6,
+        "inpaintProgressMs": 372.8,
+        "resultHash": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97",
+        "system": {
+          "cpuBusyPercent": 55.08923431203223,
+          "minFreeMemoryBytes": 5343756288
+        }
+      }
+    ],
+    "coldEmptyShaderCacheVisible": [
+      {
+        "report": "reports/ui-jank-2026-10-01T08-22-38-321Z.json",
+        "totalMs": 5564.7,
+        "visibleResultMs": 5691,
+        "displayTailMs": 126.3,
+        "stages": {
+          "entry": 882.3,
+          "runtime-prepare": 273.5,
+          "load": 34.6,
+          "preload": 843,
+          "detect": 893.1,
+          "bubble": 591.4,
+          "ocr": 795.8,
+          "merge": 3.3,
+          "ocr_postfilter": 5.5,
+          "order": 124.8,
+          "parallel": 766.4,
+          "typeset": 32.2,
+          "done": 0.9,
+          "finalize": 317.9
+        },
+        "stageTimings": [
+          {
+            "stage": "load",
+            "label": "加载图片",
+            "durationMs": 34.9
+          },
+          {
+            "stage": "preload",
+            "label": "加载检测模型",
+            "durationMs": 842.2
+          },
+          {
+            "stage": "detect",
+            "label": "文本检测",
+            "durationMs": 893.4
+          },
+          {
+            "stage": "bubble",
+            "label": "气泡检测",
+            "durationMs": 591.5
+          },
+          {
+            "stage": "ocr",
+            "label": "OCR 日文识别",
+            "durationMs": 795.8
+          },
+          {
+            "stage": "preload_inpaint",
+            "label": "加载去字模型",
+            "durationMs": 0
+          },
+          {
+            "stage": "merge",
+            "label": "合并文本行",
+            "durationMs": 2.8
+          },
+          {
+            "stage": "ocr_postfilter",
+            "label": "过滤 OCR 误识别",
+            "durationMs": 5.2
+          },
+          {
+            "stage": "order",
+            "label": "文本顺序排序",
+            "durationMs": 124.3
+          },
+          {
+            "stage": "mask_refine",
+            "label": "细化去字遮罩",
+            "durationMs": 232.1
+          },
+          {
+            "stage": "inpaint",
+            "label": "去字",
+            "durationMs": 532.9
+          },
+          {
+            "stage": "parallel",
+            "label": "去字",
+            "durationMs": 765.3
+          },
+          {
+            "stage": "typeset",
+            "label": "排版原文",
+            "durationMs": 33.3
+          },
+          {
+            "stage": "finalize",
+            "label": "生成结果图片",
+            "durationMs": 163.8
+          }
+        ],
+        "resultHash": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97",
+        "system": {
+          "cpuBusyPercent": 49.31615936899585,
+          "minFreeMemoryBytes": 6022025216
+        }
+      },
+      {
+        "report": "reports/ui-jank-2026-10-01T08-22-48-662Z.json",
+        "totalMs": 5479.7,
+        "visibleResultMs": 5765.5,
+        "displayTailMs": 285.8,
+        "stages": {
+          "entry": 802,
+          "runtime-prepare": 285.8,
+          "load": 40.2,
+          "preload": 832.3,
+          "detect": 897.9,
+          "bubble": 610.8,
+          "ocr": 789.2,
+          "merge": 3.7,
+          "ocr_postfilter": 5.7,
+          "order": 127.5,
+          "parallel": 743.6,
+          "typeset": 34.1,
+          "done": 1.6,
+          "finalize": 305.3
+        },
+        "stageTimings": [
+          {
+            "stage": "load",
+            "label": "加载图片",
+            "durationMs": 40.3
+          },
+          {
+            "stage": "preload",
+            "label": "加载检测模型",
+            "durationMs": 831.8
+          },
+          {
+            "stage": "detect",
+            "label": "文本检测",
+            "durationMs": 897.9
+          },
+          {
+            "stage": "bubble",
+            "label": "气泡检测",
+            "durationMs": 610.7
+          },
+          {
+            "stage": "ocr",
+            "label": "OCR 日文识别",
+            "durationMs": 789.5
+          },
+          {
+            "stage": "preload_inpaint",
+            "label": "加载去字模型",
+            "durationMs": 0
+          },
+          {
+            "stage": "merge",
+            "label": "合并文本行",
+            "durationMs": 2.6
+          },
+          {
+            "stage": "ocr_postfilter",
+            "label": "过滤 OCR 误识别",
+            "durationMs": 5.6
+          },
+          {
+            "stage": "order",
+            "label": "文本顺序排序",
+            "durationMs": 127.2
+          },
+          {
+            "stage": "mask_refine",
+            "label": "细化去字遮罩",
+            "durationMs": 232
+          },
+          {
+            "stage": "inpaint",
+            "label": "去字",
+            "durationMs": 509.8
+          },
+          {
+            "stage": "parallel",
+            "label": "去字",
+            "durationMs": 742.1
+          },
+          {
+            "stage": "typeset",
+            "label": "排版原文",
+            "durationMs": 35.8
+          },
+          {
+            "stage": "finalize",
+            "label": "生成结果图片",
+            "durationMs": 158.3
+          }
+        ],
+        "resultHash": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97",
+        "system": {
+          "cpuBusyPercent": 54.95150554675119,
+          "minFreeMemoryBytes": 5839708160
+        }
+      },
+      {
+        "report": "reports/ui-jank-2026-10-01T08-22-58-214Z.json",
+        "totalMs": 5101.1,
+        "visibleResultMs": 5222.8,
+        "displayTailMs": 121.7,
+        "stages": {
+          "entry": 607.9,
+          "runtime-prepare": 268,
+          "load": 30.8,
+          "preload": 762.7,
+          "detect": 847.1,
+          "bubble": 606.9,
+          "ocr": 818.7,
+          "merge": 4.1,
+          "ocr_postfilter": 5.3,
+          "order": 124.2,
+          "parallel": 705.8,
+          "typeset": 31,
+          "done": 0.5,
+          "finalize": 288.1
+        },
+        "stageTimings": [
+          {
+            "stage": "load",
+            "label": "加载图片",
+            "durationMs": 30.9
+          },
+          {
+            "stage": "preload",
+            "label": "加载检测模型",
+            "durationMs": 762.1
+          },
+          {
+            "stage": "detect",
+            "label": "文本检测",
+            "durationMs": 847.3
+          },
+          {
+            "stage": "bubble",
+            "label": "气泡检测",
+            "durationMs": 607
+          },
+          {
+            "stage": "ocr",
+            "label": "OCR 日文识别",
+            "durationMs": 818.5
+          },
+          {
+            "stage": "preload_inpaint",
+            "label": "加载去字模型",
+            "durationMs": 0
+          },
+          {
+            "stage": "merge",
+            "label": "合并文本行",
+            "durationMs": 2.8
+          },
+          {
+            "stage": "ocr_postfilter",
+            "label": "过滤 OCR 误识别",
+            "durationMs": 5.9
+          },
+          {
+            "stage": "order",
+            "label": "文本顺序排序",
+            "durationMs": 123.7
+          },
+          {
+            "stage": "mask_refine",
+            "label": "细化去字遮罩",
+            "durationMs": 229.4
+          },
+          {
+            "stage": "inpaint",
+            "label": "去字",
+            "durationMs": 475.3
+          },
+          {
+            "stage": "parallel",
+            "label": "去字",
+            "durationMs": 705
+          },
+          {
+            "stage": "typeset",
+            "label": "排版原文",
+            "durationMs": 31.9
+          },
+          {
+            "stage": "finalize",
+            "label": "生成结果图片",
+            "durationMs": 156.6
+          }
+        ],
+        "resultHash": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97",
+        "system": {
+          "cpuBusyPercent": 52.96436694465504,
+          "minFreeMemoryBytes": 5909549056
+        }
+      }
+    ],
+    "coldPersistedShaderCacheVisible": [
+      {
+        "report": "reports/ui-jank-2026-10-01T08-23-37-066Z.json",
+        "totalMs": 4600.3,
+        "visibleResultMs": 4901.6,
+        "displayTailMs": 301.3,
+        "stages": {
+          "entry": 802,
+          "runtime-prepare": 279.4,
+          "load": 34.9,
+          "preload": 674.1,
+          "detect": 349,
+          "bubble": 214.5,
+          "ocr": 496.3,
+          "merge": 6.1,
+          "ocr_postfilter": 9.9,
+          "order": 203.7,
+          "parallel": 984.9,
+          "typeset": 58.5,
+          "done": 0.9,
+          "finalize": 486.1
+        },
+        "stageTimings": [
+          {
+            "stage": "load",
+            "label": "加载图片",
+            "durationMs": 35.3
+          },
+          {
+            "stage": "preload",
+            "label": "加载检测模型",
+            "durationMs": 673.7
+          },
+          {
+            "stage": "detect",
+            "label": "文本检测",
+            "durationMs": 349.3
+          },
+          {
+            "stage": "bubble",
+            "label": "气泡检测",
+            "durationMs": 214.4
+          },
+          {
+            "stage": "ocr",
+            "label": "OCR 日文识别",
+            "durationMs": 496
+          },
+          {
+            "stage": "preload_inpaint",
+            "label": "加载去字模型",
+            "durationMs": 0
+          },
+          {
+            "stage": "merge",
+            "label": "合并文本行",
+            "durationMs": 4.7
+          },
+          {
+            "stage": "ocr_postfilter",
+            "label": "过滤 OCR 误识别",
+            "durationMs": 10.1
+          },
+          {
+            "stage": "order",
+            "label": "文本顺序排序",
+            "durationMs": 203
+          },
+          {
+            "stage": "mask_refine",
+            "label": "细化去字遮罩",
+            "durationMs": 422.9
+          },
+          {
+            "stage": "inpaint",
+            "label": "去字",
+            "durationMs": 558
+          },
+          {
+            "stage": "parallel",
+            "label": "去字",
+            "durationMs": 983.2
+          },
+          {
+            "stage": "typeset",
+            "label": "排版原文",
+            "durationMs": 60.1
+          },
+          {
+            "stage": "finalize",
+            "label": "生成结果图片",
+            "durationMs": 270.2
+          }
+        ],
+        "resultHash": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97",
+        "system": {
+          "cpuBusyPercent": 43.360347715850956,
+          "minFreeMemoryBytes": 5587468288
+        }
+      },
+      {
+        "report": "reports/ui-jank-2026-10-01T08-23-46-472Z.json",
+        "totalMs": 4370.8,
+        "visibleResultMs": 4665.3,
+        "displayTailMs": 294.5,
+        "stages": {
+          "entry": 653.1,
+          "runtime-prepare": 280.7,
+          "load": 35.7,
+          "preload": 696.7,
+          "detect": 360.1,
+          "bubble": 218.5,
+          "ocr": 547.1,
+          "merge": 6.6,
+          "ocr_postfilter": 10.7,
+          "order": 217.4,
+          "parallel": 862.7,
+          "typeset": 63.9,
+          "done": 0.8,
+          "finalize": 416.8
+        },
+        "stageTimings": [
+          {
+            "stage": "load",
+            "label": "加载图片",
+            "durationMs": 35.8
+          },
+          {
+            "stage": "preload",
+            "label": "加载检测模型",
+            "durationMs": 696
+          },
+          {
+            "stage": "detect",
+            "label": "文本检测",
+            "durationMs": 360.5
+          },
+          {
+            "stage": "bubble",
+            "label": "气泡检测",
+            "durationMs": 218.2
+          },
+          {
+            "stage": "ocr",
+            "label": "OCR 日文识别",
+            "durationMs": 546.9
+          },
+          {
+            "stage": "preload_inpaint",
+            "label": "加载去字模型",
+            "durationMs": 0
+          },
+          {
+            "stage": "merge",
+            "label": "合并文本行",
+            "durationMs": 5.3
+          },
+          {
+            "stage": "ocr_postfilter",
+            "label": "过滤 OCR 误识别",
+            "durationMs": 10.8
+          },
+          {
+            "stage": "order",
+            "label": "文本顺序排序",
+            "durationMs": 217
+          },
+          {
+            "stage": "mask_refine",
+            "label": "细化去字遮罩",
+            "durationMs": 357.5
+          },
+          {
+            "stage": "inpaint",
+            "label": "去字",
+            "durationMs": 504.1
+          },
+          {
+            "stage": "parallel",
+            "label": "去字",
+            "durationMs": 862.1
+          },
+          {
+            "stage": "typeset",
+            "label": "排版原文",
+            "durationMs": 64.5
+          },
+          {
+            "stage": "finalize",
+            "label": "生成结果图片",
+            "durationMs": 241.7
+          }
+        ],
+        "resultHash": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97",
+        "system": {
+          "cpuBusyPercent": 59.10648539232719,
+          "minFreeMemoryBytes": 5728587776
+        }
+      },
+      {
+        "report": "reports/ui-jank-2026-10-01T08-23-54-941Z.json",
+        "totalMs": 3557.6,
+        "visibleResultMs": 3770.4,
+        "displayTailMs": 212.8,
+        "stages": {
+          "entry": 617.2,
+          "runtime-prepare": 275.7,
+          "load": 32.3,
+          "preload": 626.4,
+          "detect": 348.7,
+          "bubble": 213.3,
+          "ocr": 386.4,
+          "merge": 3.5,
+          "ocr_postfilter": 5.8,
+          "order": 126.7,
+          "parallel": 585.9,
+          "typeset": 33.8,
+          "done": 0.7,
+          "finalize": 301.2
+        },
+        "stageTimings": [
+          {
+            "stage": "load",
+            "label": "加载图片",
+            "durationMs": 32.9
+          },
+          {
+            "stage": "preload",
+            "label": "加载检测模型",
+            "durationMs": 626
+          },
+          {
+            "stage": "detect",
+            "label": "文本检测",
+            "durationMs": 348.9
+          },
+          {
+            "stage": "bubble",
+            "label": "气泡检测",
+            "durationMs": 213.3
+          },
+          {
+            "stage": "ocr",
+            "label": "OCR 日文识别",
+            "durationMs": 386.2
+          },
+          {
+            "stage": "preload_inpaint",
+            "label": "加载去字模型",
+            "durationMs": 0
+          },
+          {
+            "stage": "merge",
+            "label": "合并文本行",
+            "durationMs": 2.9
+          },
+          {
+            "stage": "ocr_postfilter",
+            "label": "过滤 OCR 误识别",
+            "durationMs": 5.7
+          },
+          {
+            "stage": "order",
+            "label": "文本顺序排序",
+            "durationMs": 126
+          },
+          {
+            "stage": "mask_refine",
+            "label": "细化去字遮罩",
+            "durationMs": 230.6
+          },
+          {
+            "stage": "inpaint",
+            "label": "去字",
+            "durationMs": 354.6
+          },
+          {
+            "stage": "parallel",
+            "label": "去字",
+            "durationMs": 585.3
+          },
+          {
+            "stage": "typeset",
+            "label": "排版原文",
+            "durationMs": 34.5
+          },
+          {
+            "stage": "finalize",
+            "label": "生成结果图片",
+            "durationMs": 160.3
+          }
+        ],
+        "resultHash": "d3bd5084867c64501ac615d6baacb8cb31ee38f6b93af28cb7ce78f2d1d8ba97",
+        "system": {
+          "cpuBusyPercent": 47.862696831164776,
+          "minFreeMemoryBytes": 5702082560
+        }
+      }
+    ]
+  },
+  "diagnosticProfiles": [
+    "reports/ui-jank-2026-10-01T08-06-55-717Z.json",
+    "reports/ui-jank-2026-10-01T08-06-59-169Z.json"
+  ],
+  "targetBudgetsMs": {
+    "coldEmptyShaderCacheVisible": {
+      "sourceFontsRuntimeImageAndDetectorLoad": 900,
+      "detectBubbleOcr": 900,
+      "maskInpaintOrderTypeset": 650,
+      "encodingDeliveryAndDisplay": 400
+    },
+    "coldPersistedShaderCacheVisible": {
+      "sourceFontsRuntimeImageAndDetectorLoad": 750,
+      "detectBubbleOcr": 600,
+      "maskInpaintOrderTypeset": 580,
+      "encodingDeliveryAndDisplay": 400
+    }
+  },
+  "targetBudgetsAreNotMeasured": true,
+  "visibleTimingNotes": "Earlier UI display experiments at 08:17-08:20 are not used as the final visible baseline: image hashing could delay the next animation frame. Final UI samples at 08:22-08:23 await that frame before hashing."
+}

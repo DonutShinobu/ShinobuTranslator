@@ -291,9 +291,9 @@ function decodePaddleBatchOutput(
     const itemStride = timeSteps * numClasses;
     const decoded = Array.from({ length: batchSize }, (_, index) => {
       const logits = logitsData.subarray(index * itemStride, (index + 1) * itemStride);
-      return decodePaddleCtc(logits, timeSteps, numClasses, ctcCharset);
+      return decodePaddleCtc(logits, timeSteps, numClasses, ctcCharset, output.ctcClassCount !== undefined);
     });
-    return { decoded, timeSteps, numClasses };
+    return { decoded, timeSteps, numClasses: output.ctcClassCount ?? numClasses };
   }
   if (logitsDims.length === 2 && batchSize === 1) {
     const timeSteps = logitsDims[0];

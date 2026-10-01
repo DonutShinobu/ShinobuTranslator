@@ -159,7 +159,17 @@ export function createModelRegistry(options: ModelRegistryOptions): ModelRegistr
       && name === 'detector'
       && model.format === 'ort'
     )
-      ? { ...BROWSER_DETECTOR_SESSION_OPTIONS, ...sessionOptions }
+      ? {
+        ...BROWSER_DETECTOR_SESSION_OPTIONS,
+        // Experiment: ORT-format basic skips saved Level2 runtime optimization replay.
+        // Explicit caller options still take precedence and participate in the cache key.
+        ...((globalThis as typeof globalThis & {
+          __shinobuColdStartDetectorBasicOptimization?: boolean;
+        }).__shinobuColdStartDetectorBasicOptimization === true && runtime[0] === 'webgpu'
+          ? { graphOptimizationLevel: 'basic' as const }
+          : {}),
+        ...sessionOptions,
+      }
       : sessionOptions;
     const sessionOptionsKey = serializeOnnxSessionOptions(effectiveSessionOptions);
     const cacheKey = `${name}:${runtime.join(',')}:${sessionOptionsKey}`;

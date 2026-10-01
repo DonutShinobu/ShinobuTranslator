@@ -29,6 +29,15 @@ export const LOCAL_PIPELINE_CLIENT_PORT = 'mt:local-pipeline-client';
 export const LOCAL_PIPELINE_HOST_PORT = 'mt:pipeline-host';
 export const LOCAL_PIPELINE_CHUNK_SIZE = 4 * 1024 * 1024;
 export const LOCAL_PIPELINE_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+export const LOCAL_PIPELINE_STRUCTURED_CLONE_PROBE_TYPE = 'application/x-shinobu-structured-clone';
+
+export function supportsLocalPipelineStructuredClone(probe: unknown): boolean {
+  return (globalThis as typeof globalThis & { __shinobuColdStartStructuredClone?: boolean })
+    .__shinobuColdStartStructuredClone === true
+    && probe instanceof Blob
+    && probe.size === 1
+    && probe.type === LOCAL_PIPELINE_STRUCTURED_CLONE_PROBE_TYPE;
+}
 
 export type LocalPipelineErrorCode =
   | 'PIPELINE_HOST_UNAVAILABLE'
@@ -105,6 +114,8 @@ export type LocalPipelineClientMessage =
       type: 'prepare';
       jobId: string;
       diagnosticRunId?: string;
+      // JSON messaging serializes this Blob as {}, which must select the legacy path.
+      structuredCloneProbe?: unknown;
     }
   | {
       type: 'start';
@@ -112,6 +123,7 @@ export type LocalPipelineClientMessage =
       file: LocalPipelineFileMeta;
       config: PipelineConfig;
       input: LocalPipelineChunkMeta;
+      binaryFile?: Blob;
       detection?: LocalPipelineDetectionArtifact;
     }
   | {
@@ -142,6 +154,7 @@ export type LocalPipelineHostMessage =
   | {
       type: 'ready';
       jobId: string;
+      structuredClone?: boolean;
     }
   | {
       type: 'queued';
@@ -169,6 +182,8 @@ export type LocalPipelineHostMessage =
       status: 'completed' | 'no-translatable-text';
       result: LocalPipelineArtifactMeta;
       debug?: LocalPipelineArtifactMeta;
+      resultBlob?: Blob;
+      debugBlob?: Blob;
       summary: LocalPipelineArtifactSummary;
       record: PipelineRecord;
     }
@@ -233,6 +248,12 @@ export function isLocalPipelineClientMessage(value: unknown): value is LocalPipe
       return isValidFileMeta(value.file)
         && isValidPipelineConfig(value.config)
         && isValidChunkMeta(value.input)
+        && (value.binaryFile === undefined || (
+          value.binaryFile instanceof Blob
+          && value.binaryFile.size === value.file.size
+          && value.input.chunkCount === 0
+          && value.input.totalChars === 0
+        ))
         && (value.detection === undefined || isValidDetectionArtifact(value.detection));
     case 'start-detection-probe':
       return isValidFileMeta(value.file) && isValidChunkMeta(value.input);
@@ -263,6 +284,7 @@ export function isLocalPipelineHostMessage(value: unknown): value is LocalPipeli
   }
   switch (value.type) {
     case 'ready':
+      return value.structuredClone === undefined || typeof value.structuredClone === 'boolean';
     case 'complete':
       return true;
     case 'queued':
@@ -293,6 +315,8 @@ export function isLocalPipelineHostMessage(value: unknown): value is LocalPipeli
       return (value.status === 'completed' || value.status === 'no-translatable-text')
         && isValidArtifactMeta(value.result)
         && (value.debug === undefined || isValidArtifactMeta(value.debug))
+        && (value.resultBlob === undefined || isValidBinaryArtifact(value.resultBlob, value.result))
+        && (value.debugBlob === undefined || isValidBinaryArtifact(value.debugBlob, value.debug))
         && isValidArtifactSummary(value.summary)
         && isCurrentPipelineRecord(value.record);
     case 'result-chunk':
@@ -431,6 +455,14 @@ export function isValidChunkMeta(value: unknown): value is LocalPipelineChunkMet
 
 function isValidArtifactMeta(value: unknown): value is LocalPipelineArtifactMeta {
   return isRecord(value) && typeof value.contentType === 'string' && isValidChunkMeta(value);
+}
+
+function isValidBinaryArtifact(blob: unknown, meta: unknown): boolean {
+  return blob instanceof Blob
+    && isValidArtifactMeta(meta)
+    && (blob.type || 'image/png') === meta.contentType
+    && meta.chunkCount === 0
+    && meta.totalChars === 0;
 }
 
 export function splitBase64Chunks(value: string): string[] {

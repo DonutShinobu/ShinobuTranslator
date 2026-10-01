@@ -14,6 +14,7 @@ export function decodePaddleCtc(
   timeSteps: number,
   numClasses: number,
   charset: string[],
+  compactMaxima = false,
 ): PaddleCtcResult {
   const tokenIds: number[] = [];
   const probs: number[] = [];
@@ -21,9 +22,9 @@ export function decodePaddleCtc(
 
   for (let t = 0; t < timeSteps; t++) {
     // 找每步最大概率的 token
-    let maxIdx = 0;
-    let maxProb = logits[t * numClasses];
-    for (let c = 1; c < numClasses; c++) {
+    let maxIdx = compactMaxima ? logits[t * 2] : 0;
+    let maxProb = logits[t * numClasses + (compactMaxima ? 1 : 0)];
+    for (let c = 1; !compactMaxima && c < numClasses; c++) {
       const prob = logits[t * numClasses + c];
       if (prob > maxProb) {
         maxProb = prob;

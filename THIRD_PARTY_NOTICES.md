@@ -97,7 +97,16 @@ LICENSE/NOTICE。
 - 本项目用途：将 `ShinobuTranslator` 文字转换为 SVG outline，用于 README 头图与扩展弹窗标题；不分发完整字体文件。
 - 版权声明：Copyright 2018 The Sour Gummy Project Authors (`https://github.com/eifetx/Sour-Gummy-Fonts`)
 
-## 9) 免责声明
+## 9) Popup 的 shadcn/ui 控件
+
+- 来源：`https://ui.shadcn.com/r/styles/new-york-v4/{component}.json`，于 2026-10-04 获取。
+- 上游：`https://github.com/shadcn-ui/ui`，MIT，Copyright (c) 2023 shadcn。
+- 本地源码：`apps/extension/src/popup/components/ui/`。
+- 修改记录：调整本地导入路径，兼容 React 18 的 Button ref，向 Slider thumb 传递无障碍名称和值文本并保留装饰刻度，省略 Select 菜单的滚动箭头按钮。
+- 完整许可证：`public/licenses/shadcn-ui.txt`，随 Chromium 和 Firefox 扩展构建复制。
+- Radix、Lucide、Tailwind 相关 npm 依赖的精确版本和许可证包含在 `THIRD_PARTY_DEPENDENCIES.json`。
+
+## 10) 免责声明
 
 - 本文件仅用于工程合规记录，不构成法律意见。许可证冲突或权利范围不明确时，不以模型页
   标签代替权利人授权；是否公开分发由维护者结合上游材料自行决定。

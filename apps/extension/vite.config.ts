@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import { readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import type { Plugin, UserConfig } from 'vite';
 import { browserRuntimeBoundaryPlugin } from '../../scripts/vite-browser-runtime-boundary';
 import { createExtensionManifest, type ExtensionTarget } from './manifest';
@@ -122,6 +123,7 @@ export default defineConfig(({ mode }): UserConfig => {
     envDir: repoRoot,
     publicDir: resolve(repoRoot, 'public'),
     resolve: {
+      alias: { '@': resolve(extensionRoot, 'src') },
       conditions: ['onnxruntime-web-use-extern-wasm'],
     },
     server: {
@@ -132,6 +134,7 @@ export default defineConfig(({ mode }): UserConfig => {
     plugins: [
       browserRuntimeBoundaryPlugin({ apply: 'serve' }),
       react(),
+      tailwindcss(),
       extensionReleaseAssetsPlugin(target, extensionDist),
     ],
     define: {

@@ -3,8 +3,9 @@ import {
   useId,
   useRef,
   useState,
+  type CSSProperties,
   type Dispatch,
-  type KeyboardEvent,
+  type ReactElement,
   type SetStateAction,
 } from 'react';
 import {
@@ -47,6 +48,20 @@ import {
   rebaseExtensionSettingsProjection,
   type ExtensionControlClient,
 } from './extensionControlClient';
+
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './components/ui/accordion';
+import { Badge } from './components/ui/badge';
+import { Button } from './components/ui/button';
+import { Checkbox } from './components/ui/checkbox';
+import { Input } from './components/ui/input';
+import { Kbd } from './components/ui/kbd';
+import { Label } from './components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './components/ui/select';
+import { Separator } from './components/ui/separator';
+import { Slider } from './components/ui/slider';
+import { Textarea } from './components/ui/textarea';
+import { ToggleGroup, ToggleGroupItem } from './components/ui/toggle-group';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './components/ui/tooltip';
 
 type SaveStatus = {
   kind: 'idle' | 'saving' | 'success' | 'error';
@@ -193,6 +208,17 @@ const defaultShortcutState: ShortcutState = {
   'translate-hover-target': '',
 };
 
+function ControlHint({ content, children }: { content: string; children: ReactElement }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent sideOffset={4} collisionPadding={8}>
+        {content}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function ApiKeyField({
   value,
   onChange,
@@ -210,9 +236,11 @@ function ApiKeyField({
 
   return (
     <div className="field">
-      <label className="field-label" htmlFor={inputId}>API Key</label>
+      <Label className="field-label" htmlFor={inputId}>
+        API Key
+      </Label>
       <div className="api-key-control">
-        <input
+        <Input
           id={inputId}
           type={revealed ? 'text' : 'password'}
           value={value}
@@ -220,18 +248,20 @@ function ApiKeyField({
           disabled={disabled}
           placeholder={placeholder}
         />
-        <button
-          className="api-key-visibility-button"
-          type="button"
-          onClick={() => setRevealed((current) => !current)}
-          disabled={disabled}
-          title={toggleLabel}
-          aria-label={toggleLabel}
-          aria-controls={inputId}
-          aria-pressed={revealed}
-        >
-          {revealed ? <IconEye /> : <IconEyeOff />}
-        </button>
+        <ControlHint content={toggleLabel}>
+          <Button
+            variant="outline"
+            className="api-key-visibility-button"
+            type="button"
+            onClick={() => setRevealed((current) => !current)}
+            disabled={disabled}
+            aria-label={toggleLabel}
+            aria-controls={inputId}
+            aria-pressed={revealed}
+          >
+            {revealed ? <IconEye /> : <IconEyeOff />}
+          </Button>
+        </ControlHint>
       </div>
     </div>
   );
@@ -242,35 +272,41 @@ function SegmentedControl<T extends string>({
   value,
   onChange,
   disabled,
+  ariaLabel,
 }: {
   options: { value: T; label: string }[];
   value: T;
   onChange: (value: T) => void;
   disabled?: boolean;
+  ariaLabel: string;
 }) {
-  const selectedIndex = options.findIndex((o) => o.value === value);
-  const count = options.length;
+  const selectedIndex = Math.max(0, options.findIndex((option) => option.value === value));
+
   return (
-    <div className={`seg-control${disabled ? ' seg-disabled' : ''}`}>
-      <div
+    <ToggleGroup
+      type="single"
+      className={`seg-control${disabled ? ' seg-disabled' : ''}`}
+      value={value}
+      onValueChange={(nextValue) => {
+        if (nextValue) onChange(nextValue as T);
+      }}
+      disabled={disabled}
+      aria-label={ariaLabel}
+    >
+      <span
         className="seg-pill"
+        aria-hidden="true"
         style={{
-          width: `calc(${100 / count}% - ${6 / count}px)`,
+          width: `calc(${100 / options.length}% - ${6 / options.length}px)`,
           transform: `translateX(${selectedIndex * 100}%)`,
         }}
       />
-      {options.map((option, i) => (
-        <button
-          key={option.value}
-          type="button"
-          className={`seg-option${i === selectedIndex ? ' seg-active' : ''}`}
-          onClick={() => onChange(option.value)}
-          disabled={disabled}
-        >
+      {options.map((option) => (
+        <ToggleGroupItem className="seg-option" key={option.value} value={option.value}>
           {option.label}
-        </button>
+        </ToggleGroupItem>
       ))}
-    </div>
+    </ToggleGroup>
   );
 }
 
@@ -278,13 +314,6 @@ type SelectOption<T extends string> = {
   value: T;
   label: string;
 };
-
-type SelectPlacement = 'down' | 'up';
-
-const selectCurrentValueIndex = -1;
-const selectRowHeight = 31;
-const selectMenuMaxHeight = 191;
-const selectMenuChromeHeight = 1;
 
 function SelectControl<T extends string>({
   options,
@@ -299,253 +328,24 @@ function SelectControl<T extends string>({
   disabled?: boolean;
   ariaLabel: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(selectCurrentValueIndex);
-  const [placement, setPlacement] = useState<SelectPlacement>('down');
-  const [menuMaxHeight, setMenuMaxHeight] = useState(selectMenuMaxHeight);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const generatedId = useId();
-  const listboxId = `select-listbox-${generatedId}`;
-  const selectedOption = options.find((option) => option.value === value) ?? options[0];
-  const availableOptions = options.filter((option) => option.value !== value);
-
-  useEffect(() => {
-    if (!open) return;
-
-    function handlePointerDown(event: PointerEvent): void {
-      if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    }
-
-    document.addEventListener('pointerdown', handlePointerDown);
-    return () => document.removeEventListener('pointerdown', handlePointerDown);
-  }, [open]);
-
-  useEffect(() => {
-    if (disabled) setOpen(false);
-  }, [disabled]);
-
-  useEffect(() => {
-    if (!open || activeIndex === selectCurrentValueIndex) return;
-    optionRefs.current[activeIndex]?.scrollIntoView({ block: 'nearest' });
-  }, [activeIndex, open]);
-
-  function getVisualOptionIndices(targetPlacement: SelectPlacement): number[] {
-    const optionIndices = availableOptions.map((_, index) => index);
-    return targetPlacement === 'down'
-      ? [selectCurrentValueIndex, ...optionIndices]
-      : [...optionIndices, selectCurrentValueIndex];
-  }
-
-  function openMenu(): SelectPlacement | null {
-    if (availableOptions.length === 0) return null;
-
-    const triggerRect = triggerRef.current?.getBoundingClientRect();
-    const popupRect = rootRef.current?.closest('.popup')?.getBoundingClientRect();
-    let nextPlacement = placement;
-    if (triggerRect) {
-      const boundaryTop = Math.max(0, popupRect?.top ?? 0);
-      const boundaryBottom = Math.min(window.innerHeight, popupRect?.bottom ?? window.innerHeight);
-      const spaceAbove = Math.max(0, triggerRect.top - boundaryTop);
-      const spaceBelow = Math.max(0, boundaryBottom - triggerRect.bottom);
-      const desiredHeight = Math.min(
-        selectMenuMaxHeight,
-        availableOptions.length * selectRowHeight + selectMenuChromeHeight,
-      );
-      nextPlacement =
-        spaceBelow >= desiredHeight || spaceBelow >= spaceAbove ? 'down' : 'up';
-      const availableHeight = nextPlacement === 'down' ? spaceBelow : spaceAbove;
-
-      setPlacement(nextPlacement);
-      setMenuMaxHeight(Math.max(
-        selectRowHeight + selectMenuChromeHeight,
-        Math.min(selectMenuMaxHeight, Math.floor(availableHeight)),
-      ));
-    }
-
-    setActiveIndex(selectCurrentValueIndex);
-    setOpen(true);
-    return nextPlacement;
-  }
-
-  function closeMenu(restoreFocus = false): void {
-    setOpen(false);
-    if (restoreFocus) triggerRef.current?.focus();
-  }
-
-  function selectOption(index: number): void {
-    if (index === selectCurrentValueIndex) {
-      closeMenu(true);
-      return;
-    }
-    const option = availableOptions[index];
-    if (!option) return;
-    onChange(option.value);
-    closeMenu(true);
-  }
-
-  function moveActiveOption(direction: 1 | -1): void {
-    if (!open) {
-      openMenu();
-      return;
-    }
-    if (availableOptions.length === 0) return;
-    const visualIndices = getVisualOptionIndices(placement);
-    setActiveIndex((current) => {
-      const currentPosition = visualIndices.indexOf(current);
-      const nextPosition = (
-        Math.max(0, currentPosition) + direction + visualIndices.length
-      ) % visualIndices.length;
-      return visualIndices[nextPosition];
-    });
-  }
-
-  function moveActiveToBoundary(boundary: 'start' | 'end'): void {
-    const targetPlacement = open ? placement : openMenu();
-    if (!targetPlacement) return;
-    const visualIndices = getVisualOptionIndices(targetPlacement);
-    setActiveIndex(boundary === 'start' ? visualIndices[0] : visualIndices[visualIndices.length - 1]);
-  }
-
-  function handleKeyDown(event: KeyboardEvent<HTMLButtonElement>): void {
-    switch (event.key) {
-      case 'ArrowDown':
-        event.preventDefault();
-        moveActiveOption(1);
-        break;
-      case 'ArrowUp':
-        event.preventDefault();
-        moveActiveOption(-1);
-        break;
-      case 'Home':
-        event.preventDefault();
-        moveActiveToBoundary('start');
-        break;
-      case 'End':
-        event.preventDefault();
-        moveActiveToBoundary('end');
-        break;
-      case 'Enter':
-      case ' ':
-        event.preventDefault();
-        if (open) selectOption(activeIndex);
-        else openMenu();
-        break;
-      case 'Escape':
-        if (open) {
-          event.preventDefault();
-          closeMenu();
-        }
-        break;
-      case 'Tab':
-        setOpen(false);
-        break;
-      default:
-        if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
-          const query = event.key.toLocaleLowerCase();
-          const availableMatchIndex = availableOptions.findIndex(
-            (option) => option.label.toLocaleLowerCase().startsWith(query),
-          );
-          const matchIndex = selectedOption?.label.toLocaleLowerCase().startsWith(query)
-            ? selectCurrentValueIndex
-            : availableMatchIndex >= 0
-              ? availableMatchIndex
-              : null;
-          if (matchIndex !== null) {
-            event.preventDefault();
-            if (!open) openMenu();
-            setActiveIndex(matchIndex);
-          }
-        }
-    }
-  }
-
   return (
-    <div
-      className="select-root"
-      data-open={open}
-      data-placement={placement}
-      ref={rootRef}
-    >
-      <button
-        ref={triggerRef}
-        type="button"
-        className={`select-trigger${
-          open && activeIndex === selectCurrentValueIndex ? ' select-trigger-active' : ''
-        }`}
-        aria-label={ariaLabel}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={listboxId}
-        aria-activedescendant={
-          open && activeIndex !== selectCurrentValueIndex
-            ? `${listboxId}-option-${activeIndex}`
-            : undefined
-        }
+    <div className="select-root">
+      <Select
+        value={value}
+        onValueChange={(nextValue) => onChange(nextValue as T)}
         disabled={disabled}
-        onClick={() => {
-          if (open) closeMenu();
-          else openMenu();
-        }}
-        onKeyDown={handleKeyDown}
-        onPointerMove={() => {
-          if (open) setActiveIndex(selectCurrentValueIndex);
-        }}
       >
-        <span className="select-value">{selectedOption?.label ?? ''}</span>
-        <svg
-          className="select-chevron"
-          viewBox="0 0 12 8"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="m1.5 1.5 4.5 4.5 4.5-4.5" />
-        </svg>
-      </button>
-      <div
-        className="select-menu"
-        aria-hidden={!open}
-      >
-        <div
-          id={listboxId}
-          className="select-options-scroll"
-          role="listbox"
-          aria-label={ariaLabel}
-          style={{
-            maxHeight: Math.max(selectRowHeight, menuMaxHeight - selectMenuChromeHeight),
-          }}
-        >
-          {availableOptions.map((option, index) => {
-            const active = index === activeIndex;
-            return (
-              <button
-                key={option.value}
-                id={`${listboxId}-option-${index}`}
-                type="button"
-                className={`select-option${active ? ' select-option-active' : ''}`}
-                role="option"
-                aria-selected="false"
-                tabIndex={-1}
-                ref={(element) => {
-                  optionRefs.current[index] = element;
-                }}
-                onPointerDown={(event) => event.preventDefault()}
-                onPointerMove={() => setActiveIndex(index)}
-                onClick={() => selectOption(index)}
-              >
-                <span>{option.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+        <SelectTrigger className="select-trigger" aria-label={ariaLabel}>
+          <SelectValue className="select-value" />
+        </SelectTrigger>
+        <SelectContent className="select-menu" position="popper" align="start" collisionPadding={8}>
+          {options.map((option) => (
+            <SelectItem className="select-option" key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }
@@ -559,7 +359,6 @@ export function App() {
   const [shortcutsLoading, setShortcutsLoading] = useState(true);
   const [shortcuts, setShortcuts] = useState<ShortcutState>(defaultShortcutState);
   const [shortcutError, setShortcutError] = useState('');
-  const [thinkingFillReturningToOffKey, setThinkingFillReturningToOffKey] = useState<string | null>(null);
   const [openAiStatus, setOpenAiStatus] = useState<OpenAiOAuthViewState>({
     loading: false,
     busy: false,
@@ -772,7 +571,6 @@ export function App() {
 
   function updateThinkingLevel(provider: LlmProvider, model: string, level: LlmThinkingLevel): void {
     const capabilityKey = llmThinkingCapabilityKey(provider, model);
-    setThinkingFillReturningToOffKey(level === 'off' ? capabilityKey : null);
     queueSaveStatus();
     setSettings((prev) => ({
       ...prev,
@@ -884,21 +682,12 @@ export function App() {
         currentThinkingModel,
       )
     : undefined;
-  const currentThinkingCapabilityKey = currentThinkingModel
-    ? llmThinkingCapabilityKey(settings.llmProvider, currentThinkingModel)
-    : null;
   const currentThinkingOptionIndex = currentThinkingControl?.kind === 'slider'
     ? Math.max(
         0,
         currentThinkingControl.options.findIndex((option) => option.value === currentThinkingLevel),
       )
     : 0;
-  const currentThinkingOptionProgress = currentThinkingControl?.kind === 'slider'
-    && currentThinkingControl.options.length > 1
-    ? (currentThinkingOptionIndex / (currentThinkingControl.options.length - 1)) * 100
-    : 0;
-  const currentThinkingFillHidden = currentThinkingOptionIndex === 0
-    && thinkingFillReturningToOffKey !== currentThinkingCapabilityKey;
   const activeAuthorizationTarget = resolveProviderAuthorizationTarget(settings);
   const usesOpenAiOAuth = activeAuthorizationTarget === 'openai-oauth';
   const showLocalPipelineOptions = !usesNanoBanana;
@@ -1118,258 +907,167 @@ export function App() {
   }, [apiKeyEditVersion]);
 
   return (
-    <main className="popup">
-      {status.message ? (
-        <div className={`status-bubble status-${status.kind}`}>{status.message}</div>
-      ) : null}
-      <header className="popup-header">
-        <div className="popup-header-brand">
-          <img className="popup-header-logo" src="icons/icon128.png" alt="" aria-hidden="true" />
-          <div className="popup-header-text">
-            <h1>
-              <img className="popup-header-wordmark" src="brand/shinobu-wordmark.svg" alt="ShinobuTranslator" />
-            </h1>
-            <p className="subtitle">漫画图片翻译助手</p>
+    <TooltipProvider>
+      <main className="popup">
+        {status.message ? (
+          <div className="status-bubble-position">
+            <Badge
+              variant="outline"
+              className={`status-bubble status-${status.kind} animate-in fade-in-0 slide-in-from-top-2 duration-200`}
+              role={status.kind === 'error' ? 'alert' : 'status'}
+            >
+              {status.message}
+            </Badge>
           </div>
-        </div>
-        <div className="popup-header-meta">
-          <a
-            className="popup-header-github"
-            href="https://github.com/DonutShinobu/ShinobuTranslator"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="GitHub"
-          >
-            <IconGitHub />
-          </a>
-          {extensionVersion ? <span className="popup-header-version">v{extensionVersion}</span> : null}
-        </div>
-      </header>
-
-      <div className="popup-body">
-        {loading ? (
-          <p className="loading-text">正在读取配置…</p>
-        ) : (
-          <>
-            <section className="panel">
-              <div className="panel-title panel-title-with-shortcuts">
-                <span className="panel-title-copy">
-                  <IconTranslate />
-                  翻译设置
-                </span>
-                <button
-                  className={`panel-title-shortcuts${shortcutError ? ' panel-title-shortcuts-error' : ''}`}
-                  type="button"
-                  onClick={openShortcutManager}
-                  title={shortcutError || '打开 Chrome 扩展命令管理页'}
-                  aria-label="管理扩展命令"
-                >
-                  {shortcutCommandDefinitions.map((definition) => {
-                    const shortcut = shortcuts[definition.name];
-                    return (
-                      <span className="panel-title-shortcut-row" key={definition.name}>
-                        <span className="panel-title-shortcut-label">{definition.label}</span>
-                        <kbd className={`panel-title-shortcut-key${!shortcutsLoading && !shortcut ? ' panel-title-shortcut-key-unbound' : ''}`}>
-                          {shortcutsLoading ? '读取中' : shortcut || '未绑定'}
-                        </kbd>
-                      </span>
-                    );
-                  })}
-                </button>
-              </div>
-              <div className="settings-stack">
-                <div className="setting-row">
-                  <span className="field-label">服务</span>
-                  <SegmentedControl
-                    options={[
-                      { value: 'google_web', label: '谷歌翻译' },
-                      { value: 'llm', label: '大模型' },
-                    ]}
-                    value={settings.translator}
-                    onChange={(value) => updateTranslator(value as ExtensionSettingsProjection['translator'])}
-                    disabled={loading}
-                  />
-                </div>
-                <div className="setting-row">
-                  <span className="field-label">语言</span>
-                  <SegmentedControl
-                    options={[
-                      { value: 'zh-CHS', label: '简体中文' },
-                      { value: 'zh-CHT', label: '繁体中文' },
-                    ]}
-                    value={settings.targetLang}
-                    onChange={(value) => updateField('targetLang', value)}
-                    disabled={loading}
-                  />
-                </div>
-              </div>
-            </section>
-
-            {showLocalPipelineOptions ? (
-              <section className="panel option-panel">
-                <div className="panel-title">
-                  <IconMode />
-                  模式
-                </div>
-                <SegmentedControl
-                  options={[
-                    { value: 'translate', label: '翻译' },
-                    { value: 'original', label: '原文' },
-                    { value: 'erase', label: '去字' },
-                  ]}
-                  value={settings.processMode}
-                  onChange={(v) => updateField('processMode', v as ExtensionSettingsProjection['processMode'])}
-                  disabled={loading}
+        ) : null}
+        <header className="popup-header">
+          <div className="popup-header-brand">
+            <img className="popup-header-logo" src="icons/icon128.png" alt="" aria-hidden="true" />
+            <div className="popup-header-text">
+              <h1>
+                <img
+                  className="popup-header-wordmark"
+                  src="brand/shinobu-wordmark.svg"
+                  alt="ShinobuTranslator"
                 />
-              </section>
+              </h1>
+              <p className="subtitle">漫画图片翻译助手</p>
+            </div>
+          </div>
+          <div className="popup-header-meta">
+            <Button asChild variant="ghost" className="popup-header-github">
+              <a
+                href="https://github.com/DonutShinobu/ShinobuTranslator"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="GitHub"
+              >
+                <IconGitHub />
+              </a>
+            </Button>
+            {extensionVersion ? (
+              <span className="popup-header-version">v{extensionVersion}</span>
             ) : null}
+          </div>
+        </header>
 
-            {settings.translator === 'llm' ? (
-              <section className="panel panel-llm">
-                <div className="panel-title">
-                  <IconLLM />
-                  大模型配置
+        <div className="popup-body">
+          {loading ? (
+            <p className="loading-text">正在读取配置…</p>
+          ) : (
+            <>
+              <section className="panel">
+                <Separator className="panel-separator" />
+                <div className="panel-title panel-title-with-shortcuts">
+                  <span className="panel-title-copy">
+                    <IconTranslate />
+                    翻译设置
+                  </span>
+                  <ControlHint content={shortcutError || '打开扩展命令管理页'}>
+                    <Button
+                      variant="ghost"
+                      className={`panel-title-shortcuts${shortcutError ? ' panel-title-shortcuts-error' : ''}`}
+                      type="button"
+                      onClick={openShortcutManager}
+                      aria-label="管理扩展命令"
+                    >
+                      {shortcutCommandDefinitions.map((definition) => {
+                        const shortcut = shortcuts[definition.name];
+                        return (
+                          <span className="panel-title-shortcut-row" key={definition.name}>
+                            <span className="panel-title-shortcut-label">{definition.label}</span>
+                            <Kbd
+                              className={`panel-title-shortcut-key${!shortcutsLoading && !shortcut ? ' panel-title-shortcut-key-unbound' : ''}`}
+                            >
+                              {shortcutsLoading ? '读取中' : shortcut || '未绑定'}
+                            </Kbd>
+                          </span>
+                        );
+                      })}
+                    </Button>
+                  </ControlHint>
                 </div>
-                <div className="field">
-                  <span className="field-label">LLM 提供商</span>
-                  <SelectControl
-                    ariaLabel="LLM 提供商"
-                    options={llmProviderOptions}
-                    value={settings.llmProvider}
-                    onChange={updateLlmProvider}
+                <div className="settings-stack">
+                  <div className="setting-row">
+                    <Label className="field-label">服务</Label>
+                    <SegmentedControl
+                      ariaLabel="服务"
+                      options={[
+                        { value: 'google_web', label: '谷歌翻译' },
+                        { value: 'llm', label: '大模型' },
+                      ]}
+                      value={settings.translator}
+                      onChange={(value) =>
+                        updateTranslator(value as ExtensionSettingsProjection['translator'])
+                      }
+                      disabled={loading}
+                    />
+                  </div>
+                  <div className="setting-row">
+                    <Label className="field-label">语言</Label>
+                    <SegmentedControl
+                      ariaLabel="语言"
+                      options={[
+                        { value: 'zh-CHS', label: '简体中文' },
+                        { value: 'zh-CHT', label: '繁体中文' },
+                      ]}
+                      value={settings.targetLang}
+                      onChange={(value) => updateField('targetLang', value)}
+                      disabled={loading}
+                    />
+                  </div>
+                </div>
+              </section>
+
+              {showLocalPipelineOptions ? (
+                <section className="panel option-panel">
+                  <Separator className="panel-separator" />
+                  <div className="panel-title">
+                    <IconMode />
+                    模式
+                  </div>
+                  <SegmentedControl
+                    ariaLabel="模式"
+                    options={[
+                      { value: 'translate', label: '翻译' },
+                      { value: 'original', label: '原文' },
+                      { value: 'erase', label: '去字' },
+                    ]}
+                    value={settings.processMode}
+                    onChange={(v) =>
+                      updateField('processMode', v as ExtensionSettingsProjection['processMode'])
+                    }
                     disabled={loading}
                   />
-                </div>
+                </section>
+              ) : null}
 
-                {settings.llmProvider === 'gemini' ? (
-                  <>
-                    <div className="auth-mode-field">
-                      <span className="field-label">认证方式</span>
-                      <SegmentedControl<LlmAuthMode>
-                        options={[
-                          { value: 'gemini_app', label: 'Gemini 登录' },
-                          { value: 'api_key', label: 'API Key' },
-                        ]}
-                        value={currentProfile.authMode}
-                        onChange={(value) => updateActiveLlmProfile({ authMode: value })}
-                        disabled={loading}
-                      />
-                    </div>
-                    <div className="auth-mode-field">
-                      <span className="field-label">模型</span>
-                      <SegmentedControl<ExtensionSettingsProjection['geminiAppModel']>
-                        options={geminiAppModelOptions}
-                        value={settings.geminiAppModel}
-                        onChange={(value) => updateField('geminiAppModel', value)}
-                        disabled={loading}
-                      />
-                    </div>
-                    {usesGeminiApp ? (
-                      <>
-                        <div className="auth-status-row">
-                          <span className="field-label">登录状态</span>
-                          <div className="auth-status-control">
-                            <div className="oauth-copy">
-                              <span className={`oauth-dot${geminiAppStatus.authenticated ? ' oauth-dot-authed' : ''}`} />
-                              <div className="oauth-title">{geminiStatusLabel}</div>
-                            </div>
-                            <button
-                              className="oauth-action"
-                              type="button"
-                              onClick={() => {
-                                void (
-                                  geminiAppStatus.authenticated || geminiAppStatus.pending
-                                    ? refreshGeminiAppAuthStatus()
-                                    : loginGeminiApp()
-                                );
-                              }}
-                              disabled={loading || geminiAppStatus.loading || geminiAppStatus.busy}
-                            >
-                              {geminiAppStatus.busy
-                                ? '处理中...'
-                                : geminiAppStatus.authenticated || geminiAppStatus.pending
-                                  ? '检查状态'
-                                  : '登录 Gemini'}
-                            </button>
-                          </div>
-                        </div>
-                      </>
-                    ) : null}
-                    {usesGeminiApi ? (
-                      <ApiKeyField
-                        key={`api-key-${settings.llmProvider}-${currentProfile.authMode}`}
-                        value={apiKeyValues[settings.llmProvider] ?? ''}
-                        onChange={updateActiveApiKey}
-                        disabled={loading || apiKeyValues[settings.llmProvider] === undefined}
-                        placeholder="AIza..."
-                      />
-                    ) : null}
-                    <div className="field">
-                      <span className="field-label field-label-action">
-                        <span>提示词</span>
-                        <button
-                          className="field-label-icon-button"
-                          type="button"
-                          onClick={resetGeminiAppPromptTemplate}
-                          disabled={loading}
-                          title="重置提示词"
-                          aria-label="重置提示词"
-                        >
-                          <IconRefresh />
-                        </button>
-                      </span>
-                      <textarea
-                        value={settings.geminiAppPromptTemplate}
-                        onChange={(event) =>
-                          updateField('geminiAppPromptTemplate', event.target.value, { showSaveStatus: true })
-                        }
-                        disabled={loading}
-                        rows={5}
-                      />
-                    </div>
-                  </>
-                ) : settings.llmProvider === 'custom' ? (
-                  <>
-                    <label className="field">
-                      <span className="field-label">Base URL</span>
-                      <input
-                        type="text"
-                        value={currentProfile.customBaseUrl}
-                        onChange={(event) =>
-                          updateActiveLlmProfile({ customBaseUrl: event.target.value }, { showSaveStatus: true })
-                        }
-                        disabled={loading}
-                        placeholder="https://api.example.com/v1"
-                      />
-                    </label>
-                    <label className="field">
-                      <span className="field-label">模型名称</span>
-                      <input
-                        type="text"
-                        value={currentProfile.modelCustom}
-                        onChange={(event) =>
-                          updateActiveLlmProfile({ modelCustom: event.target.value }, { showSaveStatus: true })
-                        }
-                        disabled={loading}
-                        placeholder="例如：your-model-name"
-                      />
-                    </label>
-                    <ApiKeyField
-                      key={`api-key-${settings.llmProvider}-${currentProfile.authMode}`}
-                      value={apiKeyValues[settings.llmProvider] ?? ''}
-                      onChange={updateActiveApiKey}
-                      disabled={loading || apiKeyValues[settings.llmProvider] === undefined}
-                      placeholder="sk-..."
+              {settings.translator === 'llm' ? (
+                <section className="panel panel-llm animate-in fade-in-0 slide-in-from-top-2 duration-200">
+                  <Separator className="panel-separator" />
+                  <div className="panel-title">
+                    <IconLLM />
+                    大模型配置
+                  </div>
+                  <div className="field">
+                    <Label className="field-label">LLM 提供商</Label>
+                    <SelectControl
+                      ariaLabel="LLM 提供商"
+                      options={llmProviderOptions}
+                      value={settings.llmProvider}
+                      onChange={updateLlmProvider}
+                      disabled={loading}
                     />
-                  </>
-                ) : (
-                  <>
-                    {settings.llmProvider === 'openai' ? (
+                  </div>
+
+                  {settings.llmProvider === 'gemini' ? (
+                    <>
                       <div className="auth-mode-field">
-                        <span className="field-label">认证方式</span>
+                        <Label className="field-label">认证方式</Label>
                         <SegmentedControl<LlmAuthMode>
+                          ariaLabel="认证方式"
                           options={[
-                            { value: 'openai_oauth', label: 'OpenAI 登录' },
+                            { value: 'gemini_app', label: 'Gemini 登录' },
                             { value: 'api_key', label: 'API Key' },
                           ]}
                           value={currentProfile.authMode}
@@ -1377,147 +1075,256 @@ export function App() {
                           disabled={loading}
                         />
                       </div>
-                    ) : null}
-                    {usesOpenAiOAuth ? (
-                      <div className="auth-status-row">
-                        <span className="field-label">登录状态</span>
-                        <div className="auth-status-control">
-                          <div className="oauth-copy">
-                            <span className={`oauth-dot${openAiStatus.authenticated ? ' oauth-dot-authed' : ''}`} />
-                            <div className="oauth-title">{openAiStatusLabel}</div>
+                      <div className="auth-mode-field">
+                        <Label className="field-label">模型</Label>
+                        <SegmentedControl<ExtensionSettingsProjection['geminiAppModel']>
+                          ariaLabel="模型"
+                          options={geminiAppModelOptions}
+                          value={settings.geminiAppModel}
+                          onChange={(value) => updateField('geminiAppModel', value)}
+                          disabled={loading}
+                        />
+                      </div>
+                      {usesGeminiApp ? (
+                        <>
+                          <div className="auth-status-row">
+                            <Label className="field-label">登录状态</Label>
+                            <div className="auth-status-control">
+                              <div className="oauth-copy">
+                                <span
+                                  className={`oauth-dot${geminiAppStatus.authenticated ? ' oauth-dot-authed' : ''}`}
+                                />
+                                <div className="oauth-title">{geminiStatusLabel}</div>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                className="oauth-action"
+                                type="button"
+                                onClick={() => {
+                                  void (geminiAppStatus.authenticated || geminiAppStatus.pending
+                                    ? refreshGeminiAppAuthStatus()
+                                    : loginGeminiApp());
+                                }}
+                                disabled={
+                                  loading || geminiAppStatus.loading || geminiAppStatus.busy
+                                }
+                              >
+                                {geminiAppStatus.busy
+                                  ? '处理中...'
+                                  : geminiAppStatus.authenticated || geminiAppStatus.pending
+                                    ? '检查状态'
+                                    : '登录 Gemini'}
+                              </Button>
+                            </div>
                           </div>
-                          <button
-                            className="oauth-action"
-                            type="button"
-                            onClick={() => {
-                              void (
-                                openAiStatus.authenticated
+                        </>
+                      ) : null}
+                      {usesGeminiApi ? (
+                        <ApiKeyField
+                          key={`api-key-${settings.llmProvider}-${currentProfile.authMode}`}
+                          value={apiKeyValues[settings.llmProvider] ?? ''}
+                          onChange={updateActiveApiKey}
+                          disabled={loading || apiKeyValues[settings.llmProvider] === undefined}
+                          placeholder="AIza..."
+                        />
+                      ) : null}
+                      <div className="field">
+                        <div className="field-label field-label-action">
+                          <Label htmlFor="gemini-prompt-template">提示词</Label>
+                          <ControlHint content="重置提示词">
+                            <Button
+                              variant="ghost"
+                              className="field-label-icon-button"
+                              type="button"
+                              onClick={resetGeminiAppPromptTemplate}
+                              disabled={loading}
+                              aria-label="重置提示词"
+                            >
+                              <IconRefresh />
+                            </Button>
+                          </ControlHint>
+                        </div>
+                        <Textarea
+                          id="gemini-prompt-template"
+                          value={settings.geminiAppPromptTemplate}
+                          onChange={(event) =>
+                            updateField('geminiAppPromptTemplate', event.target.value, {
+                              showSaveStatus: true,
+                            })
+                          }
+                          disabled={loading}
+                          rows={5}
+                        />
+                      </div>
+                    </>
+                  ) : settings.llmProvider === 'custom' ? (
+                    <>
+                      <Label className="field">
+                        <span className="field-label">Base URL</span>
+                        <Input
+                          type="text"
+                          value={currentProfile.customBaseUrl}
+                          onChange={(event) =>
+                            updateActiveLlmProfile(
+                              { customBaseUrl: event.target.value },
+                              { showSaveStatus: true },
+                            )
+                          }
+                          disabled={loading}
+                          placeholder="https://api.example.com/v1"
+                        />
+                      </Label>
+                      <Label className="field">
+                        <span className="field-label">模型名称</span>
+                        <Input
+                          type="text"
+                          value={currentProfile.modelCustom}
+                          onChange={(event) =>
+                            updateActiveLlmProfile(
+                              { modelCustom: event.target.value },
+                              { showSaveStatus: true },
+                            )
+                          }
+                          disabled={loading}
+                          placeholder="例如：your-model-name"
+                        />
+                      </Label>
+                      <ApiKeyField
+                        key={`api-key-${settings.llmProvider}-${currentProfile.authMode}`}
+                        value={apiKeyValues[settings.llmProvider] ?? ''}
+                        onChange={updateActiveApiKey}
+                        disabled={loading || apiKeyValues[settings.llmProvider] === undefined}
+                        placeholder="sk-..."
+                      />
+                    </>
+                  ) : (
+                    <>
+                      {settings.llmProvider === 'openai' ? (
+                        <div className="auth-mode-field">
+                          <Label className="field-label">认证方式</Label>
+                          <SegmentedControl<LlmAuthMode>
+                            ariaLabel="认证方式"
+                            options={[
+                              { value: 'openai_oauth', label: 'OpenAI 登录' },
+                              { value: 'api_key', label: 'API Key' },
+                            ]}
+                            value={currentProfile.authMode}
+                            onChange={(value) => updateActiveLlmProfile({ authMode: value })}
+                            disabled={loading}
+                          />
+                        </div>
+                      ) : null}
+                      {usesOpenAiOAuth ? (
+                        <div className="auth-status-row">
+                          <Label className="field-label">登录状态</Label>
+                          <div className="auth-status-control">
+                            <div className="oauth-copy">
+                              <span
+                                className={`oauth-dot${openAiStatus.authenticated ? ' oauth-dot-authed' : ''}`}
+                              />
+                              <div className="oauth-title">{openAiStatusLabel}</div>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              className="oauth-action"
+                              type="button"
+                              onClick={() => {
+                                void (openAiStatus.authenticated
                                   ? logoutOpenAiOAuth()
                                   : openAiStatus.pending
                                     ? refreshOpenAiOAuthStatus()
-                                    : loginOpenAiOAuth()
-                              );
-                            }}
-                            disabled={loading || openAiStatus.loading || openAiStatus.busy}
+                                    : loginOpenAiOAuth());
+                              }}
+                              disabled={loading || openAiStatus.loading || openAiStatus.busy}
+                            >
+                              {openAiStatus.busy
+                                ? '处理中...'
+                                : openAiStatus.authenticated
+                                  ? '退出登录'
+                                  : openAiStatus.pending
+                                    ? '检查状态'
+                                    : '登录 OpenAI'}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : null}
+                      <div className="field model-field">
+                        <span className="field-label">模型名称</span>
+                        <div className="model-control">
+                          {currentProfile.useCustomModel ? (
+                            <Input
+                              aria-label="模型名称"
+                              type="text"
+                              value={currentProfile.modelCustom}
+                              onChange={(event) =>
+                                updateActiveLlmProfile(
+                                  { modelCustom: event.target.value },
+                                  { showSaveStatus: true },
+                                )
+                              }
+                              disabled={loading}
+                              placeholder={builtInCustomModelPlaceholder}
+                            />
+                          ) : (
+                            <SelectControl
+                              ariaLabel="模型名称"
+                              options={currentProviderModels.map((model) => ({
+                                value: model,
+                                label: model,
+                              }))}
+                              value={currentProfile.modelPreset}
+                              onChange={(modelPreset) => updateActiveLlmProfile({ modelPreset })}
+                              disabled={loading}
+                            />
+                          )}
+                          <Label
+                            className={`custom-model-toggle${loading ? ' custom-model-toggle-disabled' : ''}`}
                           >
-                            {openAiStatus.busy
-                              ? '处理中...'
-                              : openAiStatus.authenticated
-                                ? '退出登录'
-                                : openAiStatus.pending
-                                  ? '检查状态'
-                                  : '登录 OpenAI'}
-                          </button>
+                            <Checkbox
+                              aria-label="自定义模型"
+                              checked={currentProfile.useCustomModel}
+                              onCheckedChange={(checked) => updateUseCustomModel(checked === true)}
+                              disabled={loading}
+                            />
+                            <span>自定义</span>
+                          </Label>
                         </div>
                       </div>
-                    ) : null}
-                    <div className="field model-field">
-                      <span className="field-label">模型名称</span>
-                      <div className="model-control">
-                        {currentProfile.useCustomModel ? (
-                          <input
-                            type="text"
-                            value={currentProfile.modelCustom}
-                            onChange={(event) =>
-                              updateActiveLlmProfile({ modelCustom: event.target.value }, { showSaveStatus: true })
-                            }
-                            disabled={loading}
-                            placeholder={builtInCustomModelPlaceholder}
-                          />
-                        ) : (
-                          <SelectControl
-                            ariaLabel="模型名称"
-                            options={currentProviderModels.map((model) => ({ value: model, label: model }))}
-                            value={currentProfile.modelPreset}
-                            onChange={(modelPreset) => updateActiveLlmProfile({ modelPreset })}
-                            disabled={loading}
-                          />
-                        )}
-                        <label className={`custom-model-toggle${loading ? ' custom-model-toggle-disabled' : ''}`}>
-                          <input
-                            type="checkbox"
-                            checked={currentProfile.useCustomModel}
-                            onChange={(event) => updateUseCustomModel(event.target.checked)}
-                            disabled={loading}
-                          />
-                          <span>自定义</span>
-                        </label>
-                      </div>
-                    </div>
-                    {currentThinkingModel && currentThinkingControl && currentThinkingLevel ? (
-                      <div className="field thinking-field">
-                        <span className="field-label">思考强度</span>
-                        {currentThinkingControl.kind === 'fixed' ? (
-                          <span className="thinking-fixed-notice">{currentThinkingControl.notice}</span>
-                        ) : currentThinkingControl.kind === 'toggle' ? (
-                          <SegmentedControl<LlmThinkingLevel>
-                            options={currentThinkingControl.options}
-                            value={currentThinkingLevel}
-                            onChange={(level) => updateThinkingLevel(
-                              settings.llmProvider,
-                              currentThinkingModel,
-                              level,
-                            )}
-                            disabled={loading}
-                          />
-                        ) : (
-                          <div className="thinking-slider-control">
-                            <div className="thinking-slider-track">
-                              <div className="thinking-slider-rail" aria-hidden="true">
-                                <span className="thinking-slider-fill-mask">
-                                  <span
-                                    className={`thinking-slider-fill${
-                                      currentThinkingFillHidden
-                                        ? ' thinking-slider-fill-hidden'
-                                        : ''
-                                    }`}
-                                    style={{
-                                      clipPath: `inset(0 calc(${
-                                        100 - currentThinkingOptionProgress
-                                      }% + ${
-                                        currentThinkingOptionProgress * 0.2 - 10
-                                      }px) 0 0)`,
-                                    }}
-                                    onTransitionEnd={(event) => {
-                                      if (
-                                        event.propertyName === 'clip-path'
-                                        && currentThinkingOptionIndex === 0
-                                        && thinkingFillReturningToOffKey === currentThinkingCapabilityKey
-                                      ) {
-                                        setThinkingFillReturningToOffKey(null);
-                                      }
-                                    }}
-                                  />
-                                </span>
-                                <span className="thinking-slider-ticks">
-                                  {currentThinkingControl.options.map((option, index) => (
-                                    <span
-                                      className={`thinking-slider-tick${
-                                        index <= currentThinkingOptionIndex
-                                          ? ' thinking-slider-tick-active'
-                                          : ''
-                                      }${
-                                        index === currentThinkingOptionIndex
-                                          ? ' thinking-slider-tick-selected'
-                                          : ''
-                                      }`}
-                                      key={option.value}
-                                      style={{
-                                        left: `${(index / (currentThinkingControl.options.length - 1)) * 100}%`,
-                                      }}
-                                    />
-                                  ))}
-                                </span>
-                              </div>
-                              <input
+                      {currentThinkingModel && currentThinkingControl && currentThinkingLevel ? (
+                        <div className="field thinking-field">
+                          <Label className="field-label">思考强度</Label>
+                          {currentThinkingControl.kind === 'fixed' ? (
+                            <span className="thinking-fixed-notice">
+                              {currentThinkingControl.notice}
+                            </span>
+                          ) : currentThinkingControl.kind === 'toggle' ? (
+                            <SegmentedControl<LlmThinkingLevel>
+                              ariaLabel="思考强度"
+                              options={currentThinkingControl.options}
+                              value={currentThinkingLevel}
+                              onChange={(level) =>
+                                updateThinkingLevel(
+                                  settings.llmProvider,
+                                  currentThinkingModel,
+                                  level,
+                                )
+                              }
+                              disabled={loading}
+                            />
+                          ) : (
+                            <div className="thinking-slider-control">
+                              <Slider
                                 className="thinking-slider"
-                                type="range"
+                                style={{
+                                  '--thinking-slider-progress':
+                                    currentThinkingOptionIndex / (currentThinkingControl.options.length - 1),
+                                } as CSSProperties}
                                 min={0}
                                 max={currentThinkingControl.options.length - 1}
                                 step={1}
-                                value={currentThinkingOptionIndex}
-                                onChange={(event) => {
-                                  const option = currentThinkingControl.options[Number(event.target.value)];
+                                value={[currentThinkingOptionIndex]}
+                                onValueChange={([index]) => {
+                                  const option = currentThinkingControl.options[index];
                                   if (option) {
                                     updateThinkingLevel(
                                       settings.llmProvider,
@@ -1531,150 +1338,177 @@ export function App() {
                                   currentThinkingControl.options[currentThinkingOptionIndex]?.label
                                 }
                                 disabled={loading}
-                              />
-                              <span
-                                className="thinking-slider-thumb"
-                                style={{
-                                  translate: `calc(-50% + ${currentThinkingOptionProgress}cqw - ${
-                                    currentThinkingOptionProgress * 0.2
-                                  }px) -50%`,
-                                }}
-                                aria-hidden="true"
-                              />
-                            </div>
-                            <div className="thinking-slider-labels" aria-hidden="true">
-                              {currentThinkingControl.options.map((option, index) => (
-                                <span
-                                  className={`thinking-slider-label${
-                                    index === currentThinkingOptionIndex
-                                      ? ' thinking-slider-label-active'
-                                      : ''
-                                  }`}
-                                  key={option.value}
-                                  style={{
-                                    left: `${(index / (currentThinkingControl.options.length - 1)) * 100}%`,
-                                  }}
-                                >
-                                  {option.label}
+                              >
+                                <span className="thinking-slider-ticks" aria-hidden="true">
+                                  {currentThinkingControl.options.map((option, index) => (
+                                    <span
+                                      className={`thinking-slider-tick${index <= currentThinkingOptionIndex ? ' thinking-slider-tick-active' : ''}${index === currentThinkingOptionIndex ? ' thinking-slider-tick-selected' : ''}`}
+                                      key={option.value}
+                                      style={{
+                                        left: `${(index / (currentThinkingControl.options.length - 1)) * 100}%`,
+                                      }}
+                                    />
+                                  ))}
                                 </span>
-                              ))}
+                              </Slider>
+                              <div className="thinking-slider-labels" aria-hidden="true">
+                                {currentThinkingControl.options.map((option, index) => (
+                                  <span
+                                    className={`thinking-slider-label${
+                                      index === currentThinkingOptionIndex
+                                        ? ' thinking-slider-label-active'
+                                        : ''
+                                    }`}
+                                    key={option.value}
+                                    style={{
+                                      left: `${(index / (currentThinkingControl.options.length - 1)) * 100}%`,
+                                    }}
+                                  >
+                                    {option.label}
+                                  </span>
+                                ))}
+                              </div>
                             </div>
-                          </div>
-                        )}
-                      </div>
-                    ) : null}
-                    {!usesOpenAiOAuth ? (
-                      <ApiKeyField
-                        key={`api-key-${settings.llmProvider}-${currentProfile.authMode}`}
-                        value={apiKeyValues[settings.llmProvider] ?? ''}
-                        onChange={updateActiveApiKey}
-                        disabled={loading || apiKeyValues[settings.llmProvider] === undefined}
-                        placeholder="sk-..."
-                      />
-                    ) : null}
-                  </>
-                )}
-              </section>
-            ) : null}
+                          )}
+                        </div>
+                      ) : null}
+                      {!usesOpenAiOAuth ? (
+                        <ApiKeyField
+                          key={`api-key-${settings.llmProvider}-${currentProfile.authMode}`}
+                          value={apiKeyValues[settings.llmProvider] ?? ''}
+                          onChange={updateActiveApiKey}
+                          disabled={loading || apiKeyValues[settings.llmProvider] === undefined}
+                          placeholder="sk-..."
+                        />
+                      ) : null}
+                    </>
+                  )}
+                </section>
+              ) : null}
 
-            <div className="debug-footer">
-              <div className="debug-compact">
-                <button
-                  className={`debug-toggle${settings.debugOptionsExpanded ? ' debug-toggle-open' : ''}`}
-                  onClick={() => updateField('debugOptionsExpanded', !settings.debugOptionsExpanded)}
-                  type="button"
+              <div className="debug-footer">
+                <Separator className="panel-separator" />
+                <Accordion
+                  className="debug-compact"
+                  type="single"
+                  collapsible
+                  value={settings.debugOptionsExpanded ? 'debug' : ''}
+                  onValueChange={(value) => updateField('debugOptionsExpanded', value === 'debug')}
                 >
-                  <IconDebug />
-                  调试选项
-                  <svg className="debug-chevron" viewBox="0 0 10 6" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M1 1L5 5L9 1" />
-                  </svg>
-                </button>
-                {settings.debugOptionsExpanded && (
-                  <div className="debug-row">
-                    <label className="checkbox-row">
-                      <input
-                        type="checkbox"
-                        checked={settings.showElapsedTime}
-                        onChange={(event) => updateElapsedTime(event.target.checked)}
-                        disabled={loading}
-                      />
-                      <span className="checkbox-label">显示耗时</span>
-                    </label>
-                    <label className={`checkbox-row${stageTimingDetailsDisabled ? ' checkbox-disabled' : ''}`}>
-                      <input
-                        type="checkbox"
-                        checked={!stageTimingDetailsLocked && settings.showStageTimingDetails}
-                        onChange={(event) => updateField('showStageTimingDetails', event.target.checked)}
-                        disabled={stageTimingDetailsDisabled}
-                      />
-                      <span className="checkbox-label">阶段明细</span>
-                    </label>
-                    <label className={`checkbox-row${localDebugOptionsDisabled ? ' checkbox-disabled' : ''}`}>
-                      <input
-                        type="checkbox"
-                        checked={!localDebugOptionsLocked && settings.showTypesetDebug}
-                        onChange={(event) => updateField('showTypesetDebug', event.target.checked)}
-                        disabled={localDebugOptionsDisabled}
-                      />
-                      <span className="checkbox-label">排版调试</span>
-                    </label>
-                    <label className={`checkbox-row${localDebugOptionsDisabled ? ' checkbox-disabled' : ''}`}>
-                      <input
-                        type="checkbox"
-                        checked={!localDebugOptionsLocked && settings.showEraseDebug}
-                        onChange={(event) => updateField('showEraseDebug', event.target.checked)}
-                        disabled={localDebugOptionsDisabled}
-                      />
-                      <span className="checkbox-label">去字调试</span>
-                    </label>
-                    <label className={`checkbox-row${loading ? ' checkbox-disabled' : ''}`}>
-                      <input
-                        type="checkbox"
-                        checked={settings.enableDebugLog}
-                        onChange={(event) => updateField('enableDebugLog', event.target.checked)}
-                        disabled={loading}
-                      />
-                      <span className="checkbox-label">日志记录</span>
-                    </label>
-                    <label className={`checkbox-row${localDebugOptionsDisabled ? ' checkbox-disabled' : ''}`}>
-                      <input
-                        type="checkbox"
-                        checked={!localDebugOptionsLocked && settings.disableOcrPostFilter}
-                        onChange={(event) => updateField('disableOcrPostFilter', event.target.checked)}
-                        disabled={localDebugOptionsDisabled}
-                      />
-                      <span className="checkbox-label">关后处理</span>
-                    </label>
-                  </div>
-                )}
-                {settings.debugOptionsExpanded && settings.enableDebugLog && (
-                  <div className="debug-actions">
-                    <button
-                      className="debug-download-button"
-                      type="button"
-                      onClick={() => void downloadDiagnosticLog()}
-                      disabled={loading}
-                    >
-                      <IconDownload />
-                      下载日志
-                    </button>
-                    <button
-                      className="debug-download-button"
-                      type="button"
-                      onClick={() => void clearDiagnosticLog()}
-                      disabled={loading}
-                    >
-                      <IconTrash />
-                      清空日志
-                    </button>
-                  </div>
-                )}
+                  <AccordionItem className="debug-item" value="debug">
+                    <AccordionTrigger className="debug-toggle">
+                      <span className="debug-toggle-label">
+                        <IconDebug />
+                        调试选项
+                      </span>
+                    </AccordionTrigger>
+                    <AccordionContent className="debug-content">
+                      <div className="debug-row">
+                        <Label className="checkbox-row">
+                          <Checkbox
+                            aria-label="显示耗时"
+                            checked={settings.showElapsedTime}
+                            onCheckedChange={(checked) => updateElapsedTime(checked === true)}
+                            disabled={loading}
+                          />
+                          <span className="checkbox-label">显示耗时</span>
+                        </Label>
+                        <Label
+                          className={`checkbox-row${stageTimingDetailsDisabled ? ' checkbox-disabled' : ''}`}
+                        >
+                          <Checkbox
+                            aria-label="阶段明细"
+                            checked={!stageTimingDetailsLocked && settings.showStageTimingDetails}
+                            onCheckedChange={(checked) =>
+                              updateField('showStageTimingDetails', checked === true)
+                            }
+                            disabled={stageTimingDetailsDisabled}
+                          />
+                          <span className="checkbox-label">阶段明细</span>
+                        </Label>
+                        <Label
+                          className={`checkbox-row${localDebugOptionsDisabled ? ' checkbox-disabled' : ''}`}
+                        >
+                          <Checkbox
+                            aria-label="排版调试"
+                            checked={!localDebugOptionsLocked && settings.showTypesetDebug}
+                            onCheckedChange={(checked) =>
+                              updateField('showTypesetDebug', checked === true)
+                            }
+                            disabled={localDebugOptionsDisabled}
+                          />
+                          <span className="checkbox-label">排版调试</span>
+                        </Label>
+                        <Label
+                          className={`checkbox-row${localDebugOptionsDisabled ? ' checkbox-disabled' : ''}`}
+                        >
+                          <Checkbox
+                            aria-label="去字调试"
+                            checked={!localDebugOptionsLocked && settings.showEraseDebug}
+                            onCheckedChange={(checked) =>
+                              updateField('showEraseDebug', checked === true)
+                            }
+                            disabled={localDebugOptionsDisabled}
+                          />
+                          <span className="checkbox-label">去字调试</span>
+                        </Label>
+                        <Label className={`checkbox-row${loading ? ' checkbox-disabled' : ''}`}>
+                          <Checkbox
+                            aria-label="日志记录"
+                            checked={settings.enableDebugLog}
+                            onCheckedChange={(checked) =>
+                              updateField('enableDebugLog', checked === true)
+                            }
+                            disabled={loading}
+                          />
+                          <span className="checkbox-label">日志记录</span>
+                        </Label>
+                        <Label
+                          className={`checkbox-row${localDebugOptionsDisabled ? ' checkbox-disabled' : ''}`}
+                        >
+                          <Checkbox
+                            aria-label="关后处理"
+                            checked={!localDebugOptionsLocked && settings.disableOcrPostFilter}
+                            onCheckedChange={(checked) =>
+                              updateField('disableOcrPostFilter', checked === true)
+                            }
+                            disabled={localDebugOptionsDisabled}
+                          />
+                          <span className="checkbox-label">关后处理</span>
+                        </Label>
+                      </div>
+                      {settings.enableDebugLog && (
+                        <div className="debug-actions animate-in fade-in-0 duration-200">
+                          <Button
+                            variant="outline"
+                            className="debug-download-button"
+                            type="button"
+                            onClick={() => void downloadDiagnosticLog()}
+                            disabled={loading}
+                          >
+                            <IconDownload />
+                            下载日志
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="debug-download-button"
+                            type="button"
+                            onClick={() => void clearDiagnosticLog()}
+                            disabled={loading}
+                          >
+                            <IconTrash />
+                            清空日志
+                          </Button>
+                        </div>
+                      )}
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
               </div>
-            </div>
-          </>
-        )}
-      </div>
-    </main>
+            </>
+          )}
+        </div>
+      </main>
+    </TooltipProvider>
   );
 }

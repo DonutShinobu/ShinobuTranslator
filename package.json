@@ -34,6 +34,7 @@
     "check:extension-reproducible": "node scripts/check-extension-reproducibility.mjs --chromium apps/extension/dist-chromium --firefox apps/extension/dist-firefox",
     "check:amo-metadata": "node scripts/check-amo-metadata.mjs",
     "check:licenses": "node scripts/check-production-licenses.mjs",
+    "check:popup-ui": "tsx tests/extension/popupUi.browser.ts",
     "check:web-production": "node scripts/web-production-preflight.mjs --repository",
     "check:web-regression": "vitest run tests/shared/config.test.ts tests/shared/webConfig.test.ts tests/content/core/screenshotController.test.ts tests/content/core/imageTranslationController.test.ts tests/content/adapters/ehentai.test.ts tests/content/adapters/twitter.test.ts tests/shared/translatorCore.test.ts tests/shared/browserRuntime.test.ts tests/offscreen/pipelineHost.test.ts tests/pipeline/orchestrator.test.ts tests/web/webPipelineConfig.test.ts",
     "check:architecture": "node scripts/check-workspace-import-boundaries.mjs && node scripts/check-extension-architecture.mjs",

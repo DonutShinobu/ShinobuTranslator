@@ -52,6 +52,8 @@ describe('pipeline artifact resource ownership', () => {
     };
     const finalRegion = createRegion(mask);
     const stageRegion = createRegion(mask);
+    const layerRegion = createRegion(mask), disposeLayer = vi.fn();
+    const layerCanvas = createCanvas(disposeLayer);
     const artifacts: PipelineArtifacts = {
       original: image,
       detectedRegions: [finalRegion],
@@ -73,6 +75,11 @@ describe('pipeline artifact resource ownership', () => {
       ocrPostFilterDebug: null,
       runtimeStages: [],
       stageTimings: [],
+      editableLayers: {
+        erase: [{ regionId: 'region', canvas: layerCanvas, bounds: { x: 0, y: 0, width: 1, height: 1 } }],
+        text: [{ canvas: layerCanvas, region: layerRegion, transform: [1, 0, 0, 1, 0, 0],
+          quad: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }] }],
+      },
     };
 
     disposePipelineArtifacts(artifacts);
@@ -81,5 +88,7 @@ describe('pipeline artifact resource ownership', () => {
     expect(close).toHaveBeenCalledOnce();
     expect(finalRegion.bubbleMask).toBeUndefined();
     expect(stageRegion.bubbleMask).toBeUndefined();
+    expect(layerRegion.bubbleMask).toBeUndefined();
+    expect(disposeLayer).toHaveBeenCalledOnce();
   });
 });

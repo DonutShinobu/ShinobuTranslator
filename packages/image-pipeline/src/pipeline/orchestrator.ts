@@ -42,6 +42,8 @@ import {
 import { createCancelledError } from "../protocol";
 import type { TextTranslator } from '@shinobu/text-translation';
 import { hasTranslatableText } from '../translatableText';
+import { buildEraseLayerCanvases } from '../editor/eraseLayers';
+import type { EditableLayerCanvases, RegionMaskOwnership } from '../editor/types';
 import {
   isPipelineFailureEnvelope,
   type PipelineFailureEnvelope,
@@ -58,6 +60,7 @@ export type PipelineRunOptions = {
   textTranslator?: TextTranslator;
   observer?: DiagnosticLogObserver;
   precomputedDetection?: PrecomputedTextDetection;
+  collectEditableLayers?: boolean;
 };
 
 type PaddleOcrRuntimeProbeMode = "legacy" | "prepare" | "warmup";
@@ -452,6 +455,8 @@ export async function runPipeline(
   let detectionMaskCanvas: PipelineCanvas | null = null;
   let refinedMaskCanvas: PipelineCanvas | null = null;
   let debugLayers: MaskDebugLayers | null = null;
+  let regionOwnership: RegionMaskOwnership | undefined;
+  let editableLayers: EditableLayerCanvases | undefined = options.collectEditableLayers ? { erase: [], text: [] } : undefined;
 
   const buildArtifacts = (): PipelineArtifacts => ({
     original: image,
@@ -468,7 +473,8 @@ export async function runPipeline(
     ocrDebug,
     ocrPostFilterDebug,
     runtimeStages,
-    stageTimings
+    stageTimings,
+    ...(editableLayers ? { editableLayers } : {}),
   });
 
   const setRuntimeStage = (status: RuntimeStageStatus): void => {
@@ -993,10 +999,11 @@ export async function runPipeline(
       const refineResult = refineTextMask(originalCanvas, regionsWithText, detectionMaskCanvas, platform, {
         method: "fit_text",
         kernelSize: 3
-      }, config.eraseDebug, preparedMaskGray);
+      }, config.eraseDebug, preparedMaskGray, options.collectEditableLayers);
       preparedMaskGray = undefined;
       throwIfCancelled(signal);
       refinedMaskCanvas = refineResult.refinedMaskCanvas;
+      regionOwnership = refineResult.regionOwnership;
       if (refineResult.debugLayers) {
         debugLayers = refineResult.debugLayers;
         eraseDebugCanvas = buildEraseDebugCanvas(originalCanvas, refineResult.debugLayers, platform, undefined);
@@ -1029,6 +1036,15 @@ export async function runPipeline(
       );
       preparedInpaintSource = undefined;
       throwIfCancelled(signal);
+      if (editableLayers && regionOwnership) {
+        try {
+          editableLayers.erase = buildEraseLayerCanvases(inpaintResult.canvas, refinedMaskCanvas, regionOwnership, platform);
+        } catch (error) {
+          console.warn('[shinobu:layers] 去字图层生成失败', error);
+          editableLayers = undefined;
+        }
+        regionOwnership = undefined;
+      }
       const inpaintDurationMs = performance.now() - t0;
       inpaintTiming = { stage: "inpaint", label: "\u53bb\u5b57", durationMs: inpaintDurationMs };
       const inpaintRuntime = getRuntimeStage("inpaint");
@@ -1096,6 +1112,7 @@ export async function runPipeline(
         debugMode: config.typesetDebug,
         renderText: true,
         collectDebugLog: false,
+        onTextLayer: editableLayers ? (layer) => editableLayers?.text.push(layer) : undefined,
       }, platform);
       throwIfCancelled(signal);
       resultCanvas = typesetResult.canvas;

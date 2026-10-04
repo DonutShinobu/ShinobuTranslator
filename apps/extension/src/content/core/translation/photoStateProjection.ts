@@ -14,6 +14,7 @@ import {
   toErrorMessage,
 } from '../utils';
 import { ProgressJankMonitor } from '../progressJank';
+import { LayerEditingState } from '../editing/layerEditingState';
 import {
   ImageTranslationExecutionError,
   WholeImageTranslationError,
@@ -165,6 +166,10 @@ export function applyImageTranslationResult(
   options: PhotoStateResultProjectionOptions,
 ): PhotoStateProjectionOutcome {
   const urlApi = options.urlApi ?? URL;
+  state.layerEditing?.dispose();
+  state.layerEditing = result.kind === 'local-pipeline' && result.editable?.layers.length
+    ? new LayerEditingState(result.editable, result.source.blob)
+    : undefined;
   state.translatedUrl = replaceUrl(state.translatedUrl, result.image, urlApi);
 
   if (state.debugOriginalUrl) {

@@ -22,6 +22,9 @@ import type { PipelineArtifacts } from './types';
 import type { DetectionFallbackStrategy } from './pipeline/detect';
 import type { PrecomputedTextDetection } from './pipeline/detect/precomputedDetection';
 import { hasTranslatableText } from './translatableText';
+import type { EditableImage } from './editor/types';
+import { encodeTextLayer } from './editor/textLayer';
+export type { EditableImage, EditableLayer, EditableTextLayer, EditableEraseLayer } from './editor/types';
 export {
   probeTextDetection,
   type TextDetectionProbeOptions,
@@ -134,6 +137,7 @@ export type ImagePipelineRequest = {
   config: Readonly<PipelineConfig>;
   workingCopy: Readonly<WorkingCopySpec>;
   precomputedDetection?: Readonly<PrecomputedTextDetection>;
+  collectEditableLayers?: boolean;
 };
 
 export type PipelineRetryProgress = {
@@ -256,6 +260,7 @@ export type ImagePipelineResult = {
   debug?: Blob;
   record: PipelineRecord;
   diagnostics?: Readonly<Record<string, unknown>>;
+  editable?: EditableImage;
 };
 
 type ImagePipelineExecutionOutput<Artifacts> = {
@@ -361,7 +366,7 @@ function cloneAndFreeze<T>(value: T): T {
   const clone = structuredClone(value);
   const visited = new WeakSet<object>();
   const visit = (candidate: unknown): void => {
-    if (!candidate || typeof candidate !== 'object' || candidate instanceof Blob) {
+    if (!candidate || typeof candidate !== 'object' || candidate instanceof Blob || ArrayBuffer.isView(candidate)) {
       return;
     }
     if (visited.has(candidate)) return;
@@ -520,6 +525,7 @@ function validateRequest(request: unknown): asserts request is ImagePipelineRequ
     || !validateConfig(request.config)
     || !validateWorkingCopySpec(request.workingCopy)
     || !validatePrecomputedDetection(request.precomputedDetection)
+    || (request.collectEditableLayers !== undefined && typeof request.collectEditableLayers !== 'boolean')
   ) {
     throw new ImagePipelineAdmissionError(
       'INVALID_REQUEST',
@@ -684,6 +690,7 @@ class ImagePipelineRuntime<Artifacts> {
 
     const immutableRequest: ImagePipelineRequest = {
       source: request.source,
+      collectEditableLayers: request.collectEditableLayers,
       config: cloneAndFreeze(request.config),
       workingCopy: cloneAndFreeze(request.workingCopy),
       precomputedDetection: request.precomputedDetection
@@ -1420,6 +1427,7 @@ export function createImagePipeline(
           detectionFallbackStrategy:
             dependencies.detectionFallbackStrategy,
           precomputedDetection: request.precomputedDetection,
+          collectEditableLayers: request.collectEditableLayers,
         },
       );
       return {
@@ -1444,6 +1452,24 @@ export function createImagePipeline(
         && output.artifacts.debugOriginalCanvas
         ? await encodeCanvasToPng(output.artifacts.debugOriginalCanvas)
         : undefined;
+      let editable: EditableImage | undefined;
+      if (output.artifacts.editableLayers) {
+        const { erase, text } = output.artifacts.editableLayers;
+        const eraseLayers = await Promise.all(erase.map(async (layer) => {
+          const { x, y, width, height } = layer.bounds;
+          return {
+            id: `erase:${layer.regionId}`, regionId: layer.regionId, kind: 'erase' as const,
+            image: await encodeCanvasToPng(layer.canvas), width, height,
+            transform: [1, 0, 0, 1, x, y] as [number, number, number, number, number, number],
+            quad: [{ x, y }, { x: x + width, y }, { x: x + width, y: y + height }, { x, y: y + height }] as import('./editor/types').EditableEraseLayer['quad'],
+          };
+        }));
+        editable = {
+          width: output.artifacts.original.naturalWidth, height: output.artifacts.original.naturalHeight,
+          targetLang: request.config.targetLang,
+          layers: [...eraseLayers, ...await Promise.all(text.map((layer) => encodeTextLayer(layer, encodeCanvasToPng)))],
+        };
+      }
       output.artifacts.stageTimings.push({
         stage: 'finalize',
         label: '生成结果图片',
@@ -1453,6 +1479,7 @@ export function createImagePipeline(
         status: output.status,
         image,
         debug,
+        ...(editable ? { editable } : {}),
         record: createPipelineRecord({
           image: {
             width: output.artifacts.original.naturalWidth,

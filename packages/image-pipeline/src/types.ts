@@ -1,4 +1,5 @@
 import type { PipelineCanvas, PipelineImage } from "./runtime/platform";
+import type { EditableLayerCanvases, RegionMaskOwnership } from './editor/types';
 import type {
   LlmAuthMode,
   LlmProvider,
@@ -378,6 +379,7 @@ export type MaskDebugLayers = {
 export type RefineTextMaskResult = {
   refinedMaskCanvas: PipelineCanvas;
   debugLayers?: MaskDebugLayers;
+  regionOwnership?: RegionMaskOwnership;
 };
 
 export type PipelineStageRegions = {
@@ -403,6 +405,7 @@ export type PipelineArtifacts = {
   ocrPostFilterDebug: OcrPostFilterDebugInfo | null;
   runtimeStages: RuntimeStageStatus[];
   stageTimings: StageTiming[];
+  editableLayers?: EditableLayerCanvases;
 };
 
 export type StageTiming = {

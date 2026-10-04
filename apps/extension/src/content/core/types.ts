@@ -10,6 +10,7 @@ import type {
   TranslationDebugInfo,
 } from '@shinobu/image-pipeline/benchmark';
 import type { ImageTranslationExecutionRequest } from './translation/imageTranslationExecution';
+import type { LayerEditingState } from './editing/layerEditingState';
 
 export interface ImageTarget {
   element: HTMLImageElement;
@@ -205,6 +206,7 @@ export type ErrorDetailCardData = {
 };
 
 export type PhotoState = {
+  layerEditing?: LayerEditingState;
   status: PhotoViewStatus;
   mode: PhotoDisplayMode;
   originalUrl: string;

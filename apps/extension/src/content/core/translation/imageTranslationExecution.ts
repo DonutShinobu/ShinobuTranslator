@@ -70,6 +70,7 @@ export type ImageTranslationExecutionRequest = {
   translationContext?: TranslationReferenceContext;
   allowedKinds?: readonly ImageTranslationExecutionKind[];
   precomputedDetection?: PrecomputedTextDetection;
+  collectEditableLayers?: boolean;
 };
 
 export type ImageTranslationDisplayPreferences = {
@@ -124,6 +125,7 @@ export type LocalPipelineImageTranslationResult = ImageTranslationExecutionResul
   debug?: Blob;
   summary: LocalPipelineArtifactSummary;
   record: LocalPipelineResult['record'];
+  editable?: LocalPipelineResult['editable'];
 };
 
 export type WholeImageTranslationProvider = 'gemini-app' | 'gemini-api';
@@ -583,7 +585,8 @@ export function createImageTranslationExecutionModule(
           phase: 'executing',
           execution: { kind: 'local-pipeline', progress },
         });
-      }, { signal, precomputedDetection: request.precomputedDetection })
+      }, { signal, precomputedDetection: request.precomputedDetection,
+        ...(request.collectEditableLayers ? { collectEditableLayers: true } : {}) })
     );
     const overlap = kind === 'local-pipeline'
       && (globalThis as { __shinobuColdStartOverlap?: boolean }).__shinobuColdStartOverlap === true;
@@ -713,6 +716,7 @@ export function createImageTranslationExecutionModule(
         debug: result.debug,
         summary: result.summary,
         record: result.record,
+        ...(result.editable ? { editable: result.editable } : {}),
         source,
         display: preparation.display,
         diagnosticRunId,

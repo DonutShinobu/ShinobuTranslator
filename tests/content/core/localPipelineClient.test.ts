@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPipelineRecord } from '@shinobu/image-pipeline';
+import { packEditableImage } from '@shinobu/image-pipeline/editor';
 import type { ExtensionBrowserApi, ExtensionPort } from '../../../apps/extension/src/shared/extensionRuntime';
 import {
   LOCAL_PIPELINE_CLIENT_PORT,
@@ -133,6 +134,46 @@ describe('runLocalPipeline', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it.each([false, true])('collects editable layers through the negotiated transport (native=%s)', async (native) => {
+    vi.stubGlobal('__shinobuColdStartStructuredClone', native);
+    const client = new FakePort(LOCAL_PIPELINE_CLIENT_PORT);
+    vi.stubGlobal('chrome', { runtime: { connect: () => client } } satisfies ExtensionBrowserApi);
+    const { runLocalPipeline } = await import(
+      '../../../apps/extension/src/content/core/translation/localPipelineClient'
+    );
+    const pending = runLocalPipeline(new File(['source'], 'source.png', { type: 'image/png' }), pipelineConfig,
+      () => undefined, { collectEditableLayers: true });
+    const { jobId } = client.sent[0] as { jobId: string };
+    client.emitMessage({ type: 'ready', jobId, structuredClone: native });
+    await vi.waitFor(() => expect(client.sent).toContainEqual({ type: 'input-complete', jobId }));
+    expect(client.sent).toContainEqual(expect.objectContaining({ type: 'start', collectEditableLayers: true }));
+    const editableBlob = packEditableImage({ width: 1, height: 1, targetLang: 'zh-CN', layers: [{
+      id: 'erase:r1', regionId: 'r1', kind: 'erase', image: new Blob([Uint8Array.of(3, 128, 255)], { type: 'image/png' }),
+      width: 1, height: 1, transform: [1, 0, 0, 1, 0, 0],
+      quad: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }],
+    }] });
+    const base64 = Buffer.from(await editableBlob.arrayBuffer()).toString('base64');
+    client.emitMessage({
+      type: 'result-meta', jobId, status: 'completed',
+      result: { contentType: 'image/png', chunkCount: native ? 0 : 1, totalChars: native ? 0 : 4 },
+      editable: { contentType: editableBlob.type, chunkCount: native ? 0 : 1, totalChars: native ? 0 : base64.length },
+      ...(native ? { resultBlob: new Blob(['png'], { type: 'image/png' }), editableBlob } : {}),
+      summary: { image: { width: 1, height: 1 }, detectedRegionCount: 0, stageTimings: [], runtimeStages: [] }, record,
+    });
+    if (!native) {
+      client.emitMessage({ type: 'result-chunk', jobId, artifact: 'result', index: 0, data: 'AQ==' });
+      client.emitMessage({ type: 'result-chunk', jobId, artifact: 'editable', index: 0, data: base64 });
+    }
+    client.emitMessage({ type: 'complete', jobId });
+    // The host may close its Port while the completed artifact is still being decoded.
+    client.disconnect();
+    const result = await pending;
+    expect(result.editable?.layers[0]).toMatchObject({ id: 'erase:r1', kind: 'erase' });
+    expect(new Uint8Array(await result.editable!.layers[0].image.arrayBuffer())).toEqual(Uint8Array.of(3, 128, 255));
+    expect(client.messageListeners).toHaveLength(0);
+    expect(client.disconnectListeners).toHaveLength(0);
   });
 
   it('transfers native File and completed PNG Blobs only after capability acknowledgement', async () => {

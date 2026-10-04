@@ -1221,6 +1221,19 @@ export function App() {
                   onChange={(v) => updateField('processMode', v as ExtensionSettingsProjection['processMode'])}
                   disabled={loading}
                 />
+                <label className="image-editing-option">
+                  <span className="image-editing-copy">
+                    <span>直接编辑图片</span>
+                    <small>本地 OCR 结果可直接移动、删除和编辑</small>
+                  </span>
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    checked={settings.enableImageEditing}
+                    onChange={(event) => updateField('enableImageEditing', event.target.checked)}
+                    disabled={loading}
+                  />
+                </label>
               </section>
             ) : null}
 

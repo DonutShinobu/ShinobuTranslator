@@ -805,6 +805,42 @@ html, body {
 }
 
 /* ── Debug toggle & row ── */
+.image-editing-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  cursor: pointer;
+}
+.image-editing-copy { display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+.image-editing-copy small { font-size: 11px; color: var(--text-secondary); }
+.image-editing-option input {
+  appearance: none;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 19px;
+  margin: 0;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  background: var(--border-subtle);
+  cursor: pointer;
+  transition: background 150ms ease-out;
+}
+.image-editing-option input::before {
+  content: '';
+  display: block;
+  width: 13px;
+  height: 13px;
+  margin: 2px;
+  border-radius: 50%;
+  background: var(--bg-surface);
+  transition: transform 150ms ease-out;
+}
+.image-editing-option input:checked { background: var(--accent); border-color: var(--accent); }
+.image-editing-option input:checked::before { transform: translateX(13px); }
+.image-editing-option input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
 .debug-footer {
   position: relative;
   padding: 10px 10px 12px;

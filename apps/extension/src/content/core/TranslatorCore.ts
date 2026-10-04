@@ -20,11 +20,13 @@ import { ScreenshotController } from './screenshot/screenshotController';
 import { createDefaultReaderEngineReadingModeModule } from './reading/defaultReaderEngineReadingModeModule';
 import type { ReaderEngineReadingModeModulePort } from './reading/readerEngineReadingModeModule';
 import { createSiteReadingModeAdapter } from './reading/siteReadingModeAdapter';
+import { ImageLayerEditor } from './editing/imageLayerEditor';
 
 type MountedImage = {
   key: string;
   target: ImageTarget;
   ui: UiElements;
+  editor: ImageLayerEditor;
 };
 
 export class TranslatorCore {
@@ -93,6 +95,7 @@ export class TranslatorCore {
     this.screenshotController.dispose();
     this.imageTranslationController.dispose();
     this.imageTranslationExecutionArbiter.dispose('翻译核心已停止');
+    for (const mounted of this.mounted.values()) mounted.editor.dispose();
     this.stateStore.dispose();
   }
 
@@ -153,6 +156,7 @@ export class TranslatorCore {
 
     for (const [key, mounted] of this.mounted) {
       if (!currentKeys.has(key)) {
+        mounted.editor.dispose();
         mounted.ui.host.remove();
         this.mounted.delete(key);
       }
@@ -164,9 +168,11 @@ export class TranslatorCore {
         mounted.target = target;
         const state = this.stateStore.ensure(target.key, target.originalUrl);
         this.applyStateImage(target, state);
+        mounted.editor.sync();
         continue;
       }
       if (mounted) {
+        mounted.editor.dispose();
         this.mounted.delete(target.key);
       }
 
@@ -175,7 +181,19 @@ export class TranslatorCore {
       const ui = createUiElements();
       anchor.appendChild(ui.host);
 
-      ui.button.addEventListener('click', () => {
+      const editor = new ImageLayerEditor({
+        ui,
+        getState: () => this.stateStore.get(key),
+        getImage: () => this.mounted.get(key)?.target.element,
+        onChange: () => {
+          const state = this.stateStore.get(key);
+          if (state) this.applyMountedStateImage(key, state);
+          this.renderForKey(key);
+        },
+        protect: () => this.stateStore.protect(key),
+      });
+      ui.button.addEventListener('click', async () => {
+        if (this.stateStore.get(key)?.layerEditing?.active && !(await editor.finish())) return;
         const currentTarget = this.mounted.get(key)?.target ?? target;
         void this.imageTranslationController.handleTranslateClick(currentTarget);
       });
@@ -188,10 +206,11 @@ export class TranslatorCore {
         if (state) this.cardStateController.toggleErrorDetailCard(state, () => this.renderForKey(key));
       });
 
-      this.mounted.set(key, { key, target, ui });
+      this.mounted.set(key, { key, target, ui, editor });
       const state = this.stateStore.ensure(key, target.originalUrl);
       this.applyStateImage(target, state);
       renderUi(ui, state);
+      editor.sync();
     }
   }
 
@@ -200,6 +219,7 @@ export class TranslatorCore {
     if (!mounted?.ui.host.isConnected) return;
     const state = this.stateStore.get(key) ?? null;
     renderUi(mounted.ui, state);
+    mounted.editor.sync();
   }
 
   private applyMountedStateImage(key: string, state: PhotoState): void {
@@ -210,7 +230,7 @@ export class TranslatorCore {
 
   private applyStateImage(target: ImageTarget, state: PhotoState): void {
     if (!state.translatedUrl) return;
-    const imageUrl = state.mode === 'translated' ? state.translatedUrl : state.originalUrl;
+    const imageUrl = state.mode === 'translated' && !state.layerEditing?.active ? state.translatedUrl : state.originalUrl;
     this.adapter.applyImage(target, imageUrl);
   }
 

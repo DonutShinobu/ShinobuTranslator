@@ -21,6 +21,7 @@ import {
 import type { RegionTypesetDebug } from "./fontMetrics";
 import type { CompositeTransform } from "./geometry";
 import { formatTypesetFont, resolveTypesetFontFamily } from "./fontRuntime";
+import type { EditableTextGlyph, LayerTransform, TypesetLayerCanvas } from '../../editor/types';
 // ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
@@ -29,6 +30,7 @@ export type DrawTypesetOptions = {
   debugMode?: boolean;
   renderText?: boolean;
   collectDebugLog?: boolean;
+  onTextLayer?: (layer: TypesetLayerCanvas) => void;
 };
 
 export type DrawTypesetResult = {
@@ -82,6 +84,7 @@ export async function drawTypeset(
     let sourceColumns: string[];
     let sourceColumnLengths: number[];
     let singleColumnMaxLength: number | null;
+    let editingGlyphs: { ch: string; x: number; y: number; width: number; height: number; baselineY?: number }[] = [];
 
     if (isVerticalInput) {
       const vResult = computeFullVerticalTypeset({
@@ -117,6 +120,16 @@ export async function drawTypeset(
           platform,
         );
       }
+      if (options?.onTextLayer) editingGlyphs = vResult.columns.flatMap((column, i) => {
+        const box = vResult.debugColumnBoxes[i]; if (!box) return [];
+        let y = box.y;
+        return column.glyphs.flatMap((glyph) => {
+          const characters = segmentVerticalGraphemes(glyph.sourceText), height = glyph.advanceY / Math.max(1, characters.length);
+          const placements = characters.map((ch, index) => ({ ch, x: box.x + box.width / 2,
+            y: y + height * (index + .5), width: vResult.fittedFontSize, height }));
+          y += glyph.advanceY; return placements;
+        });
+      });
       debug = {
         fittedFontSize: vResult.fittedFontSize,
         columnBoxes: vResult.debugColumnBoxes,
@@ -201,6 +214,10 @@ export async function drawTypeset(
           horizontal.letterSpacingScale,
         ),
       );
+      if (options?.onTextLayer) editingGlyphs = horizontalGlyphPlacements.flatMap((line) => line.map((glyph) => ({
+        ch: glyph.ch, x: glyph.centerX, y: glyph.centerY, width: Math.max(.01, glyph.width),
+        height: horizontal.fittedFontSize, baselineY: glyph.baselineY,
+      })));
       if (renderText) {
         offCanvas = renderHorizontal(
           horizontal.lineBoxes,
@@ -247,6 +264,39 @@ export async function drawTypeset(
         debug.boxPadding,
         debug.strokePadding,
       );
+      if (options?.onTextLayer) {
+        const c = transform ? Math.cos(transform.angle) * transform.s : 1;
+        const s = transform ? Math.sin(transform.angle) * transform.s : 0;
+        const matrix: LayerTransform = transform
+          ? [c, s, -s, c,
+              transform.cx - c * offCanvas.width / 2 + s * offCanvas.height / 2,
+              transform.cy - s * offCanvas.width / 2 - c * offCanvas.height / 2]
+          : [1, 0, 0, 1,
+              region.box.x + debug.boxPadding - debug.strokePadding,
+              region.box.y + debug.boxPadding - debug.strokePadding];
+        const point = (x: number, y: number) => ({
+          x: matrix[0] * x + matrix[2] * y + matrix[4],
+          y: matrix[1] * x + matrix[3] * y + matrix[5],
+        });
+        const rawText = translatedRaw.trim() ? translatedRaw : inputRegion.sourceText;
+        let sourceIndex = 0;
+        const glyphs: EditableTextGlyph[] = editingGlyphs.map(({ ch, ...placement }) => {
+          const match = rawText.indexOf(ch, sourceIndex);
+          const start = match < 0 ? sourceIndex : match;
+          sourceIndex = Math.min(rawText.length, start + ch.length);
+          return { start, end: sourceIndex, ...placement };
+        });
+        options.onTextLayer({
+          canvas: offCanvas,
+          region: { ...inputRegion, translatedText: translatedRaw.trim() ? translatedRaw : inputRegion.sourceText },
+          transform: matrix,
+          quad: [point(0, 0), point(offCanvas.width, 0),
+            point(offCanvas.width, offCanvas.height), point(0, offCanvas.height)],
+          layout: { fontSize: debug.fittedFontSize, fontFamily,
+            color: resolveColors(region.fgColor, region.bgColor).fg,
+            direction: isVerticalInput ? 'v' : 'h', glyphs },
+        });
+      }
     }
 
     if (debugMode) {

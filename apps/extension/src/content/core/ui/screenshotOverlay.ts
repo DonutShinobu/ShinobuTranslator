@@ -854,7 +854,7 @@ export function renderScreenshotResultUi(
   }
   ui.host.dataset.status = state.status;
   const originalUrl = state.originalUrl.startsWith('screenshot:') ? undefined : state.originalUrl;
-  const imageUrl = state.status === 'translated'
+  const imageUrl = state.status === 'translated' && !state.layerEditing?.active
     ? state.translatedUrl
     : originalUrl ?? state.translatedUrl;
   const imageKind = imageUrl

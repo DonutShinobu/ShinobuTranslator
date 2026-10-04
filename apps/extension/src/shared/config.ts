@@ -126,6 +126,7 @@ export type ExtensionSettings = {
   ocrEngine: OcrEngine;
   processMode: ProcessMode;
   enableDebugLog: boolean;
+  enableImageEditing: boolean;
 };
 
 export const defaultExtensionSettings: ExtensionSettings = {
@@ -150,6 +151,7 @@ export const defaultExtensionSettings: ExtensionSettings = {
   ocrEngine: 'paddleocr_v6_medium',
   processMode: 'translate',
   enableDebugLog: false,
+  enableImageEditing: false,
 };
 
 export function targetLanguageLabel(targetLang: string): string {
@@ -413,6 +415,7 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     ocrEngine: normalizeOcrEngine(raw.ocrEngine),
     processMode: normalizeProcessMode(raw.processMode),
     enableDebugLog: sanitizeBoolean(raw.enableDebugLog, defaultExtensionSettings.enableDebugLog),
+    enableImageEditing: sanitizeBoolean(raw.enableImageEditing, defaultExtensionSettings.enableImageEditing),
   };
 }
 

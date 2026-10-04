@@ -18,6 +18,13 @@ import {
 } from "../../apps/extension/src/shared/config";
 
 describe("built-in LLM catalog", () => {
+  it('normalizes the popup editing preference without adding it to pipeline settings', () => {
+    expect(normalizeSettings({}).enableImageEditing).toBe(false);
+    expect(normalizeSettings({ enableImageEditing: 'true' }).enableImageEditing).toBe(false);
+    const settings = normalizeSettings({ enableImageEditing: true });
+    expect(settings.enableImageEditing).toBe(true);
+    expect(toPipelineConfig(settings)).not.toHaveProperty('enableImageEditing');
+  });
   it.each(['deepseek-v4-flash', 'deepseek-v4-flash-vision-exp'])("migrates %s and preserves its thinking setting", (model) => {
     const settings = normalizeSettings({
       translator: 'llm',

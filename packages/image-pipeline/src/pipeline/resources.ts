@@ -25,6 +25,11 @@ export function disposePipelineArtifacts(artifacts: PipelineArtifacts): void {
   ]);
   if (artifacts.segmentationCanvas) canvases.add(artifacts.segmentationCanvas);
   if (artifacts.debugOriginalCanvas) canvases.add(artifacts.debugOriginalCanvas);
+  for (const layer of artifacts.editableLayers?.erase ?? []) canvases.add(layer.canvas);
+  for (const layer of artifacts.editableLayers?.text ?? []) {
+    canvases.add(layer.canvas);
+    layer.region.bubbleMask = undefined;
+  }
 
   for (const canvas of canvases) {
     releaseCanvas(canvas);

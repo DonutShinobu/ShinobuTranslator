@@ -91,6 +91,7 @@ export class ImageTranslationController {
     const task = startPhotoStateImageTranslation({
       executionModule: activity,
       request: {
+        collectEditableLayers: true,
         source: {
           kind: 'remote-image',
           url: state.originalUrl,

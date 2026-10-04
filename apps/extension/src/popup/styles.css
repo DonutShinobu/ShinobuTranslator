@@ -642,6 +642,36 @@ body {
   margin: 0;
 }
 
+.image-editing-toggle {
+  width: 24px;
+  height: 24px;
+  margin-left: auto;
+  padding: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  box-shadow: none;
+  cursor: pointer;
+  transition: color 150ms ease-out, background 150ms ease-out, border-color 150ms ease-out;
+}
+
+.image-editing-toggle:hover {
+  border-color: var(--border-hover);
+  background: var(--accent-soft);
+  color: var(--text-primary);
+}
+
+.image-editing-toggle[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-muted);
+  color: var(--accent-hover);
+}
+
+.image-editing-toggle svg {
+  opacity: 1;
+}
+
 .auth-mode-field {
   margin-bottom: 7px;
 }

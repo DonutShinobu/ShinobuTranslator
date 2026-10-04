@@ -59,6 +59,23 @@ function localExecutionResult(): LocalPipelineImageTranslationResult {
 }
 
 describe('photo state projection', () => {
+  it('attaches locally captured layers to their source and disposes them for a replacement result', () => {
+    const state = createInitialPhotoState('https://example.com/source.png');
+    const result = localExecutionResult();
+    result.editable = { width: 100, height: 200, targetLang: 'zh-CN', layers: [{
+      id: 'erase:r1', regionId: 'r1', kind: 'erase', image: new Blob(['patch'], { type: 'image/png' }),
+      width: 1, height: 1, transform: [1, 0, 0, 1, 10, 20],
+      quad: [{ x: 10, y: 20 }, { x: 11, y: 20 }, { x: 11, y: 21 }, { x: 10, y: 21 }],
+    }] };
+    const urlApi = { createObjectURL: vi.fn(() => 'blob:result'), revokeObjectURL: vi.fn() };
+    applyImageTranslationResult(state, result, { includeElapsedText: false, urlApi });
+    const session = state.layerEditing!;
+    expect(session.source).toBe(result.source.blob);
+    expect(session.layers[0].content.id).toBe('erase:r1');
+    applyImageTranslationResult(state, localExecutionResult(), { includeElapsedText: false, urlApi });
+    expect(session.disposed).toBe(true);
+    expect(state.layerEditing).toBeUndefined();
+  });
   it('projects execution progress and result without exposing PhotoState to execution', () => {
     const state = createInitialPhotoState('https://example.com/source.png');
     state.status = 'error';

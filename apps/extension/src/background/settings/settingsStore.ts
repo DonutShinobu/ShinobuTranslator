@@ -26,6 +26,7 @@ type ExtensionInterfacePreferences = Pick<
   | 'showStageTimingDetails'
   | 'stageTimingCardExpanded'
   | 'debugOptionsExpanded'
+  | 'enableImageEditing'
 >;
 
 type ExtensionTranslationDefaults = Omit<
@@ -83,6 +84,7 @@ function splitSettings(settings: ExtensionSettings): SplitSettings {
     showStageTimingDetails,
     stageTimingCardExpanded,
     debugOptionsExpanded,
+    enableImageEditing,
     ...translationDefaults
   } = projection;
   const providerCredentials = Object.fromEntries(
@@ -97,6 +99,7 @@ function splitSettings(settings: ExtensionSettings): SplitSettings {
       showStageTimingDetails,
       stageTimingCardExpanded,
       debugOptionsExpanded,
+      enableImageEditing,
     },
     providerCredentials,
   };

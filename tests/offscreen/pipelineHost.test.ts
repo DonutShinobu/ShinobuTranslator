@@ -4,12 +4,13 @@ import type { PipelineArtifacts } from '../../packages/image-pipeline/src/types'
 import type { PipelinePlatform, PipelineConfig } from '@shinobu/image-pipeline';
 import type { ModelRuntime } from '@shinobu/model-runtime';
 import { LOCAL_PIPELINE_STRUCTURED_CLONE_PROBE_TYPE } from '@shinobu/image-pipeline/protocol';
+import { unpackEditableImage } from '@shinobu/image-pipeline/editor';
 
 const mocks = vi.hoisted(() => ({
   runPipeline: vi.fn(),
   probeTextDetection: vi.fn(),
   disposeAllModelSessions: vi.fn(async () => undefined),
-  blobToBase64: vi.fn(async () => 'cmVzdWx0'),
+  blobToBase64: vi.fn(async (_value: Blob) => 'cmVzdWx0'),
 }));
 
 vi.mock('../../packages/image-pipeline/src/pipeline/orchestrator', () => ({
@@ -126,6 +127,7 @@ function sendImageJob(
   },
   configOverrides?: Partial<PipelineConfig>,
   binary = false,
+  collectEditableLayers = false,
 ): void {
   port.emit({ type: 'prepare', jobId, ...(binary ? {
     structuredCloneProbe: new Blob([Uint8Array.of(83)], { type: LOCAL_PIPELINE_STRUCTURED_CLONE_PROBE_TYPE }),
@@ -133,6 +135,7 @@ function sendImageJob(
   port.emit({
     type: 'start',
     jobId,
+    ...(collectEditableLayers ? { collectEditableLayers: true } : {}),
     file: { name: `${jobId}.png`, type: 'image/png', size: 1, lastModified: 1 },
     config: {
       sourceLang: 'ja',
@@ -205,6 +208,29 @@ describe('PipelineHost single-task admission', () => {
     hosts.push(host);
     return host;
   }
+
+  it.each([false, true])('exports opted-in layers through the host transport (native=%s)', async (native) => {
+    vi.stubGlobal('__shinobuColdStartStructuredClone', native);
+    mocks.blobToBase64.mockImplementation(async (value: Blob) => Buffer.from(await value.arrayBuffer()).toString('base64'));
+    const output = artifacts();
+    output.editableLayers = { erase: [{ regionId: 'r1',
+      canvas: { width: 1, height: 1 } as PipelineArtifacts['resultCanvas'],
+      bounds: { x: 0, y: 0, width: 1, height: 1 } }], text: [] };
+    mocks.runPipeline.mockResolvedValueOnce(output);
+    const host = createHost({ platform: { encodeCanvasToPng: async () => new Blob(['png'], { type: 'image/png' }) } as unknown as PipelinePlatform });
+    host.connect(); sendImageJob(port, 'editable', undefined, undefined, native, true);
+    await vi.waitFor(() => expect(port.sent).toContainEqual({ type: 'complete', jobId: 'editable' }));
+    expect(mocks.runPipeline.mock.calls[0]![3]).toMatchObject({ collectEditableLayers: true });
+    const meta = port.sent.find((value) => (value as { type: string }).type === 'result-meta') as {
+      editable: { contentType: string }; editableBlob?: Blob;
+    };
+    const chunks = port.sent.filter((value) => (value as { artifact?: string }).artifact === 'editable') as { data: string }[];
+    const packed = meta.editableBlob ?? new Blob([Buffer.from(chunks.map((part) => part.data).join(''), 'base64')], { type: meta.editable.contentType });
+    const restored = await unpackEditableImage(packed);
+    expect(restored.layers[0]).toMatchObject({ id: 'erase:r1', kind: 'erase', transform: [1, 0, 0, 1, 0, 0] });
+    expect(await restored.layers[0].image.text()).toBe('png');
+    expect(chunks.length > 0).toBe(!native);
+  });
 
   it('waits for full result and debug PNG encoding before delivering native Blobs', async () => {
     vi.stubGlobal('__shinobuColdStartStructuredClone', true);

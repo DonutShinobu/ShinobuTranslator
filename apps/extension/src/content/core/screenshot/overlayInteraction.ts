@@ -54,7 +54,7 @@ export function attachScreenshotResultDrag(ui: ScreenshotResultUiElements, onDet
     const onPointerDown = (event: PointerEvent): void => {
       const target = event.target;
       if (
-        event.button !== 0 ||
+        event.button !== 0 || ui.host.dataset.editing === 'true' ||
         (target instanceof Element && target.closest('button'))
       ) {
         return;
@@ -121,7 +121,7 @@ export function attachScreenshotResultZoom(
     };
 
     const onWheel = (event: WheelEvent): void => {
-      if (event.deltaY === 0) return;
+      if (event.deltaY === 0 || (event.target instanceof Element && event.target.closest('textarea, select, [contenteditable="true"]'))) return;
       event.preventDefault();
       event.stopPropagation();
       onDetach?.();

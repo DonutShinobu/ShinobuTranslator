@@ -24,6 +24,7 @@ import {
   type PipelineRecord,
 } from '@shinobu/image-pipeline';
 import { DETECTION_MASK_EDGE_SEARCH_ROWS } from '../pipeline/detect/packedDetectionMask';
+import type { EditableImage } from '../editor/types';
 
 export const LOCAL_PIPELINE_CLIENT_PORT = 'mt:local-pipeline-client';
 export const LOCAL_PIPELINE_HOST_PORT = 'mt:pipeline-host';
@@ -125,6 +126,7 @@ export type LocalPipelineClientMessage =
       input: LocalPipelineChunkMeta;
       binaryFile?: Blob;
       detection?: LocalPipelineDetectionArtifact;
+      collectEditableLayers?: boolean;
     }
   | {
       type: 'start-detection-probe';
@@ -182,15 +184,17 @@ export type LocalPipelineHostMessage =
       status: 'completed' | 'no-translatable-text';
       result: LocalPipelineArtifactMeta;
       debug?: LocalPipelineArtifactMeta;
+      editable?: LocalPipelineArtifactMeta;
       resultBlob?: Blob;
       debugBlob?: Blob;
+      editableBlob?: Blob;
       summary: LocalPipelineArtifactSummary;
       record: PipelineRecord;
     }
   | {
       type: 'result-chunk';
       jobId: string;
-      artifact: 'result' | 'debug';
+      artifact: 'result' | 'debug' | 'editable';
       index: number;
       data: string;
     }
@@ -210,6 +214,7 @@ export type LocalPipelineResult = {
   debug?: Blob;
   summary: LocalPipelineArtifactSummary;
   record: PipelineRecord;
+  editable?: EditableImage;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -248,6 +253,7 @@ export function isLocalPipelineClientMessage(value: unknown): value is LocalPipe
       return isValidFileMeta(value.file)
         && isValidPipelineConfig(value.config)
         && isValidChunkMeta(value.input)
+        && (value.collectEditableLayers === undefined || typeof value.collectEditableLayers === 'boolean')
         && (value.binaryFile === undefined || (
           value.binaryFile instanceof Blob
           && value.binaryFile.size === value.file.size
@@ -315,12 +321,14 @@ export function isLocalPipelineHostMessage(value: unknown): value is LocalPipeli
       return (value.status === 'completed' || value.status === 'no-translatable-text')
         && isValidArtifactMeta(value.result)
         && (value.debug === undefined || isValidArtifactMeta(value.debug))
+        && (value.editable === undefined || isValidArtifactMeta(value.editable))
         && (value.resultBlob === undefined || isValidBinaryArtifact(value.resultBlob, value.result))
         && (value.debugBlob === undefined || isValidBinaryArtifact(value.debugBlob, value.debug))
+        && (value.editableBlob === undefined || isValidBinaryArtifact(value.editableBlob, value.editable))
         && isValidArtifactSummary(value.summary)
         && isCurrentPipelineRecord(value.record);
     case 'result-chunk':
-      return (value.artifact === 'result' || value.artifact === 'debug')
+      return (value.artifact === 'result' || value.artifact === 'debug' || value.artifact === 'editable')
         && Number.isInteger(value.index)
         && (value.index as number) >= 0
         && typeof value.data === 'string'

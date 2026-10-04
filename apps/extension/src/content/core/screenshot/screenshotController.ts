@@ -17,6 +17,7 @@ import type { ScreenshotRect, ScreenshotSelection } from '../screenshot';
 import { ProgressJankMonitor } from '../progressJank';
 import { resolveImageReferrerPolicy } from '../utils';
 import { PhotoStateStore } from '../state/photoStateStore';
+import { ImageLayerEditor } from '../editing/imageLayerEditor';
 import type {
   ImageTranslationExecutionActivity,
   ImageTranslationExecutionArbiter,
@@ -104,6 +105,7 @@ export class ScreenshotController {
       let activeJankMonitor: ProgressJankMonitor | null = null;
       let activeActivity: ImageTranslationExecutionActivity | null = null;
       let lastImageAnchorKey = '';
+      let editor: ImageLayerEditor | undefined;
       const toAnchorRectKey = (rect: ScreenshotRect): string => [
         Math.round(rect.left * 10),
         Math.round(rect.top * 10),
@@ -190,6 +192,7 @@ export class ScreenshotController {
           renderScreenshotResultUi(ui, state);
         }
         syncActiveAnchor(true);
+        editor?.sync();
       };
       const cleanup = (): void => {
         if (disposed) return;
@@ -200,6 +203,7 @@ export class ScreenshotController {
         stopAnchorTracking();
         detachDrag?.();
         detachZoom?.();
+        editor?.dispose();
         this.stateStore.delete(key);
         if (sourceOriginalUrl) {
           URL.revokeObjectURL(sourceOriginalUrl);
@@ -209,8 +213,12 @@ export class ScreenshotController {
       };
       this.activeCleanups.add(cleanup);
 
+      editor = new ImageLayerEditor({ ui, getState: () => state, getImage: () => ui.image,
+        container: ui.host, onChange: render, protect: () => this.stateStore.protect(key) });
       ui.closeButton.addEventListener('click', cleanup);
-      ui.button.addEventListener('click', () => {
+      ui.button.addEventListener('click', async () => {
+        if (state.layerEditing?.active && !(await editor!.finish())) return;
+        if (disposed) return;
         if (state.status === 'running') return;
         if (state.status === 'error') {
           void runImagePipeline();
@@ -245,6 +253,7 @@ export class ScreenshotController {
         const task = startPhotoStateImageTranslation({
           executionModule: activity,
           request: {
+            collectEditableLayers: true,
             source: sourceFile
               ? { kind: 'prepared-file', file: sourceFile }
               : {
@@ -301,6 +310,7 @@ export class ScreenshotController {
       let detachZoom: (() => void) | null = null;
       let screenshotFile: File | null = null;
       let screenshotOriginalUrl: string | null = null;
+      let editor: ImageLayerEditor | undefined;
       let activeJankMonitor: ProgressJankMonitor | null = null;
       let activeActivity: ImageTranslationExecutionActivity | null = null;
       const render = (): void => {
@@ -310,6 +320,7 @@ export class ScreenshotController {
         } else {
           renderScreenshotResultUi(ui, state);
         }
+        editor?.sync();
       };
       const cleanup = (): void => {
         if (disposed) return;
@@ -319,6 +330,7 @@ export class ScreenshotController {
         this.activeCleanups.delete(cleanup);
         detachDrag?.();
         detachZoom?.();
+        editor?.dispose();
         this.stateStore.delete(key);
         if (screenshotOriginalUrl) {
           URL.revokeObjectURL(screenshotOriginalUrl);
@@ -328,8 +340,12 @@ export class ScreenshotController {
       };
       this.activeCleanups.add(cleanup);
 
+      editor = new ImageLayerEditor({ ui, getState: () => state, getImage: () => ui.image,
+        container: ui.host, onChange: render, protect: () => this.stateStore.protect(key) });
       ui.closeButton.addEventListener('click', cleanup);
-      ui.button.addEventListener('click', () => {
+      ui.button.addEventListener('click', async () => {
+        if (state.layerEditing?.active && !(await editor!.finish())) return;
+        if (disposed) return;
         if (state.status === 'running') return;
         if (state.status === 'error') {
           void runScreenshotPipeline();
@@ -404,6 +420,7 @@ export class ScreenshotController {
           const task = startPhotoStateImageTranslation({
             executionModule: activity,
             request: {
+              collectEditableLayers: true,
               source: { kind: 'prepared-file', file },
             },
             state,

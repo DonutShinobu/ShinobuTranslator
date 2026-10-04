@@ -1,4 +1,5 @@
 import { base64ToBlob, blobToBase64 } from '@shinobu/image-pipeline/protocol';
+import { unpackEditableImage } from '@shinobu/image-pipeline/editor';
 import {
   getExtensionRuntime,
   type ExtensionPort,
@@ -28,7 +29,7 @@ export type RunLocalPipeline = (
   file: File | Promise<File>,
   config: PipelineConfig,
   onProgress: (progress: PipelineProgress) => void,
-  options?: { signal?: AbortSignal; precomputedDetection?: PrecomputedTextDetection },
+  options?: { signal?: AbortSignal; precomputedDetection?: PrecomputedTextDetection; collectEditableLayers?: boolean },
 ) => Promise<LocalPipelineResult>;
 
 export type RunLocalDetectionProbe = (
@@ -278,6 +279,11 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
     let debugBlob: Blob | null = null;
     let debugContentType = 'image/png';
     let expectsDebug = false;
+    let editableAssembler: Base64ChunkAssembler | null = null;
+    let editableBlob: Blob | null = null;
+    let editableContentType = '';
+    let expectsEditable = false;
+    let finishing = false;
 
     const cleanup = (): void => {
       options.signal?.removeEventListener('abort', onAbort);
@@ -301,7 +307,9 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
       }
     };
 
-    const finish = (): void => {
+    const finish = async (): Promise<void> => {
+      if (finishing) return;
+      finishing = true;
       if (options.signal?.aborted) {
         fail(cancellationRemoteError(options.signal.reason));
         return;
@@ -313,6 +321,8 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
       try {
         const resultBase64 = resultAssembler?.complete();
         const debugBase64 = expectsDebug ? debugAssembler?.complete() : undefined;
+        const editableBase64 = expectsEditable ? editableAssembler?.complete() : undefined;
+        if (expectsEditable && !editableBlob && editableBase64 === undefined) throw createProtocolError('图层结果分块缺失');
         if (expectsDebug && !debugBlob && debugBase64 === undefined) {
           throw createProtocolError('调试图片分块缺失');
         }
@@ -327,6 +337,10 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
           summary: resultSummary,
           record: resultRecord,
         };
+        if (expectsEditable) {
+          value.editable = await unpackEditableImage(editableBlob ?? base64ToBlob(editableBase64!, editableContentType));
+        }
+        if (settled) return;
         if (options.signal?.aborted) {
           fail(cancellationRemoteError(options.signal.reason));
           return;
@@ -363,6 +377,7 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
             lastModified: source.lastModified,
           },
           config,
+          ...(options.collectEditableLayers ? { collectEditableLayers: true } : {}),
           input: {
             chunkCount: chunks.length,
             totalChars: base64.length,
@@ -420,7 +435,7 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
             fail(createProtocolError('收到重复结果元数据'));
             return;
           }
-          if (!structuredClone && (value.resultBlob || value.debugBlob)) {
+          if (!structuredClone && (value.resultBlob || value.debugBlob || value.editableBlob)) {
             fail(createProtocolError('收到未经协商的二进制结果'));
             return;
           }
@@ -436,10 +451,17 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
             debugAssembler = debugBlob ? null : new Base64ChunkAssembler(value.debug);
             debugContentType = value.debug.contentType;
           }
+          expectsEditable = Boolean(value.editable);
+          if (value.editable) {
+            editableBlob = value.editableBlob ?? null;
+            editableAssembler = editableBlob ? null : new Base64ChunkAssembler(value.editable);
+            editableContentType = value.editable.contentType;
+          }
           break;
         case 'result-chunk':
           try {
-            const assembler = value.artifact === 'result' ? resultAssembler : debugAssembler;
+            const assembler = value.artifact === 'result' ? resultAssembler
+              : value.artifact === 'debug' ? debugAssembler : editableAssembler;
             if (!assembler) throw createProtocolError(`${value.artifact} 结果分块早于元数据`);
             assembler.add(value.index, value.data);
           } catch (error) {
@@ -447,7 +469,7 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
           }
           break;
         case 'complete':
-          finish();
+          void finish();
           break;
         case 'error':
           fail(new LocalPipelineRemoteError(value.error));
@@ -456,7 +478,7 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
     };
 
     const onDisconnect = (): void => {
-      if (settled) return;
+      if (settled || finishing) return;
       fail(new LocalPipelineRemoteError({
         name: 'PipelineHostError',
         code: 'PIPELINE_HOST_DISCONNECTED',
@@ -466,6 +488,10 @@ export const runLocalPipeline: RunLocalPipeline = (file, config, onProgress, opt
 
     const onAbort = (): void => {
       if (settled) return;
+      if (finishing) {
+        fail(cancellationRemoteError(options.signal?.reason));
+        return;
+      }
       try {
         post(port, {
           type: 'cancel',

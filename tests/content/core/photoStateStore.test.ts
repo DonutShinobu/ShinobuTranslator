@@ -1,7 +1,22 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PhotoStateStore } from '../../../apps/extension/src/content/core/state/photoStateStore';
+import { LayerEditingState } from '../../../apps/extension/src/content/core/editing/layerEditingState';
 
 describe('PhotoStateStore', () => {
+  it('retains the layer session while the image is reused and disposes it when removed', () => {
+    const store = new PhotoStateStore();
+    const state = store.ensure('image-1', 'blob:original');
+    const session = new LayerEditingState({ width: 1, height: 1, targetLang: 'zh-CN', layers: [] }, new Blob(['source']));
+    state.layerEditing = session;
+    session.active = true;
+    const disposed = vi.fn(); session.subscribe(disposed);
+    expect(store.ensure('image-1', 'blob:remounted').layerEditing).toBe(session);
+    store.delete('image-1');
+    expect(session.disposed).toBe(true);
+    expect(session.active).toBe(false);
+    expect(state.layerEditing).toBeUndefined();
+    expect(disposed).toHaveBeenCalledOnce();
+  });
   it('reuses state for the same key and keeps the original state identity', () => {
     const store = new PhotoStateStore();
     const first = store.ensure('image-1', 'https://example.com/one.jpg');

@@ -11,6 +11,7 @@ import {
 } from '@shinobu/image-pipeline';
 import type { ExtensionPort } from '../shared/extensionRuntime';
 import { base64ToBlob, blobToBase64 } from '@shinobu/image-pipeline/protocol';
+import { packEditableImage } from '@shinobu/image-pipeline/editor';
 import {
   RuntimePipelineHostTransport,
   type PipelineHostTransport,
@@ -80,6 +81,7 @@ type PipelineJob = {
   config?: PipelineConfig;
   operation?: 'pipeline' | 'detection-probe';
   precomputedDetection?: PrecomputedTextDetection;
+  collectEditableLayers?: boolean;
   input?: Base64ChunkAssembler;
   binaryFile?: Blob;
   file?: File;
@@ -369,6 +371,7 @@ export class PipelineHost {
     job.operation = message.type === 'start' ? 'pipeline' : 'detection-probe';
     if (message.type === 'start') {
       job.config = message.config;
+      job.collectEditableLayers = message.collectEditableLayers;
       if (message.detection) {
         job.precomputedDetection = {
           width: message.detection.width,
@@ -527,6 +530,7 @@ export class PipelineHost {
         config,
         workingCopy: { strategy: 'source-native' },
         precomputedDetection: job.precomputedDetection,
+        collectEditableLayers: job.collectEditableLayers,
       }, {
         textTranslator: createTextTranslator({
           transport: this.translationTransport,
@@ -577,6 +581,7 @@ export class PipelineHost {
       >;
       const resultBlob = pipelineResult.image;
       const debugBlob = pipelineResult.debug;
+      const editableBlob = pipelineResult.editable ? packEditableImage(pipelineResult.editable) : undefined;
       const resultBase64 = job.structuredClone ? '' : await blobToBase64(resultBlob);
       throwIfJobCancelled();
       const resultChunks = splitBase64Chunks(resultBase64);
@@ -585,6 +590,9 @@ export class PipelineHost {
         : undefined;
       throwIfJobCancelled();
       const debugChunks = debugBase64 === undefined ? undefined : splitBase64Chunks(debugBase64);
+      const editableBase64 = editableBlob ? job.structuredClone ? '' : await blobToBase64(editableBlob) : undefined;
+      throwIfJobCancelled();
+      const editableChunks = editableBase64 === undefined ? undefined : splitBase64Chunks(editableBase64);
 
       const deliveryPort = this.port;
       let delivered = safelyPost(deliveryPort, {
@@ -595,7 +603,10 @@ export class PipelineHost {
         debug: debugBlob && debugBase64 !== undefined && debugChunks
           ? toArtifactMeta(debugBlob.type || 'image/png', debugChunks, debugBase64.length)
           : undefined,
-        ...(job.structuredClone ? { resultBlob, ...(debugBlob ? { debugBlob } : {}) } : {}),
+        ...(editableBlob && editableChunks && editableBase64 !== undefined ? {
+          editable: toArtifactMeta(editableBlob.type, editableChunks, editableBase64.length),
+        } : {}),
+        ...(job.structuredClone ? { resultBlob, ...(debugBlob ? { debugBlob } : {}), ...(editableBlob ? { editableBlob } : {}) } : {}),
         summary,
         record: pipelineResult.record,
       });
@@ -604,6 +615,7 @@ export class PipelineHost {
       throwIfJobCancelled();
       delivered = delivered
         && (!debugChunks || this.postArtifactChunks(job.id, 'debug', debugChunks));
+      delivered = delivered && (!editableChunks || this.postArtifactChunks(job.id, 'editable', editableChunks));
       throwIfJobCancelled();
       if (!delivered) {
         if (deliveryPort) this.handleDisconnect(deliveryPort);
@@ -731,7 +743,7 @@ export class PipelineHost {
     });
   }
 
-  private postArtifactChunks(jobId: string, artifact: 'result' | 'debug', chunks: string[]): boolean {
+  private postArtifactChunks(jobId: string, artifact: 'result' | 'debug' | 'editable', chunks: string[]): boolean {
     return chunks.every((data, index) =>
       safelyPost(this.port, {
         type: 'result-chunk',

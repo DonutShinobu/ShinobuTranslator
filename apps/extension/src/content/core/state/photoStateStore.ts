@@ -89,6 +89,8 @@ export class PhotoStateStore {
   }
 
   private releaseStateUrls(state: PhotoState): void {
+    state.layerEditing?.dispose();
+    state.layerEditing = undefined;
     if (state.translatedUrl) {
       this.urlApi.revokeObjectURL(state.translatedUrl);
       state.translatedUrl = undefined;

@@ -68,6 +68,31 @@ async function checkInteractions(page: Page) {
     await expect.poll(async () => (await projection(page)).settings.processMode).toBe(value);
   }
 
+  const imageEditing = page.getByRole('button', { name: '直接编辑图片', exact: true });
+  await expect(imageEditing).toHaveAttribute('aria-pressed', 'false');
+  const modeBox = await mode.boundingBox();
+  const popupBox = await page.locator('.popup').boundingBox();
+  const inactiveBackground = await imageEditing.evaluate((el) => getComputedStyle(el).backgroundColor);
+  await imageEditing.hover();
+  await expect(page.getByRole('tooltip')).toContainText('直接编辑图片 · 已关闭');
+  await imageEditing.click();
+  await expect(imageEditing).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(async () => (await projection(page)).settings.enableImageEditing).toBe(true);
+  await expect
+    .poll(() => imageEditing.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .not.toBe(inactiveBackground);
+  expect(await mode.boundingBox()).toEqual(modeBox);
+  expect(await page.locator('.popup').boundingBox()).toEqual(popupBox);
+  await page.locator('.option-panel').screenshot({
+    path: resolve(outputDirectory, `${page.context().browser()!.browserType().name()}-image-editing.png`),
+    animations: 'disabled',
+  });
+  await imageEditing.press('Space');
+  await expect(imageEditing).toHaveAttribute('aria-pressed', 'false');
+  await expect.poll(async () => (await projection(page)).settings.enableImageEditing).toBe(false);
+  await expect(imageEditing).toBeFocused();
+  expect((await projection(page)).settings.processMode).toBe('translate');
+
   const slider = page.getByRole('slider', { name: '思考强度' });
   await slider.focus();
   await slider.press('End');
@@ -130,6 +155,7 @@ async function checkInteractions(page: Page) {
   const service = page.getByRole('radiogroup', { name: '服务', exact: true });
   await service.getByRole('radio', { name: '谷歌翻译' }).click();
   await expect.poll(async () => (await projection(page)).settings.translator).toBe('google_web');
+  await expect(imageEditing).toBeVisible();
   await expect(page.getByRole('combobox', { name: 'LLM 提供商' })).toHaveCount(0);
   await service.getByRole('radio', { name: '大模型' }).click();
   const provider = page.getByRole('combobox', { name: 'LLM 提供商' });
@@ -222,6 +248,7 @@ async function checkInteractions(page: Page) {
 
   await selectOption(page, 'LLM 提供商', 'Nano Banana');
   await expect(page.getByRole('radiogroup', { name: '模式', exact: true })).toHaveCount(0);
+  await expect(imageEditing).toHaveCount(0);
   for (const name of ['阶段明细', '排版调试', '去字调试', '关后处理']) {
     await expect(page.getByRole('checkbox', { name })).toBeDisabled();
     await expect(page.getByRole('checkbox', { name })).not.toBeChecked();

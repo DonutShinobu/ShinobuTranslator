@@ -61,6 +61,7 @@ export function refineTextMask(
   options: MaskRefinementOptions = {},
   collectDebugLayers = false,
   preparedGray?: PreparedTextMaskGray,
+  collectRegionOwnership = false,
 ): RefineTextMaskResult {
   const method = options.method ?? "fit_text";
   if (method !== "fit_text") {
@@ -213,6 +214,7 @@ export function refineTextMask(
   }
 
   const finalMask = new Uint8Array(scaledWidth * scaledHeight);
+  const ownership = collectRegionOwnership ? new Int32Array(scaledWidth * scaledHeight) : undefined;
   const refinedMaskBeforeDilate = collectDebugLayers ? new Uint8Array(scaledWidth * scaledHeight) : null;
 
   for (let i = 0; i < scaledRegions.length; i += 1) {
@@ -272,6 +274,20 @@ export function refineTextMask(
     const ccRegion2 = extractSubMask(regionMask, scaledWidth, rect2);
     const dilated = dilate(ccRegion2, rect2.width, rect2.height, dilateSize);
     orSubMask(finalMask, scaledWidth, rect2, dilated);
+    if (ownership) {
+      const rect3 = extendRect(rect2, scaledWidth, scaledHeight, Math.ceil(Math.max(1, kernelSize) / 2));
+      const local = new Uint8Array(rect3.width * rect3.height);
+      orSubMask(local, rect3.width, {
+        x: rect2.x - rect3.x, y: rect2.y - rect3.y, width: rect2.width, height: rect2.height,
+      }, dilated);
+      const expanded = dilate(local, rect3.width, rect3.height, Math.max(1, kernelSize));
+      for (let y = 0; y < rect3.height; y++) {
+        for (let x = 0; x < rect3.width; x++) {
+          const pixel = (rect3.y + y) * scaledWidth + rect3.x + x;
+          if (expanded[y * rect3.width + x] && !ownership[pixel]) ownership[pixel] = i + 1;
+        }
+      }
+    }
     if (timings) timings.localDilateMs += performance.now() - regionStageStartedAt;
   }
 
@@ -316,5 +332,10 @@ export function refineTextMask(
     }
   }
 
-  return { refinedMaskCanvas, debugLayers };
+  return {
+    refinedMaskCanvas, debugLayers,
+    ...(ownership ? { regionOwnership: {
+      width: scaledWidth, height: scaledHeight, regionIds: regions.map((region) => region.id), labels: ownership,
+    } } : {}),
+  };
 }

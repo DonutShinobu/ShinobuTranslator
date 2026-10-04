@@ -42,6 +42,7 @@
     "web:production:preflight": "node scripts/web-production-preflight.mjs",
     "preview": "npm run preview --workspace=@shinobu/extension",
     "test": "vitest run",
+    "test:layer-editor": "playwright test --config tests/browser/playwright.layerEditor.config.ts",
     "bench:bake": "tsx benchmark/typeset/src/bake-fixtures.ts",
     "bench:bake-node": "tsx benchmark/typeset/src/bake-node.ts",
     "bench:audit-fixtures": "tsx benchmark/typeset/src/audit-fixtures.ts",

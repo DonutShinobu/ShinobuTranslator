@@ -8,6 +8,7 @@ import {
   type ReactElement,
   type SetStateAction,
 } from 'react';
+import { SquarePen } from 'lucide-react';
 import {
   defaultExtensionSettings,
   geminiAppModelOptions,
@@ -1025,6 +1026,22 @@ export function App() {
                   <div className="panel-title">
                     <IconMode />
                     模式
+                    <ControlHint
+                      content={`直接编辑图片 · ${settings.enableImageEditing ? '已开启' : '已关闭'}`}
+                    >
+                      <Button
+                        variant="outline"
+                        size="icon-xs"
+                        className="image-editing-toggle"
+                        type="button"
+                        aria-label="直接编辑图片"
+                        aria-pressed={settings.enableImageEditing}
+                        onClick={() => updateField('enableImageEditing', !settings.enableImageEditing)}
+                        disabled={loading}
+                      >
+                        <SquarePen aria-hidden="true" />
+                      </Button>
+                    </ControlHint>
                   </div>
                   <SegmentedControl
                     ariaLabel="模式"

@@ -68,29 +68,63 @@ async function checkInteractions(page: Page) {
     await expect.poll(async () => (await projection(page)).settings.processMode).toBe(value);
   }
 
-  const imageEditing = page.getByRole('button', { name: '直接编辑图片', exact: true });
-  await expect(imageEditing).toHaveAttribute('aria-pressed', 'false');
+  const modeOptions = page.getByRole('button', { name: '模式选项', exact: true });
+  const imageEditing = page.getByRole('switch', { name: '直接编辑图片', exact: true });
   const modeBox = await mode.boundingBox();
   const popupBox = await page.locator('.popup').boundingBox();
-  const inactiveBackground = await imageEditing.evaluate((el) => getComputedStyle(el).backgroundColor);
-  await imageEditing.hover();
-  await expect(page.getByRole('tooltip')).toContainText('直接编辑图片 · 已关闭');
-  await imageEditing.click();
-  await expect(imageEditing).toHaveAttribute('aria-pressed', 'true');
+  const browserName = page.context().browser()!.browserType().name();
+  await expect(imageEditing).toHaveCount(0);
+  await modeOptions.hover();
+  await page.screenshot({
+    path: resolve(outputDirectory, `${browserName}-mode-options-hover.png`),
+    animations: 'disabled',
+  });
+  await modeOptions.click();
+  await expect(imageEditing).toHaveAttribute('aria-checked', 'false');
+  await expect(imageEditing).toBeFocused();
+  const modeMenu = page.getByRole('dialog', { name: '模式选项', exact: true });
+  expect(await modeMenu.evaluate((el) => getComputedStyle(el).animationName)).toContain('enter');
+  const modeMenuBox = await modeMenu.boundingBox();
+  expect(modeMenuBox!.y).toBeGreaterThanOrEqual(0);
+  expect(modeMenuBox!.y + modeMenuBox!.height).toBeLessThanOrEqual(600);
+  expect(await page.locator('.option-panel .seg-control').boundingBox()).toEqual(modeBox);
+  expect(await page.locator('.popup').boundingBox()).toEqual(popupBox);
+  await page.screenshot({
+    path: resolve(outputDirectory, `${browserName}-image-editing-menu-off.png`),
+    animations: 'disabled',
+  });
+  await modeMenu.getByText('直接编辑图片', { exact: true }).click();
   await expect.poll(async () => (await projection(page)).settings.enableImageEditing).toBe(true);
-  await expect
-    .poll(() => imageEditing.evaluate((el) => getComputedStyle(el).backgroundColor))
-    .not.toBe(inactiveBackground);
+  await expect(imageEditing).toHaveAttribute('aria-checked', 'true');
+  await expect(modeMenu).toBeVisible();
   expect(await mode.boundingBox()).toEqual(modeBox);
   expect(await page.locator('.popup').boundingBox()).toEqual(popupBox);
-  await page.locator('.option-panel').screenshot({
-    path: resolve(outputDirectory, `${page.context().browser()!.browserType().name()}-image-editing.png`),
+  await page.screenshot({
+    path: resolve(outputDirectory, `${browserName}-image-editing-menu.png`),
     animations: 'disabled',
   });
   await imageEditing.press('Space');
-  await expect(imageEditing).toHaveAttribute('aria-pressed', 'false');
   await expect.poll(async () => (await projection(page)).settings.enableImageEditing).toBe(false);
+  await expect(imageEditing).toHaveAttribute('aria-checked', 'false');
+  await expect(modeMenu).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(imageEditing).toHaveCount(0);
+  await expect(modeOptions).toBeFocused();
+  await modeOptions.press('Enter');
+  await expect(imageEditing).toHaveAttribute('aria-checked', 'false');
   await expect(imageEditing).toBeFocused();
+  await imageEditing.press('Enter');
+  await expect.poll(async () => (await projection(page)).settings.enableImageEditing).toBe(true);
+  await imageEditing.press('Space');
+  await expect.poll(async () => (await projection(page)).settings.enableImageEditing).toBe(false);
+  await page.keyboard.press('Escape');
+  await expect(imageEditing).toHaveCount(0);
+  await expect(modeOptions).toBeFocused();
+  await modeOptions.click();
+  await expect(imageEditing).toBeVisible();
+  await page.locator('.popup-header-brand').click();
+  await expect(imageEditing).toHaveCount(0);
+  expect((await projection(page)).settings.enableImageEditing).toBe(false);
   expect((await projection(page)).settings.processMode).toBe('translate');
 
   const slider = page.getByRole('slider', { name: '思考强度' });
@@ -155,7 +189,7 @@ async function checkInteractions(page: Page) {
   const service = page.getByRole('radiogroup', { name: '服务', exact: true });
   await service.getByRole('radio', { name: '谷歌翻译' }).click();
   await expect.poll(async () => (await projection(page)).settings.translator).toBe('google_web');
-  await expect(imageEditing).toBeVisible();
+  await expect(modeOptions).toBeVisible();
   await expect(page.getByRole('combobox', { name: 'LLM 提供商' })).toHaveCount(0);
   await service.getByRole('radio', { name: '大模型' }).click();
   const provider = page.getByRole('combobox', { name: 'LLM 提供商' });
@@ -248,7 +282,7 @@ async function checkInteractions(page: Page) {
 
   await selectOption(page, 'LLM 提供商', 'Nano Banana');
   await expect(page.getByRole('radiogroup', { name: '模式', exact: true })).toHaveCount(0);
-  await expect(imageEditing).toHaveCount(0);
+  await expect(modeOptions).toHaveCount(0);
   for (const name of ['阶段明细', '排版调试', '去字调试', '关后处理']) {
     await expect(page.getByRole('checkbox', { name })).toBeDisabled();
     await expect(page.getByRole('checkbox', { name })).not.toBeChecked();
@@ -292,6 +326,11 @@ async function checkInteractions(page: Page) {
     .getByRole('listbox')
     .evaluate((el) => getComputedStyle(el).animationDuration);
   expect(parseFloat(reducedDuration)).toBeLessThanOrEqual(0.001);
+  await page.keyboard.press('Escape');
+  await selectOption(page, 'LLM 提供商', 'DeepSeek');
+  await modeOptions.click();
+  const reducedMenuDuration = await modeMenu.evaluate((el) => getComputedStyle(el).animationDuration);
+  expect(parseFloat(reducedMenuDuration)).toBeLessThanOrEqual(0.001);
   await page.keyboard.press('Escape');
 }
 

@@ -102,7 +102,7 @@ LICENSE/NOTICE。
 - 来源：`https://ui.shadcn.com/r/styles/new-york-v4/{component}.json`，于 2026-10-04 获取。
 - 上游：`https://github.com/shadcn-ui/ui`，MIT，Copyright (c) 2023 shadcn。
 - 本地源码：`apps/extension/src/popup/components/ui/`。
-- 修改记录：调整本地导入路径，兼容 React 18 的 Button ref，向 Slider thumb 传递无障碍名称和值文本并保留装饰刻度，省略 Select 菜单的滚动箭头按钮。
+- 修改记录：调整本地导入路径，兼容 React 18 的 Button ref，向 Slider thumb 传递无障碍名称和值文本并保留装饰刻度，省略 Select 菜单的滚动箭头按钮，Popover 保留 popup 使用的基础组件。
 - 完整许可证：`public/licenses/shadcn-ui.txt`，随 Chromium 和 Firefox 扩展构建复制。
 - Radix、Lucide、Tailwind 相关 npm 依赖的精确版本和许可证包含在 `THIRD_PARTY_DEPENDENCIES.json`。
 

@@ -8,7 +8,7 @@ import {
   type ReactElement,
   type SetStateAction,
 } from 'react';
-import { SquarePen } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import {
   defaultExtensionSettings,
   geminiAppModelOptions,
@@ -57,9 +57,11 @@ import { Checkbox } from './components/ui/checkbox';
 import { Input } from './components/ui/input';
 import { Kbd } from './components/ui/kbd';
 import { Label } from './components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from './components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './components/ui/select';
 import { Separator } from './components/ui/separator';
 import { Slider } from './components/ui/slider';
+import { Switch } from './components/ui/switch';
 import { Textarea } from './components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from './components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './components/ui/tooltip';
@@ -1024,24 +1026,39 @@ export function App() {
                 <section className="panel option-panel">
                   <Separator className="panel-separator" />
                   <div className="panel-title">
-                    <IconMode />
-                    模式
-                    <ControlHint
-                      content={`直接编辑图片 · ${settings.enableImageEditing ? '已开启' : '已关闭'}`}
-                    >
-                      <Button
-                        variant="outline"
-                        size="icon-xs"
-                        className="image-editing-toggle"
-                        type="button"
-                        aria-label="直接编辑图片"
-                        aria-pressed={settings.enableImageEditing}
-                        onClick={() => updateField('enableImageEditing', !settings.enableImageEditing)}
-                        disabled={loading}
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          className="mode-options-trigger"
+                          type="button"
+                          aria-label="模式选项"
+                          disabled={loading}
+                        >
+                          <IconMode />
+                          模式
+                          <span className="mode-options-affordance" aria-hidden="true">
+                            <ChevronDown className="mode-options-chevron" />
+                          </span>
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        className="mode-options-menu"
+                        aria-label="模式选项"
+                        align="start"
+                        collisionPadding={8}
                       >
-                        <SquarePen aria-hidden="true" />
-                      </Button>
-                    </ControlHint>
+                        <div className="mode-options-switch-row">
+                          <Switch
+                            id="enable-image-editing"
+                            checked={settings.enableImageEditing}
+                            onCheckedChange={(checked) => updateField('enableImageEditing', checked)}
+                            disabled={loading}
+                          />
+                          <Label htmlFor="enable-image-editing">直接编辑图片</Label>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                   </div>
                   <SegmentedControl
                     ariaLabel="模式"

@@ -76,6 +76,11 @@ async function checkInteractions(page: Page) {
   await expect(imageEditing).toHaveCount(0);
   await modeOptions.hover();
   await page.screenshot({
+    path: resolve(outputDirectory, `${browserName}-mode-options-label-hover.png`),
+    animations: 'disabled',
+  });
+  await page.locator('.mode-options-affordance').hover();
+  await page.screenshot({
     path: resolve(outputDirectory, `${browserName}-mode-options-hover.png`),
     animations: 'disabled',
   });

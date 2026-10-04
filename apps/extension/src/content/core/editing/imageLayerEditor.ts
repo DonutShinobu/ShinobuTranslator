@@ -19,6 +19,7 @@ type Options = {
 };
 
 const DRAG_START_DISTANCE = 6;
+const SELECTION_PADDING = 2;
 
 export class ImageLayerEditor {
   private session?: LayerEditingState;
@@ -27,6 +28,7 @@ export class ImageLayerEditor {
   private controlPortal?: HTMLDivElement;
   private controlAnchor?: HTMLDivElement;
   private selection?: HTMLImageElement;
+  private selectionFrame?: SVGPolygonElement;
   private hover?: HTMLImageElement;
   private errorLine?: HTMLSpanElement;
   private input?: InPlaceTextEditor;
@@ -51,7 +53,10 @@ export class ImageLayerEditor {
   private finishing?: Promise<boolean>;
   private readonly urls = new Map<Blob, string>();
   private readonly rasters = new Map<EditingLayer, HTMLImageElement>();
-  private readonly coverage = new Map<Blob, { mask: LayerAlphaMask; highlight: Blob }>();
+  private readonly coverage = new Map<Blob, {
+    mask: LayerAlphaMask; highlight: Blob;
+    bounds?: { x: number; y: number; width: number; height: number };
+  }>();
   private readonly coverageTasks = new Set<Blob>();
 
   constructor(private readonly options: Options) {
@@ -97,9 +102,14 @@ export class ImageLayerEditor {
     const hover = document.createElement('img'), selection = document.createElement('img');
     for (const img of [hover, selection]) { img.className = 'mt-x-layer-highlight'; img.alt = ''; img.draggable = false; }
     selection.dataset.selected = 'true';
-    stage.append(base, hover, selection); host.appendChild(stage);
+    const frame = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    frame.classList.add('mt-x-layer-selection'); frame.setAttribute('aria-hidden', 'true');
+    const outline = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    outline.style.display = 'none'; frame.appendChild(outline);
+    stage.append(base, hover, selection); host.append(stage, frame);
     const error = document.createElement('span'); error.className = 'mt-x-layer-error'; error.setAttribute('role', 'status');
     this.host = host; this.stage = stage; this.selection = selection; this.hover = hover;
+    this.selectionFrame = outline;
     this.errorLine = error;
     (this.options.container ?? document.body).appendChild(host);
     this.options.ui.overlay.appendChild(error);
@@ -137,6 +147,7 @@ export class ImageLayerEditor {
     this.host.style.width = `${surface.width}px`; this.host.style.height = `${surface.height}px`;
     this.stage.style.transform = `translate(${surface.offsetX}px, ${surface.offsetY}px) scale(${surface.scaleX}, ${surface.scaleY})`;
     this.stage.style.setProperty('--mt-layer-glow', `${1.5 / Math.max(.01, Math.min(surface.scaleX, surface.scaleY))}px`);
+    this.updateSelectionFrame();
     if (this.controlPortal) {
       const anchor = this.controlAnchor!;
       anchor.style.cssText = this.options.ui.overlay.style.cssText;
@@ -160,13 +171,21 @@ export class ImageLayerEditor {
         const ctx = canvas.getContext('2d', { willReadFrequently: true }); if (!ctx) return;
         ctx.drawImage(raster, 0, 0, width, height);
         const data = ctx.getImageData(0, 0, width, height).data, alpha = new Uint8Array(width * height);
-        for (let i = 0; i < alpha.length; i++) alpha[i] = data[i * 4 + 3];
+        let left = width, top = height, right = -1, bottom = -1;
+        for (let i = 0; i < alpha.length; i++) {
+          alpha[i] = data[i * 4 + 3];
+          if (alpha[i] <= 12) continue;
+          const x = i % width, y = Math.floor(i / width);
+          left = Math.min(left, x); top = Math.min(top, y);
+          right = Math.max(right, x); bottom = Math.max(bottom, y);
+        }
         ctx.globalCompositeOperation = 'source-in';
         ctx.fillStyle = layer.content.kind === 'text' ? 'oklch(0.65 0.16 350)' : 'oklch(0.64 0.12 195)';
         ctx.fillRect(0, 0, width, height);
         const highlight = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
         if (!highlight || this.disposed || session !== this.session || layer.deleted || blob !== layer.content.image) return;
-        this.coverage.set(blob, { mask: { width, height, alpha }, highlight });
+        const bounds = right >= left ? { x: left, y: top, width: right - left + 1, height: bottom - top + 1 } : undefined;
+        this.coverage.set(blob, { mask: { width, height, alpha }, highlight, bounds });
         const element = this.rasters.get(layer); if (element) element.dataset.hitReady = 'true';
         this.updateSelection();
       } finally { canvas.width = 0; canvas.height = 0; }
@@ -216,11 +235,35 @@ export class ImageLayerEditor {
   private updateSelection(): void {
     this.showHighlight(this.selection, this.selected);
     this.showHighlight(this.hover, this.hovered === this.selected ? undefined : this.hovered);
+    this.updateSelectionFrame();
     if (this.host) {
       this.host.style.cursor = this.input ? 'text' : this.hovered?.content.kind === 'text' ? 'move' : 'default';
       this.host.title = this.hovered?.content.kind === 'text' ? '文字：点击选中，拖动移动，双击或 Enter 编辑，Delete 删除 · Alt+单击切换图层'
         : this.hovered ? '去字：点击选中后按 Delete 删除 · Alt+单击切换图层' : '';
     }
+  }
+
+  private updateSelectionFrame(): void {
+    const frame = this.selectionFrame, layer = this.selected, surface = this.surface;
+    if (!frame) return;
+    const bounds = layer && this.coverage.get(layer.content.image)?.bounds;
+    frame.style.display = layer && bounds && surface && !this.input ? '' : 'none';
+    if (!layer || !bounds || !surface || this.input) return;
+    const [a, b, c, d, tx, ty] = layer.content.transform;
+    const ax = a * surface.scaleX, ay = b * surface.scaleY;
+    const bx = c * surface.scaleX, by = d * surface.scaleY;
+    const determinant = Math.abs(ax * by - ay * bx);
+    if (determinant < 1e-8) { frame.style.display = 'none'; return; }
+    // Keep the gap perpendicular to each edge at two screen pixels, including rotated and stretched images.
+    const paddingX = SELECTION_PADDING * Math.hypot(bx, by) / determinant;
+    const paddingY = SELECTION_PADDING * Math.hypot(ax, ay) / determinant;
+    const left = bounds.x - paddingX, top = bounds.y - paddingY;
+    const right = bounds.x + bounds.width + paddingX, bottom = bounds.y + bounds.height + paddingY;
+    const points = [[left, top], [right, top], [right, bottom], [left, bottom]].map(([x, y]) =>
+      `${surface.offsetX + (a * x + c * y + tx + layer.offsetX) * surface.scaleX},${surface.offsetY + (b * x + d * y + ty + layer.offsetY) * surface.scaleY}`,
+    ).join(' ');
+    if (frame.getAttribute('points') !== points) frame.setAttribute('points', points);
+    frame.dataset.kind = layer.content.kind; frame.dataset.layerId = layer.content.id;
   }
 
   private point(event: MouseEvent): { x: number; y: number } | undefined {
@@ -391,7 +434,7 @@ export class ImageLayerEditor {
     this.host.remove(); this.errorLine?.remove();
     if (this.controlPortal) { this.controlAnchor?.replaceWith(this.options.ui.overlay); this.controlPortal.remove(); this.controlPortal = undefined; }
     this.controlAnchor = undefined;
-    this.host = undefined; this.stage = undefined; this.selection = undefined; this.hover = undefined;
+    this.host = undefined; this.stage = undefined; this.selection = undefined; this.selectionFrame = undefined; this.hover = undefined;
     this.errorLine = undefined; this.selected = undefined; this.hovered = undefined; this.session = undefined;
     this.rasters.clear(); this.coverage.clear(); this.coverageTasks.clear();
     for (const url of this.urls.values()) URL.revokeObjectURL(url);

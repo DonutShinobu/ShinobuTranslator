@@ -1014,6 +1014,23 @@ export function injectStyles(): void {
     }
     .mt-x-layer-stage > .mt-x-layer-highlight[data-kind='erase'] { --mt-layer-highlight: oklch(0.64 0.12 195); }
     .mt-x-layer-stage > .mt-x-layer-highlight[data-selected='true'] { opacity: 0.55; }
+    .mt-x-layer-selection {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      pointer-events: none;
+      z-index: 3;
+    }
+    .mt-x-layer-selection > polygon {
+      fill: none;
+      stroke: oklch(0.65 0.16 350);
+      stroke-width: 1.5;
+      stroke-dasharray: 8 4;
+      stroke-linejoin: round;
+    }
+    .mt-x-layer-selection > polygon[data-kind='erase'] { stroke: oklch(0.64 0.12 195); }
     .mt-x-layer-input {
       appearance: none;
       position: absolute;

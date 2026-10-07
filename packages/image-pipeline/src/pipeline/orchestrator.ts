@@ -825,6 +825,7 @@ export async function runPipeline(
         latestRegions,
         {
           platform,
+          modelRuntime,
           providerName: config.ocrEngine,
         },
       );

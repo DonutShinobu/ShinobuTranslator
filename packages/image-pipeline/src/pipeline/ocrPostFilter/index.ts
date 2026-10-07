@@ -10,6 +10,7 @@ import type {
   PipelineImage,
   PlatformProvider,
 } from "../../runtime/platform";
+import type { ModelRuntime } from "@shinobu/model-runtime";
 import {
   getOcrProvider,
   type OcrProvider,
@@ -31,6 +32,7 @@ const OCR_VARIANTS = [
 
 export type OcrPostFilterOptions = {
   platform: PlatformProvider;
+  modelRuntime?: ModelRuntime;
   providerName: string;
   recognize?: OcrProvider["recognize"];
 };
@@ -399,6 +401,7 @@ export async function filterOcrRegions(
     image,
     metadata.map((item) => item.variantRegion),
     options.platform,
+    options.modelRuntime,
   );
   const decisions = candidates.map((region) => {
     const width = Math.max(1, region.box.width);

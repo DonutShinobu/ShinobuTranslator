@@ -6,6 +6,7 @@ import type {
   PlatformProvider,
 } from "../../../packages/image-pipeline/src/runtime/platform";
 import type { TextRegion } from "../../../packages/image-pipeline/src/types";
+import type { ModelRuntime } from "@shinobu/model-runtime";
 
 describe("filterOcrRegions", () => {
   it("keeps a region with repeated kana evidence in the plugin pipeline", async () => {
@@ -56,22 +57,28 @@ describe("filterOcrRegions", () => {
       originalLineCount: 1,
     } as TextRegion;
 
+    const modelRuntime = {} as ModelRuntime;
     const result = await filterOcrRegions(image, mask, [region], {
       platform,
+      modelRuntime,
       providerName: "test",
-      recognize: async (_image, variants) => ({
-        provider: "cpu",
-        results: variants.map((variant) => ({
-          regionId: variant.id,
-          text: variant.id.includes("inset")
-            ? "ホポ"
-            : variant.id.includes("original")
-              ? "木杰"
-              : "ホ办",
-          confidence: variant.id.includes("inset") ? 0.5 : 0.3,
-          quad: variant.quad!,
-        })),
-      }),
+      recognize: async (_image, variants, passedPlatform, passedRuntime) => {
+        expect(passedPlatform).toBe(platform);
+        expect(passedRuntime).toBe(modelRuntime);
+        return {
+          provider: "cpu",
+          results: variants.map((variant) => ({
+            regionId: variant.id,
+            text: variant.id.includes("inset")
+              ? "ホポ"
+              : variant.id.includes("original")
+                ? "木杰"
+                : "ホ办",
+            confidence: variant.id.includes("inset") ? 0.5 : 0.3,
+            quad: variant.quad!,
+          })),
+        };
+      },
     });
 
     expect(result.regions).toEqual([region]);

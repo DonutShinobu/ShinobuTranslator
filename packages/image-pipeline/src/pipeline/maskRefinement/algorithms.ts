@@ -343,40 +343,40 @@ export function connectedComponents(mask: Uint8Array, width: number, height: num
   return out;
 }
 
-function ellipseOffsets(size: number): Array<{ dx: number; dy: number }> {
-  const radius = Math.floor(size / 2);
-  const out: Array<{ dx: number; dy: number }> = [];
-  const r2 = radius * radius + 0.25;
-  for (let dy = -radius; dy <= radius; dy += 1) {
-    for (let dx = -radius; dx <= radius; dx += 1) {
-      if (dx * dx + dy * dy <= r2) {
-        out.push({ dx, dy });
-      }
-    }
-  }
-  return out;
-}
-
 export function dilate(mask: Uint8Array, width: number, height: number, kernelSize: number): Uint8Array {
   if (kernelSize <= 1) {
     return mask.slice();
   }
   const out = new Uint8Array(mask.length);
-  const offsets = ellipseOffsets(kernelSize);
+  const radius = Math.floor(kernelSize / 2);
+  const radiusSquared = radius * radius + 0.25;
+  // ponytail: row runs × radius; use a distance transform if fragmented large kernels become slow.
   for (let y = 0; y < height; y += 1) {
     const row = y * width;
-    for (let x = 0; x < width; x += 1) {
-      if (mask[row + x] === 0) {
-        continue;
-      }
-      for (const { dx, dy } of offsets) {
-        const nx = x + dx;
-        const ny = y + dy;
-        if (nx < 0 || ny < 0 || nx >= width || ny >= height) {
-          continue;
+    const runs: number[] = [];
+    for (let x = 0; x < width;) {
+      if (mask[row + x] === 0) { x += 1; continue; }
+      const start = x++;
+      while (x < width && mask[row + x] !== 0) x += 1;
+      runs.push(start, x - 1);
+    }
+    if (runs.length === 0) continue;
+    for (let dy = Math.max(-radius, -y); dy <= Math.min(radius, height - 1 - y); dy += 1) {
+      const halfWidth = Math.floor(Math.sqrt(radiusSquared - dy * dy));
+      const destinationRow = (y + dy) * width;
+      let start = Math.max(0, runs[0] - halfWidth);
+      let end = Math.min(width - 1, runs[1] + halfWidth);
+      for (let i = 2; i < runs.length; i += 2) {
+        const nextStart = Math.max(0, runs[i] - halfWidth);
+        const nextEnd = Math.min(width - 1, runs[i + 1] + halfWidth);
+        if (nextStart <= end + 1) end = Math.max(end, nextEnd);
+        else {
+          out.fill(1, destinationRow + start, destinationRow + end + 1);
+          start = nextStart;
+          end = nextEnd;
         }
-        out[ny * width + nx] = 1;
       }
+      out.fill(1, destinationRow + start, destinationRow + end + 1);
     }
   }
   return out;

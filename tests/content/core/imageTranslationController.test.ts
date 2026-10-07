@@ -9,6 +9,7 @@ import type {
 import { PhotoStateStore } from '../../../apps/extension/src/content/core/state/photoStateStore';
 import {
   createImageTranslationExecutionModule,
+  type DownloadImageForTranslation,
   type ImageTranslationExecutionDependencies,
 } from '../../../apps/extension/src/content/core/translation/imageTranslationExecution';
 import { createImageTranslationExecutionArbiter } from '../../../apps/extension/src/content/core/translation/imageTranslationExecutionArbiter';
@@ -52,7 +53,7 @@ function createHarness(options: {
 } = {}) {
   const store = new PhotoStateStore(200, { revokeObjectURL: vi.fn() });
   const sourceBlob = new Blob(['source'], { type: 'image/png' });
-  const downloadImage = vi.fn(async () => ({
+  const downloadImage = vi.fn<DownloadImageForTranslation>(async () => ({
     file: new File([sourceBlob], 'source.png', { type: sourceBlob.type }),
     blob: sourceBlob,
   }));
@@ -186,6 +187,86 @@ describe('ImageTranslationController', () => {
     );
     expect(harness.store.get(harness.target.key)?.status).toBe('translated');
     expect(harness.applyImage).toHaveBeenCalledOnce();
+  });
+
+  it('updates the loaded page image hint from large to orig while preserving the original URL', async () => {
+    const harness = createHarness();
+    const originalUrl = 'https://pbs.twimg.com/media/example?format=jpg&name=large';
+    harness.target.originalUrl = originalUrl;
+    harness.target.preferPageImage = true;
+    const image = {
+      complete: true,
+      naturalWidth: 2048,
+      src: originalUrl,
+      currentSrc: originalUrl,
+    };
+    harness.target.element = image as HTMLImageElement;
+    harness.downloadImage.mockRejectedValueOnce(new Error('download failed'));
+
+    await harness.controller.handleTranslateClick(harness.target);
+
+    expect(harness.downloadImage).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ url: originalUrl, pageImageUrl: originalUrl }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    image.currentSrc = originalUrl.replace('name=large', 'name=orig');
+
+    await harness.controller.handleTranslateClick(harness.target);
+
+    expect(harness.downloadImage).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ url: originalUrl, pageImageUrl: image.currentSrc }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(harness.store.get(harness.target.key)?.originalUrl).toBe(originalUrl);
+  });
+
+  it('uses src for a loaded page image when currentSrc is empty', async () => {
+    const harness = createHarness();
+    harness.target.preferPageImage = true;
+    harness.target.element = {
+      complete: true,
+      naturalWidth: 100,
+      currentSrc: '',
+      src: harness.target.originalUrl,
+    } as HTMLImageElement;
+
+    await harness.controller.handleTranslateClick(harness.target);
+
+    expect(harness.downloadImage.mock.calls[0]?.[0]).toMatchObject({
+      pageImageUrl: harness.target.originalUrl,
+    });
+  });
+
+  it('does not suggest a loaded page image for targets that have not opted in', async () => {
+    const harness = createHarness();
+    harness.target.element = {
+      complete: true,
+      naturalWidth: 100,
+      currentSrc: harness.target.originalUrl,
+    } as HTMLImageElement;
+
+    await harness.controller.handleTranslateClick(harness.target);
+
+    expect(harness.downloadImage.mock.calls[0]?.[0]).not.toHaveProperty('pageImageUrl');
+  });
+
+  it.each([
+    { complete: false, naturalWidth: 100 },
+    { complete: true, naturalWidth: 0 },
+  ])('does not suggest a page image that is not ready: %j', async ({ complete, naturalWidth }) => {
+    const harness = createHarness();
+    harness.target.preferPageImage = true;
+    harness.target.element = {
+      complete,
+      naturalWidth,
+      currentSrc: harness.target.originalUrl,
+    } as HTMLImageElement;
+
+    await harness.controller.handleTranslateClick(harness.target);
+
+    expect(harness.downloadImage.mock.calls[0]?.[0]).not.toHaveProperty('pageImageUrl');
   });
 
   it('cancels its active task when the execution owner is disposed', async () => {

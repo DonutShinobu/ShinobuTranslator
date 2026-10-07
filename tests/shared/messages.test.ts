@@ -26,6 +26,29 @@ describe("isRuntimeMessage", () => {
     expect(isRuntimeMessage({ type: "mt:shortcut-translate-hover" })).toBe(true);
   });
 
+  it('validates page image cache lease message fields', () => {
+    expect(isRuntimeMessage({
+      type: 'mt:prepare-page-image-cache',
+      imageUrl: 'https://pbs.twimg.com/media/a?name=large',
+      contentSessionId: 'session-1',
+    })).toBe(true);
+    expect(isRuntimeMessage({
+      type: 'mt:release-page-image-cache', ruleId: 10_000, contentSessionId: 'session-1',
+    })).toBe(true);
+    for (const imageUrl of [undefined, 42, 'http://pbs.twimg.com/media/a', 'https://user:pass@pbs.twimg.com/media/a']) {
+      expect(isRuntimeMessage({ type: 'mt:prepare-page-image-cache', imageUrl })).toBe(false);
+    }
+    for (const ruleId of [undefined, '10000', -1, 0, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(isRuntimeMessage({ type: 'mt:release-page-image-cache', ruleId })).toBe(false);
+    }
+    expect(isRuntimeMessage({
+      type: 'mt:prepare-page-image-cache', imageUrl: 'https://pbs.twimg.com/media/a', contentSessionId: 'bad session',
+    })).toBe(false);
+    expect(isRuntimeMessage({
+      type: 'mt:release-page-image-cache', ruleId: 10_000, contentSessionId: 'bad session',
+    })).toBe(false);
+  });
+
   it("rejects malformed image download messages", () => {
     expect(isRuntimeMessage({ type: "mt:download-image" })).toBe(false);
     expect(isRuntimeMessage({ type: "mt:download-image", imageUrl: 42 })).toBe(false);

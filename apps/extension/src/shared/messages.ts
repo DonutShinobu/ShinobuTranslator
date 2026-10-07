@@ -38,6 +38,18 @@ export type FetchReaderResourceMessage = {
   allowedBaseUrl: string;
 };
 
+export type PreparePageImageCacheMessage = {
+  type: 'mt:prepare-page-image-cache';
+  imageUrl: string;
+  contentSessionId?: string;
+};
+
+export type ReleasePageImageCacheMessage = {
+  type: 'mt:release-page-image-cache';
+  ruleId: number;
+  contentSessionId?: string;
+};
+
 export type CaptureVisibleTabMessage = {
   type: 'mt:capture-visible-tab';
 };
@@ -152,6 +164,8 @@ export type DiagnosticLogClearMessage = {
 export type RuntimeMessage =
   | ExtensionControlRuntimeMessage
   | DownloadImageMessage
+  | PreparePageImageCacheMessage
+  | ReleasePageImageCacheMessage
   | FetchReaderResourceMessage
   | CaptureVisibleTabMessage
   | LlmChatCompletionsMessage
@@ -178,6 +192,15 @@ export type RuntimeSuccessResponse =
       sourceUrl: string;
       /** Present only after a real Blob survives the request probe. */
       blob?: Blob;
+    }
+  | {
+      ok: true;
+      type: 'mt:prepare-page-image-cache';
+      ruleId: number;
+    }
+  | {
+      ok: true;
+      type: 'mt:release-page-image-cache';
     }
   | {
       ok: true;
@@ -293,6 +316,22 @@ function isFetchReaderResourceMessage(
     && Boolean(parseCredentiallessHttpsUrl(value.url))
     && typeof value.allowedBaseUrl === 'string'
     && Boolean(parseRestrictedResourceBaseUrl(value.allowedBaseUrl));
+}
+
+function isPageImageCacheMessage(
+  value: Record<string, unknown>,
+): value is PreparePageImageCacheMessage | ReleasePageImageCacheMessage {
+  if (value.contentSessionId !== undefined && !isContentSessionId(value.contentSessionId)) {
+    return false;
+  }
+  if (value.type === 'mt:prepare-page-image-cache') {
+    return typeof value.imageUrl === 'string'
+      && Boolean(parseCredentiallessHttpsUrl(value.imageUrl));
+  }
+  return value.type === 'mt:release-page-image-cache'
+    && Number.isSafeInteger(value.ruleId)
+    && typeof value.ruleId === 'number'
+    && value.ruleId > 0;
 }
 
 export function getRuntimeErrorCode(error: unknown): RuntimeErrorCode | undefined {
@@ -480,6 +519,7 @@ export function isRuntimeMessage(value: unknown): value is RuntimeMessage {
   return (
     isExtensionControlRuntimeMessage(value) ||
     isDownloadImageMessage(value) ||
+    isPageImageCacheMessage(value) ||
     isFetchReaderResourceMessage(value) ||
     type === 'mt:capture-visible-tab' ||
     type === 'mt:diagnostic-log-export' ||

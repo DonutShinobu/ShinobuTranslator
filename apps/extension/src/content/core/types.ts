@@ -16,6 +16,7 @@ export interface ImageTarget {
   element: HTMLImageElement;
   key: string;
   originalUrl: string;
+  preferPageImage?: boolean;
 }
 
 export type ImageTranslationContextResolution =

@@ -28,6 +28,16 @@ export type BackgroundServices = {
     clear(): Promise<void>;
   };
   images: {
+    preparePageImageCache?(
+      imageUrl: string,
+      sender: ExtensionMessageSender,
+      contentSessionId?: string,
+    ): Promise<PayloadOf<'mt:prepare-page-image-cache'>>;
+    releasePageImageCache?(
+      ruleId: number,
+      sender: ExtensionMessageSender,
+      contentSessionId?: string,
+    ): Promise<void>;
     download(
       request: ImageDownloadRequest,
       sender: ExtensionMessageSender,
@@ -99,6 +109,19 @@ export async function routeBackgroundMessage(
       type: 'mt:download-image',
       ...await services.images.download(request, sender, message.contentSessionId),
     };
+  }
+  if (message.type === 'mt:prepare-page-image-cache') {
+    if (!services.images.preparePageImageCache) throw new Error('当前浏览器不支持页面图片缓存复用');
+    return {
+      ok: true,
+      type: 'mt:prepare-page-image-cache',
+      ...await services.images.preparePageImageCache(message.imageUrl, sender, message.contentSessionId),
+    };
+  }
+  if (message.type === 'mt:release-page-image-cache') {
+    if (!services.images.releasePageImageCache) throw new Error('当前浏览器不支持页面图片缓存复用');
+    await services.images.releasePageImageCache(message.ruleId, sender, message.contentSessionId);
+    return { ok: true, type: 'mt:release-page-image-cache' };
   }
   if (message.type === 'mt:fetch-reader-resource') {
     return {

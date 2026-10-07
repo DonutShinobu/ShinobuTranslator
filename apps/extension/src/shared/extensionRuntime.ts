@@ -206,6 +206,7 @@ export type ExtensionBrowserApi = {
     };
   };
   declarativeNetRequest?: {
+    getSessionRules?: () => Promise<Array<{ id: number }>>;
     updateDynamicRules?: (options: ExtensionDnrRuleUpdate) => Promise<void>;
     updateSessionRules?: (options: ExtensionDnrRuleUpdate) => Promise<void>;
   };

@@ -581,6 +581,12 @@ describe('twitterAdapter.findImages', () => {
     });
 
     const firstTarget = twitterAdapter.findImages()[0];
+    expect(firstTarget.preferPageImage).toBe(true);
+    firstImage.currentSrc = firstImage.src.replace('name=large', 'name=orig');
+    const upgradedFirstTarget = twitterAdapter.findImages()[0];
+    expect(upgradedFirstTarget.originalUrl).toBe(firstTarget.originalUrl);
+    expect(upgradedFirstTarget.element.currentSrc).toContain('name=orig');
+    expect(upgradedFirstTarget.preferPageImage).toBe(true);
     firstImage.rect = offscreenRect;
     secondImage.rect = centeredRect;
     const secondTarget = twitterAdapter.findImages()[0];

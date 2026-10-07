@@ -78,6 +78,11 @@ export class ImageTranslationController {
     }
 
     const clickTarget = this.callbacks.resolveTarget(key) ?? target;
+    const pageImageUrl = clickTarget.preferPageImage
+      && clickTarget.element.complete
+      && clickTarget.element.naturalWidth > 0
+      ? clickTarget.element.currentSrc || clickTarget.element.src
+      : undefined;
     let contextResolution: ImageTranslationContextResolution | undefined;
     try {
       contextResolution = this.callbacks.resolveTranslationContext?.(clickTarget);
@@ -96,6 +101,7 @@ export class ImageTranslationController {
           kind: 'remote-image',
           url: state.originalUrl,
           referrerPolicy: resolveImageReferrerPolicy(clickTarget.element),
+          ...(pageImageUrl ? { pageImageUrl } : {}),
         },
         translationContext: contextResolution?.status === 'available'
           ? contextResolution.context

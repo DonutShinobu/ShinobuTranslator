@@ -27,6 +27,7 @@ import {
   captureVisibleTab,
 } from './images/imageService';
 import { createImageDownloader } from './images/imageDownloader';
+import { createPageImageCache } from './images/pageImageCache';
 import { createReaderResourceFetcher } from './readers/readerResourceFetcher';
 import { registerMenusAndCommands } from './menus/registerMenus';
 import {
@@ -58,6 +59,7 @@ import { isTrustedPopupSender } from './extensionControl/credentialDisclosurePol
 import { registerContentSessionLifecycle } from './contentSessionLifecycle';
 
 const imageDownloader = createImageDownloader();
+const pageImageCache = createPageImageCache();
 const readerResourceFetcher = createReaderResourceFetcher();
 const settingsRepository = createExtensionSettingsRepository({
   readState: getSettingsState,
@@ -99,6 +101,8 @@ const services: BackgroundServices = {
     clear: clearDiagnosticLog,
   },
   images: {
+    preparePageImageCache: pageImageCache.prepare,
+    releasePageImageCache: pageImageCache.release,
     download: imageDownloader.download,
     capture: captureVisibleTab,
   },
@@ -172,6 +176,7 @@ export function initializeBackground(lifecycle: PipelineHostLifecycle): void {
   );
   registerExtensionControlPort(chromeApi, extensionControl);
   registerContentSessionLifecycle(chromeApi, (contentSessionId) => {
+    void pageImageCache.cancelForSession(contentSessionId);
     imageDownloader.cancelPendingForSession(contentSessionId);
     cancelQueuedGeminiAppImageTranslations(contentSessionId);
     cancelQueuedGeminiApiImageTranslations(contentSessionId);

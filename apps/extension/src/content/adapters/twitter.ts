@@ -496,7 +496,7 @@ export const twitterAdapter: SiteAdapter = {
     );
     const key = `${tweetIdentity}::${normalizeImageKey(originalUrl)}`;
     image.setAttribute(originalSrcAttr, originalUrl);
-    return [{ element: image, key, originalUrl }];
+    return [{ element: image, key, originalUrl, preferPageImage: true }];
   },
 
   getTranslationContext(target) {

@@ -49,6 +49,7 @@ import {
   createExecutionPreparationClient,
   type PrepareImageTranslationExecution,
 } from './executionPreparationClient';
+import { tryDownloadXPageImage } from './pageImageDownloader';
 
 export type ImageTranslationExecutionKind = 'local-pipeline' | 'whole-image';
 
@@ -56,6 +57,8 @@ export type ImageTranslationSource =
   | {
       kind: 'remote-image';
       url: string;
+      /** Currently displayed X image; the original URL remains the download fallback. */
+      pageImageUrl?: string;
       referrerPolicy?: ReferrerPolicy;
       /** Optional HTTPS origin/base-path boundary enforced by the background downloader. */
       allowedBaseUrl?: string;
@@ -372,6 +375,8 @@ export function createRuntimeImageDownloader(
       });
     }
     try {
+      const pageImage = await tryDownloadXPageImage(source, signal, sendMessage);
+      throwIfAborted(signal);
       const contentSessionId = getActiveContentSessionId();
       const request: DownloadImageMessage = {
         type: 'mt:download-image',
@@ -385,7 +390,7 @@ export function createRuntimeImageDownloader(
           : {}),
       };
       let structuredCloneProbe: Blob | undefined;
-      if ((globalThis as { __shinobuColdStartDownloadBlob?: boolean })
+      if (!pageImage && (globalThis as { __shinobuColdStartDownloadBlob?: boolean })
         .__shinobuColdStartDownloadBlob === true && typeof Blob === 'function') {
         try {
           structuredCloneProbe = new Blob([Uint8Array.of(83)], {
@@ -395,11 +400,20 @@ export function createRuntimeImageDownloader(
           // Native probe construction is optional; the existing request still works.
         }
       }
-      const preferBlob = Boolean(structuredCloneProbe);
-      let response = await sendMessage({
-        ...request,
-        ...(structuredCloneProbe ? { structuredCloneProbe } : {}),
-      });
+      const preferBlob = Boolean(pageImage || structuredCloneProbe);
+      let response = pageImage
+        ? {
+            ok: true as const,
+            type: 'mt:download-image' as const,
+            blob: pageImage.blob,
+            contentType: pageImage.blob.type,
+            sourceUrl: pageImage.sourceUrl,
+            base64: '',
+          }
+        : await sendMessage({
+            ...request,
+            ...(structuredCloneProbe ? { structuredCloneProbe } : {}),
+          });
       throwIfAborted(signal);
       if (preferBlob && response.ok && response.type === 'mt:download-image'
         && response.base64 === ''
@@ -425,7 +439,7 @@ export function createRuntimeImageDownloader(
             phase: 'image.download-decode',
             startedAt: decodeStartedAt,
             durationMs: performance.now() - decodeStartedAt,
-            transport: nativeBlob ? 'blob' : 'base64',
+            transport: pageImage ? 'page-blob' : nativeBlob ? 'blob' : 'base64',
             bytes: blob.size,
             base64Length: response.base64.length,
           });
@@ -448,6 +462,7 @@ export function createRuntimeImageDownloader(
             referrerPolicy: source.referrerPolicy,
             blobSize: blob.size,
             base64Length: response.base64.length,
+            acquisition: pageImage ? 'page-fetch' : 'background',
             durationMs: performance.now() - startedAt,
           },
         });

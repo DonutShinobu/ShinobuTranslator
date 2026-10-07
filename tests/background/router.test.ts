@@ -60,6 +60,8 @@ function createServices(settings: ExtensionSettings = defaultExtensionSettings):
       clear: vi.fn(async () => {}),
     },
     images: {
+      preparePageImageCache: vi.fn(async () => ({ ruleId: 10_000 })),
+      releasePageImageCache: vi.fn(async () => {}),
       download: vi.fn(async (
         request: { imageUrl: string; referrerPolicy?: ReferrerPolicy },
         _sender: ExtensionMessageSender,
@@ -186,6 +188,38 @@ describe('routeBackgroundMessage', () => {
       contentType: 'application/json',
       sourceUrl: 'https://cdn.example/book/content',
     });
+  });
+
+  it('routes page image cache leases with sender and content session ownership', async () => {
+    const services = createServices();
+    const imageUrl = 'https://pbs.twimg.com/media/a?format=jpg&name=large';
+    await expect(routeBackgroundMessage({
+      type: 'mt:prepare-page-image-cache', imageUrl, contentSessionId: 'session-1',
+    }, sender, services)).resolves.toEqual({
+      ok: true, type: 'mt:prepare-page-image-cache', ruleId: 10_000,
+    });
+    expect(services.images.preparePageImageCache).toHaveBeenCalledWith(imageUrl, sender, 'session-1');
+    await expect(routeBackgroundMessage({
+      type: 'mt:release-page-image-cache', ruleId: 10_000, contentSessionId: 'session-1',
+    }, sender, services)).resolves.toEqual({ ok: true, type: 'mt:release-page-image-cache' });
+    expect(services.images.releasePageImageCache).toHaveBeenCalledWith(10_000, sender, 'session-1');
+  });
+
+  it('propagates unavailable or rejected cache preparation for the content fallback', async () => {
+    const services = createServices();
+    const message = {
+      type: 'mt:prepare-page-image-cache' as const,
+      imageUrl: 'https://pbs.twimg.com/media/a?name=orig',
+    };
+    const failure = new Error('DNR unavailable');
+    vi.mocked(services.images.preparePageImageCache!).mockRejectedValueOnce(failure);
+    await expect(routeBackgroundMessage(message, sender, services)).rejects.toBe(failure);
+    services.images.preparePageImageCache = undefined;
+    await expect(routeBackgroundMessage(message, sender, services)).rejects.toThrow('不支持');
+    services.images.releasePageImageCache = undefined;
+    await expect(routeBackgroundMessage({
+      type: 'mt:release-page-image-cache', ruleId: 10_000,
+    }, sender, services)).rejects.toThrow('不支持');
   });
 
   it('delegates provider messages and preserves external error identity', async () => {

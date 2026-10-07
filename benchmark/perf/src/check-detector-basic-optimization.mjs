@@ -45,13 +45,13 @@ function fixture({ environment = 'browser', format = 'ort', delayed = false } = 
 const check = fixture();
 const extended = await check.registry.getSession('detector');
 assert.deepEqual(check.calls[0].options, {
-  graphOptimizationLevel: 'extended', useOrtModelBytesForInitializers: true,
+  graphOptimizationLevel: 'extended',
 });
 check.scope.__shinobuColdStartDetectorBasicOptimization = true;
 const basic = await check.registry.getSession('detector');
 assert.notEqual(basic, extended);
 assert.deepEqual(check.calls[1].options, {
-  graphOptimizationLevel: 'basic', useOrtModelBytesForInitializers: true,
+  graphOptimizationLevel: 'basic',
 });
 assert.equal(await check.registry.getSession('detector'), basic);
 const explicit = { graphOptimizationLevel: 'extended' };
@@ -72,8 +72,8 @@ assert.deepEqual(check.manifest.models.detector.input, [1024, 1024]);
 await check.registry.dispose();
 
 for (const [settings, name, providers, expectedOptions] of [
-  [{}, 'detector', ['wasm'], { graphOptimizationLevel: 'extended', useOrtModelBytesForInitializers: true }],
-  [{}, 'detector', ['webnn', 'webgpu'], { graphOptimizationLevel: 'extended', useOrtModelBytesForInitializers: true }],
+  [{}, 'detector', ['wasm'], { graphOptimizationLevel: 'extended' }],
+  [{}, 'detector', ['webnn', 'webgpu'], { graphOptimizationLevel: 'extended' }],
   [{ format: 'onnx' }, 'detector', undefined, undefined],
   [{ environment: 'node' }, 'detector', undefined, undefined],
   [{}, 'bubble', undefined, undefined],

@@ -202,7 +202,8 @@ export class PipelineHost {
         this.earlySessions = detector.then(async (handle) => {
           if (detectorSubmission && handle.provider === 'webgpu' && !await detectorSubmission) return;
           if (detectorSubmission && handle.provider !== 'webgpu') this.settleDetectorSubmission(false);
-          if (this.stopEarlySessions) return;
+          // CPU inference can block the Worker while another Session's 30s timeout expires.
+          if (this.stopEarlySessions || handle.provider !== 'webgpu') return;
           await this.modelRuntime.getSession('bubble');
           if (this.stopEarlySessions) return;
           await preparePaddleOcrRuntime(this.modelRuntime);

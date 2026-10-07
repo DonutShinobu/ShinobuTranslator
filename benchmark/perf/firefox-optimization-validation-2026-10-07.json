@@ -1,0 +1,4332 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-10-07T14:30:34.849Z",
+  "scope": "Native Firefox MV2 validation: preserved pre-fix candidate matrix and failures, followed by production fixes and separate postfix regression results.",
+  "platform": {
+    "os": "Windows",
+    "firefoxVersion": "157.0",
+    "firefoxBuildID": "20260924084938",
+    "firefoxSourceStamp": "8eb25af4acf031ab1e06abf1a912275083c820ed",
+    "firefoxExeSha256": "6a6175344a8cb4215d3c5202f718531adc0c13828e36f47a13a934cee61c0c7b",
+    "lowerBoundVersion": "140.0 regular release, not ESR",
+    "installedGpu": "NVIDIA GeForce RTX 5070 Ti",
+    "gpuDriver": "32.0.16.1088",
+    "memoryBytes": 34188177408,
+    "isolatedOwnedProfiles": true
+  },
+  "candidates": {
+    "createdAt": "2026-10-07T13:14:32.361Z",
+    "source": "D:\\code\\ShinobuTranslator\\apps\\extension\\dist-firefox",
+    "flags": [
+      "__shinobuColdStartOverlap",
+      "__shinobuColdStartPixelFastPath",
+      "__shinobuColdStartGpuCtc",
+      "__shinobuColdStartEarlySessions",
+      "__shinobuColdStartInpaintPixels",
+      "__shinobuColdStartInpaintDirectPixels",
+      "__shinobuColdStartFontsAfterDetect",
+      "__shinobuColdStartStructuredClone",
+      "__shinobuColdStartGpuPreprocessNoFence",
+      "__shinobuColdStartSelectedFonts",
+      "__shinobuColdStartDetectorBasicOptimization",
+      "__shinobuColdStartWorkerPng",
+      "__shinobuColdStartPanelOverlap",
+      "__shinobuColdStartFontBlobUrl",
+      "__shinobuColdStartImageBlobUrl",
+      "__shinobuColdStartMaskPacked",
+      "__shinobuColdStartMaskNativeThreshold",
+      "__shinobuColdStartMaskNativeThresholdGpu",
+      "__shinobuColdStartEarlyInpaintAfterBubble",
+      "__shinobuColdStartDownloadBlob",
+      "__shinobuColdStartReuseGpuAvailability",
+      "__shinobuColdStartAdapterOverlap",
+      "__shinobuColdStartGpuPreprocessAutoLayout",
+      "__shinobuColdStartDetectorReadbackParallel",
+      "__shinobuColdStartModelPrefetch",
+      "__shinobuColdStartShaderTemplates",
+      "__shinobuColdStartReuseShaderPipelines"
+    ],
+    "variants": {
+      "baseline": {
+        "dist": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\dist-baseline",
+        "enabled": [],
+        "workerBytes": 842799,
+        "workerSha256": "ba31d35e1c80385dbb516eacff2ab3dc68151f2401a308b763a376ad9f61f8b8"
+      },
+      "trim": {
+        "dist": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\dist-trim",
+        "enabled": [],
+        "workerBytes": 399582,
+        "workerSha256": "37f7ae088ce0eba40a41ea345ef039fbf1248400cdb5afebc3a01770f35f9468"
+      },
+      "generic": {
+        "dist": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\dist-generic",
+        "enabled": [
+          "__shinobuColdStartOverlap",
+          "__shinobuColdStartPixelFastPath",
+          "__shinobuColdStartEarlySessions",
+          "__shinobuColdStartInpaintPixels",
+          "__shinobuColdStartInpaintDirectPixels",
+          "__shinobuColdStartFontsAfterDetect",
+          "__shinobuColdStartStructuredClone",
+          "__shinobuColdStartSelectedFonts",
+          "__shinobuColdStartWorkerPng",
+          "__shinobuColdStartPanelOverlap",
+          "__shinobuColdStartFontBlobUrl",
+          "__shinobuColdStartImageBlobUrl",
+          "__shinobuColdStartMaskPacked",
+          "__shinobuColdStartMaskNativeThreshold",
+          "__shinobuColdStartMaskNativeThresholdGpu",
+          "__shinobuColdStartEarlyInpaintAfterBubble",
+          "__shinobuColdStartDownloadBlob",
+          "__shinobuColdStartModelPrefetch"
+        ],
+        "workerBytes": 399564,
+        "workerSha256": "48483750f9fa75ccb03c484b9750edcd798f19baecc62bd4755063a89c35ff1d"
+      },
+      "full": {
+        "dist": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\dist-full",
+        "enabled": [
+          "__shinobuColdStartOverlap",
+          "__shinobuColdStartPixelFastPath",
+          "__shinobuColdStartGpuCtc",
+          "__shinobuColdStartEarlySessions",
+          "__shinobuColdStartInpaintPixels",
+          "__shinobuColdStartInpaintDirectPixels",
+          "__shinobuColdStartFontsAfterDetect",
+          "__shinobuColdStartStructuredClone",
+          "__shinobuColdStartGpuPreprocessNoFence",
+          "__shinobuColdStartSelectedFonts",
+          "__shinobuColdStartDetectorBasicOptimization",
+          "__shinobuColdStartWorkerPng",
+          "__shinobuColdStartPanelOverlap",
+          "__shinobuColdStartFontBlobUrl",
+          "__shinobuColdStartImageBlobUrl",
+          "__shinobuColdStartMaskPacked",
+          "__shinobuColdStartMaskNativeThreshold",
+          "__shinobuColdStartMaskNativeThresholdGpu",
+          "__shinobuColdStartEarlyInpaintAfterBubble",
+          "__shinobuColdStartDownloadBlob",
+          "__shinobuColdStartReuseGpuAvailability",
+          "__shinobuColdStartAdapterOverlap",
+          "__shinobuColdStartGpuPreprocessAutoLayout",
+          "__shinobuColdStartDetectorReadbackParallel",
+          "__shinobuColdStartModelPrefetch",
+          "__shinobuColdStartShaderTemplates",
+          "__shinobuColdStartReuseShaderPipelines"
+        ],
+        "workerBytes": 399508,
+        "workerSha256": "650946767fd1b6eab0709bc6b00a96655282a272723b966326564bc9218bed5b"
+      }
+    },
+    "immutableHashes": {
+      "models/aot_inpaint_512.onnx": "acdddccfdc32780c8947946814e9eea6a8b0d5b1880fb46f3be8389510f11689",
+      "models/bubble.onnx": "3da3317f6dffe27cf5c9396dc95d5324fb647e22adeb7bf304edbe921789f0a0",
+      "models/detector.ort": "0e9c3979e73092a56404c835e63d9894e7d94b50b356ee29e84ee6a32d65f7d9",
+      "models/models.json": "58a748223f7159e975ae6f9063036aec42cd07c59473fcaa298d73fcde45963d",
+      "models/paddleocr_v6_dict.txt": "b5f2bfe2bdd9448429e3e82b51c789775d9b42f2403d082b00662eb77e401c5d",
+      "models/PP-OCRv6_medium_rec.onnx": "9c09abf0957f7968c7586464b7397b84ad2387a0497a351af40e9acc71b673ba",
+      "ort/ort-wasm-simd-threaded.jsep.mjs": "3ee381d20a80f51a788a1c4a5872f6f1d047538dd4342f4af00062de5f9ea4c6",
+      "ort/ort-wasm-simd-threaded.jsep.wasm": "78feeeb3d08f6bcee94d938ed322f69073bb8076b5f9d34697a574ffba8deb48",
+      "fonts/SourceHanSansCN-VF.ttf.woff2": "f971e3bff46f76b49e1d5510556c2297c618ec4b491a295a4e741cdd38257799",
+      "fonts/SourceHanSansTW-VF.ttf.woff2": "02d13bf72beafab07aa4a738477e7bccf6ed5cfc29d17b24908fb3b67e9f9318"
+    }
+  },
+  "performance": {
+    "baseline": {
+      "cold": {
+        "count": 3,
+        "valuesMs": [
+          35317,
+          35426,
+          35114
+        ],
+        "medianMs": 35317
+      },
+      "warm": {
+        "count": 3,
+        "valuesMs": [
+          3238,
+          3117,
+          3160
+        ],
+        "medianMs": 3160
+      },
+      "restart": {
+        "count": 1,
+        "valuesMs": [
+          35630
+        ],
+        "medianMs": 35630
+      }
+    },
+    "trim": {
+      "cold": {
+        "count": 3,
+        "valuesMs": [
+          35201,
+          35054,
+          35140
+        ],
+        "medianMs": 35140
+      },
+      "warm": {
+        "count": 3,
+        "valuesMs": [
+          3134,
+          3105,
+          3155
+        ],
+        "medianMs": 3134
+      },
+      "restart": {
+        "count": 1,
+        "valuesMs": [
+          35067
+        ],
+        "medianMs": 35067
+      }
+    },
+    "generic": {
+      "cold": {
+        "count": 3,
+        "valuesMs": [
+          33672,
+          33872,
+          33656
+        ],
+        "medianMs": 33672
+      },
+      "warm": {
+        "count": 3,
+        "valuesMs": [
+          2428,
+          2438,
+          2417
+        ],
+        "medianMs": 2428
+      },
+      "restart": {
+        "count": 1,
+        "valuesMs": [
+          33615
+        ],
+        "medianMs": 33615
+      }
+    },
+    "full": {
+      "cold": {
+        "count": 3,
+        "valuesMs": [
+          33231,
+          33206,
+          33078
+        ],
+        "medianMs": 33206
+      },
+      "warm": {
+        "count": 3,
+        "valuesMs": [
+          2231,
+          2249,
+          2233
+        ],
+        "medianMs": 2233
+      },
+      "restart": {
+        "count": 1,
+        "valuesMs": [
+          32573
+        ],
+        "medianMs": 32573
+      }
+    }
+  },
+  "samples": [
+    {
+      "variant": "baseline",
+      "round": 0,
+      "state": "cold",
+      "report": "matrix/baseline-0-cold.json",
+      "displayMs": 35317,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    {
+      "variant": "baseline",
+      "round": 0,
+      "state": "warm",
+      "report": "matrix/baseline-0-cold.json",
+      "displayMs": 3238,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    {
+      "variant": "baseline",
+      "round": 0,
+      "state": "restart",
+      "report": "matrix/baseline-0-restart.json",
+      "displayMs": 35630,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    {
+      "variant": "trim",
+      "round": 0,
+      "state": "cold",
+      "report": "matrix/trim-0-cold.json",
+      "displayMs": 35201,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    {
+      "variant": "trim",
+      "round": 0,
+      "state": "warm",
+      "report": "matrix/trim-0-cold.json",
+      "displayMs": 3134,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    {
+      "variant": "trim",
+      "round": 0,
+      "state": "restart",
+      "report": "matrix/trim-0-restart.json",
+      "displayMs": 35067,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    {
+      "variant": "generic",
+      "round": 0,
+      "state": "cold",
+      "report": "matrix/generic-0-cold.json",
+      "displayMs": 33672,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    {
+      "variant": "generic",
+      "round": 0,
+      "state": "warm",
+      "report": "matrix/generic-0-cold.json",
+      "displayMs": 2428,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    {
+      "variant": "generic",
+      "round": 0,
+      "state": "restart",
+      "report": "matrix/generic-0-restart.json",
+      "displayMs": 33615,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    {
+      "variant": "full",
+      "round": 0,
+      "state": "cold",
+      "report": "matrix/full-0-cold.json",
+      "displayMs": 33231,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    {
+      "variant": "full",
+      "round": 0,
+      "state": "warm",
+      "report": "matrix/full-0-cold.json",
+      "displayMs": 2231,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    {
+      "variant": "full",
+      "round": 0,
+      "state": "restart",
+      "report": "matrix/full-0-restart.json",
+      "displayMs": 32573,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    {
+      "variant": "full",
+      "round": 1,
+      "state": "cold",
+      "report": "matrix/full-1-cold.json",
+      "displayMs": 33206,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    {
+      "variant": "full",
+      "round": 1,
+      "state": "warm",
+      "report": "matrix/full-1-cold.json",
+      "displayMs": 2249,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    {
+      "variant": "generic",
+      "round": 1,
+      "state": "cold",
+      "report": "matrix/generic-1-cold.json",
+      "displayMs": 33872,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    {
+      "variant": "generic",
+      "round": 1,
+      "state": "warm",
+      "report": "matrix/generic-1-cold.json",
+      "displayMs": 2438,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    {
+      "variant": "trim",
+      "round": 1,
+      "state": "cold",
+      "report": "matrix/trim-1-cold.json",
+      "displayMs": 35054,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    {
+      "variant": "trim",
+      "round": 1,
+      "state": "warm",
+      "report": "matrix/trim-1-cold.json",
+      "displayMs": 3105,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    {
+      "variant": "baseline",
+      "round": 1,
+      "state": "cold",
+      "report": "matrix/baseline-1-cold.json",
+      "displayMs": 35426,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    {
+      "variant": "baseline",
+      "round": 1,
+      "state": "warm",
+      "report": "matrix/baseline-1-cold.json",
+      "displayMs": 3117,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    {
+      "variant": "generic",
+      "round": 2,
+      "state": "cold",
+      "report": "matrix/generic-2-cold.json",
+      "displayMs": 33656,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    {
+      "variant": "generic",
+      "round": 2,
+      "state": "warm",
+      "report": "matrix/generic-2-cold.json",
+      "displayMs": 2417,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    {
+      "variant": "baseline",
+      "round": 2,
+      "state": "cold",
+      "report": "matrix/baseline-2-cold.json",
+      "displayMs": 35114,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    {
+      "variant": "baseline",
+      "round": 2,
+      "state": "warm",
+      "report": "matrix/baseline-2-cold.json",
+      "displayMs": 3160,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    {
+      "variant": "full",
+      "round": 2,
+      "state": "cold",
+      "report": "matrix/full-2-cold.json",
+      "displayMs": 33078,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    {
+      "variant": "full",
+      "round": 2,
+      "state": "warm",
+      "report": "matrix/full-2-cold.json",
+      "displayMs": 2233,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    {
+      "variant": "trim",
+      "round": 2,
+      "state": "cold",
+      "report": "matrix/trim-2-cold.json",
+      "displayMs": 35140,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    {
+      "variant": "trim",
+      "round": 2,
+      "state": "warm",
+      "report": "matrix/trim-2-cold.json",
+      "displayMs": 3155,
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    }
+  ],
+  "quality": {
+    "mainFixture": {
+      "allFourWebGpu": true,
+      "detectorInputExact": true,
+      "allThreeDetectorOutputsExact": true,
+      "ocrAndMergedOrderedExact": true,
+      "finalPngBytesExact": true,
+      "finalOfflineRgbaExact": true
+    },
+    "mainResult": {
+      "pngSha": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb"
+    },
+    "independentMatrixEquality": {
+      "sampleCount": 28,
+      "allReportedPngShaEqual": true,
+      "allReportedRgbaShaEqual": true,
+      "pngSha256": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+      "rgbaSha256": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb",
+      "matchesFourIndependentOfflineQualityPngDecodes": true,
+      "qualityPngBytesExact": true
+    },
+    "realGoogleTranslation": {
+      "bothCompleted": true,
+      "pngEqual": true,
+      "pngSha": "c693a0a046c28aa34f214d2635ad8ac8cd3edaf36f3c61eadaf1f4d6aba46cec",
+      "rgbaEqual": true,
+      "performanceComparisonValid": false
+    },
+    "temporarySafeInitializers157": {
+      "bothFirefox157": true,
+      "gpuDisabledPreferenceBoth": true,
+      "bothCompletedWithoutError": true,
+      "bothFourModelsWasm": true,
+      "noGpuDeviceBoth": true,
+      "strictPngEqual": true,
+      "decodedRgbaEqual": true,
+      "normalizedRegionsEqual": true,
+      "reportedHashesMatchSavedAndDecoded": true
+    },
+    "temporarySafeInitializers140": {
+      "nativeFirefox140All": true,
+      "gpuDefaultAll": true,
+      "completedWithoutErrorsAll": true,
+      "allFourModelsWasm": true,
+      "noGpuDeviceAll": true,
+      "onlyBorrowOptionTemporarilyDisabled": true,
+      "inputIdentical": true,
+      "detectorOutputsFinite": true,
+      "detectorOutputsIdentical": true,
+      "strictPngBytesIdentical": true,
+      "offlineRgbaIdentical": true,
+      "normalizedRecordsIdentical": true,
+      "reportedHashesMatchSavedAndDecoded": true
+    },
+    "prior140Failure": {
+      "report": "fallback140-safe-full.json",
+      "retained": true,
+      "stage": "bubble",
+      "errorPresent": true,
+      "subsequentFullFreshProfilesCompleted": 2,
+      "rootErrorCaptured": false,
+      "limitation": "One initial full attempt failed at bubble; both fresh-profile repeats completed. Underlying error was unavailable, so compatibility stability cannot be inferred from the successful repeats alone."
+    },
+    "extraImageComparison": {
+      "sourceExact": true,
+      "detectorInputExact": true,
+      "detectorThreeOutputsExact": true,
+      "normalizedOcrAndOrderExact": true,
+      "png": {
+        "sameLength": true,
+        "changedBytes": 0,
+        "bytes": 3323343
+      },
+      "rgba": {
+        "sameLength": true,
+        "changedBytes": 0,
+        "bytes": 12181504
+      },
+      "allModelsWebGpu": true,
+      "overrideApplied": true
+    },
+    "originalImageSingleFlagChunkControl": {
+      "createdAt": "2026-10-07T14:30:08.550Z",
+      "scope": "Single-variable native Firefox 157 original image control: full candidate with StructuredClone disabled; quality timing excluded from formal performance",
+      "checks": {
+        "bothCompleted": true,
+        "allFourModelsWebGpu": true,
+        "resultUsedBase64Chunks": true,
+        "detectorInputAndThreeOutputsExact": true,
+        "normalizedOcrAndOrderedExact": true,
+        "pngBytesExact": true,
+        "offlineRgbaExact": true
+      },
+      "result": {
+        "pngBytes": 4077145,
+        "pngSha256": "7d54fe182f24b7e548d7e4376149fb7644992f778cb0fff6bf20f12005c58810",
+        "rgbaSha256": "f894448c0e16af98bdc0ff67aa06f0d6dbc647474b71267ff20c85fda034ea75",
+        "maskMs": 379,
+        "diagnosticDisplayMs": 39252
+      },
+      "limits": [
+        "One successful control; does not certify all remaining 26 flags across all images or platforms",
+        "Original Blob stalls remain in unchanged reports"
+      ]
+    }
+  },
+  "featureActivation": {
+    "nativeCanvasThreshold": "Unsupported: Firefox getContextAttributes omits colorType, existing CPU guard used",
+    "workerPng": "Actual image-bitmap path observed, main image plus 18 editable PNGs",
+    "structuredClone": "Basic Blob round trips passed; original problem image full candidate stalled reading 1,469,404-byte bubbleMask Blob slice. Disabling only StructuredClone completed with baseline-identical result. Gecko internal cause not established.",
+    "shader": {
+      "coldPackagedTemplate": "Fetched, no async compile observed; browser-specific key mismatch",
+      "historyAsyncAttempts": 110,
+      "historyAsyncCompleted": 108,
+      "historyAsyncFailed": [
+        "GPUPipelineError: Internal error: 内存资源不足，无法完成此操作。 (0x8007000E)",
+        "GPUPipelineError: Internal error: 内存资源不足，无法完成此操作。 (0x8007000E)"
+      ],
+      "pipelineReuseHits": 51,
+      "parallelDiagnosticLoad": true
+    }
+  },
+  "xCache": {
+    "localCrossOriginCases": 32,
+    "defaultMainCases": 12,
+    "defaultReuseBeforeFirstFetch": false,
+    "originRemovalEnablesReuse": false,
+    "coveredNames": [
+      "large",
+      "orig",
+      "4096x4096",
+      "medium"
+    ],
+    "realUrlTests": [
+      {
+        "image": "HT_Kx3GasAA-wdg",
+        "name": "4096x4096",
+        "bytes": 916215,
+        "nativeMs": [
+          1116,
+          16
+        ],
+        "originRemovedMs": [
+          1102,
+          18
+        ]
+      },
+      {
+        "image": "HT_wUesagAAKC9z",
+        "name": "medium",
+        "bytes": 84240,
+        "nativeMs": [
+          267,
+          2
+        ],
+        "originRemovedMs": [
+          631,
+          2
+        ]
+      }
+    ],
+    "scope": "Real CDN from local fixture page, not logged-in X; network times not controlled"
+  },
+  "failures": [
+    {
+      "kind": "existing-cpu-correctness",
+      "description": "Firefox 157 WebGPU disabled and Firefox 140 default WASM: valid detector input, all three detector outputs entirely NaN; false no-translatable-text completion. Temporarily disabling borrowed initializers restores full four-model WASM pipeline."
+    },
+    {
+      "kind": "extra-image-bubble",
+      "description": "One original translated1 baseline hung at bubble. Safe-initializer diagnostic then completed with byte-identical baseline/full output; cannot attribute the original hang solely from one successful repeat."
+    },
+    {
+      "kind": "candidate-result-delivery",
+      "description": "Original HT6tujdbgAA79ZL.jpg full candidate repeated hang after completed result-meta and complete, including serialized run. Mask itself 349/355 ms. No output PNG obtained; excluded from formal performance."
+    },
+    {
+      "kind": "140-temporary-full",
+      "description": "One initial full attempt failed at bubble; both fresh-profile repeats completed. Underlying error was unavailable, so compatibility stability cannot be inferred from the successful repeats alone."
+    }
+  ],
+  "artifacts": {
+    "matrix": ".tmp/firefox-optimization/matrix/results.json",
+    "quality": ".tmp/firefox-optimization/quality-summary.json",
+    "nativeHelpers": ".tmp/firefox-optimization/flag-checks/native-firefox-157-quality.json",
+    "cpuInvestigation": ".tmp/firefox-optimization/fallback157-investigation.json",
+    "cpuSafe157": ".tmp/firefox-optimization/fallback157-safe-initializers-summary.json",
+    "cpuSafe140": ".tmp/firefox-optimization/fallback140-safe-summary.json",
+    "extraQuality": ".tmp/firefox-optimization/extra-quality-summary.md",
+    "originalSerial": ".tmp/firefox-optimization/extra-original-full-serial.json",
+    "blobReadDiagnostic": ".tmp/firefox-optimization/blob-read-diagnostic-serial.json",
+    "originalChunkControl": ".tmp/firefox-optimization/original-chunk-control-summary.json",
+    "xCache": ".tmp/firefox-x-cache-20261007/157-default/report.json"
+  },
+  "limits": [
+    "Three rounds per cold/warm variant; restart single sample; OS/driver caches not reset",
+    "Single Windows machine / GPU; Firefox 140 regular release, no ESR/macOS/Linux coverage",
+    "Original-mode formal matrix excludes remote translator network time; real google_web translation separately tested",
+    "Quality diagnostics and single-flag chunk control excluded from timing matrix; no speed inference for full-minus-StructuredClone candidate",
+    "Real pbs URLs fetched from local test page, not a logged-in X page",
+    "Original failures retained; not an all-platform stability certification"
+  ],
+  "sources": {
+    "ortInitializerLifetime": "https://raw.githubusercontent.com/microsoft/onnxruntime/v1.27.0/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h",
+    "firefoxHttpCache": "https://firefox-source-docs.mozilla.org/networking/cache2/doc.html",
+    "firefoxHlsl": "https://hg.mozilla.org/releases/mozilla-release/file/8eb25af4acf031ab1e06abf1a912275083c820ed/third_party/rust/naga/src/back/hlsl/writer.rs#l2009"
+  },
+  "preFixScope": "Native Firefox MV2 extension validation; temporary candidates only, production defaults unchanged",
+  "lastUpdatedAt": "2026-10-07T15:24:49.365Z",
+  "implementationFollowUp": {
+    "schemaVersion": 1,
+    "createdAt": "2026-10-07T15:24:31.339Z",
+    "scope": "Offline production Firefox postfix validation. No browser launched, no product source changed by this summarizer. Quality copies prepend verification probes but retain every production JavaScript body byte for byte. Only the separate uninstrumented-worker one-cold/one-warm report is performance evidence.",
+    "production": {
+      "dist": "D:\\code\\ShinobuTranslator\\apps\\extension\\dist-firefox",
+      "manifestSha256": "4369c0d507552f371ff4f1690f3f1db3f08b1a0e72be46fae28872437e386601",
+      "presetFlagCount": 22,
+      "presetFlags": [
+        "__shinobuColdStartOverlap",
+        "__shinobuColdStartPixelFastPath",
+        "__shinobuColdStartGpuCtc",
+        "__shinobuColdStartEarlySessions",
+        "__shinobuColdStartInpaintPixels",
+        "__shinobuColdStartInpaintDirectPixels",
+        "__shinobuColdStartFontsAfterDetect",
+        "__shinobuColdStartGpuPreprocessNoFence",
+        "__shinobuColdStartSelectedFonts",
+        "__shinobuColdStartDetectorBasicOptimization",
+        "__shinobuColdStartWorkerPng",
+        "__shinobuColdStartPanelOverlap",
+        "__shinobuColdStartFontBlobUrl",
+        "__shinobuColdStartImageBlobUrl",
+        "__shinobuColdStartMaskPacked",
+        "__shinobuColdStartEarlyInpaintAfterBubble",
+        "__shinobuColdStartDownloadBlob",
+        "__shinobuColdStartReuseGpuAvailability",
+        "__shinobuColdStartAdapterOverlap",
+        "__shinobuColdStartGpuPreprocessAutoLayout",
+        "__shinobuColdStartDetectorReadbackParallel",
+        "__shinobuColdStartModelPrefetch"
+      ],
+      "excludedFlags": [
+        "StructuredClone",
+        "MaskNativeThreshold",
+        "MaskNativeThresholdGpu",
+        "ShaderTemplates",
+        "ReuseShaderPipelines"
+      ],
+      "canonicalPresetBannerSha256": "84ea36abfc2e4135dc121cff4eb1058bef98442456c2dc98632a782adaee0973",
+      "allMainEntryAndChunkJavaScriptHasOwnPresetPrefix": true,
+      "presetScope": "Main JS entries and chunks require the canonical banner. The standalone assets/pngEncodeWorker helper is hashed and source-compared but has no main-entry preset banner.",
+      "core": [
+        {
+          "name": "assets/pngEncodeWorker-UMjFTydz.js",
+          "bytes": 913,
+          "sha256": "2be9022808afbf3890d7dce4d69681a3abccfeaff955786f82d2db304dd6e47f",
+          "presetPrefixRequired": false,
+          "ownPresetPrefixPresent": false
+        },
+        {
+          "name": "background-firefox.js",
+          "bytes": 6857,
+          "sha256": "c3bc005f212fa364d75f714d574b9af0627ee98474e5cf8f9829f3ce176d91f6",
+          "presetPrefixRequired": true,
+          "ownPresetPrefixPresent": true
+        },
+        {
+          "name": "chunks/browserPipelinePlatform.js",
+          "bytes": 12618,
+          "sha256": "77b205c19b777a0fe24f62f1f5046edbd1ecb5f67543f3d33c338fdc36be9307",
+          "presetPrefixRequired": true,
+          "ownPresetPrefixPresent": true
+        },
+        {
+          "name": "chunks/contentSession.js",
+          "bytes": 13808,
+          "sha256": "a1dba6bbec22bae9d91dd090ea6bd758e7a9946cd6247819626dbe9c37b42b80",
+          "presetPrefixRequired": true,
+          "ownPresetPrefixPresent": true
+        },
+        {
+          "name": "chunks/diagnosticLog.js",
+          "bytes": 8391,
+          "sha256": "0a4fadd58d7eb9842e4c24329db6e4b13f56f8666bed8a1e17ffdbb6630c472a",
+          "presetPrefixRequired": true,
+          "ownPresetPrefixPresent": true
+        },
+        {
+          "name": "chunks/diagnosticLogClient.js",
+          "bytes": 3438,
+          "sha256": "032404465757b85b533400d29f40fa9b4dc7be176c42574e4470f21610c09d25",
+          "presetPrefixRequired": true,
+          "ownPresetPrefixPresent": true
+        },
+        {
+          "name": "chunks/errorMessage.js",
+          "bytes": 2795,
+          "sha256": "03e46f1965566939f02744e0f110d14c9d3b90f2323af31c9a0f65b47f469eb1",
+          "presetPrefixRequired": true,
+          "ownPresetPrefixPresent": true
+        },
+        {
+          "name": "chunks/extensionControlTransport.js",
+          "bytes": 13901,
+          "sha256": "2670019e26579d9bf41a62d3683f79da9f2c4a01c5d887ca20a77618d68a9d9d",
+          "presetPrefixRequired": true,
+          "ownPresetPrefixPresent": true
+        },
+        {
+          "name": "chunks/index.js",
+          "bytes": 215293,
+          "sha256": "0200ead82302956b56cb3a6fb5a32be98e8bc375250a3c9623810785879138fe",
+          "presetPrefixRequired": true,
+          "ownPresetPrefixPresent": true
+        },
+        {
+          "name": "chunks/index2.js",
+          "bytes": 89515,
+          "sha256": "3ff74f1adb5b92345d6ebbdb6a6ae120ef6447e5375ff0ffa7c68d9efc377bb3",
+          "presetPrefixRequired": true,
+          "ownPresetPrefixPresent": true
+        },
+        {
+          "name": "chunks/messages.js",
+          "bytes": 6953,
+          "sha256": "492496f30853f2f08d3643f17dd2b15030a2ab194c737c5920cede51314519d0",
+          "presetPrefixRequired": true,
+          "ownPresetPrefixPresent": true
+        },
+        {
+          "name": "chunks/modulepreload-polyfill.js",
+          "bytes": 3128,
+          "sha256": "7eae921b056cb4d0478aa5d095595b6f09a3e61848674ddfed24dd1bdfe933ce",
+          "presetPrefixRequired": true,
+          "ownPresetPrefixPresent": true
+        },
+        {
+          "name": "chunks/onnxWorkerBridge.js",
+          "bytes": 8168,
+          "sha256": "a4a65ef09e7565637a3fdb95e9a08f03078735c818da92bea2adc1a4119c1ad0",
+          "presetPrefixRequired": true,
+          "ownPresetPrefixPresent": true
+        },
+        {
+          "name": "chunks/perfTrace.js",
+          "bytes": 2680,
+          "sha256": "fcdd26856a5fc77ca9d8b11f1153cd5a99f882e2c7e8e72ccfa3b158565658f3",
+          "presetPrefixRequired": true,
+          "ownPresetPrefixPresent": true
+        },
+        {
+          "name": "chunks/performanceObserver.js",
+          "bytes": 6732,
+          "sha256": "d0d85600883d9b4e30a51aa03aa96d3ce669360bc194c26dc743f7c6e20ee31e",
+          "presetPrefixRequired": true,
+          "ownPresetPrefixPresent": true
+        },
+        {
+          "name": "chunks/pipelineHost.js",
+          "bytes": 19462,
+          "sha256": "d9caa137212b5d2378346e83bc2d196dd194a75aabd0c722ada1fd58d1e3a183",
+          "presetPrefixRequired": true,
+          "ownPresetPrefixPresent": true
+        },
+        {
+          "name": "chunks/transfer.js",
+          "bytes": 20398,
+          "sha256": "d8957cfe1122b2595d775c87db27d9953d9663859b3f866ef9f7434ec29c69f1",
+          "presetPrefixRequired": true,
+          "ownPresetPrefixPresent": true
+        },
+        {
+          "name": "content.js",
+          "bytes": 613126,
+          "sha256": "55d1d7ecc78ee256db732acb605d7bc437f45cc36a576e379dcdc65ef825df0d",
+          "presetPrefixRequired": true,
+          "ownPresetPrefixPresent": true
+        },
+        {
+          "name": "onnxWorker.js",
+          "bytes": 400607,
+          "sha256": "62593352fb5b7e01c7b7902725b0cbeb28bba66260f09874ec619fc84d69ce29",
+          "presetPrefixRequired": true,
+          "ownPresetPrefixPresent": true
+        },
+        {
+          "name": "popup.js",
+          "bytes": 355801,
+          "sha256": "364056de7c21aa548fb844de70ea885690d719bb44e41ff4d8b97fbdfca776de",
+          "presetPrefixRequired": true,
+          "ownPresetPrefixPresent": true
+        }
+      ]
+    },
+    "normalization": "Sort object keys, remove random id/regionId/filteredRegionIds and Ms timing fields, preserve array order, all OCR text/confidence/box/quad/direction and ordered translation records.",
+    "quality": [
+      {
+        "name": "postfix-original-native",
+        "label": "原问题图 3071×4096",
+        "report": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\postfix-original-native.json",
+        "reference": {
+          "report": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\extra-HT6tujdbgAA79ZL-baseline.json",
+          "runCount": 1,
+          "png": {
+            "path": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\extra-HT6tujdbgAA79ZL-baseline-0.png",
+            "pngBytes": 4077145,
+            "pngSha256": "7d54fe182f24b7e548d7e4376149fb7644992f778cb0fff6bf20f12005c58810",
+            "rgbaSha256": "f894448c0e16af98bdc0ff67aa06f0d6dbc647474b71267ff20c85fda034ea75",
+            "rgbaBytes": 50315264,
+            "width": 3071,
+            "height": 4096,
+            "channels": 4
+          },
+          "normalizedRecordSha256": "5e5d747873ac135e69eea73e7d6780b1f6a92371143ca6418ca4cda90113edff",
+          "note": "Existing same-browser quality reference; transport and timings are excluded from image/record comparisons."
+        },
+        "browserVersion": "157.0",
+        "profile": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\profiles\\postfix-original-native",
+        "fixture": "D:\\Downloads\\HT6tujdbgAA79ZL.jpg",
+        "sourceProvenance": {
+          "dist": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\quality-firefox-fixed-1791385439101",
+          "allProductionJavaScriptBodiesExactSuffix": true,
+          "files": [
+            {
+              "name": "assets/pngEncodeWorker-UMjFTydz.js",
+              "exists": true,
+              "productionBytes": 913,
+              "copiedBytes": 913,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "background-firefox.js",
+              "exists": true,
+              "productionBytes": 6857,
+              "copiedBytes": 7159,
+              "prefixProbeBytes": 302,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": false
+            },
+            {
+              "name": "chunks/browserPipelinePlatform.js",
+              "exists": true,
+              "productionBytes": 12618,
+              "copiedBytes": 12618,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/contentSession.js",
+              "exists": true,
+              "productionBytes": 13808,
+              "copiedBytes": 13808,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/diagnosticLog.js",
+              "exists": true,
+              "productionBytes": 8391,
+              "copiedBytes": 8391,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/diagnosticLogClient.js",
+              "exists": true,
+              "productionBytes": 3438,
+              "copiedBytes": 3438,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/errorMessage.js",
+              "exists": true,
+              "productionBytes": 2795,
+              "copiedBytes": 2795,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/extensionControlTransport.js",
+              "exists": true,
+              "productionBytes": 13901,
+              "copiedBytes": 13901,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/index.js",
+              "exists": true,
+              "productionBytes": 215293,
+              "copiedBytes": 215293,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/index2.js",
+              "exists": true,
+              "productionBytes": 89515,
+              "copiedBytes": 89515,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/messages.js",
+              "exists": true,
+              "productionBytes": 6953,
+              "copiedBytes": 6953,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/modulepreload-polyfill.js",
+              "exists": true,
+              "productionBytes": 3128,
+              "copiedBytes": 3128,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/onnxWorkerBridge.js",
+              "exists": true,
+              "productionBytes": 8168,
+              "copiedBytes": 8168,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/perfTrace.js",
+              "exists": true,
+              "productionBytes": 2680,
+              "copiedBytes": 2680,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/performanceObserver.js",
+              "exists": true,
+              "productionBytes": 6732,
+              "copiedBytes": 6732,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/pipelineHost.js",
+              "exists": true,
+              "productionBytes": 19462,
+              "copiedBytes": 19462,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/transfer.js",
+              "exists": true,
+              "productionBytes": 20398,
+              "copiedBytes": 20398,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "content.js",
+              "exists": true,
+              "productionBytes": 613126,
+              "copiedBytes": 614149,
+              "prefixProbeBytes": 1023,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": false
+            },
+            {
+              "name": "onnxWorker.js",
+              "exists": true,
+              "productionBytes": 400607,
+              "copiedBytes": 405148,
+              "prefixProbeBytes": 4541,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": false
+            },
+            {
+              "name": "popup.js",
+              "exists": true,
+              "productionBytes": 355801,
+              "copiedBytes": 355801,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            }
+          ]
+        },
+        "initializerOptionOverrideEvents": [],
+        "initializerDiagnosticFlagEnabled": false,
+        "detector": {
+          "inputs": [
+            {
+              "name": "images",
+              "dims": [
+                1,
+                3,
+                1024,
+                1024
+              ],
+              "bytes": 12582912,
+              "sha256": "957b17650f06e7dc3a15a38e2fecf76b0a9b72aead340af0068ab842ef61ab8d"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "blk",
+              "dims": [
+                1,
+                64512,
+                7
+              ],
+              "bytes": 1806336,
+              "sha256": "7137f268cd62dc8b9cd365077c97abe618f2e3071ceac6a1b8b3c515dade4327"
+            },
+            {
+              "name": "seg",
+              "dims": [
+                1,
+                1,
+                1024,
+                1024
+              ],
+              "bytes": 4194304,
+              "sha256": "ea75d9500f190af9e7f1db6f8d27426b35cd72bf9ee100c5e6ac5b8dc264dbab"
+            },
+            {
+              "name": "det",
+              "dims": [
+                1,
+                2,
+                1024,
+                1024
+              ],
+              "bytes": 8388608,
+              "sha256": "5e54580f23b784e741d307de1de9ac7fe0c1e11a8777a244e0b23bd0e876d521"
+            }
+          ],
+          "ranges": [
+            {
+              "name": "blk",
+              "bytes": 1806336
+            },
+            {
+              "name": "seg",
+              "bytes": 4194304
+            },
+            {
+              "name": "det",
+              "bytes": 8388608
+            }
+          ]
+        },
+        "checks": {
+          "expectedNativeVersion": true,
+          "expectedRunCount": true,
+          "sourceJavaScriptUnchangedByQuality": true,
+          "initializerDiagnosticOverrideDisabled": true,
+          "noSessionOptionOverrides": true,
+          "completedAll": true,
+          "allFourExpectedProviders": true,
+          "allResultsChunked": true,
+          "detectorInputExact": true,
+          "allThreeDetectorOutputsExact": true,
+          "normalizedOcrExact": true,
+          "ocrTextCoordinatesAndOrderExact": true,
+          "normalizedOrderedRecordsExact": true,
+          "normalizedRecordExact": true,
+          "fullRecordSameOrDocumentedDifferentOcrInputShape": true,
+          "pngBytesExact": true,
+          "offlineRgbaExact": true,
+          "reportedPngHashesCorrect": true,
+          "reportedRgbaHashesCorrect": true,
+          "maskRefinementCompletedAll": true
+        },
+        "runs": [
+          {
+            "index": 0,
+            "completed": true,
+            "actualProviders": [
+              {
+                "model": "detector",
+                "provider": "webgpu"
+              },
+              {
+                "model": "bubble",
+                "provider": "webgpu"
+              },
+              {
+                "model": "ocr",
+                "provider": "webgpu"
+              },
+              {
+                "model": "inpaint",
+                "provider": "webgpu"
+              }
+            ],
+            "allFourExpectedProviders": true,
+            "transport": {
+              "resultBlobFieldPresent": false,
+              "editableBlobFieldPresent": false,
+              "chunkCount": 2,
+              "readyStructuredClone": false
+            },
+            "resultChunked": true,
+            "ocrCount": 3,
+            "orderedCount": 2,
+            "normalizedRecordSha256": "5e5d747873ac135e69eea73e7d6780b1f6a92371143ca6418ca4cda90113edff",
+            "normalizedOcrSha256": "ed43b5ac5e2930846b0e9face48573b8c722a284250e9b542173766dd6faf7a7",
+            "normalizedOrderedSha256": "ff241c084346f7ac5e83becf0440d2675e0929207fb91a05454c620493fe834a",
+            "normalizedRecordEqualToReference": true,
+            "normalizedOcrEqualToReference": true,
+            "ocrTextCoordinatesAndOrderEqualToReference": true,
+            "normalizedOrderedEqualToReference": true,
+            "recordDifferences": [],
+            "documentedCrossTemperatureConfidenceDifference": false,
+            "firstOcrInputShapeComparison": {
+              "reference": {
+                "coldFirstSerial": true,
+                "box": {
+                  "x": 409,
+                  "y": 417,
+                  "width": 2662,
+                  "height": 3679
+                },
+                "text": "La",
+                "confidence": 0.2675178915542954,
+                "preparedDims": [
+                  1,
+                  3,
+                  48,
+                  67
+                ],
+                "resizedWidth": 67,
+                "actualInferenceDims": [
+                  2,
+                  3,
+                  48,
+                  96
+                ],
+                "inferenceBatchSize": 2
+              },
+              "current": {
+                "coldFirstSerial": true,
+                "box": {
+                  "x": 409,
+                  "y": 417,
+                  "width": 2662,
+                  "height": 3679
+                },
+                "text": "La",
+                "confidence": 0.2675178915542954,
+                "preparedDims": [
+                  1,
+                  3,
+                  48,
+                  67
+                ],
+                "resizedWidth": 67,
+                "actualInferenceDims": [
+                  2,
+                  3,
+                  48,
+                  96
+                ],
+                "inferenceBatchSize": 2
+              },
+              "samePreparedCropShape": true,
+              "actualInferenceShapeEqual": true,
+              "limitation": "OCR input tensors were not SHA-hashed. Equal crop/prepared metadata is not a claim of identical actual model inputs; this first crop uses cold serial width 234 versus warm batched padded width 256."
+            },
+            "finalImage": {
+              "path": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\postfix-original-native-0.png",
+              "pngBytes": 4077145,
+              "pngSha256": "7d54fe182f24b7e548d7e4376149fb7644992f778cb0fff6bf20f12005c58810",
+              "rgbaSha256": "f894448c0e16af98bdc0ff67aa06f0d6dbc647474b71267ff20c85fda034ea75",
+              "rgbaBytes": 50315264,
+              "width": 3071,
+              "height": 4096,
+              "channels": 4
+            },
+            "pngByteExactToReference": true,
+            "pngChangedBytes": 0,
+            "rgbaByteExactToReference": true,
+            "rgbaChangedBytes": 0,
+            "reportedPngHashMatchesSaved": true,
+            "reportedRgbaHashMatchesOffline": true,
+            "maskRefinement": {
+              "completed": true,
+              "durationMs": 591,
+              "mark": {
+                "phase": "mask.refinement",
+                "startedAt": 43848,
+                "durationMs": 591,
+                "width": 3071,
+                "height": 4096,
+                "scaledWidth": 2047,
+                "scaledHeight": 2731,
+                "scaleFactor": 0.6666666666666667,
+                "regionCount": 2,
+                "componentCount": 191,
+                "processedRegionCount": 2,
+                "collectDebugLayers": false,
+                "histogram": false,
+                "pixelFastPath": true,
+                "timings": {
+                  "readBinaryMs": 42,
+                  "readGrayMs": 49,
+                  "prepareCcMs": 0,
+                  "ccMs": 44,
+                  "assignmentMs": 0,
+                  "regionsMs": 336,
+                  "refineMs": 36,
+                  "outlineMs": 170,
+                  "localDilateMs": 122,
+                  "finalDilateMs": 10,
+                  "toMaskCanvasMs": 110
+                }
+              }
+            },
+            "qualityTimingNotPerformance": {
+              "displayMs": 45898,
+              "stageTimings": [
+                {
+                  "stage": "load",
+                  "label": "加载图片",
+                  "durationMs": 130
+                },
+                {
+                  "stage": "preload",
+                  "label": "加载检测模型",
+                  "durationMs": 3801
+                },
+                {
+                  "stage": "detect",
+                  "label": "文本检测",
+                  "durationMs": 9643
+                },
+                {
+                  "stage": "bubble",
+                  "label": "气泡检测",
+                  "durationMs": 7649
+                },
+                {
+                  "stage": "ocr",
+                  "label": "OCR 日文识别",
+                  "durationMs": 17775
+                },
+                {
+                  "stage": "preload_inpaint",
+                  "label": "加载去字模型",
+                  "durationMs": 0
+                },
+                {
+                  "stage": "merge",
+                  "label": "合并文本行",
+                  "durationMs": 1
+                },
+                {
+                  "stage": "ocr_postfilter",
+                  "label": "过滤 OCR 误识别",
+                  "durationMs": 705
+                },
+                {
+                  "stage": "order",
+                  "label": "文本顺序排序",
+                  "durationMs": 0
+                },
+                {
+                  "stage": "mask_refine",
+                  "label": "细化去字遮罩",
+                  "durationMs": 591
+                },
+                {
+                  "stage": "inpaint",
+                  "label": "去字",
+                  "durationMs": 4328
+                },
+                {
+                  "stage": "parallel",
+                  "label": "去字",
+                  "durationMs": 4919
+                },
+                {
+                  "stage": "typeset",
+                  "label": "排版原文",
+                  "durationMs": 72
+                },
+                {
+                  "stage": "finalize",
+                  "label": "生成结果图片",
+                  "durationMs": 695
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "postfix-main",
+        "label": "主测试图 2921×4096",
+        "report": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\postfix-main.json",
+        "reference": {
+          "report": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\qa-baseline.json",
+          "runCount": 1,
+          "png": {
+            "path": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\qa-baseline-0.png",
+            "pngBytes": 6535387,
+            "pngSha256": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+            "rgbaSha256": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb",
+            "rgbaBytes": 47857664,
+            "width": 2921,
+            "height": 4096,
+            "channels": 4
+          },
+          "normalizedRecordSha256": "032da76f46102c1f5548499b9dc88e95843f91208799ce112ae3dd5b18c84e6f",
+          "note": "Existing same-browser quality reference; transport and timings are excluded from image/record comparisons."
+        },
+        "browserVersion": "157.0",
+        "profile": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\profiles\\postfix-main",
+        "fixture": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+        "sourceProvenance": {
+          "dist": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\quality-firefox-fixed-1791385581466",
+          "allProductionJavaScriptBodiesExactSuffix": true,
+          "files": [
+            {
+              "name": "assets/pngEncodeWorker-UMjFTydz.js",
+              "exists": true,
+              "productionBytes": 913,
+              "copiedBytes": 913,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "background-firefox.js",
+              "exists": true,
+              "productionBytes": 6857,
+              "copiedBytes": 7159,
+              "prefixProbeBytes": 302,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": false
+            },
+            {
+              "name": "chunks/browserPipelinePlatform.js",
+              "exists": true,
+              "productionBytes": 12618,
+              "copiedBytes": 12618,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/contentSession.js",
+              "exists": true,
+              "productionBytes": 13808,
+              "copiedBytes": 13808,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/diagnosticLog.js",
+              "exists": true,
+              "productionBytes": 8391,
+              "copiedBytes": 8391,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/diagnosticLogClient.js",
+              "exists": true,
+              "productionBytes": 3438,
+              "copiedBytes": 3438,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/errorMessage.js",
+              "exists": true,
+              "productionBytes": 2795,
+              "copiedBytes": 2795,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/extensionControlTransport.js",
+              "exists": true,
+              "productionBytes": 13901,
+              "copiedBytes": 13901,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/index.js",
+              "exists": true,
+              "productionBytes": 215293,
+              "copiedBytes": 215293,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/index2.js",
+              "exists": true,
+              "productionBytes": 89515,
+              "copiedBytes": 89515,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/messages.js",
+              "exists": true,
+              "productionBytes": 6953,
+              "copiedBytes": 6953,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/modulepreload-polyfill.js",
+              "exists": true,
+              "productionBytes": 3128,
+              "copiedBytes": 3128,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/onnxWorkerBridge.js",
+              "exists": true,
+              "productionBytes": 8168,
+              "copiedBytes": 8168,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/perfTrace.js",
+              "exists": true,
+              "productionBytes": 2680,
+              "copiedBytes": 2680,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/performanceObserver.js",
+              "exists": true,
+              "productionBytes": 6732,
+              "copiedBytes": 6732,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/pipelineHost.js",
+              "exists": true,
+              "productionBytes": 19462,
+              "copiedBytes": 19462,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/transfer.js",
+              "exists": true,
+              "productionBytes": 20398,
+              "copiedBytes": 20398,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "content.js",
+              "exists": true,
+              "productionBytes": 613126,
+              "copiedBytes": 614149,
+              "prefixProbeBytes": 1023,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": false
+            },
+            {
+              "name": "onnxWorker.js",
+              "exists": true,
+              "productionBytes": 400607,
+              "copiedBytes": 405148,
+              "prefixProbeBytes": 4541,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": false
+            },
+            {
+              "name": "popup.js",
+              "exists": true,
+              "productionBytes": 355801,
+              "copiedBytes": 355801,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            }
+          ]
+        },
+        "initializerOptionOverrideEvents": [],
+        "initializerDiagnosticFlagEnabled": false,
+        "detector": {
+          "inputs": [
+            {
+              "name": "images",
+              "dims": [
+                1,
+                3,
+                1024,
+                1024
+              ],
+              "bytes": 12582912,
+              "sha256": "fa78d057c235e054f52f306b5ad38b1799b39eb4c0d0eee8c878d7eb0255e6bd"
+            },
+            {
+              "name": "images",
+              "dims": [
+                1,
+                3,
+                1024,
+                1024
+              ],
+              "bytes": 12582912,
+              "sha256": "fa78d057c235e054f52f306b5ad38b1799b39eb4c0d0eee8c878d7eb0255e6bd"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "blk",
+              "dims": [
+                1,
+                64512,
+                7
+              ],
+              "bytes": 1806336,
+              "sha256": "92c5cc4034a9f663f39aaf1918d3ba6092729c8bc02c5c0d42f330a4f979c568"
+            },
+            {
+              "name": "seg",
+              "dims": [
+                1,
+                1,
+                1024,
+                1024
+              ],
+              "bytes": 4194304,
+              "sha256": "576541df13ee3b88f03c190f8fe7779bf15137944474d0190eb943ef53721f08"
+            },
+            {
+              "name": "det",
+              "dims": [
+                1,
+                2,
+                1024,
+                1024
+              ],
+              "bytes": 8388608,
+              "sha256": "38892158b5901a7e1f77789af45516a59c11ab2519cf763ddff70b5f1354113a"
+            },
+            {
+              "name": "blk",
+              "dims": [
+                1,
+                64512,
+                7
+              ],
+              "bytes": 1806336,
+              "sha256": "92c5cc4034a9f663f39aaf1918d3ba6092729c8bc02c5c0d42f330a4f979c568"
+            },
+            {
+              "name": "seg",
+              "dims": [
+                1,
+                1,
+                1024,
+                1024
+              ],
+              "bytes": 4194304,
+              "sha256": "576541df13ee3b88f03c190f8fe7779bf15137944474d0190eb943ef53721f08"
+            },
+            {
+              "name": "det",
+              "dims": [
+                1,
+                2,
+                1024,
+                1024
+              ],
+              "bytes": 8388608,
+              "sha256": "38892158b5901a7e1f77789af45516a59c11ab2519cf763ddff70b5f1354113a"
+            }
+          ],
+          "ranges": [
+            {
+              "name": "blk",
+              "bytes": 1806336
+            },
+            {
+              "name": "seg",
+              "bytes": 4194304
+            },
+            {
+              "name": "det",
+              "bytes": 8388608
+            },
+            {
+              "name": "blk",
+              "bytes": 1806336
+            },
+            {
+              "name": "seg",
+              "bytes": 4194304
+            },
+            {
+              "name": "det",
+              "bytes": 8388608
+            }
+          ]
+        },
+        "checks": {
+          "expectedNativeVersion": true,
+          "expectedRunCount": true,
+          "sourceJavaScriptUnchangedByQuality": true,
+          "initializerDiagnosticOverrideDisabled": true,
+          "noSessionOptionOverrides": true,
+          "completedAll": true,
+          "allFourExpectedProviders": true,
+          "allResultsChunked": true,
+          "detectorInputExact": true,
+          "allThreeDetectorOutputsExact": true,
+          "normalizedOcrExact": false,
+          "ocrTextCoordinatesAndOrderExact": true,
+          "normalizedOrderedRecordsExact": true,
+          "normalizedRecordExact": false,
+          "fullRecordSameOrDocumentedDifferentOcrInputShape": true,
+          "pngBytesExact": true,
+          "offlineRgbaExact": true,
+          "reportedPngHashesCorrect": true,
+          "reportedRgbaHashesCorrect": true,
+          "maskRefinementCompletedAll": true
+        },
+        "runs": [
+          {
+            "index": 0,
+            "completed": true,
+            "actualProviders": [
+              {
+                "model": "detector",
+                "provider": "webgpu"
+              },
+              {
+                "model": "bubble",
+                "provider": "webgpu"
+              },
+              {
+                "model": "ocr",
+                "provider": "webgpu"
+              },
+              {
+                "model": "inpaint",
+                "provider": "webgpu"
+              }
+            ],
+            "allFourExpectedProviders": true,
+            "transport": {
+              "resultBlobFieldPresent": false,
+              "editableBlobFieldPresent": false,
+              "chunkCount": 3,
+              "readyStructuredClone": false
+            },
+            "resultChunked": true,
+            "ocrCount": 17,
+            "orderedCount": 9,
+            "normalizedRecordSha256": "032da76f46102c1f5548499b9dc88e95843f91208799ce112ae3dd5b18c84e6f",
+            "normalizedOcrSha256": "d9a5da42b558f3b6540509730e5326d4a9bf26a8e27ceb33d854c9da3cfddca5",
+            "normalizedOrderedSha256": "52cb972dc43eb2bc735439891315d40ad053a9196a033edd0b5e0ba8121f1f87",
+            "normalizedRecordEqualToReference": true,
+            "normalizedOcrEqualToReference": true,
+            "ocrTextCoordinatesAndOrderEqualToReference": true,
+            "normalizedOrderedEqualToReference": true,
+            "recordDifferences": [],
+            "documentedCrossTemperatureConfidenceDifference": false,
+            "firstOcrInputShapeComparison": {
+              "reference": {
+                "coldFirstSerial": true,
+                "box": {
+                  "x": 2574,
+                  "y": 417,
+                  "width": 66,
+                  "height": 322
+                },
+                "text": "いろはっ!",
+                "confidence": 0.9715989500793399,
+                "preparedDims": [
+                  1,
+                  3,
+                  48,
+                  234
+                ],
+                "resizedWidth": 234,
+                "actualInferenceDims": [
+                  1,
+                  3,
+                  48,
+                  234
+                ],
+                "inferenceBatchSize": 1
+              },
+              "current": {
+                "coldFirstSerial": true,
+                "box": {
+                  "x": 2574,
+                  "y": 417,
+                  "width": 66,
+                  "height": 322
+                },
+                "text": "いろはっ!",
+                "confidence": 0.9715989500793399,
+                "preparedDims": [
+                  1,
+                  3,
+                  48,
+                  234
+                ],
+                "resizedWidth": 234,
+                "actualInferenceDims": [
+                  1,
+                  3,
+                  48,
+                  234
+                ],
+                "inferenceBatchSize": 1
+              },
+              "samePreparedCropShape": true,
+              "actualInferenceShapeEqual": true,
+              "limitation": "OCR input tensors were not SHA-hashed. Equal crop/prepared metadata is not a claim of identical actual model inputs; this first crop uses cold serial width 234 versus warm batched padded width 256."
+            },
+            "finalImage": {
+              "path": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\postfix-main-0.png",
+              "pngBytes": 6535387,
+              "pngSha256": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+              "rgbaSha256": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb",
+              "rgbaBytes": 47857664,
+              "width": 2921,
+              "height": 4096,
+              "channels": 4
+            },
+            "pngByteExactToReference": true,
+            "pngChangedBytes": 0,
+            "rgbaByteExactToReference": true,
+            "rgbaChangedBytes": 0,
+            "reportedPngHashMatchesSaved": true,
+            "reportedRgbaHashMatchesOffline": true,
+            "maskRefinement": {
+              "completed": true,
+              "durationMs": 174,
+              "mark": {
+                "phase": "mask.refinement",
+                "startedAt": 33457,
+                "durationMs": 174,
+                "width": 2921,
+                "height": 4096,
+                "scaledWidth": 1947,
+                "scaledHeight": 2731,
+                "scaleFactor": 0.6666666666666667,
+                "regionCount": 9,
+                "componentCount": 150,
+                "processedRegionCount": 9,
+                "collectDebugLayers": false,
+                "histogram": false,
+                "pixelFastPath": true,
+                "timings": {
+                  "readBinaryMs": 28,
+                  "readGrayMs": 35,
+                  "prepareCcMs": 2,
+                  "ccMs": 15,
+                  "assignmentMs": 0,
+                  "regionsMs": 16,
+                  "refineMs": 3,
+                  "outlineMs": 6,
+                  "localDilateMs": 4,
+                  "finalDilateMs": 9,
+                  "toMaskCanvasMs": 69
+                }
+              }
+            },
+            "qualityTimingNotPerformance": {
+              "displayMs": 36116,
+              "stageTimings": [
+                {
+                  "stage": "load",
+                  "label": "加载图片",
+                  "durationMs": 90
+                },
+                {
+                  "stage": "preload",
+                  "label": "加载检测模型",
+                  "durationMs": 156
+                },
+                {
+                  "stage": "detect",
+                  "label": "文本检测",
+                  "durationMs": 8568
+                },
+                {
+                  "stage": "bubble",
+                  "label": "气泡检测",
+                  "durationMs": 7099
+                },
+                {
+                  "stage": "ocr",
+                  "label": "OCR 日文识别",
+                  "durationMs": 14832
+                },
+                {
+                  "stage": "preload_inpaint",
+                  "label": "加载去字模型",
+                  "durationMs": 0
+                },
+                {
+                  "stage": "merge",
+                  "label": "合并文本行",
+                  "durationMs": 3
+                },
+                {
+                  "stage": "ocr_postfilter",
+                  "label": "过滤 OCR 误识别",
+                  "durationMs": 0
+                },
+                {
+                  "stage": "order",
+                  "label": "文本顺序排序",
+                  "durationMs": 0
+                },
+                {
+                  "stage": "mask_refine",
+                  "label": "细化去字遮罩",
+                  "durationMs": 174
+                },
+                {
+                  "stage": "inpaint",
+                  "label": "去字",
+                  "durationMs": 4060
+                },
+                {
+                  "stage": "parallel",
+                  "label": "去字",
+                  "durationMs": 4234
+                },
+                {
+                  "stage": "typeset",
+                  "label": "排版原文",
+                  "durationMs": 31
+                },
+                {
+                  "stage": "finalize",
+                  "label": "生成结果图片",
+                  "durationMs": 220
+                }
+              ]
+            }
+          },
+          {
+            "index": 1,
+            "completed": true,
+            "actualProviders": [
+              {
+                "model": "detector",
+                "provider": "webgpu"
+              },
+              {
+                "model": "bubble",
+                "provider": "webgpu"
+              },
+              {
+                "model": "ocr",
+                "provider": "webgpu"
+              },
+              {
+                "model": "inpaint",
+                "provider": "webgpu"
+              }
+            ],
+            "allFourExpectedProviders": true,
+            "transport": {
+              "resultBlobFieldPresent": false,
+              "editableBlobFieldPresent": false,
+              "chunkCount": 3,
+              "readyStructuredClone": false
+            },
+            "resultChunked": true,
+            "ocrCount": 17,
+            "orderedCount": 9,
+            "normalizedRecordSha256": "8edb3d5dbd32c79a1da6f0a43c9b6db6d274cfc39fc1149b1f97da150699cb57",
+            "normalizedOcrSha256": "25241415e3465f7703eb0e8b8cb8b1f096e856bb29e4ac1a88292fb5f1a045cc",
+            "normalizedOrderedSha256": "52cb972dc43eb2bc735439891315d40ad053a9196a033edd0b5e0ba8121f1f87",
+            "normalizedRecordEqualToReference": false,
+            "normalizedOcrEqualToReference": false,
+            "ocrTextCoordinatesAndOrderEqualToReference": true,
+            "normalizedOrderedEqualToReference": true,
+            "recordDifferences": [
+              {
+                "path": "$.ocr.0.confidence",
+                "a": 0.9715989500793399,
+                "b": 0.9039181892717819
+              }
+            ],
+            "documentedCrossTemperatureConfidenceDifference": true,
+            "firstOcrInputShapeComparison": {
+              "reference": {
+                "coldFirstSerial": true,
+                "box": {
+                  "x": 2574,
+                  "y": 417,
+                  "width": 66,
+                  "height": 322
+                },
+                "text": "いろはっ!",
+                "confidence": 0.9715989500793399,
+                "preparedDims": [
+                  1,
+                  3,
+                  48,
+                  234
+                ],
+                "resizedWidth": 234,
+                "actualInferenceDims": [
+                  1,
+                  3,
+                  48,
+                  234
+                ],
+                "inferenceBatchSize": 1
+              },
+              "current": {
+                "coldFirstSerial": false,
+                "box": {
+                  "x": 2574,
+                  "y": 417,
+                  "width": 66,
+                  "height": 322
+                },
+                "text": "いろはっ!",
+                "confidence": 0.9039181892717819,
+                "preparedDims": [
+                  1,
+                  3,
+                  48,
+                  234
+                ],
+                "resizedWidth": 234,
+                "actualInferenceDims": [
+                  2,
+                  3,
+                  48,
+                  256
+                ],
+                "inferenceBatchSize": 2
+              },
+              "samePreparedCropShape": true,
+              "actualInferenceShapeEqual": false,
+              "limitation": "OCR input tensors were not SHA-hashed. Equal crop/prepared metadata is not a claim of identical actual model inputs; this first crop uses cold serial width 234 versus warm batched padded width 256."
+            },
+            "finalImage": {
+              "path": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\postfix-main-1.png",
+              "pngBytes": 6535387,
+              "pngSha256": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+              "rgbaSha256": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb",
+              "rgbaBytes": 47857664,
+              "width": 2921,
+              "height": 4096,
+              "channels": 4
+            },
+            "pngByteExactToReference": true,
+            "pngChangedBytes": 0,
+            "rgbaByteExactToReference": true,
+            "rgbaChangedBytes": 0,
+            "reportedPngHashMatchesSaved": true,
+            "reportedRgbaHashMatchesOffline": true,
+            "maskRefinement": {
+              "completed": true,
+              "durationMs": 178,
+              "mark": {
+                "phase": "mask.refinement",
+                "startedAt": 42909,
+                "durationMs": 178,
+                "width": 2921,
+                "height": 4096,
+                "scaledWidth": 1947,
+                "scaledHeight": 2731,
+                "scaleFactor": 0.6666666666666667,
+                "regionCount": 9,
+                "componentCount": 150,
+                "processedRegionCount": 9,
+                "collectDebugLayers": false,
+                "histogram": false,
+                "pixelFastPath": true,
+                "timings": {
+                  "readBinaryMs": 42,
+                  "readGrayMs": 36,
+                  "prepareCcMs": 1,
+                  "ccMs": 14,
+                  "assignmentMs": 0,
+                  "regionsMs": 12,
+                  "refineMs": 2,
+                  "outlineMs": 3,
+                  "localDilateMs": 6,
+                  "finalDilateMs": 9,
+                  "toMaskCanvasMs": 64
+                }
+              }
+            },
+            "qualityTimingNotPerformance": {
+              "displayMs": 3790,
+              "stageTimings": [
+                {
+                  "stage": "load",
+                  "label": "加载图片",
+                  "durationMs": 79
+                },
+                {
+                  "stage": "preload",
+                  "label": "加载检测模型",
+                  "durationMs": 78
+                },
+                {
+                  "stage": "detect",
+                  "label": "文本检测",
+                  "durationMs": 290
+                },
+                {
+                  "stage": "bubble",
+                  "label": "气泡检测",
+                  "durationMs": 231
+                },
+                {
+                  "stage": "ocr",
+                  "label": "OCR 日文识别",
+                  "durationMs": 1622
+                },
+                {
+                  "stage": "preload_inpaint",
+                  "label": "加载去字模型",
+                  "durationMs": 0
+                },
+                {
+                  "stage": "merge",
+                  "label": "合并文本行",
+                  "durationMs": 1
+                },
+                {
+                  "stage": "ocr_postfilter",
+                  "label": "过滤 OCR 误识别",
+                  "durationMs": 0
+                },
+                {
+                  "stage": "order",
+                  "label": "文本顺序排序",
+                  "durationMs": 0
+                },
+                {
+                  "stage": "mask_refine",
+                  "label": "细化去字遮罩",
+                  "durationMs": 178
+                },
+                {
+                  "stage": "inpaint",
+                  "label": "去字",
+                  "durationMs": 223
+                },
+                {
+                  "stage": "parallel",
+                  "label": "去字",
+                  "durationMs": 403
+                },
+                {
+                  "stage": "typeset",
+                  "label": "排版原文",
+                  "durationMs": 19
+                },
+                {
+                  "stage": "finalize",
+                  "label": "生成结果图片",
+                  "durationMs": 183
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "postfix-translated1",
+        "label": "translated1 1487×2048",
+        "report": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\postfix-translated1.json",
+        "reference": {
+          "report": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\extra-translated1-full.json",
+          "runCount": 1,
+          "png": {
+            "path": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\extra-translated1-full-0.png",
+            "pngBytes": 3323343,
+            "pngSha256": "587714295bf57da204bcac1a6fb86c887495d7a418e381f1622c0d64b7942440",
+            "rgbaSha256": "61c2c9c0f5edfa057466a4f9409a9884bb57aed3c4570b5766f44a05a3278da5",
+            "rgbaBytes": 12181504,
+            "width": 1487,
+            "height": 2048,
+            "channels": 4
+          },
+          "normalizedRecordSha256": "22966b8eaed3f81d5146ad2f31b16c7e863cb194a28d6766a6becb7a406549b0",
+          "note": "Existing same-browser quality reference; transport and timings are excluded from image/record comparisons."
+        },
+        "browserVersion": "157.0",
+        "profile": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\profiles\\postfix-translated1",
+        "fixture": "D:\\code\\ShinobuTranslator\\assets\\readme\\translated1.png",
+        "sourceProvenance": {
+          "dist": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\quality-firefox-fixed-1791386019541",
+          "allProductionJavaScriptBodiesExactSuffix": true,
+          "files": [
+            {
+              "name": "assets/pngEncodeWorker-UMjFTydz.js",
+              "exists": true,
+              "productionBytes": 913,
+              "copiedBytes": 913,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "background-firefox.js",
+              "exists": true,
+              "productionBytes": 6857,
+              "copiedBytes": 7159,
+              "prefixProbeBytes": 302,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": false
+            },
+            {
+              "name": "chunks/browserPipelinePlatform.js",
+              "exists": true,
+              "productionBytes": 12618,
+              "copiedBytes": 12618,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/contentSession.js",
+              "exists": true,
+              "productionBytes": 13808,
+              "copiedBytes": 13808,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/diagnosticLog.js",
+              "exists": true,
+              "productionBytes": 8391,
+              "copiedBytes": 8391,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/diagnosticLogClient.js",
+              "exists": true,
+              "productionBytes": 3438,
+              "copiedBytes": 3438,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/errorMessage.js",
+              "exists": true,
+              "productionBytes": 2795,
+              "copiedBytes": 2795,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/extensionControlTransport.js",
+              "exists": true,
+              "productionBytes": 13901,
+              "copiedBytes": 13901,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/index.js",
+              "exists": true,
+              "productionBytes": 215293,
+              "copiedBytes": 215293,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/index2.js",
+              "exists": true,
+              "productionBytes": 89515,
+              "copiedBytes": 89515,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/messages.js",
+              "exists": true,
+              "productionBytes": 6953,
+              "copiedBytes": 6953,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/modulepreload-polyfill.js",
+              "exists": true,
+              "productionBytes": 3128,
+              "copiedBytes": 3128,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/onnxWorkerBridge.js",
+              "exists": true,
+              "productionBytes": 8168,
+              "copiedBytes": 8168,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/perfTrace.js",
+              "exists": true,
+              "productionBytes": 2680,
+              "copiedBytes": 2680,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/performanceObserver.js",
+              "exists": true,
+              "productionBytes": 6732,
+              "copiedBytes": 6732,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/pipelineHost.js",
+              "exists": true,
+              "productionBytes": 19462,
+              "copiedBytes": 19462,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/transfer.js",
+              "exists": true,
+              "productionBytes": 20398,
+              "copiedBytes": 20398,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "content.js",
+              "exists": true,
+              "productionBytes": 613126,
+              "copiedBytes": 614149,
+              "prefixProbeBytes": 1023,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": false
+            },
+            {
+              "name": "onnxWorker.js",
+              "exists": true,
+              "productionBytes": 400607,
+              "copiedBytes": 405148,
+              "prefixProbeBytes": 4541,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": false
+            },
+            {
+              "name": "popup.js",
+              "exists": true,
+              "productionBytes": 355801,
+              "copiedBytes": 355801,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            }
+          ]
+        },
+        "initializerOptionOverrideEvents": [],
+        "initializerDiagnosticFlagEnabled": false,
+        "detector": {
+          "inputs": [
+            {
+              "name": "images",
+              "dims": [
+                1,
+                3,
+                1024,
+                1024
+              ],
+              "bytes": 12582912,
+              "sha256": "6af1827c80e8870feefb593a1ce15928492d335211bb288ff69451d9a2e83363"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "blk",
+              "dims": [
+                1,
+                64512,
+                7
+              ],
+              "bytes": 1806336,
+              "sha256": "0c3021b265905bb2b804058bf61e042f81719dddd29c8f44a5f342886cdf9dd6"
+            },
+            {
+              "name": "seg",
+              "dims": [
+                1,
+                1,
+                1024,
+                1024
+              ],
+              "bytes": 4194304,
+              "sha256": "006ee302c0e68686f7e57dc54531a018db6a6d64d963e269831e3d4975168b5e"
+            },
+            {
+              "name": "det",
+              "dims": [
+                1,
+                2,
+                1024,
+                1024
+              ],
+              "bytes": 8388608,
+              "sha256": "68c3b2746890e2d5e7233fd4c0c912b1adb0f2877a68c35ff64bdf6e8c01833b"
+            }
+          ],
+          "ranges": [
+            {
+              "name": "blk",
+              "bytes": 1806336
+            },
+            {
+              "name": "seg",
+              "bytes": 4194304
+            },
+            {
+              "name": "det",
+              "bytes": 8388608
+            }
+          ]
+        },
+        "checks": {
+          "expectedNativeVersion": true,
+          "expectedRunCount": true,
+          "sourceJavaScriptUnchangedByQuality": true,
+          "initializerDiagnosticOverrideDisabled": true,
+          "noSessionOptionOverrides": true,
+          "completedAll": true,
+          "allFourExpectedProviders": true,
+          "allResultsChunked": true,
+          "detectorInputExact": true,
+          "allThreeDetectorOutputsExact": true,
+          "normalizedOcrExact": true,
+          "ocrTextCoordinatesAndOrderExact": true,
+          "normalizedOrderedRecordsExact": true,
+          "normalizedRecordExact": true,
+          "fullRecordSameOrDocumentedDifferentOcrInputShape": true,
+          "pngBytesExact": true,
+          "offlineRgbaExact": true,
+          "reportedPngHashesCorrect": true,
+          "reportedRgbaHashesCorrect": true,
+          "maskRefinementCompletedAll": true
+        },
+        "runs": [
+          {
+            "index": 0,
+            "completed": true,
+            "actualProviders": [
+              {
+                "model": "detector",
+                "provider": "webgpu"
+              },
+              {
+                "model": "bubble",
+                "provider": "webgpu"
+              },
+              {
+                "model": "ocr",
+                "provider": "webgpu"
+              },
+              {
+                "model": "inpaint",
+                "provider": "webgpu"
+              }
+            ],
+            "allFourExpectedProviders": true,
+            "transport": {
+              "resultBlobFieldPresent": false,
+              "editableBlobFieldPresent": false,
+              "chunkCount": 2,
+              "readyStructuredClone": false
+            },
+            "resultChunked": true,
+            "ocrCount": 28,
+            "orderedCount": 14,
+            "normalizedRecordSha256": "22966b8eaed3f81d5146ad2f31b16c7e863cb194a28d6766a6becb7a406549b0",
+            "normalizedOcrSha256": "086ba42bf74d85311ed69a022a77d1778533b60330af7ce23ac7b4f022780dd1",
+            "normalizedOrderedSha256": "de587ef508a7f3c6d4d2c6d03ca74381d05ad0c559226e7e86d02f4a5534177e",
+            "normalizedRecordEqualToReference": true,
+            "normalizedOcrEqualToReference": true,
+            "ocrTextCoordinatesAndOrderEqualToReference": true,
+            "normalizedOrderedEqualToReference": true,
+            "recordDifferences": [],
+            "documentedCrossTemperatureConfidenceDifference": false,
+            "firstOcrInputShapeComparison": {
+              "reference": {
+                "coldFirstSerial": true,
+                "box": {
+                  "x": 213,
+                  "y": 0,
+                  "width": 40,
+                  "height": 107
+                },
+                "text": "是啊…",
+                "confidence": 0.994233364280385,
+                "preparedDims": [
+                  1,
+                  3,
+                  48,
+                  128
+                ],
+                "resizedWidth": 128,
+                "actualInferenceDims": [
+                  1,
+                  3,
+                  48,
+                  128
+                ],
+                "inferenceBatchSize": 1
+              },
+              "current": {
+                "coldFirstSerial": true,
+                "box": {
+                  "x": 213,
+                  "y": 0,
+                  "width": 40,
+                  "height": 107
+                },
+                "text": "是啊…",
+                "confidence": 0.994233364280385,
+                "preparedDims": [
+                  1,
+                  3,
+                  48,
+                  128
+                ],
+                "resizedWidth": 128,
+                "actualInferenceDims": [
+                  1,
+                  3,
+                  48,
+                  128
+                ],
+                "inferenceBatchSize": 1
+              },
+              "samePreparedCropShape": true,
+              "actualInferenceShapeEqual": true,
+              "limitation": "OCR input tensors were not SHA-hashed. Equal crop/prepared metadata is not a claim of identical actual model inputs; this first crop uses cold serial width 234 versus warm batched padded width 256."
+            },
+            "finalImage": {
+              "path": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\postfix-translated1-0.png",
+              "pngBytes": 3323343,
+              "pngSha256": "587714295bf57da204bcac1a6fb86c887495d7a418e381f1622c0d64b7942440",
+              "rgbaSha256": "61c2c9c0f5edfa057466a4f9409a9884bb57aed3c4570b5766f44a05a3278da5",
+              "rgbaBytes": 12181504,
+              "width": 1487,
+              "height": 2048,
+              "channels": 4
+            },
+            "pngByteExactToReference": true,
+            "pngChangedBytes": 0,
+            "rgbaByteExactToReference": true,
+            "rgbaChangedBytes": 0,
+            "reportedPngHashMatchesSaved": true,
+            "reportedRgbaHashMatchesOffline": true,
+            "maskRefinement": {
+              "completed": true,
+              "durationMs": 78,
+              "mark": {
+                "phase": "mask.refinement",
+                "startedAt": 28495,
+                "durationMs": 78,
+                "width": 1487,
+                "height": 2048,
+                "scaledWidth": 991,
+                "scaledHeight": 1365,
+                "scaleFactor": 0.6666666666666667,
+                "regionCount": 14,
+                "componentCount": 89,
+                "processedRegionCount": 14,
+                "collectDebugLayers": false,
+                "histogram": false,
+                "pixelFastPath": true,
+                "timings": {
+                  "readBinaryMs": 6,
+                  "readGrayMs": 12,
+                  "prepareCcMs": 0,
+                  "ccMs": 7,
+                  "assignmentMs": 2,
+                  "regionsMs": 22,
+                  "refineMs": 3,
+                  "outlineMs": 10,
+                  "localDilateMs": 6,
+                  "finalDilateMs": 3,
+                  "toMaskCanvasMs": 26
+                }
+              }
+            },
+            "qualityTimingNotPerformance": {
+              "displayMs": 30872,
+              "stageTimings": [
+                {
+                  "stage": "load",
+                  "label": "加载图片",
+                  "durationMs": 28
+                },
+                {
+                  "stage": "preload",
+                  "label": "加载检测模型",
+                  "durationMs": 507
+                },
+                {
+                  "stage": "detect",
+                  "label": "文本检测",
+                  "durationMs": 8317
+                },
+                {
+                  "stage": "bubble",
+                  "label": "气泡检测",
+                  "durationMs": 6944
+                },
+                {
+                  "stage": "ocr",
+                  "label": "OCR 日文识别",
+                  "durationMs": 10659
+                },
+                {
+                  "stage": "preload_inpaint",
+                  "label": "加载去字模型",
+                  "durationMs": 0
+                },
+                {
+                  "stage": "merge",
+                  "label": "合并文本行",
+                  "durationMs": 3
+                },
+                {
+                  "stage": "ocr_postfilter",
+                  "label": "过滤 OCR 误识别",
+                  "durationMs": 1
+                },
+                {
+                  "stage": "order",
+                  "label": "文本顺序排序",
+                  "durationMs": 0
+                },
+                {
+                  "stage": "mask_refine",
+                  "label": "细化去字遮罩",
+                  "durationMs": 78
+                },
+                {
+                  "stage": "inpaint",
+                  "label": "去字",
+                  "durationMs": 3832
+                },
+                {
+                  "stage": "parallel",
+                  "label": "去字",
+                  "durationMs": 3911
+                },
+                {
+                  "stage": "typeset",
+                  "label": "排版原文",
+                  "durationMs": 71
+                },
+                {
+                  "stage": "finalize",
+                  "label": "生成结果图片",
+                  "durationMs": 105
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "postfix-cpu157",
+        "label": "Firefox 157 CPU",
+        "report": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\postfix-cpu157.json",
+        "reference": {
+          "report": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\fallback157-safe-initializers-full.json",
+          "runCount": 1,
+          "png": {
+            "path": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\fallback157-safe-initializers-full-0.png",
+            "pngBytes": 6535511,
+            "pngSha256": "a2474be29638ec83804d8171f342770b76cfadc066f802a2a3e675035117c8de",
+            "rgbaSha256": "6c1753d439bcaa089da80547b284f74bc5d4d98c44f417a340c5d65ffba8829d",
+            "rgbaBytes": 47857664,
+            "width": 2921,
+            "height": 4096,
+            "channels": 4
+          },
+          "normalizedRecordSha256": "e452ff540bef52e6ebe3e0809e1cdaf8b859dc9b4ef5d61e8759b8c5d2858d9f",
+          "note": "The older diagnostic reference temporarily disabled initializer borrowing; the new production run has no diagnostic override."
+        },
+        "browserVersion": "157.0",
+        "profile": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\profiles\\postfix-cpu157",
+        "fixture": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+        "sourceProvenance": {
+          "dist": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\quality-firefox-fixed-1791385748675",
+          "allProductionJavaScriptBodiesExactSuffix": true,
+          "files": [
+            {
+              "name": "assets/pngEncodeWorker-UMjFTydz.js",
+              "exists": true,
+              "productionBytes": 913,
+              "copiedBytes": 913,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "background-firefox.js",
+              "exists": true,
+              "productionBytes": 6857,
+              "copiedBytes": 7159,
+              "prefixProbeBytes": 302,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": false
+            },
+            {
+              "name": "chunks/browserPipelinePlatform.js",
+              "exists": true,
+              "productionBytes": 12618,
+              "copiedBytes": 12618,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/contentSession.js",
+              "exists": true,
+              "productionBytes": 13808,
+              "copiedBytes": 13808,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/diagnosticLog.js",
+              "exists": true,
+              "productionBytes": 8391,
+              "copiedBytes": 8391,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/diagnosticLogClient.js",
+              "exists": true,
+              "productionBytes": 3438,
+              "copiedBytes": 3438,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/errorMessage.js",
+              "exists": true,
+              "productionBytes": 2795,
+              "copiedBytes": 2795,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/extensionControlTransport.js",
+              "exists": true,
+              "productionBytes": 13901,
+              "copiedBytes": 13901,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/index.js",
+              "exists": true,
+              "productionBytes": 215293,
+              "copiedBytes": 215293,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/index2.js",
+              "exists": true,
+              "productionBytes": 89515,
+              "copiedBytes": 89515,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/messages.js",
+              "exists": true,
+              "productionBytes": 6953,
+              "copiedBytes": 6953,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/modulepreload-polyfill.js",
+              "exists": true,
+              "productionBytes": 3128,
+              "copiedBytes": 3128,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/onnxWorkerBridge.js",
+              "exists": true,
+              "productionBytes": 8168,
+              "copiedBytes": 8168,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/perfTrace.js",
+              "exists": true,
+              "productionBytes": 2680,
+              "copiedBytes": 2680,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/performanceObserver.js",
+              "exists": true,
+              "productionBytes": 6732,
+              "copiedBytes": 6732,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/pipelineHost.js",
+              "exists": true,
+              "productionBytes": 19462,
+              "copiedBytes": 19462,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/transfer.js",
+              "exists": true,
+              "productionBytes": 20398,
+              "copiedBytes": 20398,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "content.js",
+              "exists": true,
+              "productionBytes": 613126,
+              "copiedBytes": 614149,
+              "prefixProbeBytes": 1023,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": false
+            },
+            {
+              "name": "onnxWorker.js",
+              "exists": true,
+              "productionBytes": 400607,
+              "copiedBytes": 408992,
+              "prefixProbeBytes": 8385,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": false
+            },
+            {
+              "name": "popup.js",
+              "exists": true,
+              "productionBytes": 355801,
+              "copiedBytes": 355801,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            }
+          ]
+        },
+        "initializerOptionOverrideEvents": [],
+        "initializerDiagnosticFlagEnabled": false,
+        "detector": {
+          "inputs": [
+            {
+              "name": "images",
+              "dims": [
+                1,
+                3,
+                1024,
+                1024
+              ],
+              "bytes": 12582912,
+              "sha256": "c40ad26199071ede820075db4d87a813d399b933ad861ae12368bc90dcc44835"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "blk",
+              "dims": [
+                1,
+                64512,
+                7
+              ],
+              "bytes": 1806336,
+              "sha256": "70ffc3b7e3d0a933a0062def0d67cadac801a3101623415c3e4062a43efff1c1"
+            },
+            {
+              "name": "seg",
+              "dims": [
+                1,
+                1,
+                1024,
+                1024
+              ],
+              "bytes": 4194304,
+              "sha256": "f1d134b5a0b0d8b1903a097d8e1c7c98cea08b81c63968b26cae0d9125baf6c6"
+            },
+            {
+              "name": "det",
+              "dims": [
+                1,
+                2,
+                1024,
+                1024
+              ],
+              "bytes": 8388608,
+              "sha256": "6135fa37c3592e8dea717025e3d5b10784147c4bd8b8ee68faf73184953d2779"
+            }
+          ],
+          "ranges": [
+            {
+              "name": "blk",
+              "bytes": 1806336,
+              "range": {
+                "min": 0,
+                "max": 1020.9794921875,
+                "finite": 451584,
+                "nan": 0,
+                "infinity": 0,
+                "zero": 1081,
+                "above03": 340467,
+                "above05": 321780,
+                "mean": 163.92377573130855
+              }
+            },
+            {
+              "name": "seg",
+              "bytes": 4194304,
+              "range": {
+                "min": 0,
+                "max": 0.9999998807907104,
+                "finite": 1048576,
+                "nan": 0,
+                "infinity": 0,
+                "zero": 20677,
+                "above03": 20217,
+                "above05": 15422,
+                "mean": 0.01776442267021139
+              }
+            },
+            {
+              "name": "det",
+              "bytes": 8388608,
+              "range": {
+                "min": 0,
+                "max": 0.999791145324707,
+                "finite": 2097152,
+                "nan": 0,
+                "infinity": 0,
+                "zero": 5036,
+                "above03": 1055135,
+                "above05": 104236,
+                "mean": 0.2176801706797562
+              }
+            }
+          ]
+        },
+        "checks": {
+          "expectedNativeVersion": true,
+          "expectedRunCount": true,
+          "sourceJavaScriptUnchangedByQuality": true,
+          "initializerDiagnosticOverrideDisabled": true,
+          "noSessionOptionOverrides": true,
+          "completedAll": true,
+          "allFourExpectedProviders": true,
+          "allResultsChunked": true,
+          "detectorInputExact": true,
+          "allThreeDetectorOutputsExact": true,
+          "normalizedOcrExact": true,
+          "ocrTextCoordinatesAndOrderExact": true,
+          "normalizedOrderedRecordsExact": true,
+          "normalizedRecordExact": true,
+          "fullRecordSameOrDocumentedDifferentOcrInputShape": true,
+          "pngBytesExact": true,
+          "offlineRgbaExact": true,
+          "reportedPngHashesCorrect": true,
+          "reportedRgbaHashesCorrect": true,
+          "maskRefinementCompletedAll": true,
+          "detectorOutputsFinite": true
+        },
+        "runs": [
+          {
+            "index": 0,
+            "completed": true,
+            "actualProviders": [
+              {
+                "model": "detector",
+                "provider": "wasm"
+              },
+              {
+                "model": "bubble",
+                "provider": "wasm"
+              },
+              {
+                "model": "ocr",
+                "provider": "wasm"
+              },
+              {
+                "model": "inpaint",
+                "provider": "wasm"
+              }
+            ],
+            "allFourExpectedProviders": true,
+            "transport": {
+              "resultBlobFieldPresent": false,
+              "editableBlobFieldPresent": false,
+              "chunkCount": 3,
+              "readyStructuredClone": false
+            },
+            "resultChunked": true,
+            "ocrCount": 17,
+            "orderedCount": 9,
+            "normalizedRecordSha256": "e452ff540bef52e6ebe3e0809e1cdaf8b859dc9b4ef5d61e8759b8c5d2858d9f",
+            "normalizedOcrSha256": "a109bfa59107d2cb6f4d9ea589e8c1090738932c746290d928285be52f86d250",
+            "normalizedOrderedSha256": "c22093be52da88cb22f2d0e7effdb3178757d08dfa38d5f18f428bbd03133883",
+            "normalizedRecordEqualToReference": true,
+            "normalizedOcrEqualToReference": true,
+            "ocrTextCoordinatesAndOrderEqualToReference": true,
+            "normalizedOrderedEqualToReference": true,
+            "recordDifferences": [],
+            "documentedCrossTemperatureConfidenceDifference": false,
+            "firstOcrInputShapeComparison": {
+              "reference": {
+                "box": {
+                  "x": 2574,
+                  "y": 417,
+                  "width": 66,
+                  "height": 322
+                },
+                "text": "いろはっ!",
+                "confidence": 0.9716151596370698,
+                "preparedDims": [
+                  1,
+                  3,
+                  48,
+                  234
+                ],
+                "resizedWidth": 234,
+                "actualInferenceDims": [
+                  1,
+                  3,
+                  48,
+                  234
+                ],
+                "inferenceBatchSize": 1
+              },
+              "current": {
+                "box": {
+                  "x": 2574,
+                  "y": 417,
+                  "width": 66,
+                  "height": 322
+                },
+                "text": "いろはっ!",
+                "confidence": 0.9716151596370698,
+                "preparedDims": [
+                  1,
+                  3,
+                  48,
+                  234
+                ],
+                "resizedWidth": 234,
+                "actualInferenceDims": [
+                  1,
+                  3,
+                  48,
+                  234
+                ],
+                "inferenceBatchSize": 1
+              },
+              "samePreparedCropShape": true,
+              "actualInferenceShapeEqual": true,
+              "limitation": "OCR input tensors were not SHA-hashed. Equal crop/prepared metadata is not a claim of identical actual model inputs; this first crop uses cold serial width 234 versus warm batched padded width 256."
+            },
+            "finalImage": {
+              "path": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\postfix-cpu157-0.png",
+              "pngBytes": 6535511,
+              "pngSha256": "a2474be29638ec83804d8171f342770b76cfadc066f802a2a3e675035117c8de",
+              "rgbaSha256": "6c1753d439bcaa089da80547b284f74bc5d4d98c44f417a340c5d65ffba8829d",
+              "rgbaBytes": 47857664,
+              "width": 2921,
+              "height": 4096,
+              "channels": 4
+            },
+            "pngByteExactToReference": true,
+            "pngChangedBytes": 0,
+            "rgbaByteExactToReference": true,
+            "rgbaChangedBytes": 0,
+            "reportedPngHashMatchesSaved": true,
+            "reportedRgbaHashMatchesOffline": true,
+            "maskRefinement": {
+              "completed": true,
+              "durationMs": 165,
+              "mark": {
+                "phase": "mask.refinement",
+                "startedAt": 47216,
+                "durationMs": 165,
+                "width": 2921,
+                "height": 4096,
+                "scaledWidth": 1947,
+                "scaledHeight": 2731,
+                "scaleFactor": 0.6666666666666667,
+                "regionCount": 9,
+                "componentCount": 152,
+                "processedRegionCount": 9,
+                "collectDebugLayers": false,
+                "histogram": false,
+                "pixelFastPath": true,
+                "timings": {
+                  "readBinaryMs": 22,
+                  "readGrayMs": 32,
+                  "prepareCcMs": 1,
+                  "ccMs": 13,
+                  "assignmentMs": 2,
+                  "regionsMs": 16,
+                  "refineMs": 1,
+                  "outlineMs": 5,
+                  "localDilateMs": 5,
+                  "finalDilateMs": 8,
+                  "toMaskCanvasMs": 71
+                }
+              }
+            },
+            "qualityTimingNotPerformance": {
+              "displayMs": 50290,
+              "stageTimings": [
+                {
+                  "stage": "load",
+                  "label": "加载图片",
+                  "durationMs": 77
+                },
+                {
+                  "stage": "preload",
+                  "label": "加载检测模型",
+                  "durationMs": 78
+                },
+                {
+                  "stage": "detect",
+                  "label": "文本检测",
+                  "durationMs": 41061
+                },
+                {
+                  "stage": "bubble",
+                  "label": "气泡检测",
+                  "durationMs": 351
+                },
+                {
+                  "stage": "ocr",
+                  "label": "OCR 日文识别",
+                  "durationMs": 2984
+                },
+                {
+                  "stage": "preload_inpaint",
+                  "label": "加载去字模型",
+                  "durationMs": 0
+                },
+                {
+                  "stage": "merge",
+                  "label": "合并文本行",
+                  "durationMs": 2
+                },
+                {
+                  "stage": "ocr_postfilter",
+                  "label": "过滤 OCR 误识别",
+                  "durationMs": 0
+                },
+                {
+                  "stage": "order",
+                  "label": "文本顺序排序",
+                  "durationMs": 1
+                },
+                {
+                  "stage": "mask_refine",
+                  "label": "细化去字遮罩",
+                  "durationMs": 165
+                },
+                {
+                  "stage": "inpaint",
+                  "label": "去字",
+                  "durationMs": 4677
+                },
+                {
+                  "stage": "parallel",
+                  "label": "去字",
+                  "durationMs": 4842
+                },
+                {
+                  "stage": "typeset",
+                  "label": "排版原文",
+                  "durationMs": 29
+                },
+                {
+                  "stage": "finalize",
+                  "label": "生成结果图片",
+                  "durationMs": 189
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "postfix-cpu140",
+        "label": "Firefox 140 CPU",
+        "report": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\postfix-cpu140.json",
+        "reference": {
+          "report": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\fallback140-safe-full-error.json",
+          "runCount": 1,
+          "png": {
+            "path": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\fallback140-safe-full-error-0.png",
+            "pngBytes": 6642542,
+            "pngSha256": "04db6c33f5a04dfbaff5c9343a9ec0248f5b5c50a801a9b095862b8278070f9c",
+            "rgbaSha256": "6c1753d439bcaa089da80547b284f74bc5d4d98c44f417a340c5d65ffba8829d",
+            "rgbaBytes": 47857664,
+            "width": 2921,
+            "height": 4096,
+            "channels": 4
+          },
+          "normalizedRecordSha256": "7b03db81fc855599e3752cdc658aa1b2663ff0d549f302648ec2a0e49f1f879a",
+          "note": "The older diagnostic reference temporarily disabled initializer borrowing; the new production run has no diagnostic override."
+        },
+        "browserVersion": "140.0",
+        "profile": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\profiles\\postfix-cpu140",
+        "fixture": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+        "sourceProvenance": {
+          "dist": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\quality-firefox-fixed-1791385884762",
+          "allProductionJavaScriptBodiesExactSuffix": true,
+          "files": [
+            {
+              "name": "assets/pngEncodeWorker-UMjFTydz.js",
+              "exists": true,
+              "productionBytes": 913,
+              "copiedBytes": 913,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "background-firefox.js",
+              "exists": true,
+              "productionBytes": 6857,
+              "copiedBytes": 7159,
+              "prefixProbeBytes": 302,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": false
+            },
+            {
+              "name": "chunks/browserPipelinePlatform.js",
+              "exists": true,
+              "productionBytes": 12618,
+              "copiedBytes": 12618,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/contentSession.js",
+              "exists": true,
+              "productionBytes": 13808,
+              "copiedBytes": 13808,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/diagnosticLog.js",
+              "exists": true,
+              "productionBytes": 8391,
+              "copiedBytes": 8391,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/diagnosticLogClient.js",
+              "exists": true,
+              "productionBytes": 3438,
+              "copiedBytes": 3438,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/errorMessage.js",
+              "exists": true,
+              "productionBytes": 2795,
+              "copiedBytes": 2795,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/extensionControlTransport.js",
+              "exists": true,
+              "productionBytes": 13901,
+              "copiedBytes": 13901,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/index.js",
+              "exists": true,
+              "productionBytes": 215293,
+              "copiedBytes": 215293,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/index2.js",
+              "exists": true,
+              "productionBytes": 89515,
+              "copiedBytes": 89515,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/messages.js",
+              "exists": true,
+              "productionBytes": 6953,
+              "copiedBytes": 6953,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/modulepreload-polyfill.js",
+              "exists": true,
+              "productionBytes": 3128,
+              "copiedBytes": 3128,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/onnxWorkerBridge.js",
+              "exists": true,
+              "productionBytes": 8168,
+              "copiedBytes": 8168,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/perfTrace.js",
+              "exists": true,
+              "productionBytes": 2680,
+              "copiedBytes": 2680,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/performanceObserver.js",
+              "exists": true,
+              "productionBytes": 6732,
+              "copiedBytes": 6732,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/pipelineHost.js",
+              "exists": true,
+              "productionBytes": 19462,
+              "copiedBytes": 19462,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "chunks/transfer.js",
+              "exists": true,
+              "productionBytes": 20398,
+              "copiedBytes": 20398,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            },
+            {
+              "name": "content.js",
+              "exists": true,
+              "productionBytes": 613126,
+              "copiedBytes": 614149,
+              "prefixProbeBytes": 1023,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": false
+            },
+            {
+              "name": "onnxWorker.js",
+              "exists": true,
+              "productionBytes": 400607,
+              "copiedBytes": 408992,
+              "prefixProbeBytes": 8385,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": false
+            },
+            {
+              "name": "popup.js",
+              "exists": true,
+              "productionBytes": 355801,
+              "copiedBytes": 355801,
+              "prefixProbeBytes": 0,
+              "productionBodyExactSuffix": true,
+              "entirelyUnchanged": true
+            }
+          ]
+        },
+        "initializerOptionOverrideEvents": [],
+        "initializerDiagnosticFlagEnabled": false,
+        "detector": {
+          "inputs": [
+            {
+              "name": "images",
+              "dims": [
+                1,
+                3,
+                1024,
+                1024
+              ],
+              "bytes": 12582912,
+              "sha256": "c40ad26199071ede820075db4d87a813d399b933ad861ae12368bc90dcc44835"
+            }
+          ],
+          "outputs": [
+            {
+              "name": "blk",
+              "dims": [
+                1,
+                64512,
+                7
+              ],
+              "bytes": 1806336,
+              "sha256": "70ffc3b7e3d0a933a0062def0d67cadac801a3101623415c3e4062a43efff1c1"
+            },
+            {
+              "name": "seg",
+              "dims": [
+                1,
+                1,
+                1024,
+                1024
+              ],
+              "bytes": 4194304,
+              "sha256": "f1d134b5a0b0d8b1903a097d8e1c7c98cea08b81c63968b26cae0d9125baf6c6"
+            },
+            {
+              "name": "det",
+              "dims": [
+                1,
+                2,
+                1024,
+                1024
+              ],
+              "bytes": 8388608,
+              "sha256": "6135fa37c3592e8dea717025e3d5b10784147c4bd8b8ee68faf73184953d2779"
+            }
+          ],
+          "ranges": [
+            {
+              "name": "blk",
+              "bytes": 1806336,
+              "range": {
+                "min": 0,
+                "max": 1020.9794921875,
+                "finite": 451584,
+                "nan": 0,
+                "infinity": 0,
+                "zero": 1081,
+                "above03": 340467,
+                "above05": 321780,
+                "mean": 163.92377573130855
+              }
+            },
+            {
+              "name": "seg",
+              "bytes": 4194304,
+              "range": {
+                "min": 0,
+                "max": 0.9999998807907104,
+                "finite": 1048576,
+                "nan": 0,
+                "infinity": 0,
+                "zero": 20677,
+                "above03": 20217,
+                "above05": 15422,
+                "mean": 0.01776442267021139
+              }
+            },
+            {
+              "name": "det",
+              "bytes": 8388608,
+              "range": {
+                "min": 0,
+                "max": 0.999791145324707,
+                "finite": 2097152,
+                "nan": 0,
+                "infinity": 0,
+                "zero": 5036,
+                "above03": 1055135,
+                "above05": 104236,
+                "mean": 0.2176801706797562
+              }
+            }
+          ]
+        },
+        "checks": {
+          "expectedNativeVersion": true,
+          "expectedRunCount": true,
+          "sourceJavaScriptUnchangedByQuality": true,
+          "initializerDiagnosticOverrideDisabled": true,
+          "noSessionOptionOverrides": true,
+          "completedAll": true,
+          "allFourExpectedProviders": true,
+          "allResultsChunked": true,
+          "detectorInputExact": true,
+          "allThreeDetectorOutputsExact": true,
+          "normalizedOcrExact": true,
+          "ocrTextCoordinatesAndOrderExact": true,
+          "normalizedOrderedRecordsExact": true,
+          "normalizedRecordExact": true,
+          "fullRecordSameOrDocumentedDifferentOcrInputShape": true,
+          "pngBytesExact": true,
+          "offlineRgbaExact": true,
+          "reportedPngHashesCorrect": true,
+          "reportedRgbaHashesCorrect": true,
+          "maskRefinementCompletedAll": true,
+          "detectorOutputsFinite": true
+        },
+        "runs": [
+          {
+            "index": 0,
+            "completed": true,
+            "actualProviders": [
+              {
+                "model": "detector",
+                "provider": "wasm"
+              },
+              {
+                "model": "bubble",
+                "provider": "wasm"
+              },
+              {
+                "model": "ocr",
+                "provider": "wasm"
+              },
+              {
+                "model": "inpaint",
+                "provider": "wasm"
+              }
+            ],
+            "allFourExpectedProviders": true,
+            "transport": {
+              "resultBlobFieldPresent": false,
+              "editableBlobFieldPresent": false,
+              "chunkCount": 3,
+              "readyStructuredClone": false
+            },
+            "resultChunked": true,
+            "ocrCount": 17,
+            "orderedCount": 9,
+            "normalizedRecordSha256": "7b03db81fc855599e3752cdc658aa1b2663ff0d549f302648ec2a0e49f1f879a",
+            "normalizedOcrSha256": "9c6c942addd2fc836dc202205b2b68cdb75735232951ba58e3ebf6ca4afc0124",
+            "normalizedOrderedSha256": "c22093be52da88cb22f2d0e7effdb3178757d08dfa38d5f18f428bbd03133883",
+            "normalizedRecordEqualToReference": true,
+            "normalizedOcrEqualToReference": true,
+            "ocrTextCoordinatesAndOrderEqualToReference": true,
+            "normalizedOrderedEqualToReference": true,
+            "recordDifferences": [],
+            "documentedCrossTemperatureConfidenceDifference": false,
+            "firstOcrInputShapeComparison": {
+              "reference": {
+                "box": {
+                  "x": 2574,
+                  "y": 417,
+                  "width": 66,
+                  "height": 322
+                },
+                "text": "いろはっ!",
+                "confidence": 0.9716151596370698,
+                "preparedDims": [
+                  1,
+                  3,
+                  48,
+                  234
+                ],
+                "resizedWidth": 234,
+                "actualInferenceDims": [
+                  1,
+                  3,
+                  48,
+                  234
+                ],
+                "inferenceBatchSize": 1
+              },
+              "current": {
+                "box": {
+                  "x": 2574,
+                  "y": 417,
+                  "width": 66,
+                  "height": 322
+                },
+                "text": "いろはっ!",
+                "confidence": 0.9716151596370698,
+                "preparedDims": [
+                  1,
+                  3,
+                  48,
+                  234
+                ],
+                "resizedWidth": 234,
+                "actualInferenceDims": [
+                  1,
+                  3,
+                  48,
+                  234
+                ],
+                "inferenceBatchSize": 1
+              },
+              "samePreparedCropShape": true,
+              "actualInferenceShapeEqual": true,
+              "limitation": "OCR input tensors were not SHA-hashed. Equal crop/prepared metadata is not a claim of identical actual model inputs; this first crop uses cold serial width 234 versus warm batched padded width 256."
+            },
+            "finalImage": {
+              "path": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\postfix-cpu140-0.png",
+              "pngBytes": 6642542,
+              "pngSha256": "04db6c33f5a04dfbaff5c9343a9ec0248f5b5c50a801a9b095862b8278070f9c",
+              "rgbaSha256": "6c1753d439bcaa089da80547b284f74bc5d4d98c44f417a340c5d65ffba8829d",
+              "rgbaBytes": 47857664,
+              "width": 2921,
+              "height": 4096,
+              "channels": 4
+            },
+            "pngByteExactToReference": true,
+            "pngChangedBytes": 0,
+            "rgbaByteExactToReference": true,
+            "rgbaChangedBytes": 0,
+            "reportedPngHashMatchesSaved": true,
+            "reportedRgbaHashMatchesOffline": true,
+            "maskRefinement": {
+              "completed": true,
+              "durationMs": 206,
+              "mark": {
+                "phase": "mask.refinement",
+                "startedAt": 46039,
+                "durationMs": 206,
+                "width": 2921,
+                "height": 4096,
+                "scaledWidth": 1947,
+                "scaledHeight": 2731,
+                "scaleFactor": 0.6666666666666667,
+                "regionCount": 9,
+                "componentCount": 152,
+                "processedRegionCount": 9,
+                "collectDebugLayers": false,
+                "histogram": false,
+                "pixelFastPath": true,
+                "timings": {
+                  "readBinaryMs": 23,
+                  "readGrayMs": 35,
+                  "prepareCcMs": 1,
+                  "ccMs": 19,
+                  "assignmentMs": 1,
+                  "regionsMs": 31,
+                  "refineMs": 15,
+                  "outlineMs": 10,
+                  "localDilateMs": 4,
+                  "finalDilateMs": 14,
+                  "toMaskCanvasMs": 82
+                }
+              }
+            },
+            "qualityTimingNotPerformance": {
+              "displayMs": 50833,
+              "stageTimings": [
+                {
+                  "stage": "load",
+                  "label": "加载图片",
+                  "durationMs": 103
+                },
+                {
+                  "stage": "preload",
+                  "label": "加载检测模型",
+                  "durationMs": 88
+                },
+                {
+                  "stage": "detect",
+                  "label": "文本检测",
+                  "durationMs": 41148
+                },
+                {
+                  "stage": "bubble",
+                  "label": "气泡检测",
+                  "durationMs": 359
+                },
+                {
+                  "stage": "ocr",
+                  "label": "OCR 日文识别",
+                  "durationMs": 3054
+                },
+                {
+                  "stage": "preload_inpaint",
+                  "label": "加载去字模型",
+                  "durationMs": 0
+                },
+                {
+                  "stage": "merge",
+                  "label": "合并文本行",
+                  "durationMs": 2
+                },
+                {
+                  "stage": "ocr_postfilter",
+                  "label": "过滤 OCR 误识别",
+                  "durationMs": 0
+                },
+                {
+                  "stage": "order",
+                  "label": "文本顺序排序",
+                  "durationMs": 0
+                },
+                {
+                  "stage": "mask_refine",
+                  "label": "细化去字遮罩",
+                  "durationMs": 206
+                },
+                {
+                  "stage": "inpaint",
+                  "label": "去字",
+                  "durationMs": 4845
+                },
+                {
+                  "stage": "parallel",
+                  "label": "去字",
+                  "durationMs": 5052
+                },
+                {
+                  "stage": "typeset",
+                  "label": "排版原文",
+                  "durationMs": 115
+                },
+                {
+                  "stage": "finalize",
+                  "label": "生成结果图片",
+                  "durationMs": 287
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "checks": {
+      "firefoxPresetIs22AndExcludesFive": true,
+      "productionMainEntryOwnPresetPrefixes": true,
+      "allStrictFullOcrRecordComparisonsExact": false,
+      "allQualifiedQualityChecksPassed": true,
+      "allPerformanceIntegrityChecksPassed": true
+    },
+    "performance": {
+      "report": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\postfix-performance.json",
+      "browserVersion": "157.0",
+      "fixture": "D:\\code\\ShinobuTranslator\\benchmark\\color\\fixtures\\typeset-debug-log-2026-05-23T06-03-39-877Z.png",
+      "profile": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\profiles\\postfix-performance",
+      "sourceProvenance": {
+        "dist": "D:\\code\\ShinobuTranslator\\.tmp\\firefox-optimization\\postfix-performance-dist",
+        "allProductionJavaScriptBodiesExactSuffix": true,
+        "files": [
+          {
+            "name": "assets/pngEncodeWorker-UMjFTydz.js",
+            "exists": true,
+            "productionBytes": 913,
+            "copiedBytes": 913,
+            "prefixProbeBytes": 0,
+            "productionBodyExactSuffix": true,
+            "entirelyUnchanged": true
+          },
+          {
+            "name": "background-firefox.js",
+            "exists": true,
+            "productionBytes": 6857,
+            "copiedBytes": 6857,
+            "prefixProbeBytes": 0,
+            "productionBodyExactSuffix": true,
+            "entirelyUnchanged": true
+          },
+          {
+            "name": "chunks/browserPipelinePlatform.js",
+            "exists": true,
+            "productionBytes": 12618,
+            "copiedBytes": 12618,
+            "prefixProbeBytes": 0,
+            "productionBodyExactSuffix": true,
+            "entirelyUnchanged": true
+          },
+          {
+            "name": "chunks/contentSession.js",
+            "exists": true,
+            "productionBytes": 13808,
+            "copiedBytes": 13808,
+            "prefixProbeBytes": 0,
+            "productionBodyExactSuffix": true,
+            "entirelyUnchanged": true
+          },
+          {
+            "name": "chunks/diagnosticLog.js",
+            "exists": true,
+            "productionBytes": 8391,
+            "copiedBytes": 8391,
+            "prefixProbeBytes": 0,
+            "productionBodyExactSuffix": true,
+            "entirelyUnchanged": true
+          },
+          {
+            "name": "chunks/diagnosticLogClient.js",
+            "exists": true,
+            "productionBytes": 3438,
+            "copiedBytes": 3438,
+            "prefixProbeBytes": 0,
+            "productionBodyExactSuffix": true,
+            "entirelyUnchanged": true
+          },
+          {
+            "name": "chunks/errorMessage.js",
+            "exists": true,
+            "productionBytes": 2795,
+            "copiedBytes": 2795,
+            "prefixProbeBytes": 0,
+            "productionBodyExactSuffix": true,
+            "entirelyUnchanged": true
+          },
+          {
+            "name": "chunks/extensionControlTransport.js",
+            "exists": true,
+            "productionBytes": 13901,
+            "copiedBytes": 13901,
+            "prefixProbeBytes": 0,
+            "productionBodyExactSuffix": true,
+            "entirelyUnchanged": true
+          },
+          {
+            "name": "chunks/index.js",
+            "exists": true,
+            "productionBytes": 215293,
+            "copiedBytes": 215293,
+            "prefixProbeBytes": 0,
+            "productionBodyExactSuffix": true,
+            "entirelyUnchanged": true
+          },
+          {
+            "name": "chunks/index2.js",
+            "exists": true,
+            "productionBytes": 89515,
+            "copiedBytes": 89515,
+            "prefixProbeBytes": 0,
+            "productionBodyExactSuffix": true,
+            "entirelyUnchanged": true
+          },
+          {
+            "name": "chunks/messages.js",
+            "exists": true,
+            "productionBytes": 6953,
+            "copiedBytes": 6953,
+            "prefixProbeBytes": 0,
+            "productionBodyExactSuffix": true,
+            "entirelyUnchanged": true
+          },
+          {
+            "name": "chunks/modulepreload-polyfill.js",
+            "exists": true,
+            "productionBytes": 3128,
+            "copiedBytes": 3128,
+            "prefixProbeBytes": 0,
+            "productionBodyExactSuffix": true,
+            "entirelyUnchanged": true
+          },
+          {
+            "name": "chunks/onnxWorkerBridge.js",
+            "exists": true,
+            "productionBytes": 8168,
+            "copiedBytes": 8168,
+            "prefixProbeBytes": 0,
+            "productionBodyExactSuffix": true,
+            "entirelyUnchanged": true
+          },
+          {
+            "name": "chunks/perfTrace.js",
+            "exists": true,
+            "productionBytes": 2680,
+            "copiedBytes": 2680,
+            "prefixProbeBytes": 0,
+            "productionBodyExactSuffix": true,
+            "entirelyUnchanged": true
+          },
+          {
+            "name": "chunks/performanceObserver.js",
+            "exists": true,
+            "productionBytes": 6732,
+            "copiedBytes": 6732,
+            "prefixProbeBytes": 0,
+            "productionBodyExactSuffix": true,
+            "entirelyUnchanged": true
+          },
+          {
+            "name": "chunks/pipelineHost.js",
+            "exists": true,
+            "productionBytes": 19462,
+            "copiedBytes": 19462,
+            "prefixProbeBytes": 0,
+            "productionBodyExactSuffix": true,
+            "entirelyUnchanged": true
+          },
+          {
+            "name": "chunks/transfer.js",
+            "exists": true,
+            "productionBytes": 20398,
+            "copiedBytes": 20398,
+            "prefixProbeBytes": 0,
+            "productionBodyExactSuffix": true,
+            "entirelyUnchanged": true
+          },
+          {
+            "name": "content.js",
+            "exists": true,
+            "productionBytes": 613126,
+            "copiedBytes": 614149,
+            "prefixProbeBytes": 1023,
+            "productionBodyExactSuffix": true,
+            "entirelyUnchanged": false
+          },
+          {
+            "name": "onnxWorker.js",
+            "exists": true,
+            "productionBytes": 400607,
+            "copiedBytes": 400607,
+            "prefixProbeBytes": 0,
+            "productionBodyExactSuffix": true,
+            "entirelyUnchanged": true
+          },
+          {
+            "name": "popup.js",
+            "exists": true,
+            "productionBytes": 355801,
+            "copiedBytes": 355801,
+            "prefixProbeBytes": 0,
+            "productionBodyExactSuffix": true,
+            "entirelyUnchanged": true
+          }
+        ]
+      },
+      "initialShaderCache": {
+        "keys": []
+      },
+      "checks": {
+        "nativeFirefox157": true,
+        "exactlyOneColdOneWarm": true,
+        "productionJavaScriptBodiesUnchanged": true,
+        "workerExactProductionBytesNoVerificationPrefix": true,
+        "noWorkerProbeRecords": true,
+        "noBackgroundQualityProbe": true,
+        "completedBoth": true,
+        "bothResultsChunked": true,
+        "allFourModelsWebGpu": true,
+        "reportedImageHashesMatchQualityReference": true
+      },
+      "runs": [
+        {
+          "index": 0,
+          "kind": "cold-first-pipeline",
+          "completed": true,
+          "displayMs": 38565,
+          "stageTimings": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 83
+            },
+            {
+              "stage": "preload",
+              "label": "加载检测模型",
+              "durationMs": 74
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 8351
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 6936
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 13432
+            },
+            {
+              "stage": "preload_inpaint",
+              "label": "加载去字模型",
+              "durationMs": 0
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 3
+            },
+            {
+              "stage": "ocr_postfilter",
+              "label": "过滤 OCR 误识别",
+              "durationMs": 0
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 0
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 158
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 3926
+            },
+            {
+              "stage": "parallel",
+              "label": "去字",
+              "durationMs": 4084
+            },
+            {
+              "stage": "typeset",
+              "label": "排版原文",
+              "durationMs": 27
+            },
+            {
+              "stage": "finalize",
+              "label": "生成结果图片",
+              "durationMs": 178
+            }
+          ],
+          "actualProviders": [
+            {
+              "model": "detector",
+              "provider": "webgpu"
+            },
+            {
+              "model": "bubble",
+              "provider": "webgpu"
+            },
+            {
+              "model": "ocr",
+              "provider": "webgpu"
+            },
+            {
+              "model": "inpaint",
+              "provider": "webgpu"
+            }
+          ],
+          "resultBlobFieldPresent": false,
+          "chunkCount": 3,
+          "resultChunked": true,
+          "pngSha256": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+          "reportedRgbaSha256": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb",
+          "reportedPngAndRgbaMatchMainReference": true
+        },
+        {
+          "index": 1,
+          "kind": "warm-same-profile",
+          "completed": true,
+          "displayMs": 2427,
+          "stageTimings": [
+            {
+              "stage": "load",
+              "label": "加载图片",
+              "durationMs": 77
+            },
+            {
+              "stage": "preload",
+              "label": "加载检测模型",
+              "durationMs": 81
+            },
+            {
+              "stage": "detect",
+              "label": "文本检测",
+              "durationMs": 301
+            },
+            {
+              "stage": "bubble",
+              "label": "气泡检测",
+              "durationMs": 140
+            },
+            {
+              "stage": "ocr",
+              "label": "OCR 日文识别",
+              "durationMs": 807
+            },
+            {
+              "stage": "preload_inpaint",
+              "label": "加载去字模型",
+              "durationMs": 0
+            },
+            {
+              "stage": "merge",
+              "label": "合并文本行",
+              "durationMs": 1
+            },
+            {
+              "stage": "ocr_postfilter",
+              "label": "过滤 OCR 误识别",
+              "durationMs": 0
+            },
+            {
+              "stage": "order",
+              "label": "文本顺序排序",
+              "durationMs": 0
+            },
+            {
+              "stage": "mask_refine",
+              "label": "细化去字遮罩",
+              "durationMs": 158
+            },
+            {
+              "stage": "inpaint",
+              "label": "去字",
+              "durationMs": 266
+            },
+            {
+              "stage": "parallel",
+              "label": "去字",
+              "durationMs": 424
+            },
+            {
+              "stage": "typeset",
+              "label": "排版原文",
+              "durationMs": 15
+            },
+            {
+              "stage": "finalize",
+              "label": "生成结果图片",
+              "durationMs": 184
+            }
+          ],
+          "actualProviders": [
+            {
+              "model": "detector",
+              "provider": "webgpu"
+            },
+            {
+              "model": "bubble",
+              "provider": "webgpu"
+            },
+            {
+              "model": "ocr",
+              "provider": "webgpu"
+            },
+            {
+              "model": "inpaint",
+              "provider": "webgpu"
+            }
+          ],
+          "resultBlobFieldPresent": false,
+          "chunkCount": 3,
+          "resultChunked": true,
+          "pngSha256": "2cd34e7459b9079937bf886cc0e5d2b70e189a9d7c72861b3b2883d4dc02d239",
+          "reportedRgbaSha256": "44f04d1ecaf425de0cddea7f329f6f9a13c0bd2df6ea9c061a645ccad888c0eb",
+          "reportedPngAndRgbaMatchMainReference": true
+        }
+      ],
+      "interpretation": "Two observations only: one first pipeline and one subsequent pipeline in the same fresh owned profile. No quality readback/verification Worker probes. Basic UI message/state capture is retained. Excluded from the old 28-run matrix and unsuitable for claims of statistically established improvement."
+    },
+    "observedDifference": {
+      "report": "postfix-main.json",
+      "runIndex": 1,
+      "field": "record.ocr[0].confidence",
+      "referenceValue": 0.9715989500793399,
+      "currentValue": 0.9039181892717819,
+      "affectedRegion": {
+        "text": "いろはっ!",
+        "box": {
+          "x": 2574,
+          "y": 417,
+          "width": 66,
+          "height": 322
+        },
+        "order": 0,
+        "direction": "v"
+      },
+      "evidence": "qa-baseline has one cold run. Its first crop and the postfix cold crop run alone at [1,3,48,234]. The same prepared crop in postfix warm runs with a second region at [2,3,48,256]. coldFirstSerial changes true to false. A confidence exactness assertion across these different actual OCR input shapes is not a valid same-input comparison; the observed difference is retained rather than normalized away.",
+      "downstreamReadOnlyAudit": "Paddle accepts confidence >=0.2; both values are accepted. mapResultsToRegions stores it as region.prob. Textline merge uses probability only to aggregate weighted geometric probability, not to decide which lines merge. OCR postfilter can use aggregated probability; both main runs report no-candidates (candidateCount=0, filteredCount=0). Full ordered records and final pixels remain exact for this sample.",
+      "source": {
+        "confidenceThreshold": "packages/image-pipeline/src/pipeline/ocr/paddleocrProvider.ts:29",
+        "coldFirstSerial": "packages/image-pipeline/src/pipeline/ocr/paddleocrProvider.ts:654",
+        "recordField": "packages/image-pipeline/src/index.ts:1055",
+        "mergeProbability": "packages/image-pipeline/src/pipeline/textlineMerge/index.ts:173",
+        "postfilterProbability": "packages/image-pipeline/src/pipeline/ocrPostFilter/index.ts:337"
+      }
+    },
+    "limits": [
+      "GPU tests are local original-text typesetting, not remote translation correctness tests. CPU tests cover one main fixture per browser version.",
+      "Quality verification prefixes add hashing/readback overhead; quality timings cannot establish production performance.",
+      "Intermediate refined-mask pixels and inpaint tensors were not individually hashed; saved final PNG and offline decoded RGBA equality establish final raster equality for these fixtures.",
+      "Same-browser/version references are used for raster comparisons. CPU Firefox 140 and 157 PNGs are not required to be byte-identical to each other.",
+      "A source-byte provenance check plus absence of initializer override events establishes that new CPU results came from the formal initializer fix rather than the previous temporary diagnostic mutation.",
+      "The performance run measures one cold and one warm pipeline only and is kept separate from prior benchmark matrices.",
+      "The warm main GPU OCR confidence differs for one region because the recorded actual OCR batch/input width differs from the cold-only reference. OCR texts, coordinates and order are exact, but the complete OCR records cannot be called identical across those two different input shapes."
+    ],
+    "requiredAssertions": {
+      "firefoxPresetIs22AndExcludesFive": true,
+      "productionMainEntryOwnPresetPrefixes": true,
+      "allQualifiedQualityChecksPassed": true,
+      "allPerformanceIntegrityChecksPassed": true
+    },
+    "repositoryValidation": {
+      "tests": {
+        "passed": true,
+        "files": 175,
+        "tests": 1481,
+        "command": "npm test"
+      },
+      "allWorkspaceTestAndBenchmarkTypeChecksPassed": true,
+      "bothBrowserBuildsPassed": true,
+      "reproducibleBothBrowserBuildsPassed": true,
+      "sharedArtifactParity": {
+        "passed": true,
+        "files": 39,
+        "includesWorkerBody": true
+      },
+      "architectureChecksPassed": true,
+      "amoMetadataPassed": true,
+      "firefoxLint": {
+        "passed": true,
+        "errors": 0,
+        "auditedWarnings": 6,
+        "presetMigrationAddedWarningExemptions": false,
+        "preservesPriorCiWarningAudit": true
+      },
+      "detectorBasicOptimizationStandalonePassed": true
+    },
+    "productionOutputs": [
+      "D:\\code\\ShinobuTranslator\\apps\\extension\\dist-firefox",
+      "D:\\code\\ShinobuTranslator\\apps\\extension\\dist-chromium"
+    ],
+    "copiedToDownloads": false
+  }
+}

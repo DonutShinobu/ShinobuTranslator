@@ -67,7 +67,6 @@ export type ModelRegistryOptions = {
 
 const BROWSER_DETECTOR_SESSION_OPTIONS: Readonly<OnnxSessionOptions> = {
   graphOptimizationLevel: 'extended',
-  useOrtModelBytesForInitializers: true,
 };
 
 /** Creates an isolated manifest/session cache for one ModelRuntime instance. */

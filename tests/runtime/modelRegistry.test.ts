@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createModelRegistry } from '../../packages/model-runtime/src/runtime/modelRegistry';
 
 const createSession = vi.fn();
@@ -10,7 +10,10 @@ describe('ModelRuntime instance session cache', () => {
     createSession.mockReset();
     disposeAll.mockClear();
     disposeSession.mockClear();
+    vi.stubGlobal('__shinobuColdStartDetectorBasicOptimization', false);
   });
+
+  afterEach(() => vi.unstubAllGlobals());
 
   it('deduplicates concurrent creation, records provider fallback, and reuses the cache', async () => {
     const runtimeEvents: Array<Record<string, unknown>> = [];
@@ -112,10 +115,14 @@ describe('ModelRuntime instance session cache', () => {
     expect(createSession).toHaveBeenCalledTimes(2);
   });
 
-  it('uses the verified cold-start Session defaults only for the browser detector', async () => {
+  it.each([
+    { providers: ['webgpu', 'wasm'] as const },
+    { providers: ['webnn', 'wasm'] as const },
+    { providers: ['wasm'] as const },
+  ])('keeps browser detector graph defaults without borrowing model bytes for $providers', async ({ providers }) => {
     createSession.mockImplementation(async (model: string) => ({
       sessionId: `${model}-session`,
-      provider: 'webgpu' as const,
+      provider: 'wasm' as const,
       inputNames: ['input'],
       outputNames: ['output'],
     }));
@@ -130,14 +137,14 @@ describe('ModelRuntime instance session cache', () => {
             url: '/models/detector.ort',
             format: 'ort',
             input: [1, 3, 1024, 1024],
-            runtime: ['webgpu', 'wasm'],
+            runtime: [...providers],
           },
           bubble: {
             name: 'bubble',
             task: 'segment',
             url: '/models/bubble.onnx',
             input: [1, 3, 640, 640],
-            runtime: ['webgpu', 'wasm'],
+            runtime: [...providers],
           },
         },
       }),
@@ -150,19 +157,57 @@ describe('ModelRuntime instance session cache', () => {
       1,
       'detector',
       '/models/detector.ort',
-      ['webgpu', 'wasm'],
+      [...providers],
       {
         graphOptimizationLevel: 'extended',
-        useOrtModelBytesForInitializers: true,
       },
     );
     expect(createSession).toHaveBeenNthCalledWith(
       2,
       'bubble',
       '/models/bubble.onnx',
-      ['webgpu', 'wasm'],
+      [...providers],
       undefined,
     );
+  });
+
+  it('keeps the detector basic graph flag scoped to WebGPU and honors explicit options', async () => {
+    vi.stubGlobal('__shinobuColdStartDetectorBasicOptimization', true);
+    createSession.mockResolvedValue({
+      sessionId: 'detector-session',
+      provider: 'wasm',
+      inputNames: ['input'],
+      outputNames: ['output'],
+    });
+    const registry = createModelRegistry({
+      environment: 'browser',
+      backend: { createSession, disposeAll, disposeSession },
+      loadManifest: async () => ({
+        models: {
+          detector: {
+            name: 'detector',
+            task: 'detect',
+            url: '/models/detector.ort',
+            format: 'ort',
+            input: [1, 3, 1024, 1024],
+            runtime: ['webgpu', 'wasm'],
+          },
+        },
+      }),
+    });
+
+    await registry.getSession('detector');
+    await registry.getSession('detector', ['wasm']);
+    await registry.getSession('detector', ['webgpu', 'wasm'], {
+      graphOptimizationLevel: 'all',
+      useOrtModelBytesForInitializers: true,
+    });
+
+    expect(createSession.mock.calls.map((call) => call[3])).toEqual([
+      { graphOptimizationLevel: 'basic' },
+      { graphOptimizationLevel: 'extended' },
+      { graphOptimizationLevel: 'all', useOrtModelBytesForInitializers: true },
+    ]);
   });
 
   it('keeps detector Sessions with different cold-start options in separate cache entries', async () => {

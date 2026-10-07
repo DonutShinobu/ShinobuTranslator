@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
+import { chromiumColdStartBanner, firefoxColdStartBanner } from './cold-start-defaults.mjs';
 
 function readRequiredOption(name) {
   const inline = process.argv.find((argument) => argument.startsWith(`${name}=`));
@@ -95,8 +96,25 @@ function collectFiles(directory) {
   return result;
 }
 
-function hash(path) {
-  return createHash('sha256').update(readFileSync(path)).digest('hex');
+const presets = { Chromium: chromiumColdStartBanner, Firefox: firefoxColdStartBanner };
+const normalizedChromiumFiles = [];
+const normalizedFirefoxFiles = [];
+function hash(path, target, artifact) {
+  let bytes = readFileSync(path);
+  // Independent assets (including PNG Workers) and public runtime files stay byte-identical.
+  if (artifact.endsWith('.js') && (!artifact.includes('/') || artifact.startsWith('chunks/'))) {
+    const label = target === 'chromium' ? 'Chromium' : 'Firefox';
+    const prefix = Buffer.from(`${presets[label]}\n`);
+    if (!bytes.subarray(0, prefix.length).equals(prefix)) {
+      throw new Error(`Missing canonical ${label} preset: ${artifact}`);
+    }
+    bytes = bytes.subarray(prefix.length);
+    for (const [name, preset] of Object.entries(presets)) {
+      if (bytes.includes(preset)) throw new Error(`Duplicate ${name} preset: ${artifact}`);
+    }
+    (target === 'chromium' ? normalizedChromiumFiles : normalizedFirefoxFiles).push(artifact);
+  }
+  return createHash('sha256').update(bytes).digest('hex');
 }
 
 function isAllowedTargetDifference(path) {
@@ -110,14 +128,19 @@ function isAllowedTargetDifference(path) {
 
 const chromiumFiles = collectFiles(chromiumDir);
 const firefoxFiles = collectFiles(firefoxDir);
+if (!chromiumFiles.has('onnxWorker.js') || !firefoxFiles.has('onnxWorker.js')) {
+  throw new Error('Both extension targets require onnxWorker.js');
+}
 const paths = [...new Set([...chromiumFiles.keys(), ...firefoxFiles.keys()])].sort();
 const verified = [];
 const allowedDifferences = [];
 for (const path of paths) {
   const chromiumPath = chromiumFiles.get(path);
   const firefoxPath = firefoxFiles.get(path);
+  const chromiumHash = chromiumPath ? hash(chromiumPath, 'chromium', path) : undefined;
+  const firefoxHash = firefoxPath ? hash(firefoxPath, 'firefox', path) : undefined;
   if (isAllowedTargetDifference(path)) {
-    if (!chromiumPath || !firefoxPath || hash(chromiumPath) !== hash(firefoxPath)) {
+    if (!chromiumPath || !firefoxPath || chromiumHash !== firefoxHash) {
       allowedDifferences.push(path);
     } else {
       verified.push(path);
@@ -127,8 +150,6 @@ for (const path of paths) {
   if (!chromiumPath || !firefoxPath) {
     throw new Error(`Non-adapter artifact exists in only one target: ${path}`);
   }
-  const chromiumHash = hash(chromiumPath);
-  const firefoxHash = hash(firefoxPath);
   if (chromiumHash !== firefoxHash) {
     throw new Error(`Shared artifact SHA-256 mismatch: ${path}`);
   }
@@ -146,6 +167,8 @@ const report = {
   firefoxDir,
   verifiedSharedFileCount: verified.length,
   verifiedSharedFiles: verified,
+  normalizedChromiumFiles,
+  normalizedFirefoxFiles,
   allowedTargetDifferences: allowedDifferences,
 };
 if (reportPathOption) {

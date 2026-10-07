@@ -7,7 +7,7 @@ import { build } from 'esbuild';
 
 // Rebuild only the JS selection of the installed ORT. Its WASM and kernels stay
 // unchanged. WebNN and WASM fallback remain; unused WebGL/native WebGPU do not.
-export async function buildChromiumJsep(outputDirectory) {
+export async function buildJsep(outputDirectory) {
   const ortRoot = join(dirname(fileURLToPath(import.meta.resolve('onnxruntime-web/all'))), '..');
   const ortVersion = JSON.parse(readFileSync(join(ortRoot, 'package.json'), 'utf8')).version;
   assert.equal(ortVersion, '1.27.0', 'Revalidate the cold-start runtime when upgrading ORT');

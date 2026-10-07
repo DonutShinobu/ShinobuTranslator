@@ -24,7 +24,15 @@
       "count": 2,
       "dependency": "react-dom",
       "dependencyVersion": "18.3.1",
-      "sha256": "898db7263818881f6d471666414e276c9f941ccf563e89ea6a1e1f83d6d1e2b6"
+      "sha256": "364056de7c21aa548fb844de70ea885690d719bb44e41ff4d8b97fbdfca776de"
+    },
+    {
+      "code": "UNSAFE_VAR_ASSIGNMENT",
+      "file": "content.js",
+      "count": 1,
+      "dependency": "prosemirror-view",
+      "dependencyVersion": "1.42.6",
+      "sha256": "55d1d7ecc78ee256db732acb605d7bc437f45cc36a576e379dcdc65ef825df0d"
     },
     {
       "code": "UNSAFE_VAR_ASSIGNMENT",
@@ -32,7 +40,7 @@
       "count": 1,
       "dependency": "onnxruntime-web",
       "dependencyVersion": "1.27.0",
-      "sha256": "d2032f27f3e64b9e095dd7a9d5ea9b9193bfbb29b0f7c9d27d2ebe9b093b0c9b"
+      "sha256": "62593352fb5b7e01c7b7902725b0cbeb28bba66260f09874ec619fc84d69ce29"
     }
   ]
 }

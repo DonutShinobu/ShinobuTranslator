@@ -381,12 +381,12 @@ describe('PipelineHost single-task admission', () => {
     expect(getSession).toHaveBeenCalledOnce();
   });
 
-  it('releases an unsubmitted detector gate on idle close and does not create later sessions', async () => {
+  it.each(['webgpu', 'wasm', 'webnn'] as const)('closes an idle host without creating later sessions (%s)', async (provider) => {
     vi.stubGlobal('__shinobuColdStartEarlySessions', true);
     vi.stubGlobal('__shinobuColdStartSessionsAfterSubmit', true);
     vi.useFakeTimers();
     try {
-      const getSession = vi.fn(async () => ({ sessionId: 'detector', provider: 'webgpu' as const, inputNames: [], outputNames: [] }));
+      const getSession = vi.fn(async () => ({ sessionId: 'detector', provider, inputNames: [], outputNames: [] }));
       const host = createHost({ idleTimeoutMs: 1_000, modelRuntime: { getSession, dispose: mocks.disposeAllModelSessions } as unknown as ModelRuntime });
       host.connect();
       await vi.advanceTimersByTimeAsync(1_000);
@@ -396,16 +396,31 @@ describe('PipelineHost single-task admission', () => {
     } finally { vi.useRealTimers(); }
   });
 
-  it('keeps CPU provider early loading compatible when no GPU detector submission exists', async () => {
+  it.each([
+    { provider: 'wasm' as const, afterSubmit: false },
+    { provider: 'wasm' as const, afterSubmit: true },
+    { provider: 'webnn' as const, afterSubmit: false },
+    { provider: 'webnn' as const, afterSubmit: true },
+  ])('loads later models only in the normal pipeline for $provider (afterSubmit=$afterSubmit)', async ({ provider, afterSubmit }) => {
     vi.stubGlobal('__shinobuColdStartEarlySessions', true);
-    vi.stubGlobal('__shinobuColdStartSessionsAfterSubmit', true);
-    const getSession = vi.fn(async (name: string) => ({ sessionId: name, provider: 'wasm' as const, inputNames: [], outputNames: [] }));
-    createHost({ modelRuntime: {
-      getSession,
-      readModel: vi.fn(async () => ({ name: 'paddleocr_v6_medium_rec', task: 'ocr', url: 'ocr.onnx', dictUrl: 'after-submit-cpu.txt', input: [48, 320] })),
-      readTextResource: vi.fn(async () => 'a\nb'), dispose: mocks.disposeAllModelSessions,
+    vi.stubGlobal('__shinobuColdStartSessionsAfterSubmit', afterSubmit);
+    const getSession = vi.fn(async (name: string) => ({ sessionId: name, provider, inputNames: [], outputNames: [] }));
+    const readModel = vi.fn();
+    const host = createHost({ modelRuntime: {
+      getSession, readModel, dispose: mocks.disposeAllModelSessions,
     } as unknown as ModelRuntime });
-    await vi.waitFor(() => expect(getSession).toHaveBeenCalledTimes(4));
+    await (host as unknown as { earlySessions: Promise<void> }).earlySessions;
+    expect(getSession.mock.calls.map(([name]) => name)).toEqual(['detector']);
+    expect(readModel).not.toHaveBeenCalled();
+    mocks.runPipeline.mockImplementationOnce(async (_file, _config, _progress, options: { modelRuntime: ModelRuntime }) => {
+      for (const model of ['bubble', 'paddleocr_v6_medium_rec', 'inpaint'] as const) {
+        await options.modelRuntime.getSession(model);
+      }
+      return artifacts();
+    });
+    host.connect();
+    sendImageJob(port, 'normal-cpu-stages');
+    await vi.waitFor(() => expect(port.sent).toContainEqual({ type: 'complete', jobId: 'normal-cpu-stages' }));
     expect(getSession.mock.calls.map(([name]) => name)).toEqual(['detector', 'bubble', 'paddleocr_v6_medium_rec', 'inpaint']);
   });
 

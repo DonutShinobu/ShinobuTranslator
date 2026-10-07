@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { build } from 'vite';
-import { chromiumColdStartBanner } from '../../../scripts/cold-start-defaults.mjs';
+import { chromiumColdStartPlugin, firefoxColdStartPlugin } from '../../../scripts/cold-start-defaults.mjs';
 
 function readRequiredOption(name) {
   const index = process.argv.indexOf(name);
@@ -16,6 +16,7 @@ await build({
   configFile: false,
   root: extensionRoot,
   publicDir: false,
+  plugins: [outputDir.endsWith('dist-chromium') ? chromiumColdStartPlugin : firefoxColdStartPlugin],
   build: {
     outDir: outputDir,
     emptyOutDir: false,
@@ -27,7 +28,6 @@ await build({
     },
     rollupOptions: {
       output: {
-        banner: outputDir.endsWith('dist-chromium') ? chromiumColdStartBanner : '',
         inlineDynamicImports: true,
       },
     },

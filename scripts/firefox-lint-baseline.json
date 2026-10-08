@@ -40,7 +40,7 @@
       "count": 1,
       "dependency": "onnxruntime-web",
       "dependencyVersion": "1.27.0",
-      "sha256": "62593352fb5b7e01c7b7902725b0cbeb28bba66260f09874ec619fc84d69ce29"
+      "sha256": "c2afbdbb2999255c503215d395c22cb017053e64fd63ef64a3ef92198035ad49"
     }
   ]
 }

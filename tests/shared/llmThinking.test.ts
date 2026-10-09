@@ -20,9 +20,9 @@ describe('built-in LLM thinking capabilities', () => {
     }
   });
 
-  it('sends the new DeepSeek Flash low effort', () => {
-    expect(adaptLlmThinkingChatCompletionRequest({ model: 'deepseek-flash', messages: [] }, {
-      provider: 'deepseek', model: 'deepseek-flash', level: 'low',
+  it.each(['deepseek-flash', 'deepseek-v4-pro'])('sends the supported DeepSeek low effort for %s', (model) => {
+    expect(adaptLlmThinkingChatCompletionRequest({ model, messages: [] }, {
+      provider: 'deepseek', model, level: 'low',
     })).toMatchObject({ thinking: { type: 'enabled' }, reasoning_effort: 'low' });
   });
 
@@ -33,7 +33,7 @@ describe('built-in LLM thinking capabilities', () => {
         defaultLevel: 'off',
       },
       'deepseek/deepseek-v4-pro': {
-        levels: ['off', 'high', 'max'],
+        levels: ['off', 'low', 'high', 'max'],
         defaultLevel: 'off',
       },
       'glm/glm-5.3': {
@@ -73,8 +73,16 @@ describe('built-in LLM thinking capabilities', () => {
         defaultLevel: 'off',
       },
       'kimi/kimi-k3': {
-        levels: ['max'],
+        levels: ['low', 'high', 'max'],
         defaultLevel: 'max',
+      },
+      'kimi/kimi-k2.7-code': {
+        levels: ['on'],
+        defaultLevel: 'on',
+      },
+      'kimi/kimi-k2.7-code-highspeed': {
+        levels: ['on'],
+        defaultLevel: 'on',
       },
       'kimi/kimi-k2.6': {
         levels: ['off', 'on'],
@@ -159,6 +167,7 @@ describe('built-in LLM thinking capabilities', () => {
       kind: 'slider',
       options: [
         { value: 'off', label: '关闭' },
+        { value: 'low', label: 'Low' },
         { value: 'high', label: 'High' },
         { value: 'max', label: 'Max' },
       ],
@@ -172,9 +181,12 @@ describe('built-in LLM thinking capabilities', () => {
       ],
     });
     expect(getLlmThinkingControl('kimi', 'kimi-k3')).toEqual({
-      kind: 'fixed',
-      options: [{ value: 'max', label: 'Max' }],
-      notice: '该模型不支持关闭思考模式',
+      kind: 'slider',
+      options: [
+        { value: 'low', label: 'Low' },
+        { value: 'high', label: 'High' },
+        { value: 'max', label: 'Max' },
+      ],
     });
     expect(getLlmThinkingCapability('gemini', 'gemini-3.1-flash-image')).toBeNull();
     expect(getLlmThinkingCapability('custom', 'any-model')).toBeNull();
@@ -208,6 +220,32 @@ describe('built-in LLM thinking capabilities', () => {
       'minimax/MiniMax-M2.7': 'on',
       'openai/gpt-5.5-pro': 'medium',
     });
+  });
+
+  it('preserves saved K3 effort and normalizes unsupported off to max', () => {
+    for (const level of ['low', 'high', 'max', 'off'] as const) {
+      const expected = level === 'off' ? 'max' : level;
+      expect(normalizeLlmThinkingByModel({ 'kimi/kimi-k3': level })['kimi/kimi-k3']).toBe(expected);
+      const request = adaptLlmThinkingChatCompletionRequest({ model: 'kimi-k3', messages: [],
+        thinking: { type: 'disabled' }, reasoning_effort: 'none' }, {
+        provider: 'kimi', model: 'kimi-k3', level,
+      });
+      expect(request.reasoning_effort).toBe(expected);
+      expect(request).not.toHaveProperty('thinking');
+    }
+  });
+
+  it.each(['kimi-k2.7-code', 'kimi-k2.7-code-highspeed'])('keeps thinking enabled for %s', (model) => {
+    expect(getLlmThinkingControl('kimi', model)).toEqual({
+      kind: 'fixed', options: [{ value: 'on', label: '开启' }], notice: '该模型不支持关闭思考模式',
+    });
+    expect(normalizeLlmThinkingByModel({ [`kimi/${model}`]: 'off' })[`kimi/${model}`]).toBe('on');
+    const request = adaptLlmThinkingChatCompletionRequest({ model, messages: [],
+      thinking: { type: 'disabled' }, reasoning_effort: 'max' }, {
+      provider: 'kimi', model, level: 'off',
+    });
+    expect(request.thinking).toEqual({ type: 'enabled' });
+    expect(request).not.toHaveProperty('reasoning_effort');
   });
 
   it('maps canonical levels to each provider exact Chat Completions fields', () => {

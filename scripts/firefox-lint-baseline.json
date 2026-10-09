@@ -32,7 +32,7 @@
       "count": 1,
       "dependency": "prosemirror-view",
       "dependencyVersion": "1.42.6",
-      "sha256": "55d1d7ecc78ee256db732acb605d7bc437f45cc36a576e379dcdc65ef825df0d"
+      "sha256": "a28add773b5f8000d20c7f520b4a7a3d23410c26e6c239471c9db43bdb97d71f"
     },
     {
       "code": "UNSAFE_VAR_ASSIGNMENT",

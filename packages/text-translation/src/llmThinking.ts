@@ -77,7 +77,7 @@ export const llmThinkingCapabilityRegistry: Record<string, LlmThinkingCapability
     defaultLevel: 'off',
   },
   'deepseek/deepseek-v4-pro': {
-    levels: ['off', 'high', 'max'],
+    levels: ['off', 'low', 'high', 'max'],
     defaultLevel: 'off',
   },
   'glm/glm-5.3': {
@@ -117,8 +117,16 @@ export const llmThinkingCapabilityRegistry: Record<string, LlmThinkingCapability
     defaultLevel: 'off',
   },
   'kimi/kimi-k3': {
-    levels: ['max'],
+    levels: ['low', 'high', 'max'],
     defaultLevel: 'max',
+  },
+  'kimi/kimi-k2.7-code': {
+    levels: ['on'],
+    defaultLevel: 'on',
+  },
+  'kimi/kimi-k2.7-code-highspeed': {
+    levels: ['on'],
+    defaultLevel: 'on',
   },
   'kimi/kimi-k2.6': {
     levels: ['off', 'on'],
@@ -333,7 +341,7 @@ export function adaptLlmThinkingChatCompletionRequest(
 
   if (context.provider === 'kimi') {
     if (context.model === 'kimi-k3') {
-      request.reasoning_effort = 'max';
+      request.reasoning_effort = level === 'low' || level === 'high' ? level : 'max';
     } else {
       request.thinking = {
         type: level === 'off' ? 'disabled' : 'enabled',

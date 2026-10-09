@@ -255,7 +255,9 @@ async function checkInteractions(page: Page) {
 
   for (const [providerLabel, providerId, modelName, kind] of [
     ['GLM (智谱)', 'glm', 'glm-5.1', 'toggle'],
-    ['Kimi (月之暗面)', 'kimi', 'kimi-k3', 'fixed'],
+    ['Kimi (月之暗面)', 'kimi', 'kimi-k3', 'slider'],
+    ['Kimi (月之暗面)', 'kimi', 'kimi-k2.7-code', 'fixed'],
+    ['Kimi (月之暗面)', 'kimi', 'kimi-k2.7-code-highspeed', 'fixed'],
     ['Kimi (月之暗面)', 'kimi', 'kimi-k2.6', 'toggle'],
     ['MiniMax', 'minimax', 'MiniMax-M2.7', 'fixed'],
     ['MiniMax', 'minimax', 'MiniMax-M3', 'toggle'],
@@ -266,6 +268,16 @@ async function checkInteractions(page: Page) {
     if (kind === 'fixed') {
       await expect(page.getByText('该模型不支持关闭思考模式')).toBeVisible();
       await expect(page.getByRole('radiogroup', { name: '思考强度' })).toHaveCount(0);
+      await expect(page.getByRole('slider', { name: '思考强度' })).toHaveCount(0);
+    } else if (kind === 'slider') {
+      const thinking = page.getByRole('slider', { name: '思考强度' });
+      await expect(thinking).toHaveAttribute('aria-valuemax', '2');
+      await thinking.focus();
+      for (const [key, level] of [['Home', 'low'], ['ArrowRight', 'high'], ['End', 'max']]) {
+        await thinking.press(key);
+        await expect.poll(async () =>
+          (await projection(page)).settings.llmThinkingByModel[`${providerId}/${modelName}`]).toBe(level);
+      }
     } else {
       const thinking = page.getByRole('radiogroup', { name: '思考强度' });
       await thinking.getByRole('radio', { name: '开启', exact: true }).click();

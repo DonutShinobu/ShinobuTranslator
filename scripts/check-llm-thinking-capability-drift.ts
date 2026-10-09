@@ -66,14 +66,9 @@ function expectedRemoteOptions(
   }
   if (localProvider === 'kimi') {
     if (model === 'kimi-k3') {
-      // Known models.dev discrepancy: official Moonshot docs say K3 is fixed Max.
-      // Keep this snapshot of the upstream claim so a future correction/change triggers review.
-      return normalizeRemoteOptions([
-        { type: 'toggle' },
-        { type: 'effort', values: ['low', 'high', 'max'] },
-      ]);
+      return [{ type: 'effort', values: capability.levels }];
     }
-    return [{ type: 'toggle' }];
+    return capability.levels.includes('off') ? [{ type: 'toggle' }] : [];
   }
   if (localProvider === 'minimax') {
     return model === 'MiniMax-M3' ? [{ type: 'toggle' }] : [];

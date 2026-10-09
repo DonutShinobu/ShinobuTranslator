@@ -35,7 +35,7 @@ export const llmBuiltInProviderDefinitions: Record<
   kimi: {
     label: 'Kimi (月之暗面)', webLabel: 'Kimi / Moonshot',
     baseUrl: 'https://api.moonshot.ai/v1',
-    models: ['kimi-k3', 'kimi-k2.6'],
+    models: ['kimi-k3', 'kimi-k2.7-code', 'kimi-k2.7-code-highspeed', 'kimi-k2.6'],
     defaultAuthMode: 'api_key',
   },
   minimax: {

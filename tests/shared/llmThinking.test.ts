@@ -11,7 +11,7 @@ import {
 import { llmBuiltInProviderDefinitions } from '../../apps/extension/src/shared/config';
 
 describe('built-in LLM thinking capabilities', () => {
-  it.each(['glm-5.3', 'glm-5.3-flash', 'gpt-6-astra'])('keeps reasoning enabled for %s, including invalid saved off settings', (model) => {
+  it.each(['glm-5.3', 'glm-5.3-flash', 'glm-5.3-flashx', 'gpt-6-astra', 'gpt-6.1-sol'])('keeps reasoning enabled for %s, including invalid saved off settings', (model) => {
     const provider = model.startsWith('glm') ? 'glm' : 'openai';
     for (const level of ['off', 'low', 'high', 'max'] as const) {
       const request = adaptLlmThinkingChatCompletionRequest({ model, messages: [] }, { provider, model, level });
@@ -41,6 +41,10 @@ describe('built-in LLM thinking capabilities', () => {
         defaultLevel: 'low',
       },
       'glm/glm-5.3-flash': {
+        levels: ['low', 'high', 'max'],
+        defaultLevel: 'low',
+      },
+      'glm/glm-5.3-flashx': {
         levels: ['low', 'high', 'max'],
         defaultLevel: 'low',
       },
@@ -108,6 +112,14 @@ describe('built-in LLM thinking capabilities', () => {
         levels: ['on'],
         defaultLevel: 'on',
       },
+      'mimo/mimo-v2.6-pro': {
+        levels: ['off', 'on'],
+        defaultLevel: 'off',
+      },
+      'mimo/mimo-v2.6-flash': {
+        levels: ['off', 'on'],
+        defaultLevel: 'off',
+      },
       'mimo/mimo-v2.5-pro': {
         levels: ['off', 'on'],
         defaultLevel: 'off',
@@ -119,6 +131,18 @@ describe('built-in LLM thinking capabilities', () => {
       'openai/gpt-6-astra': {
         levels: ['low', 'medium', 'high', 'xhigh', 'max'],
         defaultLevel: 'low',
+      },
+      'openai/gpt-6.1-sol': {
+        levels: ['low', 'medium', 'high', 'xhigh', 'max'],
+        defaultLevel: 'low',
+      },
+      'openai/gpt-6-sol': {
+        levels: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
+        defaultLevel: 'off',
+      },
+      'openai/gpt-6-luna': {
+        levels: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
+        defaultLevel: 'off',
       },
       'openai/gpt-5.6-luna': {
         levels: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
@@ -246,6 +270,27 @@ describe('built-in LLM thinking capabilities', () => {
     });
     expect(request.thinking).toEqual({ type: 'enabled' });
     expect(request).not.toHaveProperty('reasoning_effort');
+  });
+
+  it.each(['gpt-6-sol', 'gpt-6-luna'])('preserves all supported efforts and maps off to none for %s', (model) => {
+    for (const level of ['off', 'low', 'medium', 'high', 'xhigh', 'max'] as const) {
+      const request = adaptLlmThinkingChatCompletionRequest({ model, messages: [], thinking: { type: 'disabled' } }, {
+        provider: 'openai', model, level,
+      });
+      expect(request.reasoning_effort).toBe(level === 'off' ? 'none' : level);
+      expect(request).not.toHaveProperty('thinking');
+    }
+  });
+
+  it.each(['mimo-v2.6-pro', 'mimo-v2.6-flash'])('supports both thinking modes for %s', (model) => {
+    for (const level of ['off', 'on'] as const) {
+      expect(normalizeLlmThinkingByModel({ [`mimo/${model}`]: level })[`mimo/${model}`]).toBe(level);
+      const request = adaptLlmThinkingChatCompletionRequest({ model, messages: [], reasoning_effort: 'max' }, {
+        provider: 'mimo', model, level,
+      });
+      expect(request.thinking).toEqual({ type: level === 'off' ? 'disabled' : 'enabled' });
+      expect(request).not.toHaveProperty('reasoning_effort');
+    }
   });
 
   it('maps canonical levels to each provider exact Chat Completions fields', () => {

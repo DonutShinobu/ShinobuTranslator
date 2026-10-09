@@ -18,6 +18,10 @@ function createHarness() {
         apiKey: 'secret-key',
         modelPreset: 'deepseek-chat',
       },
+      gemini: {
+        ...defaultExtensionSettings.llmProfiles.gemini,
+        apiKey: 'gemini-fixture-key',
+      },
     },
   };
   let revision = 7;
@@ -102,6 +106,31 @@ describe('TranslationConfigurationModule', () => {
       modelLabel: 'Nano Banana 2',
       prompt: 'translate to 繁体中文',
       authMode: 'cookies_permission',
+    });
+  });
+
+  it.each([
+    ['nano_banana_2_1', 'gemini-nano-banana-2.1', 'Nano Banana 2.1'],
+    ['nano_banana_2_lite', 'gemini-3.1-flash-lite-image', 'Nano Banana 2 Lite'],
+  ] as const)('prepares the selected API-only %s without mapping it to a Gemini App model', async (selection, model, label) => {
+    const { module } = createHarness();
+    const projection = await module.read();
+    await module.replace({
+      ...projection.settings,
+      translator: 'llm',
+      llmProvider: 'gemini',
+      geminiAppModel: selection,
+      llmProfiles: {
+        ...projection.settings.llmProfiles,
+        gemini: { ...projection.settings.llmProfiles.gemini, authMode: 'api_key' },
+      },
+    }, projection.revision);
+
+    expect((await module.prepareExecution()).wholeImage).toMatchObject({
+      provider: 'gemini-api',
+      model,
+      modelLabel: `Nano Banana API / ${label}`,
+      baseUrl: 'https://generativelanguage.googleapis.com/v1',
     });
   });
 

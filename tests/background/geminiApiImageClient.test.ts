@@ -77,13 +77,17 @@ describe("Gemini API image response parsing", () => {
   });
 
   it("maps Nano Banana display models to official Gemini API image models", () => {
+    expect(resolveGeminiApiImageModel("nano_banana_2_1")).toBe("gemini-nano-banana-2.1");
+    expect(resolveGeminiApiImageModel("nano_banana_2_lite")).toBe("gemini-3.1-flash-lite-image");
     expect(resolveGeminiApiImageModel("nano_banana_2")).toBe("gemini-3.1-flash-image");
     expect(resolveGeminiApiImageModel("nano_banana_pro")).toBe("gemini-3-pro-image");
     expect(getGeminiApiModelMetadataLabel("nano_banana_2")).toBe("Nano Banana API / Nano Banana 2");
     expect(getGeminiApiModelMetadataLabel("nano_banana_pro")).toBe("Nano Banana API / Nano Banana Pro");
+    expect(getGeminiApiModelMetadataLabel("nano_banana_2_1")).toBe("Nano Banana API / Nano Banana 2.1");
+    expect(getGeminiApiModelMetadataLabel("nano_banana_2_lite")).toBe("Nano Banana API / Nano Banana 2 Lite");
   });
 
-  it('executes with the prepared model, endpoint, and prompt', async () => {
+  it.each(['prepared-model', 'gemini-nano-banana-2.1', 'gemini-3.1-flash-lite-image'])('executes with the prepared %s, endpoint, and prompt', async (model) => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
       candidates: [{
         content: {
@@ -100,7 +104,7 @@ describe("Gemini API image response parsing", () => {
       apiKey: 'secret',
       preparation: {
         provider: 'gemini-api',
-        model: 'prepared-model',
+        model,
         modelLabel: 'Prepared model',
         prompt: 'prepared prompt',
         baseUrl: 'https://prepared.example/v1beta/',
@@ -111,7 +115,7 @@ describe("Gemini API image response parsing", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://prepared.example/v1beta/models/prepared-model:generateContent',
+      `https://prepared.example/v1beta/models/${model}:generateContent`,
       expect.objectContaining({
         headers: expect.objectContaining({ 'x-goog-api-key': 'secret' }),
         body: expect.stringContaining('prepared prompt'),

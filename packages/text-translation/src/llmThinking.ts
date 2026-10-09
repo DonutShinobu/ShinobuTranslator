@@ -88,6 +88,10 @@ export const llmThinkingCapabilityRegistry: Record<string, LlmThinkingCapability
     levels: ['low', 'high', 'max'],
     defaultLevel: 'low',
   },
+  'glm/glm-5.3-flashx': {
+    levels: ['low', 'high', 'max'],
+    defaultLevel: 'low',
+  },
   'glm/glm-5.2': {
     levels: ['off', 'high', 'max'],
     defaultLevel: 'off',
@@ -152,6 +156,14 @@ export const llmThinkingCapabilityRegistry: Record<string, LlmThinkingCapability
     levels: ['on'],
     defaultLevel: 'on',
   },
+  'mimo/mimo-v2.6-pro': {
+    levels: ['off', 'on'],
+    defaultLevel: 'off',
+  },
+  'mimo/mimo-v2.6-flash': {
+    levels: ['off', 'on'],
+    defaultLevel: 'off',
+  },
   'mimo/mimo-v2.5-pro': {
     levels: ['off', 'on'],
     defaultLevel: 'off',
@@ -163,6 +175,18 @@ export const llmThinkingCapabilityRegistry: Record<string, LlmThinkingCapability
   'openai/gpt-6-astra': {
     levels: ['low', 'medium', 'high', 'xhigh', 'max'],
     defaultLevel: 'low',
+  },
+  'openai/gpt-6.1-sol': {
+    levels: ['low', 'medium', 'high', 'xhigh', 'max'],
+    defaultLevel: 'low',
+  },
+  'openai/gpt-6-sol': {
+    levels: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
+    defaultLevel: 'off',
+  },
+  'openai/gpt-6-luna': {
+    levels: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
+    defaultLevel: 'off',
   },
   'openai/gpt-5.6-luna': {
     levels: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],

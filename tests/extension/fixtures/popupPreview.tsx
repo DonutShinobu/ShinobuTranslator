@@ -3,6 +3,7 @@ import { App } from '../../../apps/extension/src/popup/App';
 import '../../../apps/extension/src/popup/styles.css';
 import {
   defaultExtensionSettings,
+  normalizeSettings,
   type LlmProvider,
 } from '../../../apps/extension/src/shared/config';
 import {
@@ -106,7 +107,7 @@ const api: ExtensionBrowserApi = {
           projection = {
             ...projection,
             revision: projection.revision + 1,
-            settings: structuredClone(command.settings),
+            settings: toExtensionSettingsProjection(normalizeSettings(command.settings)),
           };
           break;
         case 'update-interface-preferences':

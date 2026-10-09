@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   defaultGeminiAppPromptTemplate,
   geminiAppModelOptions,
+  geminiApiModelOptions,
   getGeminiAppModelLabel,
   llmBuiltInProviderDefinitions,
   llmProviderOptions,
@@ -46,7 +47,7 @@ describe("built-in LLM catalog", () => {
       gemini: {
         label: "Nano Banana",
         baseUrl: "https://generativelanguage.googleapis.com/v1",
-        models: ["gemini-3.1-flash-image", "gemini-3-pro-image"],
+        models: ["gemini-nano-banana-2.1", "gemini-3.1-flash-image", "gemini-3.1-flash-lite-image", "gemini-3-pro-image"],
       },
       glm: {
         label: "GLM (智谱)",
@@ -54,6 +55,7 @@ describe("built-in LLM catalog", () => {
         models: [
           "glm-5.3",
           "glm-5.3-flash",
+          "glm-5.3-flashx",
           "glm-5.2",
           "glm-5.1",
           "glm-5-turbo",
@@ -82,13 +84,16 @@ describe("built-in LLM catalog", () => {
       mimo: {
         label: "MiMo (小米)",
         baseUrl: "https://api.xiaomimimo.com/v1",
-        models: ["mimo-v2.5-pro", "mimo-v2.5"],
+        models: ["mimo-v2.6-pro", "mimo-v2.6-flash", "mimo-v2.5-pro", "mimo-v2.5"],
       },
       openai: {
         label: "OpenAI",
         baseUrl: "https://api.openai.com/v1",
         models: [
           "gpt-6-astra",
+          "gpt-6.1-sol",
+          "gpt-6-sol",
+          "gpt-6-luna",
           "gpt-5.6-luna",
           "gpt-5.6-terra",
           "gpt-5.6-sol",
@@ -100,6 +105,17 @@ describe("built-in LLM catalog", () => {
         ],
       },
     });
+  });
+
+  it('defaults new MiMo profiles to 2.6 Pro and preserves still-supported saved 2.5 selections', () => {
+    expect(normalizeSettings({}).llmProfiles.mimo.modelPreset).toBe('mimo-v2.6-pro');
+    const settings = normalizeSettings({
+      translator: 'llm', llmProvider: 'mimo',
+      llmProfiles: { mimo: { modelPreset: 'mimo-v2.5-pro' } },
+      llmThinkingByModel: { 'mimo/mimo-v2.5-pro': 'on' },
+    });
+    expect(settings.llmProfiles.mimo.modelPreset).toBe('mimo-v2.5-pro');
+    expect(toPipelineConfig(settings).llmThinkingLevel).toBe('on');
   });
 
   it("migrates retired and corrected built-in identifiers without changing the selected model tier", () => {
@@ -324,7 +340,7 @@ describe("OpenAI provider settings", () => {
     expect(validateSettings(settings)).toBeNull();
   });
 
-  it("removes Nano Banana 2 Lite and falls back saved Lite settings to Nano Banana 2", () => {
+  it("supports Nano Banana 2 Lite through API key auth without exposing it to Gemini App", () => {
     const settings = normalizeSettings({
       translator: "llm",
       llmProvider: "gemini",
@@ -339,13 +355,34 @@ describe("OpenAI provider settings", () => {
 
     expect({
       options: geminiAppModelOptions.map((option) => option.value),
+      apiOptions: geminiApiModelOptions.map((option) => option.value),
       normalizedModel: settings.geminiAppModel,
       apiModelId: resolveGeminiApiImageModel(settings.geminiAppModel),
     }).toEqual({
       options: ["nano_banana_2", "nano_banana_pro"],
-      normalizedModel: "nano_banana_2",
-      apiModelId: "gemini-3.1-flash-image",
+      apiOptions: ["nano_banana_2_1", "nano_banana_2", "nano_banana_2_lite", "nano_banana_pro"],
+      normalizedModel: "nano_banana_2_lite",
+      apiModelId: "gemini-3.1-flash-lite-image",
     });
+  });
+
+  it.each(['gemini-nano-banana-2.1', 'nano_banana_2_1', 'nano-banana-2.1'])("preserves the Nano Banana 2.1 API selection %s", (model) => {
+    const settings = normalizeSettings({
+      geminiAppModel: model,
+      llmProfiles: { gemini: { authMode: 'api_key' } },
+    });
+    expect(settings.geminiAppModel).toBe('nano_banana_2_1');
+    expect(resolveGeminiApiImageModel(settings.geminiAppModel)).toBe('gemini-nano-banana-2.1');
+    expect(getGeminiAppModelLabel(settings.geminiAppModel)).toBe('Nano Banana 2.1');
+    expect(normalizeSettings(settings).geminiAppModel).toBe('nano_banana_2_1');
+  });
+
+  it.each(['nano_banana_2_1', 'nano_banana_2_lite'])("maps API-only %s to Nano Banana 2 when switching to Gemini login", (model) => {
+    const settings = normalizeSettings({
+      geminiAppModel: model,
+      llmProfiles: { gemini: { authMode: 'gemini_app' } },
+    });
+    expect(settings.geminiAppModel).toBe('nano_banana_2');
   });
 
   it("requires an API key when Nano Banana uses API key auth", () => {

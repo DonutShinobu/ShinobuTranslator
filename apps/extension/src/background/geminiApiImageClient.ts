@@ -4,7 +4,7 @@ import {
 import type { CloudImageTranslateSuccess } from '../shared/messages';
 import type { WholeImageExecutionPreparation } from '../shared/extensionControl';
 import type { StageTiming } from '@shinobu/image-pipeline/benchmark';
-import type { GeminiAppModel } from '../shared/config';
+import type { GeminiImageModel } from '../shared/config';
 import { toErrorMessage } from '../shared/utils';
 import { SerialTaskQueue } from './serialTaskQueue';
 
@@ -179,7 +179,7 @@ async function readJsonResponse(response: Response): Promise<unknown> {
   }
 }
 
-export function getGeminiApiModelMetadataLabel(model: GeminiAppModel): string {
+export function getGeminiApiModelMetadataLabel(model: GeminiImageModel): string {
   return `Nano Banana API / ${getGeminiAppModelLabel(model)}`;
 }
 

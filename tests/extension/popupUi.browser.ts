@@ -255,6 +255,10 @@ async function checkInteractions(page: Page) {
 
   for (const [providerLabel, providerId, modelName, kind] of [
     ['GLM (智谱)', 'glm', 'glm-5.1', 'toggle'],
+    ['GLM (智谱)', 'glm', 'glm-5.3-flashx', 'slider'],
+    ['OpenAI', 'openai', 'gpt-6.1-sol', 'slider'],
+    ['OpenAI', 'openai', 'gpt-6-sol', 'slider'],
+    ['OpenAI', 'openai', 'gpt-6-luna', 'slider'],
     ['Kimi (月之暗面)', 'kimi', 'kimi-k3', 'slider'],
     ['Kimi (月之暗面)', 'kimi', 'kimi-k2.7-code', 'fixed'],
     ['Kimi (月之暗面)', 'kimi', 'kimi-k2.7-code-highspeed', 'fixed'],
@@ -262,7 +266,9 @@ async function checkInteractions(page: Page) {
     ['MiniMax', 'minimax', 'MiniMax-M2.7', 'fixed'],
     ['MiniMax', 'minimax', 'MiniMax-M3', 'toggle'],
     ['MiMo (小米)', 'mimo', 'mimo-v2.5-pro', 'toggle'],
-  ]) {
+    ['MiMo (小米)', 'mimo', 'mimo-v2.6-pro', 'toggle'],
+    ['MiMo (小米)', 'mimo', 'mimo-v2.6-flash', 'toggle'],
+  ] as const) {
     await selectOption(page, 'LLM 提供商', providerLabel);
     await selectOption(page, '模型名称', modelName);
     if (kind === 'fixed') {
@@ -271,9 +277,10 @@ async function checkInteractions(page: Page) {
       await expect(page.getByRole('slider', { name: '思考强度' })).toHaveCount(0);
     } else if (kind === 'slider') {
       const thinking = page.getByRole('slider', { name: '思考强度' });
-      await expect(thinking).toHaveAttribute('aria-valuemax', '2');
+      const options = getLlmThinkingControl(providerId, modelName)!.options;
+      await expect(thinking).toHaveAttribute('aria-valuemax', String(options.length - 1));
       await thinking.focus();
-      for (const [key, level] of [['Home', 'low'], ['ArrowRight', 'high'], ['End', 'max']]) {
+      for (const [key, level] of [['Home', options[0].value], ['ArrowRight', options[1].value], ['End', options.at(-1)!.value]]) {
         await thinking.press(key);
         await expect.poll(async () =>
           (await projection(page)).settings.llmThinkingByModel[`${providerId}/${modelName}`]).toBe(level);
@@ -324,8 +331,15 @@ async function checkInteractions(page: Page) {
     'placeholder',
     'AIza...',
   );
+  for (const [label, model] of [['Nano Banana 2.1', 'nano_banana_2_1'], ['Nano Banana 2 Lite', 'nano_banana_2_lite']]) {
+    await selectOption(page, '模型', label);
+    await expect.poll(async () => (await projection(page)).settings.geminiAppModel).toBe(model);
+  }
   await auth.getByRole('radio', { name: 'Gemini 登录' }).click();
   await expect(page.getByRole('button', { name: '检查状态' })).toBeVisible();
+  await expect(page.getByRole('radiogroup', { name: '模型', exact: true })
+    .getByRole('radio', { name: 'Nano Banana 2', exact: true })).toBeChecked();
+  await expect(page.getByRole('combobox', { name: '模型', exact: true })).toHaveCount(0);
 
   await page.evaluate(() => {
     window.__popupPreview.failNextSave = true;

@@ -16,6 +16,7 @@ import type { LlmThinkingByModel } from '@shinobu/text-translation';
 export type ImageEngine = 'local' | 'gemini_app';
 export type GeminiAppAuthMode = 'browser_session' | 'cookies_permission';
 export type GeminiAppModel = 'nano_banana_2' | 'nano_banana_pro';
+export type GeminiImageModel = GeminiAppModel | 'nano_banana_2_1' | 'nano_banana_2_lite';
 
 export const extensionSettingsStorageKey = 'mangaTranslate.settings';
 export const extensionControlStateStorageKey = 'mangaTranslate.extensionControlState';
@@ -79,6 +80,13 @@ export const geminiAppModelOptions: Array<{ value: GeminiAppModel; label: string
   { value: 'nano_banana_pro', label: 'Nano Banana Pro' },
 ];
 
+export const geminiApiModelOptions: Array<{ value: GeminiImageModel; label: string }> = [
+  { value: 'nano_banana_2_1', label: 'Nano Banana 2.1' },
+  { value: 'nano_banana_2', label: 'Nano Banana 2' },
+  { value: 'nano_banana_2_lite', label: 'Nano Banana 2 Lite' },
+  { value: 'nano_banana_pro', label: 'Nano Banana Pro' },
+];
+
 export const defaultGeminiAppPromptTemplate = [
   '请使用 Nano Banana Pro 对这张漫画图片进行端到端翻译和嵌字。',
   '将所有原文翻译为{targetLang}，擦除原字，并在原位置嵌入自然的中文译文。',
@@ -109,7 +117,7 @@ export type ExtensionSettings = {
   targetLang: string;
   imageEngine: ImageEngine;
   geminiAppExperimentalEnabled: boolean;
-  geminiAppModel: GeminiAppModel;
+  geminiAppModel: GeminiImageModel;
   geminiAppPromptTemplate: string;
   geminiAppAuthMode: GeminiAppAuthMode;
   translator: PipelineConfig['translator'];
@@ -189,14 +197,17 @@ function normalizeGeminiAppAuthMode(): GeminiAppAuthMode {
   return 'cookies_permission';
 }
 
-function normalizeGeminiAppModel(value: unknown): GeminiAppModel {
+function normalizeGeminiImageModel(value: unknown): GeminiImageModel {
+  if (value === 'nano_banana_2_1' || value === 'nano-banana-2.1' || value === 'gemini-nano-banana-2.1') {
+    return 'nano_banana_2_1';
+  }
+  if (value === 'nano_banana_2_lite' || value === 'nano-banana-2-lite' || value === 'gemini-3.1-flash-lite-image') {
+    return 'nano_banana_2_lite';
+  }
   if (
     value === 'nano_banana_2' ||
     value === 'nano-banana-2' ||
-    value === 'gemini-3.1-flash-image' ||
-    value === 'nano_banana_2_lite' ||
-    value === 'nano-banana-2-lite' ||
-    value === 'gemini-3.1-flash-lite-image'
+    value === 'gemini-3.1-flash-image'
   ) {
     return 'nano_banana_2';
   }
@@ -206,11 +217,17 @@ function normalizeGeminiAppModel(value: unknown): GeminiAppModel {
   return defaultExtensionSettings.geminiAppModel;
 }
 
-export function getGeminiAppModelLabel(model: GeminiAppModel): string {
-  return geminiAppModelOptions.find((option) => option.value === model)?.label ?? 'Nano Banana Pro';
+export function resolveGeminiAppImageModel(model: GeminiImageModel): GeminiAppModel {
+  return model === 'nano_banana_pro' ? 'nano_banana_pro' : 'nano_banana_2';
 }
 
-export function resolveGeminiApiImageModel(model: GeminiAppModel): string {
+export function getGeminiAppModelLabel(model: GeminiImageModel): string {
+  return geminiApiModelOptions.find((option) => option.value === model)?.label ?? 'Nano Banana Pro';
+}
+
+export function resolveGeminiApiImageModel(model: GeminiImageModel): string {
+  if (model === 'nano_banana_2_1') return 'gemini-nano-banana-2.1';
+  if (model === 'nano_banana_2_lite') return 'gemini-3.1-flash-lite-image';
   return model === 'nano_banana_2' ? 'gemini-3.1-flash-image' : 'gemini-3-pro-image';
 }
 
@@ -377,6 +394,7 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     openai: normalizeProviderProfile('openai', rawProfiles.openai, provider === 'openai' ? legacy : null),
     custom: normalizeProviderProfile('custom', rawProfiles.custom, provider === 'custom' ? legacy : null),
   };
+  const geminiImageModel = normalizeGeminiImageModel(raw.geminiAppModel);
   const showElapsedTime = sanitizeBoolean(raw.showElapsedTime, defaultExtensionSettings.showElapsedTime);
   const showTypesetDebug = sanitizeBoolean(raw.showTypesetDebug, defaultExtensionSettings.showTypesetDebug);
   const usesNanoBanana = usesNanoBananaImagePipeline({ translator, llmProvider: provider });
@@ -389,7 +407,9 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     targetLang: normalizeTargetLang(raw.targetLang),
     imageEngine: normalizeImageEngine(),
     geminiAppExperimentalEnabled,
-    geminiAppModel: normalizeGeminiAppModel(raw.geminiAppModel),
+    geminiAppModel: llmProfiles.gemini.authMode === 'api_key'
+      ? geminiImageModel
+      : resolveGeminiAppImageModel(geminiImageModel),
     geminiAppPromptTemplate: normalizeGeminiAppPromptTemplate(raw.geminiAppPromptTemplate),
     geminiAppAuthMode: normalizeGeminiAppAuthMode(),
     translator,

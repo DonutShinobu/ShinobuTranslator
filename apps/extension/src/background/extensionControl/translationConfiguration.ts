@@ -3,6 +3,7 @@ import {
   getGeminiAppModelLabel,
   normalizeSettings,
   resolveGeminiApiImageModel,
+  resolveGeminiAppImageModel,
   resolveLlmBaseUrl,
   toPipelineConfig,
   usesGeminiApiImagePipeline,
@@ -120,8 +121,8 @@ export function createTranslationConfigurationModule(
                     }
                   : {
                       provider: 'gemini-app' as const,
-                      model: settings.geminiAppModel,
-                      modelLabel: getGeminiAppModelLabel(settings.geminiAppModel),
+                      model: resolveGeminiAppImageModel(settings.geminiAppModel),
+                      modelLabel: getGeminiAppModelLabel(resolveGeminiAppImageModel(settings.geminiAppModel)),
                       prompt: buildGeminiImagePrompt(settings),
                       authMode: settings.geminiAppAuthMode,
                     }),

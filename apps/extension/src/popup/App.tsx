@@ -12,6 +12,7 @@ import { ChevronDown } from 'lucide-react';
 import {
   defaultExtensionSettings,
   geminiAppModelOptions,
+  geminiApiModelOptions,
   llmBuiltInProviderDefinitions,
   llmProviderOptions,
   optimizedGeminiAppPromptTemplate,
@@ -1111,13 +1112,23 @@ export function App() {
                       </div>
                       <div className="auth-mode-field">
                         <Label className="field-label">模型</Label>
-                        <SegmentedControl<ExtensionSettingsProjection['geminiAppModel']>
-                          ariaLabel="模型"
-                          options={geminiAppModelOptions}
-                          value={settings.geminiAppModel}
-                          onChange={(value) => updateField('geminiAppModel', value)}
-                          disabled={loading}
-                        />
+                        {usesGeminiApi ? (
+                          <SelectControl
+                            ariaLabel="模型"
+                            options={geminiApiModelOptions}
+                            value={settings.geminiAppModel}
+                            onChange={(value) => updateField('geminiAppModel', value)}
+                            disabled={loading}
+                          />
+                        ) : (
+                          <SegmentedControl<ExtensionSettingsProjection['geminiAppModel']>
+                            ariaLabel="模型"
+                            options={geminiAppModelOptions}
+                            value={settings.geminiAppModel}
+                            onChange={(value) => updateField('geminiAppModel', value)}
+                            disabled={loading}
+                          />
+                        )}
                       </div>
                       {usesGeminiApp ? (
                         <>

@@ -23,13 +23,13 @@ export const llmBuiltInProviderDefinitions: Record<
   gemini: {
     label: 'Nano Banana', webLabel: 'Nano Banana',
     baseUrl: 'https://generativelanguage.googleapis.com/v1',
-    models: ['gemini-3.1-flash-image', 'gemini-3-pro-image'],
+    models: ['gemini-nano-banana-2.1', 'gemini-3.1-flash-image', 'gemini-3.1-flash-lite-image', 'gemini-3-pro-image'],
     defaultAuthMode: 'gemini_app',
   },
   glm: {
     label: 'GLM (智谱)', webLabel: 'GLM / Z.AI',
     baseUrl: 'https://api.z.ai/api/paas/v4',
-    models: ['glm-5.3', 'glm-5.3-flash', 'glm-5.2', 'glm-5.1', 'glm-5-turbo', 'glm-5', 'glm-4.7', 'glm-4.7-flash', 'glm-4.7-flashx'],
+    models: ['glm-5.3', 'glm-5.3-flash', 'glm-5.3-flashx', 'glm-5.2', 'glm-5.1', 'glm-5-turbo', 'glm-5', 'glm-4.7', 'glm-4.7-flash', 'glm-4.7-flashx'],
     defaultAuthMode: 'api_key',
   },
   kimi: {
@@ -47,13 +47,13 @@ export const llmBuiltInProviderDefinitions: Record<
   mimo: {
     label: 'MiMo (小米)', webLabel: 'MiMo',
     baseUrl: 'https://api.xiaomimimo.com/v1',
-    models: ['mimo-v2.5-pro', 'mimo-v2.5'],
+    models: ['mimo-v2.6-pro', 'mimo-v2.6-flash', 'mimo-v2.5-pro', 'mimo-v2.5'],
     defaultAuthMode: 'api_key',
   },
   openai: {
     label: 'OpenAI', webLabel: 'OpenAI',
     baseUrl: 'https://api.openai.com/v1',
-    models: ['gpt-6-astra', 'gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-5.5-pro', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano'],
+    models: ['gpt-6-astra', 'gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-5.5-pro', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano'],
     defaultAuthMode: 'openai_oauth',
   },
 };

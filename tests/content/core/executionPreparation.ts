@@ -3,6 +3,7 @@ import {
   defaultExtensionSettings,
   getGeminiAppModelLabel,
   resolveGeminiApiImageModel,
+  resolveGeminiAppImageModel,
   resolveLlmBaseUrl,
   toPipelineConfig,
   usesGeminiApiImagePipeline,
@@ -28,8 +29,8 @@ export function executionSnapshotFromSettings(
         }
       : {
           provider: 'gemini-app',
-          model: settings.geminiAppModel,
-          modelLabel: getGeminiAppModelLabel(settings.geminiAppModel),
+          model: resolveGeminiAppImageModel(settings.geminiAppModel),
+          modelLabel: getGeminiAppModelLabel(resolveGeminiAppImageModel(settings.geminiAppModel)),
           prompt: buildGeminiImagePrompt(settings),
           authMode: settings.geminiAppAuthMode,
         }

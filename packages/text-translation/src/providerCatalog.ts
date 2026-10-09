@@ -47,7 +47,7 @@ export const llmBuiltInProviderDefinitions: Record<
   mimo: {
     label: 'MiMo (小米)', webLabel: 'MiMo',
     baseUrl: 'https://api.xiaomimimo.com/v1',
-    models: ['mimo-v2.6-pro', 'mimo-v2.6-flash', 'mimo-v2.5-pro', 'mimo-v2.5'],
+    models: ['mimo-v2.6-pro', 'mimo-v2.6-flash'],
     defaultAuthMode: 'api_key',
   },
   openai: {
@@ -79,8 +79,10 @@ const modelPresetMigrations: Partial<Record<
   },
   kimi: { 'kimi-k2.5': 'kimi-k2.6' },
   mimo: {
-    'MiMo-V2.5-Pro': 'mimo-v2.5-pro',
-    'MiMo-V2.5': 'mimo-v2.5',
+    'MiMo-V2.5-Pro': 'mimo-v2.6-pro',
+    'mimo-v2.5-pro': 'mimo-v2.6-pro',
+    'MiMo-V2.5': 'mimo-v2.6-flash',
+    'mimo-v2.5': 'mimo-v2.6-flash',
   },
 };
 

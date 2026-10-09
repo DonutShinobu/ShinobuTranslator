@@ -394,6 +394,21 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     openai: normalizeProviderProfile('openai', rawProfiles.openai, provider === 'openai' ? legacy : null),
     custom: normalizeProviderProfile('custom', rawProfiles.custom, provider === 'custom' ? legacy : null),
   };
+  const llmThinkingByModel = normalizeLlmThinkingByModel(raw.llmThinkingByModel);
+  const rawMiMoProfile = rawProfiles.mimo && typeof rawProfiles.mimo === 'object'
+    ? rawProfiles.mimo as Record<string, unknown>
+    : null;
+  const previousMiMoModel = normalizeProfileString(rawMiMoProfile?.modelPreset, '')
+    || (provider === 'mimo' ? legacy.modelPresetInput || legacy.modelFromLegacy : '');
+  if (!llmProfiles.mimo.useCustomModel && migrateBuiltInModelPreset('mimo', previousMiMoModel) !== previousMiMoModel) {
+    const rawThinking = raw.llmThinkingByModel && typeof raw.llmThinkingByModel === 'object'
+      ? raw.llmThinkingByModel as Record<string, unknown>
+      : {};
+    const previousLevel = rawThinking[`mimo/${previousMiMoModel}`] ?? rawThinking[`mimo/${previousMiMoModel.toLowerCase()}`];
+    if (previousLevel === 'off' || previousLevel === 'on') {
+      llmThinkingByModel[`mimo/${llmProfiles.mimo.modelPreset}`] = previousLevel;
+    }
+  }
   const geminiImageModel = normalizeGeminiImageModel(raw.geminiAppModel);
   const showElapsedTime = sanitizeBoolean(raw.showElapsedTime, defaultExtensionSettings.showElapsedTime);
   const showTypesetDebug = sanitizeBoolean(raw.showTypesetDebug, defaultExtensionSettings.showTypesetDebug);
@@ -415,7 +430,7 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     translator,
     llmProvider: provider,
     llmProfiles,
-    llmThinkingByModel: normalizeLlmThinkingByModel(raw.llmThinkingByModel),
+    llmThinkingByModel,
     showElapsedTime,
     showStageTimingDetails:
       usesNanoBanana

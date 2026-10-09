@@ -120,14 +120,6 @@ describe('built-in LLM thinking capabilities', () => {
         levels: ['off', 'on'],
         defaultLevel: 'off',
       },
-      'mimo/mimo-v2.5-pro': {
-        levels: ['off', 'on'],
-        defaultLevel: 'off',
-      },
-      'mimo/mimo-v2.5': {
-        levels: ['off', 'on'],
-        defaultLevel: 'off',
-      },
       'openai/gpt-6-astra': {
         levels: ['low', 'medium', 'high', 'xhigh', 'max'],
         defaultLevel: 'low',
@@ -282,6 +274,18 @@ describe('built-in LLM thinking capabilities', () => {
     }
   });
 
+  it.each([
+    ['mimo-v2.5-pro', 'mimo-v2.6-pro'],
+    ['MiMo-V2.5-Pro', 'mimo-v2.6-pro'],
+    ['mimo-v2.5', 'mimo-v2.6-flash'],
+    ['MiMo-V2.5', 'mimo-v2.6-flash'],
+  ])('migrates saved %s thinking levels to %s', (previousModel, model) => {
+    const normalized = normalizeLlmThinkingByModel({ [`mimo/${previousModel}`]: 'on' });
+    expect(normalized[`mimo/${model}`]).toBe('on');
+    expect(normalized).not.toHaveProperty(`mimo/${previousModel}`);
+    expect(normalizeLlmThinkingByModel(normalized)).toEqual(normalized);
+  });
+
   it.each(['mimo-v2.6-pro', 'mimo-v2.6-flash'])('supports both thinking modes for %s', (model) => {
     for (const level of ['off', 'on'] as const) {
       expect(normalizeLlmThinkingByModel({ [`mimo/${model}`]: level })[`mimo/${model}`]).toBe(level);
@@ -365,7 +369,7 @@ describe('built-in LLM thinking capabilities', () => {
     });
     expect(adaptLlmThinkingChatCompletionRequest(body, {
       provider: 'mimo',
-      model: 'mimo-v2.5',
+      model: 'mimo-v2.6-flash',
       level: 'off',
     })).toMatchObject({
       thinking: { type: 'disabled' },

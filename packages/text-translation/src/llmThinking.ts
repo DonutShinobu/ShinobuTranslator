@@ -164,14 +164,6 @@ export const llmThinkingCapabilityRegistry: Record<string, LlmThinkingCapability
     levels: ['off', 'on'],
     defaultLevel: 'off',
   },
-  'mimo/mimo-v2.5-pro': {
-    levels: ['off', 'on'],
-    defaultLevel: 'off',
-  },
-  'mimo/mimo-v2.5': {
-    levels: ['off', 'on'],
-    defaultLevel: 'off',
-  },
   'openai/gpt-6-astra': {
     levels: ['low', 'medium', 'high', 'xhigh', 'max'],
     defaultLevel: 'low',
@@ -279,6 +271,10 @@ export function normalizeLlmThinkingByModel(value: unknown): LlmThinkingByModel 
     Object.entries(llmThinkingCapabilityRegistry).map(([key, capability]) => {
       const candidate = raw[key] ?? (key === 'deepseek/deepseek-flash'
         ? raw['deepseek/deepseek-v4-flash'] ?? raw['deepseek/deepseek-v4-flash-vision-exp']
+        : undefined) ?? (key === 'mimo/mimo-v2.6-pro'
+        ? raw['mimo/mimo-v2.5-pro'] ?? raw['mimo/MiMo-V2.5-Pro']
+        : undefined) ?? (key === 'mimo/mimo-v2.6-flash'
+        ? raw['mimo/mimo-v2.5'] ?? raw['mimo/MiMo-V2.5']
         : undefined);
       const normalized = typeof candidate === 'string'
         && capability.levels.includes(candidate as LlmThinkingLevel)

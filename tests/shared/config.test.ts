@@ -84,7 +84,7 @@ describe("built-in LLM catalog", () => {
       mimo: {
         label: "MiMo (小米)",
         baseUrl: "https://api.xiaomimimo.com/v1",
-        models: ["mimo-v2.6-pro", "mimo-v2.6-flash", "mimo-v2.5-pro", "mimo-v2.5"],
+        models: ["mimo-v2.6-pro", "mimo-v2.6-flash"],
       },
       openai: {
         label: "OpenAI",
@@ -107,14 +107,37 @@ describe("built-in LLM catalog", () => {
     });
   });
 
-  it('defaults new MiMo profiles to 2.6 Pro and preserves still-supported saved 2.5 selections', () => {
+  it.each([
+    ['mimo-v2.5-pro', 'mimo-v2.6-pro'],
+    ['MiMo-V2.5-Pro', 'mimo-v2.6-pro'],
+    ['mimo-v2.5', 'mimo-v2.6-flash'],
+    ['MiMo-V2.5', 'mimo-v2.6-flash'],
+  ])('migrates %s to %s and preserves the selected model thinking setting', (previousModel, model) => {
     expect(normalizeSettings({}).llmProfiles.mimo.modelPreset).toBe('mimo-v2.6-pro');
+    for (const level of ['off', 'on'] as const) {
+      const settings = normalizeSettings({
+        translator: 'llm', llmProvider: 'mimo',
+        llmProfiles: { mimo: { modelPreset: previousModel } },
+        llmThinkingByModel: {
+          ...normalizeSettings({}).llmThinkingByModel,
+          [`mimo/${model}`]: level === 'on' ? 'off' : 'on',
+          [`mimo/${previousModel.toLowerCase()}`]: level,
+        },
+      });
+      expect(settings.llmProfiles.mimo.modelPreset).toBe(model);
+      expect(toPipelineConfig(settings)).toMatchObject({ llmModel: model, llmThinkingLevel: level });
+      expect(settings.llmThinkingByModel).not.toHaveProperty(`mimo/${previousModel.toLowerCase()}`);
+      expect(normalizeSettings(settings)).toEqual(settings);
+    }
+  });
+
+  it('keeps existing MiMo 2.6 thinking choices when stale 2.5 settings remain', () => {
     const settings = normalizeSettings({
       translator: 'llm', llmProvider: 'mimo',
-      llmProfiles: { mimo: { modelPreset: 'mimo-v2.5-pro' } },
-      llmThinkingByModel: { 'mimo/mimo-v2.5-pro': 'on' },
+      llmProfiles: { mimo: { modelPreset: 'mimo-v2.6-pro' } },
+      llmThinkingByModel: { 'mimo/mimo-v2.6-pro': 'on', 'mimo/mimo-v2.5-pro': 'off' },
     });
-    expect(settings.llmProfiles.mimo.modelPreset).toBe('mimo-v2.5-pro');
+    expect(settings.llmProfiles.mimo.modelPreset).toBe('mimo-v2.6-pro');
     expect(toPipelineConfig(settings).llmThinkingLevel).toBe('on');
   });
 
@@ -135,6 +158,8 @@ describe("built-in LLM catalog", () => {
       translator: "llm",
       llmBaseUrl: "https://api.mimo-v2.com/v1",
       llmModelPreset: "MiMo-V2.5-Pro",
+      llmProfiles: { mimo: { modelPreset: '' } },
+      llmThinkingByModel: { 'mimo/mimo-v2.5-pro': 'on', 'mimo/mimo-v2.6-pro': 'off' },
     });
 
     expect({
@@ -145,11 +170,12 @@ describe("built-in LLM catalog", () => {
       officialMiMoBaseUrl: resolveLlmBaseUrl(legacyMiMo),
     }).toEqual({
       kimiModel: "kimi-k2.6",
-      mimoModel: "mimo-v2.5",
+      mimoModel: "mimo-v2.6-flash",
       detectedProvider: "mimo",
-      legacyMiMoModel: "mimo-v2.5-pro",
+      legacyMiMoModel: "mimo-v2.6-pro",
       officialMiMoBaseUrl: "https://api.xiaomimimo.com/v1",
     });
+    expect(toPipelineConfig(legacyMiMo).llmThinkingLevel).toBe('on');
   });
 
   it("persists thinking levels independently by exact provider and model", () => {

@@ -7,6 +7,24 @@ import {
 import type { LlmChatCompletionRequestBody } from "../../apps/extension/src/shared/messages";
 
 describe("buildOpenAiResponsesRequest", () => {
+  it('preserves candidate images when converting vision requests for OAuth', () => {
+    const request = buildOpenAiResponsesRequest({
+      model: 'gpt-6-sol',
+      messages: [
+        { role: 'system', content: 'Classify OCR.' },
+        { role: 'user', content: [
+          { type: 'text', text: 'Candidate metadata' },
+          { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,YQ==' } },
+        ] },
+      ],
+    });
+    expect(request.instructions).toBe('Classify OCR.');
+    expect(request.input[0].content).toEqual([
+      { type: 'input_text', text: 'Candidate metadata' },
+      { type: 'input_image', image_url: 'data:image/jpeg;base64,YQ==' },
+    ]);
+  });
+
   it("converts a chat completion request to the Codex Responses shape", () => {
     const body: LlmChatCompletionRequestBody = {
       model: "gpt-5.1",

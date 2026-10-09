@@ -69,7 +69,8 @@ async function checkInteractions(page: Page) {
   }
 
   const modeOptions = page.getByRole('button', { name: '模式选项', exact: true });
-  const imageEditing = page.getByRole('switch', { name: '直接编辑图片', exact: true });
+  const imageEditing = page.getByRole('switch', { name: '图片编辑', exact: true });
+  const llmOcrFilter = page.getByRole('switch', { name: '大模型误识别过滤', exact: true });
   const modeBox = await mode.boundingBox();
   const popupBox = await page.locator('.popup').boundingBox();
   const browserName = page.context().browser()!.browserType().name();
@@ -98,7 +99,31 @@ async function checkInteractions(page: Page) {
     path: resolve(outputDirectory, `${browserName}-image-editing-menu-off.png`),
     animations: 'disabled',
   });
-  await modeMenu.getByText('直接编辑图片', { exact: true }).click();
+  await expect(llmOcrFilter).toHaveAttribute('aria-checked', 'false');
+  await modeMenu.getByText('图片编辑', { exact: true }).hover();
+  await expect(page.getByRole('tooltip')).toContainText('修改图片上的文字');
+  expect(await page.getByRole('tooltip').evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el.firstChild!);
+    return range.getClientRects().length;
+  })).toBe(1);
+  await page.locator('.popup-header-brand').hover();
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
+  await modeMenu.getByText('大模型误识别过滤', { exact: true }).hover();
+  await expect(page.getByRole('tooltip')).toContainText('当前模型');
+  await expect(page.getByRole('tooltip')).toContainText('额外消耗');
+  expect(await page.getByRole('tooltip').evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el.firstChild!);
+    return range.getClientRects().length;
+  })).toBe(1);
+  await page.screenshot({ path: resolve(outputDirectory, `${browserName}-llm-ocr-filter-hint.png`), animations: 'disabled' });
+  await modeMenu.getByText('大模型误识别过滤', { exact: true }).click();
+  await expect.poll(async () => (await projection(page)).settings.enableLlmOcrFilter).toBe(true);
+  await expect(llmOcrFilter).toHaveAttribute('aria-checked', 'true');
+  await llmOcrFilter.press('Space');
+  await expect.poll(async () => (await projection(page)).settings.enableLlmOcrFilter).toBe(false);
+  await modeMenu.getByText('图片编辑', { exact: true }).click();
   await expect.poll(async () => (await projection(page)).settings.enableImageEditing).toBe(true);
   await expect(imageEditing).toHaveAttribute('aria-checked', 'true');
   await expect(modeMenu).toBeVisible();
@@ -196,6 +221,9 @@ async function checkInteractions(page: Page) {
   await expect.poll(async () => (await projection(page)).settings.translator).toBe('google_web');
   await expect(modeOptions).toBeVisible();
   await expect(page.getByRole('combobox', { name: 'LLM 提供商' })).toHaveCount(0);
+  await modeOptions.click();
+  await expect(llmOcrFilter).toBeDisabled();
+  await page.keyboard.press('Escape');
   await service.getByRole('radio', { name: '大模型' }).click();
   const provider = page.getByRole('combobox', { name: 'LLM 提供商' });
   await provider.click();

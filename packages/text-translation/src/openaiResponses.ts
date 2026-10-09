@@ -3,7 +3,7 @@ import type { LlmChatCompletionRequestBody, LlmChatMessage } from './contracts';
 type OpenAiResponsesContent = {
   type: 'input_text' | 'output_text';
   text: string;
-};
+} | { type: 'input_image'; image_url: string };
 
 type OpenAiResponsesMessage = {
   type: 'message';
@@ -52,7 +52,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function buildInstructions(messages: LlmChatMessage[]): string {
   return messages
     .filter((message) => message.role === 'system')
-    .map((message) => message.content.trim())
+    .map((message) => typeof message.content === 'string'
+      ? message.content.trim()
+      : message.content.filter((part) => part.type === 'text').map((part) => part.text).join('\n').trim())
     .filter(Boolean)
     .join('\n\n');
 }
@@ -63,12 +65,11 @@ function buildInput(messages: LlmChatMessage[]): OpenAiResponsesMessage[] {
     .map((message) => ({
       type: 'message' as const,
       role: message.role === 'assistant' ? ('assistant' as const) : ('user' as const),
-      content: [
-        {
-          type: message.role === 'assistant' ? ('output_text' as const) : ('input_text' as const),
-          text: message.content,
-        },
-      ],
+      content: (typeof message.content === 'string'
+        ? [{ type: 'text' as const, text: message.content }]
+        : message.content).map((part): OpenAiResponsesContent => part.type === 'image_url'
+          ? { type: 'input_image', image_url: part.image_url.url }
+          : { type: message.role === 'assistant' ? 'output_text' : 'input_text', text: part.text }),
     }));
 }
 

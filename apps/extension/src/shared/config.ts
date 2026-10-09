@@ -135,6 +135,7 @@ export type ExtensionSettings = {
   processMode: ProcessMode;
   enableDebugLog: boolean;
   enableImageEditing: boolean;
+  enableLlmOcrFilter: boolean;
 };
 
 export const defaultExtensionSettings: ExtensionSettings = {
@@ -160,6 +161,7 @@ export const defaultExtensionSettings: ExtensionSettings = {
   processMode: 'translate',
   enableDebugLog: false,
   enableImageEditing: false,
+  enableLlmOcrFilter: false,
 };
 
 export function targetLanguageLabel(targetLang: string): string {
@@ -451,6 +453,7 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     processMode: normalizeProcessMode(raw.processMode),
     enableDebugLog: sanitizeBoolean(raw.enableDebugLog, defaultExtensionSettings.enableDebugLog),
     enableImageEditing: sanitizeBoolean(raw.enableImageEditing, defaultExtensionSettings.enableImageEditing),
+    enableLlmOcrFilter: sanitizeBoolean(raw.enableLlmOcrFilter, defaultExtensionSettings.enableLlmOcrFilter),
   };
 }
 
@@ -558,6 +561,7 @@ export function toPipelineConfig(settings: ExtensionSettings): PipelineConfig {
     collectDebugLog: settings.showTypesetDebug || settings.enableDebugLog,
     ocrEngine: settings.ocrEngine,
     ocrPostFilter: settings.disableOcrPostFilter ? 'off' : 'balanced',
+    llmOcrFilter: settings.enableLlmOcrFilter && settings.translator === 'llm' && !usesNanoBananaImagePipeline(settings),
     processMode: settings.processMode,
   };
 }

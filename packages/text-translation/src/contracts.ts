@@ -17,9 +17,13 @@ export type TranslationReferenceContext = {
   quotedTweetText?: string;
 };
 
+export type LlmChatContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
+
 export type LlmChatMessage = {
   role: 'system' | 'user' | 'assistant';
-  content: string;
+  content: string | LlmChatContentPart[];
 };
 
 export type LlmChatCompletionRequestBody = {

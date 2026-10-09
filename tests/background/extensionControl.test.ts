@@ -139,6 +139,7 @@ describe('ExtensionControlModule', () => {
     const settings: ExtensionSettings = {
       ...defaultExtensionSettings,
       translator: 'llm',
+      enableLlmOcrFilter: true,
       llmProvider: 'deepseek',
       llmProfiles: {
         ...defaultExtensionSettings.llmProfiles,
@@ -154,7 +155,7 @@ describe('ExtensionControlModule', () => {
 
     expect(result).toMatchObject({
       kind: 'execution-snapshot',
-      snapshot: { kind: 'local-pipeline', revision: 1 },
+      snapshot: { kind: 'local-pipeline', revision: 1, pipelineConfig: { llmOcrFilter: true } },
     });
     expect(JSON.stringify(result)).not.toContain('never-project-this-secret');
   });

@@ -80,6 +80,7 @@ const stageLabelMap: Record<string, string> = {
   detect: '文本检测',
   ocr: '文字识别',
   ocr_postfilter: '过滤 OCR 误识别',
+  llm_ocr_filter: '大模型误识别过滤',
   merge: '合并文本',
   parallel: '并行处理',
   translate: '翻译文本',

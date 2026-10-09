@@ -212,11 +212,15 @@ const defaultShortcutState: ShortcutState = {
   'translate-hover-target': '',
 };
 
-function ControlHint({ content, children }: { content: string; children: ReactElement }) {
+function ControlHint({ content, children, onEscapeKeyDown }: {
+  content: string;
+  children: ReactElement;
+  onEscapeKeyDown?: () => void;
+}) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>{children}</TooltipTrigger>
-      <TooltipContent sideOffset={4} collisionPadding={8}>
+      <TooltipContent sideOffset={4} collisionPadding={8} onEscapeKeyDown={onEscapeKeyDown}>
         {content}
       </TooltipContent>
     </Tooltip>
@@ -359,6 +363,7 @@ export function App() {
     toExtensionSettingsProjection(defaultExtensionSettings),
   );
   const [loading, setLoading] = useState(true);
+  const [modeOptionsOpen, setModeOptionsOpen] = useState(false);
   const [status, setStatus] = useState<SaveStatus>({ kind: 'idle', message: '' });
   const [shortcutsLoading, setShortcutsLoading] = useState(true);
   const [shortcuts, setShortcuts] = useState<ShortcutState>(defaultShortcutState);
@@ -1027,7 +1032,7 @@ export function App() {
                 <section className="panel option-panel">
                   <Separator className="panel-separator" />
                   <div className="panel-title">
-                    <Popover>
+                    <Popover open={modeOptionsOpen} onOpenChange={setModeOptionsOpen}>
                       <PopoverTrigger asChild>
                         <Button
                           variant="ghost"
@@ -1049,15 +1054,28 @@ export function App() {
                         align="start"
                         collisionPadding={8}
                       >
-                        <div className="mode-options-switch-row">
-                          <Switch
-                            id="enable-image-editing"
-                            checked={settings.enableImageEditing}
-                            onCheckedChange={(checked) => updateField('enableImageEditing', checked)}
-                            disabled={loading}
-                          />
-                          <Label htmlFor="enable-image-editing">直接编辑图片</Label>
-                        </div>
+                        <ControlHint content="直接修改图片上的文字和去字图层。" onEscapeKeyDown={() => setModeOptionsOpen(false)}>
+                          <div className="mode-options-switch-row">
+                            <Switch
+                              id="enable-image-editing"
+                              checked={settings.enableImageEditing}
+                              onCheckedChange={(checked) => updateField('enableImageEditing', checked)}
+                              disabled={loading}
+                            />
+                            <Label htmlFor="enable-image-editing">图片编辑</Label>
+                          </div>
+                        </ControlHint>
+                        <ControlHint content="用当前模型看图过滤误识别，产生额外消耗。" onEscapeKeyDown={() => setModeOptionsOpen(false)}>
+                          <div className="mode-options-switch-row">
+                            <Switch
+                              id="enable-llm-ocr-filter"
+                              checked={settings.enableLlmOcrFilter}
+                              onCheckedChange={(checked) => updateField('enableLlmOcrFilter', checked)}
+                              disabled={loading || settings.translator !== 'llm'}
+                            />
+                            <Label htmlFor="enable-llm-ocr-filter">大模型误识别过滤</Label>
+                          </div>
+                        </ControlHint>
                       </PopoverContent>
                     </Popover>
                   </div>

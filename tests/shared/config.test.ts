@@ -19,6 +19,16 @@ import {
 } from "../../apps/extension/src/shared/config";
 
 describe("built-in LLM catalog", () => {
+  it('defaults LLM OCR filtering off and only runs it with the local LLM pipeline', () => {
+    expect(normalizeSettings({}).enableLlmOcrFilter).toBe(false);
+    expect(normalizeSettings({ enableLlmOcrFilter: 'true' }).enableLlmOcrFilter).toBe(false);
+    const settings = normalizeSettings({ translator: 'llm', llmProvider: 'mimo', enableLlmOcrFilter: true });
+    expect(toPipelineConfig(settings)).toMatchObject({ llmOcrFilter: true, llmProvider: 'mimo', llmModel: 'mimo-v2.6-pro' });
+    expect(normalizeSettings(settings)).toEqual(settings);
+    expect(toPipelineConfig({ ...settings, translator: 'google_web' }).llmOcrFilter).toBe(false);
+    expect(toPipelineConfig(normalizeSettings({ ...settings, llmProvider: 'gemini' })).llmOcrFilter).toBe(false);
+  });
+
   it('normalizes the popup editing preference without adding it to pipeline settings', () => {
     expect(normalizeSettings({}).enableImageEditing).toBe(false);
     expect(normalizeSettings({ enableImageEditing: 'true' }).enableImageEditing).toBe(false);

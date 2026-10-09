@@ -24,7 +24,7 @@
       "count": 2,
       "dependency": "react-dom",
       "dependencyVersion": "18.3.1",
-      "sha256": "3b400f56492b3ea7998f2a4484f26f2cdbf60125db4bfe3cc4f5185fafee0998"
+      "sha256": "3a06783dae548a05cac9ca147d137002c901e8b184321a10edcefa3cf3c947e1"
     },
     {
       "code": "UNSAFE_VAR_ASSIGNMENT",
@@ -32,7 +32,7 @@
       "count": 1,
       "dependency": "prosemirror-view",
       "dependencyVersion": "1.42.6",
-      "sha256": "6f199a84e28586c24ba316f41e7b1d2140e8702efb367f2d346abc3f48e44cdb"
+      "sha256": "235791d2580b037f390d9c9c41e1637469adbe6e485cceb75d2668082c856afc"
     },
     {
       "code": "UNSAFE_VAR_ASSIGNMENT",

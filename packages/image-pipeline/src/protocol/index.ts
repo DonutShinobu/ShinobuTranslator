@@ -432,6 +432,7 @@ function isValidPipelineConfig(value: unknown): value is PipelineConfig {
   if (value.processMode !== 'translate' && value.processMode !== 'erase' && value.processMode !== 'original') return false;
   if (typeof value.typesetDebug !== 'boolean' || typeof value.eraseDebug !== 'boolean' || typeof value.collectDebugLog !== 'boolean') return false;
   if (value.ocrCompactActiveBatch !== undefined && typeof value.ocrCompactActiveBatch !== 'boolean') return false;
+  if (value.llmOcrFilter !== undefined && typeof value.llmOcrFilter !== 'boolean') return false;
   if (
     value.ocrPostFilter !== undefined
     && value.ocrPostFilter !== 'off'

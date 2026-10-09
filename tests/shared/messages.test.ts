@@ -6,6 +6,22 @@ import {
 } from "../../apps/extension/src/shared/messages";
 
 describe("isRuntimeMessage", () => {
+  it('accepts candidate image content and rejects malformed or remote image parts', () => {
+    const message = (content: unknown, role = 'user') => ({
+      type: 'mt:llm-chat-completions', body: { model: 'current-model', messages: [{ role, content }] },
+    });
+    expect(isRuntimeMessage(message([
+      { type: 'text', text: 'OCR metadata' },
+      { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,YQ==' } },
+    ]))).toBe(true);
+    for (const content of [null, [], [null], [{ type: 'text', text: 42 }],
+      [{ type: 'image_url', image_url: { url: 'https://example.com/image.jpg' } }],
+      [{ type: 'image_url', image_url: { url: 'data:text/html;base64,YQ==' } }],
+      [{ type: 'image_url', image_url: { url: 'data:image/png;base64,invalid data' } }],
+    ]) expect(isRuntimeMessage(message(content))).toBe(false);
+    expect(isRuntimeMessage(message('valid text', 'unknown'))).toBe(false);
+  });
+
   it("accepts image and screenshot translation runtime messages", () => {
     expect(isRuntimeMessage({ type: "mt:download-image", imageUrl: "https://example.com/a.png" })).toBe(true);
     expect(isRuntimeMessage({

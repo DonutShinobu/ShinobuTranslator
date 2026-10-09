@@ -1,9 +1,11 @@
 import type { DiagnosticLogEvent, DiagnosticLogTextExport } from '@shinobu/diagnostics';
 import type { StageTiming } from '@shinobu/image-pipeline/benchmark';
-import type { LlmAuthMode, LlmProvider } from '@shinobu/text-translation';
+import type {
+  LlmAuthMode, LlmProvider, LlmThinkingLevel,
+  LlmChatContentPart, LlmChatMessage, LlmChatCompletionRequestBody,
+} from '@shinobu/text-translation';
 import { requireExtensionRuntime } from './extensionRuntime';
 import { isLlmThinkingLevel } from '@shinobu/text-translation';
-import type { LlmThinkingLevel } from '@shinobu/text-translation';
 import { isReferrerPolicy } from './referrerPolicy';
 import {
   parseCredentiallessHttpsUrl,
@@ -16,6 +18,8 @@ import type {
   ExtensionControlResult,
   WholeImageExecutionPreparation,
 } from './extensionControl';
+
+export type { LlmChatMessage, LlmChatCompletionRequestBody } from '@shinobu/text-translation';
 
 export type ExtensionControlRuntimeMessage = {
   type: 'mt:extension-control';
@@ -52,24 +56,6 @@ export type ReleasePageImageCacheMessage = {
 
 export type CaptureVisibleTabMessage = {
   type: 'mt:capture-visible-tab';
-};
-
-export type LlmChatMessage = {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-};
-
-export type LlmChatCompletionRequestBody = {
-  model: string;
-  messages: LlmChatMessage[];
-  response_format?: {
-    type: 'json_object' | 'text';
-  };
-  reasoning_effort?: 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-  reasoning_split?: boolean;
-  thinking?: {
-    type: 'disabled' | 'enabled' | 'adaptive';
-  };
 };
 
 export type LlmChatCompletionsProxyConfig = {
@@ -425,6 +411,23 @@ function isExtensionControlRuntimeMessage(
     );
 }
 
+function isLlmChatContentPart(value: unknown): value is LlmChatContentPart {
+  if (!isRecord(value)) return false;
+  if (value.type === 'text') return typeof value.text === 'string';
+  return value.type === 'image_url'
+    && isRecord(value.image_url)
+    && typeof value.image_url.url === 'string'
+    && /^data:image\/(?:jpeg|png|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/u.test(value.image_url.url);
+}
+
+function isLlmChatMessage(value: unknown): value is LlmChatMessage {
+  return isRecord(value)
+    && (value.role === 'system' || value.role === 'user' || value.role === 'assistant')
+    && (typeof value.content === 'string'
+      || (value.role === 'user' && Array.isArray(value.content)
+        && value.content.length > 0 && value.content.every(isLlmChatContentPart)));
+}
+
 function isLlmChatCompletionsMessage(value: Record<string, unknown>): value is LlmChatCompletionsMessage {
   if (value.type !== 'mt:llm-chat-completions' || !isRecord(value.body)) {
     return false;
@@ -444,6 +447,7 @@ function isLlmChatCompletionsMessage(value: Record<string, unknown>): value is L
   return (
     typeof value.body.model === 'string' &&
     Array.isArray(value.body.messages) &&
+    value.body.messages.every(isLlmChatMessage) &&
     (value.diagnosticRunId === undefined || typeof value.diagnosticRunId === 'string')
   );
 }

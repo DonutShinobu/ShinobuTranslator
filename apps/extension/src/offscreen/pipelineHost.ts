@@ -42,6 +42,7 @@ import type { ModelRuntime } from '@shinobu/model-runtime';
 import {
   extensionTextTranslationTransport,
 } from '../shared/textTranslationTransport';
+import { classifyVisionRegions } from '../shared/visionRegionClassifier';
 import {
   createTextTranslator,
   type TextTranslationTransport,
@@ -537,6 +538,7 @@ export class PipelineHost {
           transport: this.translationTransport,
           observer: this.diagnostics,
         }),
+        classifyVisionRegions: (regions, signal) => classifyVisionRegions(regions, config, this.translationTransport, signal),
       });
       stopProgress = task.progress((progress) => {
         safelyPost(this.port, {

@@ -42,6 +42,7 @@ import {
 import { createCancelledError } from "../protocol";
 import type { TextTranslator } from '@shinobu/text-translation';
 import { hasTranslatableText } from '../translatableText';
+import { describeVisionRegions, type VisionRegionClassifier } from './visionRegionFilter';
 import { buildEraseLayerCanvases } from '../editor/eraseLayers';
 import type { EditableLayerCanvases, RegionMaskOwnership } from '../editor/types';
 import {
@@ -58,6 +59,7 @@ export type PipelineRunOptions = {
   modelRuntime?: ModelRuntime;
   detectionFallbackStrategy: DetectionFallbackStrategy;
   textTranslator?: TextTranslator;
+  classifyVisionRegions?: VisionRegionClassifier;
   observer?: DiagnosticLogObserver;
   precomputedDetection?: PrecomputedTextDetection;
   collectEditableLayers?: boolean;
@@ -867,6 +869,34 @@ export async function runPipeline(
         label: "过滤 OCR 误识别",
         durationMs: performance.now() - t0,
       });
+    }
+  }
+
+  if (config.llmOcrFilter && config.translator === 'llm' && latestRegions.length > 0) {
+    throwIfCancelled(signal);
+    report(onProgress, 'llm_ocr_filter', '大模型误识别过滤');
+    const t0 = performance.now();
+    try {
+      if (!options.classifyVisionRegions) throw new Error('未配置大模型误识别过滤器');
+      const described = describeVisionRegions(latestRegions, stageRegions.detected, originalCanvas, platform);
+      const filteredIds = await options.classifyVisionRegions(described, signal);
+      throwIfCancelled(signal);
+      const validIds = new Set(latestRegions.map((region) => region.id));
+      if (!Array.isArray(filteredIds) || !filteredIds.every((id) => typeof id === 'string' && validIds.has(id))) {
+        throw new Error('大模型误识别过滤返回了无效的区域 ID');
+      }
+      const filtered = new Set(filteredIds);
+      latestRegions = latestRegions.filter((region) => !filtered.has(region.id));
+      logPipelineStage(options.observer, config, 'pipeline.ocr', '大模型误识别过滤完成', {
+        candidateCount: described.length,
+        filteredRegionIds: filteredIds,
+      });
+    } catch (error) {
+      throwIfCancelled(signal);
+      console.warn(`[llm-ocr-filter] 过滤失败，保留全部区域: ${toErrorDetail(error)}`);
+      logPipelineStage(options.observer, config, 'pipeline.ocr', '大模型误识别过滤失败，已保留全部区域', undefined, error);
+    } finally {
+      stageTimings.push({ stage: 'llm_ocr_filter', label: '大模型误识别过滤', durationMs: performance.now() - t0 });
     }
   }
 

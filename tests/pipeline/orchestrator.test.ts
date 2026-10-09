@@ -15,6 +15,7 @@ const pipelineMocks = vi.hoisted(() => ({
   detectTextRegionsWithMask: vi.fn(),
   materializePrecomputedDetection: vi.fn(),
   runOcr: vi.fn(),
+  describeVisionRegions: vi.fn(),
   preparePaddleOcrRuntime: vi.fn(),
   warmupPaddleOcrRuntime: vi.fn(),
   runTranslate: vi.fn(),
@@ -51,6 +52,9 @@ vi.mock('../../packages/image-pipeline/src/pipeline/detect/precomputedDetection'
 }));
 vi.mock('../../packages/image-pipeline/src/pipeline/ocr', () => ({
   runOcr: pipelineMocks.runOcr,
+}));
+vi.mock('../../packages/image-pipeline/src/pipeline/visionRegionFilter', () => ({
+  describeVisionRegions: pipelineMocks.describeVisionRegions,
 }));
 vi.mock('../../packages/image-pipeline/src/pipeline/ocr/paddleocrProvider', () => ({
   preparePaddleOcrRuntime: pipelineMocks.preparePaddleOcrRuntime,
@@ -200,6 +204,9 @@ beforeEach(() => {
     debug: null,
     actualProvider: 'wasm',
   });
+  pipelineMocks.describeVisionRegions.mockImplementation((regions: TextRegion[]) => regions.map((region) => ({
+    id: region.id, text: region.sourceText, imageDataUrl: 'data:image/jpeg;base64,YQ==',
+  })));
   pipelineMocks.preparePaddleOcrRuntime.mockResolvedValue({
     modelName: 'paddleocr_v6_medium_rec',
     sessionHandle,
@@ -257,6 +264,76 @@ afterEach(() => {
 });
 
 describe('runPipeline', () => {
+  it.each(['translate', 'erase', 'original'] as const)('filters false positives before translation and erasure in %s mode', async (processMode) => {
+    const falsePositive = { ...ocrRegion, id: 'false-positive', sourceText: '幻觉' };
+    pipelineMocks.runOcr.mockResolvedValueOnce({ regions: [ocrRegion, falsePositive], debug: null, actualProvider: 'wasm' });
+    const classifyVisionRegions = vi.fn(async () => ['false-positive']);
+    const output = await runPipeline(createFile(), {
+      ...baseConfig, translator: 'llm', llmOcrFilter: true, processMode,
+    }, () => {}, { ...runtimeOptions, classifyVisionRegions });
+    expect(classifyVisionRegions).toHaveBeenCalledWith([
+      expect.objectContaining({ id: ocrRegion.id }),
+      expect.objectContaining({ id: falsePositive.id }),
+    ], undefined);
+    expect(output.stageRegions.ordered).toEqual([ocrRegion]);
+    expect(pipelineMocks.refineTextMask.mock.calls[0][1]).toEqual([ocrRegion]);
+    if (processMode === 'translate') expect(pipelineMocks.runTranslate.mock.calls[0][0].regions).toEqual([ocrRegion]);
+    else expect(pipelineMocks.runTranslate).not.toHaveBeenCalled();
+    expect(output.stageTimings).toContainEqual(expect.objectContaining({ stage: 'llm_ocr_filter', label: '大模型误识别过滤' }));
+  });
+
+  it('publishes the original image without translation or erasure when every region is filtered', async () => {
+    const pipeline = createImagePipeline({
+      platform: pipelineMocks.browserPlatform as PlatformProvider, modelRuntime,
+      detectionFallbackStrategy: { kind: 'heuristic-only' },
+    });
+    const result = await pipeline.run({
+      source: createFile(), config: { ...baseConfig, translator: 'llm', llmOcrFilter: true },
+      workingCopy: { strategy: 'source-native' },
+    }, { textTranslator, classifyVisionRegions: async () => [ocrRegion.id] }).result;
+    expect(result.status).toBe('no-translatable-text');
+    expect(result.record.translations).toEqual([]);
+    expect(pipelineMocks.browserPlatform.encodeCanvasToPng).toHaveBeenCalledWith(originalCanvas);
+    expect(pipelineMocks.runTranslate).not.toHaveBeenCalled();
+    expect(pipelineMocks.refineTextMask).not.toHaveBeenCalled();
+    await pipeline.dispose();
+  });
+
+  it.each(['failed', 'unknown-id'])('preserves all regions when classification is %s', async (failure) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await runPipeline(createFile(), { ...baseConfig, translator: 'llm', llmOcrFilter: true }, () => {}, {
+        ...runtimeOptions, classifyVisionRegions: async () => {
+          if (failure === 'failed') throw new Error('unsupported image input');
+          return ['unknown'];
+        },
+      });
+      expect(pipelineMocks.refineTextMask.mock.calls[0][1]).toEqual([ocrRegion]);
+      expect(warn).toHaveBeenCalledOnce();
+    } finally { warn.mockRestore(); }
+  });
+
+  it.each([{ translator: 'llm' as const, llmOcrFilter: false }, { translator: 'google_web' as const, llmOcrFilter: true }])('skips disabled filtering and Google translation', async (config) => {
+    const classifyVisionRegions = vi.fn();
+    await runPipeline(createFile(), { ...baseConfig, ...config }, () => {}, { ...runtimeOptions, classifyVisionRegions });
+    expect(classifyVisionRegions).not.toHaveBeenCalled();
+    expect(pipelineMocks.describeVisionRegions).not.toHaveBeenCalled();
+  });
+
+  it('propagates cancellation during filtering without erasing any regions', async () => {
+    const controller = new AbortController();
+    await expect(runPipeline(createFile(), { ...baseConfig, translator: 'llm', llmOcrFilter: true }, () => {}, {
+      ...runtimeOptions, signal: controller.signal,
+      classifyVisionRegions: async (_regions, signal) => {
+        expect(signal).toBe(controller.signal);
+        controller.abort();
+        return [];
+      },
+    })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(pipelineMocks.runTranslate).not.toHaveBeenCalled();
+    expect(pipelineMocks.refineTextMask).not.toHaveBeenCalled();
+  });
+
   it('leaves panel preparation at the original order stage by default', async () => {
     await runPipeline(createFile(), baseConfig, () => {}, runtimeOptions);
     expect(pipelineMocks.prepareReadingPanels).not.toHaveBeenCalled();

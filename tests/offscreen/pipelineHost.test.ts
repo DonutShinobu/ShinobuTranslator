@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExtensionPort } from '../../apps/extension/src/shared/extensionRuntime';
 import type { PipelineArtifacts } from '../../packages/image-pipeline/src/types';
-import type { PipelinePlatform, PipelineConfig } from '@shinobu/image-pipeline';
+import type { PipelinePlatform, PipelineConfig, VisionRegionClassifier } from '@shinobu/image-pipeline';
 import type { ModelRuntime } from '@shinobu/model-runtime';
 import { LOCAL_PIPELINE_STRUCTURED_CLONE_PROBE_TYPE } from '@shinobu/image-pipeline/protocol';
 import { unpackEditableImage } from '@shinobu/image-pipeline/editor';
@@ -208,6 +208,28 @@ describe('PipelineHost single-task admission', () => {
     hosts.push(host);
     return host;
   }
+
+  it('routes filtering through the injected transport using the job model snapshot', async () => {
+    const requestChatCompletion = vi.fn(async () => ({ choices: [{ message: { content: 'false_positive' } }] }));
+    mocks.runPipeline.mockImplementationOnce(async (_source, _config, _progress, options: { classifyVisionRegions: VisionRegionClassifier }) => {
+      expect(await options.classifyVisionRegions([{
+        id: 'r1', text: 'あ', ocrConfidence: 0.6, detectorConfidence: 0.7, direction: 'v',
+        lineCount: 1, inBubble: false, areaPercent: 12, boxPercent: { x: 0, y: 0, width: 30, height: 40 },
+        imageDataUrl: 'data:image/jpeg;base64,YQ==',
+      }])).toEqual(['r1']);
+      return artifacts();
+    });
+    const host = createHost({ translationTransport: { requestChatCompletion, translatePlain: vi.fn() } });
+    host.connect();
+    sendImageJob(port, 'filter', undefined, {
+      translator: 'llm', llmOcrFilter: true, llmProvider: 'mimo', llmModel: 'mimo-v2.6-flash', llmBaseUrl: 'https://api.xiaomimimo.com/v1',
+    });
+    await vi.waitFor(() => expect(port.sent).toContainEqual({ type: 'complete', jobId: 'filter' }));
+    expect(requestChatCompletion).toHaveBeenCalledWith(expect.objectContaining({
+      body: expect.objectContaining({ model: 'mimo-v2.6-flash' }),
+      proxyConfig: expect.objectContaining({ provider: 'mimo', baseUrl: 'https://api.xiaomimimo.com/v1' }),
+    }));
+  });
 
   it.each([false, true])('exports opted-in layers through the host transport (native=%s)', async (native) => {
     vi.stubGlobal('__shinobuColdStartStructuredClone', native);

@@ -24,6 +24,8 @@ import type { PrecomputedTextDetection } from './pipeline/detect/precomputedDete
 import { hasTranslatableText } from './translatableText';
 import type { EditableImage } from './editor/types';
 import { encodeTextLayer } from './editor/textLayer';
+import type { VisionRegionClassifier } from './pipeline/visionRegionFilter';
+export type { VisionRegion, VisionRegionClassifier } from './pipeline/visionRegionFilter';
 export type { EditableImage, EditableLayer, EditableTextLayer, EditableEraseLayer } from './editor/types';
 export {
   probeTextDetection,
@@ -62,6 +64,7 @@ export type {
 
 export type ImagePipelineExecution = {
   textTranslator: TextTranslator;
+  classifyVisionRegions?: VisionRegionClassifier;
 };
 
 export type ImagePipelineDependencies = {
@@ -107,6 +110,7 @@ export type PipelineConfig = {
   ocrEngine: 'paddleocr_v6_medium';
   ocrCompactActiveBatch?: boolean;
   ocrPostFilter?: 'off' | 'balanced';
+  llmOcrFilter?: boolean;
   processMode: 'translate' | 'erase' | 'original';
   diagnosticRunId?: string;
 };
@@ -401,6 +405,7 @@ function validateConfig(config: unknown): config is PipelineConfig {
     'ocrEngine',
     'ocrCompactActiveBatch',
     'ocrPostFilter',
+    'llmOcrFilter',
     'processMode',
     'diagnosticRunId',
   ]);
@@ -467,6 +472,7 @@ function validateConfig(config: unknown): config is PipelineConfig {
       || config.ocrPostFilter === 'off'
       || config.ocrPostFilter === 'balanced'
     )
+    && (config.llmOcrFilter === undefined || typeof config.llmOcrFilter === 'boolean')
     && (
       config.processMode === 'translate'
       || config.processMode === 'erase'
@@ -1423,6 +1429,7 @@ export function createImagePipeline(
           platform: dependencies.platform,
           modelRuntime: dependencies.modelRuntime,
           textTranslator,
+          classifyVisionRegions: execution.classifyVisionRegions,
           observer: dependencies.observer,
           detectionFallbackStrategy:
             dependencies.detectionFallbackStrategy,

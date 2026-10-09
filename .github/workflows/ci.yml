@@ -17,6 +17,8 @@ jobs:
     env:
       EXTENSION_CHROMIUM_DIST: apps/extension/dist-chromium
       EXTENSION_FIREFOX_DIST: apps/extension/dist-firefox
+      # CI uses the bundled CPU runtime; avoid optional CUDA downloads.
+      ONNXRUNTIME_NODE_INSTALL: skip
 
     steps:
       - name: Checkout

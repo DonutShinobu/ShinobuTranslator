@@ -27,6 +27,8 @@ jobs:
     env:
       EXTENSION_CHROMIUM_DIST: apps/extension/dist-chromium
       EXTENSION_FIREFOX_DIST: apps/extension/dist-firefox
+      # The release checks use the bundled CPU runtime, as CI does.
+      ONNXRUNTIME_NODE_INSTALL: skip
 
     steps:
       - name: Checkout

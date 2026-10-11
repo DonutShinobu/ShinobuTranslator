@@ -61,6 +61,7 @@ function fixture(rgb: number[], tagName = 'IMG', mixed = false, splitAt = 8) {
     ownerDocument: doc, isConnected: true, dataset: {} as Record<string, string>,
     style: { setProperty: (key: string, value: string) => properties.set(key, value), getPropertyValue: (key: string) => properties.get(key) || '' },
     closest: () => overlay, getBoundingClientRect: () => rect(100, 80, 90, 36),
+    querySelector: vi.fn(() => ({})),
     querySelectorAll: (selector: string) => {
       if (selector === '.mt-x-label-slot, .mt-x-icon') return [icon, label];
       if (selector === '.mt-x-icon') return [icon];
@@ -134,6 +135,16 @@ describe('translation button foreground contrast', () => {
     expect(doc.elementsFromPoint).not.toHaveBeenCalled();
   });
 
+  it('uses the original backdrop when the Clear refraction filter is unavailable', () => {
+    const { button } = fixture([118, 118, 118]);
+    refreshButtonContrast(button);
+    expect(button.dataset.ink).toBe('dark');
+    vi.spyOn(button, 'querySelector').mockReturnValue(null);
+    delete button.dataset.ink;
+    refreshButtonContrast(button);
+    expect(button.dataset.ink).toBe('light');
+  });
+
   it('keeps every glyph and icon on one ink across black hair and white bubbles, including exiting text', () => {
     const { button, glyphs, icon, label, properties, unreadable, context } = fixture([0, 0, 0], 'IMG', true);
     glyphs[0].dataset.torphExiting = '';
@@ -144,8 +155,9 @@ describe('translation button foreground contrast', () => {
     expect(button.dataset.contrast).toBe('sampled');
     expect(button.dataset.ink).toBe('balanced');
     const gray = properties.get('--mt-glass-text')!.match(/\d+/gu)!.map(Number);
-    expect(gray[0]).toBeGreaterThan(110);
-    expect(gray[0]).toBeLessThan(130);
+    // Clear lifts black to .1848 sRGB, so the shared gray must account for that transmitted light.
+    expect(gray[0]).toBeGreaterThan(130);
+    expect(gray[0]).toBeLessThan(145);
     expect(gray).toEqual([gray[0], gray[0], gray[0]]);
     expect([...properties.keys()]).toEqual(['--mt-glass-text']);
     for (const node of [...glyphs, icon, label]) {

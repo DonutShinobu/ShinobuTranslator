@@ -112,9 +112,12 @@ LICENSE/NOTICE。
 - Torph `0.1.3`：官方 npm 分发 `https://registry.npmjs.org/torph/-/torph-0.1.3.tgz`，上游 `https://github.com/lochie/torph`，MIT，Copyright (c) 2025 Lochie Axon。用于文字字素匹配、位置与透明度过渡。
 - 本地运行模块：`apps/extension/src/content/core/ui/motion-vendor/motion-kit.js`；保留原版公开类型声明、完整 MIT 通知以及固定版本与完整性记录 `manifest.json`。`build.mjs` 对固定 Torph 输入做六项精确校验的适配：保留中断时零透明度、含中文状态按字素匹配并复用已有 LCS/ID 分配、让 `scale:false` 同时禁止进出场组缩放。
 - 文字、图标模块的完整许可证：`public/licenses/morphicons.txt` 与 `public/licenses/torph.txt`，随 Chromium 和 Firefox 扩展构建复制。运行模块是本地自包含代码，不引入 CDN 请求；重建输入属于本地开发工具，不改变 npm 生产依赖快照。
-- Liquid DOM 光学参考：`https://github.com/AndrewPrifer/liquid-dom/tree/dd342ab663d718e8b4edf4cd39983b9a873360a7`，MIT，Copyright (c) 2026 Andras Prifer。翻译按钮的凸面剖面、表面导数、Snell 折射、法线反射、亮度门控与加法高光在此基础上适配浏览器 SVG 位移材质；这是网页实现，未分发 Apple 原生 Liquid Glass。文字颜色选择使用该库 `ADAPTIVE_TINT.md` 的背景亮度分位值思路，针对通透按钮另行计算统一前景色。
-- 本地光学源码：`apps/extension/src/content/core/ui/liquidGlass.ts`。修改记录：五点覆盖率加权的表面导数平滑、RGB 折射率拆分、固定端部与可变宽中段 SVG 位移、整块轻磨砂，并增加尺寸、可见性与粉色流光的生命周期处理。
-- Liquid DOM 完整许可证：`public/licenses/liquid-dom.txt`，随 Chromium 和 Firefox 扩展构建复制。玻璃实现另参考 `https://kube.io/blog/liquid-glass-css-svg/` 中的边缘距离与折射方法。
+- Glass HQ Liquid Glass 光学源码：`https://github.com/Glass-HQ/liquid-glass/tree/9f5bfc7daa7be5d20a41b94d841b8f065de655fc`，MIT，Copyright (c) 2026 Glass HQ。翻译按钮采用该仓库 Clear 材质的距离场折射、边缘覆盖与高光贴图、SVG 合成流程；这是网页实现，未分发 Apple 原生 Liquid Glass。
+- 本地光学源码：`apps/extension/src/content/core/ui/liquidGlass.ts`。修改记录：将 WGSL 贴图计算移植到 CPU Canvas、适配按钮圆形端部与可变宽中段 SVG 位移，采用 Clear/light 的零磨砂与 33 点透光曲线。高光与黑色边缘阴影按源代码的 source-over 公式分层合成；同一层主光闲置固定为 45° 白色并保留原始双侧范围，忙碌时连续转粉，采用同一镜面与漫反射衰减。在运行时淡出整边底光，让两组相隔半周长的局部高光沿真实轮廓移动，每圈两次非线性加减速，快时拉长并带淡尾。保留尺寸与可见性生命周期，前景颜色取样同步应用透光曲线。未接入上游要求显式背景容器的 WebGPU 场景控制器。
+- Glass HQ 完整许可证：`public/licenses/glass-hq-liquid-glass.txt`，随 Chromium 和 Firefox 扩展构建复制。
+- 主光收尾保留当前位置与入射速度，沿轮廓向前滑到最近的半周等价静置位置，以不超过 320ms 的 Hermite 曲线减速；归位结束后恢复完整白光范围，支持中断、隐藏暂停与按钮尺寸变化。
+- 按压反馈另移植同版本 `src/dom/interaction.ts`、`src/core/spring.ts` 与 `src/styles.css`：保留按下膨胀、拖动的弹性阻力与拉伸、松开的解析弹簧回弹及触点白色光晕。修改记录：独立于上游场景调度器运行，补充隐藏、失焦、禁用与销毁处理；保留原生按钮点击和键盘语义，按压反馈不改变固定 45° 边缘光照。
+- Liquid DOM 前景颜色参考：`https://github.com/AndrewPrifer/liquid-dom/tree/dd342ab663d718e8b4edf4cd39983b9a873360a7`，MIT，Copyright (c) 2026 Andras Prifer。文字颜色选择使用该库 `ADAPTIVE_TINT.md` 的背景亮度分位值思路，针对通透按钮另行计算统一前景色。完整许可证 `public/licenses/liquid-dom.txt` 随 Chromium 和 Firefox 扩展构建复制。
 
 ## 11) 免责声明
 

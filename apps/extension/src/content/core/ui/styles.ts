@@ -175,7 +175,6 @@ export function injectStyles(): void {
       pointer-events: none;
     }
     .mt-x-control.mt-x-liquid {
-      --mt-glass-tint: #fff8fc0d;
       --mt-glass-solid: #f3edf0;
       --mt-glass-shadow: #3725321f;
       box-sizing: border-box;
@@ -192,8 +191,10 @@ export function injectStyles(): void {
       text-shadow: none;
       -webkit-text-fill-color: currentColor;
       letter-spacing: 0;
-      transform-origin: right center;
-      transition: transform 120ms cubic-bezier(.25,1,.5,1), color 180ms cubic-bezier(.25,1,.5,1);
+      transform-origin: center center;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      transition: color 180ms cubic-bezier(.25,1,.5,1);
     }
     .mt-x-liquid .mt-x-glass-material {
       position: absolute;
@@ -201,43 +202,46 @@ export function injectStyles(): void {
       z-index: -1;
       border-radius: inherit;
       border: 0;
-      background-color: var(--mt-glass-tint);
-      backdrop-filter: blur(.95px);
-      -webkit-backdrop-filter: blur(.95px);
+      background-color: transparent;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
       box-shadow: inset 0 .5px .65px #fff8fc40, inset 0 -.5px .8px #68334924, 0 2px 8px var(--mt-glass-shadow, #37253233);
       transition: background-color 180ms cubic-bezier(.25,1,.5,1), box-shadow 180ms cubic-bezier(.25,1,.5,1);
       pointer-events: none;
     }
-    .mt-x-liquid .mt-x-glass-refracted {
-      /* The SVG filter composites tint, reflected backdrop and specular in optical order. */
+    .mt-x-liquid .mt-x-glass-optical {
+      /* Clear tone and the padded optical overlay replace the fallback's inset highlights. */
       background-color: transparent;
       box-shadow: 0 2px 8px var(--mt-glass-shadow, #37253233);
+    }
+    .mt-x-glass-overlay {
+      position: absolute;
+      left: -2px;
+      top: -2px;
+      width: calc(100% + 4px);
+      height: calc(100% + 4px);
+      overflow: visible;
+      pointer-events: none;
     }
     .mt-x-glass-material::before {
       content: '';
       position: absolute;
       inset: 0;
+      z-index: 1;
       border-radius: inherit;
-      background: radial-gradient(ellipse at var(--touch-x,45%) var(--touch-y,25%), #fff4fa16, #f4bdd808 30%, transparent 68%);
-      opacity: 0;
-      transition: opacity 180ms cubic-bezier(.25,1,.5,1);
+      background-image: radial-gradient(
+        var(--lg-glow-size,64px) circle at var(--lg-glow-x,50%) var(--lg-glow-y,50%),
+        color-mix(in srgb, rgb(255 255 255 / .3) calc(var(--lg-glow,0) * 100%), transparent),
+        transparent
+      );
     }
-    .mt-x-liquid:hover:not(:disabled) .mt-x-glass-material::before { opacity: 1; }
-    .mt-x-glass-material::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      border-radius: inherit;
-      background: radial-gradient(ellipse 38% 115% at var(--flow-x,100%) var(--flow-y,50%), #f18dc652, #d86faf1c 40%, transparent 76%), radial-gradient(ellipse 32% 110% at var(--flow-tail-x,80%) var(--flow-tail-y,0%), #ed91c61e, transparent 76%);
-      opacity: var(--activity-light,0);
-      transition: opacity 280ms cubic-bezier(.25,1,.5,1);
-    }
+    .mt-x-glass-light-color { transition: flood-color 240ms cubic-bezier(.25,1,.5,1); }
+    .mt-x-glass-light-base { transition: opacity 240ms cubic-bezier(.25,1,.5,1); }
     .mt-x-liquid .mt-x-icon { flex: 0 0 16px; transition: none; }
     .mt-x-liquid .mt-x-icon svg { overflow: visible; color: inherit; filter: none; }
     .mt-x-liquid .mt-x-icon, .mt-x-liquid .mt-x-label, .mt-x-liquid [torph-item] { color: inherit !important; -webkit-text-fill-color: currentColor; }
     .mt-x-liquid .mt-x-label-slot { position: relative; min-width: 0; max-width: min(366px, calc(100vw - 80px)); overflow: hidden; }
     .mt-x-liquid .mt-x-label { display: block; line-height: 20px; font-weight: 550; overflow: visible; white-space: pre; transition: none; }
-    .mt-x-control.mt-x-liquid:active:not(:disabled) { transform: scale(.97); }
     .mt-x-control.mt-x-liquid:hover:not(:disabled), .mt-x-control.mt-x-liquid:active:not(:disabled) { background: transparent; }
     @media (prefers-reduced-transparency: reduce) {
       .mt-x-control.mt-x-liquid { color: #17131a !important; }

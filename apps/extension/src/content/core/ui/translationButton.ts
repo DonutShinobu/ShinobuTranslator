@@ -1,5 +1,6 @@
 import { createMorph, TextMorph, type Morph } from './motion-vendor/motion-kit.js';
 import { createLiquidGlass } from './liquidGlass';
+import { createGlassInteraction } from './glassInteraction';
 import { resolveTranslationIcon, translationIconPaths, type TranslationIconKey } from './translationIcons';
 
 export type { TranslationIconKey } from './translationIcons';
@@ -18,6 +19,7 @@ type ButtonMotion = {
   textMorph?: TextMorph;
   hiddenMotion?: boolean;
   glass?: ReturnType<typeof createLiquidGlass>;
+  interaction?: ReturnType<typeof createGlassInteraction>;
   removeListeners?: () => void;
 };
 
@@ -85,25 +87,16 @@ function startMotion(model: ButtonMotion): void {
   const { button } = model;
   // Detached controls and browsers without WAAPI keep the same usable static UI.
   if (model.morph || !button.isConnected || typeof button.animate !== 'function') return;
-  model.glass = createLiquidGlass(button);
+  model.interaction = createGlassInteraction(button);
+  model.glass = createLiquidGlass(button, visible => model.interaction?.setVisible(visible));
   model.morph = createMorph(model.path, translationIconPaths[model.iconKey], { reducedMotion: 'never' });
   const syncVisibility = () => {
     resetTextMotion(model, document.hidden);
     if (document.hidden) model.morph!.set(translationIconPaths[model.iconKey]);
     model.glass!.refresh();
   };
-  const pointer = (event: PointerEvent) => {
-    const bounds = button.getBoundingClientRect();
-    if (!bounds.width || !bounds.height) return;
-    model.glass!.material.style.setProperty('--touch-x', `${(event.clientX - bounds.left) / bounds.width * 100}%`);
-    model.glass!.material.style.setProperty('--touch-y', `${(event.clientY - bounds.top) / bounds.height * 100}%`);
-  };
   document.addEventListener('visibilitychange', syncVisibility);
-  button.addEventListener('pointermove', pointer);
-  model.removeListeners = () => {
-    document.removeEventListener('visibilitychange', syncVisibility);
-    button.removeEventListener('pointermove', pointer);
-  };
+  model.removeListeners = () => document.removeEventListener('visibilitychange', syncVisibility);
   syncVisibility();
 }
 
@@ -146,6 +139,7 @@ function show(model: ButtonMotion, text: string, icon: TranslationIconKey): void
   model.button.dataset.phase = icon;
   model.glass?.setRunning(model.running && icon !== 'confirm');
   model.glass?.refresh();
+  model.interaction?.refresh();
 }
 
 export function updateTranslationButton(
@@ -188,6 +182,7 @@ export function destroyTranslationButton(button: HTMLButtonElement): void {
   model.removeListeners?.();
   model.morph?.destroy();
   model.textMorph?.destroy();
+  model.interaction?.destroy();
   model.glass?.destroy();
   model.label.textContent = model.target || model.text;
   if (typeof button.getAnimations === 'function') {
@@ -197,5 +192,7 @@ export function destroyTranslationButton(button: HTMLButtonElement): void {
 }
 
 export function refreshTranslationButton(button: HTMLButtonElement): void {
-  motions.get(button)?.glass?.refresh();
+  const model = motions.get(button);
+  model?.glass?.refresh();
+  model?.interaction?.refresh();
 }

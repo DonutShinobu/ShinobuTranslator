@@ -166,6 +166,99 @@ async function selfCheck() {
   reset(); await finishEffects();
   const a = panels[0].ui, b = panels[1].ui;
   assert(buttons.every(button => button.classList.contains('mt-x-liquid')), '图片与阅读模式均使用实际液态按钮');
+  plainButton.scrollIntoView({ block: 'center', behavior: 'instant' });
+  await frames();
+  const pressBounds = plainButton.getBoundingClientRect();
+  const pressX = pressBounds.left + pressBounds.width / 2, pressY = pressBounds.top + pressBounds.height / 2;
+  const pointer = (target: EventTarget, type: string, x = pressX, y = pressY) => target.dispatchEvent(new PointerEvent(type,
+    { bubbles: true, pointerId: 91, pointerType: 'mouse', button: 0, clientX: x, clientY: y }));
+  const rimSignature = () => [...plainButton.querySelectorAll('.mt-x-glass-overlay > image, .mt-x-glass-activity > image')].map(image => image.getAttribute('href')).join('|');
+  const fixedRim = rimSignature();
+  pointer(plainButton, 'pointerleave');
+  pointer(plainButton, 'pointerdown'); await wait(140);
+  assert(plainButton.dataset.glassPressed === '' && parseFloat(plainButton.style.scale) > 1
+    && Number(plainButton.style.getPropertyValue('--lg-glow')) > .8
+    && getComputedStyle(plainButton.querySelector('.mt-x-glass-material')!, '::before').backgroundImage.includes('radial-gradient'),
+    '按住按钮弹性膨胀并呈现源码的局部白光');
+  pointer(window, 'pointermove', pressX + 150, pressY + 80); await wait(140);
+  const dragScale = plainButton.style.scale.split(' ').map(Number);
+  assert(Math.abs(parseFloat(plainButton.style.translate)) > 1 && Math.abs(dragScale[0] - dragScale[1]) > .01
+    && rimSignature() === fixedRim, '拖出时保留弹性拉伸与固定45度边缘光');
+  pointer(window, 'pointercancel'); await wait(1400);
+  assert(plainButton.dataset.glassPressed === undefined && !plainButton.style.scale && !plainButton.style.translate,
+    '取消按压后回弹归位且不留下变换');
+  plainButton.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await wait(120);
+  assert(plainButton.dataset.glassPressed === '' && parseFloat(plainButton.style.scale) > 1,
+    '键盘Enter使用同一弹性按压反馈');
+  plainButton.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
+  plainButton.disabled = true; await frames();
+  assert(parseFloat(plainButton.style.scale) > 1, '点击后立即禁用仍保留松开回弹');
+  await wait(1400); plainButton.disabled = false;
+  assert(!plainButton.style.scale && !plainButton.style.translate, '回弹结束恢复原始按钮姿态');
+  const plainMaterial = plainButton.querySelector<HTMLElement>('.mt-x-glass-material')!;
+  const activity = plainButton.querySelector<SVGGElement>('.mt-x-glass-activity')!;
+  const projection = plainButton.querySelector<SVGFEColorMatrixElement>("feColorMatrix[data-glass-light='pink']")!;
+  const lightColor = plainButton.querySelector<SVGFEFloodElement>('.mt-x-glass-light-color')!;
+  const lightBase = plainButton.querySelector<SVGRectElement>('.mt-x-glass-light-base')!;
+  const lightHead = plainButton.querySelector<SVGCircleElement>("circle[data-glass-light='head']")!;
+  const oppositeHead = plainButton.querySelector<SVGCircleElement>("circle[data-glass-light='opposite-head']")!;
+  assert(activity && projection && Number(getComputedStyle(activity).opacity) === 1
+    && getComputedStyle(lightColor).floodColor === 'rgb(255, 255, 255)' && Number(getComputedStyle(lightBase).opacity) === 1
+    && getComputedStyle(plainMaterial, '::after').content === 'none',
+    '闲置保留原始45度白光和完整高光范围');
+  updateTranslationButton(plainButton, '翻译当前页', 'languages', true);
+  assert(projection.getAttribute('values')!.split(' ').map(Number).slice(15, 17).every(value => Math.abs(value + Math.SQRT1_2) < .000001),
+    '每轮翻译从45度主光的位置开始变粉移动');
+  await wait(40);
+  const intermediateColor = getComputedStyle(lightColor).floodColor;
+  assert(intermediateColor !== 'rgb(255, 255, 255)' && intermediateColor !== 'rgb(241, 141, 198)',
+    '同一层主光连续由白转粉，没有透明度交叉淡入');
+  await wait(300);
+  const lightPose = lightHead.getAttribute('transform');
+  await wait(140);
+  assert(Number(getComputedStyle(activity).opacity) === 1 && lightHead.getAttribute('transform') !== lightPose
+    && getComputedStyle(lightColor).floodColor === 'rgb(241, 141, 198)' && rimSignature() === fixedRim,
+    '运行时白主光切换为移动粉光，保留原始玻璃边缘几何');
+  const angularTables = [...projection.parentElement!.querySelectorAll<SVGFEFuncAElement>(
+    'feComponentTransfer[result="specular-direction"] feFuncA, feComponentTransfer[result="diffuse-direction"] feFuncA')]
+    .map(table => table.getAttribute('tableValues')!.split(' ').map(Number));
+  const headMatrix = lightHead.transform.baseVal.consolidate()!.matrix;
+  const oppositeMatrix = oppositeHead.transform.baseVal.consolidate()!.matrix;
+  assert(Number(getComputedStyle(lightBase).opacity) === 0 && angularTables.length === 2
+    && angularTables.every(table => table[0] === 1 && table[128] === 0 && table[256] === 1
+      && table.every((value, index) => value === table[256 - index]))
+    && Math.abs(headMatrix.e + oppositeMatrix.e - plainButton.offsetWidth - 4) < .001
+    && Math.abs(headMatrix.f + oppositeMatrix.f - plainButton.offsetHeight - 4) < .001,
+    '运行时去掉整边底光，两处局部高光相隔半周同步移动');
+  const straightPositions: number[] = [];
+  let sampleFrame = 0;
+  const sampleHead = () => {
+    const normal = projection.getAttribute('values')!.split(' ').map(Number).slice(15, 17);
+    if (normal[0] === 0 && normal[1] === -1) straightPositions.push(lightHead.transform.baseVal.consolidate()!.matrix.e);
+    sampleFrame = requestAnimationFrame(sampleHead);
+  };
+  sampleFrame = requestAnimationFrame(sampleHead);
+  await wait(2850); cancelAnimationFrame(sampleFrame);
+  assert(straightPositions.length > 2 && Math.max(...straightPositions) - Math.min(...straightPositions) > 20,
+    '上直边的法线不变时亮度峰仍沿边缘推进');
+  const movingPose = lightHead.getAttribute('transform');
+  updateTranslationButton(plainButton, '翻译当前页', 'languages', false);
+  assert(lightHead.getAttribute('transform') === movingPose && Number(getComputedStyle(lightBase).opacity) === 0,
+    '完成当帧保留当前光点位置，不瞬跳或提前铺亮整条直边');
+  await wait(70);
+  const returningPose = lightHead.getAttribute('transform');
+  assert(returningPose !== movingPose, '完成后两处高光继续沿轮廓滑动归位');
+  updateTranslationButton(plainButton, '翻译当前页', 'languages', true);
+  assert(lightHead.getAttribute('transform') === returningPose && lightBase.style.opacity === '0',
+    '新任务打断归位时从当前位置继续，不重新跳回45度');
+  await wait(100);
+  updateTranslationButton(plainButton, '翻译当前页', 'languages', false);
+  await wait(640);
+  const stoppedPose = lightHead.getAttribute('transform');
+  await wait(60);
+  assert(getComputedStyle(lightColor).floodColor === 'rgb(255, 255, 255)' && Number(getComputedStyle(lightBase).opacity) === 1
+    && projection.getAttribute('values')!.split(' ').map(Number).slice(15, 17).every(value => Math.abs(Math.abs(value) - Math.SQRT1_2) < .000001)
+    && lightHead.getAttribute('transform') === stoppedPose, '归位完成后恢复45度双白光和原范围，动画停止');
   const colorCanvas = document.createElement('canvas');
   colorCanvas.width = colorCanvas.height = 1;
   const colorContext = colorCanvas.getContext('2d')!;
@@ -183,11 +276,13 @@ async function selfCheck() {
       const slash = color.match(/\/\s*([\d.]+)\s*\)$/u);
       return color === 'transparent' ? 0 : Number(rgba?.[1] ?? slash?.[1] ?? 1);
     };
-    const flood = button.querySelector('filter feFlood');
+    const backdropFilter = button.querySelector('filter[id^="mt-x-lens-"]');
+    const flood = backdropFilter?.querySelector('feFlood');
     const floodCss = flood && getComputedStyle(flood);
     const floodAlpha = floodCss ? colorAlpha(floodCss.floodColor) * Number(floodCss.floodOpacity) : 0;
     return { tint: css.backgroundColor, tintVar: getComputedStyle(button).getPropertyValue('--mt-glass-tint'),
       flood: floodCss?.floodColor, floodOpacity: floodCss?.floodOpacity,
+      tone: backdropFilter?.querySelector('feFuncR')?.getAttribute('tableValues')?.split(' ').map(Number),
       alpha: 1 - (1 - colorAlpha(css.backgroundColor)) * (1 - floodAlpha), filter: css.backdropFilter, shadow: css.boxShadow };
   };
   const colorCases = [...themeCases.map(({ caption, ink, ui }) => ({ button: ui.button, ink, sampled: true,
@@ -247,7 +342,8 @@ async function selfCheck() {
     followsBackdropLoad = whiteInk === 'dark' && a.button.dataset.ink === 'light'
       && a.button.dataset.contrast === 'sampled' && hasUniformForeground(a.button);
     fixedTransparentMaterial = JSON.stringify(whiteMaterial) === JSON.stringify(blackMaterial)
-      && whiteMaterial.alpha > .01 && whiteMaterial.alpha <= .1
+      && whiteMaterial.alpha <= .1 && whiteMaterial.tone?.length === 33
+      && Math.abs(whiteMaterial.tone[0] - .1848) < .00001 && whiteMaterial.tone[32] === 1
       && !/\b(?:contrast|brightness)\(/u.test(whiteMaterial.filter);
 
     // An SVG source filter is visible but cannot be reproduced by canvas sampling.
@@ -276,7 +372,7 @@ async function selfCheck() {
   }
   assert(followsBackdropLoad, '图片重新载入后自动按白黑背景切换整颗墨色');
   assert(fixedTransparentMaterial && materialSignature === JSON.stringify(materialAppearance(a.button)),
-    '白黑与漫画背景仅改变整颗墨色，轻微染色与滤镜阴影保持一致');
+    '白黑与漫画背景仅改变整颗墨色，Clear透光曲线与滤镜阴影保持一致');
   assert(transparentFallback, '无法取样的图片保留上次统一墨色与通透材质');
   renderStage('文字识别中'); await finishEffects();
   const shared = [...a.buttonLabel.querySelectorAll('[torph-item]:not([torph-exiting])')].filter(node => node.textContent === '中' || node.textContent === '字');
@@ -321,11 +417,13 @@ async function selfCheck() {
   disposableState.status = 'running'; disposableState.stageText = '文字识别中';
   renderUi(disposable, disposableState); await frames();
   const material = disposable.button.querySelector<HTMLElement>('.mt-x-glass-material')!;
+  const disposableProjection = disposable.button.querySelector<SVGFEColorMatrixElement>("feColorMatrix[data-glass-light='pink']")!;
+  const disposableLight = disposable.button.querySelector<SVGFEFloodElement>('.mt-x-glass-light-color')!;
   destroyTranslationButton(disposable.button);
-  const lastPose = material.style.getPropertyValue('--flow-x');
+  const lastPose = disposableProjection.getAttribute('values');
   await wait(80);
-  assert(!material.isConnected && material.style.getPropertyValue('--activity-light') === '0'
-    && material.style.getPropertyValue('--flow-x') === lastPose, '销毁控件后光照停止且材质移除');
+  assert(!material.isConnected && disposableLight.style.floodColor === 'rgb(255, 255, 255)'
+    && disposableProjection.getAttribute('values') === lastPose, '销毁控件后光照停止且材质移除');
   const remaining = disposable.button.getAnimations({ subtree: true });
   assert(remaining.length === 0, `销毁控件后没有动画残留${remaining.length ? `：${remaining.map(animation =>
     `${animation.constructor.name}/${'transitionProperty' in animation ? animation.transitionProperty : 'WAAPI'}`).join(', ')}` : ''}`);

@@ -2,6 +2,11 @@ import { resolveEditingSurface } from '../editing/imageSurface';
 
 type Ink = 'light' | 'dark' | 'balanced';
 const inkColors = { light: [255, 255, 255], dark: [23, 19, 26] };
+// Match Glass HQ's Clear/light sRGB transfer before judging the transmitted backdrop.
+const clearTone = Array.from({ length: 33 }, (_, index) => {
+  const v = index / 32;
+  return Math.min(1, .94 * (v + .18 * (1 - v) ** 3) + .06 * (.78 * v + .26));
+});
 const unreadableImages = new Set<string>();
 const unreadableCanvases = new WeakSet<HTMLCanvasElement>();
 
@@ -145,8 +150,13 @@ export function refreshButtonContrast(button: HTMLButtonElement): void {
       colors.push([pixels[index], pixels[index + 1], pixels[index + 2]]);
     }
     // liquid-dom exposes luminance percentiles; here only the unified ink adapts, leaving the lens clear.
-    const values = colors.map(rgb => luminance(rgb.map((value, index) =>
-      value * (1 - 13 / 255) + [255, 248, 252][index] * 13 / 255))).sort((a, b) => a - b);
+    const refracted = !!button.querySelector('.mt-x-glass-refracted');
+    const values = colors.map(rgb => luminance(rgb.map(value => {
+      if (!refracted) return value;
+      const position = value / 255 * 32;
+      const index = Math.min(31, Math.floor(position));
+      return 255 * (clearTone[index] + (clearTone[index + 1] - clearTone[index]) * (position - index));
+    }))).sort((a, b) => a - b);
     const low = values[Math.floor(values.length * .1)], high = values[Math.floor(values.length * .9)];
     // Equal contrast against both ends of a split backdrop avoids white-on-white without darkening the glass.
     const balancedLuminance = Math.sqrt((low + .05) * (high + .05)) - .05;

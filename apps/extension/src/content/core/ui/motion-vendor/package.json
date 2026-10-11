@@ -1,0 +1,15 @@
+{
+  "name": "shinobu-button-motion-vendor",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "verify": "node verify.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12",
+    "happy-dom": "20.12.0",
+    "morphicons": "1.7.1",
+    "torph": "0.1.3"
+  }
+}

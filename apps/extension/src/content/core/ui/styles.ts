@@ -39,6 +39,7 @@ export function injectStyles(): void {
 
     /* Dark theme (Twitter) — default fallback */
     [data-theme='dark'] {
+      --mt-glass-text: #fff5fb;
       --mt-bg: oklch(0.14 0.01 250 / 0.72);
       --mt-bg-hover: oklch(0.14 0.01 250 / 0.85);
       --mt-bg-active: oklch(0.14 0.01 250 / 0.92);
@@ -67,6 +68,7 @@ export function injectStyles(): void {
 
     /* Light theme (Pixiv) */
     [data-theme='light'] {
+      --mt-glass-text: #402c39;
       --mt-bg: oklch(0.97 0.005 250 / 0.82);
       --mt-bg-hover: oklch(0.97 0.005 250 / 0.88);
       --mt-bg-active: oklch(0.97 0.005 250 / 0.92);
@@ -152,32 +154,6 @@ export function injectStyles(): void {
       width: 16px;
       height: 16px;
     }
-    .mt-x-control[data-status='running'] .mt-x-icon {
-      display: none;
-    }
-    .mt-x-spinner {
-      display: none;
-      width: 16px;
-      height: 16px;
-      flex: 0 0 auto;
-      will-change: transform;
-      animation: mt-x-spin-rotate 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-    }
-    .mt-x-spinner svg {
-      width: 16px;
-      height: 16px;
-    }
-    .mt-x-spinner svg circle {
-      fill: none;
-      stroke: currentColor;
-      stroke-width: 2.5;
-      stroke-linecap: round;
-      stroke-dasharray: 1, 37.7;
-      animation: mt-x-spin-arc 1.8s ease-in-out infinite;
-    }
-    .mt-x-control[data-status='running'] .mt-x-spinner {
-      display: inline-flex;
-    }
     .mt-x-label {
       white-space: nowrap;
       transition: opacity 0.15s ease-out;
@@ -197,23 +173,81 @@ export function injectStyles(): void {
     }
     .mt-x-control[data-status='running'] {
       pointer-events: none;
-      overflow: hidden;
     }
-    .mt-x-control[data-status='running']::after {
+    .mt-x-control.mt-x-liquid {
+      --mt-glass-tint: #fff8fc0d;
+      --mt-glass-solid: #f3edf0;
+      --mt-glass-shadow: #3725321f;
+      box-sizing: border-box;
+      isolation: isolate;
+      min-width: 0;
+      max-width: 100%;
+      padding: 0 12px;
+      border: 0;
+      background: transparent;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      /* Inherit the nearest theme; page-wide light selectors can cross dark anchors. */
+      color: var(--mt-glass-text, #fff5fb);
+      text-shadow: none;
+      -webkit-text-fill-color: currentColor;
+      letter-spacing: 0;
+      transform-origin: right center;
+      transition: transform 120ms cubic-bezier(.25,1,.5,1), color 180ms cubic-bezier(.25,1,.5,1);
+    }
+    .mt-x-liquid .mt-x-glass-material {
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      border-radius: inherit;
+      border: 0;
+      background-color: var(--mt-glass-tint);
+      backdrop-filter: blur(.95px);
+      -webkit-backdrop-filter: blur(.95px);
+      box-shadow: inset 0 .5px .65px #fff8fc40, inset 0 -.5px .8px #68334924, 0 2px 8px var(--mt-glass-shadow, #37253233);
+      transition: background-color 180ms cubic-bezier(.25,1,.5,1), box-shadow 180ms cubic-bezier(.25,1,.5,1);
+      pointer-events: none;
+    }
+    .mt-x-liquid .mt-x-glass-refracted {
+      /* The SVG filter composites tint, reflected backdrop and specular in optical order. */
+      background-color: transparent;
+      box-shadow: 0 2px 8px var(--mt-glass-shadow, #37253233);
+    }
+    .mt-x-glass-material::before {
       content: '';
       position: absolute;
       inset: 0;
       border-radius: inherit;
-      background: linear-gradient(
-        90deg,
-        transparent 0%,
-        var(--mt-glow-mid, oklch(0.95 0.03 250 / 0.04)) 25%,
-        var(--mt-glow-center, oklch(0.95 0.03 250 / 0.22)) 50%,
-        var(--mt-glow-mid, oklch(0.95 0.03 250 / 0.04)) 75%,
-        transparent 100%
-      );
-      animation: mt-x-glow-sweep 1.5s linear infinite;
-      pointer-events: none;
+      background: radial-gradient(ellipse at var(--touch-x,45%) var(--touch-y,25%), #fff4fa16, #f4bdd808 30%, transparent 68%);
+      opacity: 0;
+      transition: opacity 180ms cubic-bezier(.25,1,.5,1);
+    }
+    .mt-x-liquid:hover:not(:disabled) .mt-x-glass-material::before { opacity: 1; }
+    .mt-x-glass-material::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: radial-gradient(ellipse 38% 115% at var(--flow-x,100%) var(--flow-y,50%), #f18dc652, #d86faf1c 40%, transparent 76%), radial-gradient(ellipse 32% 110% at var(--flow-tail-x,80%) var(--flow-tail-y,0%), #ed91c61e, transparent 76%);
+      opacity: var(--activity-light,0);
+      transition: opacity 280ms cubic-bezier(.25,1,.5,1);
+    }
+    .mt-x-liquid .mt-x-icon { flex: 0 0 16px; transition: none; }
+    .mt-x-liquid .mt-x-icon svg { overflow: visible; color: inherit; filter: none; }
+    .mt-x-liquid .mt-x-icon, .mt-x-liquid .mt-x-label, .mt-x-liquid [torph-item] { color: inherit !important; -webkit-text-fill-color: currentColor; }
+    .mt-x-liquid .mt-x-label-slot { position: relative; min-width: 0; max-width: min(366px, calc(100vw - 80px)); overflow: hidden; }
+    .mt-x-liquid .mt-x-label { display: block; line-height: 20px; font-weight: 550; overflow: visible; white-space: pre; transition: none; }
+    .mt-x-control.mt-x-liquid:active:not(:disabled) { transform: scale(.97); }
+    .mt-x-control.mt-x-liquid:hover:not(:disabled), .mt-x-control.mt-x-liquid:active:not(:disabled) { background: transparent; }
+    @media (prefers-reduced-transparency: reduce) {
+      .mt-x-control.mt-x-liquid { color: #17131a !important; }
+      .mt-x-liquid .mt-x-glass-material { background: var(--mt-glass-solid); backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+      .mt-x-liquid .mt-x-icon, .mt-x-liquid .mt-x-label, .mt-x-liquid [torph-item] { color: inherit !important; }
+    }
+    @supports not (backdrop-filter: blur(1px)) {
+      .mt-x-control.mt-x-liquid { color: #17131a !important; }
+      .mt-x-liquid .mt-x-glass-material { background: var(--mt-glass-solid); }
+      .mt-x-liquid .mt-x-icon, .mt-x-liquid .mt-x-label, .mt-x-liquid [torph-item] { color: inherit !important; }
     }
     .mt-x-control-secondary {
       min-width: 92px;
@@ -1063,29 +1097,6 @@ export function injectStyles(): void {
     .mt-x-layer-error { flex-basis: 100%; color: var(--mt-error-text, oklch(0.5 0.16 25)); }
     .mt-x-layer-error:empty { display: none; }
 
-    @keyframes mt-x-glow-sweep {
-      0%, 10% { transform: translateX(-150%); }
-      40% { transform: translateX(0%); }
-      60% { transform: translateX(150%); }
-      90%, 100% { transform: translateX(250%); }
-    }
-    @keyframes mt-x-spin-rotate {
-      to { transform: rotate(360deg); }
-    }
-    @keyframes mt-x-spin-arc {
-      0% {
-        stroke-dasharray: 1, 37.7;
-        stroke-dashoffset: 0;
-      }
-      50% {
-        stroke-dasharray: 25, 37.7;
-        stroke-dashoffset: -12;
-      }
-      100% {
-        stroke-dasharray: 1, 37.7;
-        stroke-dashoffset: -37.7;
-      }
-    }
   `;
   document.documentElement.appendChild(style);
 }

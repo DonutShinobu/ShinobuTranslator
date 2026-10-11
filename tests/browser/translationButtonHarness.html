@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>实际翻译按钮 · 浏览器验证</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #f5f1f3; color: #352b33; font: 14px/1.5 system-ui, sans-serif; }
+      main { max-width: 1080px; margin: 32px auto; padding: 0 24px; }
+      h1 { font-size: 23px; margin: 0 0 8px; }
+      p { color: #7b6c76; margin: 0 0 20px; }
+      .tools { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
+      .tools button, .tools select { font: inherit; border: 1px solid #ddcfd7; background: #fffbfd; color: #493b45; border-radius: 8px; padding: 7px 12px; }
+      .scenes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+      .scene { position: relative; min-height: 370px; overflow: hidden; border-radius: 16px; background: #efe5e9; }
+      .scene img { display: block; width: 100%; height: 410px; object-fit: cover; object-position: center; }
+      .scene[data-theme="dark"] { background: #221925; }
+      .scene[data-theme="dark"] img { filter: brightness(.54) saturate(.72); }
+      .scene > .caption { position: absolute; left: 18px; bottom: 14px; margin: 0; padding: 3px 8px; border-radius: 6px; background: #fffc; color: #382d35; font-size: 12px; }
+      .scene[data-theme="dark"] > .caption { background: #251a2ae6; color: #f7e8f1; }
+      .button-host { position: absolute; top: 18px; right: 18px; z-index: 1; }
+      .theme-cases { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; margin-top: 20px; }
+      .theme-case { position: relative; height: 100px; border-radius: 12px; background: #000; color: #eee; }
+      .theme-case.white-case { background: #fff; color: #322b31; }
+      .theme-case.gray-case { background: #808080; }
+      .theme-case.color-case { background: #006fc5; }
+      .theme-case > small { position: absolute; left: 14px; bottom: 10px; }
+      .reading-slot { position: relative; height: 108px; margin-top: 20px; border-radius: 12px; background: linear-gradient(115deg, #f0deea, #f9f0f4 60%, #e8e4f2); }
+      .reading-slot .mt-x-reading-bar { position: absolute; top: 30px; left: 50%; transform: translateX(-50%); bottom: auto; }
+      .reading-slot > small { position: absolute; left: 14px; bottom: 8px; color: #81717d; }
+      #result { display: block; margin-top: 14px; white-space: pre-wrap; color: #7b6272; font-size: 12px; }
+      @media (max-width: 720px) { .scenes, .theme-cases { grid-template-columns: 1fr; } main { margin: 22px auto; padding: 0 16px; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>实际翻译按钮</h1>
+      <p>使用扩展的生产组件与样式。点击按钮可快速播放阶段、切换原图；此页不会发送翻译请求。</p>
+      <div class="tools">
+        <button id="play" type="button">快速播放</button>
+        <button id="complete" type="button">完成</button>
+        <button id="error" type="button">失败 / 重试</button>
+        <button id="reset" type="button">重置</button>
+        <select id="stage" aria-label="手动阶段"></select>
+        <button id="check" type="button">运行检查</button>
+        <button id="destroy" type="button">销毁控件</button>
+      </div>
+      <div class="scenes">
+        <section class="scene" data-theme="light" id="light-scene">
+          <img src="/assets/readme/translated1.png" alt="浅色漫画背景">
+          <p class="caption">浅色主题 · 图片内按钮</p>
+        </section>
+        <section class="scene" data-theme="dark" id="dark-scene">
+          <img src="/assets/readme/translated1.png" alt="深色漫画背景">
+          <p class="caption">深色主题 · 图片内按钮</p>
+        </section>
+      </div>
+      <div class="theme-cases">
+        <section class="theme-case" data-theme="light" id="dark-anchor-case"><small>网页浅色主题 · 深色按钮锚点 · 黑背景</small></section>
+        <section class="theme-case" data-theme="dark" id="light-anchor-case"><small>浅色图片锚点 · 黑背景 · 无描边</small></section>
+        <section class="theme-case white-case" data-theme="light" id="white-anchor-case"><small>白背景 · 图片按钮 · 无描边</small></section>
+        <section class="theme-case gray-case" data-theme="light" id="gray-anchor-case"><small>中灰背景 · 图片按钮 · 无描边</small></section>
+        <section class="theme-case color-case" data-theme="light" id="color-anchor-case"><small>饱和蓝背景 · 图片按钮 · 无描边</small></section>
+        <section class="theme-case white-case" data-theme="dark" id="plain-button-case"><small>浅色阅读按钮 · 白背景 · 无描边</small></section>
+      </div>
+      <section class="reading-slot" id="reading-slot"><small>阅读模式工具栏</small></section>
+      <output id="result" aria-live="polite"></output>
+    </main>
+    <script type="module" src="./translationButtonHarness.ts"></script>
+  </body>
+</html>

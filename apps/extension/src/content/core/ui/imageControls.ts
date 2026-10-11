@@ -1,6 +1,5 @@
 import type { PhotoState } from '../types';
-import { createIcon, replaceIcon } from './icons';
-import type { IconKey } from './icons';
+import { initializeTranslationButton, updateTranslationButton } from './translationButton';
 import { renderErrorDetailCard, renderStageTimingCard } from './cards';
 
 export type UiElements = {
@@ -9,7 +8,6 @@ export type UiElements = {
   primaryAction: HTMLDivElement;
   button: HTMLButtonElement;
   buttonIcon: HTMLSpanElement;
-  buttonSpinner: HTMLSpanElement;
   buttonLabel: HTMLSpanElement;
   detailLine: HTMLDivElement;
   contextNoticeLine: HTMLDivElement;
@@ -33,22 +31,6 @@ export type UiElements = {
   debugDownloadButton: HTMLButtonElement;
 };
 
-const animTimers: number[] = [];
-
-let widthCleanupTimer: number = 0;
-
-let transitionGen = 0;
-
-function clearTransitionTimers(): void {
-  for (const t of animTimers) clearTimeout(t);
-  animTimers.length = 0;
-  clearTimeout(widthCleanupTimer);
-}
-
-function scheduleTimer(fn: () => void, ms: number): void {
-  animTimers.push(window.setTimeout(fn, ms));
-}
-
 export function createUiElements(): UiElements {
   const root = document.createElement('div');
   root.className = 'mt-x-overlay-inline';
@@ -64,16 +46,10 @@ export function createUiElements(): UiElements {
   button.type = 'button';
   const buttonIcon = document.createElement('span');
   buttonIcon.className = 'mt-x-icon';
-  replaceIcon(buttonIcon, 'translate');
-  const buttonSpinner = document.createElement('span');
-  buttonSpinner.className = 'mt-x-spinner';
-  buttonSpinner.appendChild(createIcon('spinner'));
   const buttonLabel = document.createElement('span');
   buttonLabel.className = 'mt-x-label';
   buttonLabel.textContent = '翻译';
-  button.appendChild(buttonIcon);
-  button.appendChild(buttonSpinner);
-  button.appendChild(buttonLabel);
+  initializeTranslationButton(button, buttonIcon, buttonLabel);
   primaryAction.appendChild(button);
   actions.appendChild(primaryAction);
 
@@ -183,7 +159,6 @@ export function createUiElements(): UiElements {
     primaryAction,
     button,
     buttonIcon,
-    buttonSpinner,
     buttonLabel,
     detailLine,
     contextNoticeLine,
@@ -211,8 +186,6 @@ export function createUiElements(): UiElements {
 export function renderUi(ui: UiElements, state: PhotoState | null): void {
   const {
     button,
-    buttonIcon,
-    buttonLabel,
     contextNoticeLine,
     detailLine,
     debugDownloadButton,
@@ -226,14 +199,12 @@ export function renderUi(ui: UiElements, state: PhotoState | null): void {
   if (!state) {
     button.disabled = true;
     button.dataset.status = '';
-    replaceIcon(buttonIcon, 'translate');
-    buttonLabel.textContent = '翻译';
+    updateTranslationButton(button, '翻译', 'languages', false);
     updateStatusLine('');
     contextNoticeLine.textContent = '';
     debugDownloadButton.style.display = 'none';
     renderErrorDetailCard(ui, null);
     renderStageTimingCard(ui, null);
-    clearTransitionTimers();
     return;
   }
 
@@ -242,143 +213,25 @@ export function renderUi(ui: UiElements, state: PhotoState | null): void {
   debugDownloadButton.style.display = canShowDebugDownload ? 'inline-flex' : 'none';
   debugDownloadButton.disabled = !canShowDebugDownload || state.status === 'running';
 
-  const prevStatus = button.dataset.status;
-  const prevWidth = button.getBoundingClientRect().width;
-  const prevText = buttonLabel.textContent || '';
-  const prevIconKey = (buttonIcon.dataset.icon as IconKey | undefined) ?? 'translate';
-
-  // Detect transitions: status change OR stageText change during running
-  const statusChanged = !!prevStatus && prevStatus !== '' && state.status !== prevStatus;
-  const stageTextChanged = prevStatus === 'running' && state.status === 'running'
-    && prevText !== (state.stageText || '翻译中...');
-  const isTransition = statusChanged || stageTextChanged;
-  const iconChange = statusChanged;
-
   button.dataset.status = state.status;
   button.disabled = state.status === 'running';
-
-  let nextText: string;
-  let nextIconKey: IconKey;
-  let nextDetailText: string;
-  let nextDetailVariant: 'normal' | 'error' = 'normal';
-
-  if (state.status === 'running') {
-    nextText = state.stageText || '翻译中...';
-    nextIconKey = 'translate';
-    nextDetailText = '';
-  } else if (state.status === 'translated') {
-    nextText = '显示原图';
-    nextIconKey = 'original';
-    nextDetailText = state.stageTimingCard ? '' : state.elapsedText;
+  let text = '翻译';
+  let detail = '';
+  let variant: 'normal' | 'error' = 'normal';
+  if (state.status === 'running') text = state.stageText || '翻译中…';
+  else if (state.status === 'translated') {
+    text = '显示原图';
+    detail = state.stageTimingCard ? '' : state.elapsedText;
   } else if (state.status === 'showingOriginal') {
-    nextText = '显示译图';
-    nextIconKey = 'translated';
-    nextDetailText = state.stageTimingCard ? '' : state.elapsedText;
+    text = '显示译图';
+    detail = state.stageTimingCard ? '' : state.elapsedText;
   } else if (state.status === 'error') {
-    nextText = '重试';
-    nextIconKey = 'retry';
-    nextDetailText = state.errorText.includes('未找到文本') ? '未找到文本' : `翻译失败：${state.errorText}`;
-    if (!state.errorText.includes('未找到文本')) nextDetailVariant = 'error';
-  } else {
-    nextText = '翻译';
-    nextIconKey = 'translate';
-    nextDetailText = '';
+    text = '重试';
+    detail = state.errorText.includes('未找到文本') ? '未找到文本' : `翻译失败：${state.errorText}`;
+    if (!state.errorText.includes('未找到文本')) variant = 'error';
   }
-
-  updateStatusLine(nextDetailText, nextDetailVariant);
+  updateTranslationButton(button, text);
+  updateStatusLine(detail, variant);
   renderErrorDetailCard(ui, state);
   renderStageTimingCard(ui, state);
-
-  if (!isTransition) {
-    replaceIcon(buttonIcon, nextIconKey);
-    buttonLabel.textContent = nextText;
-    return;
-  }
-
-  transitionGen++;
-  const myGen = transitionGen;
-  clearTransitionTimers();
-
-  const fromRunning = prevStatus === 'running';
-
-  // Pre-measure target width: temporarily render target state, measure, then restore
-  buttonLabel.textContent = nextText;
-  if (iconChange) replaceIcon(buttonIcon, nextIconKey);
-  button.style.width = '';
-  button.style.overflow = '';
-  button.style.transition = '';
-  const targetWidth = button.getBoundingClientRect().width;
-
-  // Restore pre-animation content
-  buttonLabel.textContent = prevText;
-  if (iconChange) replaceIcon(buttonIcon, prevIconKey);
-  button.style.width = `${prevWidth}px`;
-  button.style.overflow = 'hidden';
-  button.style.transition = '';
-
-  const eraseDelay = 30;
-  const writeDelay = 35;
-  const eraseLen = prevText.length;
-  const writeLen = nextText.length;
-  const eraseTotalMs = eraseLen * eraseDelay;
-  const writeTotalMs = writeLen * writeDelay;
-  const midGapMs = 40;
-
-  // Phase 1: Erase characters from right, width stays locked at prevWidth
-  for (let i = eraseLen - 1; i >= 0; i--) {
-    const delay = (eraseLen - 1 - i) * eraseDelay;
-    scheduleTimer(() => {
-      if (transitionGen !== myGen) return;
-      buttonLabel.textContent = prevText.slice(0, i);
-    }, delay);
-  }
-
-  // After erase: transition width from prevWidth to targetWidth
-  const eraseEndDelay = eraseLen === 0 ? 0 : eraseTotalMs + 20;
-  const widthTransitionMs = Math.max(150, writeTotalMs);
-  scheduleTimer(() => {
-    if (transitionGen !== myGen) return;
-    button.style.transition = `width ${widthTransitionMs}ms cubic-bezier(0.25, 1, 0.5, 1)`;
-    button.style.width = `${targetWidth}px`;
-  }, eraseEndDelay);
-
-  // Midpoint: swap icon (only on status change, not stageText change)
-  if (iconChange) {
-    const midDelay = eraseLen === 0 ? 0 : eraseTotalMs + midGapMs;
-    scheduleTimer(() => {
-      if (transitionGen !== myGen) return;
-      if (fromRunning) {
-        replaceIcon(buttonIcon, nextIconKey);
-        buttonIcon.style.opacity = '';
-      } else {
-        buttonIcon.style.opacity = '0';
-        scheduleTimer(() => {
-          if (transitionGen !== myGen) return;
-          replaceIcon(buttonIcon, nextIconKey);
-          buttonIcon.style.opacity = '';
-        }, 40);
-      }
-    }, midDelay);
-  }
-
-  // Phase 2: Write characters from left, width is transitioning alongside
-  const writeStart = eraseLen === 0 ? 0 : eraseTotalMs + midGapMs;
-  for (let i = 1; i <= writeLen; i++) {
-    const delay = writeStart + (i - 1) * writeDelay;
-    scheduleTimer(() => {
-      if (transitionGen !== myGen) return;
-      buttonLabel.textContent = nextText.slice(0, i);
-    }, delay);
-  }
-
-  // Cleanup: remove inline styles after all animation settles
-  const lastWrite = writeStart + Math.max(0, writeLen - 1) * writeDelay;
-  const transitionEnd = eraseEndDelay + widthTransitionMs;
-  const cleanupDelay = Math.max(lastWrite, transitionEnd) + 50;
-  widthCleanupTimer = window.setTimeout(() => {
-    if (transitionGen !== myGen) return;
-    button.style.width = '';
-    button.style.overflow = '';
-    button.style.transition = '';
-  }, cleanupDelay);
 }

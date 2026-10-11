@@ -60,13 +60,9 @@ const icons = {
       { tag: 'path', attributes: { d: 'm6 6 12 12' } },
     ],
   },
-  spinner: {
-    viewBox: '0 0 16 16',
-    children: [{ tag: 'circle', attributes: { cx: '8', cy: '8', r: '6' } }],
-  },
 } satisfies Record<string, IconDefinition>;
 
-export type IconKey = Exclude<keyof typeof icons, 'spinner'>;
+export type IconKey = keyof typeof icons;
 
 export function createIcon(key: keyof typeof icons): SVGSVGElement {
   const definition = icons[key];

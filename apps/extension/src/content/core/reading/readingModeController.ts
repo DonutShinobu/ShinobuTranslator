@@ -9,6 +9,7 @@ import {
   type ReadingPageTarget,
 } from '../types';
 import { createReadingModeBarUi } from '../ui';
+import { destroyTranslationButton, updateTranslationButton } from '../ui/translationButton';
 import { resolveImageReferrerPolicy } from '../utils';
 import { PhotoStateStore } from '../state/photoStateStore';
 import { createInitialPhotoState } from '../state/photoStateStore';
@@ -54,6 +55,8 @@ export class ReadingModeController {
   private globalTranslateMode: 'original' | 'translated' = 'original';
   private activeActivity: ImageTranslationExecutionActivity | null = null;
   private errorText = '';
+  private currentProgressText = '准备中';
+  private allProgressText = '准备中';
   private readingContextKey: string | null = null;
   private suspended = false;
   private readonly resumeWaiters = new Set<() => void>();
@@ -93,6 +96,7 @@ export class ReadingModeController {
 
       // Create bar UI if not yet mounted
       if (!this.readingBarUi || !this.readingBarUi.host.isConnected) {
+        this.removeReadingModeBar();
         this.readingBarUi = this.createBar();
         anchor.appendChild(this.readingBarUi.host);
         this.readingBarUi.translateCurrentBtn.addEventListener('click', () => {
@@ -143,6 +147,7 @@ export class ReadingModeController {
       if (this.operation.kind === 'translating-current') {
         bar.translateCurrentBtn.dataset.status = 'running';
         bar.translateCurrentBtn.disabled = true;
+        updateTranslationButton(bar.translateCurrentBtn, this.currentProgressText);
       } else {
         bar.translateCurrentBtn.dataset.status = '';
         bar.translateCurrentBtn.disabled = false;
@@ -154,11 +159,11 @@ export class ReadingModeController {
           return s?.translatedUrl;
         });
         if (allTranslated && this.globalTranslateMode === 'translated') {
-          (bar.translateCurrentBtn.querySelector('.mt-x-label') as HTMLElement).textContent = '显示原图';
+          updateTranslationButton(bar.translateCurrentBtn, '显示原图', 'original');
         } else if (allTranslated && this.globalTranslateMode === 'original') {
-          (bar.translateCurrentBtn.querySelector('.mt-x-label') as HTMLElement).textContent = '显示译图';
+          updateTranslationButton(bar.translateCurrentBtn, '显示译图', 'translated');
         } else {
-          (bar.translateCurrentBtn.querySelector('.mt-x-label') as HTMLElement).textContent = '翻译当前页';
+          updateTranslationButton(bar.translateCurrentBtn, '翻译当前页');
         }
       }
 
@@ -166,9 +171,7 @@ export class ReadingModeController {
       if (this.operation.kind === 'discovering-all' || this.operation.kind === 'translating-all') {
         bar.translateAllBtn.dataset.status = 'running';
         bar.translateAllBtn.disabled = true;
-        if (this.operation.kind === 'discovering-all') {
-          (bar.translateAllBtn.querySelector('.mt-x-label') as HTMLElement).textContent = '正在获取页数…';
-        }
+        updateTranslationButton(bar.translateAllBtn, this.allProgressText);
       } else {
         bar.translateAllBtn.dataset.status = '';
         bar.translateAllBtn.disabled = false;
@@ -183,13 +186,13 @@ export class ReadingModeController {
           bar.translateCurrentBtn.style.display = 'none';
         }
         if (allHaveTranslation && this.globalTranslateMode === 'translated') {
-          (bar.translateAllBtn.querySelector('.mt-x-label') as HTMLElement).textContent = '显示原图';
+          updateTranslationButton(bar.translateAllBtn, '显示原图', 'original');
         } else if (allHaveTranslation && this.globalTranslateMode === 'original') {
-          (bar.translateAllBtn.querySelector('.mt-x-label') as HTMLElement).textContent = '显示译图';
+          updateTranslationButton(bar.translateAllBtn, '显示译图', 'translated');
         } else {
-          (bar.translateAllBtn.querySelector('.mt-x-label') as HTMLElement).textContent = this.errorText
+          updateTranslationButton(bar.translateAllBtn, this.errorText
             ? '重试翻译全部'
-            : '翻译全部';
+            : '翻译全部');
         }
       }
     }
@@ -219,6 +222,7 @@ export class ReadingModeController {
 
       const activity = this.beginActivity();
       this.operation = { kind: 'translating-current' };
+      this.currentProgressText = '准备中';
       this.renderReadingModeBar();
 
       try {
@@ -227,12 +231,14 @@ export class ReadingModeController {
           if (this.operation.kind !== 'translating-current') break;
           if (!await this.waitUntilResumed(activity)) return;
           const page = visiblePages[i];
-          const label = this.readingBarUi?.translateCurrentBtn.querySelector('.mt-x-label') as HTMLElement;
-          if (label) label.textContent = `${i + 1}/${total} 准备中`;
+          const updateProgress = (stageText: string): void => {
+            this.currentProgressText = `${i + 1}/${total} ${stageText}`;
+            const button = this.readingBarUi?.translateCurrentBtn;
+            if (button) updateTranslationButton(button, this.currentProgressText, undefined, true);
+          };
+          updateProgress('准备中');
 
-          const outcome = await this.translatePage(activity, page, (stageText) => {
-            if (label) label.textContent = `${i + 1}/${total} ${stageText}`;
-          });
+          const outcome = await this.translatePage(activity, page, updateProgress);
           if (outcome.status === 'cancelled' || outcome.status === 'runtime-failed') {
             this.operation = { kind: 'idle' };
             this.renderReadingModeBar();
@@ -257,6 +263,7 @@ export class ReadingModeController {
       const activity = this.beginActivity();
       this.errorText = '';
       this.operation = { kind: 'discovering-all' };
+      this.allProgressText = '正在获取页数…';
       this.renderReadingModeBar();
 
       let discovery;
@@ -309,8 +316,9 @@ export class ReadingModeController {
       };
       if (this.adapter.planReadingLogicalPages) {
         try {
-          const label = this.readingBarUi?.translateAllBtn.querySelector('.mt-x-label') as HTMLElement;
-          if (label) label.textContent = '正在检测分页…';
+          this.allProgressText = '正在检测分页…';
+          const button = this.readingBarUi?.translateAllBtn;
+          if (button) updateTranslationButton(button, this.allProgressText, undefined, true);
           logicalPagePlan = await this.adapter.planReadingLogicalPages(urls, activity.signal);
           this.assertLogicalPagePlan(urls, logicalPagePlan);
         } catch (error) {
@@ -327,6 +335,7 @@ export class ReadingModeController {
       }
 
       this.operation = { kind: 'translating-all', total: urls.length, pageIndex: 0 };
+      this.allProgressText = '准备中';
       this.renderReadingModeBar();
 
       try {
@@ -339,12 +348,14 @@ export class ReadingModeController {
           if (this.operation.kind !== 'translating-all') break;
           if (!await this.waitUntilResumed(activity)) return;
           this.operation = { kind: 'translating-all', total, pageIndex: page.pageIndex };
-          const label = this.readingBarUi?.translateAllBtn.querySelector('.mt-x-label') as HTMLElement;
-          if (label) label.textContent = `${page.pageIndex + 1}/${total} 准备中`;
+          const updateProgress = (stageText: string): void => {
+            this.allProgressText = `${page.pageIndex + 1}/${total} ${stageText}`;
+            const button = this.readingBarUi?.translateAllBtn;
+            if (button) updateTranslationButton(button, this.allProgressText, undefined, true);
+          };
+          updateProgress('准备中');
 
-          const outcome = await this.translatePage(activity, page, (stageText) => {
-            if (label) label.textContent = `${page.pageIndex + 1}/${total} ${stageText}`;
-          });
+          const outcome = await this.translatePage(activity, page, updateProgress);
           if (outcome.status === 'cancelled') {
             this.operation = { kind: 'idle' };
             this.renderReadingModeBar();
@@ -531,9 +542,16 @@ export class ReadingModeController {
     }
 
   suspend(): void {
-      if (this.readingBarUi?.host) this.readingBarUi.host.remove();
-      this.readingBarUi = null;
+      this.removeReadingModeBar();
       this.suspended = true;
+    }
+
+  private removeReadingModeBar(): void {
+      if (!this.readingBarUi) return;
+      destroyTranslationButton(this.readingBarUi.translateCurrentBtn);
+      destroyTranslationButton(this.readingBarUi.translateAllBtn);
+      this.readingBarUi.host.remove();
+      this.readingBarUi = null;
     }
 
   private resume(): void {
@@ -567,12 +585,9 @@ export class ReadingModeController {
   }
 
   teardown(): void {
-      if (this.readingBarUi?.host) {
-        this.readingBarUi.host.remove();
-      }
+      this.removeReadingModeBar();
       this.activeActivity?.end('阅读模式已关闭');
       this.activeActivity = null;
-      this.readingBarUi = null;
       this.operation = { kind: 'idle' };
       this.allPageUrls = [];
       this.errorText = '';

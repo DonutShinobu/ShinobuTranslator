@@ -106,7 +106,17 @@ LICENSE/NOTICE。
 - 完整许可证：`public/licenses/shadcn-ui.txt`，随 Chromium 和 Firefox 扩展构建复制。
 - Radix、Lucide、Tailwind 相关 npm 依赖的精确版本和许可证包含在 `THIRD_PARTY_DEPENDENCIES.json`。
 
-## 10) 免责声明
+## 10) 翻译按钮的文字、图标动效与玻璃光学
+
+- Morphicons `1.7.1`：官方 npm 分发 `https://registry.npmjs.org/morphicons/-/morphicons-1.7.1.tgz`，上游 `https://github.com/guillermolg00/morphicons`，MIT，Copyright (c) 2026 Guillermo。用于 SVG 描边几何连续变形。
+- Torph `0.1.3`：官方 npm 分发 `https://registry.npmjs.org/torph/-/torph-0.1.3.tgz`，上游 `https://github.com/lochie/torph`，MIT，Copyright (c) 2025 Lochie Axon。用于文字字素匹配、位置与透明度过渡。
+- 本地运行模块：`apps/extension/src/content/core/ui/motion-vendor/motion-kit.js`；保留原版公开类型声明、完整 MIT 通知以及固定版本与完整性记录 `manifest.json`。`build.mjs` 对固定 Torph 输入做六项精确校验的适配：保留中断时零透明度、含中文状态按字素匹配并复用已有 LCS/ID 分配、让 `scale:false` 同时禁止进出场组缩放。
+- 文字、图标模块的完整许可证：`public/licenses/morphicons.txt` 与 `public/licenses/torph.txt`，随 Chromium 和 Firefox 扩展构建复制。运行模块是本地自包含代码，不引入 CDN 请求；重建输入属于本地开发工具，不改变 npm 生产依赖快照。
+- Liquid DOM 光学参考：`https://github.com/AndrewPrifer/liquid-dom/tree/dd342ab663d718e8b4edf4cd39983b9a873360a7`，MIT，Copyright (c) 2026 Andras Prifer。翻译按钮的凸面剖面、表面导数、Snell 折射、法线反射、亮度门控与加法高光在此基础上适配浏览器 SVG 位移材质；这是网页实现，未分发 Apple 原生 Liquid Glass。文字颜色选择使用该库 `ADAPTIVE_TINT.md` 的背景亮度分位值思路，针对通透按钮另行计算统一前景色。
+- 本地光学源码：`apps/extension/src/content/core/ui/liquidGlass.ts`。修改记录：五点覆盖率加权的表面导数平滑、RGB 折射率拆分、固定端部与可变宽中段 SVG 位移、整块轻磨砂，并增加尺寸、可见性与粉色流光的生命周期处理。
+- Liquid DOM 完整许可证：`public/licenses/liquid-dom.txt`，随 Chromium 和 Firefox 扩展构建复制。玻璃实现另参考 `https://kube.io/blog/liquid-glass-css-svg/` 中的边缘距离与折射方法。
+
+## 11) 免责声明
 
 - 本文件仅用于工程合规记录，不构成法律意见。许可证冲突或权利范围不明确时，不以模型页
   标签代替权利人授权；是否公开分发由维护者结合上游材料自行决定。

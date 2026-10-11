@@ -222,8 +222,8 @@ async function waitForJankReport(reports: ProgressJankReport[]): Promise<Progres
 
 async function readSpinnerStatus(page: Page): Promise<SpinnerSmokeStatus> {
   return page.evaluate(() => {
-    const spinner = document.querySelector(".mt-x-screenshot-result .mt-x-spinner")
-      ?? document.querySelector(".mt-x-spinner");
+    const spinner = document.querySelector(".mt-x-screenshot-result .mt-x-glass-material")
+      ?? document.querySelector(".mt-x-glass-material");
     if (!(spinner instanceof HTMLElement)) {
       return {
         renderer: null,
@@ -232,9 +232,10 @@ async function readSpinnerStatus(page: Page): Promise<SpinnerSmokeStatus> {
         visible: false,
       };
     }
-    const style = window.getComputedStyle(spinner);
+    // Keep the historical report field; the activity indicator is now surface light.
+    const style = window.getComputedStyle(spinner, "::after");
     return {
-      renderer: spinner.dataset.renderer ?? null,
+      renderer: "pink-surface-light",
       hasCanvas: Boolean(spinner.querySelector("canvas")),
       hasFallback: Boolean(spinner.querySelector("svg")),
       visible: style.display !== "none" && style.visibility !== "hidden" && style.opacity !== "0",

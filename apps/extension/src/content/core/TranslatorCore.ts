@@ -9,6 +9,7 @@ import {
   renderUi,
 } from './ui';
 import type { UiElements } from './ui';
+import { destroyTranslationButton, refreshTranslationButton } from './ui/translationButton';
 import type { ScreenshotRect, ScreenshotSelection } from './screenshot';
 import { createImageTranslationExecutionModule } from './translation/imageTranslationExecution';
 import { createImageTranslationExecutionArbiter } from './translation/imageTranslationExecutionArbiter';
@@ -95,7 +96,10 @@ export class TranslatorCore {
     this.screenshotController.dispose();
     this.imageTranslationController.dispose();
     this.imageTranslationExecutionArbiter.dispose('翻译核心已停止');
-    for (const mounted of this.mounted.values()) mounted.editor.dispose();
+    for (const mounted of this.mounted.values()) {
+      mounted.editor.dispose();
+      destroyTranslationButton(mounted.ui.button);
+    }
     this.stateStore.dispose();
   }
 
@@ -157,6 +161,7 @@ export class TranslatorCore {
     for (const [key, mounted] of this.mounted) {
       if (!currentKeys.has(key)) {
         mounted.editor.dispose();
+        destroyTranslationButton(mounted.ui.button);
         mounted.ui.host.remove();
         this.mounted.delete(key);
       }
@@ -165,6 +170,7 @@ export class TranslatorCore {
     for (const target of targets) {
       const mounted = this.mounted.get(target.key);
       if (mounted?.ui.host.isConnected) {
+        refreshTranslationButton(mounted.ui.button);
         mounted.target = target;
         const state = this.stateStore.ensure(target.key, target.originalUrl);
         this.applyStateImage(target, state);
@@ -173,6 +179,7 @@ export class TranslatorCore {
       }
       if (mounted) {
         mounted.editor.dispose();
+        destroyTranslationButton(mounted.ui.button);
         this.mounted.delete(target.key);
       }
 

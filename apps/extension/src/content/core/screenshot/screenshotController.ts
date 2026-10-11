@@ -18,6 +18,7 @@ import { ProgressJankMonitor } from '../progressJank';
 import { resolveImageReferrerPolicy } from '../utils';
 import { PhotoStateStore } from '../state/photoStateStore';
 import { ImageLayerEditor } from '../editing/imageLayerEditor';
+import { destroyTranslationButton } from '../ui/translationButton';
 import type {
   ImageTranslationExecutionActivity,
   ImageTranslationExecutionArbiter,
@@ -209,6 +210,7 @@ export class ScreenshotController {
           URL.revokeObjectURL(sourceOriginalUrl);
           sourceOriginalUrl = null;
         }
+        destroyTranslationButton(ui.button);
         ui.host.remove();
       };
       this.activeCleanups.add(cleanup);
@@ -336,6 +338,7 @@ export class ScreenshotController {
           URL.revokeObjectURL(screenshotOriginalUrl);
           screenshotOriginalUrl = null;
         }
+        destroyTranslationButton(ui.button);
         ui.host.remove();
       };
       this.activeCleanups.add(cleanup);

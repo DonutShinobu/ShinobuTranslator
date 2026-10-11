@@ -22,7 +22,6 @@ export type ScreenshotResultUiElements = {
   primaryAction: HTMLDivElement;
   button: HTMLButtonElement;
   buttonIcon: HTMLSpanElement;
-  buttonSpinner: HTMLSpanElement;
   buttonLabel: HTMLSpanElement;
   detailLine: HTMLDivElement;
   contextNoticeLine: HTMLDivElement;

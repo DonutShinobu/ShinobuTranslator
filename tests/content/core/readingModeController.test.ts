@@ -15,6 +15,7 @@ import {
 import { createImageTranslationExecutionArbiter } from '../../../apps/extension/src/content/core/translation/imageTranslationExecutionArbiter';
 import { prepareExecutionFromSettings } from './executionPreparation';
 import type { LocalPipelineResult } from '@shinobu/image-pipeline/protocol';
+import * as translationButtonMotion from '../../../apps/extension/src/content/core/ui/translationButton';
 
 function localResult(): LocalPipelineResult {
   return {
@@ -51,6 +52,7 @@ type FakeButton = {
   label: { textContent: string };
   click?: () => void;
   addEventListener(type: string, listener: () => void): void;
+  setAttribute(name: string, value: string): void;
   querySelector(selector: string): { textContent: string } | null;
 };
 
@@ -63,6 +65,7 @@ function createFakeButton(labelText: string): FakeButton {
     addEventListener(type, listener) {
       if (type === 'click') button.click = listener;
     },
+    setAttribute() {},
     querySelector(selector) {
       return selector === '.mt-x-label' ? button.label : null;
     },
@@ -331,6 +334,7 @@ describe('ReadingModeController', () => {
   });
 
   it('reuses stored translations, toggles visible pages, and tears down its bar', async () => {
+    const destroyButton = vi.spyOn(translationButtonMotion, 'destroyTranslationButton');
     const target: ImageTarget = {
       element: {} as HTMLImageElement,
       key: 'page-1',
@@ -381,6 +385,91 @@ describe('ReadingModeController', () => {
 
     controller.teardown();
     expect(bar.remove).toHaveBeenCalledOnce();
+    expect(destroyButton).toHaveBeenCalledWith(bar.ui.translateCurrentBtn);
+    expect(destroyButton).toHaveBeenCalledWith(bar.ui.translateAllBtn);
+  });
+
+  it.each(['current', 'all'] as const)('keeps %s progress on the current bar after suspend and remount', async (kind) => {
+    vi.stubGlobal('document', {
+      querySelector: vi.fn(() => null),
+      querySelectorAll: vi.fn(() => []),
+    });
+    vi.stubGlobal('window', {
+      requestAnimationFrame: vi.fn(() => 1),
+      cancelAnimationFrame: vi.fn(),
+    });
+    const destroyButton = vi.spyOn(translationButtonMotion, 'destroyTranslationButton');
+    const page = { key: 'page-1', originalUrl: 'https://cdn.example/page-1.jpg', pageIndex: 0 };
+    const adapter: SiteAdapter = {
+      match: () => true,
+      findImages: () => [],
+      createUiAnchor: () => ({} as HTMLElement),
+      applyImage: () => {},
+      observe: () => () => {},
+      createBottomBarAnchor: () => ({ appendChild: vi.fn() } as unknown as HTMLElement),
+      discoverReadingPages: async () => ({ status: 'complete', pages: [page] }),
+      getVisiblePages: () => [page],
+      applyImageByKey: vi.fn(),
+    };
+    const bars = [createFakeBar(), createFakeBar(), createFakeBar()];
+    let nextBar = 0;
+    let reportProgress: Parameters<NonNullable<ImageTranslationExecutionDependencies['runLocalPipeline']>>[2] | undefined;
+    let finishPipeline!: (result: LocalPipelineResult) => void;
+    let pipelineSignal: AbortSignal | undefined;
+    const runLocalPipeline = vi.fn<NonNullable<ImageTranslationExecutionDependencies['runLocalPipeline']>>(
+      async (_file, _config, onProgress, options) => {
+        reportProgress = onProgress;
+        pipelineSignal = options?.signal;
+        return new Promise<LocalPipelineResult>((resolve) => { finishPipeline = resolve; });
+      },
+    );
+    const controller = new ReadingModeController(
+      createSiteReadingModeAdapter(adapter),
+      new PhotoStateStore(200, { revokeObjectURL: vi.fn() }),
+      arbitrate(createImageTranslationExecutionModule({
+        prepareExecution: prepareExecutionFromSettings(),
+        downloadImage: async () => ({
+          blob: new Blob(['source'], { type: 'image/png' }),
+          file: new File(['source'], 'source.png', { type: 'image/png' }),
+        }),
+        runLocalPipeline,
+      })),
+      vi.fn(),
+      vi.fn(),
+      () => bars[nextBar++].ui,
+    );
+
+    controller.sync();
+    bars[0][kind].click?.();
+    await vi.waitFor(() => expect(runLocalPipeline).toHaveBeenCalledOnce());
+    reportProgress?.({ stage: 'ocr', operation: 'recognize' });
+    expect(bars[0][kind].label.textContent).toBe('1/1 文字识别中');
+
+    controller.suspend();
+    expect(destroyButton).toHaveBeenCalledWith(bars[0].ui.translateCurrentBtn);
+    expect(destroyButton).toHaveBeenCalledWith(bars[0].ui.translateAllBtn);
+    expect(pipelineSignal?.aborted).toBe(false);
+    reportProgress?.({ stage: 'parallel', operation: 'run', detail: '翻译中 | 去字中' });
+    expect(bars[0][kind].label.textContent).toBe('1/1 文字识别中');
+
+    controller.sync();
+    expect(bars[1][kind].label.textContent).toBe('1/1 翻译中 | 去字中');
+    reportProgress?.({ stage: 'typeset', operation: 'layout' });
+    expect(bars[1][kind].label.textContent).toBe('1/1 文字排版中');
+
+    Object.assign(bars[1].ui.host, { isConnected: false });
+    controller.sync();
+    expect(destroyButton).toHaveBeenCalledWith(bars[1].ui.translateCurrentBtn);
+    expect(destroyButton).toHaveBeenCalledWith(bars[1].ui.translateAllBtn);
+    expect(bars[2][kind].label.textContent).toBe('1/1 文字排版中');
+
+    finishPipeline(localResult());
+    await vi.waitFor(() => expect(bars[2][kind].label.textContent).toBe('显示原图'));
+    expect(pipelineSignal?.aborted).toBe(false);
+    expect(runLocalPipeline).toHaveBeenCalledOnce();
+    controller.teardown();
+    expect(destroyButton).toHaveBeenCalledWith(bars[2].ui.translateCurrentBtn);
+    expect(destroyButton).toHaveBeenCalledWith(bars[2].ui.translateAllBtn);
   });
 
   it('restores the original image when navigation reaches an untranslated page', async () => {

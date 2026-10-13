@@ -7,6 +7,7 @@ import type { Plugin, UserConfig } from 'vite';
 import { browserRuntimeBoundaryPlugin } from '../../scripts/vite-browser-runtime-boundary';
 import { createExtensionManifest, type ExtensionTarget } from './manifest';
 import { chromiumColdStartPlugin, firefoxColdStartPlugin } from '../../scripts/cold-start-defaults.mjs';
+import { firefoxLintSourceMapsPlugin } from '../../scripts/firefox-lint-source-maps.mjs';
 
 const extensionRoot = import.meta.dirname;
 const repoRoot = resolve(extensionRoot, '../..');
@@ -133,6 +134,7 @@ export default defineConfig(({ mode }): UserConfig => {
     },
     plugins: [
       target === 'chromium' ? chromiumColdStartPlugin : firefoxColdStartPlugin,
+      ...(mode === 'firefox' ? [firefoxLintSourceMapsPlugin(extensionDist)] : []),
       browserRuntimeBoundaryPlugin({ apply: 'serve' }),
       react(),
       tailwindcss(),

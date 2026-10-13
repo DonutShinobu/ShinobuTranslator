@@ -186,7 +186,10 @@ npm install
 npm run dev:extension          # Chromium
 npm run dev:extension:firefox  # Firefox
 npm run build:extension        # 构建并校验两个目标
+npm run lint:firefox --workspace=@shinobu/extension # 构建后审计 Firefox 警告
 ```
+
+普通 UI 改动不需要更新 Firefox lint 基线：检查器通过临时源映射核对已审计警告的第三方源码和原始位置，映射文件不会进入发布包。依赖或警告变化时需要重新审计；Manifest 与独立运行时文件仍校验整文件哈希。
 
 ### 网页版
 

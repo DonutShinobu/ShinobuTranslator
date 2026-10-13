@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { readLintWarningSource } from './firefox-lint-source-maps.mjs';
 
 function readRequiredOption(name) {
   const index = process.argv.indexOf(name);
@@ -59,11 +60,28 @@ for (const warning of baseline.warnings) {
       `Lint dependency drift for ${warning.file}: ${warning.dependency}@${dependencyPackage.version}`,
     );
   }
-  const hash = createHash('sha256')
-    .update(readFileSync(resolve(dist, warning.file)))
-    .digest('hex');
-  if (hash !== warning.sha256) {
-    throw new Error(`Firefox lint baseline file hash drift: ${warning.file}`);
+  // UI bundles change frequently; audit the original dependency code and locations.
+  if (warning.source) {
+    const locations = (report.warnings ?? [])
+      .filter((actual) => actual.code === warning.code && actual.file === warning.file)
+      .map((actual) => {
+        const source = readLintWarningSource(dist, actual);
+        if (source.source !== warning.source || source.sha256 !== warning.sourceSha256) {
+          throw new Error(`Firefox lint warning source drift: ${warning.file} -> ${source.source}`);
+        }
+        return [source.line, source.column];
+      });
+    const sortLocations = (values) => [...values].sort(([a, b], [c, d]) => a - c || b - d);
+    if (JSON.stringify(sortLocations(locations)) !== JSON.stringify(sortLocations(warning.locations))) {
+      throw new Error(`Firefox lint warning locations changed in ${warning.source}`);
+    }
+  } else {
+    const hash = createHash('sha256')
+      .update(readFileSync(resolve(dist, warning.file)))
+      .digest('hex');
+    if (hash !== warning.sha256) {
+      throw new Error(`Firefox lint baseline file hash drift: ${warning.file}`);
+    }
   }
 }
 if (JSON.stringify([...actualWarnings].sort()) !== JSON.stringify([...expectedWarnings].sort())) {

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "webExtVersion": "10.3.0",
   "warnings": [
     {
@@ -24,7 +24,9 @@
       "count": 2,
       "dependency": "react-dom",
       "dependencyVersion": "18.3.1",
-      "sha256": "3a06783dae548a05cac9ca147d137002c901e8b184321a10edcefa3cf3c947e1"
+      "source": "node_modules/react-dom/cjs/react-dom.production.min.js",
+      "sourceSha256": "cbf7fe6b9726ee65f8bcd5715289cc5161c8dacf74d0b8aaa0d29412516f5f47",
+      "locations": [[45, 250], [45, 306]]
     },
     {
       "code": "UNSAFE_VAR_ASSIGNMENT",
@@ -32,7 +34,9 @@
       "count": 1,
       "dependency": "prosemirror-view",
       "dependencyVersion": "1.42.6",
-      "sha256": "7876ef70618debd3997058527bd9860d051379fb360e62cc5ef0608c940a9eaf"
+      "source": "node_modules/prosemirror-view/dist/index.js",
+      "sourceSha256": "3cc9270e7b27a3b5a1bfc9ce3d63a8d7bf9c65eb2a811152d1a7ea478d2751e3",
+      "locations": [[3060, 5]]
     },
     {
       "code": "UNSAFE_VAR_ASSIGNMENT",

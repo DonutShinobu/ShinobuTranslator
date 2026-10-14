@@ -162,6 +162,95 @@ test('simple buttons: screenshot selection switches twice while preserving reset
   expect(await detached!.evaluate((element) => element.querySelectorAll('.mt-x-glass-material').length)).toBe(0);
 });
 
+test('liquid glass: screenshot close keeps its small geometry and cleans up on keyboard activation', async ({ page }) => {
+  await page.goto('/screenshot?disabled=1'); await page.waitForFunction(() => Boolean(window.layerFixture));
+  const close = page.getByRole('button', { name: '关闭', exact: true });
+  await expect(close.locator('.mt-x-glass-material')).toHaveClass(/mt-x-glass-optical/u);
+  const geometry = await close.evaluate((element) => {
+    const css = getComputedStyle(element), icon = element.querySelector('.mt-x-icon svg')!, overlay = element.querySelector('.mt-x-glass-overlay')!;
+    return { width: css.width, height: css.height, border: css.borderTopWidth, background: css.backgroundColor,
+      icon: icon.getBoundingClientRect().width, overlay: overlay.getBoundingClientRect().width };
+  });
+  expect(geometry).toMatchObject({ width: '15px', height: '15px', border: '0px', background: 'rgba(0, 0, 0, 0)', icon: 9 });
+  expect(geometry.overlay).toBeGreaterThan(15);
+  const download = page.getByRole('button', { name: '下载日志', exact: true, includeHidden: true });
+  await expect(download).toHaveClass(/mt-x-liquid/u); await expect(download).toBeHidden();
+  const detached = await close.elementHandle();
+  await close.focus(); await page.keyboard.down('Space');
+  await expect(close).toHaveAttribute('data-glass-pressed', '');
+  await page.keyboard.up('Space');
+  await expect(page.locator('.mt-x-screenshot-result')).toHaveCount(0);
+  expect(await detached!.evaluate((element) => element.querySelectorAll('.mt-x-glass-material, .mt-x-glass-overlay').length)).toBe(0);
+});
+
+test('liquid glass: screenshot toolbar and actions retain reset, focus and confirmation', async ({ page }) => {
+  await page.goto('/inline?disabled=1'); await page.waitForFunction(() => Boolean(window.layerFixture));
+  await page.evaluate(() => window.layerFixture.selectScreenshot());
+  const host = page.locator('.mt-x-screenshot-select'), toolbar = host.locator('.mt-x-screenshot-select-toolbar');
+  const confirm = page.getByRole('button', { name: '确认选区', exact: true }), reset = page.getByRole('button', { name: '重新框选', exact: true });
+  await expect(toolbar).toBeHidden();
+  await page.mouse.move(560, 250); await page.mouse.down(); await page.mouse.move(840, 460); await page.mouse.up();
+  await expect(host).toHaveAttribute('data-phase', 'confirming');
+  for (const element of [toolbar, confirm, reset]) {
+    await expect(element).toBeVisible();
+    await expect(element.locator(':scope > .mt-x-glass-material')).toHaveClass(/mt-x-glass-optical/u);
+  }
+  for (const button of [confirm, reset]) {
+    expect(await button.evaluate((element) => {
+      const css = getComputedStyle(element), icon = element.querySelector('.mt-x-icon svg')!, overlay = element.querySelector('.mt-x-glass-overlay')!;
+      return { width: css.width, height: css.height, border: css.borderTopWidth, icon: icon.getBoundingClientRect().width,
+        overlay: overlay.getBoundingClientRect().width > 24 };
+    })).toEqual({ width: '24px', height: '24px', border: '0px', icon: 15, overlay: true });
+  }
+  await confirm.focus(); await page.keyboard.press('Tab'); await expect(reset).toBeFocused();
+  expect(await reset.evaluate((element) => element.matches(':focus-visible') && getComputedStyle(element).boxShadow !== 'none')).toBe(true);
+  await page.keyboard.press('Space');
+  await expect(host).toHaveAttribute('data-phase', 'selecting'); await expect(toolbar).toBeHidden();
+  expect(await page.evaluate(() => window.layerFixture.selectionResult)).toBeUndefined();
+  await page.mouse.move(570, 270); await page.mouse.down(); await page.mouse.move(850, 480); await page.mouse.up();
+  await expect(toolbar).toBeVisible();
+  const detached = await host.elementHandle();
+  await confirm.click(); await expect(host).toHaveCount(0);
+  expect(await page.evaluate(() => window.layerFixture.selectionResult?.viewportRect)).toEqual({ left: 570, top: 270, width: 280, height: 210 });
+  expect(await detached!.evaluate((element) => element.querySelectorAll('.mt-x-glass-material, .mt-x-glass-overlay').length)).toBe(0);
+});
+
+test('liquid glass: cancelling screenshot selection destroys the hidden toolbar material', async ({ page }) => {
+  await page.goto('/inline?disabled=1'); await page.waitForFunction(() => Boolean(window.layerFixture));
+  await page.evaluate(() => window.layerFixture.selectScreenshot());
+  const host = page.locator('.mt-x-screenshot-select'), detached = await host.elementHandle();
+  await page.keyboard.press('Escape'); await expect(host).toHaveCount(0);
+  expect(await page.evaluate(() => window.layerFixture.selectionResult)).toBeNull();
+  expect(await detached!.evaluate((element) => element.querySelectorAll('.mt-x-glass-material, .mt-x-glass-overlay').length)).toBe(0);
+});
+
+test('liquid glass: close and selection icons adapt to a zero-height body backdrop', async ({ page }) => {
+  await page.goto('/screenshot?disabled=1'); await page.waitForFunction(() => Boolean(window.layerFixture));
+  expect(await page.evaluate(() => document.body.getBoundingClientRect().height)).toBe(0);
+  for (const [background, ink, color] of [
+    ['rgb(28, 22, 30)', 'light', 'rgb(255, 255, 255)'],
+    ['rgb(250, 248, 249)', 'dark', 'rgb(23, 19, 26)'],
+  ]) {
+    await page.evaluate(async (value) => {
+      document.body.style.backgroundColor = value; await window.layerFixture.setEditing(false);
+    }, background);
+    const close = page.getByRole('button', { name: '关闭', exact: true });
+    await expect(close).toHaveAttribute('data-contrast', 'sampled'); await expect(close).toHaveAttribute('data-ink', ink);
+    await expect(close).toHaveCSS('color', color);
+    await page.evaluate(() => window.layerFixture.selectScreenshot());
+    await page.mouse.move(560, 250); await page.mouse.down(); await page.mouse.move(840, 460); await page.mouse.up();
+    const toolbar = page.locator('.mt-x-screenshot-select-toolbar');
+    await expect(toolbar).toBeVisible();
+    await expect(toolbar).toHaveAttribute('data-ink', ink); await expect(toolbar).toHaveCSS('color', color);
+    for (const name of ['确认选区', '重新框选']) {
+      const action = page.getByRole('button', { name, exact: true });
+      await expect(action).toHaveAttribute('data-contrast', 'sampled'); await expect(action).toHaveAttribute('data-ink', ink);
+      await expect(action).toHaveCSS('color', color);
+    }
+    await page.keyboard.press('Escape'); await expect(page.locator('.mt-x-screenshot-select')).toHaveCount(0);
+  }
+});
+
 async function expectSameImage(page: Page, first: Buffer, second: Buffer): Promise<void> {
   if (first.equals(second)) return;
   const difference = await page.evaluate(async ([a, b]) => {

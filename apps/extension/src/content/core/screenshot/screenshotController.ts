@@ -212,6 +212,7 @@ export class ScreenshotController {
           sourceOriginalUrl = null;
         }
         destroyTranslationButton(ui.button);
+        destroyTranslationButton(ui.debugDownloadButton);
         destroyGlassControl(ui.closeButton);
         ui.host.remove();
       };
@@ -341,6 +342,7 @@ export class ScreenshotController {
           screenshotOriginalUrl = null;
         }
         destroyTranslationButton(ui.button);
+        destroyTranslationButton(ui.debugDownloadButton);
         destroyGlassControl(ui.closeButton);
         ui.host.remove();
       };

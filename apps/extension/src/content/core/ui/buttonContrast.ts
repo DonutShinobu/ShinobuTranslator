@@ -67,7 +67,7 @@ function solidBackground(
 }
 
 export function refreshButtonContrast(button: HTMLElement): void {
-  const overlay = button.closest('.mt-x-overlay-inline');
+  const overlay = button.closest('.mt-x-overlay-inline, .mt-x-screenshot-select');
   if (!overlay) return;
   const doc = button.ownerDocument;
   const view = doc.defaultView;
@@ -92,7 +92,12 @@ export function refreshButtonContrast(button: HTMLElement): void {
       const viewportLeft = left + (right - left) * pixelLeft / 16;
       const viewportRight = left + (right - left) * pixelRight / 16;
       const elements = doc.elementsFromPoint((viewportLeft + viewportRight) / 2, (top + bottom) / 2)
-        .filter(element => !overlay.contains(element) && !element.closest('.mt-x-overlay-inline'));
+        .filter(element => !overlay.contains(element) && !element.closest('.mt-x-overlay-inline, .mt-x-screenshot-select'));
+      // A zero-height body can still paint the viewport background behind floating controls.
+      if (doc.documentElement && doc.body && !elements.includes(doc.body)) {
+        const rootStyle = getStyle(doc.documentElement);
+        if (!hasColor(rootStyle.backgroundColor) && rootStyle.backgroundImage === 'none') elements.push(doc.body);
+      }
       const sourceIndex = elements.findIndex(element => {
         if (element.tagName === 'IMG') return (element as HTMLImageElement).complete && (element as HTMLImageElement).naturalWidth > 0;
         if (element.tagName === 'CANVAS') return (element as HTMLCanvasElement).width > 0 && (element as HTMLCanvasElement).height > 0;

@@ -1,5 +1,5 @@
 import type { PhotoState } from '../types';
-import { initializeTranslationButton, updateTranslationButton } from './translationButton';
+import { createTranslationButton, initializeTranslationButton, updateTranslationButton } from './translationButton';
 import { renderErrorDetailCard, renderStageTimingCard } from './cards';
 
 export type UiElements = {
@@ -53,10 +53,8 @@ export function createUiElements(): UiElements {
   primaryAction.appendChild(button);
   actions.appendChild(primaryAction);
 
-  const debugDownloadButton = document.createElement('button');
-  debugDownloadButton.className = 'mt-x-control mt-x-control-secondary';
-  debugDownloadButton.type = 'button';
-  debugDownloadButton.textContent = '下载日志';
+  const debugDownloadButton = createTranslationButton('下载日志');
+  debugDownloadButton.className += ' mt-x-control-secondary';
   debugDownloadButton.style.display = 'none';
   actions.appendChild(debugDownloadButton);
 
@@ -212,6 +210,7 @@ export function renderUi(ui: UiElements, state: PhotoState | null): void {
   const canShowDebugDownload = false;
   debugDownloadButton.style.display = canShowDebugDownload ? 'inline-flex' : 'none';
   debugDownloadButton.disabled = !canShowDebugDownload || state.status === 'running';
+  if (canShowDebugDownload) updateTranslationButton(debugDownloadButton, '下载日志', 'download', false);
 
   button.dataset.status = state.status;
   button.disabled = state.status === 'running';

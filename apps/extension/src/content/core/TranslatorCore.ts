@@ -104,6 +104,7 @@ export class TranslatorCore {
     for (const mounted of this.mounted.values()) {
       mounted.editor.dispose();
       destroyTranslationButton(mounted.ui.button);
+      destroyTranslationButton(mounted.ui.debugDownloadButton);
     }
     this.stateStore.dispose();
   }
@@ -174,6 +175,7 @@ export class TranslatorCore {
       if (!currentKeys.has(key)) {
         mounted.editor.dispose();
         destroyTranslationButton(mounted.ui.button);
+        destroyTranslationButton(mounted.ui.debugDownloadButton);
         mounted.ui.host.remove();
         this.mounted.delete(key);
       }
@@ -192,6 +194,7 @@ export class TranslatorCore {
       if (mounted) {
         mounted.editor.dispose();
         destroyTranslationButton(mounted.ui.button);
+        destroyTranslationButton(mounted.ui.debugDownloadButton);
         this.mounted.delete(target.key);
       }
 

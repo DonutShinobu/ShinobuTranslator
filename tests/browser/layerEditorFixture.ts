@@ -2,11 +2,18 @@ import { ImageLayerEditor } from '../../apps/extension/src/content/core/editing/
 import { LayerEditingState } from '../../apps/extension/src/content/core/editing/layerEditingState';
 import { createInitialPhotoState } from '../../apps/extension/src/content/core/state/photoStateStore';
 import { createUiElements, renderUi } from '../../apps/extension/src/content/core/ui/imageControls';
-import { createScreenshotResultUi, renderScreenshotResultUi } from '../../apps/extension/src/content/core/ui/screenshotOverlay';
+import { createScreenshotResultUi, renderScreenshotResultUi, requestScreenshotSelection } from '../../apps/extension/src/content/core/ui/screenshotOverlay';
+import { destroyGlassControl } from '../../apps/extension/src/content/core/ui/liquidGlass';
+import { destroyTranslationButton, updateTranslationButton } from '../../apps/extension/src/content/core/ui/translationButton';
+import { createReadingModeBarUi } from '../../apps/extension/src/content/core/ui/readingModeBar';
+import type { ScreenshotSelection } from '../../apps/extension/src/content/core/screenshot';
 import { attachScreenshotResultDrag, attachScreenshotResultZoom } from '../../apps/extension/src/content/core/screenshot/overlayInteraction';
 import { injectStyles } from '../../apps/extension/src/content/core/ui/styles';
 import type { EditableImage, EditableTextLayer } from '@shinobu/image-pipeline/editor';
-import type { ExtensionBrowserApi } from '../../apps/extension/src/shared/extensionRuntime';
+import type { ExtensionBrowserApi, ExtensionPort } from '../../apps/extension/src/shared/extensionRuntime';
+import { defaultExtensionSettings } from '../../apps/extension/src/shared/config';
+import { toExtensionSettingsProjection, type ExtensionControlProjection } from '../../apps/extension/src/shared/extensionControl';
+import { extensionControlChangedEventType } from '../../apps/extension/src/shared/extensionControlTransport';
 import { renderBrowserTextLayer } from '../../apps/extension/src/content/core/editing/browserLayerRenderer';
 
 async function blob(canvas: HTMLCanvasElement): Promise<Blob> {
@@ -22,7 +29,35 @@ function quad(x: number, y: number, w: number, h: number): EditableTextLayer['qu
 }
 
 async function run(): Promise<void> {
-  (globalThis as typeof globalThis & { chrome: ExtensionBrowserApi }).chrome = { runtime: { getURL: (path) => `/${path}` } };
+  const projection: ExtensionControlProjection = {
+    revision: 0,
+    settings: toExtensionSettingsProjection(defaultExtensionSettings),
+    access: {
+      apiKeys: {} as ExtensionControlProjection['access']['apiKeys'],
+      openAiOAuth: { state: 'ready', availableActions: [] },
+      geminiApp: { state: 'ready', availableActions: [] },
+    },
+  };
+  const preferencePorts = new Map<ExtensionPort, Set<(message: unknown, port: ExtensionPort) => void>>();
+  (globalThis as typeof globalThis & { chrome: ExtensionBrowserApi }).chrome = { runtime: {
+    getURL: (path) => `/${path}`,
+    connect(info) {
+      const listeners = new Set<(message: unknown, port: ExtensionPort) => void>();
+      const port: ExtensionPort = {
+        name: info?.name ?? '', postMessage() {},
+        disconnect() { preferencePorts.delete(port); },
+        onMessage: { addListener: (listener) => { listeners.add(listener); } },
+        onDisconnect: { addListener() {} },
+      };
+      preferencePorts.set(port, listeners);
+      return port;
+    },
+    sendMessage(_message, callback) {
+      const response = { ok: true, type: 'mt:extension-control', result: { kind: 'control-projection', projection } };
+      callback?.(response);
+      return Promise.resolve(response);
+    },
+  } };
   injectStyles();
   const sourceCanvas = canvas(800, 480, '#faf8f9');
   const sourceContext = sourceCanvas.getContext('2d')!; sourceContext.fillStyle = '#b82c3a'; sourceContext.fillRect(100, 100, 140, 100);
@@ -84,6 +119,12 @@ async function run(): Promise<void> {
     ui.host.style.cssText = 'position:absolute;right:calc(100vw - 418px);top:112px;z-index:20';
   }
   document.body.appendChild(ui.host); await image.decode();
+  const reading = params.has('controls') ? createReadingModeBarUi() : undefined;
+  if (reading) {
+    document.body.appendChild(reading.host);
+    updateTranslationButton(reading.translateCurrentBtn, '翻译当前页');
+    updateTranslationButton(reading.translateAllBtn, '翻译全部');
+  }
   let editor: ImageLayerEditor;
   let editingEnabled = !params.has('disabled');
   const render = () => {
@@ -101,10 +142,35 @@ async function run(): Promise<void> {
     state.status = state.mode === 'translated' ? 'translated' : 'showingOriginal'; render();
   });
   render();
+  const dispose = () => {
+    editor.dispose(); state.layerEditing?.dispose(); detach.forEach((fn) => fn());
+    destroyTranslationButton(ui.button); destroyTranslationButton(ui.debugDownloadButton);
+    if (reading) {
+      destroyTranslationButton(reading.translateCurrentBtn); destroyTranslationButton(reading.translateAllBtn);
+      reading.host.remove();
+    }
+    if (screenshotUi) destroyGlassControl(screenshotUi.closeButton);
+    ui.host.remove();
+  };
+  screenshotUi?.closeButton.addEventListener('click', dispose);
+  let selectionResult: ScreenshotSelection | null | undefined;
   let resumeComposition: (() => void) | undefined;
   let resumeTextEncoding: (() => void) | undefined;
   Object.assign(window, { layerFixture: {
-    state, image, ui,
+    state, image, ui, render,
+    get preferencePortCount() { return preferencePorts.size; },
+    setSimpleButtons(enabled: boolean) {
+      projection.revision++;
+      projection.settings.simpleButtons = enabled;
+      for (const [port, listeners] of preferencePorts) {
+        for (const listener of listeners) listener({ type: extensionControlChangedEventType, projection }, port);
+      }
+    },
+    get selectionResult() { return selectionResult; },
+    selectScreenshot() {
+      selectionResult = undefined;
+      void requestScreenshotSelection().then((selection) => { selectionResult = selection; });
+    },
     async hitPoints() {
       const layer = state.layerEditing!.layers[1].content;
       const raster = new Image(), url = URL.createObjectURL(layer.image); raster.src = url; await raster.decode();
@@ -146,7 +212,7 @@ async function run(): Promise<void> {
       if (!screenshot) { image.remove(); document.body.appendChild(image); }
       document.body.appendChild(ui.host); editor = new ImageLayerEditor(options); render();
     },
-    dispose() { editor.dispose(); state.layerEditing?.dispose(); detach.forEach((fn) => fn()); ui.host.remove(); },
+    dispose,
     pauseComposition() {
       const encode = HTMLCanvasElement.prototype.toBlob;
       HTMLCanvasElement.prototype.toBlob = function(callback, ...args) {

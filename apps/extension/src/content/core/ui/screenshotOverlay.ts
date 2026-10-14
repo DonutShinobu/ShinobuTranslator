@@ -15,6 +15,7 @@ import type {
 } from '../screenshot';
 import { createIcon } from './icons';
 import { createUiElements, renderUi } from './imageControls';
+import { initializeGlassControl, refreshGlassControl, destroyGlassControl } from './liquidGlass';
 
 export type ScreenshotResultUiElements = {
   host: HTMLElement;
@@ -403,6 +404,7 @@ function syncScreenshotResultOverlayPosition(ui: ScreenshotResultUiElements): vo
   ui.overlay.style.left = positionStyle.left;
   ui.overlay.style.right = positionStyle.right;
   ui.overlay.style.top = positionStyle.top;
+  refreshGlassControl(ui.closeButton);
 }
 
 function clampViewportX(value: number): number {
@@ -518,23 +520,35 @@ export function requestScreenshotSelection(): Promise<ScreenshotSelection | null
     const toolbar = document.createElement('div');
     toolbar.className = 'mt-x-screenshot-select-toolbar';
     const confirmButton = document.createElement('button');
-    confirmButton.className = 'mt-x-screenshot-select-action';
+    confirmButton.className = 'mt-x-control mt-x-screenshot-select-action';
     confirmButton.type = 'button';
     confirmButton.dataset.action = 'confirm';
-    confirmButton.appendChild(createIcon('confirm'));
+    const confirmIcon = document.createElement('span');
+    confirmIcon.className = 'mt-x-icon';
+    confirmIcon.setAttribute('aria-hidden', 'true');
+    confirmIcon.appendChild(createIcon('confirm'));
+    confirmButton.appendChild(confirmIcon);
     confirmButton.title = '确认选区';
+    confirmButton.setAttribute('aria-label', '确认选区');
     const resetButton = document.createElement('button');
-    resetButton.className = 'mt-x-screenshot-select-action';
+    resetButton.className = 'mt-x-control mt-x-screenshot-select-action';
     resetButton.type = 'button';
     resetButton.dataset.action = 'reset';
-    resetButton.appendChild(createIcon('close'));
+    const resetIcon = document.createElement('span');
+    resetIcon.className = 'mt-x-icon';
+    resetIcon.setAttribute('aria-hidden', 'true');
+    resetIcon.appendChild(createIcon('close'));
+    resetButton.appendChild(resetIcon);
     resetButton.title = '重新框选';
+    resetButton.setAttribute('aria-label', '重新框选');
     toolbar.appendChild(confirmButton);
     toolbar.appendChild(resetButton);
 
     host.appendChild(selectionRect);
     host.appendChild(toolbar);
     document.body.appendChild(host);
+    host.dataset.theme = 'light';
+    for (const control of [toolbar, confirmButton, resetButton]) initializeGlassControl(control);
 
     let active = false;
     let dragged = false;
@@ -554,6 +568,7 @@ export function requestScreenshotSelection(): Promise<ScreenshotSelection | null
       if (settled) return;
       settled = true;
       document.removeEventListener('keydown', onKeydown, true);
+      for (const control of [toolbar, confirmButton, resetButton]) destroyGlassControl(control);
       host.remove();
       resolve(selection);
     };
@@ -561,10 +576,12 @@ export function requestScreenshotSelection(): Promise<ScreenshotSelection | null
     const setPhase = (nextPhase: ScreenshotSelectionPhase): void => {
       phase = nextPhase;
       host.dataset.phase = nextPhase;
+      for (const control of [toolbar, confirmButton, resetButton]) refreshGlassControl(control);
     };
 
     const positionToolbar = (rect: ScreenshotRect): void => {
       positionElementNearViewportRect(toolbar, rect);
+      for (const control of [toolbar, confirmButton, resetButton]) refreshGlassControl(control);
     };
 
     const renderSelectionRect = (rect: ScreenshotRect, mode: 'element' | 'manual'): void => {
@@ -822,12 +839,18 @@ export function createScreenshotResultUi(rect: ScreenshotRect): ScreenshotResult
   }).__shinobuColdStartResultDisplayInstant === true) image.style.transition = 'none';
 
   const closeButton = document.createElement('button');
-  closeButton.className = 'mt-x-pill-close';
+  closeButton.className = 'mt-x-control mt-x-pill-close';
   closeButton.type = 'button';
-  closeButton.appendChild(createIcon('close'));
+  const closeIcon = document.createElement('span');
+  closeIcon.className = 'mt-x-icon';
+  closeIcon.setAttribute('aria-hidden', 'true');
+  closeIcon.appendChild(createIcon('close'));
+  closeButton.appendChild(closeIcon);
   closeButton.title = '关闭';
+  closeButton.setAttribute('aria-label', '关闭');
 
   base.primaryAction.appendChild(closeButton);
+  initializeGlassControl(closeButton);
   base.host.appendChild(image);
   return {
     ...base,
@@ -869,4 +892,5 @@ export function renderScreenshotResultUi(
   if (imageUrl && ui.image.src !== imageUrl) {
     ui.image.src = imageUrl;
   }
+  refreshGlassControl(ui.closeButton);
 }

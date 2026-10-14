@@ -18,14 +18,14 @@ function luminance(rgb: number[]): number {
   }, 0);
 }
 
-function clearGlyphColors(button: HTMLButtonElement): void {
+function clearGlyphColors(button: HTMLElement): void {
   for (const node of button.querySelectorAll<HTMLElement>('[torph-item], .mt-x-icon, .mt-x-label')) {
     node.style.removeProperty('color');
     delete node.dataset.ink;
   }
 }
 
-function setContrast(button: HTMLButtonElement, ink: Ink, rgb: number[]): void {
+function setContrast(button: HTMLElement, ink: Ink, rgb: number[]): void {
   clearGlyphColors(button);
   const color = `rgb(${rgb.join(' ')})`;
   button.style.setProperty('--mt-glass-text', color);
@@ -33,7 +33,7 @@ function setContrast(button: HTMLButtonElement, ink: Ink, rgb: number[]): void {
   button.dataset.contrast = 'sampled';
 }
 
-function fallback(button: HTMLButtonElement): void {
+function fallback(button: HTMLElement): void {
   // shortcut: unreadable pixels retain the last ink or inherited foreground; accurate adaptation needs readable pixels.
   clearGlyphColors(button);
   button.dataset.contrast = 'fallback';
@@ -66,7 +66,7 @@ function solidBackground(
   return false;
 }
 
-export function refreshButtonContrast(button: HTMLButtonElement): void {
+export function refreshButtonContrast(button: HTMLElement): void {
   const overlay = button.closest('.mt-x-overlay-inline');
   if (!overlay) return;
   const doc = button.ownerDocument;

@@ -72,6 +72,7 @@ async function checkInteractions(page: Page) {
   const imageEditing = page.getByRole('switch', { name: '图片编辑', exact: true });
   const llmOcrFilter = page.getByRole('switch', { name: '大模型误识别过滤', exact: true });
   const autoTranslate = page.getByRole('switch', { name: '全自动模式', exact: true });
+  const simpleButtons = page.getByRole('switch', { name: '简洁按钮', exact: true });
   const modeBox = await mode.boundingBox();
   const popupBox = await page.locator('.popup').boundingBox();
   const browserName = page.context().browser()!.browserType().name();
@@ -102,6 +103,7 @@ async function checkInteractions(page: Page) {
   });
   await expect(llmOcrFilter).toHaveAttribute('aria-checked', 'false');
   await expect(autoTranslate).toHaveAttribute('aria-checked', 'false');
+  await expect(simpleButtons).toHaveAttribute('aria-checked', 'false');
   await modeMenu.getByText('图片编辑', { exact: true }).hover();
   await expect(page.getByRole('tooltip')).toContainText('修改图片上的文字');
   expect(await page.getByRole('tooltip').evaluate((el) => {
@@ -109,7 +111,10 @@ async function checkInteractions(page: Page) {
     range.selectNodeContents(el.firstChild!);
     return range.getClientRects().length;
   })).toBe(1);
-  await page.locator('.popup-header-brand').hover();
+  expect(await page.getByRole('tooltip').evaluate((el) => getComputedStyle(el).pointerEvents)).toBe('none');
+  const imageEditingHintBox = await page.getByRole('tooltip').boundingBox();
+  if (!imageEditingHintBox) throw new Error('Missing image editing tooltip geometry');
+  await page.mouse.move(imageEditingHintBox.x + imageEditingHintBox.width / 2, imageEditingHintBox.y + imageEditingHintBox.height / 2);
   await expect(page.getByRole('tooltip')).toHaveCount(0);
   await modeMenu.getByText('大模型误识别过滤', { exact: true }).hover();
   await expect(page.getByRole('tooltip')).toContainText('当前模型');
@@ -130,6 +135,9 @@ async function checkInteractions(page: Page) {
   await expect(autoTranslate).toHaveAttribute('aria-checked', 'true');
   await autoTranslate.press('Space');
   await expect.poll(async () => (await projection(page)).settings.autoTranslate).toBe(false);
+  await modeMenu.getByText('简洁按钮', { exact: true }).click();
+  await expect.poll(async () => (await projection(page)).settings.simpleButtons).toBe(true);
+  await expect(simpleButtons).toHaveAttribute('aria-checked', 'true');
   await modeMenu.getByText('图片编辑', { exact: true }).click();
   await expect.poll(async () => (await projection(page)).settings.enableImageEditing).toBe(true);
   await expect(imageEditing).toHaveAttribute('aria-checked', 'true');
@@ -150,6 +158,9 @@ async function checkInteractions(page: Page) {
   await modeOptions.press('Enter');
   await expect(imageEditing).toHaveAttribute('aria-checked', 'false');
   await expect(imageEditing).toBeFocused();
+  await expect(simpleButtons).toHaveAttribute('aria-checked', 'true');
+  await simpleButtons.press('Space');
+  await expect.poll(async () => (await projection(page)).settings.simpleButtons).toBe(false);
   await imageEditing.press('Enter');
   await expect.poll(async () => (await projection(page)).settings.enableImageEditing).toBe(true);
   await imageEditing.press('Space');
@@ -231,6 +242,7 @@ async function checkInteractions(page: Page) {
   await modeOptions.click();
   await expect(llmOcrFilter).toBeDisabled();
   await expect(autoTranslate).toBeEnabled();
+  await expect(simpleButtons).toBeEnabled();
   await page.keyboard.press('Escape');
   await service.getByRole('radio', { name: '大模型' }).click();
   const provider = page.getByRole('combobox', { name: 'LLM 提供商' });
@@ -348,6 +360,9 @@ async function checkInteractions(page: Page) {
   await expect(autoTranslate).toBeFocused();
   await autoTranslate.press('Space');
   await expect.poll(async () => (await projection(page)).settings.autoTranslate).toBe(true);
+  await expect(simpleButtons).toBeEnabled();
+  await simpleButtons.press('Space');
+  await expect.poll(async () => (await projection(page)).settings.simpleButtons).toBe(true);
   await page.keyboard.press('Escape');
   for (const name of ['阶段明细', '排版调试', '去字调试', '关后处理']) {
     await expect(page.getByRole('checkbox', { name })).toBeDisabled();

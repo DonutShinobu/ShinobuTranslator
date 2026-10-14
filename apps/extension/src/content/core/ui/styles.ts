@@ -174,7 +174,56 @@ export function injectStyles(): void {
     .mt-x-control[data-status='running'] {
       pointer-events: none;
     }
-    .mt-x-control.mt-x-liquid {
+    .mt-x-control.mt-x-simple[data-status='running'] {
+      overflow: hidden;
+    }
+    .mt-x-control.mt-x-simple[data-status='running'] .mt-x-icon {
+      display: none;
+    }
+    .mt-x-control-secondary.mt-x-simple .mt-x-icon {
+      display: none;
+    }
+    .mt-x-simple .mt-x-spinner {
+      display: none;
+      width: 16px;
+      height: 16px;
+      flex: 0 0 auto;
+      will-change: transform;
+      animation: mt-x-spin-rotate 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    }
+    .mt-x-simple .mt-x-spinner svg {
+      width: 16px;
+      height: 16px;
+    }
+    .mt-x-simple .mt-x-spinner svg circle {
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2.5;
+      stroke-linecap: round;
+      stroke-dasharray: 1, 37.7;
+      animation: mt-x-spin-arc 1.8s ease-in-out infinite;
+    }
+    .mt-x-control.mt-x-simple[data-status='running'] .mt-x-spinner {
+      display: inline-flex;
+    }
+    .mt-x-control.mt-x-simple[data-status='running']::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: linear-gradient(
+        90deg,
+        transparent 0%,
+        var(--mt-glow-mid, oklch(0.95 0.03 250 / 0.04)) 25%,
+        var(--mt-glow-center, oklch(0.95 0.03 250 / 0.22)) 50%,
+        var(--mt-glow-mid, oklch(0.95 0.03 250 / 0.04)) 75%,
+        transparent 100%
+      );
+      animation: mt-x-glow-sweep 1.5s linear infinite;
+      pointer-events: none;
+    }
+    .mt-x-control.mt-x-liquid,
+    .mt-x-screenshot-select-toolbar.mt-x-liquid {
       --mt-glass-solid: #f3edf0;
       --mt-glass-shadow: #3725321f;
       box-sizing: border-box;
@@ -244,12 +293,12 @@ export function injectStyles(): void {
     .mt-x-liquid .mt-x-label { display: block; line-height: 20px; font-weight: 550; overflow: visible; white-space: pre; transition: none; }
     .mt-x-control.mt-x-liquid:hover:not(:disabled), .mt-x-control.mt-x-liquid:active:not(:disabled) { background: transparent; }
     @media (prefers-reduced-transparency: reduce) {
-      .mt-x-control.mt-x-liquid { color: #17131a !important; }
+      .mt-x-control.mt-x-liquid, .mt-x-screenshot-select-toolbar.mt-x-liquid { color: #17131a !important; }
       .mt-x-liquid .mt-x-glass-material { background: var(--mt-glass-solid); backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
       .mt-x-liquid .mt-x-icon, .mt-x-liquid .mt-x-label, .mt-x-liquid [torph-item] { color: inherit !important; }
     }
     @supports not (backdrop-filter: blur(1px)) {
-      .mt-x-control.mt-x-liquid { color: #17131a !important; }
+      .mt-x-control.mt-x-liquid, .mt-x-screenshot-select-toolbar.mt-x-liquid { color: #17131a !important; }
       .mt-x-liquid .mt-x-glass-material { background: var(--mt-glass-solid); }
       .mt-x-liquid .mt-x-icon, .mt-x-liquid .mt-x-label, .mt-x-liquid [torph-item] { color: inherit !important; }
     }
@@ -711,7 +760,8 @@ export function injectStyles(): void {
       display: none;
     }
 
-    .mt-x-pill-close {
+    .mt-x-pill-close.mt-x-liquid,
+    .mt-x-pill-close.mt-x-simple {
       position: absolute;
       right: -4px;
       top: -4px;
@@ -721,20 +771,22 @@ export function injectStyles(): void {
       justify-content: center;
       width: 15px;
       height: 15px;
-      border: 1px solid var(--mt-border, oklch(0.55 0.01 250 / 0.7));
       border-radius: 50%;
-      background: var(--mt-bg-active, oklch(0.97 0.005 250 / 0.92));
-      color: oklch(0.38 0.006 250 / 0.94);
       cursor: pointer;
       font-size: 9px;
       line-height: 1;
       padding: 0;
       flex: 0 0 auto;
+    }
+    .mt-x-pill-close.mt-x-simple {
+      border: 1px solid var(--mt-border, oklch(0.55 0.01 250 / 0.7));
+      background: var(--mt-bg-active, oklch(0.97 0.005 250 / 0.92));
+      color: oklch(0.38 0.006 250 / 0.94);
       overflow: hidden;
       transition: transform 0.15s ease-out;
     }
-    .mt-x-pill-close::after {
-      content: "";
+    .mt-x-pill-close.mt-x-simple::after {
+      content: '';
       position: absolute;
       inset: 0;
       border-radius: inherit;
@@ -743,15 +795,25 @@ export function injectStyles(): void {
       pointer-events: none;
       transition: opacity 0.15s ease-out;
     }
-    .mt-x-pill-close:hover::after {
+    .mt-x-pill-close.mt-x-simple:hover::after {
       opacity: 1;
     }
-    .mt-x-pill-close:hover {
+    .mt-x-pill-close.mt-x-simple:hover {
       transform: scale(1.04);
     }
-    .mt-x-pill-close svg {
+    .mt-x-pill-close.mt-x-simple svg {
       position: relative;
       z-index: 1;
+      width: 9px;
+      height: 9px;
+      display: block;
+    }
+    .mt-x-pill-close > .mt-x-icon {
+      width: 9px;
+      height: 9px;
+      flex-basis: 9px;
+    }
+    .mt-x-pill-close > .mt-x-icon svg {
       width: 9px;
       height: 9px;
       display: block;
@@ -851,54 +913,70 @@ export function injectStyles(): void {
     .mt-x-screenshot-select-handle[data-handle='ne'] { right: -15px; top: -15px; cursor: nesw-resize; }
     .mt-x-screenshot-select-handle[data-handle='sw'] { left: -15px; bottom: -15px; cursor: nesw-resize; }
     .mt-x-screenshot-select-handle[data-handle='se'] { right: -15px; bottom: -15px; cursor: nwse-resize; }
-    .mt-x-screenshot-select-toolbar {
+    .mt-x-screenshot-select-toolbar.mt-x-liquid,
+    .mt-x-screenshot-select-toolbar.mt-x-simple {
       position: fixed;
       z-index: 2147483647;
       display: none;
       gap: 6px;
       align-items: center;
       padding: 4px;
-      border: 1px solid oklch(0.55 0.01 250 / 0.46);
       border-radius: 999px;
+      pointer-events: auto;
+    }
+    .mt-x-screenshot-select-toolbar.mt-x-simple {
+      border: 1px solid oklch(0.55 0.01 250 / 0.46);
       background: oklch(0.97 0.005 250 / 0.9);
       box-shadow: 0 8px 24px oklch(0 0 0 / 0.18);
       backdrop-filter: blur(16px) saturate(1.4);
       -webkit-backdrop-filter: blur(16px) saturate(1.4);
-      pointer-events: auto;
     }
     .mt-x-screenshot-select[data-phase='confirming'] .mt-x-screenshot-select-toolbar {
       display: inline-flex;
     }
-    .mt-x-screenshot-select-action {
+    .mt-x-screenshot-select-action.mt-x-liquid,
+    .mt-x-screenshot-select-action.mt-x-simple {
       display: inline-flex;
       align-items: center;
       justify-content: center;
       width: 24px;
       height: 24px;
-      border: 0;
       border-radius: 50%;
-      background: oklch(0.94 0.008 250 / 0.92);
-      color: oklch(0.16 0.006 250);
       cursor: pointer;
       font-size: 13px;
       line-height: 1;
       padding: 0;
+    }
+    .mt-x-screenshot-select-action.mt-x-simple {
+      border: 0;
+      background: oklch(0.94 0.008 250 / 0.92);
+      color: oklch(0.16 0.006 250);
       transition: background-color 0.15s ease-out, transform 0.15s ease-out;
     }
-    .mt-x-screenshot-select-action svg {
+    .mt-x-screenshot-select-action.mt-x-simple:hover {
+      background: oklch(0.86 0.012 250 / 0.96);
+      transform: scale(1.04);
+    }
+    .mt-x-screenshot-select-action.mt-x-simple[data-action='confirm'] {
+      color: oklch(0.34 0.07 150);
+    }
+    .mt-x-screenshot-select-action.mt-x-simple[data-action='reset'] {
+      color: oklch(0.38 0.045 25);
+    }
+    .mt-x-screenshot-select-action.mt-x-simple svg {
       width: 15px;
       height: 15px;
       display: block;
     }
-    .mt-x-screenshot-select-action:hover {
-      background: oklch(0.86 0.012 250 / 0.96);
-      transform: scale(1.04);
+    .mt-x-screenshot-select-action > .mt-x-icon {
+      width: 15px;
+      height: 15px;
+      flex-basis: 15px;
     }
-    .mt-x-screenshot-select-action[data-action='confirm'] {
-      color: oklch(0.34 0.07 150);
-    }
-    .mt-x-screenshot-select-action[data-action='reset'] {
-      color: oklch(0.38 0.045 25);
+    .mt-x-screenshot-select-action > .mt-x-icon svg {
+      width: 15px;
+      height: 15px;
+      display: block;
     }
     .mt-x-screenshot-result {
       position: absolute;
@@ -1100,6 +1178,28 @@ export function injectStyles(): void {
     .mt-x-layer-input::selection, .mt-x-layer-input *::selection { background: oklch(0.65 0.16 350 / 0.3); }
     .mt-x-layer-error { flex-basis: 100%; color: var(--mt-error-text, oklch(0.5 0.16 25)); }
     .mt-x-layer-error:empty { display: none; }
+
+    @keyframes mt-x-glow-sweep {
+      0%, 10% { transform: translateX(-150%); }
+      40% { transform: translateX(0%); }
+      60% { transform: translateX(150%); }
+      90%, 100% { transform: translateX(250%); }
+    }
+    @keyframes mt-x-spin-rotate {
+      to { transform: rotate(360deg); }
+    }
+    @keyframes mt-x-spin-arc {
+      0% { stroke-dasharray: 1, 37.7; stroke-dashoffset: 0; }
+      50% { stroke-dasharray: 25, 37.7; stroke-dashoffset: -12; }
+      100% { stroke-dasharray: 1, 37.7; stroke-dashoffset: -37.7; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .mt-x-simple .mt-x-spinner,
+      .mt-x-simple .mt-x-spinner svg circle,
+      .mt-x-control.mt-x-simple[data-status='running']::after {
+        animation: none;
+      }
+    }
 
   `;
   document.documentElement.appendChild(style);

@@ -24,6 +24,8 @@
  */
 
 import { refreshButtonContrast } from './buttonContrast';
+import { createGlassInteraction } from './glassInteraction';
+import { observeContentBooleanPreference } from '../contentPreference';
 
 const ns = 'http://www.w3.org/2000/svg';
 const refraction = 60;
@@ -148,7 +150,7 @@ function lensMaps(doc: Document, width: number, height: number, dpr: number) {
   return maps;
 }
 
-export function createLiquidGlass(button: HTMLButtonElement, onVisibilityChange?: (visible: boolean) => void) {
+export function createLiquidGlass(button: HTMLElement, onVisibilityChange?: (visible: boolean) => void) {
   const doc = button.ownerDocument || document;
   const view = doc.defaultView || window;
   const material = doc.createElement('span');
@@ -483,4 +485,46 @@ export function createLiquidGlass(button: HTMLButtonElement, onVisibilityChange?
       material.remove();
     },
   };
+}
+
+const controls = new WeakMap<HTMLElement, {
+  glass?: ReturnType<typeof createLiquidGlass>;
+  interaction?: ReturnType<typeof createGlassInteraction>;
+  stopPreference?: () => void;
+  simple?: boolean;
+}>();
+
+export function initializeGlassControl(element: HTMLElement): void {
+  if (controls.has(element)) return;
+  const control: NonNullable<ReturnType<typeof controls.get>> = {};
+  controls.set(element, control);
+  control.stopPreference = observeContentBooleanPreference('simpleButtons', (enabled) => {
+    if (control.simple === enabled) return;
+    control.simple = enabled;
+    control.interaction?.destroy();
+    control.glass?.destroy();
+    control.interaction = undefined;
+    control.glass = undefined;
+    element.classList.toggle('mt-x-simple', enabled);
+    element.classList.toggle('mt-x-liquid', !enabled);
+    if (!enabled) {
+      control.interaction = element.tagName === 'BUTTON'
+        ? createGlassInteraction(element as HTMLButtonElement) : undefined;
+      control.glass = createLiquidGlass(element, visible => control.interaction?.setVisible(visible));
+    }
+  });
+}
+
+export function refreshGlassControl(element: HTMLElement): void {
+  const control = controls.get(element);
+  control?.glass?.refresh();
+  control?.interaction?.refresh();
+}
+
+export function destroyGlassControl(element: HTMLElement): void {
+  const control = controls.get(element);
+  control?.stopPreference?.();
+  control?.interaction?.destroy();
+  control?.glass?.destroy();
+  controls.delete(element);
 }

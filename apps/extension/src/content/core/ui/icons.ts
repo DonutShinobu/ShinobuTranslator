@@ -19,6 +19,10 @@ const imageFrame: SvgNode[] = [
 ];
 
 const icons = {
+  spinner: {
+    viewBox: '0 0 16 16',
+    children: [{ tag: 'circle', attributes: { cx: '8', cy: '8', r: '6' } }],
+  },
   translate: {
     viewBox: '0 0 16 16',
     children: [

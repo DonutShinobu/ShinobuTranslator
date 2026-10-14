@@ -1,10 +1,12 @@
 import { test, expect, type Page } from '@playwright/test';
 import type { LayerEditingState } from '../../apps/extension/src/content/core/editing/layerEditingState';
+import type { ScreenshotSelection } from '../../apps/extension/src/content/core/screenshot';
+import type { PhotoState } from '../../apps/extension/src/content/core/types';
 
 declare global {
   interface Window {
     layerFixture: {
-      state: { layerEditing: LayerEditingState; translatedUrl: string };
+      state: PhotoState & { layerEditing: LayerEditingState; translatedUrl: string };
       image: HTMLImageElement;
       ui: { host: HTMLElement };
       setEditing(enabled: boolean): Promise<void>;
@@ -19,9 +21,146 @@ declare global {
       pauseTextEncoding(): void;
       textEncodingPaused(): boolean;
       releaseTextEncoding(): void;
+      selectScreenshot(): void;
+      selectionResult: ScreenshotSelection | null | undefined;
+      setSimpleButtons(enabled: boolean): void;
+      preferencePortCount: number;
+      render(): void;
     };
   }
 }
+
+test('simple buttons: live switching restores image and reading controls without changing their actions', async ({ page }, testInfo) => {
+  await page.goto('/inline?disabled=1&controls=1'); await page.waitForFunction(() => Boolean(window.layerFixture));
+  const main = page.locator('.mt-x-primary-action > .mt-x-control');
+  const reading = page.locator('.mt-x-reading-actions > .mt-x-control');
+  await expect(main.locator(':scope > .mt-x-glass-material')).toHaveCount(1);
+  await main.focus(); await page.keyboard.down('Space');
+  await expect(main).toHaveAttribute('data-glass-pressed', '');
+  await page.evaluate(() => window.layerFixture.setSimpleButtons(true));
+  await expect(main).not.toHaveAttribute('data-glass-pressed', '');
+  await page.keyboard.up('Space');
+  await expect.poll(() => page.evaluate(() => window.layerFixture.state.mode)).toBe('original');
+
+  for (let cycle = 0; cycle < 2; cycle++) {
+    await page.evaluate(() => {
+      window.layerFixture.setSimpleButtons(true);
+      window.layerFixture.state.status = 'running';
+      window.layerFixture.state.stageText = '文字识别中';
+      window.layerFixture.render();
+    });
+    for (const controls of [main, reading]) {
+      const count = await controls.count();
+      for (let index = 0; index < count; index++) await expect(controls.nth(index)).toHaveClass(/mt-x-simple/u);
+      await expect(controls.locator('.mt-x-glass-material, .mt-x-glass-overlay, [torph-item], [torph-exiting]')).toHaveCount(0);
+    }
+    await expect(main).toHaveAttribute('aria-busy', 'true');
+    await expect(main.locator('.mt-x-spinner')).toBeVisible();
+    await expect(main.locator('.mt-x-icon')).toHaveCSS('display', 'none');
+    await expect(main.locator('.mt-x-icon')).toHaveText('文A');
+    await expect(main.locator('.mt-x-label')).toHaveText('文字识别中');
+    expect(await main.evaluate((button) => [button.style.scale, button.style.translate])).toEqual(['', '']);
+    expect(await main.locator('.mt-x-label').evaluate((label) => label.getAnimations({ subtree: true }).length)).toBe(0);
+    expect(await main.evaluate(async (button) => {
+      let mutations = 0;
+      const observer = new MutationObserver((records) => { mutations += records.length; });
+      observer.observe(button, { childList: true, characterData: true, subtree: true });
+      window.layerFixture.render(); window.layerFixture.render();
+      await Promise.resolve(); observer.disconnect();
+      return mutations;
+    })).toBe(0);
+
+    await page.evaluate(() => {
+      window.layerFixture.state.status = 'error';
+      window.layerFixture.state.errorText = '示例错误';
+      window.layerFixture.render();
+    });
+    await expect(main.locator('.mt-x-icon')).toHaveAttribute('data-icon', 'retry');
+    await expect(main.locator('.mt-x-icon svg')).toHaveAttribute('viewBox', '0 0 16 16');
+    await expect(main.locator('.mt-x-label')).toHaveText('重试');
+    await expect(main.locator('.mt-x-spinner')).toBeHidden();
+    await page.evaluate(() => {
+      window.layerFixture.state.status = 'translated'; window.layerFixture.state.mode = 'translated';
+      window.layerFixture.render();
+    });
+    await expect(main.locator('.mt-x-icon')).toHaveAttribute('data-icon', 'original');
+    await expect(main.locator('.mt-x-label')).toHaveText('显示原图');
+    if (cycle === 0) await page.screenshot({ path: testInfo.outputPath('simple-buttons-inline.png') });
+    await main.click();
+    await expect.poll(() => page.evaluate(() => window.layerFixture.state.mode)).toBe('original');
+    await expect(main.locator('.mt-x-icon')).toHaveAttribute('data-icon', 'translated');
+    await page.evaluate(() => window.layerFixture.setSimpleButtons(false));
+    for (const control of [main, reading.nth(0), reading.nth(1)]) {
+      await expect(control).toHaveClass(/mt-x-liquid/u);
+      await expect(control.locator(':scope > .mt-x-glass-material')).toHaveCount(1);
+      await expect(control.locator(':scope > .mt-x-spinner')).toHaveCount(0);
+    }
+  }
+  await main.focus(); await page.keyboard.down('Space');
+  await expect(main).toHaveAttribute('data-glass-pressed', '');
+  await page.keyboard.up('Space');
+  const detached = await main.elementHandle();
+  await page.evaluate(() => window.layerFixture.dispose());
+  expect(await page.evaluate(() => window.layerFixture.preferencePortCount)).toBe(0);
+  await page.evaluate(() => { window.layerFixture.setSimpleButtons(true); window.layerFixture.setSimpleButtons(false); });
+  expect(await detached!.evaluate((button) => button.querySelectorAll('.mt-x-glass-material, [torph-item]').length)).toBe(0);
+});
+
+test('simple buttons: screenshot close switches twice and retains native keyboard dismissal', async ({ page }) => {
+  await page.goto('/screenshot?disabled=1'); await page.waitForFunction(() => Boolean(window.layerFixture));
+  const close = page.getByRole('button', { name: '关闭', exact: true });
+  for (let cycle = 0; cycle < 2; cycle++) {
+    await page.evaluate(() => window.layerFixture.setSimpleButtons(true));
+    await expect(close).toHaveClass(/mt-x-simple/u);
+    await expect(close.locator('.mt-x-glass-material')).toHaveCount(0);
+    await expect(close).toHaveCSS('width', '15px'); await expect(close).toHaveCSS('height', '15px');
+    await close.dispatchEvent('keydown', { key: ' ', bubbles: true });
+    await expect(close).not.toHaveAttribute('data-glass-pressed', '');
+    await close.dispatchEvent('keyup', { key: ' ', bubbles: true });
+    await page.evaluate(() => window.layerFixture.setSimpleButtons(false));
+    await expect(close).toHaveClass(/mt-x-liquid/u);
+    await expect(close.locator(':scope > .mt-x-glass-material')).toHaveCount(1);
+  }
+  await page.evaluate(() => window.layerFixture.setSimpleButtons(true));
+  const detached = await close.elementHandle();
+  await close.focus(); await page.keyboard.press('Space');
+  await expect(page.locator('.mt-x-screenshot-result')).toHaveCount(0);
+  expect(await page.evaluate(() => window.layerFixture.preferencePortCount)).toBe(0);
+  expect(await detached!.evaluate((button) => button.querySelectorAll('.mt-x-glass-material').length)).toBe(0);
+});
+
+test('simple buttons: screenshot selection switches twice while preserving reset and confirmation', async ({ page }) => {
+  await page.goto('/inline?disabled=1'); await page.waitForFunction(() => Boolean(window.layerFixture));
+  await page.evaluate(() => window.layerFixture.selectScreenshot());
+  const host = page.locator('.mt-x-screenshot-select'), toolbar = host.locator('.mt-x-screenshot-select-toolbar');
+  const confirm = page.getByRole('button', { name: '确认选区', exact: true }), reset = page.getByRole('button', { name: '重新框选', exact: true });
+  await page.evaluate(() => window.layerFixture.setSimpleButtons(true));
+  await expect(toolbar).toBeHidden();
+  await page.mouse.move(560, 250); await page.mouse.down(); await page.mouse.move(840, 460); await page.mouse.up();
+  for (let cycle = 0; cycle < 2; cycle++) {
+    await page.evaluate(() => window.layerFixture.setSimpleButtons(true));
+    for (const control of [toolbar, confirm, reset]) {
+      await expect(control).toBeVisible(); await expect(control).toHaveClass(/mt-x-simple/u);
+      await expect(control.locator(':scope > .mt-x-glass-material')).toHaveCount(0);
+    }
+    await expect(confirm).toHaveCSS('width', '24px'); await expect(confirm).toHaveCSS('height', '24px');
+    await page.evaluate(() => window.layerFixture.setSimpleButtons(false));
+    for (const control of [toolbar, confirm, reset]) {
+      await expect(control).toBeVisible(); await expect(control).toHaveClass(/mt-x-liquid/u);
+      await expect(control.locator(':scope > .mt-x-glass-material')).toHaveCount(1);
+    }
+  }
+  await page.evaluate(() => window.layerFixture.setSimpleButtons(true));
+  await reset.focus(); await page.keyboard.press('Space');
+  await expect(host).toHaveAttribute('data-phase', 'selecting'); await expect(toolbar).toBeHidden();
+  await page.mouse.move(570, 270); await page.mouse.down(); await page.mouse.move(850, 480); await page.mouse.up();
+  const detached = await host.elementHandle();
+  await confirm.focus(); await page.keyboard.press('Space');
+  await expect(host).toHaveCount(0);
+  expect(await page.evaluate(() => window.layerFixture.selectionResult?.viewportRect)).toEqual({ left: 570, top: 270, width: 280, height: 210 });
+  await page.evaluate(() => window.layerFixture.setSimpleButtons(false));
+  expect(await detached!.evaluate((element) => element.querySelectorAll('.mt-x-glass-material').length)).toBe(0);
+});
 
 async function expectSameImage(page: Page, first: Buffer, second: Buffer): Promise<void> {
   if (first.equals(second)) return;

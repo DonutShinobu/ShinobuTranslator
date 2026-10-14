@@ -19,6 +19,7 @@ import { resolveImageReferrerPolicy } from '../utils';
 import { PhotoStateStore } from '../state/photoStateStore';
 import { ImageLayerEditor } from '../editing/imageLayerEditor';
 import { destroyTranslationButton } from '../ui/translationButton';
+import { destroyGlassControl } from '../ui/liquidGlass';
 import type {
   ImageTranslationExecutionActivity,
   ImageTranslationExecutionArbiter,
@@ -211,6 +212,7 @@ export class ScreenshotController {
           sourceOriginalUrl = null;
         }
         destroyTranslationButton(ui.button);
+        destroyGlassControl(ui.closeButton);
         ui.host.remove();
       };
       this.activeCleanups.add(cleanup);
@@ -339,6 +341,7 @@ export class ScreenshotController {
           screenshotOriginalUrl = null;
         }
         destroyTranslationButton(ui.button);
+        destroyGlassControl(ui.closeButton);
         ui.host.remove();
       };
       this.activeCleanups.add(cleanup);

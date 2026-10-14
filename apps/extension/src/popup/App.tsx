@@ -218,9 +218,9 @@ function ControlHint({ content, children, onEscapeKeyDown }: {
   onEscapeKeyDown?: () => void;
 }) {
   return (
-    <Tooltip>
+    <Tooltip disableHoverableContent>
       <TooltipTrigger asChild>{children}</TooltipTrigger>
-      <TooltipContent sideOffset={4} collisionPadding={8} onEscapeKeyDown={onEscapeKeyDown}>
+      <TooltipContent className="pointer-events-none" sideOffset={4} collisionPadding={8} onEscapeKeyDown={onEscapeKeyDown}>
         {content}
       </TooltipContent>
     </Tooltip>
@@ -1088,6 +1088,17 @@ export function App() {
                             disabled={loading}
                           />
                           <Label htmlFor="auto-translate">全自动模式</Label>
+                        </div>
+                      </ControlHint>
+                      <ControlHint content="恢复使用液态玻璃效果之前的按钮样式。" onEscapeKeyDown={() => setModeOptionsOpen(false)}>
+                        <div className="mode-options-switch-row">
+                          <Switch
+                            id="simple-buttons"
+                            checked={settings.simpleButtons}
+                            onCheckedChange={(checked) => updateField('simpleButtons', checked)}
+                            disabled={loading}
+                          />
+                          <Label htmlFor="simple-buttons">简洁按钮</Label>
                         </div>
                       </ControlHint>
                     </PopoverContent>

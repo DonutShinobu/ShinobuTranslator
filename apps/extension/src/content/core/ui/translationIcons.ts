@@ -53,7 +53,7 @@ export function resolveTranslationIcon(text: string): TranslationIconKey {
   if (text.includes('准备')) return 'adjust';
   if (text.includes('获取图片')) return 'download';
   if (text.includes('OCR') && text.includes('过滤')) return 'ocrFilter';
-  if (text.includes('过滤')) return 'filter';
+  if (text.includes('过滤') || text.includes('误识别检测')) return 'filter';
   if (text.includes('模型')) return 'processor';
   if (text.includes('图片')) return 'imageLoad';
   if (text.includes('检测文本') || text.includes('文本检测')) return 'scan';

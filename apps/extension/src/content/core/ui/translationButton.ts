@@ -2,6 +2,8 @@ import { createMorph, TextMorph, type Morph } from './motion-vendor/motion-kit.j
 import { createLiquidGlass } from './liquidGlass';
 import { createGlassInteraction } from './glassInteraction';
 import { resolveTranslationIcon, translationIconPaths, type TranslationIconKey } from './translationIcons';
+import { createIcon, replaceIcon, type IconKey } from './icons';
+import { observeContentBooleanPreference } from '../contentPreference';
 
 export type { TranslationIconKey } from './translationIcons';
 
@@ -9,11 +11,15 @@ type ButtonMotion = {
   button: HTMLButtonElement;
   icon: HTMLElement;
   path: SVGPathElement;
+  svg: SVGSVGElement;
   label: HTMLElement;
   text: string;
   iconKey: TranslationIconKey;
   running: boolean;
   target: string;
+  targetIcon: TranslationIconKey;
+  simple: boolean;
+  stopPreference?: () => void;
   completionTimer?: ReturnType<typeof setTimeout>;
   morph?: Morph;
   textMorph?: TextMorph;
@@ -43,7 +49,9 @@ export function initializeTranslationButton(
   slot.className = 'mt-x-label-slot';
   slot.appendChild(label);
   button.replaceChildren(icon, slot);
-  motions.set(button, { button, icon, path, label, text: label.textContent || '', iconKey: 'languages', target: '', running: false });
+  const model: ButtonMotion = { button, icon, path, svg, label, text: label.textContent || '', iconKey: 'languages', target: '', targetIcon: 'languages', running: false, simple: false };
+  motions.set(button, model);
+  model.stopPreference = observeContentBooleanPreference('simpleButtons', (enabled) => setSimpleButton(model, enabled));
 }
 
 export function createTranslationButton(text: string): HTMLButtonElement {
@@ -86,7 +94,7 @@ function resetTextMotion(model: ButtonMotion, hidden: boolean): void {
 function startMotion(model: ButtonMotion): void {
   const { button } = model;
   // Detached controls and browsers without WAAPI keep the same usable static UI.
-  if (model.morph || !button.isConnected || typeof button.animate !== 'function') return;
+  if (model.simple || model.morph || !button.isConnected || typeof button.animate !== 'function') return;
   model.interaction = createGlassInteraction(button);
   model.glass = createLiquidGlass(button, visible => model.interaction?.setVisible(visible));
   model.morph = createMorph(model.path, translationIconPaths[model.iconKey], { reducedMotion: 'never' });
@@ -101,6 +109,15 @@ function startMotion(model: ButtonMotion): void {
 }
 
 function show(model: ButtonMotion, text: string, icon: TranslationIconKey): void {
+  if (model.simple) {
+    if (model.label.textContent !== text) model.label.textContent = text;
+    const iconKey = simpleIcon(icon);
+    if (model.icon.dataset.icon !== iconKey) replaceIcon(model.icon, iconKey);
+    model.text = text;
+    model.iconKey = icon;
+    model.button.dataset.phase = icon;
+    return;
+  }
   startMotion(model);
   if (text !== model.text) {
     if (model.textMorph) {
@@ -164,6 +181,7 @@ export function updateTranslationButton(
   clearTimeout(model.completionTimer);
   model.completionTimer = undefined;
   model.target = text;
+  model.targetIcon = icon;
   model.running = running;
   if (completed) {
     show(model, '完成', 'confirm');
@@ -175,24 +193,64 @@ export function updateTranslationButton(
   } else show(model, text, icon);
 }
 
-export function destroyTranslationButton(button: HTMLButtonElement): void {
-  const model = motions.get(button);
-  if (!model) return;
+function stopVisuals(model: ButtonMotion): void {
   clearTimeout(model.completionTimer);
+  model.completionTimer = undefined;
   model.removeListeners?.();
   model.morph?.destroy();
   model.textMorph?.destroy();
   model.interaction?.destroy();
   model.glass?.destroy();
+  model.removeListeners = undefined;
+  model.morph = undefined;
+  model.textMorph = undefined;
+  model.interaction = undefined;
+  model.glass = undefined;
   model.label.textContent = model.target || model.text;
-  if (typeof button.getAnimations === 'function') {
-    for (const animation of button.getAnimations({ subtree: true })) animation.cancel();
+  if (typeof model.button.getAnimations === 'function') {
+    for (const animation of model.button.getAnimations({ subtree: true })) animation.cancel();
   }
+}
+
+function simpleIcon(icon: TranslationIconKey): IconKey {
+  return icon === 'original' || icon === 'translated' || icon === 'retry' ? icon : 'translate';
+}
+
+function setSimpleButton(model: ButtonMotion, enabled: boolean): void {
+  if (model.simple === enabled) return;
+  model.simple = enabled;
+  stopVisuals(model);
+  const { button, icon, label } = model;
+  button.classList.toggle('mt-x-simple', enabled);
+  button.classList.toggle('mt-x-liquid', !enabled);
+  if (enabled) {
+    const spinner = document.createElement('span');
+    spinner.className = 'mt-x-spinner';
+    spinner.setAttribute('aria-hidden', 'true');
+    spinner.appendChild(createIcon('spinner'));
+    button.replaceChildren(icon, spinner, label);
+  } else {
+    icon.replaceChildren(model.svg);
+    model.path.setAttribute('d', translationIconPaths[model.targetIcon]);
+    const slot = document.createElement('span');
+    slot.className = 'mt-x-label-slot';
+    slot.appendChild(label);
+    button.replaceChildren(icon, slot);
+  }
+  show(model, model.target || model.text, model.targetIcon);
+}
+
+export function destroyTranslationButton(button: HTMLButtonElement): void {
+  const model = motions.get(button);
+  if (!model) return;
+  model.stopPreference?.();
+  stopVisuals(model);
   motions.delete(button);
 }
 
 export function refreshTranslationButton(button: HTMLButtonElement): void {
   const model = motions.get(button);
+  if (model && !model.simple) startMotion(model);
   model?.glass?.refresh();
   model?.interaction?.refresh();
 }

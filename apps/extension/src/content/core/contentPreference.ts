@@ -2,7 +2,7 @@ import { getExtensionRuntime, type ExtensionPort, type ExtensionRuntime } from '
 import type { ExtensionControlProjection } from '../../shared/extensionControl';
 import { extensionControlChangedEventType, extensionControlPortName, sendExtensionControlCommand } from '../../shared/extensionControlTransport';
 
-type ContentBooleanPreferenceKey = 'enableImageEditing' | 'autoTranslate';
+type ContentBooleanPreferenceKey = 'enableImageEditing' | 'autoTranslate' | 'simpleButtons';
 
 export class ContentBooleanPreference {
   private readonly listeners = new Set<(enabled: boolean) => void>();
@@ -65,7 +65,10 @@ export function observeContentBooleanPreference(
   listener: (enabled: boolean) => void,
 ): () => void {
   const runtime = getExtensionRuntime();
-  if (!runtime) return () => {};
+  if (!runtime) {
+    listener(false);
+    return () => {};
+  }
   let preference = sharedPreferences.get(key);
   if (!preference) {
     preference = new ContentBooleanPreference(runtime, key);

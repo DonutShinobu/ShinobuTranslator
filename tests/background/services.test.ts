@@ -184,13 +184,13 @@ describe('settings store', () => {
     expect(storage[extensionInterfacePreferencesStorageKey]).toBeUndefined();
     expect(storage[extensionSettingsRevisionStorageKey]).toBeUndefined();
 
-    const nextSettings = { ...defaultExtensionSettings, targetLang: 'zh-CHT' as const, autoTranslate: true };
+    const nextSettings = { ...defaultExtensionSettings, targetLang: 'zh-CHT' as const, autoTranslate: true, simpleButtons: true };
     await expect(setSettings(nextSettings)).resolves.toEqual(nextSettings);
     const nextHead = storage[extensionControlStateStorageKey] as typeof controlHead;
     expect(nextHead).toMatchObject({ revision: 0 });
     expect(storage[`${extensionTranslationDefaultsStorageKey}.${nextHead.generation}`]).toMatchObject({
       schemaVersion: 1,
-      value: { targetLang: 'zh-CHT', autoTranslate: true },
+      value: { targetLang: 'zh-CHT', autoTranslate: true, simpleButtons: true },
     });
 
     await setSettingsState({ settings: nextSettings, revision: 9 });

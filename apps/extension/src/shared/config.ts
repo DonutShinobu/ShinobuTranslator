@@ -135,6 +135,7 @@ export type ExtensionSettings = {
   processMode: ProcessMode;
   enableDebugLog: boolean;
   autoTranslate: boolean;
+  simpleButtons: boolean;
   enableImageEditing: boolean;
   enableLlmOcrFilter: boolean;
 };
@@ -162,6 +163,7 @@ export const defaultExtensionSettings: ExtensionSettings = {
   processMode: 'translate',
   enableDebugLog: false,
   autoTranslate: false,
+  simpleButtons: false,
   enableImageEditing: false,
   enableLlmOcrFilter: false,
 };
@@ -455,6 +457,7 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     processMode: normalizeProcessMode(raw.processMode),
     enableDebugLog: sanitizeBoolean(raw.enableDebugLog, defaultExtensionSettings.enableDebugLog),
     autoTranslate: sanitizeBoolean(raw.autoTranslate, defaultExtensionSettings.autoTranslate),
+    simpleButtons: sanitizeBoolean(raw.simpleButtons, defaultExtensionSettings.simpleButtons),
     enableImageEditing: sanitizeBoolean(raw.enableImageEditing, defaultExtensionSettings.enableImageEditing),
     enableLlmOcrFilter: sanitizeBoolean(raw.enableLlmOcrFilter, defaultExtensionSettings.enableLlmOcrFilter),
   };

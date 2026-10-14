@@ -44,7 +44,8 @@ try {
 } catch {
   // Page lifecycle still stops the content core when Port creation is unavailable.
 }
-const adapter = adapters.find(a => a.match()) || createNullAdapter();
+const adapter = adapters.find(a => a.match())
+  || (location.hostname === 'www.pixiv.net' ? pixivAdapter : createNullAdapter());
 const core = new TranslatorCore(adapter, contentSessionId);
 core.start();
 bindContentLifecycle(core, contentSessionPort);

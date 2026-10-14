@@ -22,6 +22,7 @@ import { createDefaultReaderEngineReadingModeModule } from './reading/defaultRea
 import type { ReaderEngineReadingModeModulePort } from './reading/readerEngineReadingModeModule';
 import { createSiteReadingModeAdapter } from './reading/siteReadingModeAdapter';
 import { ImageLayerEditor } from './editing/imageLayerEditor';
+import { observeContentBooleanPreference } from './contentPreference';
 
 type MountedImage = {
   key: string;
@@ -50,6 +51,8 @@ export class TranslatorCore {
   private disposeObserver: (() => void) | null = null;
   private syncTimer: number | null = null;
   private stopped = false;
+  private autoTranslate = false;
+  private stopAutoTranslatePreference: (() => void) | null = null;
 
   constructor(adapter: SiteAdapter, contentSessionId?: string) {
     this.adapter = adapter;
@@ -83,6 +86,8 @@ export class TranslatorCore {
   stop(): void {
     if (this.stopped) return;
     this.stopped = true;
+    this.stopAutoTranslatePreference?.();
+    this.stopAutoTranslatePreference = null;
     if (this.disposeObserver) {
       this.disposeObserver();
       this.disposeObserver = null;
@@ -107,6 +112,13 @@ export class TranslatorCore {
     if (this.stopped) return;
     injectStyles();
     this.readerEngineReadingModeModule?.start();
+    this.stopAutoTranslatePreference = observeContentBooleanPreference('autoTranslate', (enabled) => {
+      if (this.stopped || this.autoTranslate === enabled) return;
+      this.autoTranslate = enabled;
+      this.readingModeController.setAutoTranslate(enabled);
+      this.readerEngineReadingModeModule?.setAutoTranslate(enabled);
+      this.scheduleSync();
+    });
     this.disposeObserver = this.adapter.observe(() => this.scheduleSync());
     this.sync();
   }
@@ -218,6 +230,15 @@ export class TranslatorCore {
       this.applyStateImage(target, state);
       renderUi(ui, state);
       editor.sync();
+    }
+
+    if (this.autoTranslate && this.adapter.match()) {
+      for (const target of targets) {
+        const state = this.stateStore.get(target.key);
+        if (state?.status === 'idle' && !state.translatedUrl) {
+          void this.imageTranslationController.handleTranslateClick(target);
+        }
+      }
     }
   }
 

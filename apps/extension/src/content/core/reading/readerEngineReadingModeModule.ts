@@ -15,6 +15,7 @@ export type ReaderEngineReadingModeModuleDependencies = {
 
 export interface ReaderEngineReadingModeModulePort {
   start(): void;
+  setAutoTranslate(enabled: boolean): void;
   dispose(): void;
 }
 
@@ -29,6 +30,7 @@ export class ReaderEngineReadingModeModule implements ReaderEngineReadingModeMod
   private syncTimer: number | null = null;
   private started = false;
   private disposed = false;
+  private autoTranslate = false;
 
   constructor(private readonly dependencies: ReaderEngineReadingModeModuleDependencies) {
     this.document = dependencies.document ?? globalThis.document;
@@ -65,6 +67,13 @@ export class ReaderEngineReadingModeModule implements ReaderEngineReadingModeMod
     this.globalObserver = null;
     this.cancelSync();
     this.unbindSession();
+  }
+
+  setAutoTranslate(enabled: boolean): void {
+    if (this.disposed || this.autoTranslate === enabled) return;
+    this.autoTranslate = enabled;
+    this.controller?.setAutoTranslate(enabled);
+    if (this.started) this.scheduleSync();
   }
 
   private scheduleSync(): void {
@@ -113,6 +122,7 @@ export class ReaderEngineReadingModeModule implements ReaderEngineReadingModeMod
         () => this.scheduleSync(),
         () => this.cancelSync(),
       );
+      this.controller.setAutoTranslate(this.autoTranslate);
       this.stopSessionObserver = session.observe((signal) => {
         if (signal.kind === 'navigation-state-changed') {
           this.cancelSync();

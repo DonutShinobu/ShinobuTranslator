@@ -22,6 +22,7 @@ import type {
 } from '../translation/imageTranslationExecutionArbiter';
 import {
   createProgressJankMonitor,
+  applyImageTranslationFailure,
   applyImageTranslationResult,
   startPhotoStateImageTranslation,
 } from '../translation/photoStateProjection';
@@ -59,6 +60,7 @@ export class ReadingModeController {
   private allProgressText = '准备中';
   private readingContextKey: string | null = null;
   private suspended = false;
+  private autoTranslate = false;
   private readonly resumeWaiters = new Set<() => void>();
 
   constructor(
@@ -70,6 +72,15 @@ export class ReadingModeController {
     private readonly createBar: () => ReadingModeBarUi = createReadingModeBarUi,
   ) {}
 
+  setAutoTranslate(enabled: boolean): void {
+    if (this.autoTranslate === enabled) return;
+    this.autoTranslate = enabled;
+    if (enabled) {
+      this.globalTranslateMode = 'translated';
+      this.scheduleCoreSync();
+    }
+  }
+
   sync(): void {
       const nextContextKey = this.adapter.getReadingContextKey();
       if (this.readingContextKey !== null && nextContextKey !== this.readingContextKey) {
@@ -79,7 +90,7 @@ export class ReadingModeController {
         }
         this.operation = { kind: 'idle' };
         this.allPageUrls = [];
-        this.globalTranslateMode = 'original';
+        this.globalTranslateMode = this.autoTranslate ? 'translated' : 'original';
         this.errorText = '';
       }
       this.readingContextKey = nextContextKey;
@@ -122,6 +133,7 @@ export class ReadingModeController {
       }
 
       this.renderReadingModeBar();
+      if (this.autoTranslate) void this.handleTranslateCurrentClick(true);
     }
 
   private renderReadingModeBar(): void {
@@ -197,10 +209,14 @@ export class ReadingModeController {
       }
     }
 
-  private async handleTranslateCurrentClick(): Promise<void> {
+  private async handleTranslateCurrentClick(automatic = false): Promise<void> {
       if (this.operation.kind !== 'idle') return;
 
-      const visiblePages = this.adapter.getVisiblePages();
+      const visiblePages = this.adapter.getVisiblePages().filter((page) => {
+        if (!automatic) return true;
+        const state = this.stateStore.get(page.key);
+        return !state?.translatedUrl && (!state || state.status === 'idle');
+      });
       if (visiblePages.length === 0) return;
 
       // If all visible pages already translated, toggle mode
@@ -229,7 +245,9 @@ export class ReadingModeController {
         const total = visiblePages.length;
         for (let i = 0; i < total; i++) {
           if (this.operation.kind !== 'translating-current') break;
+          if (automatic && (this.suspended || !this.autoTranslate)) break;
           if (!await this.waitUntilResumed(activity)) return;
+          if (automatic && (this.suspended || !this.autoTranslate)) break;
           const page = visiblePages[i];
           const updateProgress = (stageText: string): void => {
             this.currentProgressText = `${i + 1}/${total} ${stageText}`;
@@ -428,8 +446,9 @@ export class ReadingModeController {
                 referrerPolicy: resolveImageReferrerPolicy(),
               },
             };
-      } catch {
+      } catch (error) {
         for (const release of releaseStates) release();
+        if (!activity.signal.aborted) applyImageTranslationFailure(state, error);
         return activity.signal.aborted
           ? { status: 'cancelled' }
           : { status: 'image-failed' };
@@ -536,9 +555,10 @@ export class ReadingModeController {
     }
 
   private finishActivity(activity: ImageTranslationExecutionActivity): void {
+      const shouldSync = this.activeActivity === activity && (this.suspended || this.autoTranslate);
       if (this.activeActivity === activity) this.activeActivity = null;
       activity.end();
-      if (this.suspended) this.scheduleCoreSync();
+      if (shouldSync) this.scheduleCoreSync();
     }
 
   suspend(): void {

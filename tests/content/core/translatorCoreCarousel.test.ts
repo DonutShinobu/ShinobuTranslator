@@ -31,6 +31,21 @@ const uiMocks = vi.hoisted(() => ({
   renderUi: vi.fn(),
 }));
 
+const preference = vi.hoisted(() => ({
+  listener: undefined as ((enabled: boolean) => void) | undefined,
+  stop: vi.fn(),
+}));
+
+vi.mock('../../../apps/extension/src/content/core/contentPreference', () => ({
+  observeContentBooleanPreference: vi.fn((key: string, listener: (enabled: boolean) => void) => {
+    if (key === 'autoTranslate') {
+      preference.listener = listener;
+      listener(false);
+    }
+    return preference.stop;
+  }),
+}));
+
 vi.mock('../../../apps/extension/src/content/core/ui', async (importOriginal) => ({
   ...await importOriginal<typeof import('../../../apps/extension/src/content/core/ui')>(),
   ...uiMocks,
@@ -58,6 +73,7 @@ function createHarness() {
   const applyImage = vi.fn();
   const adapter: SiteAdapter = {
     ...twitterAdapter,
+    match: () => true,
     findImages: () => targets,
     createUiAnchor: () => ({
       appendChild(host: { isConnected: boolean }) {
@@ -79,6 +95,7 @@ function createHarness() {
     controller,
     stateStore,
     core,
+    adapter,
     setTargets(next: ImageTarget[]) {
       targets = next;
     },
@@ -91,6 +108,72 @@ function createHarness() {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.clearAllMocks();
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+  preference.listener = undefined;
+});
+
+describe('TranslatorCore automatic translation', () => {
+  function autoHarness() {
+    vi.useFakeTimers();
+    vi.stubGlobal('window', {
+      setTimeout: globalThis.setTimeout,
+      clearTimeout: globalThis.clearTimeout,
+    });
+    const harness = createHarness();
+    const translate = vi.spyOn(harness.controller, 'handleTranslateClick').mockImplementation((target) => {
+      harness.stateStore.ensure(target.key, target.originalUrl).status = 'running';
+      return Promise.resolve();
+    });
+    harness.core.start();
+    return { ...harness, translate };
+  }
+
+  it('takes effect live, translates new carousel images once, and stops admitting after disable', () => {
+    const harness = autoHarness();
+    expect(harness.translate).not.toHaveBeenCalled();
+
+    preference.listener?.(true);
+    vi.advanceTimersByTime(100);
+    expect(harness.translate).toHaveBeenCalledExactlyOnceWith(harness.first);
+    harness.sync();
+    expect(harness.translate).toHaveBeenCalledTimes(1);
+
+    harness.setTargets([harness.second]);
+    harness.sync();
+    expect(harness.translate).toHaveBeenLastCalledWith(harness.second);
+    expect(harness.translate).toHaveBeenCalledTimes(2);
+
+    preference.listener?.(false);
+    harness.setTargets([harness.otherTweet]);
+    vi.advanceTimersByTime(100);
+    expect(harness.translate).toHaveBeenCalledTimes(2);
+    harness.core.stop();
+    expect(preference.stop).toHaveBeenCalled();
+  });
+
+  it('leaves translated/original toggles and errors alone, and only runs on matching pages', () => {
+    const harness = autoHarness();
+    const firstState = harness.stateStore.ensure(harness.first.key, harness.first.originalUrl);
+    firstState.translatedUrl = 'blob:translated';
+    firstState.status = 'showingOriginal';
+    firstState.mode = 'original';
+    preference.listener?.(true);
+    vi.advanceTimersByTime(100);
+    expect(harness.translate).not.toHaveBeenCalled();
+    expect(firstState.mode).toBe('original');
+
+    harness.stateStore.ensure(harness.second.key, harness.second.originalUrl).status = 'error';
+    harness.setTargets([harness.second]);
+    harness.sync();
+    expect(harness.translate).not.toHaveBeenCalled();
+
+    harness.adapter.match = () => false;
+    harness.setTargets([harness.otherTweet]);
+    harness.sync();
+    expect(harness.translate).not.toHaveBeenCalled();
+    harness.core.stop();
+  });
 });
 
 describe('TranslatorCore x.com carousel lifecycle', () => {

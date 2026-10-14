@@ -12,13 +12,15 @@ type ImageCandidate = {
 
 const anchorAttr = 'data-mt-ehentai-anchor';
 const minMainImageArea = 200 * 200;
+const projectedSources = new WeakMap<HTMLImageElement, { originalUrl: string; appliedUrl: string }>();
 
 export function isEhentaiImagePage(hostname: string, pathname: string): boolean {
   return (hostname === 'e-hentai.org' || hostname === 'exhentai.org') && pathname.startsWith('/s/');
 }
 
 function imageSource(image: Pick<ImageCandidate, 'currentSrc' | 'src'>): string {
-  return image.currentSrc || image.src;
+  // currentSrc can retain the previous blob while the next page loads.
+  return image.src || image.currentSrc || '';
 }
 
 function visibleArea(image: Pick<ImageCandidate, 'clientWidth' | 'clientHeight' | 'naturalWidth' | 'naturalHeight'>): number {
@@ -69,8 +71,14 @@ export const ehentaiAdapter: SiteAdapter = {
   },
 
   findImages() {
+    if (!this.match()) return [];
     const image = findMainImage();
-    const originalUrl = image ? imageSource(image) : '';
+    const projection = image ? projectedSources.get(image) : undefined;
+    let originalUrl = image ? imageSource(image) : '';
+    if (image && projection) {
+      originalUrl = image.src === projection.appliedUrl ? projection.originalUrl : image.src;
+      if (image.src !== projection.appliedUrl) projectedSources.delete(image);
+    }
     if (!image || !originalUrl) {
       return [];
     }
@@ -99,19 +107,33 @@ export const ehentaiAdapter: SiteAdapter = {
   },
 
   applyImage(target: ImageTarget, url: string) {
+    if (target.element.src === url) return;
     target.element.src = url;
+    projectedSources.set(target.element, { originalUrl: target.originalUrl, appliedUrl: target.element.src });
   },
 
   observe(onChange: () => void) {
     const observer = new MutationObserver((mutations) => {
-      if (mutations.some((mutation) => mutation.type === 'childList')) {
+      if (mutations.some((mutation) => mutation.type === 'childList' || (
+        mutation.target instanceof HTMLImageElement
+        && (mutation.attributeName !== 'src'
+          || mutation.target.src !== projectedSources.get(mutation.target)?.appliedUrl)
+      ))) {
         onChange();
       }
     });
-    observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(document.body, {
+      childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'srcset'],
+    });
+    const onLoad = (event: Event): void => {
+      if (event.target instanceof HTMLImageElement
+        && event.target.src !== projectedSources.get(event.target)?.appliedUrl) onChange();
+    };
+    document.addEventListener('load', onLoad, true);
 
     return () => {
       observer.disconnect();
+      document.removeEventListener('load', onLoad, true);
     };
   },
 };

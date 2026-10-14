@@ -24,6 +24,85 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe('pixivAdapter navigation and image projection', () => {
+  it('does not find artwork images or a reading view outside an artwork route', () => {
+    vi.stubGlobal('location', { hostname: 'www.pixiv.net', pathname: '/', hash: '#1' });
+    const querySelector = vi.fn(), querySelectorAll = vi.fn();
+    vi.stubGlobal('document', { querySelector, querySelectorAll });
+    const adapter = createPixivAdapter();
+    expect(adapter.findImages()).toEqual([]);
+    expect(adapter.isReadingMode?.()).toBe(false);
+    expect(querySelector).not.toHaveBeenCalled();
+    expect(querySelectorAll).not.toHaveBeenCalled();
+  });
+
+  it('keeps an unlinked artwork image discoverable after translation', () => {
+    const image = { src: originalUrl(0), closest: () => null } as unknown as HTMLImageElement;
+    vi.stubGlobal('location', { hostname: 'www.pixiv.net', pathname: `/artworks/${artworkId}`, hash: '' });
+    vi.stubGlobal('document', {
+      querySelector: (selector: string) => selector === 'figure img' ? image : null,
+      querySelectorAll: () => [],
+    });
+    const adapter = createPixivAdapter(), first = adapter.findImages()[0];
+    adapter.applyImage(first, 'blob:translated');
+    expect(adapter.findImages()[0]).toEqual(first);
+    image.src = originalUrl(1);
+    expect(adapter.findImages()[0]?.key).toBe(`${artworkId}_p1`);
+  });
+
+  it('resyncs for reading controls, hashes and image loading while ignoring projected sources and UI updates', () => {
+    class Image {
+      src = originalUrl(0);
+      closest = () => null;
+    }
+    let mutations!: MutationCallback;
+    const observe = vi.fn(), disconnect = vi.fn();
+    vi.stubGlobal('HTMLImageElement', Image);
+    vi.stubGlobal('MutationObserver', class {
+      constructor(callback: MutationCallback) { mutations = callback; }
+      observe = observe;
+      disconnect = disconnect;
+    });
+    const documentListeners = new Map<string, (event: Event) => void>();
+    const windowListeners = new Map<string, () => void>();
+    const removeDocumentListener = vi.fn(), removeWindowListener = vi.fn();
+    const body = {};
+    vi.stubGlobal('document', {
+      body, querySelector: () => null,
+      addEventListener: (type: string, listener: (event: Event) => void) => documentListeners.set(type, listener),
+      removeEventListener: removeDocumentListener,
+    });
+    vi.stubGlobal('window', {
+      addEventListener: (type: string, listener: () => void) => windowListeners.set(type, listener),
+      removeEventListener: removeWindowListener,
+    });
+    vi.stubGlobal('history', { pushState: vi.fn(), replaceState: vi.fn() });
+    const adapter = createPixivAdapter(), onChange = vi.fn(), dispose = adapter.observe(onChange);
+    const image = new Image() as unknown as HTMLImageElement;
+    adapter.applyImage({ element: image, key: `${artworkId}_p0`, originalUrl: image.src }, 'blob:translated');
+    const sourceMutation = { type: 'attributes', attributeName: 'src', target: image } as unknown as MutationRecord;
+    mutations([sourceMutation, { type: 'childList', target: { closest: () => ({}) } } as unknown as MutationRecord], {} as MutationObserver);
+    documentListeners.get('load')?.({ target: image } as unknown as Event);
+    expect(onChange).not.toHaveBeenCalled();
+
+    const sliderEvent = { target: { matches: (selector: string) => selector === '.gtm-manga-viewer-change-page' } } as unknown as Event;
+    documentListeners.get('input')?.(sliderEvent);
+    documentListeners.get('change')?.(sliderEvent);
+    windowListeners.get('hashchange')?.();
+    image.src = originalUrl(1);
+    mutations([sourceMutation], {} as MutationObserver);
+    documentListeners.get('load')?.({ target: image } as unknown as Event);
+    expect(onChange).toHaveBeenCalledTimes(5);
+    expect(observe).toHaveBeenCalledWith(body, expect.objectContaining({ attributeFilter: expect.arrayContaining(['src', 'href', 'data-page', 'value', 'step']) }));
+    dispose();
+    expect(disconnect).toHaveBeenCalledOnce();
+    expect(removeDocumentListener).toHaveBeenCalledWith('input', documentListeners.get('input'), true);
+    expect(removeDocumentListener).toHaveBeenCalledWith('change', documentListeners.get('change'), true);
+    expect(removeDocumentListener).toHaveBeenCalledWith('load', documentListeners.get('load'), true);
+    expect(removeWindowListener).toHaveBeenCalledWith('hashchange', onChange);
+  });
+});
+
 describe('pixivAdapter reading page discovery', () => {
   it('returns every authoritative page when Pixiv only mounts five page links', async () => {
     vi.stubGlobal('location', {

@@ -19,6 +19,15 @@ import {
 } from "../../apps/extension/src/shared/config";
 
 describe("built-in LLM catalog", () => {
+  it('defaults automatic translation off and accepts only a boolean preference', () => {
+    expect(normalizeSettings({}).autoTranslate).toBe(false);
+    expect(normalizeSettings({ autoTranslate: 'true' }).autoTranslate).toBe(false);
+    const settings = normalizeSettings({ autoTranslate: true });
+    expect(settings.autoTranslate).toBe(true);
+    expect(normalizeSettings(settings)).toEqual(settings);
+    expect(toPipelineConfig(settings)).not.toHaveProperty('autoTranslate');
+  });
+
   it('defaults LLM OCR filtering off and only runs it with the local LLM pipeline', () => {
     expect(normalizeSettings({}).enableLlmOcrFilter).toBe(false);
     expect(normalizeSettings({ enableLlmOcrFilter: 'true' }).enableLlmOcrFilter).toBe(false);

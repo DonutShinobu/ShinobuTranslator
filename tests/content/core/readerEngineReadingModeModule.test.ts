@@ -6,6 +6,7 @@ import type {
 } from '../../../apps/extension/src/content/core/reading/readerEngineContracts';
 import { ReaderEngineRegistry } from '../../../apps/extension/src/content/core/reading/readerEngineRegistry';
 import { ReaderEngineReadingModeModule } from '../../../apps/extension/src/content/core/reading/readerEngineReadingModeModule';
+import { ReadingModeController } from '../../../apps/extension/src/content/core/reading/readingModeController';
 import { PhotoStateStore } from '../../../apps/extension/src/content/core/state/photoStateStore';
 import type { ImageTranslationExecutionArbiter } from '../../../apps/extension/src/content/core/translation/imageTranslationExecutionArbiter';
 
@@ -13,6 +14,7 @@ describe('ReaderEngineReadingModeModule', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it('reconciles navigation immediately while leaving geometry changes debounced', () => {
@@ -81,6 +83,7 @@ describe('ReaderEngineReadingModeModule', () => {
   });
 
   it('rebinds a reused reader DOM when the adapter context identity changes', async () => {
+    const setAutoTranslate = vi.spyOn(ReadingModeController.prototype, 'setAutoTranslate');
     let mutationCallback: MutationCallback | undefined;
     const observe = vi.fn();
     vi.stubGlobal('MutationObserver', class {
@@ -139,8 +142,10 @@ describe('ReaderEngineReadingModeModule', () => {
       window,
     });
 
+    module.setAutoTranslate(true);
     module.start();
     expect(createReadingModeSession).toHaveBeenCalledOnce();
+    expect(setAutoTranslate).toHaveBeenLastCalledWith(true);
     expect(observe).toHaveBeenCalledWith(
       document.documentElement,
       expect.objectContaining({
@@ -153,6 +158,9 @@ describe('ReaderEngineReadingModeModule', () => {
 
     await vi.waitFor(() => expect(createReadingModeSession).toHaveBeenCalledTimes(2));
     expect(disposals[0]).toHaveBeenCalledOnce();
+    expect(setAutoTranslate).toHaveBeenLastCalledWith(true);
+    module.setAutoTranslate(false);
+    expect(setAutoTranslate).toHaveBeenLastCalledWith(false);
     module.dispose();
   });
 });

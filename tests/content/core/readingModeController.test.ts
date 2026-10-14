@@ -136,20 +136,23 @@ function createThreePageBatchScenario(
     file: new File([source], 'source.png', { type: source.type }),
   }));
   const bar = createFakeBar();
+  const store = new PhotoStateStore(200, { revokeObjectURL: vi.fn() });
+  const scheduleCoreSync = vi.fn();
+  const readingAdapter = createSiteReadingModeAdapter(adapter);
   const controller = new ReadingModeController(
-    createSiteReadingModeAdapter(adapter),
-    new PhotoStateStore(200, { revokeObjectURL: vi.fn() }),
+    readingAdapter,
+    store,
     arbitrate(createImageTranslationExecutionModule({
       prepareExecution: prepareExecutionFromSettings(),
       downloadImage,
       runLocalPipeline,
     })),
-    vi.fn(),
+    scheduleCoreSync,
     vi.fn(),
     () => bar.ui,
   );
 
-  return { bar, controller, downloadImage };
+  return { bar, controller, downloadImage, adapter, readingAdapter, store, pages, scheduleCoreSync };
 }
 
 afterEach(() => {
@@ -158,6 +161,199 @@ afterEach(() => {
 });
 
 describe('ReadingModeController', () => {
+  it('shows cached translations when enabling automatic mode or revisiting a reading context', () => {
+    const runLocalPipeline = vi.fn(async () => localResult());
+    const { controller, bar, adapter, readingAdapter, store, pages } = createThreePageBatchScenario(runLocalPipeline);
+    let visiblePage = pages[0];
+    let context = 'artwork-1';
+    adapter.getVisiblePages = () => [visiblePage];
+    readingAdapter.getReadingContextKey = () => context;
+    for (const page of pages.slice(0, 2)) {
+      const state = store.ensure(page.key, page.originalUrl);
+      state.translatedUrl = `blob:translated-${page.key}`;
+      state.status = 'translated';
+    }
+
+    controller.sync();
+    expect(adapter.applyImageByKey).toHaveBeenLastCalledWith(pages[0].key, pages[0].originalUrl);
+    controller.setAutoTranslate(true);
+    controller.sync();
+    expect(adapter.applyImageByKey).toHaveBeenLastCalledWith(pages[0].key, 'blob:translated-page-1');
+    bar.current.click?.();
+    controller.setAutoTranslate(true);
+    controller.sync();
+    expect(adapter.applyImageByKey).toHaveBeenLastCalledWith(pages[0].key, pages[0].originalUrl);
+
+    context = 'artwork-2';
+    visiblePage = pages[1];
+    controller.sync();
+    expect(adapter.applyImageByKey).toHaveBeenLastCalledWith(pages[1].key, 'blob:translated-page-2');
+    context = 'artwork-1';
+    visiblePage = pages[0];
+    controller.sync();
+    expect(adapter.applyImageByKey).toHaveBeenLastCalledWith(pages[0].key, 'blob:translated-page-1');
+    expect(runLocalPipeline).not.toHaveBeenCalled();
+    controller.teardown();
+  });
+
+  it('automatically translates only visible pages once and preserves the manual original toggle', async () => {
+    const runLocalPipeline = vi.fn(async () => localResult());
+    const { controller, bar, adapter, store, pages, scheduleCoreSync } = createThreePageBatchScenario(runLocalPipeline);
+    adapter.getVisiblePages = () => [pages[0]];
+    const discover = vi.spyOn(adapter, 'discoverReadingPages');
+
+    controller.sync();
+    await Promise.resolve();
+    expect(runLocalPipeline).not.toHaveBeenCalled();
+    controller.setAutoTranslate(true);
+    controller.setAutoTranslate(true);
+    expect(scheduleCoreSync).toHaveBeenCalledOnce();
+    controller.sync();
+    controller.sync();
+    await vi.waitFor(() => expect(bar.current.label.textContent).toBe('显示原图'));
+    controller.sync();
+
+    expect(runLocalPipeline).toHaveBeenCalledOnce();
+    expect(discover).not.toHaveBeenCalled();
+    expect(store.get(pages[0].key)?.translatedUrl).toMatch(/^blob:/);
+    expect(store.get(pages[1].key)).toBeUndefined();
+    bar.current.click?.();
+    controller.sync();
+    expect(adapter.applyImageByKey).toHaveBeenLastCalledWith(pages[0].key, pages[0].originalUrl);
+    expect(bar.current.label.textContent).toBe('显示译图');
+    expect(runLocalPipeline).toHaveBeenCalledOnce();
+    controller.teardown();
+  });
+
+  it('translates a newly visible page after the submitted page finishes', async () => {
+    let finishFirst!: (result: LocalPipelineResult) => void;
+    const runLocalPipeline = vi.fn(async () => {
+      if (runLocalPipeline.mock.calls.length === 1) {
+        return new Promise<LocalPipelineResult>((resolve) => { finishFirst = resolve; });
+      }
+      return localResult();
+    });
+    const { controller, adapter, store, pages, scheduleCoreSync } = createThreePageBatchScenario(runLocalPipeline);
+    let visiblePage = pages[0];
+    adapter.getVisiblePages = () => [visiblePage];
+    scheduleCoreSync.mockImplementation(() => queueMicrotask(() => controller.sync()));
+    controller.setAutoTranslate(true);
+    await vi.waitFor(() => expect(runLocalPipeline).toHaveBeenCalledOnce());
+
+    visiblePage = pages[1];
+    controller.sync();
+    expect(runLocalPipeline).toHaveBeenCalledOnce();
+    finishFirst(localResult());
+    await vi.waitFor(() => expect(store.get(pages[1].key)?.translatedUrl).toMatch(/^blob:/));
+    expect(runLocalPipeline).toHaveBeenCalledTimes(2);
+    controller.teardown();
+  });
+
+  it('finishes submitted work but stops admitting spread pages after automatic translation is disabled', async () => {
+    let finishFirst!: (result: LocalPipelineResult) => void;
+    let firstSignal: AbortSignal | undefined;
+    const runLocalPipeline = vi.fn<NonNullable<ImageTranslationExecutionDependencies['runLocalPipeline']>>(
+      async (_file, _config, _onProgress, options) => {
+        if (runLocalPipeline.mock.calls.length === 1) {
+          firstSignal = options?.signal;
+          return new Promise<LocalPipelineResult>((resolve) => { finishFirst = resolve; });
+        }
+        return localResult();
+      },
+    );
+    const { controller, adapter, bar, store, pages } = createThreePageBatchScenario(runLocalPipeline);
+    adapter.getVisiblePages = () => pages.slice(0, 2);
+    controller.setAutoTranslate(true);
+    controller.sync();
+    await vi.waitFor(() => expect(runLocalPipeline).toHaveBeenCalledOnce());
+    controller.setAutoTranslate(false);
+    finishFirst(localResult());
+    await vi.waitFor(() => expect(bar.current.disabled).toBe(false));
+    controller.sync();
+
+    expect(firstSignal?.aborted).toBe(false);
+    expect(store.get(pages[0].key)?.translatedUrl).toMatch(/^blob:/);
+    expect(store.get(pages[1].key)).toBeUndefined();
+    expect(runLocalPipeline).toHaveBeenCalledOnce();
+    controller.setAutoTranslate(true);
+    controller.sync();
+    await vi.waitFor(() => expect(store.get(pages[1].key)?.translatedUrl).toMatch(/^blob:/));
+    expect(runLocalPipeline).toHaveBeenCalledTimes(2);
+    controller.teardown();
+  });
+
+  it('continues in the new reading context instead of waiting to submit the old spread', async () => {
+    let finishFirst!: (result: LocalPipelineResult) => void;
+    const runLocalPipeline = vi.fn(async () => {
+      if (runLocalPipeline.mock.calls.length === 1) {
+        return new Promise<LocalPipelineResult>((resolve) => { finishFirst = resolve; });
+      }
+      return localResult();
+    });
+    const { controller, adapter, readingAdapter, store, pages, scheduleCoreSync } = createThreePageBatchScenario(runLocalPipeline);
+    let readingContext = 'artwork-1';
+    let visiblePages = pages.slice(0, 2);
+    readingAdapter.getReadingContextKey = () => readingContext;
+    adapter.getVisiblePages = () => visiblePages;
+    scheduleCoreSync.mockImplementation(() => queueMicrotask(() => controller.sync()));
+    controller.setAutoTranslate(true);
+    await vi.waitFor(() => expect(runLocalPipeline).toHaveBeenCalledOnce());
+
+    readingContext = 'artwork-2';
+    visiblePages = [pages[2]];
+    controller.sync();
+    finishFirst(localResult());
+    await vi.waitFor(() => expect(store.get(pages[2].key)?.translatedUrl).toMatch(/^blob:/));
+
+    expect(runLocalPipeline).toHaveBeenCalledTimes(2);
+    expect(store.get(pages[1].key)).toBeUndefined();
+    controller.teardown();
+  });
+
+  it.each(['pipeline', 'preparation'] as const)('does not automatically retry a %s failure and permits manual recovery', async (failure) => {
+    const runLocalPipeline = vi.fn(async () => {
+      if (failure === 'pipeline' && runLocalPipeline.mock.calls.length === 1) throw new Error('decode failed');
+      return localResult();
+    });
+    const { controller, adapter, readingAdapter, store, bar, pages, scheduleCoreSync } = createThreePageBatchScenario(runLocalPipeline);
+    adapter.getVisiblePages = () => [pages[0]];
+    const prepareReadingPage = vi.fn(async () => {
+      if (failure === 'preparation' && prepareReadingPage.mock.calls.length === 1) throw new Error('page unavailable');
+      return { source: { kind: 'remote-image' as const, url: pages[0].originalUrl, referrerPolicy: 'same-origin' as const } };
+    });
+    readingAdapter.prepareReadingPage = prepareReadingPage;
+    scheduleCoreSync.mockImplementation(() => queueMicrotask(() => controller.sync()));
+    controller.setAutoTranslate(true);
+    await vi.waitFor(() => expect(store.get(pages[0].key)?.status).toBe('error'));
+    await vi.waitFor(() => expect(bar.current.disabled).toBe(false));
+    controller.sync();
+    controller.sync();
+    expect(prepareReadingPage).toHaveBeenCalledOnce();
+
+    bar.current.click?.();
+    await vi.waitFor(() => expect(store.get(pages[0].key)?.translatedUrl).toMatch(/^blob:/));
+    expect(prepareReadingPage).toHaveBeenCalledTimes(2);
+    expect(runLocalPipeline).toHaveBeenCalledTimes(failure === 'pipeline' ? 2 : 1);
+    controller.teardown();
+  });
+
+  it('skips running and failed visible pages when translating an idle page automatically', async () => {
+    const runLocalPipeline = vi.fn(async () => localResult());
+    const { controller, adapter, store, bar, pages } = createThreePageBatchScenario(runLocalPipeline);
+    adapter.getVisiblePages = () => pages;
+    store.ensure(pages[0].key, pages[0].originalUrl).status = 'running';
+    store.ensure(pages[1].key, pages[1].originalUrl).status = 'error';
+    controller.setAutoTranslate(true);
+    controller.sync();
+    await vi.waitFor(() => expect(store.get(pages[2].key)?.translatedUrl).toMatch(/^blob:/));
+    await vi.waitFor(() => expect(bar.current.disabled).toBe(false));
+
+    expect(runLocalPipeline).toHaveBeenCalledOnce();
+    expect(store.get(pages[0].key)?.status).toBe('running');
+    expect(store.get(pages[1].key)?.status).toBe('error');
+    controller.teardown();
+  });
+
   it('shows a persistent discovery error without starting a partial batch', async () => {
     const discoverReadingPages = vi.fn(async () => ({
       status: 'incomplete' as const,

@@ -71,6 +71,7 @@ async function checkInteractions(page: Page) {
   const modeOptions = page.getByRole('button', { name: '模式选项', exact: true });
   const imageEditing = page.getByRole('switch', { name: '图片编辑', exact: true });
   const llmOcrFilter = page.getByRole('switch', { name: '大模型误识别过滤', exact: true });
+  const autoTranslate = page.getByRole('switch', { name: '全自动模式', exact: true });
   const modeBox = await mode.boundingBox();
   const popupBox = await page.locator('.popup').boundingBox();
   const browserName = page.context().browser()!.browserType().name();
@@ -100,6 +101,7 @@ async function checkInteractions(page: Page) {
     animations: 'disabled',
   });
   await expect(llmOcrFilter).toHaveAttribute('aria-checked', 'false');
+  await expect(autoTranslate).toHaveAttribute('aria-checked', 'false');
   await modeMenu.getByText('图片编辑', { exact: true }).hover();
   await expect(page.getByRole('tooltip')).toContainText('修改图片上的文字');
   expect(await page.getByRole('tooltip').evaluate((el) => {
@@ -123,6 +125,11 @@ async function checkInteractions(page: Page) {
   await expect(llmOcrFilter).toHaveAttribute('aria-checked', 'true');
   await llmOcrFilter.press('Space');
   await expect.poll(async () => (await projection(page)).settings.enableLlmOcrFilter).toBe(false);
+  await modeMenu.getByText('全自动模式', { exact: true }).click();
+  await expect.poll(async () => (await projection(page)).settings.autoTranslate).toBe(true);
+  await expect(autoTranslate).toHaveAttribute('aria-checked', 'true');
+  await autoTranslate.press('Space');
+  await expect.poll(async () => (await projection(page)).settings.autoTranslate).toBe(false);
   await modeMenu.getByText('图片编辑', { exact: true }).click();
   await expect.poll(async () => (await projection(page)).settings.enableImageEditing).toBe(true);
   await expect(imageEditing).toHaveAttribute('aria-checked', 'true');
@@ -223,6 +230,7 @@ async function checkInteractions(page: Page) {
   await expect(page.getByRole('combobox', { name: 'LLM 提供商' })).toHaveCount(0);
   await modeOptions.click();
   await expect(llmOcrFilter).toBeDisabled();
+  await expect(autoTranslate).toBeEnabled();
   await page.keyboard.press('Escape');
   await service.getByRole('radio', { name: '大模型' }).click();
   const provider = page.getByRole('combobox', { name: 'LLM 提供商' });
@@ -333,7 +341,14 @@ async function checkInteractions(page: Page) {
 
   await selectOption(page, 'LLM 提供商', 'Nano Banana');
   await expect(page.getByRole('radiogroup', { name: '模式', exact: true })).toHaveCount(0);
-  await expect(modeOptions).toHaveCount(0);
+  await expect(modeOptions).toBeVisible();
+  await modeOptions.click();
+  await expect(imageEditing).toHaveCount(0);
+  await expect(llmOcrFilter).toHaveCount(0);
+  await expect(autoTranslate).toBeFocused();
+  await autoTranslate.press('Space');
+  await expect.poll(async () => (await projection(page)).settings.autoTranslate).toBe(true);
+  await page.keyboard.press('Escape');
   for (const name of ['阶段明细', '排版调试', '去字调试', '关后处理']) {
     await expect(page.getByRole('checkbox', { name })).toBeDisabled();
     await expect(page.getByRole('checkbox', { name })).not.toBeChecked();

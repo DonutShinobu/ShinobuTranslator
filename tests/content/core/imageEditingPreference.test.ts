@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ImageEditingPreference } from '../../../apps/extension/src/content/core/editing/imageEditingPreference';
+import { ContentBooleanPreference } from '../../../apps/extension/src/content/core/contentPreference';
 import { defaultExtensionSettings } from '../../../apps/extension/src/shared/config';
 import { toExtensionSettingsProjection, type ExtensionControlProjection } from '../../../apps/extension/src/shared/extensionControl';
 import type { ExtensionPort, ExtensionRuntime } from '../../../apps/extension/src/shared/extensionRuntime';
@@ -12,6 +13,24 @@ function projection(revision: number, enabled: boolean): ExtensionControlProject
 afterEach(() => vi.useRealTimers());
 
 describe('live image editing preference', () => {
+  it('reads automatic translation independently of image editing and applies live changes', async () => {
+    let push!: (message: unknown, port: ExtensionPort) => void;
+    const port: ExtensionPort = { name: 'mt:extension-control-events', postMessage: vi.fn(), disconnect: vi.fn(),
+      onMessage: { addListener: (fn) => { push = fn; } }, onDisconnect: { addListener: vi.fn() } };
+    const initial = projection(1, true);
+    const runtime = { connect: () => port, sendMessage: async () => ({ ok: true, type: 'mt:extension-control',
+      result: { kind: 'control-projection', projection: initial } }) } as unknown as ExtensionRuntime;
+    const listener = vi.fn();
+    const stop = new ContentBooleanPreference(runtime, 'autoTranslate').subscribe(listener);
+    await Promise.resolve(); await Promise.resolve();
+    expect(listener.mock.calls).toEqual([[false]]);
+    const next = projection(2, false);
+    next.settings.autoTranslate = true;
+    push({ type: 'mt:extension-control-changed', projection: next }, port);
+    expect(listener).toHaveBeenLastCalledWith(true);
+    stop();
+    expect(port.disconnect).toHaveBeenCalledOnce();
+  });
   it('shares one port, rejects stale reads and releases it after the final image unmounts', async () => {
     let push!: (message: unknown, port: ExtensionPort) => void;
     let resolveRead!: (result: unknown) => void;

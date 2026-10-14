@@ -14,6 +14,14 @@ export type PixivAdapterDependencies = {
   loadArtworkPages?: LoadArtworkPages;
 };
 
+const projectedSources = new WeakMap<HTMLImageElement, { originalUrl: string; appliedUrl: string }>();
+
+function applyPixivImage(image: HTMLImageElement, url: string, originalUrl: string): void {
+  if (image.src === url) return;
+  image.src = url;
+  projectedSources.set(image, { originalUrl, appliedUrl: image.src });
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -88,6 +96,7 @@ function extractPixivImageKey(url: string): string {
 // --- Reading mode detection and helpers ---------------------------------------
 
 function isReadingMode(): boolean {
+  if (!getArtworkId()) return false;
   // Reading mode is triggered by URL hash (#1 etc) or presence of manga viewer container.
   if (location.hash && /^#\d+$/.test(location.hash)) return true;
   // Check for the manga viewer container (has GTM close icon).
@@ -214,7 +223,7 @@ function applyImageByKey(key: string, url: string): void {
     if (extractPixivImageKey(link.href) !== key) continue;
     const img = link.querySelector<HTMLImageElement>('img');
     if (img) {
-      img.src = url;
+      applyPixivImage(img, url, link.href);
     }
   }
 }
@@ -232,7 +241,8 @@ function findNormalModeImages(): ImageTarget[] {
   const img = document.querySelector<HTMLImageElement>('figure img');
   if (!img) return [];
   const link = img.closest<HTMLAnchorElement>('a');
-  const originalUrl = link?.href || img.src;
+  const projection = projectedSources.get(img);
+  const originalUrl = link?.href || (img.src === projection?.appliedUrl ? projection.originalUrl : img.src);
   if (!originalUrl.includes('i.pximg.net')) return [];
   const key = extractPixivImageKey(originalUrl);
   return [{ element: img, key, originalUrl }];
@@ -269,6 +279,7 @@ export function createPixivAdapter(
   },
 
   findImages() {
+    if (!getArtworkId()) return [];
     if (isReadingMode()) {
       // In reading mode, we use bottom bar buttons, NOT per-image overlays.
       // Return empty so TranslatorCore doesn't mount per-image UI.
@@ -308,25 +319,52 @@ export function createPixivAdapter(
   },
 
   applyImage(target, url) {
-    target.element.src = url;
+    applyPixivImage(target.element, url, target.originalUrl);
   },
 
   observe(onChange) {
-    const observer = new MutationObserver(() => onChange());
+    const observer = new MutationObserver((mutations) => {
+      if (mutations.some((mutation) => {
+        const target = mutation.target as Element;
+        if (target.closest?.('[data-mt-pixiv-anchor], [data-mt-reading-bar]')) return false;
+        return !(mutation.type === 'attributes'
+          && mutation.attributeName === 'src'
+          && target instanceof HTMLImageElement
+          && target.src === projectedSources.get(target)?.appliedUrl);
+      })) onChange();
+    });
     const root = document.querySelector('#root') || document.body;
-    observer.observe(root, { childList: true, subtree: true });
+    observer.observe(root, {
+      childList: true, subtree: true, attributes: true,
+      attributeFilter: ['src', 'srcset', 'href', 'data-page', 'value', 'step'],
+    });
+    const onPageChange = (event: Event): void => {
+      if ((event.target as Element | null)?.matches?.('.gtm-manga-viewer-change-page')) onChange();
+    };
+    const onLoad = (event: Event): void => {
+      if (event.target instanceof HTMLImageElement
+        && event.target.src !== projectedSources.get(event.target)?.appliedUrl) onChange();
+    };
+    document.addEventListener('input', onPageChange, true);
+    document.addEventListener('change', onPageChange, true);
+    document.addEventListener('load', onLoad, true);
 
     const origPush = history.pushState;
     const origReplace = history.replaceState;
     history.pushState = (...args) => { origPush.apply(history, args); onChange(); };
     history.replaceState = (...args) => { origReplace.apply(history, args); onChange(); };
     window.addEventListener('popstate', onChange);
+    window.addEventListener('hashchange', onChange);
 
     return () => {
       observer.disconnect();
       history.pushState = origPush;
       history.replaceState = origReplace;
       window.removeEventListener('popstate', onChange);
+      window.removeEventListener('hashchange', onChange);
+      document.removeEventListener('input', onPageChange, true);
+      document.removeEventListener('change', onPageChange, true);
+      document.removeEventListener('load', onLoad, true);
     };
   },
 

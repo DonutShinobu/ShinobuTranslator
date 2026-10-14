@@ -1028,57 +1028,72 @@ export function App() {
                 </div>
               </section>
 
-              {showLocalPipelineOptions ? (
-                <section className="panel option-panel">
-                  <Separator className="panel-separator" />
-                  <div className="panel-title">
-                    <Popover open={modeOptionsOpen} onOpenChange={setModeOptionsOpen}>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          className="mode-options-trigger"
-                          type="button"
-                          aria-label="模式选项"
-                          disabled={loading}
-                        >
-                          <IconMode />
-                          模式
-                          <span className="mode-options-affordance" aria-hidden="true">
-                            <ChevronDown className="mode-options-chevron" />
-                          </span>
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent
-                        className="mode-options-menu"
+              <section className="panel option-panel">
+                <Separator className="panel-separator" />
+                <div className="panel-title">
+                  <Popover open={modeOptionsOpen} onOpenChange={setModeOptionsOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="mode-options-trigger"
+                        type="button"
                         aria-label="模式选项"
-                        align="start"
-                        collisionPadding={8}
+                        disabled={loading}
                       >
-                        <ControlHint content="直接修改图片上的文字和去字图层。" onEscapeKeyDown={() => setModeOptionsOpen(false)}>
-                          <div className="mode-options-switch-row">
-                            <Switch
-                              id="enable-image-editing"
-                              checked={settings.enableImageEditing}
-                              onCheckedChange={(checked) => updateField('enableImageEditing', checked)}
-                              disabled={loading}
-                            />
-                            <Label htmlFor="enable-image-editing">图片编辑</Label>
-                          </div>
-                        </ControlHint>
-                        <ControlHint content="用当前模型看图过滤误识别，产生额外消耗。" onEscapeKeyDown={() => setModeOptionsOpen(false)}>
-                          <div className="mode-options-switch-row">
-                            <Switch
-                              id="enable-llm-ocr-filter"
-                              checked={settings.enableLlmOcrFilter}
-                              onCheckedChange={(checked) => updateField('enableLlmOcrFilter', checked)}
-                              disabled={loading || settings.translator !== 'llm'}
-                            />
-                            <Label htmlFor="enable-llm-ocr-filter">大模型误识别过滤</Label>
-                          </div>
-                        </ControlHint>
-                      </PopoverContent>
-                    </Popover>
-                  </div>
+                        <IconMode />
+                        模式
+                        <span className="mode-options-affordance" aria-hidden="true">
+                          <ChevronDown className="mode-options-chevron" />
+                        </span>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      className="mode-options-menu"
+                      aria-label="模式选项"
+                      align="start"
+                      collisionPadding={8}
+                    >
+                      {showLocalPipelineOptions ? (
+                        <>
+                          <ControlHint content="直接修改图片上的文字和去字图层。" onEscapeKeyDown={() => setModeOptionsOpen(false)}>
+                            <div className="mode-options-switch-row">
+                              <Switch
+                                id="enable-image-editing"
+                                checked={settings.enableImageEditing}
+                                onCheckedChange={(checked) => updateField('enableImageEditing', checked)}
+                                disabled={loading}
+                              />
+                              <Label htmlFor="enable-image-editing">图片编辑</Label>
+                            </div>
+                          </ControlHint>
+                          <ControlHint content="用当前模型看图过滤误识别，产生额外消耗。" onEscapeKeyDown={() => setModeOptionsOpen(false)}>
+                            <div className="mode-options-switch-row">
+                              <Switch
+                                id="enable-llm-ocr-filter"
+                                checked={settings.enableLlmOcrFilter}
+                                onCheckedChange={(checked) => updateField('enableLlmOcrFilter', checked)}
+                                disabled={loading || settings.translator !== 'llm'}
+                              />
+                              <Label htmlFor="enable-llm-ocr-filter">大模型误识别过滤</Label>
+                            </div>
+                          </ControlHint>
+                        </>
+                      ) : null}
+                      <ControlHint content="在支持的阅读页面自动翻译当前页。" onEscapeKeyDown={() => setModeOptionsOpen(false)}>
+                        <div className="mode-options-switch-row">
+                          <Switch
+                            id="auto-translate"
+                            checked={settings.autoTranslate}
+                            onCheckedChange={(checked) => updateField('autoTranslate', checked)}
+                            disabled={loading}
+                          />
+                          <Label htmlFor="auto-translate">全自动模式</Label>
+                        </div>
+                      </ControlHint>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                {showLocalPipelineOptions ? (
                   <SegmentedControl
                     ariaLabel="模式"
                     options={[
@@ -1092,8 +1107,8 @@ export function App() {
                     }
                     disabled={loading}
                   />
-                </section>
-              ) : null}
+                ) : null}
+              </section>
 
               {settings.translator === 'llm' ? (
                 <section className="panel panel-llm animate-in fade-in-0 slide-in-from-top-2 duration-200">

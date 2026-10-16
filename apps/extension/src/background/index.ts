@@ -238,12 +238,6 @@ export function initializeBackground(lifecycle: PipelineHostLifecycle): void {
         : undefined);
   });
 
-  chromeApi.cookies?.onChanged?.addListener(({ cookie }) => {
-    if (cookie.domain.includes('google.com')) {
-      void extensionControl.refreshProviderAccess('gemini-app');
-    }
-  });
-
   chromeApi.permissions?.onAdded?.addListener(() => {
     void extensionControl.refreshProviderAccess();
   });

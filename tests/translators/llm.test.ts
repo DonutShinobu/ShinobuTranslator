@@ -333,6 +333,28 @@ describe('llmTranslate', () => {
 });
 
 describe('llmTranslateRegions', () => {
+  it.each(['qwen3.8-max', 'qwen3.8-flash'])('routes %s structured translation through the Bailian adapter', async (model) => {
+    const sentMessages: unknown[] = [];
+    const { transport } = installRuntimeChatCompletionMock(JSON.stringify({
+      regions: [{ id: 'region-1', translation: '你好。' }],
+    }), sentMessages);
+    const result = await llmTranslateRegions({
+      transport, provider: 'alibaba', authMode: 'api_key',
+      baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model,
+      thinkingLevel: 'medium', from: 'ja', to: 'zh-CHS',
+      regions: [{ id: 'region-1', direction: 'h', text: 'こんにちは' }],
+    });
+    expect(result.byId.get('region-1')?.translatedText).toBe('你好。');
+    expect(findCapturedChatBody(sentMessages).messages[0].content).toContain('JSON');
+    expect(sentMessages).toContainEqual(expect.objectContaining({
+      providerBody: expect.objectContaining({
+        model, response_format: { type: 'json_object' },
+        enable_thinking: true, reasoning_effort: 'medium',
+      }),
+      proxyConfig: expect.objectContaining({ provider: 'alibaba', thinkingLevel: 'medium' }),
+    }));
+  });
+
   it('passes the MiniMax-M3 thinking selection to the background adapter', async () => {
     const rawContent = JSON.stringify({
       regions: [{ id: 'region-1', translation: '你好。' }],

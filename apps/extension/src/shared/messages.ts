@@ -5,7 +5,7 @@ import type {
   LlmChatContentPart, LlmChatMessage, LlmChatCompletionRequestBody,
 } from '@shinobu/text-translation';
 import { requireExtensionRuntime } from './extensionRuntime';
-import { isLlmThinkingLevel } from '@shinobu/text-translation';
+import { isLlmProvider, isLlmThinkingLevel } from '@shinobu/text-translation';
 import { isReferrerPolicy } from './referrerPolicy';
 import {
   parseCredentiallessHttpsUrl,
@@ -360,19 +360,6 @@ export function getRuntimeTransportMetadata(error: unknown): {
     metadata.retryable = true;
   }
   return metadata;
-}
-
-function isLlmProvider(value: unknown): value is LlmProvider {
-  return (
-    value === 'deepseek' ||
-    value === 'gemini' ||
-    value === 'glm' ||
-    value === 'kimi' ||
-    value === 'minimax' ||
-    value === 'mimo' ||
-    value === 'openai' ||
-    value === 'custom'
-  );
 }
 
 function isLlmAuthMode(value: unknown): value is LlmAuthMode {

@@ -6,6 +6,21 @@ import {
 } from "../../apps/extension/src/shared/messages";
 
 describe("isRuntimeMessage", () => {
+  it('accepts Bailian provider messages and rejects non-string provider IDs', () => {
+    for (const provider of ['alibaba', 'unknown', { toString: () => 'alibaba' }]) {
+      const valid = provider === 'alibaba';
+      expect(isRuntimeMessage({
+        type: 'mt:extension-control',
+        command: { kind: 'replace-api-key', provider, apiKey: 'test-bailian-key' },
+      })).toBe(valid);
+      expect(isRuntimeMessage({
+        type: 'mt:llm-chat-completions',
+        body: { model: 'qwen3.8-max', messages: [] },
+        proxyConfig: { provider, authMode: 'api_key', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
+      })).toBe(valid);
+    }
+  });
+
   it('accepts candidate image content and rejects malformed or remote image parts', () => {
     const message = (content: unknown, role = 'user') => ({
       type: 'mt:llm-chat-completions', body: { model: 'current-model', messages: [{ role, content }] },

@@ -14,6 +14,12 @@ export const llmBuiltInProviderDefinitions: Record<
   BuiltInLlmProvider,
   LlmProviderDefinition
 > = {
+  alibaba: {
+    label: '阿里云百炼', webLabel: '阿里云百炼',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    models: ['qwen3.8-max', 'qwen3.8-flash'],
+    defaultAuthMode: 'api_key',
+  },
   deepseek: {
     label: 'DeepSeek', webLabel: 'DeepSeek',
     baseUrl: 'https://api.deepseek.com',
@@ -87,8 +93,8 @@ const modelPresetMigrations: Partial<Record<
 };
 
 export function isLlmProvider(value: unknown): value is LlmProvider {
-  return value === 'custom'
-    || Object.hasOwn(llmBuiltInProviderDefinitions, String(value));
+  return typeof value === 'string'
+    && (value === 'custom' || Object.hasOwn(llmBuiltInProviderDefinitions, value));
 }
 
 export function isBuiltInProvider(

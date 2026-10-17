@@ -72,6 +72,14 @@ const thinkingLevelLabels: Record<LlmThinkingLevel, string> = {
 };
 
 export const llmThinkingCapabilityRegistry: Record<string, LlmThinkingCapability> = {
+  'alibaba/qwen3.8-max': {
+    levels: ['off', 'low', 'medium', 'xhigh'],
+    defaultLevel: 'off',
+  },
+  'alibaba/qwen3.8-flash': {
+    levels: ['off', 'low', 'medium', 'xhigh'],
+    defaultLevel: 'off',
+  },
   'deepseek/deepseek-flash': {
     levels: ['off', 'low', 'high', 'max'],
     defaultLevel: 'off',
@@ -319,6 +327,14 @@ export function adaptLlmThinkingChatCompletionRequest(
   delete request.reasoning_effort;
   delete request.reasoning_split;
   delete request.thinking;
+
+  if (context.provider === 'alibaba') {
+    request.enable_thinking = level !== 'off';
+    if (level === 'low' || level === 'medium' || level === 'xhigh') {
+      request.reasoning_effort = level;
+    }
+    return request;
+  }
 
   if (context.provider === 'minimax') {
     delete request.response_format;

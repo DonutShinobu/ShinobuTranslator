@@ -17,7 +17,7 @@
   <a href="https://huggingface.co/huyvux3005/manga109-segmentation-bubble"><img alt="模型 YOLO11n Bubble" src="https://img.shields.io/badge/模型-YOLO11n%20Bubble-orange?style=flat-square"></a>
 </p>
 
-一款漫画翻译扩展程序，识别/去字等模型仅在浏览器本地运行，无需单独服务器。主要支持日文漫画场景，自动进行识别、翻译、嵌字全流程。同时提供基于Nano Banana的翻译模式，可以利用Gemini订阅对各种类型漫画进行端到端翻译。对于 X / Pixiv / eHentai 做了专门适配，其他网站均可使用右键/键盘快捷键进行截图翻译。
+一款漫画翻译扩展程序，识别/去字等模型仅在浏览器本地运行，无需单独服务器。主要支持日文漫画场景，自动进行识别、翻译、嵌字全流程。同时提供基于Nano Banana的翻译模式，可以利用Gemini订阅对各种类型漫画进行端到端翻译。对于 X / Pixiv / eHentai / GoMuRaw 做了专门适配，其他网站均可使用右键/键盘快捷键进行截图翻译。
 
 ## 快速开始
 
@@ -100,7 +100,7 @@ Nano Banana 流程不走本地 OCR、去字和自动排版链路，而是把图�
 | 文本检测 | 自动识别漫画图中的文字区域 |
 | 气泡检测 | 辅助定位对白区域，让去字和嵌字更自然 |
 | OCR 识别 | 使用浏览器端 ONNX 模型识别日文漫画文字 |
-| 翻译 | 支持谷歌翻译、DeepSeek、GLM、Kimi、MiniMax、MiMo、OpenAI、自定义供应商 |
+| 翻译 | 支持谷歌翻译、阿里云百炼、DeepSeek、GLM、Kimi、MiniMax、MiMo、OpenAI、自定义供应商 |
 | Nano Banana | 支持使用 Gemini 订阅的 Nano Banana 图像翻译流程，用于端到端翻译和嵌字 |
 | 去字修复 | 使用本地去字模型擦除原文 |
 | 自动排版 | 根据文字区域、方向、颜色和气泡空间自动嵌入译文 |
@@ -108,6 +108,8 @@ Nano Banana 流程不走本地 OCR、去字和自动排版链路，而是把图�
 | 截图翻译 | 通过快捷键或右键菜单选择页面区域翻译 |
 
 ## 设置界面
+
+阿里云百炼使用北京地域的 API Key 和固定的官方兼容接口，模型预设为 `qwen3.8-max`、`qwen3.8-flash`。文本翻译默认关闭思考，也可选择 Low、Medium 或 XHigh。请求参数遵循百炼的 [Chat Completions API](https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions) 与 [思考模式说明](https://help.aliyun.com/zh/model-studio/deep-thinking)。
 
 <table>
 <tr>
@@ -130,7 +132,7 @@ Nano Banana 流程不走本地 OCR、去字和自动排版链路，而是把图�
 
 在 X 、Pixiv、E-Hentai 的已适配页面中，在大图页面会直接显示翻译按钮。
 
-Pixiv 漫画阅读模式额外提供底部按钮，可翻译当前页或全部页面。
+Pixiv 漫画阅读模式与 GoMuRaw（`gomuraw.onl`、`gomuraw.wiki`、`gomuraw.link`，含 `www` 域名）章节页提供底部按钮，可翻译当前可见页或全部页面。GoMuRaw 整章最多支持 500 页。
 
 ### 通用网页翻译
 

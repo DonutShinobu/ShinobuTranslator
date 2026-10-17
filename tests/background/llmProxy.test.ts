@@ -45,6 +45,41 @@ describe('resolveLlmChatCompletionsEndpoint', () => {
 });
 
 describe('proxyApiKeyChatCompletions', () => {
+  it.each(['qwen3.8-max', 'qwen3.8-flash'])('sends %s to Bailian with the stored key and supported thinking settings', async (model) => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      new Response(JSON.stringify({ choices: [{ message: { content: '{"translation":"译文"}' } }] }), {
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const settings: ExtensionSettings = {
+      ...createDeepSeekSettings(),
+      llmProfiles: {
+        ...defaultExtensionSettings.llmProfiles,
+        alibaba: { ...defaultExtensionSettings.llmProfiles.alibaba, apiKey: 'test-bailian-key' },
+      },
+    };
+    const proxyConfig: LlmChatCompletionsProxyConfig = {
+      provider: 'alibaba', authMode: 'api_key',
+      baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    };
+    const body = {
+      model, messages: [{ role: 'user' as const, content: '请将日语翻译为中文并返回 JSON。' }],
+      response_format: { type: 'json_object' as const },
+    };
+    for (const level of [undefined, 'low', 'medium', 'xhigh'] as const) {
+      await expect(proxyApiKeyChatCompletions(settings, { ...proxyConfig, thinkingLevel: level }, body))
+        .resolves.toEqual({ choices: [{ message: { content: '{"translation":"译文"}' } }] });
+      const [endpoint, init] = fetchMock.mock.calls.at(-1)!;
+      expect(endpoint).toBe('https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions');
+      expect(init?.headers).toMatchObject({ Authorization: 'Bearer test-bailian-key' });
+      expect(JSON.parse(init?.body as string)).toEqual({
+        ...body, enable_thinking: level !== undefined,
+        ...(level ? { reasoning_effort: level } : {}),
+      });
+    }
+  });
+
   it('sends chat completions from the background with the stored API key', async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       new Response(JSON.stringify({ choices: [{ message: { content: '译文' } }] }), {

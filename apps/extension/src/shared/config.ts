@@ -67,6 +67,7 @@ function createDefaultLlmProfiles(): Record<LlmProvider, LlmProviderProfile> {
     kimi: createDefaultProviderProfile('kimi'),
     minimax: createDefaultProviderProfile('minimax'),
     mimo: createDefaultProviderProfile('mimo'),
+    alibaba: createDefaultProviderProfile('alibaba'),
     openai: createDefaultProviderProfile('openai'),
     custom: createDefaultProviderProfile('custom'),
   };
@@ -397,6 +398,7 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     kimi: normalizeProviderProfile('kimi', rawProfiles.kimi, provider === 'kimi' ? legacy : null),
     minimax: normalizeProviderProfile('minimax', rawProfiles.minimax, provider === 'minimax' ? legacy : null),
     mimo: normalizeProviderProfile('mimo', rawProfiles.mimo, provider === 'mimo' ? legacy : null),
+    alibaba: normalizeProviderProfile('alibaba', rawProfiles.alibaba, provider === 'alibaba' ? legacy : null),
     openai: normalizeProviderProfile('openai', rawProfiles.openai, provider === 'openai' ? legacy : null),
     custom: normalizeProviderProfile('custom', rawProfiles.custom, provider === 'custom' ? legacy : null),
   };

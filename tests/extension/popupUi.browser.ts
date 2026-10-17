@@ -351,6 +351,16 @@ async function checkInteractions(page: Page) {
     }
   }
 
+  await selectOption(page, 'LLM 提供商', '阿里云百炼');
+  await expect(page.getByRole('textbox', { name: 'Base URL', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('combobox', { name: '模型名称' })).toHaveText('qwen3.8-max');
+  await expect(page.getByLabel('API Key', { exact: true })).toBeEnabled();
+  await page.getByRole('combobox', { name: '模型名称' }).click();
+  await expect(page.getByRole('option')).toHaveText(['qwen3.8-max', 'qwen3.8-flash']);
+  await page.getByRole('option', { name: 'qwen3.8-flash', exact: true }).click();
+  await expect.poll(async () => (await projection(page)).settings.llmProfiles.alibaba.modelPreset)
+    .toBe('qwen3.8-flash');
+
   await selectOption(page, 'LLM 提供商', 'Nano Banana');
   await expect(page.getByRole('radiogroup', { name: '模式', exact: true })).toHaveCount(0);
   await expect(modeOptions).toBeVisible();
@@ -436,7 +446,7 @@ try {
         if (message.type() === 'error') errors.push(message.text());
       });
       const layouts: Record<string, unknown> = {};
-      for (const state of ['deepseek', 'openai', 'gemini', 'custom', 'google']) {
+      for (const state of ['deepseek', 'openai', 'gemini', 'custom', 'google', 'alibaba']) {
         await openPreview(page, state, state !== 'deepseek' && state !== 'google');
         await expect
           .poll(() =>
@@ -497,7 +507,7 @@ try {
       );
       await checkInteractions(page);
       expect(errors, `${browserName} browser errors`).toEqual([]);
-      console.log(`${browserName}: five layouts and popup interaction regression passed.`);
+      console.log(`${browserName}: six layouts and popup interaction regression passed.`);
     } finally {
       await browser.close();
     }

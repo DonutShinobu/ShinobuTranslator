@@ -1,4 +1,5 @@
 export type LlmProvider =
+  | 'alibaba'
   | 'deepseek'
   | 'gemini'
   | 'glm'
@@ -30,6 +31,7 @@ export type LlmChatCompletionRequestBody = {
   model: string;
   messages: LlmChatMessage[];
   response_format?: { type: 'json_object' | 'text' };
+  enable_thinking?: boolean;
   reasoning_effort?: Exclude<LlmThinkingLevel, 'on' | 'off'> | 'none';
   reasoning_split?: boolean;
   thinking?: { type: 'disabled' | 'enabled' | 'adaptive' };

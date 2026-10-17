@@ -3,9 +3,11 @@ import {
   WEB_SETTINGS_SCHEMA_VERSION,
   createDefaultWebSettings,
   createWebSettingsDraftFromLockedConfig,
+  decodeLockedProcessingConfig,
   decodeWebSettings,
   encodeWebSettings,
   inferUiLocale,
+  lockProcessingConfig,
   normalizeProviderBaseUrl,
   normalizeProviderTargetBinding,
   restoreWebSettingsFromLockedConfig,
@@ -28,6 +30,62 @@ describe('web settings schema', () => {
     expect(createDefaultWebSettings('zh-TW')).toMatchObject({
       targetLanguage: 'zh-CHT',
       processMode: 'translate',
+    });
+  });
+
+  it('offers Bailian with Qwen 3.8 Max by default and preserves the Flash selection', () => {
+    const settings = createDefaultWebSettings('zh-CN');
+    expect(settings.providerProfiles.alibaba).toEqual({
+      baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      model: 'qwen3.8-max',
+    });
+    settings.translationProviderId = 'alibaba';
+    settings.providerProfiles.alibaba.model = 'qwen3.8-flash';
+
+    expect(decodeWebSettings(encodeWebSettings(settings))).toEqual({
+      settings,
+      needsWrite: false,
+    });
+  });
+
+  it.each(['https://other.example/v1', ''])('fixes the Bailian target when stored settings contain %s', (baseUrl) => {
+    const settings = createDefaultWebSettings('zh-CN');
+    settings.translationProviderId = 'alibaba';
+    settings.providerProfiles.alibaba.baseUrl = baseUrl;
+    settings.providerProfiles.custom.baseUrl = 'https://custom.example/v1';
+
+    const decoded = decodeWebSettings(encodeWebSettings(settings));
+    expect(decoded.needsWrite).toBe(true);
+    expect(decoded.settings.providerProfiles.alibaba.baseUrl).toBe(
+      'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    );
+    expect(decoded.settings.providerProfiles.custom.baseUrl).toBe('https://custom.example/v1');
+    expect(lockProcessingConfig(settings).provider.target).toBe(
+      'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    );
+  });
+
+  it('keeps a nonofficial locked Bailian target readable without silently restoring it at a different endpoint', () => {
+    const lockedConfig = {
+      schemaVersion: 1 as const,
+      targetLanguage: 'zh-CHS' as const,
+      processMode: 'translate' as const,
+      provider: { id: 'alibaba', target: 'https://history.example/v1', model: 'qwen3.8-flash' },
+    };
+    const current = createDefaultWebSettings('zh-CN');
+    expect(decodeLockedProcessingConfig(lockedConfig)).toEqual(lockedConfig);
+    expect(restoreWebSettingsFromLockedConfig(lockedConfig, current)).toBeNull();
+    expect(createWebSettingsDraftFromLockedConfig(lockedConfig, current)).toEqual({
+      settings: current,
+      providerSelectionRequired: true,
+    });
+    expect(lockedConfig.provider.target).toBe('https://history.example/v1');
+    expect(restoreWebSettingsFromLockedConfig({
+      ...lockedConfig,
+      provider: { ...lockedConfig.provider, target: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
+    }, current)).toMatchObject({
+      translationProviderId: 'alibaba',
+      providerProfiles: { alibaba: { model: 'qwen3.8-flash' } },
     });
   });
 

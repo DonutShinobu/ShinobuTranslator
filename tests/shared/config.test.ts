@@ -105,6 +105,11 @@ describe("built-in LLM catalog", () => {
         baseUrl: "https://api.xiaomimimo.com/v1",
         models: ["mimo-v2.6-pro", "mimo-v2.6-flash"],
       },
+      alibaba: {
+        label: "阿里云百炼",
+        baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        models: ["qwen3.8-max", "qwen3.8-flash"],
+      },
       openai: {
         label: "OpenAI",
         baseUrl: "https://api.openai.com/v1",
@@ -229,6 +234,50 @@ describe("built-in LLM catalog", () => {
       "deepseek/deepseek-flash": "high",
       "deepseek/deepseek-v4-pro": "max",
     });
+  });
+});
+
+describe("Alibaba Cloud Bailian provider settings", () => {
+  it("defaults to Qwen 3.8 Max with API key auth and the fixed official endpoint", () => {
+    const settings = normalizeSettings({ translator: "llm", llmProvider: "alibaba" });
+
+    expect(settings.llmProfiles.alibaba).toEqual({
+      apiKey: "",
+      authMode: "api_key",
+      modelPreset: "qwen3.8-max",
+      modelCustom: "",
+      useCustomModel: false,
+      customBaseUrl: "",
+    });
+    expect(validateSettings(settings)).toBe("LLM 模式需要填写 API Key");
+    expect(resolveLlmBaseUrl(settings)).toBe("https://dashscope.aliyuncs.com/compatible-mode/v1");
+  });
+
+  it.each(["qwen3.8-max", "qwen3.8-flash"])("persists the %s selection without changing custom provider settings", (model) => {
+    const settings = normalizeSettings({
+      translator: "llm",
+      llmProvider: "alibaba",
+      llmProfiles: {
+        alibaba: { apiKey: "sk-test", modelPreset: model, customBaseUrl: "https://ignored.example/v1" },
+        custom: { apiKey: "sk-custom", modelCustom: "existing-model", customBaseUrl: "https://custom.example/v1" },
+      },
+    });
+
+    expect(validateSettings(settings)).toBeNull();
+    expect(toPipelineConfig(settings)).toMatchObject({
+      llmProvider: "alibaba",
+      llmAuthMode: "api_key",
+      llmBaseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      llmModel: model,
+      llmUseCustomModel: false,
+    });
+    expect(settings.llmProfiles.alibaba.customBaseUrl).toBe("");
+    expect(settings.llmProfiles.custom).toMatchObject({
+      apiKey: "sk-custom",
+      modelCustom: "existing-model",
+      customBaseUrl: "https://custom.example/v1",
+    });
+    expect(normalizeSettings(settings)).toEqual(settings);
   });
 });
 

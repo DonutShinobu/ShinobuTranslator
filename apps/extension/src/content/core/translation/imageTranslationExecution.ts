@@ -38,6 +38,7 @@ import { sendRuntimeMessage } from '../../../shared/messages';
 import {
   createDiagnosticRunId,
   emitDiagnosticLog,
+  emitDiagnosticLogAsync,
 } from '../../../shared/diagnosticLogClient';
 import {
   sanitizePipelineConfig,
@@ -361,7 +362,7 @@ export function createRuntimeImageDownloader(
     throwIfAborted(signal);
     const startedAt = performance.now();
     if (diagnosticRunId) {
-      emitDiagnosticLog({
+      await emitDiagnosticLogAsync({
         runId: diagnosticRunId,
         level: 'info',
         category: 'image.io',
@@ -636,7 +637,7 @@ export function createImageTranslationExecutionModule(
     reportProgress({ phase: 'preparing', operation: 'source-ready', source });
 
     if (diagnosticRunId) {
-      emitDiagnosticLog({
+      await emitDiagnosticLogAsync({
         runId: diagnosticRunId,
         level: 'info',
         category: 'app.config',
@@ -748,7 +749,7 @@ export function createImageTranslationExecutionModule(
       if (diagnosticRunId) {
         const artifacts = getPipelineArtifactsFromError(error);
         const diagnosticError = toDiagnosticError(normalizedError);
-        emitDiagnosticLog({
+        await emitDiagnosticLogAsync({
           runId: diagnosticRunId,
           level: 'error',
           category: 'error',

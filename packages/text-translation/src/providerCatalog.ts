@@ -17,7 +17,7 @@ export const llmBuiltInProviderDefinitions: Record<
   alibaba: {
     label: '阿里云百炼', webLabel: '阿里云百炼',
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    models: ['deepseek-v4-pro', 'deepseek-v4-flash', 'qwen3.8-flash', 'qwen3.7-plus', 'glm-5.2', 'kimi-k3', 'MiniMax-M2.5'],
+    models: ['qwen3.8-max', 'qwen3.8-flash'],
     defaultAuthMode: 'api_key',
   },
   deepseek: {
@@ -117,7 +117,6 @@ export function detectBuiltInProviderByBaseUrl(
 ): BuiltInLlmProvider | null {
   const normalized = baseUrl.trim().replace(/\/+$/u, '').toLowerCase();
   if (!normalized) return null;
-  if (isAlibabaBailianCompatibleBaseUrl(normalized)) return 'alibaba';
   if (normalized === 'https://gemini.google.com') return 'gemini';
   if (normalized === 'https://api.mimo-v2.com/v1') return 'mimo';
   for (const [provider, definition] of Object.entries(
@@ -128,22 +127,6 @@ export function detectBuiltInProviderByBaseUrl(
     }
   }
   return null;
-}
-
-export function isAlibabaBailianCompatibleBaseUrl(baseUrl: string | undefined): boolean {
-  if (!baseUrl) return false;
-  try {
-    const url = new URL(baseUrl);
-    const hostname = url.hostname.toLowerCase();
-    const isAlibabaHost = hostname === 'dashscope.aliyuncs.com'
-      || hostname === 'dashscope-intl.aliyuncs.com'
-      || hostname === 'dashscope-us.aliyuncs.com'
-      || hostname.endsWith('.dashscope.aliyuncs.com')
-      || hostname.endsWith('.maas.aliyuncs.com');
-    return isAlibabaHost && /(?:^|\/)compatible-mode\/v1(?:\/|$)/u.test(url.pathname);
-  } catch {
-    return false;
-  }
 }
 
 export function getDefaultModelPreset(provider: BuiltInLlmProvider): string {

@@ -10,7 +10,6 @@ import {
   LOCAL_PIPELINE_CLIENT_PORT,
   LOCAL_PIPELINE_CHUNK_SIZE,
   LOCAL_PIPELINE_HOST_PORT,
-  LOCAL_PIPELINE_MAX_CONCURRENT_JOBS,
   isLocalPipelineClientMessage,
   isLocalPipelineErrorCode,
   isLocalPipelineHostMessage,
@@ -40,7 +39,6 @@ export type PipelineHostLifecycleSnapshot = {
   clientCount: number;
   ownerCount: number;
   activeJobId: string | null;
-  activeJobCount: number;
   queuedJobCount: number;
   jobCount: number;
   closing: boolean;
@@ -108,19 +106,14 @@ export class PipelineHostBroker {
   private expectedHostClose = false;
   private closingPromise: Promise<void> | null = null;
   private readonly admissionQueue: string[] = [];
-  private readonly activeJobIds = new Set<string>();
+  private activeJobId: string | null = null;
   private pendingIdleClose = false;
 
   constructor(
     private readonly api: ExtensionBrowserApi,
     private readonly lifecycle: PipelineHostLifecycle = new ChromiumPipelineHostLifecycle(api),
     private readonly diagnostics: DiagnosticLogEmitter = noopPipelineHostBrokerDiagnostics,
-    private readonly maxConcurrentJobs: number = 1,
-  ) {
-    if (!Number.isInteger(maxConcurrentJobs) || maxConcurrentJobs < 1) {
-      throw new RangeError('PipelineHostBroker maxConcurrentJobs 必须是正整数');
-    }
-  }
+  ) {}
 
   getLifecycleSnapshot(): PipelineHostLifecycleSnapshot {
     return {
@@ -129,8 +122,7 @@ export class PipelineHostBroker {
       hostReady: this.hostReady,
       clientCount: this.clients.size,
       ownerCount: this.owners.size,
-      activeJobId: this.activeJobIds.values().next().value ?? null,
-      activeJobCount: this.activeJobIds.size,
+      activeJobId: this.activeJobId,
       queuedJobCount: this.admissionQueue.length,
       jobCount: this.jobs.size,
       closing: this.closingPromise !== null,
@@ -432,7 +424,8 @@ export class PipelineHostBroker {
     }
     if (value.type === 'complete' || value.type === 'error') {
       this.releaseJob(value.jobId);
-      if (this.activeJobIds.delete(value.jobId)) {
+      if (this.activeJobId === value.jobId) {
+        this.activeJobId = null;
         this.pumpAdmissionQueue();
       }
       this.postAdmissionQueuePositions();
@@ -444,7 +437,7 @@ export class PipelineHostBroker {
     connection.closed = true;
     this.clients.delete(connection);
     for (const jobId of [...connection.jobs]) {
-      if (this.activeJobIds.has(jobId) && this.hostPort && this.hostReady) {
+      if (this.activeJobId === jobId && this.hostPort && this.hostReady) {
         if (!safelyPost(this.hostPort, {
           type: 'cancel',
           jobId,
@@ -473,7 +466,7 @@ export class PipelineHostBroker {
     if (!this.expectedHostClose) {
       this.failAllJobs(error);
     }
-    this.activeJobIds.clear();
+    this.activeJobId = null;
     this.admissionQueue.length = 0;
     this.expectedHostClose = false;
   }
@@ -494,11 +487,8 @@ export class PipelineHostBroker {
   }
 
   private pumpAdmissionQueue(): void {
-    if (!this.hostPort || !this.hostReady) return;
-    while (
-      this.activeJobIds.size < this.maxConcurrentJobs
-      && this.admissionQueue.length > 0
-    ) {
+    if (this.activeJobId || !this.hostPort || !this.hostReady) return;
+    while (this.admissionQueue.length > 0) {
       const jobId = this.admissionQueue[0]!;
       const job = this.jobs.get(jobId);
       if (!this.owners.has(jobId) || !job) {
@@ -527,7 +517,7 @@ export class PipelineHostBroker {
       job.receivedChars = 0;
       job.state = 'active';
       clearTimeout(job.receiveTimer);
-      this.activeJobIds.add(jobId);
+      this.activeJobId = jobId;
       const owner = this.owners.get(jobId);
       if (owner && !owner.closed) {
         safelyPost(owner.port, {
@@ -536,6 +526,7 @@ export class PipelineHostBroker {
           position: 0,
         } satisfies LocalPipelineHostMessage);
       }
+      break;
     }
   }
 
@@ -571,7 +562,7 @@ export class PipelineHostBroker {
     this.hostPort = null;
     this.hostReady = false;
     this.hostInstanceId = null;
-    this.activeJobIds.clear();
+    this.activeJobId = null;
     this.failAllJobs(error);
     this.admissionQueue.length = 0;
     port?.disconnect();
@@ -585,7 +576,7 @@ export class PipelineHostBroker {
       safelyPost(owner.port, {
         type: 'queued',
         jobId,
-        position: index + this.activeJobIds.size,
+        position: index + (this.activeJobId ? 1 : 0),
       } satisfies LocalPipelineHostMessage);
     });
   }
@@ -738,12 +729,7 @@ export function registerPipelineHostBroker(
   lifecycle: PipelineHostLifecycle,
   diagnostics?: DiagnosticLogEmitter,
 ): PipelineHostBroker {
-  const broker = new PipelineHostBroker(
-    api,
-    lifecycle,
-    diagnostics,
-    LOCAL_PIPELINE_MAX_CONCURRENT_JOBS,
-  );
+  const broker = new PipelineHostBroker(api, lifecycle, diagnostics);
   broker.register();
   return broker;
 }

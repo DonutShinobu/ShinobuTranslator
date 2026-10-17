@@ -32,6 +32,12 @@ describe('local pipeline native Blob transport validation', () => {
       input: { chunkCount: 0, totalChars: 0 }, binaryFile: new Blob(['x'], { type: 'image/png' }),
     };
     expect(isLocalPipelineClientMessage(start)).toBe(true);
+    expect(isLocalPipelineClientMessage({
+      ...start, config: { ...start.config, translator: 'llm', llmProvider: 'alibaba', llmModel: 'qwen3.8-max' },
+    })).toBe(true);
+    expect(isLocalPipelineClientMessage({
+      ...start, config: { ...start.config, llmProvider: { toString: () => 'alibaba' } },
+    })).toBe(false);
     expect(isLocalPipelineClientMessage({ ...start, config: { ...start.config, llmOcrFilter: true } })).toBe(true);
     expect(isLocalPipelineClientMessage({ ...start, config: { ...start.config, llmOcrFilter: 'true' } })).toBe(false);
     expect(isLocalPipelineClientMessage({ ...start, binaryFile: {} })).toBe(false);

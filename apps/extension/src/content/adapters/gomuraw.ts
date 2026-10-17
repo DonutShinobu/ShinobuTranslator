@@ -13,13 +13,14 @@ type GomurawImageCandidate = {
 };
 
 const chapterPagePattern = /^\/manga\/[^/]+\/chapter-[^/]+\/?$/u;
+const chapterImageSelector = '.read-viewer .page-chapter > img';
 const maxChapterPages = 500;
 const originalSourceAttr = 'data-mt-original-src';
 const readingAnchorAttr = 'data-mt-gomuraw-reading-anchor';
 const imageAnchorAttr = 'data-mt-gomuraw-image-anchor';
 
 export function isGomurawChapterPage(hostname: string, pathname: string): boolean {
-  return (hostname === 'gomuraw.onl' || hostname === 'www.gomuraw.onl')
+  return /^(?:www\.)?gomuraw\.(?:onl|wiki|link)$/u.test(hostname)
     && chapterPagePattern.test(pathname);
 }
 
@@ -44,8 +45,9 @@ export function readGomurawOriginalUrl(
     image.src,
   ];
   for (const candidate of candidates) {
-    if (!candidate || candidate.startsWith('blob:') || candidate.startsWith('data:')) continue;
-    const url = toHttpUrl(candidate, baseUrl);
+    const value = candidate?.trim();
+    if (!value) continue;
+    const url = toHttpUrl(value, baseUrl);
     if (url) return url;
   }
   return null;
@@ -57,10 +59,9 @@ export function collectGomurawPageTargets(
   baseUrl: string,
 ): ReadingPageTarget[] {
   const pages: ReadingPageTarget[] = [];
-  for (const image of images) {
+  for (const [pageIndex, image] of images.entries()) {
     const originalUrl = readGomurawOriginalUrl(image, baseUrl);
     if (!originalUrl) continue;
-    const pageIndex = pages.length;
     pages.push({
       key: `${pathname}::${pageIndex}`,
       originalUrl,
@@ -71,36 +72,19 @@ export function collectGomurawPageTargets(
 }
 
 function chapterImages(): HTMLImageElement[] {
-  return Array.from(document.querySelectorAll<HTMLImageElement>(
-    '.read-viewer .page-chapter > img',
-  ));
+  if (!isGomurawChapterPage(location.hostname, location.pathname)) return [];
+  return Array.from(document.querySelectorAll<HTMLImageElement>(chapterImageSelector));
 }
 
 function chapterPageEntries(): Array<{ image: HTMLImageElement; target: ReadingPageTarget }> {
   const images = chapterImages();
-  const entries: Array<{ image: HTMLImageElement; target: ReadingPageTarget }> = [];
-  for (const image of images) {
-    let originalUrl = readGomurawOriginalUrl(image, location.href);
-    if (!originalUrl) continue;
+  return collectGomurawPageTargets(images, location.pathname, location.href).map((target) => {
+    const image = images[target.pageIndex];
     if (!image.hasAttribute(originalSourceAttr)) {
-      image.setAttribute(originalSourceAttr, originalUrl);
-      originalUrl = readGomurawOriginalUrl(image, location.href) ?? originalUrl;
+      image.setAttribute(originalSourceAttr, target.originalUrl);
     }
-    const pageIndex = entries.length;
-    entries.push({
-      image,
-      target: {
-        key: `${location.pathname}::${pageIndex}`,
-        originalUrl,
-        pageIndex,
-      },
-    });
-  }
-  return entries;
-}
-
-function pageTargets(): ReadingPageTarget[] {
-  return chapterPageEntries().map((entry) => entry.target);
+    return { image, target };
+  });
 }
 
 function isVisiblePage(image: HTMLImageElement): boolean {
@@ -145,6 +129,8 @@ export function createGomurawAdapter(): SiteAdapter {
       const existingAnchor = wrapper.querySelector<HTMLElement>(`[${imageAnchorAttr}]`);
       if (existingAnchor) return existingAnchor;
 
+      if (window.getComputedStyle(wrapper).position === 'static') wrapper.style.position = 'relative';
+
       const anchor = document.createElement('div');
       anchor.setAttribute(imageAnchorAttr, '');
       anchor.dataset.theme = 'light';
@@ -159,14 +145,26 @@ export function createGomurawAdapter(): SiteAdapter {
 
     observe(onChange) {
       const observer = new MutationObserver((mutations) => {
-        if (mutations.some((mutation) => mutation.type === 'childList')) onChange();
+        // Rendering the reading bar must not schedule another render.
+        if (mutations.some((mutation) => mutation.type === 'childList'
+          && !(mutation.target instanceof Element
+            && mutation.target.closest(`[${readingAnchorAttr}], [${imageAnchorAttr}]`)))) onChange();
       });
       observer.observe(document.body, { childList: true, subtree: true });
       window.addEventListener('popstate', onChange);
+      window.addEventListener('scroll', onChange, { passive: true });
+      window.addEventListener('resize', onChange);
+      const onLoad = (event: Event): void => {
+        if (event.target instanceof HTMLImageElement && event.target.matches(chapterImageSelector)) onChange();
+      };
+      document.addEventListener('load', onLoad, true);
 
       return () => {
         observer.disconnect();
         window.removeEventListener('popstate', onChange);
+        window.removeEventListener('scroll', onChange);
+        window.removeEventListener('resize', onChange);
+        document.removeEventListener('load', onLoad, true);
         bottomBarAnchor?.remove();
         bottomBarAnchor = null;
       };
@@ -183,18 +181,20 @@ export function createGomurawAdapter(): SiteAdapter {
 
     async discoverReadingPages(signal): Promise<ReadingPageDiscovery> {
       if (signal?.aborted) return { status: 'incomplete', reason: 'request-failed' };
-      const pages = pageTargets();
-      if (pages.length === 0) {
+      const images = chapterImages();
+      if (images.length === 0) {
         return { status: 'incomplete', reason: 'metadata-unavailable' };
       }
-      if (pages.length > maxChapterPages) {
+      if (images.length > maxChapterPages) {
         return {
           status: 'incomplete',
           reason: 'page-limit-exceeded',
-          pageCount: pages.length,
+          pageCount: images.length,
           maxPages: maxChapterPages,
         };
       }
+      const pages = chapterPageEntries().map((entry) => entry.target);
+      if (pages.length !== images.length) return { status: 'incomplete', reason: 'invalid-response' };
       return { status: 'complete', pages };
     },
 

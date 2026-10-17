@@ -20,22 +20,8 @@ import {
 } from "./horizontalLayout";
 import type { RegionTypesetDebug } from "./fontMetrics";
 import type { CompositeTransform } from "./geometry";
-import { formatTypesetFont } from "./fontRuntime";
-import { layoutOverflowsReadableArea, prepareReadableRegion, resolveMinimumReadableFontSize } from './readability';
-import { computeReadableHorizontalTypeset, computeReadableVerticalTypeset } from './readableLayout';
-
-// ---------------------------------------------------------------------------
-// Constants (horizontal-only)
-// ---------------------------------------------------------------------------
-
-const defaultFontFamily = '"MTX-SourceHanSans-CN", "Noto Sans CJK SC", "PingFang SC", sans-serif';
-
-function resolveFontFamily(targetLang?: string): string {
-  if (targetLang === 'zh-CHT') {
-    return '"MTX-SourceHanSans-TW", "Noto Sans CJK TC", "PingFang TC", sans-serif';
-  }
-  return defaultFontFamily;
-}
+import { formatTypesetFont, resolveTypesetFontFamily } from "./fontRuntime";
+import type { EditableTextGlyph, LayerTransform, TypesetLayerCanvas } from '../../editor/types';
 // ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
@@ -44,8 +30,7 @@ export type DrawTypesetOptions = {
   debugMode?: boolean;
   renderText?: boolean;
   collectDebugLog?: boolean;
-  /** Readability target (18px per 800px page width). Fit spacing first; bounds take priority. Zero disables reflow. */
-  minimumFontSize?: number;
+  onTextLayer?: (layer: TypesetLayerCanvas) => void;
 };
 
 export type DrawTypesetResult = {
@@ -63,9 +48,6 @@ export async function drawTypeset(
   const debugMode = options?.debugMode === true;
   const renderText = options?.renderText !== false;
   const collectDebugLog = options?.collectDebugLog === true;
-  const minimumFontSize = options?.minimumFontSize !== undefined && Number.isFinite(options.minimumFontSize)
-    ? Math.max(0, options.minimumFontSize)
-    : resolveMinimumReadableFontSize(canvas.width);
   // Ensure fonts are loaded before measuring/rendering
   await platform.waitForFonts();
 
@@ -105,21 +87,11 @@ export async function drawTypeset(
     let editingGlyphs: { ch: string; x: number; y: number; width: number; height: number; baselineY?: number }[] = [];
 
     if (isVerticalInput) {
-      let vResult = computeFullVerticalTypeset({
+      const vResult = computeFullVerticalTypeset({
         region: inputRegion,
         fontFamily,
         measureCtx,
       });
-      if (translatedRaw.trim() && minimumFontSize > 0) {
-        const readableRegion = prepareReadableRegion(
-          inputRegion, vResult.fittedFontSize, minimumFontSize, canvas.width, canvas.height, regions,
-        );
-        if (vResult.fittedFontSize < minimumFontSize || layoutOverflowsReadableArea(vResult, readableRegion.box)) {
-          readableRegion.translatedText = vResult.text;
-          vResult = computeReadableVerticalTypeset({ region: readableRegion, fontFamily, measureCtx,
-            minimumFontSize, preferredFontSize: vResult.fittedFontSize });
-        }
-      }
 
       region = vResult.expandedRegion;
       estimatedInitialFontSize = vResult.initialFontSize;
@@ -217,22 +189,12 @@ export async function drawTypeset(
         strokePadding: vResult.strokePadding,
       };
     } else {
-      let horizontal = computeFullHorizontalTypeset({
+      const horizontal = computeFullHorizontalTypeset({
         region: inputRegion,
         fontFamily,
         measureCtx,
       });
       if (!horizontal) continue;
-      if (translatedRaw.trim() && minimumFontSize > 0) {
-        const readableRegion = prepareReadableRegion(
-          inputRegion, horizontal.fittedFontSize, minimumFontSize, canvas.width, canvas.height, regions,
-        );
-        if (horizontal.fittedFontSize < minimumFontSize || layoutOverflowsReadableArea(horizontal, readableRegion.box)) {
-          readableRegion.translatedText = horizontal.text;
-          horizontal = computeReadableHorizontalTypeset({ region: readableRegion, fontFamily, measureCtx,
-            minimumFontSize, preferredFontSize: horizontal.fittedFontSize });
-        }
-      }
 
       region = horizontal.expandedRegion;
       estimatedInitialFontSize = horizontal.initialFontSize;
@@ -293,7 +255,6 @@ export async function drawTypeset(
       };
     }
 
-    renderRegions[regionIndex] = region;
     let transform: CompositeTransform | null = null;
     if (offCanvas) {
       transform = compositeRegion(

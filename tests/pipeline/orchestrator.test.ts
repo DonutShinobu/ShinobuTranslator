@@ -8,9 +8,6 @@ import type { PipelineConfig, PipelineProgress, TextRegion } from '../../package
 import type { ModelRuntime } from '@shinobu/model-runtime';
 import type { TextTranslator } from '@shinobu/text-translation';
 import { createImagePipeline } from '../../packages/image-pipeline/src';
-import { isLocalPipelineClientMessage } from '@shinobu/image-pipeline/protocol';
-import { llmProviderOptions } from '@shinobu/text-translation';
-import { normalizeSettings, toPipelineConfig } from '../../apps/extension/src/shared/config';
 
 const pipelineMocks = vi.hoisted(() => ({
   fileToImage: vi.fn(),
@@ -267,48 +264,164 @@ afterEach(() => {
 });
 
 describe('runPipeline', () => {
-  it.each(llmProviderOptions.filter(({ value }) => value !== 'gemini'))(
-    'admits the popup configuration for $label through the image pipeline and returns a translated image',
-    async ({ value: provider }) => {
-      const config = toPipelineConfig(normalizeSettings({
-        translator: 'llm',
-        llmProvider: provider,
-        llmProfiles: {
-          alibaba: {
-            modelPreset: 'deepseek-v4-pro',
-            customBaseUrl: 'https://ws-example.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
-          },
-          custom: { modelCustom: 'test-model', customBaseUrl: 'https://example.com/v1' },
+  it.each(['translate', 'erase', 'original'] as const)('filters false positives before translation and erasure in %s mode', async (processMode) => {
+    const falsePositive = { ...ocrRegion, id: 'false-positive', sourceText: '幻觉' };
+    pipelineMocks.runOcr.mockResolvedValueOnce({ regions: [ocrRegion, falsePositive], debug: null, actualProvider: 'wasm' });
+    const classifyVisionRegions = vi.fn(async () => ['false-positive']);
+    const output = await runPipeline(createFile(), {
+      ...baseConfig, translator: 'llm', llmOcrFilter: true, processMode,
+    }, () => {}, { ...runtimeOptions, classifyVisionRegions });
+    expect(classifyVisionRegions).toHaveBeenCalledWith([
+      expect.objectContaining({ id: ocrRegion.id }),
+      expect.objectContaining({ id: falsePositive.id }),
+    ], undefined);
+    expect(output.stageRegions.ordered).toEqual([ocrRegion]);
+    expect(pipelineMocks.refineTextMask.mock.calls[0][1]).toEqual([ocrRegion]);
+    if (processMode === 'translate') expect(pipelineMocks.runTranslate.mock.calls[0][0].regions).toEqual([ocrRegion]);
+    else expect(pipelineMocks.runTranslate).not.toHaveBeenCalled();
+    expect(output.stageTimings).toContainEqual(expect.objectContaining({ stage: 'llm_ocr_filter', label: '大模型误识别过滤' }));
+  });
+
+  it('publishes the original image without translation or erasure when every region is filtered', async () => {
+    const pipeline = createImagePipeline({
+      platform: pipelineMocks.browserPlatform as PlatformProvider, modelRuntime,
+      detectionFallbackStrategy: { kind: 'heuristic-only' },
+    });
+    const result = await pipeline.run({
+      source: createFile(), config: { ...baseConfig, translator: 'llm', llmOcrFilter: true },
+      workingCopy: { strategy: 'source-native' },
+    }, { textTranslator, classifyVisionRegions: async () => [ocrRegion.id] }).result;
+    expect(result.status).toBe('no-translatable-text');
+    expect(result.record.translations).toEqual([]);
+    expect(pipelineMocks.browserPlatform.encodeCanvasToPng).toHaveBeenCalledWith(originalCanvas);
+    expect(pipelineMocks.runTranslate).not.toHaveBeenCalled();
+    expect(pipelineMocks.refineTextMask).not.toHaveBeenCalled();
+    await pipeline.dispose();
+  });
+
+  it.each(['failed', 'unknown-id'])('preserves all regions when classification is %s', async (failure) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await runPipeline(createFile(), { ...baseConfig, translator: 'llm', llmOcrFilter: true }, () => {}, {
+        ...runtimeOptions, classifyVisionRegions: async () => {
+          if (failure === 'failed') throw new Error('unsupported image input');
+          return ['unknown'];
         },
-      }));
-      const source = createFile();
-      expect(isLocalPipelineClientMessage({
-        type: 'start',
-        jobId: 'provider-admission-test',
-        file: { name: source.name, size: source.size, type: source.type, lastModified: source.lastModified },
-        config,
-        input: { chunkCount: 1, totalChars: 12 },
-      })).toBe(true);
-      const pipeline = createImagePipeline({
-        platform: pipelineMocks.browserPlatform as PlatformProvider,
-        modelRuntime,
-        detectionFallbackStrategy: { kind: 'heuristic-only' },
       });
-      try {
-        const result = await pipeline.run({
-          source,
-          config,
-          workingCopy: { strategy: 'source-native' },
-        }, { textTranslator }).result;
-        expect(pipelineMocks.runTranslate).toHaveBeenCalledOnce();
-        expect(pipelineMocks.drawTypeset.mock.calls[0][1]).toEqual([translatedRegion]);
-        expect(result.status).toBe('completed');
-        expect(await result.image.text()).toBe('platform-png');
-      } finally {
-        await pipeline.dispose();
-      }
-    },
-  );
+      expect(pipelineMocks.refineTextMask.mock.calls[0][1]).toEqual([ocrRegion]);
+      expect(warn).toHaveBeenCalledOnce();
+    } finally { warn.mockRestore(); }
+  });
+
+  it.each([{ translator: 'llm' as const, llmOcrFilter: false }, { translator: 'google_web' as const, llmOcrFilter: true }])('skips disabled filtering and Google translation', async (config) => {
+    const classifyVisionRegions = vi.fn();
+    await runPipeline(createFile(), { ...baseConfig, ...config }, () => {}, { ...runtimeOptions, classifyVisionRegions });
+    expect(classifyVisionRegions).not.toHaveBeenCalled();
+    expect(pipelineMocks.describeVisionRegions).not.toHaveBeenCalled();
+  });
+
+  it('propagates cancellation during filtering without erasing any regions', async () => {
+    const controller = new AbortController();
+    await expect(runPipeline(createFile(), { ...baseConfig, translator: 'llm', llmOcrFilter: true }, () => {}, {
+      ...runtimeOptions, signal: controller.signal,
+      classifyVisionRegions: async (_regions, signal) => {
+        expect(signal).toBe(controller.signal);
+        controller.abort();
+        return [];
+      },
+    })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(pipelineMocks.runTranslate).not.toHaveBeenCalled();
+    expect(pipelineMocks.refineTextMask).not.toHaveBeenCalled();
+  });
+
+  it('leaves panel preparation at the original order stage by default', async () => {
+    await runPipeline(createFile(), baseConfig, () => {}, runtimeOptions);
+    expect(pipelineMocks.prepareReadingPanels).not.toHaveBeenCalled();
+    expect(pipelineMocks.sortRegionsForRender).toHaveBeenCalledWith(
+      [ocrRegion], originalCanvas, pipelineMocks.browserPlatform,
+    );
+  });
+
+  it('prepares panels after submitting detector load and consumes that exact result once', async () => {
+    (globalThis as { __shinobuColdStartPanelOverlap?: boolean }).__shinobuColdStartPanelOverlap = true;
+    const events: string[] = [];
+    const panels = [{ x: 0, y: 0, width: 100, height: 200 }];
+    let resolveDetector!: (value: { provider: 'wasm' }) => void;
+    const pendingDetector = new Promise<{ provider: 'wasm' }>(resolve => { resolveDetector = resolve; });
+    pipelineMocks.getModelSession.mockImplementationOnce(() => {
+      events.push('detector-submitted');
+      return pendingDetector;
+    });
+    pipelineMocks.prepareReadingPanels.mockImplementationOnce(() => {
+      events.push('panels');
+      expect(pipelineMocks.detectTextRegionsWithMask).not.toHaveBeenCalled();
+      resolveDetector({ provider: 'wasm' });
+      return panels;
+    });
+    await runPipeline(createFile(), baseConfig, () => {}, runtimeOptions);
+    expect(events).toEqual(['detector-submitted', 'panels']);
+    expect(pipelineMocks.prepareReadingPanels).toHaveBeenCalledOnce();
+    expect(pipelineMocks.sortRegionsForRender).toHaveBeenCalledWith(
+      [ocrRegion], originalCanvas, pipelineMocks.browserPlatform, panels,
+    );
+  });
+
+  it('preserves panel fallback and observes a failed detector probe', async () => {
+    (globalThis as { __shinobuColdStartPanelOverlap?: boolean }).__shinobuColdStartPanelOverlap = true;
+    pipelineMocks.prepareReadingPanels.mockReturnValueOnce(null);
+    pipelineMocks.getModelSession.mockRejectedValueOnce(new Error('model load failed'));
+    const result = await runPipeline(createFile(), baseConfig, () => {}, runtimeOptions);
+    expect(pipelineMocks.getModelSession).toHaveBeenCalledWith('detector');
+    expect(result.resultCanvas).toBe(typesetCanvas);
+    expect(pipelineMocks.sortRegionsForRender).toHaveBeenCalledWith(
+      [ocrRegion], originalCanvas, pipelineMocks.browserPlatform, null,
+    );
+  });
+
+  it('observes detector completion and stops before detection when cancelled during panel preparation', async () => {
+    (globalThis as { __shinobuColdStartPanelOverlap?: boolean }).__shinobuColdStartPanelOverlap = true;
+    const controller = new AbortController();
+    pipelineMocks.prepareReadingPanels.mockImplementationOnce(() => {
+      controller.abort();
+      return [];
+    });
+    await expect(runPipeline(createFile(), baseConfig, () => {}, {
+      ...runtimeOptions, signal: controller.signal,
+    })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(pipelineMocks.getModelSession).toHaveBeenCalledOnce();
+    expect(pipelineMocks.detectTextRegionsWithMask).not.toHaveBeenCalled();
+    expect(pipelineMocks.sortRegionsForRender).not.toHaveBeenCalled();
+  });
+
+  it('keeps precomputed detection on its original path without a detector preload to overlap', async () => {
+    (globalThis as { __shinobuColdStartPanelOverlap?: boolean }).__shinobuColdStartPanelOverlap = true;
+    await runPipeline(createFile(), baseConfig, () => {}, {
+      ...runtimeOptions,
+      precomputedDetection: {
+        width: 100, height: 200, packedMask: new Blob([new Uint8Array(2_500)]), regions: [detectedRegion],
+      },
+    });
+    expect(pipelineMocks.prepareReadingPanels).not.toHaveBeenCalled();
+    expect(pipelineMocks.materializePrecomputedDetection).toHaveBeenCalledOnce();
+    expect(pipelineMocks.sortRegionsForRender).toHaveBeenCalledWith(
+      [ocrRegion], originalCanvas, pipelineMocks.browserPlatform,
+    );
+  });
+
+  it('skips unused previews only for a complete non-debug pixel experiment', async () => {
+    (globalThis as typeof globalThis & {
+      __shinobuColdStartPixelFastPath?: boolean;
+    }).__shinobuColdStartPixelFastPath = true;
+    const artifacts = await runPipeline(createFile(), baseConfig, () => {}, runtimeOptions);
+    expect(pipelineMocks.drawRegions).not.toHaveBeenCalled();
+    expect(artifacts.detectionCanvas).toBe(originalCanvas);
+    expect(artifacts.ocrCanvas).toBe(originalCanvas);
+    expect(artifacts.resultCanvas).toBe(typesetCanvas);
+    await runPipeline(createFile(), { ...baseConfig, collectDebugLog: true }, () => {}, runtimeOptions);
+    expect(pipelineMocks.drawRegions).toHaveBeenCalledTimes(2);
+    await runPipeline(createFile(), baseConfig, () => {}, { ...runtimeOptions, stopAfter: 'order' });
+    expect(pipelineMocks.drawRegions).toHaveBeenCalledTimes(4);
+  });
 
   it('reuses a precomputed detection instead of invoking the detector again', async () => {
     const precomputedDetection = {

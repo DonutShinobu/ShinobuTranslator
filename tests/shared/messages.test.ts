@@ -6,14 +6,37 @@ import {
 } from "../../apps/extension/src/shared/messages";
 
 describe("isRuntimeMessage", () => {
-  it('validates cancellation identifiers without requiring diagnostic logging', () => {
-    expect(isRuntimeMessage({ type: 'mt:llm-cancel', requestId: 'request-1' })).toBe(true);
-    for (const requestId of [undefined, '', 42, 'x'.repeat(129)]) {
-      expect(isRuntimeMessage({ type: 'mt:llm-cancel', requestId })).toBe(false);
+  it('accepts Bailian provider messages and rejects non-string provider IDs', () => {
+    for (const provider of ['alibaba', 'unknown', { toString: () => 'alibaba' }]) {
+      const valid = provider === 'alibaba';
+      expect(isRuntimeMessage({
+        type: 'mt:extension-control',
+        command: { kind: 'replace-api-key', provider, apiKey: 'test-bailian-key' },
+      })).toBe(valid);
+      expect(isRuntimeMessage({
+        type: 'mt:llm-chat-completions',
+        body: { model: 'qwen3.8-max', messages: [] },
+        proxyConfig: { provider, authMode: 'api_key', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
+      })).toBe(valid);
     }
-    expect(isRuntimeMessage({ type: 'mt:llm-chat-completions', requestId: 'request-1', body: { model: 'test', messages: [] } })).toBe(true);
-    expect(isRuntimeMessage({ type: 'mt:llm-chat-completions', requestId: 42, body: { model: 'test', messages: [] } })).toBe(false);
   });
+
+  it('accepts candidate image content and rejects malformed or remote image parts', () => {
+    const message = (content: unknown, role = 'user') => ({
+      type: 'mt:llm-chat-completions', body: { model: 'current-model', messages: [{ role, content }] },
+    });
+    expect(isRuntimeMessage(message([
+      { type: 'text', text: 'OCR metadata' },
+      { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,YQ==' } },
+    ]))).toBe(true);
+    for (const content of [null, [], [null], [{ type: 'text', text: 42 }],
+      [{ type: 'image_url', image_url: { url: 'https://example.com/image.jpg' } }],
+      [{ type: 'image_url', image_url: { url: 'data:text/html;base64,YQ==' } }],
+      [{ type: 'image_url', image_url: { url: 'data:image/png;base64,invalid data' } }],
+    ]) expect(isRuntimeMessage(message(content))).toBe(false);
+    expect(isRuntimeMessage(message('valid text', 'unknown'))).toBe(false);
+  });
+
   it("accepts image and screenshot translation runtime messages", () => {
     expect(isRuntimeMessage({ type: "mt:download-image", imageUrl: "https://example.com/a.png" })).toBe(true);
     expect(isRuntimeMessage({
@@ -107,10 +130,6 @@ describe("isRuntimeMessage", () => {
     expect(isRuntimeMessage({
       type: "mt:extension-control",
       command: { kind: "replace-api-key", provider: "deepseek", apiKey: "secret" },
-    })).toBe(true);
-    expect(isRuntimeMessage({
-      type: "mt:extension-control",
-      command: { kind: "replace-api-key", provider: "alibaba", apiKey: "secret" },
     })).toBe(true);
     expect(isRuntimeMessage({
       type: "mt:extension-control",

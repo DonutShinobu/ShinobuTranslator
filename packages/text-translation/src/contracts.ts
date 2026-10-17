@@ -32,7 +32,6 @@ export type LlmChatCompletionRequestBody = {
   messages: LlmChatMessage[];
   response_format?: { type: 'json_object' | 'text' };
   enable_thinking?: boolean;
-  max_tokens?: number;
   reasoning_effort?: Exclude<LlmThinkingLevel, 'on' | 'off'> | 'none';
   reasoning_split?: boolean;
   thinking?: { type: 'disabled' | 'enabled' | 'adaptive' };
@@ -48,15 +47,6 @@ export type LlmChatCompletionsProxyConfig = {
 
 export type ChatCompletionResponse = {
   choices?: Array<{ message?: { content?: string } }>;
-  usage?: {
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    total_tokens?: number;
-    input_tokens?: number;
-    output_tokens?: number;
-    completion_tokens_details?: { reasoning_tokens?: number };
-    output_tokens_details?: { reasoning_tokens?: number };
-  };
 };
 
 export type ChatCompletionTransportRequest = {

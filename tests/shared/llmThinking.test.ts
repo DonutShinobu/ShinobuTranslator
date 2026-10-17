@@ -11,6 +11,26 @@ import {
 import { llmBuiltInProviderDefinitions } from '../../apps/extension/src/shared/config';
 
 describe('built-in LLM thinking capabilities', () => {
+  it.each(['qwen3.8-max', 'qwen3.8-flash'])('maps Bailian thinking levels for %s and preserves JSON output', (model) => {
+    for (const level of ['off', 'low', 'medium', 'xhigh'] as const) {
+      const body = {
+        model, messages: [], response_format: { type: 'json_object' as const },
+        thinking: { type: 'enabled' as const }, reasoning_split: true,
+        reasoning_effort: 'max' as const,
+      };
+      const context = { provider: 'alibaba' as const, model, level };
+      const request = adaptLlmThinkingChatCompletionRequest(body, context);
+      expect(request.enable_thinking).toBe(level !== 'off');
+      expect(request.reasoning_effort).toBe(level === 'off' ? undefined : level);
+      expect(request.response_format).toEqual({ type: 'json_object' });
+      expect(request).not.toHaveProperty('thinking');
+      expect(request).not.toHaveProperty('reasoning_split');
+      expect(adaptLlmThinkingChatCompletionRequest(request, context)).toEqual(request);
+      expect(body.reasoning_effort).toBe('max');
+    }
+    expect(normalizeLlmThinkingByModel({ [`alibaba/${model}`]: 'high' })[`alibaba/${model}`]).toBe('off');
+  });
+
   it.each(['glm-5.3', 'glm-5.3-flash', 'glm-5.3-flashx', 'gpt-6-astra', 'gpt-6.1-sol'])('keeps reasoning enabled for %s, including invalid saved off settings', (model) => {
     const provider = model.startsWith('glm') ? 'glm' : 'openai';
     for (const level of ['off', 'low', 'high', 'max'] as const) {
@@ -28,6 +48,14 @@ describe('built-in LLM thinking capabilities', () => {
 
   it('matches the official-verified capability matrix for every built-in text model', () => {
     expect(llmThinkingCapabilityRegistry).toEqual({
+      'alibaba/qwen3.8-max': {
+        levels: ['off', 'low', 'medium', 'xhigh'],
+        defaultLevel: 'off',
+      },
+      'alibaba/qwen3.8-flash': {
+        levels: ['off', 'low', 'medium', 'xhigh'],
+        defaultLevel: 'off',
+      },
       'deepseek/deepseek-flash': {
         levels: ['off', 'low', 'high', 'max'],
         defaultLevel: 'off',
@@ -211,7 +239,7 @@ describe('built-in LLM thinking capabilities', () => {
   it('requires every built-in text model to have one exact capability definition', () => {
     const catalogKeys = Object.entries(llmBuiltInProviderDefinitions)
       .flatMap(([provider, definition]) => (
-        provider === 'gemini' || provider === 'alibaba'
+        provider === 'gemini'
           ? []
           : definition.models.map((model) => `${provider}/${model}`)
       ))
@@ -402,73 +430,6 @@ describe('built-in LLM thinking capabilities', () => {
       model: 'deepseek-custom',
       level: undefined,
       useCustomModel: true,
-    })).toEqual(body);
-  });
-
-  it.each([
-    'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/',
-    'https://ws-example.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
-  ])('disables thinking and caps output for every Alibaba Bailian model at %s', (baseUrl) => {
-    const body = {
-      model: 'any-model-name',
-      messages: [{ role: 'user' as const, content: 'translate' }],
-      response_format: { type: 'json_object' as const },
-      reasoning_effort: 'max' as const,
-      thinking: { type: 'enabled' as const },
-    };
-
-    expect(adaptLlmThinkingChatCompletionRequest(body, {
-      provider: 'custom',
-      model: body.model,
-      level: undefined,
-      useCustomModel: true,
-      baseUrl,
-    })).toEqual({
-      model: body.model,
-      messages: body.messages,
-      response_format: body.response_format,
-      enable_thinking: false,
-      max_tokens: 2_048,
-    });
-  });
-
-  it('enforces the non-thinking translation policy for the dedicated Alibaba provider', () => {
-    expect(adaptLlmThinkingChatCompletionRequest({
-      model: 'custom-bailian-model',
-      messages: [],
-      reasoning_effort: 'high',
-    }, {
-      provider: 'alibaba',
-      model: 'custom-bailian-model',
-      level: undefined,
-      useCustomModel: true,
-    })).toEqual({
-      model: 'custom-bailian-model',
-      messages: [],
-      enable_thinking: false,
-      max_tokens: 2_048,
-    });
-  });
-
-  it('preserves an explicit smaller Alibaba output cap and ignores lookalike hosts', () => {
-    const body = {
-      model: 'deepseek-v4-pro',
-      messages: [{ role: 'user' as const, content: 'translate' }],
-      max_tokens: 1_024,
-    };
-
-    expect(adaptLlmThinkingChatCompletionRequest(body, {
-      provider: 'custom',
-      model: body.model,
-      level: undefined,
-      baseUrl: 'https://workspace.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1',
-    })).toMatchObject({ enable_thinking: false, max_tokens: 1_024 });
-    expect(adaptLlmThinkingChatCompletionRequest(body, {
-      provider: 'custom',
-      model: body.model,
-      level: undefined,
-      baseUrl: 'https://maas.aliyuncs.com.example.com/compatible-mode/v1',
     })).toEqual(body);
   });
 });

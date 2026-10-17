@@ -1,5 +1,6 @@
 import type { PipelineConfig } from '@shinobu/image-pipeline';
 import type { WebSettings } from '@shinobu/shared-config';
+import { llmBuiltInProviderDefinitions } from '@shinobu/text-translation';
 
 export function toWebPipelineConfig(
   settings: WebSettings,
@@ -11,7 +12,9 @@ export function toWebPipelineConfig(
     translator: 'llm',
     llmProvider: settings.translationProviderId,
     llmAuthMode: 'api_key',
-    llmBaseUrl: profile.baseUrl,
+    llmBaseUrl: settings.translationProviderId === 'alibaba'
+      ? llmBuiltInProviderDefinitions.alibaba.baseUrl
+      : profile.baseUrl,
     llmModel: profile.model,
     llmUseCustomModel: settings.translationProviderId === 'custom',
     llmThinkingLevel: undefined,

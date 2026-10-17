@@ -31,7 +31,15 @@ export const LOCAL_PIPELINE_CLIENT_PORT = 'mt:local-pipeline-client';
 export const LOCAL_PIPELINE_HOST_PORT = 'mt:pipeline-host';
 export const LOCAL_PIPELINE_CHUNK_SIZE = 4 * 1024 * 1024;
 export const LOCAL_PIPELINE_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
-export const LOCAL_PIPELINE_MAX_CONCURRENT_JOBS = 3;
+export const LOCAL_PIPELINE_STRUCTURED_CLONE_PROBE_TYPE = 'application/x-shinobu-structured-clone';
+
+export function supportsLocalPipelineStructuredClone(probe: unknown): boolean {
+  return (globalThis as typeof globalThis & { __shinobuColdStartStructuredClone?: boolean })
+    .__shinobuColdStartStructuredClone === true
+    && probe instanceof Blob
+    && probe.size === 1
+    && probe.type === LOCAL_PIPELINE_STRUCTURED_CLONE_PROBE_TYPE;
+}
 
 export type LocalPipelineErrorCode =
   | 'PIPELINE_HOST_UNAVAILABLE'

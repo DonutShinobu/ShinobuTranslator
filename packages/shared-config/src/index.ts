@@ -43,7 +43,7 @@ export const translationProviderOptions: ReadonlyArray<{
   id: TranslationProviderId;
   label: string;
 }> = [
-  ...(['alibaba', 'deepseek', 'glm', 'kimi', 'minimax', 'mimo', 'openai'] as const)
+  ...(['deepseek', 'glm', 'kimi', 'minimax', 'mimo', 'alibaba', 'openai'] as const)
     .map((id) => ({
       id,
       label: llmBuiltInProviderDefinitions[id].webLabel,
@@ -52,10 +52,6 @@ export const translationProviderOptions: ReadonlyArray<{
 ];
 
 export const defaultWebProviderProfiles: WebProviderProfiles = {
-  alibaba: {
-    baseUrl: llmBuiltInProviderDefinitions.alibaba.baseUrl,
-    model: llmBuiltInProviderDefinitions.alibaba.models[0],
-  },
   deepseek: {
     baseUrl: llmBuiltInProviderDefinitions.deepseek.baseUrl,
     model: llmBuiltInProviderDefinitions.deepseek.models[0],
@@ -75,6 +71,10 @@ export const defaultWebProviderProfiles: WebProviderProfiles = {
   mimo: {
     baseUrl: llmBuiltInProviderDefinitions.mimo.baseUrl,
     model: llmBuiltInProviderDefinitions.mimo.models[0],
+  },
+  alibaba: {
+    baseUrl: llmBuiltInProviderDefinitions.alibaba.baseUrl,
+    model: llmBuiltInProviderDefinitions.alibaba.models[0],
   },
   openai: {
     baseUrl: llmBuiltInProviderDefinitions.openai.baseUrl,
@@ -133,7 +133,9 @@ export function lockProcessingConfig(settings: WebSettings): LockedProcessingCon
     processMode: settings.processMode,
     provider: {
       id: settings.translationProviderId,
-      target: normalizeProviderBaseUrl(profile.baseUrl),
+      target: settings.translationProviderId === 'alibaba'
+        ? llmBuiltInProviderDefinitions.alibaba.baseUrl
+        : normalizeProviderBaseUrl(profile.baseUrl),
       model: profile.model.trim(),
     },
   };
@@ -176,6 +178,11 @@ export function restoreWebSettingsFromLockedConfig(
   current: WebSettings,
 ): WebSettings | null {
   if (!isKnownTranslationProviderId(lockedConfig.provider.id)) return null;
+  if (
+    lockedConfig.provider.id === 'alibaba'
+    && normalizeProviderBaseUrl(lockedConfig.provider.target)
+      !== llmBuiltInProviderDefinitions.alibaba.baseUrl
+  ) return null;
   return {
     ...structuredClone(current),
     targetLanguage: lockedConfig.targetLanguage,
@@ -224,7 +231,7 @@ function normalizeProviderProfiles(value: unknown): WebProviderProfiles {
       return [
         id,
         {
-          baseUrl: typeof candidate.baseUrl === 'string'
+          baseUrl: id !== 'alibaba' && typeof candidate.baseUrl === 'string'
             ? candidate.baseUrl.trim()
             : fallback.baseUrl,
           model: typeof candidate.model === 'string'

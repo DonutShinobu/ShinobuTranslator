@@ -14,7 +14,6 @@ import {
   getPipelineLifecycleTestIdleTimeoutMs,
   isPipelineLifecycleTestBuild,
 } from '../../shared/buildFlags';
-import { LOCAL_PIPELINE_MAX_CONCURRENT_JOBS } from '@shinobu/image-pipeline/protocol';
 
 const pipelineHostSender: ExtensionMessageSender = {};
 
@@ -28,7 +27,6 @@ export function createInProcessPipelineHostDependencies(): PipelineHostDependenc
     idleTimeoutMs: isPipelineLifecycleTestBuild()
       ? getPipelineLifecycleTestIdleTimeoutMs()
       : undefined,
-    maxConcurrentJobs: LOCAL_PIPELINE_MAX_CONCURRENT_JOBS,
     fontSource: requireExtensionRuntime().getURL.bind(requireExtensionRuntime()),
     translationTransport: createMessageTextTranslationTransport(sendMessage),
     diagnostics: createDiagnosticLogEmitter(async (event) => {

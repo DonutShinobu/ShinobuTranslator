@@ -16,6 +16,7 @@ type ModelsDevApi = Record<string, {
 }>;
 
 const modelsDevProviderByLocalProvider: Record<string, string> = {
+  alibaba: 'alibaba-cn',
   deepseek: 'deepseek',
   glm: 'zai',
   kimi: 'moonshotai',
@@ -33,6 +34,7 @@ function normalizeRemoteOptions(
       ? [value]
       : [];
   return options
+    .filter((option) => option.type === 'toggle' || option.type === 'effort')
     .map((option) => ({
       type: option.type,
       ...(option.values ? { values: [...option.values] } : {}),
@@ -53,7 +55,7 @@ function expectedRemoteOptions(
   model: string,
   capability: LlmThinkingCapability,
 ): ModelsDevReasoningOption[] {
-  if (localProvider === 'deepseek') {
+  if (localProvider === 'deepseek' || localProvider === 'alibaba') {
     return normalizeRemoteOptions([
       { type: 'toggle' },
       { type: 'effort', values: capability.levels.filter((level) => level !== 'off') },

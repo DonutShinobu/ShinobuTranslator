@@ -1388,19 +1388,21 @@ export function App() {
                   </summary>
                   <div className="workspace-provider-fields">
                     <div className="workspace-provider-grid">
-                      <label className="field">
-                        <span>{copy.baseUrl}</span>
-                        <input
-                          id="batch-provider-base-url"
-                          name="provider-base-url"
-                          type="url"
-                          value={activeProviderProfile.baseUrl}
-                          disabled={!processingSettingsEditable}
-                          spellCheck={false}
-                          onChange={(event) =>
-                            patchActiveProviderProfile({ baseUrl: event.target.value })}
-                        />
-                      </label>
+                      {settings.translationProviderId !== 'alibaba' && (
+                        <label className="field">
+                          <span>{copy.baseUrl}</span>
+                          <input
+                            id="batch-provider-base-url"
+                            name="provider-base-url"
+                            type="url"
+                            value={activeProviderProfile.baseUrl}
+                            disabled={!processingSettingsEditable}
+                            spellCheck={false}
+                            onChange={(event) =>
+                              patchActiveProviderProfile({ baseUrl: event.target.value })}
+                          />
+                        </label>
+                      )}
                       <label className="field">
                         <span>{copy.model}</span>
                         <input

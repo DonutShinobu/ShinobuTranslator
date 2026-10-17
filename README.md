@@ -109,6 +109,8 @@ Nano Banana 流程不走本地 OCR、去字和自动排版链路，而是把图�
 
 ## 设置界面
 
+阿里云百炼使用北京地域的 API Key 和固定的官方兼容接口，模型预设为 `qwen3.8-max`、`qwen3.8-flash`。文本翻译默认关闭思考，也可选择 Low、Medium 或 XHigh。请求参数遵循百炼的 [Chat Completions API](https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions) 与 [思考模式说明](https://help.aliyun.com/zh/model-studio/deep-thinking)。
+
 <table>
 <tr>
 <td align="center" width="50%">
@@ -128,11 +130,9 @@ Nano Banana 流程不走本地 OCR、去字和自动排版链路，而是把图�
 
 ### 已适配站点
 
-在 X、Pixiv、E-Hentai 的已适配页面中，在大图页面会直接显示翻译按钮。
+在 X 、Pixiv、E-Hentai 的已适配页面中，在大图页面会直接显示翻译按钮。
 
-Pixiv 漫画阅读模式额外提供底部按钮，可翻译当前页或全部页面。
-
-GoMuRaw 章节阅读页提供右下角按钮，可一键翻译当前章节的全部页面。
+Pixiv 漫画阅读模式与 GoMuRaw（`gomuraw.onl`、`gomuraw.wiki`、`gomuraw.link`，含 `www` 域名）章节页提供底部按钮，可翻译当前可见页或全部页面。GoMuRaw 整章最多支持 500 页。
 
 ### 通用网页翻译
 
@@ -153,7 +153,7 @@ GoMuRaw 章节阅读页提供右下角按钮，可一键翻译当前章节的全
 | 配置 | 说明 |
 | --- | --- |
 | 翻译服务 | 谷歌翻译或大模型翻译 |
-| 大模型提供商 | 阿里云百炼、DeepSeek、Nano Banana、GLM、Kimi、MiniMax、MiMo、OpenAI、自定义提供商 |
+| 大模型提供商 | DeepSeek、Nano Banana、GLM、Kimi、MiniMax、MiMo、OpenAI、自定义提供商 |
 | 模型 | 可使用内置模型列表，也可填写自定义模型名 |
 | 目标语言 | 简体中文或繁体中文 |
 | 处理模式 | 翻译、仅去字、排版原文 |

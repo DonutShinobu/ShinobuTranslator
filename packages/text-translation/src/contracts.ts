@@ -1,6 +1,7 @@
 export type LlmProvider =
   | 'alibaba'
   | 'deepseek'
+  | 'doubao'
   | 'gemini'
   | 'glm'
   | 'kimi'

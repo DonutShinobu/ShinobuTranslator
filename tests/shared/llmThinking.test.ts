@@ -46,6 +46,36 @@ describe('built-in LLM thinking capabilities', () => {
     })).toMatchObject({ thinking: { type: 'enabled' }, reasoning_effort: 'low' });
   });
 
+  it.each([
+    'doubao-seed-evolving',
+    'doubao-seed-2-1-pro-260915',
+    'doubao-seed-2-1-lite-260915',
+    'doubao-seed-2-1-turbo-260628',
+  ])('maps Doubao thinking levels and defaults to off for %s', (model) => {
+    const key = `doubao/${model}`;
+    for (const level of ['off', 'low', 'medium', 'high'] as const) {
+      const body = {
+        model, messages: [], response_format: { type: 'json_object' as const },
+        thinking: { type: 'enabled' as const }, reasoning_split: true,
+        reasoning_effort: 'max' as const,
+      };
+      const context = { provider: 'doubao' as const, model, level };
+      const request = adaptLlmThinkingChatCompletionRequest(body, context);
+      expect(request.thinking).toEqual({ type: level === 'off' ? 'disabled' : 'enabled' });
+      expect(request.reasoning_effort).toBe(level === 'off' ? undefined : level);
+      expect(request.response_format).toEqual({ type: 'json_object' });
+      expect(request).not.toHaveProperty('reasoning_split');
+      expect(adaptLlmThinkingChatCompletionRequest(request, context)).toEqual(request);
+      expect(normalizeLlmThinkingByModel({ [key]: level })[key]).toBe(level);
+      expect(body.reasoning_effort).toBe('max');
+    }
+    expect(createDefaultLlmThinkingByModel()[key]).toBe('off');
+    expect(normalizeLlmThinkingByModel({ [key]: 'xhigh' })[key]).toBe('off');
+    expect(adaptLlmThinkingChatCompletionRequest({ model, messages: [] }, {
+      provider: 'doubao', model, level: undefined,
+    })).toEqual({ model, messages: [], thinking: { type: 'disabled' } });
+  });
+
   it('matches the official-verified capability matrix for every built-in text model', () => {
     expect(llmThinkingCapabilityRegistry).toEqual({
       'alibaba/qwen3.8-max': {
@@ -64,6 +94,22 @@ describe('built-in LLM thinking capabilities', () => {
         levels: ['off', 'low', 'high', 'max'],
         defaultLevel: 'off',
       },
+      'doubao/doubao-seed-evolving': {
+        levels: ['off', 'low', 'medium', 'high'],
+        defaultLevel: 'off',
+      },
+      'doubao/doubao-seed-2-1-pro-260915': {
+        levels: ['off', 'low', 'medium', 'high'],
+        defaultLevel: 'off',
+      },
+      'doubao/doubao-seed-2-1-lite-260915': {
+        levels: ['off', 'low', 'medium', 'high'],
+        defaultLevel: 'off',
+      },
+      'doubao/doubao-seed-2-1-turbo-260628': {
+        levels: ['off', 'low', 'medium', 'high'],
+        defaultLevel: 'off',
+      },
       'glm/glm-5.3': {
         levels: ['low', 'high', 'max'],
         defaultLevel: 'low',
@@ -76,43 +122,11 @@ describe('built-in LLM thinking capabilities', () => {
         levels: ['low', 'high', 'max'],
         defaultLevel: 'low',
       },
-      'glm/glm-5.2': {
-        levels: ['off', 'high', 'max'],
-        defaultLevel: 'off',
-      },
-      'glm/glm-5.1': {
-        levels: ['off', 'on'],
-        defaultLevel: 'off',
-      },
-      'glm/glm-5-turbo': {
-        levels: ['off', 'on'],
-        defaultLevel: 'off',
-      },
-      'glm/glm-5': {
-        levels: ['off', 'on'],
-        defaultLevel: 'off',
-      },
-      'glm/glm-4.7': {
-        levels: ['off', 'on'],
-        defaultLevel: 'off',
-      },
-      'glm/glm-4.7-flash': {
-        levels: ['off', 'on'],
-        defaultLevel: 'off',
-      },
-      'glm/glm-4.7-flashx': {
-        levels: ['off', 'on'],
-        defaultLevel: 'off',
-      },
       'kimi/kimi-k3': {
         levels: ['low', 'high', 'max'],
         defaultLevel: 'max',
       },
       'kimi/kimi-k2.7-code': {
-        levels: ['on'],
-        defaultLevel: 'on',
-      },
-      'kimi/kimi-k2.7-code-highspeed': {
         levels: ['on'],
         defaultLevel: 'on',
       },
@@ -128,15 +142,7 @@ describe('built-in LLM thinking capabilities', () => {
         levels: ['on'],
         defaultLevel: 'on',
       },
-      'minimax/MiniMax-M2.7-highspeed': {
-        levels: ['on'],
-        defaultLevel: 'on',
-      },
       'minimax/MiniMax-M2.5': {
-        levels: ['on'],
-        defaultLevel: 'on',
-      },
-      'minimax/MiniMax-M2.5-highspeed': {
         levels: ['on'],
         defaultLevel: 'on',
       },
@@ -164,43 +170,11 @@ describe('built-in LLM thinking capabilities', () => {
         levels: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
         defaultLevel: 'off',
       },
-      'openai/gpt-5.6-luna': {
-        levels: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
-        defaultLevel: 'off',
-      },
-      'openai/gpt-5.6-terra': {
-        levels: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
-        defaultLevel: 'off',
-      },
-      'openai/gpt-5.6-sol': {
-        levels: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
-        defaultLevel: 'off',
-      },
-      'openai/gpt-5.5-pro': {
-        levels: ['medium', 'high', 'xhigh'],
-        defaultLevel: 'medium',
-      },
-      'openai/gpt-5.5': {
-        levels: ['off', 'low', 'medium', 'high', 'xhigh'],
-        defaultLevel: 'off',
-      },
-      'openai/gpt-5.4': {
-        levels: ['off', 'low', 'medium', 'high', 'xhigh'],
-        defaultLevel: 'off',
-      },
-      'openai/gpt-5.4-mini': {
-        levels: ['off', 'low', 'medium', 'high', 'xhigh'],
-        defaultLevel: 'off',
-      },
-      'openai/gpt-5.4-nano': {
-        levels: ['off', 'low', 'medium', 'high', 'xhigh'],
-        defaultLevel: 'off',
-      },
     });
   });
 
   it('derives toggle, slider, and fixed controls without exposing unsupported off states', () => {
-    expect(getLlmThinkingControl('glm', 'glm-5.1')).toMatchObject({
+    expect(getLlmThinkingControl('kimi', 'kimi-k2.6')).toMatchObject({
       kind: 'toggle',
       options: [
         { value: 'off', label: '关闭' },
@@ -216,12 +190,14 @@ describe('built-in LLM thinking capabilities', () => {
         { value: 'max', label: 'Max' },
       ],
     });
-    expect(getLlmThinkingControl('openai', 'gpt-5.5-pro')).toMatchObject({
+    expect(getLlmThinkingControl('openai', 'gpt-6-astra')).toMatchObject({
       kind: 'slider',
       options: [
+        { value: 'low', label: 'Low' },
         { value: 'medium', label: 'Medium' },
         { value: 'high', label: 'High' },
         { value: 'xhigh', label: 'XHigh' },
+        { value: 'max', label: 'Max' },
       ],
     });
     expect(getLlmThinkingControl('kimi', 'kimi-k3')).toEqual({
@@ -252,17 +228,17 @@ describe('built-in LLM thinking capabilities', () => {
     expect(normalizeLlmThinkingByModel({
       'deepseek/deepseek-flash': 'high',
       'deepseek/deepseek-v4-pro': 'invalid',
-      'openai/gpt-5.5-pro': 'off',
+      'openai/gpt-6-astra': 'off',
     })).toMatchObject({
       'deepseek/deepseek-flash': 'high',
       'deepseek/deepseek-v4-pro': 'off',
-      'openai/gpt-5.5-pro': 'medium',
+      'openai/gpt-6-astra': 'low',
     });
     expect(createDefaultLlmThinkingByModel()).toMatchObject({
       'deepseek/deepseek-flash': 'off',
       'kimi/kimi-k3': 'max',
       'minimax/MiniMax-M2.7': 'on',
-      'openai/gpt-5.5-pro': 'medium',
+      'openai/gpt-6-astra': 'low',
     });
   });
 
@@ -279,7 +255,7 @@ describe('built-in LLM thinking capabilities', () => {
     }
   });
 
-  it.each(['kimi-k2.7-code', 'kimi-k2.7-code-highspeed'])('keeps thinking enabled for %s', (model) => {
+  it.each(['kimi-k2.7-code'])('keeps thinking enabled for %s', (model) => {
     expect(getLlmThinkingControl('kimi', model)).toEqual({
       kind: 'fixed', options: [{ value: 'on', label: '开启' }], notice: '该模型不支持关闭思考模式',
     });
@@ -349,18 +325,11 @@ describe('built-in LLM thinking capabilities', () => {
     });
     expect(adaptLlmThinkingChatCompletionRequest(body, {
       provider: 'glm',
-      model: 'glm-5.2',
+      model: 'glm-5.3',
       level: 'high',
     })).toMatchObject({
       thinking: { type: 'enabled' },
       reasoning_effort: 'high',
-    });
-    expect(adaptLlmThinkingChatCompletionRequest(body, {
-      provider: 'glm',
-      model: 'glm-5.1',
-      level: 'on',
-    })).toMatchObject({
-      thinking: { type: 'enabled' },
     });
     expect(adaptLlmThinkingChatCompletionRequest(body, {
       provider: 'kimi',
@@ -404,14 +373,14 @@ describe('built-in LLM thinking capabilities', () => {
     });
     expect(adaptLlmThinkingChatCompletionRequest(body, {
       provider: 'openai',
-      model: 'gpt-5.6-sol',
+      model: 'gpt-6-sol',
       level: 'off',
     })).toMatchObject({
       reasoning_effort: 'none',
     });
     expect(adaptLlmThinkingChatCompletionRequest(body, {
       provider: 'openai',
-      model: 'gpt-5.6-sol',
+      model: 'gpt-6-sol',
       level: 'max',
     })).toMatchObject({
       reasoning_effort: 'max',

@@ -38,7 +38,7 @@ settings.debugOptionsExpanded = provider !== 'google' && params.get('debug') !==
 settings.showElapsedTime = provider !== 'gemini';
 settings.showStageTimingDetails = provider !== 'gemini';
 settings.enableDebugLog = provider !== 'google';
-if (provider === 'openai') settings.llmProfiles.openai.modelPreset = 'gpt-5.4';
+if (provider === 'openai') settings.llmProfiles.openai.modelPreset = 'gpt-6-astra';
 if (provider === 'custom') {
   settings.llmProfiles.custom.customBaseUrl = 'https://api.example.com/v1';
   settings.llmProfiles.custom.modelCustom = 'your-model-name';

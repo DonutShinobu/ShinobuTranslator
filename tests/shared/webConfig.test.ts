@@ -11,6 +11,7 @@ import {
   normalizeProviderBaseUrl,
   normalizeProviderTargetBinding,
   restoreWebSettingsFromLockedConfig,
+  translationProviderOptions,
   validateProviderBaseUrl,
 } from '../../packages/shared-config/src';
 
@@ -46,6 +47,54 @@ describe('web settings schema', () => {
       settings,
       needsWrite: false,
     });
+  });
+
+  it('places Qwen and Doubao between Kimi and MiniMax', () => {
+    expect(translationProviderOptions.map(({ id, label }) => ({ id, label }))).toEqual([
+      { id: 'deepseek', label: 'DeepSeek' },
+      { id: 'glm', label: 'GLM / Z.AI' },
+      { id: 'kimi', label: 'Kimi / Moonshot' },
+      { id: 'alibaba', label: 'Qwen（阿里云百炼）' },
+      { id: 'doubao', label: 'Doubao（火山方舟）' },
+      { id: 'minimax', label: 'MiniMax' },
+      { id: 'mimo', label: 'MiMo' },
+      { id: 'openai', label: 'OpenAI' },
+      { id: 'custom', label: 'OpenAI Compatible' },
+    ]);
+  });
+
+  it('defaults Doubao to Seed Evolving and preserves a selected model across settings round trips', () => {
+    const settings = createDefaultWebSettings('zh-CN');
+    expect(settings.providerProfiles.doubao).toEqual({
+      baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+      model: 'doubao-seed-evolving',
+    });
+    settings.translationProviderId = 'doubao';
+    settings.providerProfiles.doubao.model = 'doubao-seed-2-1-pro-260915';
+
+    expect(decodeWebSettings(encodeWebSettings(settings))).toEqual({
+      settings,
+      needsWrite: false,
+    });
+    expect(lockProcessingConfig(settings).provider).toEqual({
+      id: 'doubao',
+      target: 'https://ark.cn-beijing.volces.com/api/v3',
+      model: 'doubao-seed-2-1-pro-260915',
+    });
+  });
+
+  it('adds Doubao defaults while preserving older saved provider profiles', () => {
+    const settings = createDefaultWebSettings('zh-CN');
+    settings.translationProviderId = 'kimi';
+    settings.providerProfiles.kimi.model = 'kimi-k2.7-code-highspeed';
+    const providerProfiles = { ...settings.providerProfiles };
+    Reflect.deleteProperty(providerProfiles, 'doubao');
+
+    const decoded = decodeWebSettings(JSON.stringify({ ...settings, providerProfiles }));
+    expect(decoded.needsWrite).toBe(true);
+    expect(decoded.settings.translationProviderId).toBe('kimi');
+    expect(decoded.settings.providerProfiles.kimi.model).toBe('kimi-k2.7-code-highspeed');
+    expect(decoded.settings.providerProfiles.doubao).toEqual(settings.providerProfiles.doubao);
   });
 
   it.each(['https://other.example/v1', ''])('fixes the Bailian target when stored settings contain %s', (baseUrl) => {

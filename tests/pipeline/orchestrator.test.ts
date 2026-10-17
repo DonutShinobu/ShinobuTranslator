@@ -665,7 +665,7 @@ describe('runPipeline', () => {
     expect(pipelineMocks.drawTypeset).not.toHaveBeenCalled();
   });
 
-  it('publishes a no-text detection as a successful no-translatable-text result', async () => {
+  it.each(['deepseek', 'alibaba', 'doubao'] as const)('accepts %s and publishes a no-text detection as a successful result', async (llmProvider) => {
     pipelineMocks.detectTextRegionsWithMask.mockResolvedValueOnce({
       regions: [],
       rawMaskCanvas: null,
@@ -680,7 +680,7 @@ describe('runPipeline', () => {
 
     const result = await pipeline.run({
       source: createFile(),
-      config: baseConfig,
+      config: { ...baseConfig, translator: 'llm', llmProvider },
       workingCopy: { strategy: 'source-native' },
     }, { textTranslator }).result;
 
@@ -696,6 +696,20 @@ describe('runPipeline', () => {
     expect(pipelineMocks.browserPlatform.encodeCanvasToPng).toHaveBeenCalledWith(
       originalCanvas,
     );
+    await pipeline.dispose();
+  });
+
+  it.each(['unknown', { toString: () => 'doubao' }])('rejects an invalid LLM provider %s before execution', async (llmProvider) => {
+    const pipeline = createImagePipeline({
+      platform: pipelineMocks.browserPlatform as PlatformProvider, modelRuntime,
+      detectionFallbackStrategy: { kind: 'heuristic-only' },
+    });
+    expect(() => pipeline.run({
+      source: createFile(),
+      config: { ...baseConfig, llmProvider } as never,
+      workingCopy: { strategy: 'source-native' },
+    }, { textTranslator })).toThrow('本地图片流水线请求结构无效');
+    expect(pipelineMocks.detectTextRegionsWithMask).not.toHaveBeenCalled();
     await pipeline.dispose();
   });
 

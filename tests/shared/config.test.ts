@@ -75,19 +75,12 @@ describe("built-in LLM catalog", () => {
           "glm-5.3",
           "glm-5.3-flash",
           "glm-5.3-flashx",
-          "glm-5.2",
-          "glm-5.1",
-          "glm-5-turbo",
-          "glm-5",
-          "glm-4.7",
-          "glm-4.7-flash",
-          "glm-4.7-flashx",
         ],
       },
       kimi: {
         label: "Kimi (月之暗面)",
         baseUrl: "https://api.moonshot.ai/v1",
-        models: ["kimi-k3", "kimi-k2.7-code", "kimi-k2.7-code-highspeed", "kimi-k2.6"],
+        models: ["kimi-k3", "kimi-k2.7-code", "kimi-k2.6"],
       },
       minimax: {
         label: "MiniMax",
@@ -95,9 +88,7 @@ describe("built-in LLM catalog", () => {
         models: [
           "MiniMax-M3",
           "MiniMax-M2.7",
-          "MiniMax-M2.7-highspeed",
           "MiniMax-M2.5",
-          "MiniMax-M2.5-highspeed",
         ],
       },
       mimo: {
@@ -106,9 +97,19 @@ describe("built-in LLM catalog", () => {
         models: ["mimo-v2.6-pro", "mimo-v2.6-flash"],
       },
       alibaba: {
-        label: "阿里云百炼",
+        label: "Qwen（阿里云百炼）",
         baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
         models: ["qwen3.8-max", "qwen3.8-flash"],
+      },
+      doubao: {
+        label: "Doubao（火山方舟）",
+        baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+        models: [
+          "doubao-seed-evolving",
+          "doubao-seed-2-1-pro-260915",
+          "doubao-seed-2-1-lite-260915",
+          "doubao-seed-2-1-turbo-260628",
+        ],
       },
       openai: {
         label: "OpenAI",
@@ -118,17 +119,34 @@ describe("built-in LLM catalog", () => {
           "gpt-6.1-sol",
           "gpt-6-sol",
           "gpt-6-luna",
-          "gpt-5.6-luna",
-          "gpt-5.6-terra",
-          "gpt-5.6-sol",
-          "gpt-5.5-pro",
-          "gpt-5.5",
-          "gpt-5.4",
-          "gpt-5.4-mini",
-          "gpt-5.4-nano",
         ],
       },
     });
+    expect(llmProviderOptions.map((option) => option.value)).toEqual([
+      'deepseek', 'gemini', 'glm', 'kimi', 'alibaba', 'doubao', 'minimax', 'mimo', 'openai', 'custom',
+    ]);
+  });
+
+  it.each([
+    ['glm', 'glm-5.2', 'glm-5.3'],
+    ['openai', 'gpt-5.4-mini', 'gpt-6-astra'],
+    ['kimi', 'kimi-k2.7-code-highspeed', 'kimi-k3'],
+    ['minimax', 'MiniMax-M2.7-highspeed', 'MiniMax-M3'],
+    ['minimax', 'MiniMax-M2.5-highspeed', 'MiniMax-M3'],
+  ] as const)('falls back from retired %s preset %s while preserving explicit custom models', (provider, retiredModel, fallbackModel) => {
+    const input = {
+      translator: 'llm', llmProvider: provider,
+      llmProfiles: { [provider]: { modelPreset: retiredModel, modelCustom: retiredModel } },
+    };
+    const settings = normalizeSettings(input);
+    expect(toPipelineConfig(settings)).toMatchObject({ llmProvider: provider, llmModel: fallbackModel, llmUseCustomModel: false });
+    expect(normalizeSettings(settings)).toEqual(settings);
+
+    const customSettings = normalizeSettings({
+      ...input, llmProfiles: { [provider]: { ...input.llmProfiles[provider], useCustomModel: true } },
+    });
+    expect(toPipelineConfig(customSettings)).toMatchObject({ llmProvider: provider, llmModel: retiredModel, llmUseCustomModel: true });
+    expect(normalizeSettings(customSettings)).toEqual(customSettings);
   });
 
   it.each([
@@ -237,41 +255,50 @@ describe("built-in LLM catalog", () => {
   });
 });
 
-describe("Alibaba Cloud Bailian provider settings", () => {
-  it("defaults to Qwen 3.8 Max with API key auth and the fixed official endpoint", () => {
-    const settings = normalizeSettings({ translator: "llm", llmProvider: "alibaba" });
+describe.each([
+  {
+    provider: 'alibaba', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    models: ['qwen3.8-max', 'qwen3.8-flash'],
+  },
+  {
+    provider: 'doubao', baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    models: ['doubao-seed-evolving', 'doubao-seed-2-1-pro-260915', 'doubao-seed-2-1-lite-260915', 'doubao-seed-2-1-turbo-260628'],
+  },
+] as const)('$provider provider settings', ({ provider, baseUrl, models }) => {
+  it("defaults to its first preset with API key auth and the fixed official endpoint", () => {
+    const settings = normalizeSettings({ translator: "llm", llmProvider: provider });
 
-    expect(settings.llmProfiles.alibaba).toEqual({
+    expect(settings.llmProfiles[provider]).toEqual({
       apiKey: "",
       authMode: "api_key",
-      modelPreset: "qwen3.8-max",
+      modelPreset: models[0],
       modelCustom: "",
       useCustomModel: false,
       customBaseUrl: "",
     });
     expect(validateSettings(settings)).toBe("LLM 模式需要填写 API Key");
-    expect(resolveLlmBaseUrl(settings)).toBe("https://dashscope.aliyuncs.com/compatible-mode/v1");
+    expect(resolveLlmBaseUrl(settings)).toBe(baseUrl);
   });
 
-  it.each(["qwen3.8-max", "qwen3.8-flash"])("persists the %s selection without changing custom provider settings", (model) => {
+  it.each(models)("persists the %s selection without changing custom provider settings", (model) => {
     const settings = normalizeSettings({
       translator: "llm",
-      llmProvider: "alibaba",
+      llmProvider: provider,
       llmProfiles: {
-        alibaba: { apiKey: "sk-test", modelPreset: model, customBaseUrl: "https://ignored.example/v1" },
+        [provider]: { apiKey: "sk-test", modelPreset: model, customBaseUrl: "https://ignored.example/v1" },
         custom: { apiKey: "sk-custom", modelCustom: "existing-model", customBaseUrl: "https://custom.example/v1" },
       },
     });
 
     expect(validateSettings(settings)).toBeNull();
     expect(toPipelineConfig(settings)).toMatchObject({
-      llmProvider: "alibaba",
+      llmProvider: provider,
       llmAuthMode: "api_key",
-      llmBaseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      llmBaseUrl: baseUrl,
       llmModel: model,
       llmUseCustomModel: false,
     });
-    expect(settings.llmProfiles.alibaba.customBaseUrl).toBe("");
+    expect(settings.llmProfiles[provider].customBaseUrl).toBe("");
     expect(settings.llmProfiles.custom).toMatchObject({
       apiKey: "sk-custom",
       modelCustom: "existing-model",
@@ -301,7 +328,7 @@ describe("OpenAI provider settings", () => {
         openai: {
           apiKey: "",
           authMode: "openai_oauth",
-          modelPreset: "gpt-5.4-mini",
+          modelPreset: "gpt-6-astra",
           modelCustom: "",
           useCustomModel: false,
           customBaseUrl: "",
@@ -314,7 +341,7 @@ describe("OpenAI provider settings", () => {
       llmProvider: "openai",
       llmAuthMode: "openai_oauth",
       llmBaseUrl: "https://api.openai.com/v1",
-      llmModel: "gpt-5.4-mini",
+      llmModel: "gpt-6-astra",
       llmUseCustomModel: false,
     });
     expect(toPipelineConfig(settings)).not.toHaveProperty('llmApiKey');

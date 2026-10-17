@@ -65,9 +65,10 @@ function createDefaultLlmProfiles(): Record<LlmProvider, LlmProviderProfile> {
     gemini: createDefaultProviderProfile('gemini'),
     glm: createDefaultProviderProfile('glm'),
     kimi: createDefaultProviderProfile('kimi'),
+    alibaba: createDefaultProviderProfile('alibaba'),
+    doubao: createDefaultProviderProfile('doubao'),
     minimax: createDefaultProviderProfile('minimax'),
     mimo: createDefaultProviderProfile('mimo'),
-    alibaba: createDefaultProviderProfile('alibaba'),
     openai: createDefaultProviderProfile('openai'),
     custom: createDefaultProviderProfile('custom'),
   };
@@ -396,9 +397,10 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     gemini: normalizeProviderProfile('gemini', rawGeminiProfile, provider === 'gemini' ? legacy : null),
     glm: normalizeProviderProfile('glm', rawProfiles.glm, provider === 'glm' ? legacy : null),
     kimi: normalizeProviderProfile('kimi', rawProfiles.kimi, provider === 'kimi' ? legacy : null),
+    alibaba: normalizeProviderProfile('alibaba', rawProfiles.alibaba, provider === 'alibaba' ? legacy : null),
+    doubao: normalizeProviderProfile('doubao', rawProfiles.doubao, provider === 'doubao' ? legacy : null),
     minimax: normalizeProviderProfile('minimax', rawProfiles.minimax, provider === 'minimax' ? legacy : null),
     mimo: normalizeProviderProfile('mimo', rawProfiles.mimo, provider === 'mimo' ? legacy : null),
-    alibaba: normalizeProviderProfile('alibaba', rawProfiles.alibaba, provider === 'alibaba' ? legacy : null),
     openai: normalizeProviderProfile('openai', rawProfiles.openai, provider === 'openai' ? legacy : null),
     custom: normalizeProviderProfile('custom', rawProfiles.custom, provider === 'custom' ? legacy : null),
   };

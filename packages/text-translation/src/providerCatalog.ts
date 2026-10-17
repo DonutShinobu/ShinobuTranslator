@@ -14,12 +14,6 @@ export const llmBuiltInProviderDefinitions: Record<
   BuiltInLlmProvider,
   LlmProviderDefinition
 > = {
-  alibaba: {
-    label: '阿里云百炼', webLabel: '阿里云百炼',
-    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    models: ['qwen3.8-max', 'qwen3.8-flash'],
-    defaultAuthMode: 'api_key',
-  },
   deepseek: {
     label: 'DeepSeek', webLabel: 'DeepSeek',
     baseUrl: 'https://api.deepseek.com',
@@ -35,19 +29,31 @@ export const llmBuiltInProviderDefinitions: Record<
   glm: {
     label: 'GLM (智谱)', webLabel: 'GLM / Z.AI',
     baseUrl: 'https://api.z.ai/api/paas/v4',
-    models: ['glm-5.3', 'glm-5.3-flash', 'glm-5.3-flashx', 'glm-5.2', 'glm-5.1', 'glm-5-turbo', 'glm-5', 'glm-4.7', 'glm-4.7-flash', 'glm-4.7-flashx'],
+    models: ['glm-5.3', 'glm-5.3-flash', 'glm-5.3-flashx'],
     defaultAuthMode: 'api_key',
   },
   kimi: {
     label: 'Kimi (月之暗面)', webLabel: 'Kimi / Moonshot',
     baseUrl: 'https://api.moonshot.ai/v1',
-    models: ['kimi-k3', 'kimi-k2.7-code', 'kimi-k2.7-code-highspeed', 'kimi-k2.6'],
+    models: ['kimi-k3', 'kimi-k2.7-code', 'kimi-k2.6'],
+    defaultAuthMode: 'api_key',
+  },
+  alibaba: {
+    label: 'Qwen（阿里云百炼）', webLabel: 'Qwen（阿里云百炼）',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    models: ['qwen3.8-max', 'qwen3.8-flash'],
+    defaultAuthMode: 'api_key',
+  },
+  doubao: {
+    label: 'Doubao（火山方舟）', webLabel: 'Doubao（火山方舟）',
+    baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    models: ['doubao-seed-evolving', 'doubao-seed-2-1-pro-260915', 'doubao-seed-2-1-lite-260915', 'doubao-seed-2-1-turbo-260628'],
     defaultAuthMode: 'api_key',
   },
   minimax: {
     label: 'MiniMax', webLabel: 'MiniMax',
     baseUrl: 'https://api.minimax.io/v1',
-    models: ['MiniMax-M3', 'MiniMax-M2.7', 'MiniMax-M2.7-highspeed', 'MiniMax-M2.5', 'MiniMax-M2.5-highspeed'],
+    models: ['MiniMax-M3', 'MiniMax-M2.7', 'MiniMax-M2.5'],
     defaultAuthMode: 'api_key',
   },
   mimo: {
@@ -59,7 +65,7 @@ export const llmBuiltInProviderDefinitions: Record<
   openai: {
     label: 'OpenAI', webLabel: 'OpenAI',
     baseUrl: 'https://api.openai.com/v1',
-    models: ['gpt-6-astra', 'gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-5.5-pro', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano'],
+    models: ['gpt-6-astra', 'gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna'],
     defaultAuthMode: 'openai_oauth',
   },
 };

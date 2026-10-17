@@ -88,6 +88,22 @@ export const llmThinkingCapabilityRegistry: Record<string, LlmThinkingCapability
     levels: ['off', 'low', 'high', 'max'],
     defaultLevel: 'off',
   },
+  'doubao/doubao-seed-evolving': {
+    levels: ['off', 'low', 'medium', 'high'],
+    defaultLevel: 'off',
+  },
+  'doubao/doubao-seed-2-1-pro-260915': {
+    levels: ['off', 'low', 'medium', 'high'],
+    defaultLevel: 'off',
+  },
+  'doubao/doubao-seed-2-1-lite-260915': {
+    levels: ['off', 'low', 'medium', 'high'],
+    defaultLevel: 'off',
+  },
+  'doubao/doubao-seed-2-1-turbo-260628': {
+    levels: ['off', 'low', 'medium', 'high'],
+    defaultLevel: 'off',
+  },
   'glm/glm-5.3': {
     levels: ['low', 'high', 'max'],
     defaultLevel: 'low',
@@ -100,43 +116,11 @@ export const llmThinkingCapabilityRegistry: Record<string, LlmThinkingCapability
     levels: ['low', 'high', 'max'],
     defaultLevel: 'low',
   },
-  'glm/glm-5.2': {
-    levels: ['off', 'high', 'max'],
-    defaultLevel: 'off',
-  },
-  'glm/glm-5.1': {
-    levels: ['off', 'on'],
-    defaultLevel: 'off',
-  },
-  'glm/glm-5-turbo': {
-    levels: ['off', 'on'],
-    defaultLevel: 'off',
-  },
-  'glm/glm-5': {
-    levels: ['off', 'on'],
-    defaultLevel: 'off',
-  },
-  'glm/glm-4.7': {
-    levels: ['off', 'on'],
-    defaultLevel: 'off',
-  },
-  'glm/glm-4.7-flash': {
-    levels: ['off', 'on'],
-    defaultLevel: 'off',
-  },
-  'glm/glm-4.7-flashx': {
-    levels: ['off', 'on'],
-    defaultLevel: 'off',
-  },
   'kimi/kimi-k3': {
     levels: ['low', 'high', 'max'],
     defaultLevel: 'max',
   },
   'kimi/kimi-k2.7-code': {
-    levels: ['on'],
-    defaultLevel: 'on',
-  },
-  'kimi/kimi-k2.7-code-highspeed': {
     levels: ['on'],
     defaultLevel: 'on',
   },
@@ -152,15 +136,7 @@ export const llmThinkingCapabilityRegistry: Record<string, LlmThinkingCapability
     levels: ['on'],
     defaultLevel: 'on',
   },
-  'minimax/MiniMax-M2.7-highspeed': {
-    levels: ['on'],
-    defaultLevel: 'on',
-  },
   'minimax/MiniMax-M2.5': {
-    levels: ['on'],
-    defaultLevel: 'on',
-  },
-  'minimax/MiniMax-M2.5-highspeed': {
     levels: ['on'],
     defaultLevel: 'on',
   },
@@ -186,38 +162,6 @@ export const llmThinkingCapabilityRegistry: Record<string, LlmThinkingCapability
   },
   'openai/gpt-6-luna': {
     levels: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
-    defaultLevel: 'off',
-  },
-  'openai/gpt-5.6-luna': {
-    levels: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
-    defaultLevel: 'off',
-  },
-  'openai/gpt-5.6-terra': {
-    levels: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
-    defaultLevel: 'off',
-  },
-  'openai/gpt-5.6-sol': {
-    levels: ['off', 'low', 'medium', 'high', 'xhigh', 'max'],
-    defaultLevel: 'off',
-  },
-  'openai/gpt-5.5-pro': {
-    levels: ['medium', 'high', 'xhigh'],
-    defaultLevel: 'medium',
-  },
-  'openai/gpt-5.5': {
-    levels: ['off', 'low', 'medium', 'high', 'xhigh'],
-    defaultLevel: 'off',
-  },
-  'openai/gpt-5.4': {
-    levels: ['off', 'low', 'medium', 'high', 'xhigh'],
-    defaultLevel: 'off',
-  },
-  'openai/gpt-5.4-mini': {
-    levels: ['off', 'low', 'medium', 'high', 'xhigh'],
-    defaultLevel: 'off',
-  },
-  'openai/gpt-5.4-nano': {
-    levels: ['off', 'low', 'medium', 'high', 'xhigh'],
     defaultLevel: 'off',
   },
 };
@@ -365,11 +309,11 @@ export function adaptLlmThinkingChatCompletionRequest(
     return request;
   }
 
-  if (context.provider === 'glm') {
+  if (context.provider === 'glm' || context.provider === 'doubao') {
     request.thinking = {
       type: level === 'off' ? 'disabled' : 'enabled',
     };
-    if (level === 'low' || level === 'high' || level === 'max') {
+    if (level === 'low' || level === 'medium' || level === 'high' || level === 'max') {
       request.reasoning_effort = level;
     }
     return request;

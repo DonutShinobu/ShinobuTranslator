@@ -43,7 +43,7 @@ export const translationProviderOptions: ReadonlyArray<{
   id: TranslationProviderId;
   label: string;
 }> = [
-  ...(['deepseek', 'glm', 'kimi', 'minimax', 'mimo', 'alibaba', 'openai'] as const)
+  ...(['deepseek', 'glm', 'kimi', 'alibaba', 'doubao', 'minimax', 'mimo', 'openai'] as const)
     .map((id) => ({
       id,
       label: llmBuiltInProviderDefinitions[id].webLabel,
@@ -64,6 +64,14 @@ export const defaultWebProviderProfiles: WebProviderProfiles = {
     baseUrl: llmBuiltInProviderDefinitions.kimi.baseUrl,
     model: llmBuiltInProviderDefinitions.kimi.models[0],
   },
+  alibaba: {
+    baseUrl: llmBuiltInProviderDefinitions.alibaba.baseUrl,
+    model: llmBuiltInProviderDefinitions.alibaba.models[0],
+  },
+  doubao: {
+    baseUrl: llmBuiltInProviderDefinitions.doubao.baseUrl,
+    model: llmBuiltInProviderDefinitions.doubao.models[0],
+  },
   minimax: {
     baseUrl: llmBuiltInProviderDefinitions.minimax.baseUrl,
     model: llmBuiltInProviderDefinitions.minimax.models[0],
@@ -71,10 +79,6 @@ export const defaultWebProviderProfiles: WebProviderProfiles = {
   mimo: {
     baseUrl: llmBuiltInProviderDefinitions.mimo.baseUrl,
     model: llmBuiltInProviderDefinitions.mimo.models[0],
-  },
-  alibaba: {
-    baseUrl: llmBuiltInProviderDefinitions.alibaba.baseUrl,
-    model: llmBuiltInProviderDefinitions.alibaba.models[0],
   },
   openai: {
     baseUrl: llmBuiltInProviderDefinitions.openai.baseUrl,

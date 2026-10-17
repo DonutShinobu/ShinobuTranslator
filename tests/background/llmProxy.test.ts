@@ -5,7 +5,7 @@ import {
   proxyApiKeyChatCompletions,
   resolveLlmChatCompletionsEndpoint,
 } from '../../apps/extension/src/background/llmProxy';
-import { defaultExtensionSettings } from '../../apps/extension/src/shared/config';
+import { defaultExtensionSettings, llmBuiltInProviderDefinitions } from '../../apps/extension/src/shared/config';
 import type { ExtensionSettings } from '../../apps/extension/src/shared/config';
 import type { LlmChatCompletionsProxyConfig } from '../../apps/extension/src/shared/messages';
 
@@ -45,6 +45,38 @@ describe('resolveLlmChatCompletionsEndpoint', () => {
 });
 
 describe('proxyApiKeyChatCompletions', () => {
+  it.each(llmBuiltInProviderDefinitions.doubao.models)('sends %s to Ark with the stored Doubao key', async (model) => {
+    const response = { choices: [{ message: { content: '译文' } }] };
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      new Response(JSON.stringify(response), { headers: { 'Content-Type': 'application/json' } }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const settings: ExtensionSettings = {
+      ...createDeepSeekSettings(),
+      llmProfiles: {
+        ...defaultExtensionSettings.llmProfiles,
+        doubao: { ...defaultExtensionSettings.llmProfiles.doubao, apiKey: 'test-ark-key' },
+      },
+    };
+    const body = {
+      model, messages: [{ role: 'user' as const, content: '请翻译并返回 JSON。' }],
+      response_format: { type: 'json_object' as const },
+    };
+    for (const level of [undefined, 'medium'] as const) {
+      await expect(proxyApiKeyChatCompletions(settings, {
+        provider: 'doubao', authMode: 'api_key',
+        baseUrl: llmBuiltInProviderDefinitions.doubao.baseUrl, thinkingLevel: level,
+      }, body)).resolves.toEqual(response);
+      const [endpoint, init] = fetchMock.mock.calls.at(-1)!;
+      expect(endpoint).toBe('https://ark.cn-beijing.volces.com/api/v3/chat/completions');
+      expect(init?.headers).toMatchObject({ Authorization: 'Bearer test-ark-key' });
+      expect(JSON.parse(init?.body as string)).toEqual({
+        ...body, thinking: { type: level ? 'enabled' : 'disabled' },
+        ...(level ? { reasoning_effort: level } : {}),
+      });
+    }
+  });
+
   it.each(['qwen3.8-max', 'qwen3.8-flash'])('sends %s to Bailian with the stored key and supported thinking settings', async (model) => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
       new Response(JSON.stringify({ choices: [{ message: { content: '{"translation":"译文"}' } }] }), {

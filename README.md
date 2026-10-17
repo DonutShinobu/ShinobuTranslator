@@ -100,7 +100,7 @@ Nano Banana 流程不走本地 OCR、去字和自动排版链路，而是把图�
 | 文本检测 | 自动识别漫画图中的文字区域 |
 | 气泡检测 | 辅助定位对白区域，让去字和嵌字更自然 |
 | OCR 识别 | 使用浏览器端 ONNX 模型识别日文漫画文字 |
-| 翻译 | 支持谷歌翻译、阿里云百炼、DeepSeek、GLM、Kimi、MiniMax、MiMo、OpenAI、自定义供应商 |
+| 翻译 | 支持谷歌翻译、DeepSeek、GLM、Kimi、Qwen（阿里云百炼）、Doubao（火山方舟）、MiniMax、MiMo、OpenAI、自定义供应商 |
 | Nano Banana | 支持使用 Gemini 订阅的 Nano Banana 图像翻译流程，用于端到端翻译和嵌字 |
 | 去字修复 | 使用本地去字模型擦除原文 |
 | 自动排版 | 根据文字区域、方向、颜色和气泡空间自动嵌入译文 |
@@ -109,7 +109,7 @@ Nano Banana 流程不走本地 OCR、去字和自动排版链路，而是把图�
 
 ## 设置界面
 
-阿里云百炼使用北京地域的 API Key 和固定的官方兼容接口，模型预设为 `qwen3.8-max`、`qwen3.8-flash`。文本翻译默认关闭思考，也可选择 Low、Medium 或 XHigh。请求参数遵循百炼的 [Chat Completions API](https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions) 与 [思考模式说明](https://help.aliyun.com/zh/model-studio/deep-thinking)。
+Qwen（阿里云百炼）使用北京地域的 API Key 和固定的官方兼容接口，模型预设为 `qwen3.8-max`、`qwen3.8-flash`。文本翻译默认关闭思考，也可选择 Low、Medium 或 XHigh。请求参数遵循百炼的 [Chat Completions API](https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions) 与 [思考模式说明](https://help.aliyun.com/zh/model-studio/deep-thinking)。
 
 <table>
 <tr>

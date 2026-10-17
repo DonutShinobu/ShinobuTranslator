@@ -302,14 +302,13 @@ async function checkInteractions(page: Page) {
   await page.keyboard.press('Escape');
 
   for (const [providerLabel, providerId, modelName, kind] of [
-    ['GLM (智谱)', 'glm', 'glm-5.1', 'toggle'],
     ['GLM (智谱)', 'glm', 'glm-5.3-flashx', 'slider'],
+    ['Doubao（火山方舟）', 'doubao', 'doubao-seed-2-1-pro-260915', 'slider'],
     ['OpenAI', 'openai', 'gpt-6.1-sol', 'slider'],
     ['OpenAI', 'openai', 'gpt-6-sol', 'slider'],
     ['OpenAI', 'openai', 'gpt-6-luna', 'slider'],
     ['Kimi (月之暗面)', 'kimi', 'kimi-k3', 'slider'],
     ['Kimi (月之暗面)', 'kimi', 'kimi-k2.7-code', 'fixed'],
-    ['Kimi (月之暗面)', 'kimi', 'kimi-k2.7-code-highspeed', 'fixed'],
     ['Kimi (月之暗面)', 'kimi', 'kimi-k2.6', 'toggle'],
     ['MiniMax', 'minimax', 'MiniMax-M2.7', 'fixed'],
     ['MiniMax', 'minimax', 'MiniMax-M3', 'toggle'],
@@ -351,7 +350,7 @@ async function checkInteractions(page: Page) {
     }
   }
 
-  await selectOption(page, 'LLM 提供商', '阿里云百炼');
+  await selectOption(page, 'LLM 提供商', 'Qwen（阿里云百炼）');
   await expect(page.getByRole('textbox', { name: 'Base URL', exact: true })).toHaveCount(0);
   await expect(page.getByRole('combobox', { name: '模型名称' })).toHaveText('qwen3.8-max');
   await expect(page.getByLabel('API Key', { exact: true })).toBeEnabled();

@@ -18,6 +18,7 @@ type ModelsDevApi = Record<string, {
 const modelsDevProviderByLocalProvider: Record<string, string> = {
   alibaba: 'alibaba-cn',
   deepseek: 'deepseek',
+  doubao: 'volcengine',
   glm: 'zai',
   kimi: 'moonshotai',
   minimax: 'minimax',
@@ -55,6 +56,10 @@ function expectedRemoteOptions(
   model: string,
   capability: LlmThinkingCapability,
 ): ModelsDevReasoningOption[] {
+  if (localProvider === 'doubao') {
+    // Ark also accepts aliases: minimal disables thinking; xhigh/max map to high.
+    return [{ type: 'effort', values: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] }];
+  }
   if (localProvider === 'deepseek' || localProvider === 'alibaba') {
     return normalizeRemoteOptions([
       { type: 'toggle' },

@@ -44,7 +44,7 @@ describe('proxyOpenAiChatCompletions', () => {
 
     await expect(proxyOpenAiChatCompletions(
       {
-        model: 'gpt-5.6-sol',
+        model: 'gpt-6-sol',
         messages: [{ role: 'user', content: 'translate' }],
       },
       {
@@ -71,7 +71,7 @@ describe('proxyOpenAiChatCompletions', () => {
 
     await expect(proxyOpenAiChatCompletions(
       {
-        model: 'gpt-5.6-sol',
+        model: 'gpt-6-sol',
         messages: [{ role: 'user', content: 'translate' }],
       },
       {

@@ -26,6 +26,16 @@ const modelsDevProviderByLocalProvider: Record<string, string> = {
   openai: 'openai',
 };
 
+const officialDoubaoSource = 'https://docs.volcengine.com/docs/ark/deep-thinking?lang=en';
+const officialDoubaoOptions: ModelsDevReasoningOption[] = [
+  { type: 'effort', values: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] },
+];
+// shortcut: models.dev omits these official IDs (verified 2026-10-18); remove as its catalog catches up.
+const officialModelFallbacks: Record<string, ModelsDevReasoningOption[]> = {
+  'doubao/doubao-seed-2-1-pro-260915': officialDoubaoOptions,
+  'doubao/doubao-seed-2-1-lite-260915': officialDoubaoOptions,
+};
+
 function normalizeRemoteOptions(
   value: ModelsDevReasoningOption | ModelsDevReasoningOption[] | undefined,
 ): ModelsDevReasoningOption[] {
@@ -112,8 +122,12 @@ async function main(): Promise<void> {
     const model = key.slice(separator + 1);
     const remoteProvider = modelsDevProviderByLocalProvider[localProvider];
     // models.dev still lists Flash under the legacy alias accepted by DeepSeek.
-    const remoteModel = (remoteProvider ? remote[remoteProvider]?.models?.[model] : undefined)
+    let remoteModel = (remoteProvider ? remote[remoteProvider]?.models?.[model] : undefined)
       ?? (key === 'deepseek/deepseek-flash' ? remote.deepseek?.models?.['deepseek-v4-flash'] : undefined);
+    if (!remoteModel && officialModelFallbacks[key]) {
+      remoteModel = { reasoning_options: officialModelFallbacks[key] };
+      console.warn(`models.dev 缺少 ${key}：使用已核验的火山方舟官方能力快照（2026-10-18）：${officialDoubaoSource}`);
+    }
     if (!remoteModel) {
       drift.push(`${key}: models.dev 缺少对应模型`);
       continue;

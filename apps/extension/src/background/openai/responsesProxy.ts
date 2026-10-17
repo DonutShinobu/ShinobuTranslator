@@ -36,6 +36,7 @@ class OpenAiThinkingConfigError extends Error {
 async function fetchOpenAiCodexResponses(
   body: LlmChatCompletionRequestBody,
   tokens: StoredOpenAiOAuthTokens,
+  signal?: AbortSignal,
 ): Promise<Response> {
   if (!tokens.accountId) {
     throw new Error('OpenAI 登录缺少账号 ID，请退出后重新登录');
@@ -49,6 +50,7 @@ async function fetchOpenAiCodexResponses(
   });
 
   return fetch(openAiCodexResponsesEndpoint, {
+    signal,
     method: 'POST',
     credentials: 'include',
     headers: {
@@ -104,6 +106,7 @@ function toChatCompletionsResponse(content: string, model: string): unknown {
 export async function proxyOpenAiChatCompletions(
   body: LlmChatCompletionRequestBody,
   proxyConfig: LlmChatCompletionsProxyConfig,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   const requestBody = adaptLlmThinkingChatCompletionRequest(body, {
     provider: 'openai',
@@ -112,10 +115,10 @@ export async function proxyOpenAiChatCompletions(
     useCustomModel: proxyConfig.useCustomModel,
   });
   let tokens = await getValidOpenAiOAuthTokens();
-  let response = await fetchOpenAiCodexResponses(requestBody, tokens);
+  let response = await fetchOpenAiCodexResponses(requestBody, tokens, signal);
   if (response.status === 401) {
     tokens = await refreshOpenAiOAuthTokens(tokens);
-    response = await fetchOpenAiCodexResponses(requestBody, tokens);
+    response = await fetchOpenAiCodexResponses(requestBody, tokens, signal);
   }
 
   if (!response.ok) {

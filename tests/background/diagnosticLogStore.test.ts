@@ -3,6 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   exportDiagnosticLog,
   recordDiagnosticLogEvent,
+  flushDiagnosticLog,
+  clearDiagnosticLog,
+  resetDiagnosticLogStateForTests,
 } from '../../apps/extension/src/background/diagnostics/logStore';
 import type { DiagnosticLogEvent } from '../../packages/diagnostics/src/diagnosticLog';
 
@@ -61,12 +64,103 @@ function installStorage(initialDiagnosticStore: unknown): Record<string, unknown
   return storage;
 }
 
-afterEach(() => {
+afterEach(async () => {
+  await resetDiagnosticLogStateForTests();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
 describe('diagnostic log store export', () => {
+  it('batches a burst, reads history once, and includes unflushed events in export', async () => {
+    const storage = installStorage({ events: [createStoredEvent(0)] });
+    const api = (globalThis as unknown as { chrome: { storage: { local: {
+      get: (keys: unknown, callback: unknown) => void;
+      set: (items: unknown, callback: unknown) => void;
+    } } } }).chrome.storage.local;
+    const read = vi.spyOn(api, 'get');
+    const write = vi.spyOn(api, 'set');
+    for (let i = 1; i <= 100; i++) await recordDiagnosticLogEvent(createStoredEvent(i));
+    expect(read).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
+    await flushDiagnosticLog();
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect((storage[diagnosticLogStorageKey] as { events: unknown[] }).events).toHaveLength(101);
+    await recordDiagnosticLogEvent(createStoredEvent(101));
+    await flushDiagnosticLog();
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(write).toHaveBeenCalledTimes(2);
+    await recordDiagnosticLogEvent(createStoredEvent(102));
+    expect((await exportDiagnosticLog()).text).toContain('event-102');
+  });
+
+  it('saves a pending batch automatically after one second', async () => {
+    vi.useFakeTimers();
+    const storage = installStorage({ events: [] });
+    await recordDiagnosticLogEvent(createStoredEvent(1));
+    expect((storage[diagnosticLogStorageKey] as { events: unknown[] }).events).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect((storage[diagnosticLogStorageKey] as { events: unknown[] }).events).toHaveLength(1);
+  });
+
+  it('does not await stalled storage and orders clear safely against an in-flight flush', async () => {
+    const storage = installStorage({ events: [] });
+    const api = (globalThis as unknown as { chrome: { storage: { local: {
+      set: (items: Record<string, unknown>, callback: () => void) => void;
+    } } } }).chrome.storage.local;
+    let release!: () => void;
+    vi.spyOn(api, 'set').mockImplementationOnce((items, callback) => {
+      release = () => { Object.assign(storage, items); callback(); };
+    });
+    await recordDiagnosticLogEvent(createStoredEvent(1));
+    const flushing = flushDiagnosticLog();
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    await recordDiagnosticLogEvent(createStoredEvent(2));
+    const clearing = clearDiagnosticLog();
+    await recordDiagnosticLogEvent(createStoredEvent(3));
+    release();
+    await flushing;
+    await clearing;
+    const exported = await exportDiagnosticLog();
+    expect(exported.text).toContain('event-3');
+    expect(exported.text).not.toContain('event-1');
+    expect(exported.text).not.toContain('event-2');
+  });
+
+  it('keeps events after a failed write and retries without duplicates', async () => {
+    installStorage({ events: [] });
+    const api = (globalThis as unknown as { chrome: { runtime: { lastError?: { message: string } }; storage: { local: {
+      set: (items: Record<string, unknown>, callback: () => void) => void;
+    } } } }).chrome;
+    vi.spyOn(api.storage.local, 'set').mockImplementationOnce((_items, callback) => {
+      api.runtime.lastError = { message: 'storage unavailable' };
+      callback();
+      api.runtime.lastError = undefined;
+    });
+    await recordDiagnosticLogEvent(createStoredEvent(1));
+    await expect(flushDiagnosticLog()).rejects.toThrow('storage unavailable');
+    await recordDiagnosticLogEvent(createStoredEvent(2));
+    expect((await exportDiagnosticLog()).eventCount).toBe(2);
+  });
+
+  it('bounds both event count and accumulated bytes while keeping recent records', async () => {
+    installStorage({ events: [] });
+    for (let i = 0; i < 2100; i++) await recordDiagnosticLogEvent(createStoredEvent(i));
+    let exported = await exportDiagnosticLog();
+    expect(exported.eventCount).toBe(2000);
+    expect(exported.text).toContain('event-2099');
+    expect(exported.text).toContain('日志已裁剪');
+    await clearDiagnosticLog();
+    for (let i = 0; i < 90; i++) {
+      await recordDiagnosticLogEvent({ ...createStoredEvent(i), data: { samples: Array.from({ length: 20 }, () => '字'.repeat(1000)) } });
+    }
+    exported = await exportDiagnosticLog();
+    expect(exported.eventCount).toBeLessThan(90);
+    expect(exported.text).toContain('event-89');
+    expect(exported.text).toContain('4 MiB');
+  });
+
   it.each([80, 81, 2000])('exports all %i valid events without a top-level truncation marker', async (eventCount) => {
     const events = Array.from({ length: eventCount }, (_, index) => createStoredEvent(index));
     installStorage({ events });
@@ -155,6 +249,7 @@ describe('diagnostic log store export', () => {
     expect((storage[diagnosticLogStorageKey] as { events: unknown[] }).events).toHaveLength(2);
 
     await recordDiagnosticLogEvent(createStoredEvent(2));
+    await flushDiagnosticLog();
 
     const persisted = storage[diagnosticLogStorageKey] as {
       events: DiagnosticLogEvent[];

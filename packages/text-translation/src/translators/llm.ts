@@ -54,7 +54,6 @@ type LlmSourceTextSegment = {
 
 type LlmSourceTextPayload = {
   plainText: string;
-  textWithBreaks: string;
   readingOrder: 'right-to-left' | 'top-to-bottom';
   columns?: LlmSourceTextSegment[];
   lines?: LlmSourceTextSegment[];
@@ -255,21 +254,14 @@ function buildStructuredTranslationPrompt(
       ].join('\n'),
       user: [
         `請把以下文本從 ${localizedFrom} 翻譯成 ${localizedTo}，並基於整頁上下文保持語氣、稱呼和情緒一致。`,
-        '輸入是多個文本框。請按輸入順序理解上下文，但每個 region 仍獨立返回。',
-        'sourceText.plainText 是去掉換行後的完整原文，用於理解整句語義。',
-        'sourceText.textWithBreaks 保留 OCR/視覺換行，用於參考原始斷列或斷行。',
-        'sourceText.readingOrder 描述視覺閱讀順序：right-to-left 表示豎排從右到左，top-to-bottom 表示橫排行從上到下。',
-        'sourceText.columns/sourceText.lines 是結構化分段數組，格式為 [{"index":1,"label":"column1","text":"..."}]。',
-        '返回格式必須是：',
+        '按輸入順序理解上下文，每個 region 獨立返回。plainText 是完整原文；columns/lines 保留視覺分段；readingOrder 是閱讀順序。',
+        '必須返回：',
         '{"regions":[{"id":"...","translation":"...","columns":["..."]}]}',
         '規則：',
         '1. regions 數組必須覆蓋所有輸入 id。',
-        '2. translation 必須是自然流暢的完整中文譯文，優先符合中文語序和中文漫畫台詞習慣。',
-        '3. 翻譯時必須允許跨 column/line 重組語義；不要把每個 column/line 當成必須逐字對應的獨立句子。',
-        '4. direction=v 時，先寫完整中文譯文，再按 targetColumns 拆成 columns；columns 數量不得超過 targetColumns，並按最終豎排顯示的閱讀順序返回。',
-        '5. direction=h 時，columns 表示最終橫排行分段，數量不得超過 targetLines。',
-        '6. columns 每段都應是自然中文片段，盡量在標點、語氣停頓或短語邊界斷開。',
-        '7. 除 JSON 外不要輸出任何內容。',
+        '2. translation 是自然流暢的完整中文譯文；允許跨 column/line 重組語義，不逐列直譯。',
+        '3. columns 按最終閱讀順序自然分段；數量不得超過 targetColumns/targetLines。',
+        '4. 除 JSON 外不要輸出任何內容。',
         ...(tweetContext ? tweetContext.userLines : []),
         `輸入數據：${JSON.stringify(payload)}`,
       ].join('\n'),
@@ -286,21 +278,14 @@ function buildStructuredTranslationPrompt(
     ].join('\n'),
     user: [
       `请把以下文本从 ${localizedFrom} 翻译成 ${localizedTo}，并基于整页上下文保持语气、称呼和情绪一致。`,
-      '输入是多个文本框。请按输入顺序理解上下文，但每个 region 仍独立返回。',
-      'sourceText.plainText 是去掉换行后的完整原文，用于理解整句语义。',
-      'sourceText.textWithBreaks 保留 OCR/视觉换行，用于参考原始断列或断行。',
-      'sourceText.readingOrder 描述视觉阅读顺序：right-to-left 表示竖排从右到左，top-to-bottom 表示横排行从上到下。',
-      'sourceText.columns/sourceText.lines 是结构化分段数组，格式为 [{"index":1,"label":"column1","text":"..."}]。',
-      '返回格式必须是：',
+      '按输入顺序理解上下文，每个 region 独立返回。plainText 是完整原文；columns/lines 保留视觉分段；readingOrder 是阅读顺序。',
+      '必须返回：',
       '{"regions":[{"id":"...","translation":"...","columns":["..."]}]}',
       '规则：',
       '1. regions 数组必须覆盖所有输入 id。',
-      '2. translation 必须是自然流畅的完整中文译文，优先符合中文语序和中文漫画台词习惯。',
-      '3. 翻译时必须允许跨 column/line 重组语义；不要把每个 column/line 当成必须逐字对应的独立句子。',
-      '4. direction=v 时，先写完整中文译文，再按 targetColumns 拆成 columns；columns 数量不得超过 targetColumns，并按最终竖排显示的阅读顺序返回。',
-      '5. direction=h 时，columns 表示最终横排行分段，数量不得超过 targetLines。',
-      '6. columns 每段都应是自然中文片段，尽量在标点、语气停顿或短语边界断开。',
-      '7. 除 JSON 外不要输出任何内容。',
+      '2. translation 是自然流畅的完整中文译文；允许跨 column/line 重组语义，不逐列直译。',
+      '3. columns 按最终阅读顺序自然分段；数量不得超过 targetColumns/targetLines。',
+      '4. 除 JSON 外不要输出任何内容。',
       ...(tweetContext ? tweetContext.userLines : []),
       `输入数据：${JSON.stringify(payload)}`,
     ].join('\n'),
@@ -335,31 +320,23 @@ function splitSourceSegments(text: string, labelPrefix: 'column' | 'line'): LlmS
 
 function buildSourceTextPayload(text: string, direction: 'h' | 'v'): LlmSourceTextPayload {
   const plainText = text.replace(/\n+/g, '').trim();
-  const textWithBreaks = text
-    .split(/\n+/)
-    .map((segment) => segment.trim())
-    .filter(Boolean)
-    .join('\n');
   if (direction !== 'v') {
     const lines = splitSourceSegments(text, 'line');
     if (lines.length > 1) {
       return {
         plainText,
-        textWithBreaks,
         readingOrder: 'top-to-bottom',
         lines,
       };
     }
     return {
       plainText,
-      textWithBreaks,
       readingOrder: 'top-to-bottom',
     };
   }
   const columns = splitSourceSegments(text, 'column');
   return {
     plainText,
-    textWithBreaks,
     readingOrder: 'right-to-left',
     columns,
   };
@@ -406,6 +383,32 @@ function parseColumnsPayload(content: string): Map<string, RegionTranslationResu
   return byId;
 }
 
+function finiteTokenCount(value: number | undefined): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined;
+}
+
+function summarizeTokenUsage(response: ChatCompletionResponse): {
+  inputTokens?: number;
+  outputTokens?: number;
+  reasoningTokens?: number;
+  totalTokens?: number;
+} | undefined {
+  const usage = response.usage;
+  if (!usage) return undefined;
+  const summary = {
+    inputTokens: finiteTokenCount(usage.input_tokens ?? usage.prompt_tokens),
+    outputTokens: finiteTokenCount(usage.output_tokens ?? usage.completion_tokens),
+    reasoningTokens: finiteTokenCount(
+      usage.output_tokens_details?.reasoning_tokens
+      ?? usage.completion_tokens_details?.reasoning_tokens,
+    ),
+    totalTokens: finiteTokenCount(usage.total_tokens),
+  };
+  return Object.values(summary).some((value) => value !== undefined) ? summary : undefined;
+}
+
 async function requestChatCompletion(
   options: ChatCompletionRequestOptions,
   body: LlmChatCompletionRequestBody,
@@ -416,11 +419,13 @@ async function requestChatCompletion(
     model: body.model,
     level: options.thinkingLevel,
     useCustomModel: options.useCustomModel === true,
+    baseUrl: options.baseUrl,
   });
 
   const startedAt = Date.now();
   const endpoint = `${options.baseUrl.replace(/\/$/, '')}/chat/completions`;
   const bodyJson = JSON.stringify(requestBody);
+  const providerBodyJson = JSON.stringify(providerBody);
   const baseLogData = {
     provider: options.provider,
     authMode: options.authMode,
@@ -429,6 +434,11 @@ async function requestChatCompletion(
     messageCount: requestBody.messages.length,
     responseFormat: requestBody.response_format?.type ?? 'default',
     requestBodyBytes: bodyJson.length,
+    providerRequestBodyBytes: providerBodyJson.length,
+    thinkingDisabled: providerBody.enable_thinking === false
+      || providerBody.thinking?.type === 'disabled'
+      || providerBody.reasoning_effort === 'none',
+    ...(providerBody.max_tokens === undefined ? {} : { maxOutputTokens: providerBody.max_tokens }),
     ...(options.diagnosticRunId ? { requestBody } : {}),
   };
   options.observer?.emit({
@@ -462,6 +472,7 @@ async function requestChatCompletion(
       diagnosticRunId: options.diagnosticRunId,
       signal: options.signal,
     });
+    const tokenUsage = summarizeTokenUsage(response);
     options.observer?.emit({
       runId: options.diagnosticRunId,
       level: 'info',
@@ -472,6 +483,7 @@ async function requestChatCompletion(
         ...baseLogData,
         contentDirectFetch: false,
         durationMs: Date.now() - startedAt,
+        ...(tokenUsage ? { tokenUsage } : {}),
         responseData: response,
       },
     });
@@ -512,6 +524,7 @@ async function requestChatCompletion(
         provider: options.provider,
         model: requestBody.model,
         useCustomModel: options.useCustomModel === true,
+        baseUrl: options.baseUrl,
         errorDetail: [
           typeof transportFailure?.detail === 'string'
             ? transportFailure.detail

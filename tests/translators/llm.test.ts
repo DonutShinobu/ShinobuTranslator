@@ -34,7 +34,6 @@ type CapturedRegionPayload = Array<{
   targetLines?: number;
   sourceText: {
     plainText: string;
-    textWithBreaks: string;
     readingOrder: 'right-to-left' | 'top-to-bottom';
     columns?: CapturedSourceSegment[];
     lines?: CapturedSourceSegment[];
@@ -166,6 +165,49 @@ describe('llmTranslate', () => {
     expect(body.messages[1].content).toContain('自然中文表达');
     expect(body.messages[1].content).toContain('视觉断列');
     expect(body.messages[1].content).toContain('不要逐行逐列直译');
+  });
+
+  it('records normalized input, output, reasoning, and total token usage', async () => {
+    const events: unknown[] = [];
+    const transport: TextTranslationTransport = {
+      requestChatCompletion: async () => ({
+        choices: [{ message: { content: '译文' } }],
+        usage: {
+          prompt_tokens: 321,
+          completion_tokens: 87,
+          total_tokens: 408,
+          completion_tokens_details: { reasoning_tokens: 0 },
+        },
+      }),
+      translatePlain: vi.fn(async () => '译文'),
+    };
+
+    await llmTranslate({
+      transport,
+      observer: { emit: (event) => events.push(event) },
+      provider: 'custom',
+      authMode: 'api_key',
+      baseUrl: 'https://ws-example.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
+      model: 'qwen-any-model',
+      useCustomModel: true,
+      from: 'ja',
+      to: 'zh-CHS',
+      text: 'こんにちは',
+    });
+
+    const completed = events.find((event) => (
+      event as { message?: unknown }
+    ).message === 'custom LLM 请求完成') as { data?: unknown } | undefined;
+    expect(completed?.data).toMatchObject({
+      thinkingDisabled: true,
+      maxOutputTokens: 2_048,
+      tokenUsage: {
+        inputTokens: 321,
+        outputTokens: 87,
+        reasoningTokens: 0,
+        totalTokens: 408,
+      },
+    });
   });
 
   it('uses localized language names and a faithful Traditional Chinese prompt copy', async () => {
@@ -503,10 +545,7 @@ describe('llmTranslateRegions', () => {
     expect(userContent).toContain('请把以下文本从 日文 翻译成 简体中文');
     expect(userContent).toContain('自然流畅的完整中文译文');
     expect(userContent).toContain('允许跨 column/line 重组语义');
-    expect(userContent).toContain('先写完整中文译文，再按 targetColumns 拆成 columns');
-    expect(userContent).toContain('columns 数量不得超过 targetColumns');
-    expect(userContent).toContain('数量不得超过 targetLines');
-    expect(userContent).toContain('标点、语气停顿或短语边界');
+    expect(userContent).toContain('数量不得超过 targetColumns/targetLines');
 
     const payload = parsePromptPayload(userContent);
     expect(payload[0]).toMatchObject({
@@ -515,7 +554,6 @@ describe('llmTranslateRegions', () => {
       targetColumns: 2,
       sourceText: {
         plainText: 'もう大丈夫泣くな',
-        textWithBreaks: 'もう大丈夫\n泣くな',
         readingOrder: 'right-to-left',
         columns: [
           { index: 1, label: 'column1', text: 'もう大丈夫' },
@@ -523,13 +561,13 @@ describe('llmTranslateRegions', () => {
         ],
       },
     });
+    expect(payload[0].sourceText).not.toHaveProperty('textWithBreaks');
     expect(payload[1]).toMatchObject({
       id: 'horizontal',
       direction: 'h',
       targetLines: 2,
       sourceText: {
         plainText: 'おい行くぞ',
-        textWithBreaks: 'おい\n行くぞ',
         readingOrder: 'top-to-bottom',
         lines: [
           { index: 1, label: 'line1', text: 'おい' },
@@ -537,6 +575,7 @@ describe('llmTranslateRegions', () => {
         ],
       },
     });
+    expect(payload[1].sourceText).not.toHaveProperty('textWithBreaks');
   });
 
   it('uses a faithful Traditional Chinese structured prompt without translating protocol fields', async () => {
@@ -568,21 +607,14 @@ describe('llmTranslateRegions', () => {
     ].join('\n'));
     expect(body.messages[1].content).toBe([
       '請把以下文本從 日文 翻譯成 繁體中文，並基於整頁上下文保持語氣、稱呼和情緒一致。',
-      '輸入是多個文本框。請按輸入順序理解上下文，但每個 region 仍獨立返回。',
-      'sourceText.plainText 是去掉換行後的完整原文，用於理解整句語義。',
-      'sourceText.textWithBreaks 保留 OCR/視覺換行，用於參考原始斷列或斷行。',
-      'sourceText.readingOrder 描述視覺閱讀順序：right-to-left 表示豎排從右到左，top-to-bottom 表示橫排行從上到下。',
-      'sourceText.columns/sourceText.lines 是結構化分段數組，格式為 [{"index":1,"label":"column1","text":"..."}]。',
-      '返回格式必須是：',
+      '按輸入順序理解上下文，每個 region 獨立返回。plainText 是完整原文；columns/lines 保留視覺分段；readingOrder 是閱讀順序。',
+      '必須返回：',
       '{"regions":[{"id":"...","translation":"...","columns":["..."]}]}',
       '規則：',
       '1. regions 數組必須覆蓋所有輸入 id。',
-      '2. translation 必須是自然流暢的完整中文譯文，優先符合中文語序和中文漫畫台詞習慣。',
-      '3. 翻譯時必須允許跨 column/line 重組語義；不要把每個 column/line 當成必須逐字對應的獨立句子。',
-      '4. direction=v 時，先寫完整中文譯文，再按 targetColumns 拆成 columns；columns 數量不得超過 targetColumns，並按最終豎排顯示的閱讀順序返回。',
-      '5. direction=h 時，columns 表示最終橫排行分段，數量不得超過 targetLines。',
-      '6. columns 每段都應是自然中文片段，盡量在標點、語氣停頓或短語邊界斷開。',
-      '7. 除 JSON 外不要輸出任何內容。',
+      '2. translation 是自然流暢的完整中文譯文；允許跨 column/line 重組語義，不逐列直譯。',
+      '3. columns 按最終閱讀順序自然分段；數量不得超過 targetColumns/targetLines。',
+      '4. 除 JSON 外不要輸出任何內容。',
       `輸入數據：${JSON.stringify([
         {
           id: 'region-1',
@@ -590,7 +622,6 @@ describe('llmTranslateRegions', () => {
           targetLines: 1,
           sourceText: {
             plainText: 'こんにちは',
-            textWithBreaks: 'こんにちは',
             readingOrder: 'top-to-bottom',
           },
         },

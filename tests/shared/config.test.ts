@@ -58,6 +58,19 @@ describe("built-in LLM catalog", () => {
 
   it("matches the confirmed provider model matrix and new-profile defaults", () => {
     expect(llmBuiltInProviderDefinitions).toMatchObject({
+      alibaba: {
+        label: "阿里云百炼",
+        baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        models: [
+          "deepseek-v4-pro",
+          "deepseek-v4-flash",
+          "qwen3.8-flash",
+          "qwen3.7-plus",
+          "glm-5.2",
+          "kimi-k3",
+          "MiniMax-M2.5",
+        ],
+      },
       deepseek: {
         label: "DeepSeek",
         baseUrl: "https://api.deepseek.com",
@@ -126,38 +139,35 @@ describe("built-in LLM catalog", () => {
     });
   });
 
-  it.each([
-    ['mimo-v2.5-pro', 'mimo-v2.6-pro'],
-    ['MiMo-V2.5-Pro', 'mimo-v2.6-pro'],
-    ['mimo-v2.5', 'mimo-v2.6-flash'],
-    ['MiMo-V2.5', 'mimo-v2.6-flash'],
-  ])('migrates %s to %s and preserves the selected model thinking setting', (previousModel, model) => {
-    expect(normalizeSettings({}).llmProfiles.mimo.modelPreset).toBe('mimo-v2.6-pro');
-    for (const level of ['off', 'on'] as const) {
-      const settings = normalizeSettings({
-        translator: 'llm', llmProvider: 'mimo',
-        llmProfiles: { mimo: { modelPreset: previousModel } },
-        llmThinkingByModel: {
-          ...normalizeSettings({}).llmThinkingByModel,
-          [`mimo/${model}`]: level === 'on' ? 'off' : 'on',
-          [`mimo/${previousModel.toLowerCase()}`]: level,
-        },
-      });
-      expect(settings.llmProfiles.mimo.modelPreset).toBe(model);
-      expect(toPipelineConfig(settings)).toMatchObject({ llmModel: model, llmThinkingLevel: level });
-      expect(settings.llmThinkingByModel).not.toHaveProperty(`mimo/${previousModel.toLowerCase()}`);
-      expect(normalizeSettings(settings)).toEqual(settings);
-    }
-  });
-
-  it('keeps existing MiMo 2.6 thinking choices when stale 2.5 settings remain', () => {
+  it("migrates an active Alibaba-compatible custom profile into the dedicated provider", () => {
     const settings = normalizeSettings({
-      translator: 'llm', llmProvider: 'mimo',
-      llmProfiles: { mimo: { modelPreset: 'mimo-v2.6-pro' } },
-      llmThinkingByModel: { 'mimo/mimo-v2.6-pro': 'on', 'mimo/mimo-v2.5-pro': 'off' },
+      translator: "llm",
+      llmProvider: "custom",
+      llmProfiles: {
+        custom: {
+          apiKey: "sk-bailian",
+          authMode: "api_key",
+          modelPreset: "",
+          modelCustom: "deepseek-v4-pro",
+          useCustomModel: true,
+          customBaseUrl: "https://ws-example.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+        },
+      },
     });
-    expect(settings.llmProfiles.mimo.modelPreset).toBe('mimo-v2.6-pro');
-    expect(toPipelineConfig(settings).llmThinkingLevel).toBe('on');
+
+    expect(settings.llmProvider).toBe("alibaba");
+    expect(settings.llmProfiles.alibaba).toMatchObject({
+      apiKey: "sk-bailian",
+      modelCustom: "deepseek-v4-pro",
+      useCustomModel: true,
+      customBaseUrl: "https://ws-example.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+    });
+    expect(toPipelineConfig(settings)).toMatchObject({
+      llmProvider: "alibaba",
+      llmBaseUrl: "https://ws-example.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+      llmModel: "deepseek-v4-pro",
+      llmUseCustomModel: true,
+    });
   });
 
   it("migrates retired and corrected built-in identifiers without changing the selected model tier", () => {

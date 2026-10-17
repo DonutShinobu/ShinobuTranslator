@@ -25,6 +25,7 @@ import {
 import { getExtensionRuntime } from '../shared/extensionRuntime';
 import {
   getLlmThinkingControl,
+  isAlibabaBailianCompatibleBaseUrl,
   llmThinkingCapabilityKey,
   resolveLlmThinkingLevel,
   type LlmThinkingLevel,
@@ -669,6 +670,11 @@ export function App() {
   }
 
   const currentProfile = settings.llmProfiles[settings.llmProvider];
+  const usesAlibabaBailian = settings.llmProvider === 'alibaba'
+    || (
+      settings.llmProvider === 'custom'
+      && isAlibabaBailianCompatibleBaseUrl(currentProfile.customBaseUrl)
+    );
   const usesNanoBanana = usesNanoBananaImagePipeline(settings);
   const usesGeminiApp = usesGeminiAppImagePipeline(settings);
   const usesGeminiApi = usesGeminiApiImagePipeline(settings);
@@ -677,6 +683,7 @@ export function App() {
   const builtInCustomModelPlaceholder = currentProviderModels[0] ?? currentProfile.modelPreset;
   const currentThinkingModel =
     settings.llmProvider !== 'custom' &&
+    settings.llmProvider !== 'alibaba' &&
     settings.llmProvider !== 'gemini' &&
     !currentProfile.useCustomModel
       ? currentProfile.modelPreset
@@ -1121,21 +1128,168 @@ export function App() {
                 ) : null}
               </section>
 
-              {settings.translator === 'llm' ? (
-                <section className="panel panel-llm animate-in fade-in-0 slide-in-from-top-2 duration-200">
-                  <Separator className="panel-separator" />
-                  <div className="panel-title">
-                    <IconLLM />
-                    大模型配置
-                  </div>
-                  <div className="field">
-                    <Label className="field-label">LLM 提供商</Label>
-                    <SelectControl
-                      ariaLabel="LLM 提供商"
-                      options={llmProviderOptions}
-                      value={settings.llmProvider}
-                      onChange={updateLlmProvider}
-                      disabled={loading}
+                {settings.llmProvider === 'gemini' ? (
+                  <>
+                    <div className="auth-mode-field">
+                      <span className="field-label">认证方式</span>
+                      <SegmentedControl<LlmAuthMode>
+                        options={[
+                          { value: 'gemini_app', label: 'Gemini 登录' },
+                          { value: 'api_key', label: 'API Key' },
+                        ]}
+                        value={currentProfile.authMode}
+                        onChange={(value) => updateActiveLlmProfile({ authMode: value })}
+                        disabled={loading}
+                      />
+                    </div>
+                    <div className="auth-mode-field">
+                      <span className="field-label">模型</span>
+                      <SegmentedControl<ExtensionSettingsProjection['geminiAppModel']>
+                        options={geminiAppModelOptions}
+                        value={settings.geminiAppModel}
+                        onChange={(value) => updateField('geminiAppModel', value)}
+                        disabled={loading}
+                      />
+                    </div>
+                    {usesGeminiApp ? (
+                      <>
+                        <div className="auth-status-row">
+                          <span className="field-label">登录状态</span>
+                          <div className="auth-status-control">
+                            <div className="oauth-copy">
+                              <span className={`oauth-dot${geminiAppStatus.authenticated ? ' oauth-dot-authed' : ''}`} />
+                              <div className="oauth-title">{geminiStatusLabel}</div>
+                            </div>
+                            <button
+                              className="oauth-action"
+                              type="button"
+                              onClick={() => {
+                                void (
+                                  geminiAppStatus.authenticated || geminiAppStatus.pending
+                                    ? refreshGeminiAppAuthStatus()
+                                    : loginGeminiApp()
+                                );
+                              }}
+                              disabled={loading || geminiAppStatus.loading || geminiAppStatus.busy}
+                            >
+                              {geminiAppStatus.busy
+                                ? '处理中...'
+                                : geminiAppStatus.authenticated || geminiAppStatus.pending
+                                  ? '检查状态'
+                                  : '登录 Gemini'}
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    ) : null}
+                    {usesGeminiApi ? (
+                      <ApiKeyField
+                        key={`api-key-${settings.llmProvider}-${currentProfile.authMode}`}
+                        value={apiKeyValues[settings.llmProvider] ?? ''}
+                        onChange={updateActiveApiKey}
+                        disabled={loading || apiKeyValues[settings.llmProvider] === undefined}
+                        placeholder="AIza..."
+                      />
+                    ) : null}
+                    <div className="field">
+                      <span className="field-label field-label-action">
+                        <span>提示词</span>
+                        <button
+                          className="field-label-icon-button"
+                          type="button"
+                          onClick={resetGeminiAppPromptTemplate}
+                          disabled={loading}
+                          title="重置提示词"
+                          aria-label="重置提示词"
+                        >
+                          <IconRefresh />
+                        </button>
+                      </span>
+                      <textarea
+                        value={settings.geminiAppPromptTemplate}
+                        onChange={(event) =>
+                          updateField('geminiAppPromptTemplate', event.target.value, { showSaveStatus: true })
+                        }
+                        disabled={loading}
+                        rows={5}
+                      />
+                    </div>
+                  </>
+                ) : settings.llmProvider === 'custom' || settings.llmProvider === 'alibaba' ? (
+                  <>
+                    <label className="field">
+                      <span className="field-label">Base URL</span>
+                      <input
+                        type="text"
+                        value={currentProfile.customBaseUrl}
+                        onChange={(event) =>
+                          updateActiveLlmProfile({ customBaseUrl: event.target.value }, { showSaveStatus: true })
+                        }
+                        disabled={loading}
+                        placeholder={settings.llmProvider === 'alibaba'
+                          ? llmBuiltInProviderDefinitions.alibaba.baseUrl
+                          : 'https://api.example.com/v1'}
+                      />
+                    </label>
+                    {settings.llmProvider === 'alibaba' ? (
+                      <div className="field model-field">
+                        <span className="field-label">模型名称</span>
+                        <div className="model-control">
+                          {currentProfile.useCustomModel ? (
+                            <input
+                              type="text"
+                              value={currentProfile.modelCustom}
+                              onChange={(event) =>
+                                updateActiveLlmProfile({ modelCustom: event.target.value }, { showSaveStatus: true })
+                              }
+                              disabled={loading}
+                              placeholder={builtInCustomModelPlaceholder}
+                            />
+                          ) : (
+                            <SelectControl
+                              ariaLabel="模型名称"
+                              options={currentProviderModels.map((model) => ({ value: model, label: model }))}
+                              value={currentProfile.modelPreset}
+                              onChange={(modelPreset) => updateActiveLlmProfile({ modelPreset })}
+                              disabled={loading}
+                            />
+                          )}
+                          <label className={`custom-model-toggle${loading ? ' custom-model-toggle-disabled' : ''}`}>
+                            <input
+                              type="checkbox"
+                              checked={currentProfile.useCustomModel}
+                              onChange={(event) => updateUseCustomModel(event.target.checked)}
+                              disabled={loading}
+                            />
+                            <span>自定义</span>
+                          </label>
+                        </div>
+                      </div>
+                    ) : (
+                      <label className="field">
+                        <span className="field-label">模型名称</span>
+                        <input
+                          type="text"
+                          value={currentProfile.modelCustom}
+                          onChange={(event) =>
+                            updateActiveLlmProfile({ modelCustom: event.target.value }, { showSaveStatus: true })
+                          }
+                          disabled={loading}
+                          placeholder="例如：your-model-name"
+                        />
+                      </label>
+                    )}
+                    {usesAlibabaBailian ? (
+                      <div className="bailian-optimization-notice">
+                        阿里云百炼翻译模式：全部模型关闭思考，最大输出 2048 Token
+                      </div>
+                    ) : null}
+                    <ApiKeyField
+                      key={`api-key-${settings.llmProvider}-${currentProfile.authMode}`}
+                      value={apiKeyValues[settings.llmProvider] ?? ''}
+                      onChange={updateActiveApiKey}
+                      disabled={loading || apiKeyValues[settings.llmProvider] === undefined}
+                      placeholder="sk-..."
                     />
                   </div>
 

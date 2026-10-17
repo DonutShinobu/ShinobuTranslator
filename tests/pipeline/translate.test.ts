@@ -156,6 +156,35 @@ describe('runTranslate', () => {
     expect(sentChatMessages[0]).not.toHaveProperty('body.thinking');
   });
 
+  it('carries the Alibaba Bailian endpoint through the extension transport', async () => {
+    const sentChatMessages = installRuntimeChatSequence([
+      JSON.stringify({
+        regions: [{ id: 'region-1', translation: '已经没事了，别哭。' }],
+      }),
+    ]);
+
+    await runTranslate(
+      [makeRegion()],
+      {
+        ...baseConfig,
+        llmProvider: 'custom',
+        llmBaseUrl: 'https://ws-example.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
+        llmModel: 'any-alibaba-model',
+        llmUseCustomModel: true,
+      },
+    );
+
+    expect(sentChatMessages[0]).toMatchObject({
+      body: {
+        model: 'any-alibaba-model',
+      },
+      proxyConfig: {
+        provider: 'custom',
+        baseUrl: 'https://ws-example.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
+      },
+    });
+  });
+
   it('uses single-region structured fallback after batch parse failure', async () => {
     const sentChatMessages = installRuntimeChatSequence([
       'not json',

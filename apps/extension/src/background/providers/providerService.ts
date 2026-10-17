@@ -37,6 +37,7 @@ import {
   proxyOpenAiChatCompletions,
 } from "../openai/responsesProxy";
 import { getSettings } from "../settings/settingsStore";
+import { throwIfSignalAborted } from '../../shared/abortable';
 
 type LlmChatMessage = Extract<RuntimeMessage, { type: "mt:llm-chat-completions" }>;
 type GeminiAppImageMessage = Extract<RuntimeMessage, { type: "mt:gemini-app-image-translate" }>;
@@ -86,10 +87,12 @@ function getLlmProxyErrorData(error: unknown): Record<string, unknown> {
   return {};
 }
 
-export async function handleLlmChatCompletions(message: LlmChatMessage): Promise<LlmChatResponse> {
+export async function handleLlmChatCompletions(message: LlmChatMessage, signal?: AbortSignal): Promise<LlmChatResponse> {
+  throwIfSignalAborted(signal);
   const settings = await getSettings();
   const proxyConfig = resolveLlmProxyConfig(settings, message.proxyConfig);
   await createExtensionPermissions().assertGranted(AUTHENTICATION_INFO_PERMISSION);
+  throwIfSignalAborted(signal);
   const startedAt = Date.now();
   const baseLogData = {
     provider: proxyConfig.provider,
@@ -112,8 +115,8 @@ export async function handleLlmChatCompletions(message: LlmChatMessage): Promise
   });
   try {
     const data = proxyConfig.provider === 'openai' && proxyConfig.authMode === 'openai_oauth'
-      ? await proxyOpenAiChatCompletions(message.body, proxyConfig)
-      : await proxyApiKeyChatCompletions(settings, proxyConfig, message.body);
+      ? await proxyOpenAiChatCompletions(message.body, proxyConfig, signal)
+      : await proxyApiKeyChatCompletions(settings, proxyConfig, message.body, signal);
     await recordBackgroundDiagnosticLog(settings, {
       runId: message.diagnosticRunId,
       level: 'info',

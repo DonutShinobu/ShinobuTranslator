@@ -8,6 +8,12 @@ const extensionPackage = JSON.parse(
 ) as { version: string };
 
 describe('dual-target extension manifests', () => {
+  it.each(['chromium', 'firefox'] as const)('preserves the approved description for %s', (target) => {
+    expect(createExtensionManifest(target, extensionPackage.version).description).toBe(
+      '用于 X / Pixiv 的漫画翻译器（支持谷歌翻译和大模型翻译）',
+    );
+  });
+
   it('keeps shared capability intent and version aligned across manifest versions', () => {
     const chromium = createExtensionManifest('chromium', extensionPackage.version);
     const firefox = createExtensionManifest('firefox', extensionPackage.version);

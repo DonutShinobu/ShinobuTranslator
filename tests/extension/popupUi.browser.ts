@@ -312,6 +312,7 @@ async function checkInteractions(page: Page) {
     ['Kimi (月之暗面)', 'kimi', 'kimi-k2.6', 'toggle'],
     ['MiniMax', 'minimax', 'MiniMax-M2.7', 'fixed'],
     ['MiniMax', 'minimax', 'MiniMax-M3', 'toggle'],
+    ['MiniMax', 'minimax', 'MiniMax-M3.1-Flash', 'slider'],
     ['MiMo (小米)', 'mimo', 'mimo-v2.6-pro', 'toggle'],
     ['MiMo (小米)', 'mimo', 'mimo-v2.6-flash', 'toggle'],
   ] as const) {

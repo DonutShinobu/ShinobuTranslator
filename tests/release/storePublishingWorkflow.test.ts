@@ -27,7 +27,14 @@ describe('extension store release workflow', () => {
     expect(workflow).toContain('--approval-timeout 0');
   });
 
-  it('syncs listing after Firefox submission and supports a listing-only manual run', () => {
+  it('submits only version metadata without overwriting the Firefox listing', () => {
+    expect(workflow).toContain("jq '{version: .version}' apps/extension/amo/metadata.json");
+    expect(workflow).toContain('--amo-metadata "$RUNNER_TEMP/amo-version-metadata.json"');
+    expect(workflow).not.toContain('--amo-metadata apps/extension/amo/metadata.json');
+    expect(workflow).toContain('--upload-source-code "${{ steps.firefox-package.outputs.source-archive }}"');
+  });
+
+  it('syncs media and release notes after Firefox submission and supports a manual run', () => {
     expect(workflow).toContain('workflow_dispatch:');
     expect(workflow).toContain('listing_tag:');
     expect(workflow).toMatch(/sync_firefox_listing:[\s\S]*?needs: publish_firefox/);

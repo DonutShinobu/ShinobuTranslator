@@ -87,6 +87,7 @@ describe("built-in LLM catalog", () => {
         baseUrl: "https://api.minimax.io/v1",
         models: [
           "MiniMax-M3",
+          "MiniMax-M3.1-Flash",
           "MiniMax-M2.7",
           "MiniMax-M2.5",
         ],
@@ -125,6 +126,18 @@ describe("built-in LLM catalog", () => {
     expect(llmProviderOptions.map((option) => option.value)).toEqual([
       'deepseek', 'gemini', 'glm', 'kimi', 'alibaba', 'doubao', 'minimax', 'mimo', 'openai', 'custom',
     ]);
+  });
+
+  it('adds MiniMax Flash without changing the default or existing model selections', () => {
+    expect(normalizeSettings({}).llmProfiles.minimax.modelPreset).toBe('MiniMax-M3');
+    for (const model of ['MiniMax-M3', 'MiniMax-M3.1-Flash', 'MiniMax-M2.7', 'MiniMax-M2.5']) {
+      const settings = normalizeSettings({
+        translator: 'llm', llmProvider: 'minimax',
+        llmProfiles: { minimax: { modelPreset: model } },
+      });
+      expect(toPipelineConfig(settings).llmModel).toBe(model);
+      expect(normalizeSettings(settings)).toEqual(settings);
+    }
   });
 
   it.each([

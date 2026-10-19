@@ -88,6 +88,9 @@ function expectedRemoteOptions(
     return capability.levels.includes('off') ? [{ type: 'toggle' }] : [];
   }
   if (localProvider === 'minimax') {
+    if (model === 'MiniMax-M3.1-Flash') {
+      return [{ type: 'effort', values: capability.levels }];
+    }
     return model === 'MiniMax-M3' ? [{ type: 'toggle' }] : [];
   }
   if (localProvider === 'mimo') {

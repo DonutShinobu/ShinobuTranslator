@@ -53,7 +53,7 @@ export const llmBuiltInProviderDefinitions: Record<
   minimax: {
     label: 'MiniMax', webLabel: 'MiniMax',
     baseUrl: 'https://api.minimax.io/v1',
-    models: ['MiniMax-M3', 'MiniMax-M2.7', 'MiniMax-M2.5'],
+    models: ['MiniMax-M3', 'MiniMax-M3.1-Flash', 'MiniMax-M2.7', 'MiniMax-M2.5'],
     defaultAuthMode: 'api_key',
   },
   mimo: {

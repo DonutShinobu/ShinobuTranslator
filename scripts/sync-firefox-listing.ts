@@ -8,7 +8,7 @@ import { SHINOBU_CHROME_EXTENSION_ID } from './publish-chrome-web-store.mjs';
 const AMO = 'https://addons.mozilla.org/api/v5/addons/addon/shinobu-translator%40donutshinobu/';
 const CHROME = `https://chromewebstore.google.com/detail/shinobutranslator/${SHINOBU_CHROME_EXTENSION_ID}`;
 
-type Listing = { name: string; summary: string; description: string; icon: string; screenshots: string[] };
+type Listing = { icon: string; screenshots: string[] };
 type Release = { tagName: string; body: string; isDraft: boolean; isPrerelease: boolean };
 type Preview = { id: number };
 
@@ -39,11 +39,8 @@ export function parseChromeListing(html: string): Listing {
     if (!Array.isArray(media) || media[0] !== 1) throw new Error('Unsupported Chrome listing media');
     return imageUrl(media[1]);
   });
-  const summary = requiredText(data[0][6]);
-  if (summary.length > 250) throw new Error('Chrome summary exceeds AMO limit');
   return {
-    name: requiredText(data[0][2]), summary,
-    description: requiredText(data[6]), icon: imageUrl(data[0][1]), screenshots,
+    icon: imageUrl(data[0][1]), screenshots,
   };
 }
 
@@ -74,14 +71,7 @@ export async function syncFirefoxListing(options: {
     if (!response.ok) throw new Error(`${init.method ?? 'GET'} ${url}: HTTP ${response.status}`);
     return response;
   };
-  const listings: Record<string, Listing> = {};
-  for (const locale of ['en-US', 'zh-CN']) {
-    listings[locale] = parseChromeListing(await (await request(`${CHROME}?hl=${locale}`)).text());
-  }
-  const source = listings['zh-CN'];
-  const fields = Object.fromEntries(['name', 'summary', 'description'].map((field) => [
-    field, Object.fromEntries(Object.entries(listings).map(([locale, listing]) => [locale, listing[field as keyof Listing]])),
-  ]));
+  const source = parseChromeListing(await (await request(`${CHROME}?hl=zh-CN`)).text());
   // Download and validate every source image before making any AMO changes.
   const downloadImage = async (url: string) => {
     const response = await request(url, { headers: { Accept: 'image/png,image/jpeg' } });
@@ -94,7 +84,7 @@ export async function syncFirefoxListing(options: {
   const icon = await downloadImage(`${source.icon}=s128-rj`);
   const screenshots: Blob[] = [];
   for (const url of source.screenshots) screenshots.push(await downloadImage(`${url}=s0-rj`));
-  console.log(JSON.stringify({ release: release.tagName, fields, screenshots: screenshots.length, dryRun: Boolean(dryRun) }, null, 2));
+  console.log(JSON.stringify({ release: release.tagName, screenshots: screenshots.length, dryRun: Boolean(dryRun) }, null, 2));
   if (dryRun) return;
 
   const amo = async (path: string, method = 'GET', body?: object | FormData) => {
@@ -126,8 +116,10 @@ export async function syncFirefoxListing(options: {
     throw new Error('Unexpected AMO listing response');
   }
   const versionPath = `versions/${release.tagName.slice(1)}/`;
-  await amo(versionPath); // Do not update a listing for a version that was never submitted.
-  await amo('', 'PATCH', fields);
+  const version = await (await amo(versionPath)).json();
+  if (version.version !== release.tagName.slice(1)) {
+    throw new Error('Unexpected AMO version response');
+  }
   const form = new FormData();
   form.set('icon', icon, icon.type === 'image/png' ? 'icon.png' : 'icon.jpg');
   await amo('', 'PATCH', form);
@@ -141,7 +133,7 @@ export async function syncFirefoxListing(options: {
     await amo('previews/', 'POST', preview);
   }
   for (const preview of before.previews as Preview[]) await amo(`previews/${preview.id}/`, 'DELETE');
-  console.log(`Firefox listing synced from Chrome; release notes: ${release.tagName}`);
+  console.log(`Firefox media synced from Chrome; release notes: ${release.tagName}`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

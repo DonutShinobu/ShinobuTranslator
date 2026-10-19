@@ -132,6 +132,10 @@ export const llmThinkingCapabilityRegistry: Record<string, LlmThinkingCapability
     levels: ['off', 'on'],
     defaultLevel: 'off',
   },
+  'minimax/MiniMax-M3.1-Flash': {
+    levels: ['low', 'medium', 'high', 'xhigh', 'max'],
+    defaultLevel: 'max',
+  },
   'minimax/MiniMax-M2.7': {
     levels: ['on'],
     defaultLevel: 'on',
@@ -287,6 +291,8 @@ export function adaptLlmThinkingChatCompletionRequest(
       request.thinking = {
         type: level === 'off' ? 'disabled' : 'adaptive',
       };
+    } else if (context.model === 'MiniMax-M3.1-Flash') {
+      request.reasoning_effort = level === 'off' || level === 'on' ? 'max' : level;
     }
     return request;
   }

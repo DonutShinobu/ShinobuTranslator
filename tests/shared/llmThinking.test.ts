@@ -46,6 +46,36 @@ describe('built-in LLM thinking capabilities', () => {
     })).toMatchObject({ thinking: { type: 'enabled' }, reasoning_effort: 'low' });
   });
 
+  it('maps every MiniMax Flash effort and falls back to max without disabling thinking', () => {
+    const model = 'MiniMax-M3.1-Flash';
+    const key = `minimax/${model}`;
+    for (const level of ['low', 'medium', 'high', 'xhigh', 'max', 'off', 'on', undefined] as const) {
+      const expected = level === 'off' || level === 'on' || level === undefined ? 'max' : level;
+      const body = {
+        model, messages: [], response_format: { type: 'json_object' as const },
+        thinking: { type: 'disabled' as const }, reasoning_split: false,
+        reasoning_effort: 'none' as const,
+      };
+      const context = { provider: 'minimax' as const, model, level };
+      const request = adaptLlmThinkingChatCompletionRequest(body, context);
+      expect(request).toEqual({ model, messages: [], reasoning_split: true, reasoning_effort: expected });
+      expect(adaptLlmThinkingChatCompletionRequest(request, context)).toEqual(request);
+      expect(normalizeLlmThinkingByModel({ [key]: level })[key]).toBe(expected);
+      expect(body).toMatchObject({ thinking: { type: 'disabled' }, reasoning_split: false, reasoning_effort: 'none' });
+    }
+    expect(createDefaultLlmThinkingByModel()[key]).toBe('max');
+    expect(getLlmThinkingControl('minimax', model)).toEqual({
+      kind: 'slider',
+      options: [
+        { value: 'low', label: 'Low' },
+        { value: 'medium', label: 'Medium' },
+        { value: 'high', label: 'High' },
+        { value: 'xhigh', label: 'XHigh' },
+        { value: 'max', label: 'Max' },
+      ],
+    });
+  });
+
   it.each([
     'doubao-seed-evolving',
     'doubao-seed-2-1-pro-260915',
@@ -137,6 +167,10 @@ describe('built-in LLM thinking capabilities', () => {
       'minimax/MiniMax-M3': {
         levels: ['off', 'on'],
         defaultLevel: 'off',
+      },
+      'minimax/MiniMax-M3.1-Flash': {
+        levels: ['low', 'medium', 'high', 'xhigh', 'max'],
+        defaultLevel: 'max',
       },
       'minimax/MiniMax-M2.7': {
         levels: ['on'],

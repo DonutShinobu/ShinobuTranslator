@@ -72,4 +72,24 @@ describe('LLM thinking capability drift', () => {
     expect(console.warn).toHaveBeenCalledTimes(2);
     expect(console.error).toHaveBeenCalledWith(expect.stringContaining('doubao/doubao-unknown: models.dev 缺少对应模型'));
   });
+
+  it.each([false, true])('checks MiniMax Flash effort data and detects drift (%s)', async (drift) => {
+    const key = 'minimax/MiniMax-M3.1-Flash';
+    registry[key] = { levels: ['low', 'medium', 'high', 'xhigh', 'max'], defaultLevel: 'max' };
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({
+      minimax: {
+        models: {
+          'MiniMax-M3.1-Flash': {
+            reasoning_options: [{ type: 'effort', values: drift ? ['low'] : ['low', 'medium', 'high', 'xhigh', 'max'] }],
+          },
+        },
+      },
+    })));
+
+    await import('../../scripts/check-llm-thinking-capability-drift');
+
+    expect(process.exitCode).toBe(drift ? 1 : 0);
+    if (drift) expect(console.error).toHaveBeenCalledWith(expect.stringContaining(`${key}: reasoning_options 已变化`));
+    else expect(console.error).not.toHaveBeenCalled();
+  });
 });

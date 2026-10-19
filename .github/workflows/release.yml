@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       listing_tag:
-        description: 'Sync Firefox listing only, using this existing stable release (e.g. v0.8.3)'
+        description: 'Sync Firefox media and release notes, preserving listing text (e.g. v0.8.3)'
         required: true
         type: string
 
@@ -209,13 +209,14 @@ jobs:
 
       - name: Submit listed Firefox build to AMO
         run: |
+          jq '{version: .version}' apps/extension/amo/metadata.json > "$RUNNER_TEMP/amo-version-metadata.json"
           npx --no-install web-ext sign \
             --source-dir "${{ steps.firefox-package.outputs.source-dir }}" \
             --artifacts-dir "${{ steps.firefox-package.outputs.artifacts-dir }}" \
             --channel listed \
             --api-key "$WEB_EXT_API_KEY" \
             --api-secret "$WEB_EXT_API_SECRET" \
-            --amo-metadata apps/extension/amo/metadata.json \
+            --amo-metadata "$RUNNER_TEMP/amo-version-metadata.json" \
             --upload-source-code "${{ steps.firefox-package.outputs.source-archive }}" \
             --approval-timeout 0 \
             --no-input
@@ -224,7 +225,7 @@ jobs:
           WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}
 
   sync_firefox_listing:
-    name: Sync Firefox store listing
+    name: Sync Firefox media and release notes
     concurrency:
       group: firefox-store-listing
       cancel-in-progress: false
@@ -246,7 +247,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.event.release.tag_name || inputs.listing_tag }}
         run: gh release view "$RELEASE_TAG" --json tagName,body,isDraft,isPrerelease > "$RUNNER_TEMP/firefox-listing-release.json"
-      - name: Copy Chrome listing and GitHub release notes to AMO
+      - name: Copy Chrome media and GitHub release notes to AMO
         env:
           WEB_EXT_API_KEY: ${{ secrets.WEB_EXT_API_KEY }}
           WEB_EXT_API_SECRET: ${{ secrets.WEB_EXT_API_SECRET }}

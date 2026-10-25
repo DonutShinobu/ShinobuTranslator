@@ -92,7 +92,7 @@ async function packageSource() {
     ['ls-files', '--cached', '--others', '--exclude-standard', '-z'],
     { cwd: root },
   ).toString('utf8').split('\0').filter(Boolean).sort();
-  const excluded = /^(?:artifacts|node_modules|apps\/extension\/dist(?:-|\/)|\.codegraph)(?:\/|$)/;
+  const excluded = /^(?:(?:artifacts|node_modules|\.codegraph)(?:\/|$)|apps\/extension\/dist(?:-|\/|$))/;
   const entries = listed
     .filter((path) => !excluded.test(path.replaceAll('\\', '/')))
     .filter((path) => existsSync(resolve(root, path)))
@@ -109,7 +109,7 @@ async function packageSource() {
 }
 
 const outputs = [];
-if (chromiumDir) outputs.push(await packageDist('chromium', chromiumDir));
+if (chromiumDir) outputs.push(await packageDist('chrome', chromiumDir));
 if (firefoxDir) outputs.push(await packageDist('firefox', firefoxDir));
 outputs.push(await packageSource());
 const parityReport = join(artifactsDir, 'extension-parity-report.json');

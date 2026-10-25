@@ -1,5 +1,6 @@
 import { twitterAdapter } from './adapters/twitter';
 import { pixivAdapter } from './adapters/pixiv';
+import { ehentaiAdapter } from './adapters/ehentai';
 import { gomurawAdapter } from './adapters/gomuraw';
 import type { SiteAdapter } from './core/types';
 import { TranslatorCore } from './core/TranslatorCore';
@@ -33,7 +34,12 @@ function createNullAdapter(): SiteAdapter {
   };
 }
 
-const adapters = [twitterAdapter, pixivAdapter, gomurawAdapter];
+const adapters = [
+  twitterAdapter,
+  pixivAdapter,
+  ...(import.meta.env.SHINOBU_CHROME_STORE ? [] : [ehentaiAdapter]),
+  gomurawAdapter,
+];
 const contentSessionId = createContentSessionId();
 setActiveContentSessionId(contentSessionId);
 let contentSessionPort: ExtensionPort | null = null;

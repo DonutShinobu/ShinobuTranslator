@@ -120,6 +120,10 @@ export const llmThinkingCapabilityRegistry: Record<string, LlmThinkingCapability
     levels: ['low', 'high', 'max'],
     defaultLevel: 'max',
   },
+  'kimi/kimi-k3.1-pro': {
+    levels: ['low', 'high', 'max'],
+    defaultLevel: 'max',
+  },
   'kimi/kimi-k2.7-code': {
     levels: ['on'],
     defaultLevel: 'on',
@@ -326,7 +330,7 @@ export function adaptLlmThinkingChatCompletionRequest(
   }
 
   if (context.provider === 'kimi') {
-    if (context.model === 'kimi-k3') {
+    if (context.model === 'kimi-k3' || context.model === 'kimi-k3.1-pro') {
       request.reasoning_effort = level === 'low' || level === 'high' ? level : 'max';
     } else {
       request.thinking = {

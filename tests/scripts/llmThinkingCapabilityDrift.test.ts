@@ -29,6 +29,26 @@ afterEach(() => {
 });
 
 describe('LLM thinking capability drift', () => {
+  it.each([false, true])('checks Kimi K3.1 Pro effort data and detects drift (%s)', async (drift) => {
+    const key = 'kimi/kimi-k3.1-pro';
+    registry[key] = { levels: ['low', 'high', 'max'], defaultLevel: 'max' };
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({
+      moonshotai: {
+        models: {
+          'kimi-k3.1-pro': {
+            reasoning_options: [{ type: 'effort', values: drift ? ['low'] : ['low', 'high', 'max'] }],
+          },
+        },
+      },
+    })));
+
+    await import('../../scripts/check-llm-thinking-capability-drift');
+
+    expect(process.exitCode).toBe(drift ? 1 : 0);
+    if (drift) expect(console.error).toHaveBeenCalledWith(expect.stringContaining(`${key}: reasoning_options 已变化`));
+    else expect(console.error).not.toHaveBeenCalled();
+  });
+
   it('uses the official snapshot only for the two missing Doubao IDs', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({ volcengine: { models: {} } })));
 

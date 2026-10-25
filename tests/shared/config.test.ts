@@ -80,7 +80,7 @@ describe("built-in LLM catalog", () => {
       kimi: {
         label: "Kimi (月之暗面)",
         baseUrl: "https://api.moonshot.ai/v1",
-        models: ["kimi-k3", "kimi-k2.7-code", "kimi-k2.6"],
+        models: ["kimi-k3", "kimi-k3.1-pro", "kimi-k2.7-code", "kimi-k2.6"],
       },
       minimax: {
         label: "MiniMax",
@@ -134,6 +134,19 @@ describe("built-in LLM catalog", () => {
       const settings = normalizeSettings({
         translator: 'llm', llmProvider: 'minimax',
         llmProfiles: { minimax: { modelPreset: model } },
+      });
+      expect(toPipelineConfig(settings).llmModel).toBe(model);
+      expect(normalizeSettings(settings)).toEqual(settings);
+    }
+  });
+
+  it('adds Kimi K3.1 Pro without Highspeed or changing existing selections', () => {
+    expect(normalizeSettings({}).llmProfiles.kimi.modelPreset).toBe('kimi-k3');
+    expect(llmBuiltInProviderDefinitions.kimi.models).not.toContain('kimi-k3.1-pro-highspeed');
+    for (const model of llmBuiltInProviderDefinitions.kimi.models) {
+      const settings = normalizeSettings({
+        translator: 'llm', llmProvider: 'kimi',
+        llmProfiles: { kimi: { modelPreset: model } },
       });
       expect(toPipelineConfig(settings).llmModel).toBe(model);
       expect(normalizeSettings(settings)).toEqual(settings);

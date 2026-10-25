@@ -45,6 +45,39 @@ describe('resolveLlmChatCompletionsEndpoint', () => {
 });
 
 describe('proxyApiKeyChatCompletions', () => {
+  it('sends Kimi K3.1 Pro with supported effort and unchanged base64 image content', async () => {
+    const response = { choices: [{ message: { content: '译文' } }] };
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      Response.json(response),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const settings: ExtensionSettings = {
+      ...createDeepSeekSettings(),
+      llmProfiles: {
+        ...defaultExtensionSettings.llmProfiles,
+        kimi: { ...defaultExtensionSettings.llmProfiles.kimi, apiKey: 'test-kimi-key' },
+      },
+    };
+    const body = {
+      model: 'kimi-k3.1-pro',
+      messages: [{ role: 'user' as const, content: [
+        { type: 'image_url' as const, image_url: { url: 'data:image/png;base64,test' } },
+        { type: 'text' as const, text: '请翻译图片文字并返回 JSON。' },
+      ] }],
+      response_format: { type: 'json_object' as const },
+    };
+    for (const level of [undefined, 'low', 'high', 'max'] as const) {
+      await expect(proxyApiKeyChatCompletions(settings, {
+        provider: 'kimi', authMode: 'api_key',
+        baseUrl: llmBuiltInProviderDefinitions.kimi.baseUrl, thinkingLevel: level,
+      }, body)).resolves.toEqual(response);
+      const [endpoint, init] = fetchMock.mock.calls.at(-1)!;
+      expect(endpoint).toBe('https://api.moonshot.ai/v1/chat/completions');
+      expect(init?.headers).toMatchObject({ Authorization: 'Bearer test-kimi-key' });
+      expect(JSON.parse(init?.body as string)).toEqual({ ...body, reasoning_effort: level ?? 'max' });
+    }
+  });
+
   it.each(llmBuiltInProviderDefinitions.doubao.models)('sends %s to Ark with the stored Doubao key', async (model) => {
     const response = { choices: [{ message: { content: '译文' } }] };
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>

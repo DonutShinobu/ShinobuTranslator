@@ -308,6 +308,7 @@ async function checkInteractions(page: Page) {
     ['OpenAI', 'openai', 'gpt-6-sol', 'slider'],
     ['OpenAI', 'openai', 'gpt-6-luna', 'slider'],
     ['Kimi (月之暗面)', 'kimi', 'kimi-k3', 'slider'],
+    ['Kimi (月之暗面)', 'kimi', 'kimi-k3.1-pro', 'slider'],
     ['Kimi (月之暗面)', 'kimi', 'kimi-k2.7-code', 'fixed'],
     ['Kimi (月之暗面)', 'kimi', 'kimi-k2.6', 'toggle'],
     ['MiniMax', 'minimax', 'MiniMax-M2.7', 'fixed'],

@@ -29,7 +29,7 @@
 
 ### 手动安装
 
-1. 前往 [Releases](../../releases) 下载当前版本对应浏览器的压缩包：Chromium 使用 `ShinobuTranslator-chromium-v*.zip`，Firefox 使用 `ShinobuTranslator-firefox-v*.zip`
+1. 前往 [Releases](../../releases) 下载当前版本对应浏览器的压缩包：Chromium 使用 `ShinobuTranslator-chrome-v*.zip`，Firefox 使用 `ShinobuTranslator-firefox-v*.zip`
 2. 解压到本地文件夹
 3. Chrome / Edge：打开扩展管理页，启用「开发者模式」，选择「加载已解压的扩展程序」
 4. Firefox Desktop 140+：打开 `about:debugging#/runtime/this-firefox`，选择「临时载入附加组件」，再选择解压目录中的 `manifest.json`

@@ -82,7 +82,7 @@ function expectedRemoteOptions(
       : [{ type: 'effort', values: capability.levels.filter((level) => level !== 'off') }];
   }
   if (localProvider === 'kimi') {
-    if (model === 'kimi-k3') {
+    if (model === 'kimi-k3' || model === 'kimi-k3.1-pro') {
       return [{ type: 'effort', values: capability.levels }];
     }
     return capability.levels.includes('off') ? [{ type: 'toggle' }] : [];

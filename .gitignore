@@ -4,6 +4,7 @@ node_modules/
 # Build output
 dist/
 apps/extension/dist-chromium/
+apps/extension/dist-chrome-store/
 apps/extension/dist-firefox/
 apps/extension/dist-firefox-lifecycle-test/
 docs/*

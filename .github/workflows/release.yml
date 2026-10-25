@@ -26,6 +26,7 @@ jobs:
       contents: write
     env:
       EXTENSION_CHROMIUM_DIST: apps/extension/dist-chromium
+      EXTENSION_CHROME_STORE_DIST: apps/extension/dist-chrome-store
       EXTENSION_FIREFOX_DIST: apps/extension/dist-firefox
       # The release checks use the bundled CPU runtime, as CI does.
       ONNXRUNTIME_NODE_INSTALL: skip
@@ -53,6 +54,9 @@ jobs:
       - name: Run quality gates and dual-target build
         run: npm run check
 
+      - name: Build Chrome Web Store variant
+        run: npm run build:extension:chrome-store
+
       - name: Firefox lint audit
         run: npm run lint:firefox --workspace=@shinobu/extension
 
@@ -62,9 +66,11 @@ jobs:
           TAG_VERSION="${TAG_VERSION#v}"
           PACKAGE_VERSION=$(jq -r .version apps/extension/package.json)
           CHROMIUM_VERSION=$(jq -r .version "$EXTENSION_CHROMIUM_DIST/manifest.json")
+          CHROME_STORE_VERSION=$(jq -r .version "$EXTENSION_CHROME_STORE_DIST/manifest.json")
           FIREFOX_VERSION=$(jq -r .version "$EXTENSION_FIREFOX_DIST/manifest.json")
           test "$TAG_VERSION" = "$PACKAGE_VERSION"
           test "$TAG_VERSION" = "$CHROMIUM_VERSION"
+          test "$TAG_VERSION" = "$CHROME_STORE_VERSION"
           test "$TAG_VERSION" = "$FIREFOX_VERSION"
 
       - name: Generate parity report
@@ -81,27 +87,50 @@ jobs:
             --firefox "$EXTENSION_FIREFOX_DIST" \
             --artifacts artifacts
 
-      - name: Upload all release artifacts
+      - name: Package Chrome Web Store artifact
+        run: |
+          node scripts/package-extensions.mjs \
+            --chromium "$EXTENSION_CHROME_STORE_DIST" \
+            --artifacts artifacts/chrome-store
+
+      - name: Upload browser release packages
         run: |
           gh release upload "${{ github.event.release.tag_name }}" \
-            artifacts/ShinobuTranslator-chromium-*.zip \
-            artifacts/ShinobuTranslator-firefox-*.zip \
-            artifacts/ShinobuTranslator-source-*.zip \
-            artifacts/SHA256SUMS.txt \
-            artifacts/extension-parity-report.json \
+            artifacts/ShinobuTranslator-chrome-v*.zip \
+            artifacts/ShinobuTranslator-firefox-v*.zip \
             --repo "${{ github.repository }}" \
             --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Share verified store submission artifacts
+      - name: Share Chrome Web Store submission artifact
         uses: actions/upload-artifact@v4
         with:
-          name: extension-store-submission
+          name: chrome-store-submission
+          path: artifacts/chrome-store/ShinobuTranslator-chrome-v*.zip
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Share Firefox submission artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: firefox-store-submission
           path: |
-            artifacts/ShinobuTranslator-chromium-*.zip
-            artifacts/ShinobuTranslator-firefox-*.zip
+            artifacts/ShinobuTranslator-firefox-v*.zip
             artifacts/ShinobuTranslator-source-*.zip
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Retain internal release verification
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-release-verification
+          path: |
+            artifacts/SHA256SUMS.txt
+            artifacts/chrome-store/SHA256SUMS.txt
+            artifacts/extension-parity-report.json
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
@@ -124,10 +153,10 @@ jobs:
         with:
           node-version: 24
 
-      - name: Download verified store submission artifacts
+      - name: Download Chrome Web Store submission artifact
         uses: actions/download-artifact@v4
         with:
-          name: extension-store-submission
+          name: chrome-store-submission
           path: store-artifacts
 
       - name: Validate Chrome Web Store configuration
@@ -159,8 +188,8 @@ jobs:
         run: |
           VERSION="${{ github.event.release.tag_name }}"
           VERSION="${VERSION#v}"
-          PACKAGE=$(find store-artifacts -maxdepth 1 -name "ShinobuTranslator-chromium-v${VERSION}.zip" -print -quit)
-          test -n "$PACKAGE"
+          PACKAGE="store-artifacts/ShinobuTranslator-chrome-v${VERSION}.zip"
+          test -f "$PACKAGE"
           node scripts/publish-chrome-web-store.mjs \
             --package "$PACKAGE" \
             --version "$VERSION"
@@ -186,10 +215,10 @@ jobs:
       - name: Install locked web-ext
         run: npm ci --ignore-scripts
 
-      - name: Download verified store submission artifacts
+      - name: Download Firefox submission artifacts
         uses: actions/download-artifact@v4
         with:
-          name: extension-store-submission
+          name: firefox-store-submission
           path: store-artifacts
 
       - name: Extract Firefox submission package
@@ -197,10 +226,10 @@ jobs:
         run: |
           VERSION="${{ github.event.release.tag_name }}"
           VERSION="${VERSION#v}"
-          FIREFOX_ARCHIVE=$(find store-artifacts -maxdepth 1 -name "ShinobuTranslator-firefox-v${VERSION}.zip" -print -quit)
-          SOURCE_ARCHIVE=$(find store-artifacts -maxdepth 1 -name "ShinobuTranslator-source-v${VERSION}.zip" -print -quit)
-          test -n "$FIREFOX_ARCHIVE"
-          test -n "$SOURCE_ARCHIVE"
+          FIREFOX_ARCHIVE="store-artifacts/ShinobuTranslator-firefox-v${VERSION}.zip"
+          SOURCE_ARCHIVE="store-artifacts/ShinobuTranslator-source-v${VERSION}.zip"
+          test -f "$FIREFOX_ARCHIVE"
+          test -f "$SOURCE_ARCHIVE"
           mkdir -p "$RUNNER_TEMP/firefox-dist" "$RUNNER_TEMP/amo-signed"
           unzip -q "$FIREFOX_ARCHIVE" -d "$RUNNER_TEMP/firefox-dist"
           echo "source-dir=$RUNNER_TEMP/firefox-dist" >> "$GITHUB_OUTPUT"

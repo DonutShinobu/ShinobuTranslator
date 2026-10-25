@@ -13,6 +13,8 @@ function readRequiredOption(name) {
 
 const extensionRoot = resolve(import.meta.dirname, '..');
 const outputDir = resolve(process.cwd(), readRequiredOption('--out-dir'));
+const chromeStore = process.argv.includes('--chrome-store');
+const chromium = chromeStore || outputDir.endsWith('dist-chromium');
 
 await build({
   configFile: false,
@@ -20,9 +22,12 @@ await build({
   publicDir: false,
   plugins: [
     tailwindcss(),
-    outputDir.endsWith('dist-chromium') ? chromiumColdStartPlugin : firefoxColdStartPlugin,
+    chromium ? chromiumColdStartPlugin : firefoxColdStartPlugin,
     ...(outputDir.endsWith('dist-firefox') ? [firefoxLintSourceMapsPlugin(outputDir)] : []),
   ],
+  define: {
+    'import.meta.env.SHINOBU_CHROME_STORE': JSON.stringify(chromeStore),
+  },
   build: {
     outDir: outputDir,
     emptyOutDir: false,

@@ -156,6 +156,10 @@ describe('built-in LLM thinking capabilities', () => {
         levels: ['low', 'high', 'max'],
         defaultLevel: 'max',
       },
+      'kimi/kimi-k3.1-pro': {
+        levels: ['low', 'high', 'max'],
+        defaultLevel: 'max',
+      },
       'kimi/kimi-k2.7-code': {
         levels: ['on'],
         defaultLevel: 'on',
@@ -276,13 +280,13 @@ describe('built-in LLM thinking capabilities', () => {
     });
   });
 
-  it('preserves saved K3 effort and normalizes unsupported off to max', () => {
+  it.each(['kimi-k3', 'kimi-k3.1-pro'])('preserves saved %s effort and normalizes unsupported off to max', (model) => {
     for (const level of ['low', 'high', 'max', 'off'] as const) {
       const expected = level === 'off' ? 'max' : level;
-      expect(normalizeLlmThinkingByModel({ 'kimi/kimi-k3': level })['kimi/kimi-k3']).toBe(expected);
-      const request = adaptLlmThinkingChatCompletionRequest({ model: 'kimi-k3', messages: [],
+      expect(normalizeLlmThinkingByModel({ [`kimi/${model}`]: level })[`kimi/${model}`]).toBe(expected);
+      const request = adaptLlmThinkingChatCompletionRequest({ model, messages: [],
         thinking: { type: 'disabled' }, reasoning_effort: 'none' }, {
-        provider: 'kimi', model: 'kimi-k3', level,
+        provider: 'kimi', model, level,
       });
       expect(request.reasoning_effort).toBe(expected);
       expect(request).not.toHaveProperty('thinking');

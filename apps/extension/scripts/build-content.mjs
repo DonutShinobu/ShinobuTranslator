@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import { build } from 'vite';
+import tailwindcss from '@tailwindcss/vite';
 import { chromiumColdStartPlugin, firefoxColdStartPlugin } from '../../../scripts/cold-start-defaults.mjs';
 import { firefoxLintSourceMapsPlugin } from '../../../scripts/firefox-lint-source-maps.mjs';
 
@@ -18,6 +19,7 @@ await build({
   root: extensionRoot,
   publicDir: false,
   plugins: [
+    tailwindcss(),
     outputDir.endsWith('dist-chromium') ? chromiumColdStartPlugin : firefoxColdStartPlugin,
     ...(outputDir.endsWith('dist-firefox') ? [firefoxLintSourceMapsPlugin(outputDir)] : []),
   ],

@@ -179,7 +179,7 @@ export function renderStageTimingCard(ui: UiElements, state: PhotoState | null):
   ui.stageTimingRuntimeList.replaceChildren();
   for (const runtime of card.runtimes) {
     const chip = document.createElement('span');
-    chip.className = 'mt-x-runtime-node';
+    chip.className = 'mt-x-runtime-node mt:rounded-concentric-[11px] mt:concentric-squircle';
     chip.dataset.status = runtime.status;
     chip.dataset.tooltip = runtime.detail;
     chip.setAttribute('aria-label', `${runtime.label}：${runtime.providerText}，${runtime.detail}`);

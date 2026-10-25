@@ -2,6 +2,7 @@
 @layer theme, base, components, utilities;
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities) source(none);
+@import "tailwindcss-concentric";
 @import "tw-animate-css";
 @source "./App.tsx";
 @source "./components/ui";
@@ -23,6 +24,10 @@
   --color-border: var(--border-subtle);
   --color-input: var(--border-default);
   --color-ring: var(--accent);
+}
+
+@theme {
+  --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
@@ -55,13 +60,37 @@
   --success: oklch(0.55 0.15 155);
   --warning: oklch(0.60 0.15 75);
   --error: oklch(0.55 0.18 25);
+}
 
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+@supports (corner-shape: squircle) {
+  :root {
+    /* Squircle radii need this scale to retain the controls' apparent roundness. */
+    --radius-xs: calc(4px * 1.8409);
+    --radius-sm: calc(6px * 1.8409);
+    --radius-md: calc(10px * 1.8409);
+    --radius-lg: calc(14px * 1.8409);
+  }
 }
 
 /* ── Global ── */
+:where(.popup, .popup *, .select-menu, .select-menu *, .mode-options-menu, .mode-options-menu *, [data-slot='tooltip-content'], [data-slot='tooltip-content'] *) {
+  @apply concentric-squircle;
+
+  &::before,
+  &::after {
+    corner-shape: inherit;
+  }
+}
+
+[data-slot='switch'],
+[data-slot='switch-thumb'],
+[data-slot='badge'],
+[data-slot='slider-track'],
+[data-slot='slider-range'],
+[data-slot='slider-thumb'] {
+  corner-shape: round;
+}
+
 html, body {
   margin: 0;
   padding: 0;
@@ -598,8 +627,6 @@ body {
 .select-option {
   min-height: 31px;
   padding: 5px 27px 5px calc(10px - var(--select-menu-padding));
-  /* Keep nested corners concentric, including the menu's border in the inset. */
-  border-radius: max(0px, calc(var(--radius-md) - var(--select-menu-border-width) - var(--select-menu-padding)));
   scroll-margin-block: var(--select-menu-padding);
   color: var(--text-secondary);
   font-family: inherit;
@@ -680,6 +707,7 @@ body {
   width: 24px;
   height: 24px;
   border-radius: 50%;
+  corner-shape: round;
   transition: color 150ms ease-out, background-color 150ms ease-out;
 }
 
@@ -930,7 +958,7 @@ body {
   margin: 0;
   padding: 0;
   border: 1.5px solid oklch(0.76 0.04 350);
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: var(--bg-input);
   cursor: pointer;
   flex-shrink: 0;
@@ -999,7 +1027,6 @@ body {
   top: 3px;
   left: 3px;
   height: calc(100% - 6px);
-  border-radius: calc(var(--radius-md) - 2px);
   background: var(--accent);
   pointer-events: none;
   transition: transform 250ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -1013,7 +1040,6 @@ body {
   height: 31px;
   padding: 5px 0;
   border: none;
-  border-radius: calc(var(--radius-md) - 2px);
   background: transparent;
   color: var(--text-secondary);
   font-size: 12.5px;
@@ -1062,6 +1088,7 @@ body {
   height: 7px;
   flex: 0 0 auto;
   border-radius: 50%;
+  corner-shape: round;
   background: oklch(0.72 0.01 350);
 }
 
@@ -1173,6 +1200,7 @@ body {
 .thinking-slider [data-slot='slider-track'] {
   height: 16px;
   border-radius: 999px;
+  corner-shape: round;
   background: oklch(0.925 0.008 350);
   box-shadow: inset 0 0 0 1px oklch(0.84 0.012 350 / 0.72);
 }
@@ -1233,6 +1261,7 @@ body {
   width: 4px;
   height: 4px;
   border-radius: 50%;
+  corner-shape: round;
   background: oklch(0.69 0.012 350);
   transform: translate(-50%, -50%);
   transition: background 180ms ease-out, opacity 180ms ease-out;

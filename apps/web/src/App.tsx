@@ -905,10 +905,10 @@ export function App() {
             <Icon name="add" />
             <span>{pwaInstall.installed ? copy.appInstalled : copy.installApp}</span>
           </button>
-          <div className="locale-switch" aria-label="界面语言">
+          <div className="locale-switch rounded-sm" aria-label="界面语言">
             <button
               type="button"
-              className={settings.uiLocale === 'zh-CN' ? 'locale-active' : ''}
+              className={`rounded-concentric-[3px]${settings.uiLocale === 'zh-CN' ? ' locale-active' : ''}`}
               aria-pressed={settings.uiLocale === 'zh-CN'}
               onClick={() => patchSettings({ uiLocale: 'zh-CN' as UiLocale })}
             >
@@ -916,7 +916,7 @@ export function App() {
             </button>
             <button
               type="button"
-              className={settings.uiLocale === 'zh-TW' ? 'locale-active' : ''}
+              className={`rounded-concentric-[3px]${settings.uiLocale === 'zh-TW' ? ' locale-active' : ''}`}
               aria-pressed={settings.uiLocale === 'zh-TW'}
               onClick={() => patchSettings({ uiLocale: 'zh-TW' as UiLocale })}
             >
@@ -1174,12 +1174,13 @@ export function App() {
               )}
             </div>
             <div
-              className="preview-tabs"
+              className="preview-tabs rounded-sm"
               data-mode={previewMode}
               aria-label={copy.preview}
             >
-              <span className="preview-tab-indicator" aria-hidden="true" />
+              <span className="preview-tab-indicator rounded-concentric-[3px]" aria-hidden="true" />
               <button
+                className="rounded-concentric-[3px]"
                 type="button"
                 aria-pressed={previewMode === 'original'}
                 onClick={() => setPreviewMode('original')}
@@ -1187,6 +1188,7 @@ export function App() {
                 {copy.original}
               </button>
               <button
+                className="rounded-concentric-[3px]"
                 type="button"
                 aria-pressed={previewMode === 'result'}
                 disabled={selectedJob?.status !== 'done'}
@@ -1201,8 +1203,9 @@ export function App() {
           <div className="preview-stage">
             {selectedImage && visiblePreviewUrl ? (
               <>
-                <div className="preview-toolbar" aria-label={copy.previewZoom}>
+                <div className="preview-toolbar rounded-md" aria-label={copy.previewZoom}>
                   <button
+                    className="rounded-concentric-[4px]"
                     type="button"
                     aria-label={copy.zoomOut}
                     title={copy.zoomOut}
@@ -1212,7 +1215,7 @@ export function App() {
                     <Icon name="zoom-out" />
                   </button>
                   <button
-                    className="preview-scale-button"
+                    className="preview-scale-button rounded-concentric-[4px]"
                     type="button"
                     aria-label={copy.previewFit}
                     title={copy.previewFit}
@@ -1223,6 +1226,7 @@ export function App() {
                     <span>{previewScaleLabel}</span>
                   </button>
                   <button
+                    className="rounded-concentric-[4px]"
                     type="button"
                     aria-label={copy.zoomIn}
                     title={copy.zoomIn}
@@ -1313,14 +1317,15 @@ export function App() {
               onSubmit={(event) => event.preventDefault()}
             >
               <h2>{copy.processMode}</h2>
-              <div className="segmented-control" role="radiogroup" aria-label={copy.processMode}>
+              <div className="segmented-control rounded-md" role="radiogroup" aria-label={copy.processMode}>
                 <span
-                  className="segmented-indicator"
+                  className="segmented-indicator rounded-concentric-[4px]"
                   data-mode={settings.processMode}
                   aria-hidden="true"
                 />
                 {processModes.map((mode) => (
                   <button
+                    className="rounded-concentric-[4px]"
                     key={mode}
                     type="button"
                     role="radio"

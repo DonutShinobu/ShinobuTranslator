@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import { copyFileSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { browserRuntimeBoundaryPlugin } from '../../scripts/vite-browser-runtime-boundary';
@@ -17,6 +18,7 @@ export default defineConfig({
   plugins: [
     browserRuntimeBoundaryPlugin(),
     react(),
+    tailwindcss(),
     {
       name: 'shinobu-pages-config',
       closeBundle() {

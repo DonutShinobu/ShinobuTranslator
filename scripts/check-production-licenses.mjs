@@ -19,11 +19,12 @@ const ALLOWED_LICENSES = new Set([
 function queryProductionPackages() {
   const npmCli = process.env.npm_execpath;
   const command = npmCli ? process.execPath : process.platform === 'win32' ? 'cmd.exe' : 'npm';
+  // Production packages can also belong to the dev group through shared peers.
   const args = npmCli
-    ? [npmCli, 'query', ':not(.dev)', '--json']
+    ? [npmCli, 'query', '.prod', '--json']
     : process.platform === 'win32'
-      ? ['/d', '/s', '/c', 'npm query ":not(.dev)" --json']
-      : ['query', ':not(.dev)', '--json'];
+      ? ['/d', '/s', '/c', 'npm query .prod --json']
+      : ['query', '.prod', '--json'];
   const result = spawnSync(command, args, {
     cwd: ROOT,
     encoding: 'utf8',

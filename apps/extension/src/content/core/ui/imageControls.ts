@@ -70,9 +70,9 @@ export function createUiElements(): UiElements {
   root.appendChild(contextNoticeLine);
 
   const errorDetailCard = document.createElement('div');
-  errorDetailCard.className = 'mt-x-stage-card mt-x-error-detail-card';
+  errorDetailCard.className = 'mt-x-stage-card mt-x-error-detail-card mt:rounded-(--mt-stage-card-radius) mt:concentric-squircle';
   const errorDetailCardToggleButton = document.createElement('button');
-  errorDetailCardToggleButton.className = 'mt-x-stage-card-toggle';
+  errorDetailCardToggleButton.className = 'mt-x-stage-card-toggle mt:rounded-concentric-[1px] mt:concentric-squircle';
   errorDetailCardToggleButton.type = 'button';
 
   const errorDetailCardTitle = document.createElement('span');
@@ -96,16 +96,16 @@ export function createUiElements(): UiElements {
   const errorDetailCardBody = document.createElement('div');
   errorDetailCardBody.className = 'mt-x-stage-card-body';
   const errorDetailContent = document.createElement('pre');
-  errorDetailContent.className = 'mt-x-error-detail-content';
+  errorDetailContent.className = 'mt-x-error-detail-content mt:rounded-concentric-[11px] mt:concentric-squircle';
   errorDetailCardBody.appendChild(errorDetailContent);
   errorDetailCard.appendChild(errorDetailCardToggleButton);
   errorDetailCard.appendChild(errorDetailCardBody);
   root.appendChild(errorDetailCard);
 
   const stageTimingCard = document.createElement('div');
-  stageTimingCard.className = 'mt-x-stage-card';
+  stageTimingCard.className = 'mt-x-stage-card mt:rounded-(--mt-stage-card-radius) mt:concentric-squircle';
   const stageTimingCardToggleButton = document.createElement('button');
-  stageTimingCardToggleButton.className = 'mt-x-stage-card-toggle';
+  stageTimingCardToggleButton.className = 'mt-x-stage-card-toggle mt:rounded-concentric-[1px] mt:concentric-squircle';
   stageTimingCardToggleButton.type = 'button';
 
   const stageTimingCardTitle = document.createElement('span');

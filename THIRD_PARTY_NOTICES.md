@@ -106,7 +106,14 @@ LICENSE/NOTICE。
 - 完整许可证：`public/licenses/shadcn-ui.txt`，随 Chromium 和 Firefox 扩展构建复制。
 - Radix、Lucide、Tailwind 相关 npm 依赖的精确版本和许可证包含在 `THIRD_PARTY_DEPENDENCIES.json`。
 
-## 10) 翻译按钮的文字、图标动效与玻璃光学
+## 10) 连续曲率与同心圆角
+
+- 来源：`https://github.com/diip3sh/tailwindcss-concentric`，版本 `0.1.0`。
+- 许可证：MIT，Copyright (c) 2026 diip3sh。
+- 用途：通过 `rounded-concentric` 和 `concentric-squircle` 生成网页、弹窗与页面浮层的圆角样式。
+- 完整许可证：`public/licenses/tailwindcss-concentric.txt`，随网页及扩展构建复制。
+
+## 11) 翻译按钮的文字、图标动效与玻璃光学
 
 - Morphicons `1.7.1`：官方 npm 分发 `https://registry.npmjs.org/morphicons/-/morphicons-1.7.1.tgz`，上游 `https://github.com/guillermolg00/morphicons`，MIT，Copyright (c) 2026 Guillermo。用于 SVG 描边几何连续变形。
 - Torph `0.1.3`：官方 npm 分发 `https://registry.npmjs.org/torph/-/torph-0.1.3.tgz`，上游 `https://github.com/lochie/torph`，MIT，Copyright (c) 2025 Lochie Axon。用于文字字素匹配、位置与透明度过渡。
@@ -119,7 +126,7 @@ LICENSE/NOTICE。
 - 按压反馈另移植同版本 `src/dom/interaction.ts`、`src/core/spring.ts` 与 `src/styles.css`：保留按下膨胀、拖动的弹性阻力与拉伸、松开的解析弹簧回弹及触点白色光晕。修改记录：独立于上游场景调度器运行，补充隐藏、失焦、禁用与销毁处理；保留原生按钮点击和键盘语义，按压反馈不改变固定 45° 边缘光照。
 - Liquid DOM 前景颜色参考：`https://github.com/AndrewPrifer/liquid-dom/tree/dd342ab663d718e8b4edf4cd39983b9a873360a7`，MIT，Copyright (c) 2026 Andras Prifer。文字颜色选择使用该库 `ADAPTIVE_TINT.md` 的背景亮度分位值思路，针对通透按钮另行计算统一前景色。完整许可证 `public/licenses/liquid-dom.txt` 随 Chromium 和 Firefox 扩展构建复制。
 
-## 11) 免责声明
+## 12) 免责声明
 
 - 本文件仅用于工程合规记录，不构成法律意见。许可证冲突或权利范围不明确时，不以模型页
   标签代替权利人授权；是否公开分发由维护者结合上游材料自行决定。

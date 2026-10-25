@@ -1,6 +1,6 @@
 {
   "name": "@shinobu/extension",
-  "version": "0.8.6",
+  "version": "0.8.7",
   "private": true,
   "type": "module",
   "scripts": {
@@ -50,6 +50,7 @@
     "@vitejs/plugin-react": "^4.4.1",
     "@webgpu/types": "^0.1.70",
     "tailwindcss": "^4.3.3",
+    "tailwindcss-concentric": "0.1.0",
     "typescript": "^5.7.3",
     "vite": "^6.1.0"
   }

@@ -1,0 +1,36 @@
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme) prefix(mt);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+@import "tailwindcss-concentric";
+@source "./imageControls.ts";
+@source "./cards.ts";
+
+/* shortcut: explicit gap classes mirror custom CSS spacing; update them with its padding or borders. */
+.mt-x-stage-card {
+  --mt-stage-card-radius: 18px;
+}
+
+/* Prefix utilities so injected styles cannot change a page's own rounded controls. */
+.mt-x-stage-segment[data-tooltip]::after,
+.mt-x-stage-parallel-bar[data-tooltip]::after,
+.mt-x-runtime-node[data-tooltip]::after,
+.mt-x-screenshot-select-rect {
+  @apply mt:concentric-squircle;
+}
+
+/* Squircle extents are larger than circular radii for the same visible roundness. */
+@supports (corner-shape: squircle) {
+  .mt-x-stage-card {
+    --mt-stage-card-radius: calc(18px * 1.8409);
+  }
+
+  .mt-x-stage-segment[data-tooltip]::after,
+  .mt-x-stage-parallel-bar[data-tooltip]::after,
+  .mt-x-runtime-node[data-tooltip]::after {
+    border-radius: calc(12px * 1.8409);
+  }
+
+  .mt-x-screenshot-select-rect {
+    border-radius: calc(8px * 1.8409);
+  }
+}

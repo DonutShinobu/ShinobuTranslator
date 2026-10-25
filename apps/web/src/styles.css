@@ -1,3 +1,16 @@
+/* Keep native element defaults; Tailwind supplies only theme tokens and utilities. */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+@import "tailwindcss-concentric";
+@source "./";
+
+@theme {
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+}
+
 :root {
   color-scheme: light;
   font-family:
@@ -48,16 +61,30 @@
     0 2px 8px oklch(0.32 0.025 350 / 0.1),
     0 20px 50px oklch(0.32 0.025 350 / 0.13);
 
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
   --topbar-height: 64px;
   --mobile-nav-height: 64px;
   --motion-standard: cubic-bezier(0.22, 1, 0.36, 1);
+  --radius-shape-scale: 1;
+}
+
+@supports (corner-shape: squircle) {
+  :root {
+    /* A squircle needs a larger radius to retain the same visible roundness. */
+    --radius-shape-scale: 1.8409;
+    --radius-sm: calc(8px * var(--radius-shape-scale));
+    --radius-md: calc(12px * var(--radius-shape-scale));
+    --radius-lg: calc(16px * var(--radius-shape-scale));
+  }
 }
 
 * {
   box-sizing: border-box;
+}
+
+*,
+*::before,
+*::after {
+  @apply concentric-squircle;
 }
 
 html,
@@ -174,6 +201,7 @@ input:focus-visible {
   padding: 2px 6px;
   border: 1px solid var(--border-subtle);
   border-radius: 999px;
+  corner-shape: round;
   background: var(--accent-soft);
   color: var(--accent-hover);
   font-size: 10px;
@@ -276,7 +304,6 @@ input:focus-visible {
   grid-template-columns: repeat(2, 30px);
   padding: 2px;
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
   background: var(--bg-subtle);
 }
 
@@ -284,7 +311,6 @@ input:focus-visible {
   height: 27px;
   padding: 0;
   border: 0;
-  border-radius: 5px;
   background: transparent;
   color: var(--text-tertiary);
   font-size: 11.5px;
@@ -468,7 +494,7 @@ input:focus-visible {
   place-items: center;
   margin-bottom: 18px;
   border: 1px dashed var(--border-default);
-  border-radius: 22px;
+  border-radius: calc(22px * var(--radius-shape-scale));
   background: var(--accent-soft);
   color: var(--accent);
 }
@@ -488,6 +514,7 @@ input:focus-visible {
   place-items: center;
   border: 3px solid var(--bg-subtle);
   border-radius: 50%;
+  corner-shape: round;
   background: var(--accent);
   color: var(--text-on-accent);
 }
@@ -642,6 +669,7 @@ input:focus-visible {
 .queue-badges em {
   padding: 1px 5px;
   border-radius: 999px;
+  corner-shape: round;
   background: var(--accent-muted);
   color: var(--accent-hover);
   font-size: 10px;
@@ -693,7 +721,7 @@ input:focus-visible {
   place-items: center;
   padding: 0;
   border: 0;
-  border-radius: 5px;
+  border-radius: calc(5px * var(--radius-shape-scale));
   background: transparent;
   color: var(--text-tertiary);
   cursor: pointer;
@@ -751,7 +779,7 @@ input:focus-visible {
 .issues-header button {
   padding: 3px 6px;
   border: 0;
-  border-radius: 5px;
+  border-radius: calc(5px * var(--radius-shape-scale));
   background: transparent;
   color: var(--error);
   font-size: 9.5px;
@@ -808,7 +836,6 @@ input:focus-visible {
   flex: 0 0 auto;
   padding: 2px;
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
   background: var(--bg-subtle);
 }
 
@@ -818,7 +845,6 @@ input:focus-visible {
   bottom: 2px;
   left: 2px;
   width: calc((100% - 4px) / 2);
-  border-radius: 5px;
   background: var(--bg-surface);
   box-shadow: 0 1px 4px oklch(0.38 0.02 350 / 0.1);
   transform: translateX(0);
@@ -836,7 +862,6 @@ input:focus-visible {
   height: 30px;
   padding: 0 9px;
   border: 0;
-  border-radius: 5px;
   background: transparent;
   color: var(--text-tertiary);
   font-size: 12px;
@@ -881,7 +906,6 @@ input:focus-visible {
   gap: 2px;
   padding: 3px;
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--bg-surface) 90%, transparent);
   box-shadow: 0 8px 22px oklch(0.28 0.018 350 / 0.1);
   backdrop-filter: blur(12px);
@@ -896,7 +920,6 @@ input:focus-visible {
   gap: 5px;
   padding: 0 7px;
   border: 0;
-  border-radius: 7px;
   background: transparent;
   color: var(--text-secondary);
   font: inherit;
@@ -1008,7 +1031,7 @@ input:focus-visible {
   place-items: center;
   margin-bottom: 20px;
   border: 1px dashed var(--border-default);
-  border-radius: 26px;
+  border-radius: calc(26px * var(--radius-shape-scale));
   background: color-mix(in oklch, var(--bg-surface) 72%, transparent);
   color: var(--text-tertiary);
 }
@@ -1120,7 +1143,6 @@ input:focus-visible {
   gap: 3px;
   padding: 3px;
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
   background: var(--accent-soft);
 }
 
@@ -1131,7 +1153,6 @@ input:focus-visible {
   bottom: 3px;
   left: 3px;
   width: calc((100% - 6px) / var(--segment-count));
-  border-radius: 7px;
   background: var(--accent);
   box-shadow: 0 2px 7px oklch(0.47 0.07 350 / 0.18);
   transform: translateX(0);
@@ -1153,7 +1174,6 @@ input:focus-visible {
   min-height: 32px;
   padding: 5px 4px;
   border: 0;
-  border-radius: 7px;
   background: transparent;
   color: var(--text-secondary);
   font-size: 12px;
@@ -1369,7 +1389,7 @@ input:focus-visible {
   width: 31px;
   height: 31px;
   place-items: center;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--radius-shape-scale));
   background: var(--error-soft);
   color: var(--error);
 }
@@ -1426,7 +1446,7 @@ input:focus-visible {
   width: 31px;
   height: 31px;
   place-items: center;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--radius-shape-scale));
   background: var(--bg-disabled);
   color: var(--text-tertiary);
 }
@@ -1654,7 +1674,7 @@ input:focus-visible {
   height: 36px;
   flex: 0 0 auto;
   place-items: center;
-  border-radius: 11px;
+  border-radius: calc(11px * var(--radius-shape-scale));
   background: var(--accent-soft);
   color: var(--accent-hover);
 }
@@ -1972,6 +1992,7 @@ input:focus-visible {
 .history-badges span {
   padding: 5px 8px;
   border-radius: 999px;
+  corner-shape: round;
   background: var(--bg-subtle);
   color: var(--text-secondary);
   font-weight: 700;
@@ -2201,7 +2222,7 @@ input:focus-visible {
   display: grid;
   place-items: center;
   border: 2px dashed var(--accent);
-  border-radius: 20px;
+  border-radius: calc(20px * var(--radius-shape-scale));
   background: color-mix(in oklch, var(--bg-surface) 88%, transparent);
   color: var(--accent-hover);
   pointer-events: none;
@@ -2617,6 +2638,7 @@ input:focus-visible {
     place-items: center;
     padding: 0 4px;
     border-radius: 999px;
+    corner-shape: round;
     background: var(--accent);
     color: var(--text-on-accent);
     font-size: 8px;
@@ -2884,6 +2906,7 @@ input:focus-visible {
   padding: 0;
   border: 1px solid rgb(255 255 255 / 0.24);
   border-radius: 50%;
+  corner-shape: round;
   background: rgb(12 13 15 / 0.72);
   color: #fff;
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.24);
@@ -2929,6 +2952,7 @@ input:focus-visible {
   padding: 0;
   border: 3px solid #fff;
   border-radius: 50%;
+  corner-shape: round;
   background: rgb(0 0 0 / 0.18);
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.28);
   cursor: pointer;
@@ -2940,6 +2964,7 @@ input:focus-visible {
   width: 58px;
   height: 58px;
   border-radius: 50%;
+  corner-shape: round;
   background: #fff;
   transition:
     background 120ms var(--motion-standard),
@@ -2962,7 +2987,7 @@ input:focus-visible {
 .continuous-camera-capture-error {
   max-width: min(86vw, 420px);
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: rgb(12 13 15 / 0.82);
   color: #ffd5d5;
   font-size: 12px;
@@ -2982,7 +3007,7 @@ input:focus-visible {
   gap: 12px;
   padding: 24px;
   border: 1px solid rgb(255 255 255 / 0.16);
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   background: rgb(18 19 22 / 0.92);
   color: #fff;
   box-shadow: 0 20px 60px rgb(0 0 0 / 0.4);
@@ -3037,6 +3062,7 @@ input:focus-visible {
   place-items: center;
   border: 1px solid rgb(255 255 255 / 0.18);
   border-radius: 50%;
+  corner-shape: round;
   background: rgb(15 16 18 / 0.74);
   color: #fff;
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
@@ -3051,6 +3077,7 @@ input:focus-visible {
   border: 3px solid rgb(255 255 255 / 0.34);
   border-top-color: #fff;
   border-radius: 50%;
+  corner-shape: round;
   animation: continuous-camera-spin 800ms linear infinite;
 }
 
@@ -3067,7 +3094,7 @@ input:focus-visible {
   padding: 16px 18px;
   overflow: hidden;
   border: 1px solid rgb(255 255 255 / 0.18);
-  border-radius: 14px;
+  border-radius: calc(14px * var(--radius-shape-scale));
   background: rgb(15 16 18 / 0.9);
   color: #fff;
   box-shadow: 0 16px 44px rgb(0 0 0 / 0.38);
@@ -3110,6 +3137,7 @@ input:focus-visible {
   padding: 0 22px;
   border: 1px solid rgb(255 255 255 / 0.3);
   border-radius: 999px;
+  corner-shape: round;
   background: #fff;
   color: #101114;
   box-shadow: 0 8px 28px rgb(0 0 0 / 0.34);

@@ -120,17 +120,18 @@ export function SettingsView({
           </div>
           <div className="settings-panel-body">
             <div
-              className="segmented-control locale-settings-control"
+              className="segmented-control locale-settings-control rounded-md"
               data-mode={settings.uiLocale}
               role="radiogroup"
               aria-label={copy.interfaceLanguage}
             >
               <span
-                className="segmented-indicator"
+                className="segmented-indicator rounded-concentric-[4px]"
                 data-mode={settings.uiLocale}
                 aria-hidden="true"
               />
               <button
+                className="rounded-concentric-[4px]"
                 type="button"
                 role="radio"
                 aria-checked={settings.uiLocale === 'zh-CN'}
@@ -140,6 +141,7 @@ export function SettingsView({
                 简体中文
               </button>
               <button
+                className="rounded-concentric-[4px]"
                 type="button"
                 role="radio"
                 aria-checked={settings.uiLocale === 'zh-TW'}

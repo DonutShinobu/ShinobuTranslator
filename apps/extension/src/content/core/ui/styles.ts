@@ -1,4 +1,5 @@
 import { getExtensionRuntime } from '../../../shared/extensionRuntime';
+import cornerStyles from './corners.css?inline';
 
 const styleId = 'mt-overlay-style';
 
@@ -331,7 +332,6 @@ export function injectStyles(): void {
       margin-top: 2px;
       box-sizing: border-box;
       border: 1px solid var(--mt-stage-border, oklch(0.9 0.012 250 / 0.22));
-      border-radius: 18px;
       background: var(--mt-stage-bg, oklch(0.16 0.012 250 / 0.86));
       color: var(--mt-text, oklch(0.94 0.01 250));
       box-shadow:
@@ -361,10 +361,10 @@ export function injectStyles(): void {
       text-align: left;
       font: inherit;
       letter-spacing: 0;
-      border-radius: 17px;
     }
     .mt-x-stage-card[data-expanded='true'] .mt-x-stage-card-toggle {
-      border-radius: 17px 17px 0 0;
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
     }
     .mt-x-stage-card-toggle:hover {
       background: var(--mt-stage-bg-hover, oklch(0.92 0.01 250 / 0.06));
@@ -447,7 +447,6 @@ export function injectStyles(): void {
       margin: 9px 0 0;
       box-sizing: border-box;
       border: 1px solid var(--mt-stage-border-soft, oklch(0.9 0.012 250 / 0.22));
-      border-radius: 12px;
       padding: 8px;
       overflow: auto;
       background: oklch(0 0 0 / 0.18);
@@ -689,7 +688,6 @@ export function injectStyles(): void {
       min-height: 42px;
       box-sizing: border-box;
       border: 1px solid var(--mt-stage-node-border, oklch(0.85 0.05 175 / 0.7));
-      border-radius: 14px;
       padding: 7px 8px 6px;
       background: var(--mt-stage-node-bg, oklch(0.16 0.03 175 / 0.72));
       color: var(--mt-stage-muted, oklch(0.94 0.01 250 / 0.7));
@@ -1201,6 +1199,7 @@ export function injectStyles(): void {
       }
     }
 
+    ${cornerStyles}
   `;
   document.documentElement.appendChild(style);
 }

@@ -293,7 +293,7 @@ function SegmentedControl<T extends string>({
   return (
     <ToggleGroup
       type="single"
-      className={`seg-control${disabled ? ' seg-disabled' : ''}`}
+      className={`seg-control rounded-md${disabled ? ' seg-disabled' : ''}`}
       value={value}
       onValueChange={(nextValue) => {
         if (nextValue) onChange(nextValue as T);
@@ -302,7 +302,7 @@ function SegmentedControl<T extends string>({
       aria-label={ariaLabel}
     >
       <span
-        className="seg-pill"
+        className="seg-pill rounded-concentric-[4px]"
         aria-hidden="true"
         style={{
           width: `calc(${100 / options.length}% - ${6 / options.length}px)`,
@@ -310,7 +310,7 @@ function SegmentedControl<T extends string>({
         }}
       />
       {options.map((option) => (
-        <ToggleGroupItem className="seg-option" key={option.value} value={option.value}>
+        <ToggleGroupItem className="seg-option rounded-concentric-[4px]" key={option.value} value={option.value}>
           {option.label}
         </ToggleGroupItem>
       ))}
@@ -346,9 +346,9 @@ function SelectControl<T extends string>({
         <SelectTrigger className="select-trigger" aria-label={ariaLabel}>
           <SelectValue className="select-value" />
         </SelectTrigger>
-        <SelectContent className="select-menu" position="popper" align="start" collisionPadding={8}>
+        <SelectContent className="select-menu rounded-md" position="popper" align="start" collisionPadding={8}>
           {options.map((option) => (
-            <SelectItem className="select-option" key={option.value} value={option.value}>
+            <SelectItem className="select-option rounded-concentric-[4px]" key={option.value} value={option.value}>
               {option.label}
             </SelectItem>
           ))}

@@ -10,7 +10,7 @@ const extensionPackage = JSON.parse(
 describe('dual-target extension manifests', () => {
   it.each(['chromium', 'firefox'] as const)('preserves the approved description for %s', (target) => {
     expect(createExtensionManifest(target, extensionPackage.version).description).toBe(
-      '用于 X / Pixiv 的漫画翻译器（支持谷歌翻译和大模型翻译）',
+      '翻译网页漫画和图片中的文字，支持截图翻译、本地 OCR、去字排版，以及谷歌翻译和大模型翻译。',
     );
   });
 

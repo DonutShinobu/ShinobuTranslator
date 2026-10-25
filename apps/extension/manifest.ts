@@ -29,7 +29,7 @@ export function createExtensionManifest(target: ExtensionTarget, version: string
   const common: Manifest = {
     name: 'ShinobuTranslator',
     version,
-    description: '用于 X / Pixiv 的漫画翻译器（支持谷歌翻译和大模型翻译）',
+    description: '翻译网页漫画和图片中的文字，支持截图翻译、本地 OCR、去字排版，以及谷歌翻译和大模型翻译。',
     icons: EXTENSION_ICONS,
     commands: {
       'start-screenshot-translate': {

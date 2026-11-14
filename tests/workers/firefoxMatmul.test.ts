@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { expect, it } from 'vitest';
-import { directReadTransform, patchFirefoxProgramManager } from '../../scripts/build-jsep.mjs';
+import { directReadTransform, patchFirefoxProgramManager } from '../../scripts/firefox-matmul.mjs';
 
 const manager = readFileSync('node_modules/onnxruntime-web/lib/wasm/jsep/webgpu/program-manager.ts', 'utf8');
 const samples = ['original-vec4', 'packed-vec3', 'packed-scalar', 'sequential-scalar'].map(name => ({

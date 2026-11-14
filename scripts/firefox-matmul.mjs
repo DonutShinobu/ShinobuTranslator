@@ -1,4 +1,7 @@
-// ponytail: match pinned ORT matrix kernels only; revalidate after ORT upgrades or Firefox's zeroing fix.
+import assert from 'node:assert/strict';
+
+// Historical Firefox workaround for explicit regression experiments only.
+// Production builds use unmodified ORT shader generation in both browsers.
 export function directReadTransform(original) {
   const fail = message => { throw new Error(message); };
   const norm = text => text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '').replace(/\s/g, '');
@@ -133,4 +136,20 @@ export function directReadTransform(original) {
       geometry: { a, b, wx, wy, rowPerThread, colPerThread, tileInner },
       loads: { a: aa, b: ba }, reads: edits.map(({ tile, row, col }) => ({ tile, row, col })) };
   } catch (error) { return { code: original, changed: false, reason: error.message }; }
+}
+
+export function patchFirefoxProgramManager(source) {
+  const shaderSource = "const code = `${enableDirectives.join('\\n')}\\n${shaderHelper.additionalImplementations}\\n${userCode}`;";
+  const shaderModule = 'const shaderModule = device.createShaderModule({ code, label: programInfo.name });';
+  for (const anchor of [shaderSource, shaderModule]) {
+    assert.equal(source.split(anchor).length - 1, 1, 'Revalidate the ORT shader creation path');
+  }
+  return `const shinobuFirefoxDirectRead = typeof navigator !== 'undefined'
+    && /Windows/.test(navigator.userAgent) && /Firefox\\//.test(navigator.userAgent);\n`
+    + directReadTransform.toString() + '\n'
+    + source.replace(shaderSource, shaderSource.replace('const code =', 'let code ='))
+      .replace(shaderModule, `if (shinobuFirefoxDirectRead && /\\bmm_Asub\\b/.test(code)) {
+      code = directReadTransform(code).code;
+    }
+    ${shaderModule}`);
 }

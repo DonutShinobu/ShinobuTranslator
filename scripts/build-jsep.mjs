@@ -4,27 +4,9 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
-import { directReadTransform } from './firefox-matmul.mjs';
-
-export { directReadTransform };
-
-export function patchFirefoxProgramManager(source) {
-  const shaderSource = "const code = `${enableDirectives.join('\\n')}\\n${shaderHelper.additionalImplementations}\\n${userCode}`;";
-  const shaderModule = 'const shaderModule = device.createShaderModule({ code, label: programInfo.name });';
-  for (const anchor of [shaderSource, shaderModule]) {
-    assert.equal(source.split(anchor).length - 1, 1, 'Revalidate the ORT shader creation path');
-  }
-  return `const shinobuFirefoxDirectRead = typeof navigator !== 'undefined'
-    && /Windows/.test(navigator.userAgent) && /Firefox\\//.test(navigator.userAgent);\n`
-    + directReadTransform.toString() + '\n'
-    + source.replace(shaderSource, shaderSource.replace('const code =', 'let code ='))
-      .replace(shaderModule, `if (shinobuFirefoxDirectRead && /\\bmm_Asub\\b/.test(code)) {
-      code = directReadTransform(code).code;
-    }
-    ${shaderModule}`);
-}
 
 // Rebuild the installed ORT's JS while keeping its paired WASM unchanged.
+// Both browsers retain upstream ORT shader generation, shared tiles and barriers.
 // WebNN and WASM fallback remain; unused WebGL/native WebGPU do not.
 export async function buildJsep(outputDirectory) {
   const ortRoot = join(dirname(fileURLToPath(import.meta.resolve('onnxruntime-web/all'))), '..');
@@ -41,14 +23,6 @@ export async function buildJsep(outputDirectory) {
     format: 'esm', platform: 'browser', target: 'es2022', minify: true,
     treeShaking: true, write: false, metafile: true, legalComments: 'inline',
     conditions: ['onnxruntime-web-use-extern-wasm'], external: ['node:*'],
-    plugins: [{
-      name: 'firefox-matmul-direct-read',
-      setup(build) {
-        build.onLoad({ filter: /[\\/]wasm[\\/]jsep[\\/]webgpu[\\/]program-manager\.ts$/ }, ({ path }) => ({
-          contents: patchFirefoxProgramManager(readFileSync(path, 'utf8')), loader: 'ts',
-        }));
-      },
-    }],
     define: {
       ...Object.fromEntries(Object.entries(definitions).map(([key, value]) =>
         [`BUILD_DEFS.${key}`, JSON.stringify(value)])),

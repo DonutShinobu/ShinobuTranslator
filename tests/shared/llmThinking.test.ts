@@ -250,10 +250,10 @@ describe('built-in LLM thinking capabilities', () => {
     expect(getLlmThinkingCapability('custom', 'any-model')).toBeNull();
   });
 
-  it('requires every built-in text model to have one exact capability definition', () => {
+  it('requires every built-in text model with managed thinking controls to have one exact capability definition', () => {
     const catalogKeys = Object.entries(llmBuiltInProviderDefinitions)
       .flatMap(([provider, definition]) => (
-        provider === 'gemini'
+        provider === 'gemini' || provider === 'opencode_go'
           ? []
           : definition.models.map((model) => `${provider}/${model}`)
       ))

@@ -78,6 +78,75 @@ describe('proxyApiKeyChatCompletions', () => {
     }
   });
 
+  it('sends OpenCode Go requests with a session routing header', async () => {
+    const response = { choices: [{ message: { content: '译文' } }] };
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      Response.json(response),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const settings: ExtensionSettings = {
+      ...createDeepSeekSettings(),
+      llmProfiles: {
+        ...defaultExtensionSettings.llmProfiles,
+        opencode_go: {
+          ...defaultExtensionSettings.llmProfiles.opencode_go,
+          apiKey: 'oc_sk_test',
+        },
+      },
+    };
+    const body = {
+      model: 'deepseek-v4.1-flash',
+      messages: [{ role: 'user' as const, content: '请翻译并返回 JSON。' }],
+      response_format: { type: 'json_object' as const },
+    };
+
+    await expect(proxyApiKeyChatCompletions(settings, {
+      provider: 'opencode_go',
+      authMode: 'api_key',
+      baseUrl: llmBuiltInProviderDefinitions.opencode_go.baseUrl,
+    }, body)).resolves.toEqual(response);
+
+    const [endpoint, init] = fetchMock.mock.calls.at(-1)!;
+    expect(endpoint).toBe('https://opencode.ai/inference/go/openai/v1/chat/completions');
+    expect(init?.headers).toMatchObject({
+      Authorization: 'Bearer oc_sk_test',
+      'x-opencode-session': expect.stringMatching(/^shinobu-.+/u),
+    });
+    expect(JSON.parse(init?.body as string)).toEqual(body);
+  });
+
+  it('adds the OpenCode Go session header for a custom provider using the Go endpoint', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      Response.json({ choices: [{ message: { content: '译文' } }] }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const settings: ExtensionSettings = {
+      ...createDeepSeekSettings(),
+      llmProfiles: {
+        ...defaultExtensionSettings.llmProfiles,
+        custom: {
+          ...defaultExtensionSettings.llmProfiles.custom,
+          apiKey: 'custom_go_key',
+        },
+      },
+    };
+
+    await proxyApiKeyChatCompletions(settings, {
+      provider: 'custom',
+      authMode: 'api_key',
+      baseUrl: 'https://opencode.ai/inference/go/openai/v1',
+    }, {
+      model: 'deepseek-v4.1-flash',
+      messages: [{ role: 'user', content: '请翻译。' }],
+    });
+
+    const init = fetchMock.mock.calls.at(-1)?.[1];
+    expect(init?.headers).toMatchObject({
+      Authorization: 'Bearer custom_go_key',
+      'x-opencode-session': expect.stringMatching(/^shinobu-.+/u),
+    });
+  });
+
   it.each(llmBuiltInProviderDefinitions.doubao.models)('sends %s to Ark with the stored Doubao key', async (model) => {
     const response = { choices: [{ message: { content: '译文' } }] };
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>

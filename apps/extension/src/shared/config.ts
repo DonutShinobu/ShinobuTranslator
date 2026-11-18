@@ -70,6 +70,7 @@ function createDefaultLlmProfiles(): Record<LlmProvider, LlmProviderProfile> {
     minimax: createDefaultProviderProfile('minimax'),
     mimo: createDefaultProviderProfile('mimo'),
     openai: createDefaultProviderProfile('openai'),
+    opencode_go: createDefaultProviderProfile('opencode_go'),
     custom: createDefaultProviderProfile('custom'),
   };
 }
@@ -402,6 +403,7 @@ export function normalizeSettings(value: unknown): ExtensionSettings {
     minimax: normalizeProviderProfile('minimax', rawProfiles.minimax, provider === 'minimax' ? legacy : null),
     mimo: normalizeProviderProfile('mimo', rawProfiles.mimo, provider === 'mimo' ? legacy : null),
     openai: normalizeProviderProfile('openai', rawProfiles.openai, provider === 'openai' ? legacy : null),
+    opencode_go: normalizeProviderProfile('opencode_go', rawProfiles.opencode_go, provider === 'opencode_go' ? legacy : null),
     custom: normalizeProviderProfile('custom', rawProfiles.custom, provider === 'custom' ? legacy : null),
   };
   const llmThinkingByModel = normalizeLlmThinkingByModel(raw.llmThinkingByModel);

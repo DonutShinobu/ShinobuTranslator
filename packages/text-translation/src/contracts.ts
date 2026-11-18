@@ -8,6 +8,7 @@ export type LlmProvider =
   | 'minimax'
   | 'mimo'
   | 'openai'
+  | 'opencode_go'
   | 'custom';
 
 export type LlmAuthMode = 'api_key' | 'openai_oauth' | 'gemini_app';

@@ -68,6 +68,32 @@ export const llmBuiltInProviderDefinitions: Record<
     models: ['gpt-6-astra', 'gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna'],
     defaultAuthMode: 'openai_oauth',
   },
+  opencode_go: {
+    label: 'OpenCode Go', webLabel: 'OpenCode Go',
+    baseUrl: 'https://opencode.ai/inference/go/openai/v1',
+    models: [
+      'deepseek-v4.1-flash',
+      'deepseek-v4-pro',
+      'glm-5.3',
+      'glm-5.3-flash',
+      'kimi-k3',
+      'kimi-k3.1-pro',
+      'kimi-k2.7-code',
+      'minimax-m3',
+      'minimax-m3.1-flash',
+      'mimo-v2.6-pro',
+      'mimo-v2.6-flash',
+      'qwen3.8-max',
+      'qwen3.8-flash',
+      'gpt-6-luna',
+      'claude-haiku-5-5',
+      'gemini-4-argon',
+      'longcat-2.5-free',
+      'hy4-flash-free',
+      'beam-free',
+    ],
+    defaultAuthMode: 'api_key',
+  },
 };
 
 export const llmProviderOptions: Array<{

@@ -1,4 +1,4 @@
-import type { ExtensionSettings } from '../shared/config';
+import type { ExtensionSettings, LlmProvider } from '../shared/config';
 import type {
   LlmChatCompletionRequestBody,
   LlmChatCompletionsProxyConfig,
@@ -97,6 +97,28 @@ function parseMaybeJson(text: string): unknown {
   }
 }
 
+function createOpenCodeGoSessionId(): string {
+  const randomUuid = globalThis.crypto?.randomUUID;
+  const suffix = typeof randomUuid === 'function'
+    ? randomUuid.call(globalThis.crypto)
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  return `shinobu-${suffix}`;
+}
+
+function resolveLlmRequestHeaders(
+  provider: LlmProvider,
+  endpoint: string,
+  apiKey: string,
+): Record<string, string> {
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${apiKey}`,
+    ...(provider === 'opencode_go' || endpoint.includes('/inference/go/'))
+      ? { 'x-opencode-session': createOpenCodeGoSessionId() }
+      : {},
+  };
+}
+
 function parseRetryAfterMs(value: string | null): number | undefined {
   const retryAfter = value?.trim();
   if (!retryAfter) return undefined;
@@ -146,10 +168,7 @@ export async function proxyApiKeyChatCompletions(
   });
   const response = await fetch(endpoint, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
+    headers: resolveLlmRequestHeaders(proxyConfig.provider, endpoint, apiKey),
     body: JSON.stringify(requestBody),
   });
   const responseText = await response.text();

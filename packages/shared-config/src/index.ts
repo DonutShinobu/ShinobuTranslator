@@ -5,7 +5,8 @@ export const LOCKED_PROCESSING_CONFIG_SCHEMA_VERSION = 1 as const;
 export type UiLocale = 'zh-CN' | 'zh-TW';
 export type TargetLanguage = 'zh-CHS' | 'zh-CHT';
 export type ProcessMode = 'translate' | 'original' | 'erase';
-export type TranslationProviderId = Exclude<LlmProvider, 'gemini'>;
+// OpenCode Go needs extension host permissions for its session-routed endpoint.
+export type TranslationProviderId = Exclude<LlmProvider, 'gemini' | 'opencode_go'>;
 
 export type WebProviderProfile = {
   baseUrl: string;

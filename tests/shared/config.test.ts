@@ -122,9 +122,34 @@ describe("built-in LLM catalog", () => {
           "gpt-6-luna",
         ],
       },
+      opencode_go: {
+        label: "OpenCode Go",
+        baseUrl: "https://opencode.ai/inference/go/openai/v1",
+        models: [
+          "deepseek-v4.1-flash",
+          "deepseek-v4-pro",
+          "glm-5.3",
+          "glm-5.3-flash",
+          "kimi-k3",
+          "kimi-k3.1-pro",
+          "kimi-k2.7-code",
+          "minimax-m3",
+          "minimax-m3.1-flash",
+          "mimo-v2.6-pro",
+          "mimo-v2.6-flash",
+          "qwen3.8-max",
+          "qwen3.8-flash",
+          "gpt-6-luna",
+          "claude-haiku-5-5",
+          "gemini-4-argon",
+          "longcat-2.5-free",
+          "hy4-flash-free",
+          "beam-free",
+        ],
+      },
     });
     expect(llmProviderOptions.map((option) => option.value)).toEqual([
-      'deepseek', 'gemini', 'glm', 'kimi', 'alibaba', 'doubao', 'minimax', 'mimo', 'openai', 'custom',
+      'deepseek', 'gemini', 'glm', 'kimi', 'alibaba', 'doubao', 'minimax', 'mimo', 'openai', 'opencode_go', 'custom',
     ]);
   });
 
@@ -289,6 +314,16 @@ describe.each([
   {
     provider: 'doubao', baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
     models: ['doubao-seed-evolving', 'doubao-seed-2-1-pro-260915', 'doubao-seed-2-1-lite-260915', 'doubao-seed-2-1-turbo-260628'],
+  },
+  {
+    provider: 'opencode_go', baseUrl: 'https://opencode.ai/inference/go/openai/v1',
+    models: [
+      'deepseek-v4.1-flash', 'deepseek-v4-pro', 'glm-5.3', 'glm-5.3-flash',
+      'kimi-k3', 'kimi-k3.1-pro', 'kimi-k2.7-code', 'minimax-m3',
+      'minimax-m3.1-flash', 'mimo-v2.6-pro', 'mimo-v2.6-flash', 'qwen3.8-max',
+      'qwen3.8-flash', 'gpt-6-luna', 'claude-haiku-5-5', 'gemini-4-argon',
+      'longcat-2.5-free', 'hy4-flash-free', 'beam-free',
+    ],
   },
 ] as const)('$provider provider settings', ({ provider, baseUrl, models }) => {
   it("defaults to its first preset with API key auth and the fixed official endpoint", () => {
